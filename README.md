@@ -108,6 +108,10 @@ cargo test --doc
 The real-model integration test is ignored by default and requires
 `ACHI_TEST_MODELS_DIR` pointing at assets created by `achi models install`.
 
+The Veritas test annotations come from the private `jamesqo/veritas`
+repository at the exact revision recorded in `Cargo.toml`. Contributors running
+tests need repository access and a GitHub SSH identity that can clone Veritas.
+
 ## Automatic deployment
 
 Every push to `main` builds the Linux x86-64 and Apple Silicon binaries in

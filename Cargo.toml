@@ -43,7 +43,7 @@ ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"]
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
 tempfile = "3.27.0"
-veritas-test-macros = { path = "vendor/veritas-test-macros" }
+veritas-test-macros = { git = "ssh://git@github.com/jamesqo/veritas.git", rev = "9eb6b751c13523f2174b0040eadb5858f31c9e04" }
 
 [profile.release]
 codegen-units = 16

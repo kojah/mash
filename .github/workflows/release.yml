@@ -23,6 +23,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Configure private Veritas access
+        uses: jamesqo/gha-workflows/actions/setup-private-git@v3
+        with:
+          ssh-private-key: ${{ secrets.VERITAS_DEPLOY_KEY }}
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: nightly
