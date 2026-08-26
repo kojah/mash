@@ -1,0 +1,15 @@
+[profile.default]
+fail-fast = true
+test-threads = "num-cpus"
+status-level = "pass"
+final-status-level = "fail"
+retries = 0
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+[profile.ci]
+fail-fast = false
+test-threads = "num-cpus"
+status-level = "all"
+final-status-level = "all"
+retries = 0
+slow-timeout = { period = "60s", terminate-after = 2 }

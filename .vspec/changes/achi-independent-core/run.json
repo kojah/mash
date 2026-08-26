@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "change_id": "achi-independent-core",
+  "mode": "direct",
+  "run_id": "direct-sha256:1687f",
+  "contract_hash": "sha256:1687fc381efa5ceff9498f60419a011d661d8ddcce03644f25455be602609368",
+  "state": "finished",
+  "started_at": "2026-08-25T01:45:07Z",
+  "brief_path": ".vspec/changes/achi-independent-core/contract.md",
+  "history": [
+    {
+      "run_id": "direct-sha256:7b337",
+      "contract_hash": "sha256:7b337874cb544dd1fe84fa4699da8154f57db3e92dea8c87b8fbde100b21dc3b",
+      "started_at": "2026-08-24T23:25:38Z",
+      "superseded_at": "2026-08-25T01:27:33Z",
+      "state": "running"
+    },
+    {
+      "run_id": "direct-sha256:e806a",
+      "contract_hash": "sha256:e806af3f80463a84a5d7c72ad0d6ab29020c26d62f7e0f9bcceb6dabfe0c13c4",
+      "started_at": "2026-08-25T01:27:33Z",
+      "superseded_at": "2026-08-25T01:40:06Z",
+      "state": "running"
+    },
+    {
+      "run_id": "direct-sha256:4d416",
+      "contract_hash": "sha256:4d41620e6bcb6625d9f013bf7466d4bd08927939f246caeb486f407a7cea256f",
+      "started_at": "2026-08-25T01:40:06Z",
+      "superseded_at": "2026-08-25T01:45:07Z",
+      "state": "running"
+    }
+  ]
+}

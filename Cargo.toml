@@ -1,0 +1,59 @@
+[package]
+name = "achi"
+version = "0.7.0"
+edition = "2024"
+description = "Agent Chat History Index for Claude Code and Codex JSONL sessions"
+license-file = "LICENSE"
+repository = "https://github.com/kojah/achi"
+default-run = "achi"
+autobins = false
+autotests = false
+autoexamples = false
+autobenches = false
+build = false
+
+[lib]
+path = "app/lib.rs"
+
+[[bin]]
+name = "achi"
+path = "app/main.rs"
+test = false
+
+[[test]]
+name = "cli_contract"
+path = "app/tests/cli_contract.rs"
+
+[dependencies]
+blake3 = "1.8.5"
+chrono = { version = "0.4.44", default-features = false, features = ["std"] }
+clap = { version = "4.6.1", features = ["derive"] }
+directories = "6.0.0"
+fastembed = { version = "6.0.1", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+walkdir = "2.5.0"
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+hf-hub = { version = "0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"] }
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+tempfile = "3.27.0"
+veritas-test-macros = { path = "vendor/veritas-test-macros" }
+
+[profile.release]
+codegen-units = 16
+strip = true
+panic = "abort"
+opt-level = 3
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

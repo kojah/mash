@@ -1,0 +1,29 @@
+name: Deploy ACHI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-achi-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: jamesqo/gha-workflows/.github/workflows/rust-cli-deploy.yml@v2
+    with:
+      binary: achi
+      rust-toolchain: nightly
+      cache-prefix: achi
+      rustflags: -Zunstable-options --jobs-frontend=4
+      deploy-targets: >-
+        [{"ssh":"deploy@linux-node","platform":"linux-amd64"},{"ssh":"deploy@mac-node-1","platform":"darwin-arm64"},{"ssh":"deploy@mac-node-2","platform":"darwin-arm64"}]
+    secrets:
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+      DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
