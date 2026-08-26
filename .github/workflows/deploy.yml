@@ -1,4 +1,4 @@
-name: Deploy ACHI
+name: Deploy achi
 
 on:
   push:

@@ -1,6 +1,6 @@
 ## Context
 
-ACHI already separates canonical messages from rebuildable semantic vectors, but
+achi already separates canonical messages from rebuildable semantic vectors, but
 `achi index` currently holds one SQLite writer transaction across ingestion,
 FTS maintenance, all model inference, and all embedding writes. Missing messages
 are loaded in identifier order and passed to FastEmbed in fixed groups of 32.
@@ -100,7 +100,7 @@ rank.
 
 ### Separate durable canonical state from checkpointed derived state
 
-After ingestion, ACHI finalizes FTS and commits the writer transaction before
+After ingestion, achi finalizes FTS and commits the writer transaction before
 embedding inference begins. It then starts a new writer transaction, removes
 stale-generation vectors, and writes completed exact-text groups. After a
 bounded number of stored rows, it calls the existing writer checkpoint primitive

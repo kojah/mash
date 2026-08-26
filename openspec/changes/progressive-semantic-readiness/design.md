@@ -1,6 +1,6 @@
 ## Context
 
-ACHI currently stores at most one vector per message and treats the build's
+achi currently stores at most one vector per message and treats the build's
 current embedding generation as both the only writable generation and the only
 searchable generation. `achi index` commits vectors in bounded transactions,
 but `search` and `status` require complete current-generation coverage. The
@@ -104,7 +104,7 @@ coverage becomes complete, the checkpoint transaction changes
 `serving_generation`, aligns `target_generation` to the same generation, and
 deletes superseded vector and metadata rows atomically. Target preparation
 performs the same transition immediately when copied or previously committed
-rows already provide complete target coverage. At steady state ACHI therefore
+rows already provide complete target coverage. At steady state achi therefore
 stores one generation; two generations exist only during compatible rollover.
 
 ### Treat coverage and retrieval as one SQLite snapshot
@@ -189,7 +189,7 @@ prove the covered-subset contract.
 - Source/owner: existing rank-only federation boundary and requested truthful
   readiness reporting.
 - Simpler behavior considered: sum all node counters into one object.
-- Scope cost: one optional object per successful outcome; retire only if ACHI
+- Scope cost: one optional object per successful outcome; retire only if achi
   gains a canonical deduplicated fleet inventory.
 
 ## Tooling Compatibility

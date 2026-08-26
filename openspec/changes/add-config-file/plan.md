@@ -1,4 +1,4 @@
-# ACHI configuration delivery plan
+# achi configuration delivery plan
 
 Status: approved
 
@@ -459,7 +459,7 @@ external-write authority; this plan alone performs none of them.
 - The preceding semantic deployment and full-index benchmark must finish before
   PH-5, so performance results remain attributable to that change.
 - Strict configuration means all three files must be updated together when
-  inventory changes. Synchronization remains external to ACHI.
+  inventory changes. Synchronization remains external to achi.
 - File modification time is a fast source-activity proxy. Copied or touched
   histories may be admitted, but complete conversations remain coherent.
 - The 90-day default changes first-run coverage. `--all-history` is the explicit

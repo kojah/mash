@@ -18,7 +18,7 @@ Completion belongs to the normal verification gates for this handoff.
 - achi-independent-core/size-boundary: The replacement SHALL contain no more than 70,000 lines of production Rust and 30,000 lines of Rust tests.
 - cli/removed-commands-are-rejected: The system SHALL expose only `index`, `search`, `view`, `status`, `forget`, and `models install` as operational commands. Operational output SHALL be JSON.
 - independence/no-dickles-franken-surface: The maintained project SHALL contain no runtime or build dependency on the legacy dependency ecosystem or removed-provider surface.
-- ingestion/malformed-records-do-not-panic: The system SHALL discover and normalize Claude Code and Codex JSONL histories into ACHI-owned canonical conversation and message records.
+- ingestion/malformed-records-do-not-panic: The system SHALL discover and normalize Claude Code and Codex JSONL histories into achi-owned canonical conversation and message records.
 - models/download-is-explicit: The system SHALL support semantic candidates, RRF fusion, and cross-encoder reranking using a mainstream maintained model backend.
 - search/lexical-returns-distinctive-match: The system SHALL retrieve lexical candidates with SQLite FTS5 BM25 and apply supported provider and recency filters.
 - status/missing-database-recommends-index: The system SHALL report database readiness, indexed counts, model readiness, and realized fallback state as JSON without repair planning machinery.
@@ -41,7 +41,7 @@ Completion belongs to the normal verification gates for this handoff.
 - ingestion/malformed-records-do-not-panic/scenario/malformed-line: Malformed line: - **WHEN** a supported JSONL file contains a malformed record - **THEN** indexing returns a typed JSON error or bounded diagnostic without panicking
 - ingestion/malformed-records-do-not-panic/scenario/supported-histories: Supported histories: - **WHEN** configured roots contain representative Claude Code and Codex JSONL histories - **THEN** `achi index` persists their conversations and messages with stable IDs
 - ingestion/malformed-records-do-not-panic/scenario/unsupported-provider: Unsupported provider: - **WHEN** a root contains only another provider's history - **THEN** no conversation from that provider is indexed or advertised as supported
-- models/download-is-explicit/scenario/explicit-installation: Explicit installation: - **WHEN** models are absent and no `models install` command is run - **THEN** ACHI does not download models implicitly
+- models/download-is-explicit/scenario/explicit-installation: Explicit installation: - **WHEN** models are absent and no `models install` command is run - **THEN** achi does not download models implicitly
 - models/download-is-explicit/scenario/models-absent: Models absent: - **WHEN** semantic models are not installed - **THEN** search succeeds lexically and truthfully reports lexical fallback
 - models/download-is-explicit/scenario/models-installed: Models installed: - **WHEN** compatible embedding and reranking models are installed - **THEN** search reports hybrid realization and returns fused, reranked candidates
 - search/lexical-returns-distinctive-match/scenario/matching-query: Matching query: - **WHEN** an indexed message contains a distinctive query term - **THEN** `achi search` returns that message with a stable identifier and lexical score metadata

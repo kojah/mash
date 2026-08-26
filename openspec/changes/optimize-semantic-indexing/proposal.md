@@ -1,6 +1,6 @@
 ## Why
 
-Cold semantic indexing is now the dominant ACHI cost. On Xenia, ingestion and
+Cold semantic indexing is now the dominant achi cost. On Xenia, ingestion and
 FTS completed in under one second while embedding 18,842 searchable messages
 took 345.5 seconds, about 55 messages per second. The corpus also demonstrates
 avoidable work: arbitrary identifier ordering mixes short and long messages in

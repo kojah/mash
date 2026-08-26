@@ -1,23 +1,23 @@
 ## Purpose
 
-Allow one ACHI invocation to search independent local indexes on explicitly selected SSH/Tailscale nodes while preserving local-only behavior when federation is not selected.
+Allow one achi invocation to search independent local indexes on explicitly selected SSH/Tailscale nodes while preserving local-only behavior when federation is not selected.
 
 ## ADDED Requirements
 
 ### Requirement: Node selection precedence
 
 <!-- claim: federated-search/node-selection-precedence -->
-`achi search` SHALL accept repeated `--node <SSH_HOST>` values. When at least one explicit value is present, ACHI SHALL use the deduplicated explicit values and ignore `ACHI_SEARCH_NODES`. Otherwise it SHALL use the deduplicated, comma-separated nonempty values from `ACHI_SEARCH_NODES`. With neither source present, search SHALL remain local-only and SHALL preserve the existing local response shape.
+`achi search` SHALL accept repeated `--node <SSH_HOST>` values. When at least one explicit value is present, achi SHALL use the deduplicated explicit values and ignore `ACHI_SEARCH_NODES`. Otherwise it SHALL use the deduplicated, comma-separated nonempty values from `ACHI_SEARCH_NODES`. With neither source present, search SHALL remain local-only and SHALL preserve the existing local response shape.
 
 #### Scenario: Explicit nodes replace defaults
 
 - **WHEN** `ACHI_SEARCH_NODES=dev-macbook,personal-macbook` and search is invoked with `--node xenia --node xenia`
-- **THEN** ACHI searches the local database and Xenia once, without contacting either environment-default node
+- **THEN** achi searches the local database and Xenia once, without contacting either environment-default node
 
 #### Scenario: No federation configured
 
 - **WHEN** search has no `--node` value and `ACHI_SEARCH_NODES` is unset or empty
-- **THEN** ACHI performs the existing local-only search
+- **THEN** achi performs the existing local-only search
 
 ### Requirement: Node names are bounded SSH aliases
 
@@ -32,7 +32,7 @@ Every selected node SHALL be a nonempty SSH host alias containing only ASCII let
 ### Requirement: Concurrent local and remote search
 
 <!-- claim: federated-search/concurrent-fanout -->
-When nodes are selected, ACHI SHALL begin remote searches concurrently while performing the existing local search. Each remote request SHALL use noninteractive SSH, a fixed remote ACHI command, structured JSON standard input, and a five-second execution deadline. Query text, filters, limits, and identifiers SHALL NOT be interpolated into a remote shell command.
+When nodes are selected, achi SHALL begin remote searches concurrently while performing the existing local search. Each remote request SHALL use noninteractive SSH, a fixed remote achi command, structured JSON standard input, and a five-second execution deadline. Query text, filters, limits, and identifiers SHALL NOT be interpolated into a remote shell command.
 
 #### Scenario: Two reachable nodes
 
@@ -42,7 +42,7 @@ When nodes are selected, ACHI SHALL begin remote searches concurrently while per
 #### Scenario: Remote command exceeds deadline
 
 - **WHEN** a selected node does not finish its remote request within five seconds
-- **THEN** ACHI terminates that SSH child and records a timeout outcome for the node
+- **THEN** achi terminates that SSH child and records a timeout outcome for the node
 
 ### Requirement: Partial remote failure
 
@@ -57,7 +57,7 @@ A remote connection failure, timeout, nonzero exit, malformed response, or incom
 ### Requirement: Deterministic federated merge
 
 <!-- claim: federated-search/deterministic-merge -->
-ACHI SHALL merge node-local final rankings without comparing raw BM25 values between databases. It SHALL assign each candidate a reciprocal local-rank score, deduplicate candidates by provider, conversation identifier, and message identifier, retain the highest rank contribution for a duplicate, record every origin, and break equal aggregate scores deterministically by provider, conversation identifier, and message identifier. The final result count SHALL respect `--limit`.
+achi SHALL merge node-local final rankings without comparing raw BM25 values between databases. It SHALL assign each candidate a reciprocal local-rank score, deduplicate candidates by provider, conversation identifier, and message identifier, retain the highest rank contribution for a duplicate, record every origin, and break equal aggregate scores deterministically by provider, conversation identifier, and message identifier. The final result count SHALL respect `--limit`.
 
 #### Scenario: Message exists on two machines
 
@@ -77,9 +77,9 @@ A federated search response SHALL identify its realized mode as `federated`, att
 ### Requirement: Origin-aware remote view
 
 <!-- claim: federated-search/remote-view -->
-`achi view <id> --node <SSH_HOST> --context N` SHALL validate the node with the search node rules, send the identifier and context through structured standard input to the fixed remote ACHI command, and return the compatible remote JSON view response. Without `--node`, view SHALL retain existing local behavior.
+`achi view <id> --node <SSH_HOST> --context N` SHALL validate the node with the search node rules, send the identifier and context through structured standard input to the fixed remote achi command, and return the compatible remote JSON view response. Without `--node`, view SHALL retain existing local behavior.
 
 #### Scenario: View a remote result
 
 - **WHEN** a federated result identifies `dev-macbook` as an origin and its identifier is passed to `achi view --node dev-macbook`
-- **THEN** ACHI returns that node's bounded adjacent context as ordinary view JSON
+- **THEN** achi returns that node's bounded adjacent context as ordinary view JSON

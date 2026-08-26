@@ -1,6 +1,6 @@
 ## Context
 
-ACHI now serves one narrow need: local search over Claude Code, Codex, current
+achi now serves one narrow need: local search over Claude Code, Codex, current
 OpenCode, GitHub Copilot CLI, Hermes Agent, and Pi histories. There are no
 backward-compatibility requirements for older product surfaces. SQLite is
 canonical; FTS rows and embeddings are derived.
@@ -38,7 +38,7 @@ canonical; FTS rows and embeddings are derived.
 
 ## Decisions
 
-- Use six concrete ingestion paths returning ACHI-owned `Conversation` and
+- Use six concrete ingestion paths returning achi-owned `Conversation` and
   `Message` values. Do not introduce a provider trait or registry.
 - Configure local discovery through built-in roots and the existing
   provider-specific root environment variables; do not add index-time provider

@@ -1,10 +1,10 @@
-# ACHI Independent Core Delivery Plan
+# achi Independent Core Delivery Plan
 
 Status: complete
 
 ## Scope
 
-Evolve the miniature ACHI implementation in place. Preserve its six JSON-only
+Evolve the miniature achi implementation in place. Preserve its six JSON-only
 commands, six concrete provider paths, Rusqlite/FTS5 canonical store, exact
 semantic retrieval, RRF, reranking, and explicit model installation. Add only
 the feature/build split, incremental indexing lifecycle, durable forgetting,

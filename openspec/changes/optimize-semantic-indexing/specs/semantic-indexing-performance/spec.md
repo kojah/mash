@@ -1,13 +1,13 @@
 ## Purpose
 
-Define observable throughput, progress, and interruption behavior for ACHI's
+Define observable throughput, progress, and interruption behavior for achi's
 concrete semantic indexing backend without changing retrieval semantics.
 
 ## ADDED Requirements
 
 ### Requirement: Embedding work preserves semantic results
 
-ACHI SHALL store one current-generation embedding for every searchable message.
+achi SHALL store one current-generation embedding for every searchable message.
 The canonical length-aware batching policy SHALL produce deterministic
 quantized vectors for the same corpus regardless of message identifier, input
 order, or duplicate occurrences. On representative reference-path samples,

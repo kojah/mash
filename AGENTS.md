@@ -1,8 +1,8 @@
-# ACHI development instructions
+# achi development instructions
 
 ## Product boundary
 
-ACHI is a small JSON-only Rust CLI for Claude Code and Codex JSONL histories.
+achi is a small JSON-only Rust CLI for Claude Code and Codex JSONL histories.
 Keep the command surface limited to `index`, `search`, `view`, `status`,
 `forget`, and `models install`.
 
@@ -12,7 +12,7 @@ Keep the command surface limited to `index`, `search`, `view`, `status`,
   and bounded reranking.
 - Do not add provider traits, registries, daemons, ANN indexes, compatibility
   shims, alternate output modes, a TUI, export, analytics, sync, or watch mode.
-- Keep ingestion to the two concrete ACHI-owned JSONL parsers. Do not add
+- Keep ingestion to the two concrete achi-owned JSONL parsers. Do not add
   external application databases, event-log providers, provider traits,
   registries, plugin systems, or compatibility layers.
 - Never download models outside the explicit `models install` command.

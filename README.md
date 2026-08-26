@@ -1,9 +1,9 @@
-# ACHI
+# achi
 
-ACHI (Agent Chat History Index) is a small, JSON-only search CLI for Claude Code and Codex JSONL
+achi (Agent Chat History Index) is a small, JSON-only search CLI for Claude Code and Codex JSONL
 histories. SQLite is the canonical store; SQLite FTS5, local FastEmbed
 embeddings, reciprocal-rank fusion, and bounded cross-encoder reranking provide
-hybrid retrieval. ACHI can also federate searches and views across configured
+hybrid retrieval. achi can also federate searches and views across configured
 machines over SSH.
 
 ## Commands
@@ -44,14 +44,14 @@ quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
 `achi models install` once to install the FP32 asset and compile its Core ML
 cache.
 
-Without a configuration file, ACHI indexes these built-in roots when present:
+Without a configuration file, achi indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`
 - Codex: `~/.codex/sessions`, `~/.local/share/codex/sessions`
 
 ## Configuration
 
-ACHI reads `config.json` from the platform ACHI configuration directory. Use
+achi reads `config.json` from the platform achi configuration directory. Use
 `achi status` to see the resolved path, or pass `--config PATH` explicitly.
 The file is strict, versioned JSON. Provider presence enables that provider for
 the node; roots must be absolute. `since_days` defaults to 90 and may be `null`

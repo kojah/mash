@@ -1,18 +1,18 @@
 ## Purpose
 
 Define when a partially built semantic index may serve search, how coverage is
-reported, and how ACHI progresses from recent messages to complete coverage
+reported, and how achi progresses from recent messages to complete coverage
 without lexical fallback.
 
 ## ADDED Requirements
 
 ### Requirement: Partial coverage serves a semantic-only subset
 
-ACHI SHALL permit successful hybrid search when compatible models are installed
+achi SHALL permit successful hybrid search when compatible models are installed
 and at least one searchable message has a committed vector in the serving
 generation. Lexical candidates, semantic candidates, fusion, and reranking
 SHALL all be restricted to messages having a vector in that one serving
-generation. ACHI SHALL NOT return an uncovered message or report lexical
+generation. achi SHALL NOT return an uncovered message or report lexical
 fallback.
 
 #### Scenario: First checkpoint enables search
@@ -87,7 +87,7 @@ vector in the checkpoint that first makes that text group visible.
 ### Requirement: Compatible generation rollover is atomic
 
 When a fully covered serving generation and a different query-compatible target
-generation both exist, ACHI SHALL continue searching only the serving generation
+generation both exist, achi SHALL continue searching only the serving generation
 while target vectors build. It SHALL switch the serving generation atomically
 only after the target generation covers every searchable message. Vectors from
 different generations SHALL never be mixed in one search.

@@ -5,7 +5,7 @@
 An ordinary `achi index` SHALL fingerprint sources and normalized messages,
 skip unchanged sources, and update canonical rows and semantic embeddings only
 for added, changed, removed, stale, or embedding-missing messages. For each
-canonical writer transaction, ACHI SHALL apply row-level FTS mutations below a
+canonical writer transaction, achi SHALL apply row-level FTS mutations below a
 declared, benchmark-selected changed-row cutoff and MAY rebuild whole-corpus FTS
 at or above that cutoff. Either FTS strategy SHALL commit atomically with its
 canonical changes. Semantic embeddings are rebuildable derived state and MAY
@@ -28,7 +28,7 @@ incomplete provider scan SHALL preserve previously indexed histories.
 #### Scenario: Large changed-message transaction
 
 - **WHEN** a writer transaction reaches the declared FTS rebuild cutoff and the embedding generation is unchanged
-- **THEN** ACHI may rebuild complete FTS state before committing that transaction while generating embeddings only for added, changed, stale, or embedding-missing searchable messages
+- **THEN** achi may rebuild complete FTS state before committing that transaction while generating embeddings only for added, changed, stale, or embedding-missing searchable messages
 
 #### Scenario: Canonical transaction is interrupted
 
@@ -51,7 +51,7 @@ incomplete provider scan SHALL preserve previously indexed histories.
 
 <!-- claim: indexing/full-rebuild-is-explicit -->
 - **WHEN** `achi index --full` is invoked
-- **THEN** ACHI may rebuild whole-corpus FTS and semantic derived state while preserving canonical message identity
+- **THEN** achi may rebuild whole-corpus FTS and semantic derived state while preserving canonical message identity
 
 #### Scenario: Source disappeared after complete scan
 

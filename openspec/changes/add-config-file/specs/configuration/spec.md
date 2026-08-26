@@ -1,6 +1,6 @@
 ## Purpose
 
-Define one explicit, versioned configuration contract for ACHI node identity,
+Define one explicit, versioned configuration contract for achi node identity,
 provider roots, and federation membership.
 
 ## ADDED Requirements
@@ -8,18 +8,18 @@ provider roots, and federation membership.
 ### Requirement: Configuration discovery
 
 <!-- claim: configuration/default-file-is-optional -->
-Without `--config`, ACHI SHALL inspect its platform configuration path for a
-ACHI JSON configuration file. Absence of that default file SHALL preserve
+Without `--config`, achi SHALL inspect its platform configuration path for a
+achi JSON configuration file. Absence of that default file SHALL preserve
 built-in provider roots and local-only search. `achi status` SHALL report the
 resolved configuration path and whether a file was loaded.
 
-If the platform does not provide an absolute configuration directory, ACHI
+If the platform does not provide an absolute configuration directory, achi
 SHALL fail with a typed configuration error rather than inspect a relative
 working-directory path.
 
 #### Scenario: First use without a file
 
-- **WHEN** ACHI is invoked without `--config` and no default configuration file exists
+- **WHEN** achi is invoked without `--config` and no default configuration file exists
 - **THEN** the command uses built-in local defaults without creating a configuration file
 
 <!-- claim: configuration/explicit-file-is-required -->
@@ -67,12 +67,12 @@ SHALL be rejected before JSON parsing.
 #### Scenario: Unsupported version
 
 - **WHEN** a loaded document declares a version other than `1`
-- **THEN** ACHI rejects it without applying any values from the document
+- **THEN** achi rejects it without applying any values from the document
 
 #### Scenario: Unknown provider
 
 - **WHEN** a node's providers object contains an unsupported provider name
-- **THEN** ACHI rejects the configuration rather than ignoring that provider
+- **THEN** achi rejects the configuration rather than ignoring that provider
 
 ### Requirement: Node inventory validation
 
@@ -92,7 +92,7 @@ enabled by default.
 #### Scenario: Duplicate SSH destination
 
 - **WHEN** two logical nodes configure the same SSH destination
-- **THEN** ACHI rejects the document rather than searching that destination twice
+- **THEN** achi rejects the document rather than searching that destination twice
 
 ### Requirement: Provider roots validation
 
@@ -132,7 +132,7 @@ or string values SHALL fail with a typed JSON configuration error.
 ### Requirement: Explicit local-node identity
 
 <!-- claim: configuration/local-node-is-explicit -->
-The configured `local_node` SHALL exactly identify one node entry. ACHI SHALL
+The configured `local_node` SHALL exactly identify one node entry. achi SHALL
 NOT infer local identity from the operating-system hostname or SSH destination.
 Global `--local-node NAME` SHALL override the configured identity and SHALL
 require an exact configured node name.
@@ -144,7 +144,7 @@ with a typed configuration error.
 #### Scenario: Configured identity is absent
 
 - **WHEN** `local_node` does not match any configured node
-- **THEN** ACHI fails with a typed JSON `configuration` error without scanning or starting SSH
+- **THEN** achi fails with a typed JSON `configuration` error without scanning or starting SSH
 
 #### Scenario: Explicit override
 
@@ -178,7 +178,7 @@ inputs for those values.
 #### Scenario: Legacy environment values are present
 
 - **WHEN** legacy root and node environment variables are set but no configuration or matching CLI override is supplied
-- **THEN** ACHI uses built-in local roots and local-only search
+- **THEN** achi uses built-in local roots and local-only search
 
 ### Requirement: Configuration status is explicit
 
@@ -206,4 +206,4 @@ A configuration failure SHALL exit with code 9 and emit JSON with
 #### Scenario: Invalid loaded document
 
 - **WHEN** a loaded document violates any configuration invariant
-- **THEN** ACHI returns the stable nonretryable configuration error shape
+- **THEN** achi returns the stable nonretryable configuration error shape

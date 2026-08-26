@@ -1,6 +1,6 @@
 ## Why
 
-ACHI currently treats missing or broken semantic assets as permission to return lexical-only results. Dogfooding showed that this silently downgrades production retrieval quality while still reporting a successful search. Production ACHI should instead make its required hybrid retrieval contract explicit and actionable.
+achi currently treats missing or broken semantic assets as permission to return lexical-only results. Dogfooding showed that this silently downgrades production retrieval quality while still reporting a successful search. Production achi should instead make its required hybrid retrieval contract explicit and actionable.
 
 ## What Changes
 

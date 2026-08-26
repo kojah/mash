@@ -1,17 +1,17 @@
 ## Why
 
 Federated search and machine-specific provider roots are persistent deployment
-facts, but ACHI currently spreads them across environment variables, repeated
+facts, but achi currently spreads them across environment variables, repeated
 CLI arguments, SSH configuration, and implicit defaults. That makes a
 three-machine installation difficult to inspect and easy to run differently on
-each machine. ACHI needs one explicit, versioned configuration contract for
+each machine. achi needs one explicit, versioned configuration contract for
 node identity, provider roots, and default federation membership.
 
 ## What Changes
 
-- Add an optional versioned ACHI configuration file and global `--config` path.
+- Add an optional versioned achi configuration file and global `--config` path.
 - Add explicit local-node selection in configuration with a `--local-node`
-  override; ACHI does not guess node identity from hostnames.
+  override; achi does not guess node identity from hostnames.
 - Configure each node's SSH destination, default search participation, Claude
   Code and Codex roots, and an indexing recency horizon that defaults to 90
   days.

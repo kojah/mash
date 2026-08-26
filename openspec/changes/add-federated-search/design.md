@@ -1,6 +1,6 @@
 ## Context
 
-ACHI is a synchronous JSON-only Rust CLI with local Rusqlite/FTS5 storage and optional local semantic inference. The three deployment targets already have noninteractive SSH connectivity over Tailscale and receive compatible binaries from one workflow. The retained command implementation is concentrated in `app/cli.rs`; search produces a concrete `SearchResponse` containing concrete storage hits.
+achi is a synchronous JSON-only Rust CLI with local Rusqlite/FTS5 storage and optional local semantic inference. The three deployment targets already have noninteractive SSH connectivity over Tailscale and receive compatible binaries from one workflow. The retained command implementation is concentrated in `app/cli.rs`; search produces a concrete `SearchResponse` containing concrete storage hits.
 
 The federation boundary is opt-in. A process with no selected nodes must not pay a subprocess, threading, schema, or output compatibility cost.
 
@@ -12,7 +12,7 @@ The federation boundary is opt-in. A process with no selected nodes must not pay
 - Preserve exact local-only behavior while exposing deterministic origin-aware federated JSON.
 - Keep queries and identifiers out of generated remote shell text.
 - Make remote failure an observable per-node outcome rather than a global search failure.
-- Reuse the deployed ACHI binary as both client and remote endpoint without adding a daemon.
+- Reuse the deployed achi binary as both client and remote endpoint without adding a daemon.
 
 **Non-Goals:**
 
@@ -25,14 +25,14 @@ The federation boundary is opt-in. A process with no selected nodes must not pay
 - `app/cli.rs` owns public flags, local search/view behavior, and response construction.
 - A new private `app/federation.rs` owns node parsing and validation, the versioned structured request/response envelopes, SSH child lifecycle, deadline enforcement, remote outcome classification, and pure deterministic merging.
 - `app/storage.rs` continues to own concrete search hits. It gains only serialization fields required to deserialize compatible remote hits and optional federated provenance fields omitted from local output.
-- The caller process is the sole aggregator. Remote ACHI processes execute hidden local-only request modes and never consult `ACHI_SEARCH_NODES`, preventing recursive federation.
-- OpenSSH and the remote ACHI executable are external boundaries. ACHI passes a validated node as an SSH argv element and sends all variable request data through child stdin.
+- The caller process is the sole aggregator. Remote achi processes execute hidden local-only request modes and never consult `ACHI_SEARCH_NODES`, preventing recursive federation.
+- OpenSSH and the remote achi executable are external boundaries. achi passes a validated node as an SSH argv element and sends all variable request data through child stdin.
 
 ## Decisions
 
 ### Use system SSH over Tailscale
 
-The client invokes `ssh` with `BatchMode=yes`, a bounded connect timeout, keepalive limits, the validated host alias, and the constant remote command `~/.local/bin/achi <operation> --federation-request`. This reuses authentication and host verification already maintained outside ACHI. An HTTP daemon was rejected because it adds service lifecycle, authorization, port, and deployment machinery. Database replication was rejected because it changes freshness and ownership semantics.
+The client invokes `ssh` with `BatchMode=yes`, a bounded connect timeout, keepalive limits, the validated host alias, and the constant remote command `~/.local/bin/achi <operation> --federation-request`. This reuses authentication and host verification already maintained outside achi. An HTTP daemon was rejected because it adds service lifecycle, authorization, port, and deployment machinery. Database replication was rejected because it changes freshness and ownership semantics.
 
 ### Use a small versioned stdin protocol
 

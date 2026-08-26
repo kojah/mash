@@ -22,7 +22,7 @@ The completion gate is fresh claim reconciliation, Rust evidence discovery, sema
 | PC-2 | Evolve compatibly | `SearchHit` gains deserialization and conditionally omitted provenance fields; local storage/search semantics remain unchanged. |
 | PC-3 | Evolve compatibly | `app/cli.rs` gains public node flags and hidden versioned federation request modes without adding operational commands. |
 | PC-4 | Add | `app/federation.rs` becomes the sole owner of node selection, SSH child lifecycle, protocol envelopes, outcomes, and merge logic. |
-| PC-5 | Preserve | Existing SSH/Tailscale configuration and deployment own connectivity and authentication; ACHI never changes them. |
+| PC-5 | Preserve | Existing SSH/Tailscale configuration and deployment own connectivity and authentication; achi never changes them. |
 
 ## Stack and Target Structure
 
@@ -81,7 +81,7 @@ Rust standard-library threads and processes provide concurrency. Serde/serde_jso
 
 ## Design Justification
 
-The only cross-process consumer is a compatible ACHI binary, so one concrete protocol and one concrete SSH runner are smaller than a trait, daemon, or transport registry. A standard-library thread per node is bounded at sixteen and isolates blocking process I/O without introducing Tokio. Final node rankings are merged by rank because raw BM25 is corpus-dependent; duplicates take the maximum rank contribution so synchronized copies do not gain artificial relevance.
+The only cross-process consumer is a compatible achi binary, so one concrete protocol and one concrete SSH runner are smaller than a trait, daemon, or transport registry. A standard-library thread per node is bounded at sixteen and isolates blocking process I/O without introducing Tokio. Final node rankings are merged by rank because raw BM25 is corpus-dependent; duplicates take the maximum rank contribution so synchronized copies do not gain artificial relevance.
 
 ## Delivery Plan
 
@@ -112,7 +112,7 @@ Completion record: baseline Nextest passed 39/39 with one ignored real-model tes
 
 Status: implemented. Depends on: PH-1 implemented. Verification role: intermediate under plan-final cadence.
 
-- **Outcome:** One private federation module safely selects nodes, exchanges version-1 JSON with a compatible remote ACHI, bounds output and process lifetime, and classifies every remote result without shell interpolation.
+- **Outcome:** One private federation module safely selects nodes, exchanges version-1 JSON with a compatible remote achi, bounds output and process lifetime, and classifies every remote result without shell interpolation.
 - **Owns:** new `app/federation.rs`; module declaration in `app/lib.rs`; hidden federation-request flags and versioned envelope variants in `app/cli.rs`; serialization derives in `app/storage.rs`; focused unit and CLI protocol tests. PH-3/PH-4 public routing remains excluded.
 - **Execution:** Implement table-driven alias validation, stable deduplication, explicit-over-environment selection, and sixteen-node cap. Add concrete search/view request envelopes. Add a concrete SSH runner whose executable and timeout are private parameters for deterministic tests; production uses `ssh` and five seconds. Drain bounded stdout/stderr on reader threads while polling, kill/wait on deadline, and reject protocol mismatch or malformed output. Add hidden local-only request handlers that never consult node defaults.
 - **Focused proof:** federation module unit tests plus CLI invocations of hidden request mode; fake executables cover success, nonzero, malformed, oversized, and short injected deadline behavior without network access.
@@ -140,7 +140,7 @@ Status: implemented. Depends on: PH-2 implemented. Verification role: intermedia
 
 - **Outcome:** `achi view <id> --node <alias>` retrieves the remote node's compatible JSON context through the same bounded protocol runner while unqualified view remains local and unchanged.
 - **Owns:** public view routing in `app/cli.rs` and fake-SSH view acceptance in `app/tests/cli_contract.rs`; it reuses PH-2 envelopes and child lifecycle unchanged.
-- **Execution:** Validate the explicit alias, issue a version-1 `ViewRequest`, return the successful remote `ViewResponse` without presentation changes, and convert classified remote failure into a typed ACHI error. Hidden view request mode must always execute locally and ignore federation defaults.
+- **Execution:** Validate the explicit alias, issue a version-1 `ViewRequest`, return the successful remote `ViewResponse` without presentation changes, and convert classified remote failure into a typed achi error. Hidden view request mode must always execute locally and ignore federation defaults.
 - **Focused proof:** process-level fake-SSH remote view plus hidden local request and existing local view coverage.
 - **Expected transition:** `remote-view` gains runnable evidence and all implementation phases become ready for final consolidation.
 - **Isolation:** no sibling implementation work remains; PH-5 consumes the integrated tree.

@@ -20,7 +20,7 @@ use crate::storage::Storage;
 #[derive(Debug, Parser)]
 #[command(name = "achi", version, about, arg_required_else_help = true)]
 struct Cli {
-    /// Versioned ACHI node and provider configuration.
+    /// Versioned achi node and provider configuration.
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<PathBuf>,
 
@@ -28,7 +28,7 @@ struct Cli {
     #[arg(long, global = true, value_name = "NAME")]
     local_node: Option<String>,
 
-    /// Canonical ACHI SQLite database.
+    /// Canonical achi SQLite database.
     #[arg(long, global = true, value_name = "PATH")]
     db: Option<PathBuf>,
 

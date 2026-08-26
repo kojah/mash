@@ -15,7 +15,7 @@ Verification cadence: plan-final
 
 Deliver partial semantic readiness, deterministic recent-first embedding
 checkpoints, compatible-generation rollover, and node-local coverage reporting
-without changing ACHI's models, vector format, exact search, fusion, reranking,
+without changing achi's models, vector format, exact search, fusion, reranking,
 providers, commands, or explicit model-install boundary.
 
 The change evolves the version-10 single-generation vector schema into a

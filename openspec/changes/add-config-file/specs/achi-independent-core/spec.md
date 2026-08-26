@@ -4,7 +4,7 @@
 
 <!-- claim: ingestion/provider-boundary -->
 The system SHALL discover and normalize only Claude Code and Codex histories
-into ACHI-owned canonical conversation and message records. With a loaded
+into achi-owned canonical conversation and message records. With a loaded
 configuration, provider presence in the resolved local node's `providers`
 object SHALL enable that provider and its configured roots; absent providers
 SHALL not be scanned. Without a loaded configuration, these two concrete
@@ -45,7 +45,7 @@ the two supported providers.
 provider selection SHALL restrict that run to the deduplicated named supported
 providers. Unknown providers or an explicitly selected provider without
 configured or built-in roots SHALL fail with a typed JSON usage error before
-scanning. ACHI SHALL NOT expose an ad hoc root override.
+scanning. achi SHALL NOT expose an ad hoc root override.
 
 #### Scenario: One provider is selected
 
@@ -91,7 +91,7 @@ The resolved recency horizon SHALL determine source eligibility using the
 source file's modification time relative to one run-start timestamp. A source
 whose modification time is on or after the inclusive cutoff SHALL be eligible;
 an older source SHALL not be parsed, inserted, updated, or counted as missing.
-When a source is eligible, ACHI SHALL ingest its complete conversation rather
+When a source is eligible, achi SHALL ingest its complete conversation rather
 than truncate messages at the cutoff. With no horizon, every discovered source
 SHALL be eligible.
 

@@ -1,15 +1,15 @@
 ## Why
 
-ACHI histories are distributed across Xenia, dev-macbook, and personal-macbook. Copying those histories or databases into one canonical store adds synchronization, conflict, storage, and freshness problems. ACHI should instead query already-indexed remote databases at search time so an agent can retrieve relevant work across the tailnet without centralizing ownership.
+achi histories are distributed across Xenia, dev-macbook, and personal-macbook. Copying those histories or databases into one canonical store adds synchronization, conflict, storage, and freshness problems. achi should instead query already-indexed remote databases at search time so an agent can retrieve relevant work across the tailnet without centralizing ownership.
 
 ## What Changes
 
 - `achi search` accepts repeated `--node <SSH_HOST>` flags and otherwise reads comma-separated defaults from `ACHI_SEARCH_NODES`.
 - Explicit `--node` values replace environment defaults; with neither source configured, search remains local-only.
-- ACHI searches the local database and all selected nodes concurrently over SSH, applies a bounded deadline, and returns successful partial results alongside per-node outcomes.
+- achi searches the local database and all selected nodes concurrently over SSH, applies a bounded deadline, and returns successful partial results alongside per-node outcomes.
 - Federated results identify their origin nodes, deduplicate identical messages, and merge node-local rankings deterministically without comparing database-local BM25 scores.
 - `achi view` accepts `--node <SSH_HOST>` to retrieve context from the node that produced a result.
-- Remote requests use a fixed ACHI command and structured standard input so query text and identifiers never enter a generated shell command.
+- Remote requests use a fixed achi command and structured standard input so query text and identifiers never enter a generated shell command.
 
 ## Capabilities
 
@@ -42,6 +42,6 @@ ACHI histories are distributed across Xenia, dev-macbook, and personal-macbook. 
 ## Impact
 
 - The `search` and `view` CLI flag surfaces and search JSON response gain additive federated fields.
-- ACHI invokes the existing system `ssh` executable only when nodes are selected.
-- Remote nodes must expose a compatible ACHI binary through a fixed command path and permit noninteractive SSH authentication.
+- achi invokes the existing system `ssh` executable only when nodes are selected.
+- Remote nodes must expose a compatible achi binary through a fixed command path and permit noninteractive SSH authentication.
 - Local-only storage, indexing, semantic search, and reranking remain unchanged.

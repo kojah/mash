@@ -2,7 +2,7 @@
 
 ### Requirement: Incremental indexing lifecycle
 
-An ordinary `achi index` SHALL fingerprint sources and normalized messages, skip unchanged sources, and update canonical rows and semantic embeddings only for added, changed, or removed messages. For each writer transaction, ACHI SHALL apply row-level FTS mutations below a declared, benchmark-selected changed-row cutoff and MAY rebuild whole-corpus FTS at or above that cutoff. Either strategy SHALL finish in the same transaction as its canonical changes. `index --full` SHALL retain an explicit whole-run bulk path. A failed or incomplete scan SHALL preserve previously indexed histories.
+An ordinary `achi index` SHALL fingerprint sources and normalized messages, skip unchanged sources, and update canonical rows and semantic embeddings only for added, changed, or removed messages. For each writer transaction, achi SHALL apply row-level FTS mutations below a declared, benchmark-selected changed-row cutoff and MAY rebuild whole-corpus FTS at or above that cutoff. Either strategy SHALL finish in the same transaction as its canonical changes. `index --full` SHALL retain an explicit whole-run bulk path. A failed or incomplete scan SHALL preserve previously indexed histories.
 
 #### Scenario: Unchanged source
 
@@ -19,7 +19,7 @@ An ordinary `achi index` SHALL fingerprint sources and normalized messages, skip
 #### Scenario: Large changed-message transaction
 
 - **WHEN** a writer transaction reaches the declared FTS rebuild cutoff and the embedding generation is unchanged
-- **THEN** ACHI may rebuild complete FTS state before committing that transaction while generating embeddings only for added or changed searchable messages
+- **THEN** achi may rebuild complete FTS state before committing that transaction while generating embeddings only for added or changed searchable messages
 
 #### Scenario: Transaction is interrupted
 
@@ -36,7 +36,7 @@ An ordinary `achi index` SHALL fingerprint sources and normalized messages, skip
 
 <!-- claim: indexing/full-rebuild-is-explicit -->
 - **WHEN** `achi index --full` is invoked
-- **THEN** ACHI may rebuild whole-corpus FTS and semantic derived state while preserving canonical message identity
+- **THEN** achi may rebuild whole-corpus FTS and semantic derived state while preserving canonical message identity
 
 #### Scenario: Source disappeared after complete scan
 
@@ -58,7 +58,7 @@ An ordinary `achi index` SHALL fingerprint sources and normalized messages, skip
 
 ### Requirement: Lexical retrieval
 
-SQLite FTS5 lexical retrieval SHALL remain a candidate source inside hybrid search and SHALL apply supported provider and recency filters. ACHI SHALL NOT expose lexical-only search as a successful production realization.
+SQLite FTS5 lexical retrieval SHALL remain a candidate source inside hybrid search and SHALL apply supported provider and recency filters. achi SHALL NOT expose lexical-only search as a successful production realization.
 
 #### Scenario: Lexical candidate contributes to ready hybrid search
 
@@ -68,7 +68,7 @@ SQLite FTS5 lexical retrieval SHALL remain a candidate source inside hybrid sear
 
 ### Requirement: Semantic retrieval and reranking
 
-ACHI search SHALL require the concrete semantic backend, compatible installed embedding and reranking models, and current stored embeddings for every searchable message. Successful search SHALL perform semantic candidate retrieval, FTS5 candidate retrieval, RRF fusion, and bounded cross-encoder reranking. Each stored vector SHALL carry a deterministic identity for its embedding model and vector schema; vectors with a different identity SHALL never participate in search.
+achi search SHALL require the concrete semantic backend, compatible installed embedding and reranking models, and current stored embeddings for every searchable message. Successful search SHALL perform semantic candidate retrieval, FTS5 candidate retrieval, RRF fusion, and bounded cross-encoder reranking. Each stored vector SHALL carry a deterministic identity for its embedding model and vector schema; vectors with a different identity SHALL never participate in search.
 
 #### Scenario: Semantic search is ready
 
@@ -114,12 +114,12 @@ ACHI search SHALL require the concrete semantic backend, compatible installed em
 
 ### Requirement: Semantic release and lexical development builds
 
-Every supported ACHI binary SHALL include the concrete semantic backend. Cargo feature selection, including `--no-default-features`, SHALL NOT create a supported lexical-only runtime realization.
+Every supported achi binary SHALL include the concrete semantic backend. Cargo feature selection, including `--no-default-features`, SHALL NOT create a supported lexical-only runtime realization.
 
 #### Scenario: Supported binary is built
 
 <!-- claim: distribution/every-build-includes-semantic -->
-- **WHEN** CI or a developer builds ACHI with any supported Cargo invocation
+- **WHEN** CI or a developer builds achi with any supported Cargo invocation
 - **THEN** the resulting binary includes semantic retrieval and enforces semantic readiness before search
 
 ### Requirement: Status truthfulness
@@ -160,7 +160,7 @@ Every supported ACHI binary SHALL include the concrete semantic backend. Cargo f
 
 ### Requirement: Tool-result content is context-only
 
-ACHI SHALL preserve the complete tool-result content retained under existing ingestion safety bounds in canonical messages for `view` while excluding those payloads from FTS candidates and semantic embeddings. A message containing both ordinary conversational text and tool-result blocks SHALL derive search text only from its non-tool-result content. Tool invocation metadata and ordinary assistant explanations are not tool-result payloads under this rule.
+achi SHALL preserve the complete tool-result content retained under existing ingestion safety bounds in canonical messages for `view` while excluding those payloads from FTS candidates and semantic embeddings. A message containing both ordinary conversational text and tool-result blocks SHALL derive search text only from its non-tool-result content. Tool invocation metadata and ordinary assistant explanations are not tool-result payloads under this rule.
 
 #### Scenario: Pure tool result
 
@@ -183,5 +183,5 @@ ACHI SHALL preserve the complete tool-result content retained under existing ing
 #### Scenario: Existing database is upgraded
 
 <!-- claim: storage/tool-search-projection-migrates -->
-- **WHEN** ACHI opens a supported database created before tool-result search exclusion
+- **WHEN** achi opens a supported database created before tool-result search exclusion
 - **THEN** it preserves canonical messages, invalidates derived search readiness, and requires re-indexing source histories before search can succeed

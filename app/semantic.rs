@@ -217,7 +217,7 @@ impl Models {
             || marker.files.is_empty()
         {
             return Err(AppError::model(
-                "model marker does not match this ACHI build",
+                "model marker does not match this achi build",
             ));
         }
         for file in &marker.files {

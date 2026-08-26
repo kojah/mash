@@ -1,6 +1,6 @@
 ## Why
 
-Replace ACHI in place with a completely independent local-history search
+Replace achi in place with a completely independent local-history search
 application using Rusqlite, SQLite FTS5, semantic retrieval, fusion, and
 reranking. Keep indexing durable and incremental so routine refreshes do not
 rebuild unchanged work or resurrect deliberately forgotten sessions.
@@ -10,7 +10,7 @@ rebuild unchanged work or resurrect deliberately forgotten sessions.
 - Keep exactly six JSON-first commands: `index`, `search`, `view`, `status`,
   `forget`, and `models install`.
 - Ingest Claude Code, Codex, current OpenCode, GitHub Copilot CLI, Hermes Agent,
-  and Pi histories through concrete ACHI-owned parsers.
+  and Pi histories through concrete achi-owned parsers.
 - Store canonical conversations and messages in one current Rusqlite schema.
 - Combine SQLite FTS5 lexical retrieval with FastEmbed semantic retrieval,
   reciprocal-rank fusion, and bounded cross-encoder reranking.
@@ -54,12 +54,12 @@ most 70,000 lines and test Rust is at most 30,000 lines.
   self-update, shell completion, human-oriented rendering, or alternate output
   encodings.
 - Compatibility shims, multiple storage backends, salvage systems,
-  ACHI-owned ANN indexes, plugin registries, or provider abstractions.
+  achi-owned ANN indexes, plugin registries, or provider abstractions.
 - Preserving old CLI commands or presentation contracts.
 
 ## Impact
 
-This is an in-place replacement of ACHI. Existing source, tests, workflows,
+This is an in-place replacement of achi. Existing source, tests, workflows,
 scripts, documentation, assets, and dependencies outside the success boundary
 are deleted or made inert. Git history and the external reference patch remain
 available as implementation references.

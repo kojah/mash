@@ -1,6 +1,6 @@
 ## Why
 
-ACHI can ingest gigabytes of JSONL in seconds, but a first semantic backfill can
+achi can ingest gigabytes of JSONL in seconds, but a first semantic backfill can
 take minutes. The current all-or-nothing readiness rule makes every search fail
 until the last searchable message has a current vector, even though thousands
 of valid semantic vectors have already committed. On dev-macbook this turned a

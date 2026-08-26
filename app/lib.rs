@@ -10,7 +10,7 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
-/// Runs ACHI with the process arguments and writes its JSON response.
+/// Runs achi with the process arguments and writes its JSON response.
 ///
 /// # Examples
 ///

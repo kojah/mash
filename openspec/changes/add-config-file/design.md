@@ -1,6 +1,6 @@
 ## Context
 
-ACHI currently resolves provider roots from provider-specific environment
+achi currently resolves provider roots from provider-specific environment
 variables and resolves federation targets from raw SSH aliases supplied by an
 environment variable or `--node`. It also retains discovery paths beyond the
 repository's Claude Code/Codex product boundary. The CLI already has concrete
@@ -112,7 +112,7 @@ nonretryable, and carry no recommendation.
 Public activation is atomic at the consumer boundary. The first implementation
 phase builds and proves the internal parser/resolver without exposing flags or
 status fields. The second phase exposes `--config`/`--local-node`, status, and
-local indexing together, so ACHI never reports roots or a horizon that indexing
+local indexing together, so achi never reports roots or a horizon that indexing
 ignores. Federation begins consuming the same resolved inventory in the third
 phase.
 
@@ -131,7 +131,7 @@ inspected. There is no ad hoc root override. Missing or unreadable roots make
 the provider scan incomplete and preserve its stored state.
 
 The resolved horizon defaults to 90 days. `--since-days` selects another
-positive duration and `--all-history` disables the cutoff. ACHI computes one
+positive duration and `--all-history` disables the cutoff. achi computes one
 inclusive cutoff from the run-start clock, uses source modification time as the
 fast eligibility signal, and ingests the complete conversation from eligible
 sources. Ineligible old sources are outside reconciliation authority, so this
@@ -170,7 +170,7 @@ outside this document.
 - Source/owner: user-requested multi-machine inventory and observed deployment
   aliases.
 - Simpler behavior considered: compare the node name to the OS hostname.
-- Scope cost: each machine needs one local selection; retire only if ACHI gains
+- Scope cost: each machine needs one local selection; retire only if achi gains
   a reliable externally supplied machine identity.
 
 ### BJ-2 — Reject unknown fields and versions

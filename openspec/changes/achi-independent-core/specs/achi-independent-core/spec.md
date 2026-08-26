@@ -28,7 +28,7 @@ The system SHALL expose only `index`, `search`, `view`, `status`, `forget`, and
 
 <!-- claim: ingestion/provider-boundary -->
 The system SHALL discover and normalize Claude Code, Codex, current OpenCode,
-GitHub Copilot CLI, Hermes Agent, and Pi histories into ACHI-owned canonical
+GitHub Copilot CLI, Hermes Agent, and Pi histories into achi-owned canonical
 conversation and message records.
 
 #### Scenario: Supported histories
@@ -71,13 +71,13 @@ SHALL be rebuildable derived state.
 #### Scenario: Supported schema migration
 
 <!-- claim: storage/supported-schema-migrates -->
-- **WHEN** ACHI opens a database at a supported older schema version
+- **WHEN** achi opens a database at a supported older schema version
 - **THEN** it applies the required forward migrations once and preserves canonical records
 
 #### Scenario: Unknown newer schema
 
 <!-- claim: storage/newer-schema-is-rejected -->
-- **WHEN** ACHI opens a database whose schema version is newer than the binary supports
+- **WHEN** achi opens a database whose schema version is newer than the binary supports
 - **THEN** it returns a typed JSON incompatibility error without modifying the database
 
 ### Requirement: Incremental indexing lifecycle
@@ -175,7 +175,7 @@ and SHALL be invalidated during indexing.
 
 <!-- claim: models/download-is-explicit -->
 - **WHEN** models are absent and no `models install` command is run
-- **THEN** ACHI does not download models implicitly
+- **THEN** achi does not download models implicitly
 
 ### Requirement: Semantic release and lexical development builds
 
@@ -186,13 +186,13 @@ commands lexically without linking the semantic model backend.
 #### Scenario: Official release
 
 <!-- claim: distribution/release-includes-semantic -->
-- **WHEN** CI publishes an official ACHI binary
+- **WHEN** CI publishes an official achi binary
 - **THEN** the binary includes the concrete FastEmbed semantic backend
 
 #### Scenario: Lexical-only build
 
 <!-- claim: distribution/lexical-only-build-works -->
-- **WHEN** ACHI is built with `--no-default-features`
+- **WHEN** achi is built with `--no-default-features`
 - **THEN** indexing and search work through FTS5 and truthfully report semantic support as unavailable
 
 ### Requirement: Context view

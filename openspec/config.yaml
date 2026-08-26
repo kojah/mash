@@ -10,7 +10,7 @@ context: |
   Workflow skill catalog root: /home/james/.local/share/skill-issue/skills.
   Resolve named VSpec workflow skills under that root first. If a skill name
   resolves elsewhere, record its concrete catalog root here before use.
-  Product scope: independent ACHI supporting exactly Claude Code and Codex
+  Product scope: independent achi supporting exactly Claude Code and Codex
   JSONL histories.
   Test execution uses cargo nextest run for parallelism; cargo test remains
   only for doctests or cases nextest cannot execute.
