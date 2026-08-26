@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   deploy:
-    uses: jamesqo/gha-workflows/.github/workflows/rust-cli-deploy.yml@v2
+    uses: jamesqo/gha-workflows/.github/workflows/rust-cli-deploy.yml@v3
     with:
       binary: achi
       rust-toolchain: nightly
