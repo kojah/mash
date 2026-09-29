@@ -102,6 +102,11 @@ enum Command {
         #[arg(long, requires = "watch", default_value = "1000", value_parser = clap::value_parser!(u64).range(50..=60_000))]
         debounce_ms: u64,
     },
+    /// Serve the shared-index HTTP API using a server configuration file.
+    Serve {
+        #[arg(long, value_name = "PATH")]
+        server_config: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -220,11 +225,19 @@ where
     let arguments: Vec<OsString> = args.into_iter().map(Into::into).collect();
     let cli =
         Cli::try_parse_from(&arguments).map_err(|error| AppError::usage(error.to_string()))?;
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let mut builder = if matches!(cli.command, Command::Serve { .. }) {
+        tokio::runtime::Builder::new_multi_thread()
+    } else {
+        tokio::runtime::Builder::new_current_thread()
+    };
+    let runtime = builder
         .enable_all()
         .build()
         .map_err(|_| AppError::internal("failed to start async runtime"))?;
-    if let Command::Mcp { watch, debounce_ms } = cli.command {
+    if let Command::Serve { server_config } = cli.command {
+        runtime.block_on(crate::shared::server::run(&server_config))?;
+        Ok(Response::McpStopped)
+    } else if let Command::Mcp { watch, debounce_ms } = cli.command {
         let mut startup = vec![OsString::from("mash")];
         for (name, path) in [
             ("--config", cli.config),
@@ -299,7 +312,9 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
-        Command::Mcp { .. } => Err(AppError::usage("mcp must run as a process command")),
+        Command::Mcp { .. } | Command::Serve { .. } => Err(AppError::usage(
+            "server commands must run as process commands",
+        )),
         Command::Index {
             full,
             provider,
@@ -1026,7 +1041,7 @@ mod tests {
         assert_eq!(
             names,
             [
-                "index", "search", "view", "status", "forget", "models", "mcp"
+                "index", "search", "view", "status", "forget", "models", "mcp", "serve"
             ]
         );
     }

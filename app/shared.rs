@@ -1,18 +1,18 @@
-use std::collections::HashMap;
-use std::path::Path;
-use std::time::Duration;
-
-use serde::Serialize;
-use tokio_postgres::{Client, Config, Row};
-
 use crate::AppError;
 use crate::config::SharedConfig;
 use crate::semantic::{self, Models};
 use crate::storage::{Message, SearchHit, Storage};
-
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::io::Write;
+use std::path::Path;
+use std::time::Duration;
+mod backend;
 pub(crate) mod direct;
-
-#[derive(Debug, Serialize)]
+mod protocol;
+pub(crate) mod server;
+use protocol::{Event, Start};
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Publication {
     state: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -37,13 +37,13 @@ impl Publication {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Freshness {
     group_id: String,
     nodes: Vec<NodeFreshness>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct NodeFreshness {
     node_id: String,
     revision: i64,
@@ -54,128 +54,122 @@ struct NodeFreshness {
 }
 
 pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppError> {
-    let (mut client, _) = connection(config).await?;
-    validate_version(&mut client).await?;
-    let rows = client
-        .query(
-            "SELECT n.node_id,n.revision,
-         to_char(s.last_synced_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
-         to_char(s.last_updated_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
-         (SELECT count(*) FROM conversations c WHERE c.node_id=n.node_id),
-         (SELECT count(*) FROM messages m WHERE m.node_id=n.node_id)
-         FROM nodes n LEFT JOIN node_sync s USING(node_id) ORDER BY n.node_id",
-            &[],
+    get(config, "freshness").await
+}
+fn target(config: &SharedConfig) -> String {
+    blake3::hash(
+        format!(
+            "{}\0{}\0{}",
+            config.group_id,
+            config.node_id,
+            config.api_url.trim_end_matches('/')
         )
-        .await
-        .map_err(pg_error)?;
-    let nodes = rows
-        .into_iter()
-        .map(|row| {
-            Ok(NodeFreshness {
-                node_id: row.try_get(0).map_err(pg_error)?,
-                revision: row.try_get(1).map_err(pg_error)?,
-                last_synced_at: row.try_get(2).map_err(pg_error)?,
-                last_updated_at: row.try_get(3).map_err(pg_error)?,
-                conversations: row.try_get(4).map_err(pg_error)?,
-                messages: row.try_get(5).map_err(pg_error)?,
-            })
-        })
-        .collect::<Result<_, AppError>>()?;
-    Ok(Freshness {
-        group_id: config.group_id.clone(),
-        nodes,
-    })
-}
-
-async fn record_sync(
-    client: &impl tokio_postgres::GenericClient,
-    node: &str,
-    changed: bool,
-    checked: bool,
-) -> Result<(), AppError> {
-    client
-        .execute(
-            "INSERT INTO node_sync(node_id,last_synced_at,last_updated_at)
-         VALUES ($1,CASE WHEN $3 THEN clock_timestamp() END,CASE WHEN $2 THEN clock_timestamp() END)
-         ON CONFLICT(node_id) DO UPDATE SET
-         last_synced_at=CASE WHEN $3 THEN clock_timestamp() ELSE node_sync.last_synced_at END,
-         last_updated_at=CASE WHEN $2 THEN clock_timestamp() ELSE node_sync.last_updated_at END",
-            &[&node, &changed, &checked],
-        )
-        .await
-        .map_err(pg_error)?;
-    Ok(())
-}
-
-fn pg_error(error: tokio_postgres::Error) -> AppError {
-    // Server error details can include uploaded content. Never echo the URL or raw errors.
-    let code = error
-        .code()
-        .map_or("connection", tokio_postgres::error::SqlState::code);
-    let result = if code == "42P01" {
-        AppError::shared("shared index is not initialized; run `mash index` on a configured node")
-    } else {
-        AppError::shared(format!("PostgreSQL operation failed ({code})"))
-    };
-    drop(error);
-    result
-}
-
-async fn connection(config: &SharedConfig) -> Result<(Client, String), AppError> {
-    let url = std::env::var(&config.database_url_env).map_err(|_| {
-        AppError::shared(format!(
-            "set {} to the shared PostgreSQL connection string",
-            config.database_url_env
-        ))
-    })?;
-    let mut options: Config = url
-        .parse()
-        .map_err(|_| AppError::shared("invalid shared PostgreSQL connection string"))?;
-    // Encrypted by default; plaintext requires an explicit sslmode=disable.
-    if options.get_ssl_mode() != tokio_postgres::config::SslMode::Disable {
-        options.ssl_mode(tokio_postgres::config::SslMode::Require);
-    }
-    options.connect_timeout(Duration::from_secs(5));
-    options.tcp_user_timeout(Duration::from_secs(30));
-    options.application_name("mash");
-    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let tls = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()
-    .map_err(|_| AppError::shared("failed to configure shared TLS"))?
-    .with_root_certificates(roots)
-    .with_no_client_auth();
-    let (client, connection) = options
-        .connect(tokio_postgres_rustls::MakeRustlsConnect::new(tls))
-        .await
-        .map_err(pg_error)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
-    let schema = group_schema(config);
-    client
-        .batch_execute(&format!("SET search_path = {schema};"))
-        .await
-        .map_err(pg_error)?;
-    client.batch_execute("SET statement_timeout = '30s'; SET lock_timeout = '5s'; SET idle_in_transaction_session_timeout = '60s'").await
-        .map_err(pg_error)?;
-    Ok((client, target(config, &url)))
-}
-
-fn group_schema(config: &SharedConfig) -> String {
-    format!(
-        "mash_g_{}",
-        &blake3::hash(config.group_id.as_bytes()).to_hex()[..32]
+        .as_bytes(),
     )
+    .to_hex()
+    .to_string()
 }
-
-fn target(config: &SharedConfig, url: &str) -> String {
-    blake3::hash(format!("{}\0{}\0{url}", config.group_id, config.node_id).as_bytes())
-        .to_hex()
-        .to_string()
+fn client(config: &SharedConfig) -> Result<reqwest::Client, AppError> {
+    let token = std::env::var(&config.token_env).map_err(|_| {
+        AppError::shared(format!("set {} to this node's API token", config.token_env))
+    })?;
+    let mut headers = reqwest::header::HeaderMap::new();
+    let mut authorization = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+        .map_err(|_| AppError::shared("invalid API token"))?;
+    authorization.set_sensitive(true);
+    headers.insert(reqwest::header::AUTHORIZATION, authorization);
+    for (key, value) in [
+        ("x-mash-group", &config.group_id),
+        ("x-mash-node", &config.node_id),
+    ] {
+        headers.insert(
+            key,
+            reqwest::header::HeaderValue::from_str(value)
+                .map_err(|_| AppError::shared("invalid API identity"))?,
+        );
+    }
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(600))
+        .build()
+        .map_err(|_| AppError::shared("could not configure HTTP client"))
 }
-
+async fn response<T: serde::de::DeserializeOwned>(
+    request: reqwest::RequestBuilder,
+) -> Result<T, AppError> {
+    let response = request.send().await.map_err(|_| {
+        AppError::shared("shared index HTTP request failed; check the API address and network")
+    })?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let message = match status.as_u16() {
+            401 | 403 => {
+                "shared index authorization failed; check node token and group configuration"
+            }
+            409 => {
+                "shared index revision or node identity conflict; retry indexing or choose a new node_id"
+            }
+            400 | 413 | 422 => "shared index rejected invalid or oversized data",
+            _ => "shared index service is unavailable; retry later",
+        };
+        let mut error = AppError::shared(message);
+        error.error.retryable = !matches!(status.as_u16(), 400 | 401 | 403 | 413 | 422);
+        return Err(error);
+    }
+    response
+        .json()
+        .await
+        .map_err(|_| AppError::shared("invalid shared index HTTP response"))
+}
+async fn get<T: serde::de::DeserializeOwned>(
+    config: &SharedConfig,
+    route: &str,
+) -> Result<T, AppError> {
+    response(client(config)?.get(format!(
+        "{}/v1/{route}",
+        config.api_url.trim_end_matches('/')
+    )))
+    .await
+}
+async fn post<T: serde::de::DeserializeOwned>(
+    config: &SharedConfig,
+    route: &str,
+    body: &impl Serialize,
+) -> Result<T, AppError> {
+    response(
+        client(config)?
+            .post(format!(
+                "{}/v1/{route}",
+                config.api_url.trim_end_matches('/')
+            ))
+            .json(body),
+    )
+    .await
+}
+fn write_event(file: &mut std::fs::File, event: &Event) -> Result<(), AppError> {
+    serde_json::to_writer(&mut *file, event)
+        .map_err(|_| AppError::internal("serialize index upload"))?;
+    file.write_all(b"\n")
+        .map_err(|_| AppError::internal("write index upload"))
+}
+async fn upload(
+    config: &SharedConfig,
+    file: &tempfile::NamedTempFile,
+) -> Result<protocol::Indexed, AppError> {
+    let file = file
+        .reopen()
+        .map_err(|_| AppError::internal("open index upload"))?;
+    let stream = tokio_util::io::ReaderStream::new(tokio::fs::File::from_std(file));
+    response(
+        client(config)?
+            .post(format!("{}/v1/index", config.api_url.trim_end_matches('/')))
+            .header(reqwest::header::CONTENT_TYPE, "application/x-ndjson")
+            .body(reqwest::Body::wrap_stream(stream)),
+    )
+    .await
+}
 pub(crate) fn status(
     path: &Path,
     config: Option<&SharedConfig>,
@@ -183,10 +177,10 @@ pub(crate) fn status(
     let Some(config) = config else {
         return Ok(None);
     };
-    let Ok(url) = std::env::var(&config.database_url_env) else {
+    let Ok(_) = std::env::var(&config.token_env) else {
         return Ok(Some(Publication::pending()));
     };
-    let pending = !path.is_file() || Storage::publication_is_pending(path, &target(config, &url))?;
+    let pending = !path.is_file() || Storage::publication_is_pending(path, &target(config))?;
     Ok(Some(Publication {
         state: if pending { "pending" } else { "published" },
         error: None,
@@ -207,17 +201,11 @@ fn routed_target(configuration: &crate::config::ResolvedConfig) -> Result<String
     let config = configuration.shared.as_ref().ok_or_else(|| {
         AppError::configuration("shared destination requires shared configuration")
     })?;
-    let url = std::env::var(&config.database_url_env).map_err(|_| {
-        AppError::shared(format!(
-            "set {} to the shared PostgreSQL connection string",
-            config.database_url_env
-        ))
-    })?;
     let filters = serde_json::to_vec(&(&configuration.local_filter, &configuration.shared_filter))
         .map_err(|_| AppError::internal("serialize routing settings"))?;
     Ok(format!(
         "{}:{}",
-        target(config, &url),
+        target(config),
         blake3::hash(&filters).to_hex()
     ))
 }
@@ -316,273 +304,63 @@ pub(crate) async fn forget_routed(
     })
 }
 
-async fn initialize(client: &mut Client, config: &SharedConfig) -> Result<(), AppError> {
-    // Serialize schema initialization so first-time publishers cannot race DDL.
-    let mut schema = client.transaction().await.map_err(pg_error)?;
-    schema
-        .query_one("SELECT pg_advisory_xact_lock(1730294612)", &[])
-        .await
-        .map_err(pg_error)?;
-    schema
-        .batch_execute(&format!(
-            "CREATE SCHEMA IF NOT EXISTS {};",
-            group_schema(config)
-        ))
-        .await
-        .map_err(pg_error)?;
-    schema
-        .batch_execute(include_str!("shared/schema.sql"))
-        .await
-        .map_err(pg_error)?;
-    validate_version(&mut schema).await?;
-    schema.commit().await.map_err(pg_error)
-}
-
-enum SnapshotEvent {
-    Start { instance: String, revision: i64 },
-    Batch { kind: &'static str, json: String },
-}
-
 async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppError> {
-    let (mut client, target) = connection(config).await?;
-    initialize(&mut client, config).await?;
-    let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+    // Parse and spool before starting a remote transaction. Temporary files contain
+    // only the outgoing data, have restrictive permissions, and are deleted on drop.
     let db = path.to_path_buf();
-    let producer = tokio::task::spawn_blocking(move || {
-        Storage::open_existing(&db)?.with_publication_snapshot(|snapshot| {
-            sender
-                .blocking_send(SnapshotEvent::Start {
+    let (file, revision) = crate::blocking(move || {
+        let mut file = tempfile::NamedTempFile::new()
+            .map_err(|_| AppError::internal("create index upload"))?;
+        let revision = Storage::open_existing(&db)?.with_publication_snapshot(|snapshot| {
+            write_event(
+                file.as_file_mut(),
+                &Event::Start(Start {
                     instance: snapshot.instance.clone(),
-                    revision: snapshot.revision,
-                })
-                .map_err(|_| AppError::internal("snapshot receiver stopped"))?;
+                    revision: Some(snapshot.revision),
+                    base_revision: None,
+                    snapshot: true,
+                    forgets: Vec::new(),
+                }),
+            )?;
             for kind in ["tombstones", "conversations", "messages"] {
-                snapshot.visit(kind, |batch| {
-                    let json = serde_json::to_string(batch)
-                        .map_err(|_| AppError::internal("serialize publication"))?;
-                    sender
-                        .blocking_send(SnapshotEvent::Batch { kind, json })
-                        .map_err(|_| AppError::internal("snapshot receiver stopped"))
+                snapshot.visit(kind, |records| {
+                    write_event(
+                        file.as_file_mut(),
+                        &Event::Batch {
+                            kind: kind.to_owned(),
+                            records: records.to_vec(),
+                        },
+                    )
                 })?;
             }
-            Ok(())
-        })
-    });
-    let Some(SnapshotEvent::Start { instance, revision }) = receiver.recv().await else {
-        return producer
-            .await
-            .map_err(|_| AppError::internal("snapshot worker failed"))?
-            .map(|_| ());
-    };
-    let transaction = client.transaction().await.map_err(pg_error)?;
-    transaction
-        .execute(
-            "INSERT INTO nodes VALUES ($1,$2,0) ON CONFLICT DO NOTHING",
-            &[&config.node_id, &instance],
-        )
-        .await
-        .map_err(pg_error)?;
-    let node = transaction
-        .query_one(
-            "SELECT instance,revision FROM nodes WHERE node_id=$1 FOR UPDATE",
-            &[&config.node_id],
-        )
-        .await
-        .map_err(pg_error)?;
-    if node.try_get::<_, String>(0).map_err(pg_error)? != instance {
-        return Err(AppError::shared(
-            "node_id belongs to another local database; choose a new node_id",
-        ));
-    }
-    let accepted: i64 = node.try_get(1).map_err(pg_error)?;
-    if accepted > revision {
-        return Err(AppError::shared(
-            "shared index has a newer snapshot; local database may have been restored",
-        ));
-    }
-    if accepted == revision {
-        // The shared revision already exists; stop the bounded snapshot producer.
-        drop(receiver);
-        let _ = producer.await;
-    } else {
-        transaction
-            .execute(
-                "DELETE FROM conversations WHERE node_id=$1",
-                &[&config.node_id],
-            )
-            .await
-            .map_err(pg_error)?;
-        while let Some(event) = receiver.recv().await {
-            let SnapshotEvent::Batch { kind, json } = event else {
-                return Err(AppError::internal("unexpected snapshot event"));
-            };
-            upload_batch(&transaction, &config.node_id, kind, &json).await?;
-        }
-        producer
-            .await
-            .map_err(|_| AppError::internal("snapshot worker failed"))??;
-        transaction
-            .execute(
-                "UPDATE nodes SET revision=$2 WHERE node_id=$1",
-                &[&config.node_id, &revision],
-            )
-            .await
-            .map_err(pg_error)?;
-    }
-    record_sync(&transaction, &config.node_id, accepted != revision, true).await?;
-    transaction.commit().await.map_err(pg_error)?;
+            write_event(file.as_file_mut(), &Event::Finish)
+        })?;
+        Ok((file, revision))
+    })
+    .await?;
+    upload(config, &file).await?;
     let db = path.to_path_buf();
+    let target = target(config);
     crate::blocking(move || Storage::open_existing(&db)?.acknowledge_publication(&target, revision))
         .await
 }
-
-async fn upload_batch(
-    transaction: &tokio_postgres::Transaction<'_>,
-    node: &str,
-    kind: &str,
-    json: &str,
-) -> Result<(), AppError> {
-    let sql = match kind {
-        "tombstones" => "INSERT INTO tombstones SELECT $1, provider, conversation_id
-            FROM jsonb_to_recordset($2::text::jsonb) AS r(provider text, conversation_id text) ON CONFLICT DO NOTHING",
-        "conversations" => "INSERT INTO conversations SELECT $1,r.id,r.provider,title,created_at,updated_at
-            FROM jsonb_to_recordset($2::text::jsonb) AS r(id text,provider text,title text,created_at bigint,updated_at bigint)
-            WHERE NOT EXISTS(SELECT 1 FROM tombstones t WHERE t.node_id=$1 AND t.provider=r.provider AND t.conversation_id=r.id)",
-        "messages" => "INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector)
-            SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,generation,vector
-            FROM jsonb_to_recordset($2::text::jsonb) AS r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,generation text,vector double precision[])
-            WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id)",
-        _ => return Err(AppError::internal("unknown snapshot kind")),
-    };
-    transaction
-        .execute(sql, &[&node, &json])
-        .await
-        .map_err(pg_error)?;
-    Ok(())
-}
-
-async fn validate_version(
-    client: &mut (impl tokio_postgres::GenericClient + Sync),
-) -> Result<(), AppError> {
-    let version: i32 = client
-        .query_one("SELECT version FROM version WHERE singleton", &[])
-        .await
-        .map_err(pg_error)?
-        .try_get(0)
-        .map_err(pg_error)?;
-    if version != 1 {
-        return Err(AppError::shared("unsupported shared index schema version"));
-    }
-    Ok(())
-}
-
 pub(crate) async fn view(
     config: &SharedConfig,
     node: &str,
     id: &str,
     context: u32,
 ) -> Result<Vec<Message>, AppError> {
-    let (mut client, _) = connection(config).await?;
-    validate_version(&mut client).await?;
-    client.query(
-        "SELECT m.id,m.ordinal,m.role,m.content,m.created_at FROM messages m
-         JOIN messages anchor ON anchor.node_id = m.node_id AND anchor.conversation_id = m.conversation_id
-         WHERE anchor.node_id = $1 AND anchor.id = $2
-           AND m.ordinal BETWEEN anchor.ordinal - $3 AND anchor.ordinal + $3 ORDER BY m.ordinal",
-        &[&node, &id, &i64::from(context)],
-    ).await.map_err(pg_error)?.iter().map(|row| Ok(Message {
-        id: row.try_get(0).map_err(pg_error)?, ordinal: row.try_get(1).map_err(pg_error)?,
-        role: row.try_get(2).map_err(pg_error)?, content: row.try_get(3).map_err(pg_error)?,
-        created_at: row.try_get(4).map_err(pg_error)?,
-    })).collect()
+    post(
+        config,
+        "view",
+        &protocol::View {
+            node_id: node.to_owned(),
+            id: id.to_owned(),
+            context,
+        },
+    )
+    .await
 }
-
-fn hit(row: &Row, lexical: bool) -> Result<SearchHit, AppError> {
-    let score: f64 = row.try_get(7).map_err(pg_error)?;
-    #[allow(clippy::cast_possible_truncation)]
-    let semantic_score = (!lexical).then_some(score as f32);
-    Ok(SearchHit {
-        node_id: Some(row.try_get(0).map_err(pg_error)?),
-        id: row.try_get(1).map_err(pg_error)?,
-        conversation_id: row.try_get(2).map_err(pg_error)?,
-        provider: row.try_get(3).map_err(pg_error)?,
-        role: row.try_get(4).map_err(pg_error)?,
-        content: row.try_get(5).map_err(pg_error)?,
-        lexical_score: lexical.then_some(-score),
-        semantic_score,
-        fusion_score: 0.0,
-        rerank_score: None,
-    })
-}
-
-struct Candidates {
-    lexical: Vec<SearchHit>,
-    semantic: Vec<SearchHit>,
-    documents: HashMap<(String, String), String>,
-}
-
-async fn candidates(
-    client: &mut (impl tokio_postgres::GenericClient + Sync),
-    query: &str,
-    vector: &[f64],
-    provider: Option<&str>,
-    days: Option<u32>,
-) -> Result<Candidates, AppError> {
-    let cutoff = days.map(|days| {
-        i64::try_from(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-        )
-        .unwrap_or(i64::MAX)
-        .saturating_sub(i64::from(days) * 86400)
-    });
-    let generation = semantic::SHARED_EMBEDDING_GENERATION;
-    let lexical = client
-        .query(
-            "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score
-         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
-         WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
-           AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
-         ORDER BY score DESC,m.node_id,m.id LIMIT 50",
-            &[&query, &generation, &provider, &cutoff],
-        )
-        .await
-        .map_err(pg_error)?;
-    let semantic = client.query(
-        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                COALESCE((SELECT sum(a*b)/NULLIF(sqrt(sum(a*a)*sum(b*b)),0)
-                          FROM unnest(m.vector,$1::double precision[]) AS v(a,b)),0) AS score
-         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
-         WHERE generation=$2 AND cardinality(vector)=cardinality($1::double precision[]) AND projection <> ''
-           AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
-         ORDER BY score DESC,m.node_id,m.id LIMIT 50", &[&vector, &generation, &provider, &cutoff],
-    ).await.map_err(pg_error)?;
-    let mut documents = HashMap::new();
-    for row in lexical.iter().chain(&semantic) {
-        documents.insert(
-            (
-                row.try_get(0).map_err(pg_error)?,
-                row.try_get(1).map_err(pg_error)?,
-            ),
-            row.try_get(6).map_err(pg_error)?,
-        );
-    }
-    Ok(Candidates {
-        lexical: lexical
-            .iter()
-            .map(|r| hit(r, true))
-            .collect::<Result<_, _>>()?,
-        semantic: semantic
-            .iter()
-            .map(|r| hit(r, false))
-            .collect::<Result<_, _>>()?,
-        documents,
-    })
-}
-
 pub(crate) async fn search(
     config: &SharedConfig,
     models_dir: &Path,
@@ -606,38 +384,26 @@ pub(crate) async fn search(
         Ok((backend, vector))
     })
     .await?;
-    let (mut client, _) = connection(config).await?;
-    validate_version(&mut client).await?;
-    let mut transaction = client
-        .build_transaction()
-        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-        .read_only(true)
-        .start()
-        .await
-        .map_err(pg_error)?;
-    let dimensions =
-        i32::try_from(vector.len()).map_err(|_| AppError::model("invalid embedding dimensions"))?;
-    let incompatible: bool = transaction
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM messages WHERE projection <> '' AND
-         (generation IS DISTINCT FROM $1 OR vector IS NULL OR cardinality(vector) <> $2))",
-            &[&semantic::SHARED_EMBEDDING_GENERATION, &dimensions],
-        )
-        .await
-        .map_err(pg_error)?
-        .try_get(0)
-        .map_err(pg_error)?;
-    if incompatible {
-        return Err(AppError::shared(
-            "shared embeddings are incomplete or incompatible; run `mash index` on publishing nodes",
-        ));
-    }
-    let Candidates {
+    let candidates: protocol::Candidates = post(
+        config,
+        "search",
+        &protocol::Search {
+            query: query.to_owned(),
+            vector,
+            provider: provider.map(str::to_owned),
+            days,
+        },
+    )
+    .await?;
+    let protocol::Candidates {
         lexical,
         semantic,
         documents,
-    } = candidates(&mut transaction, query, &vector, provider, days).await?;
-    transaction.commit().await.map_err(pg_error)?;
+    } = candidates;
+    let documents: HashMap<_, _> = documents
+        .into_iter()
+        .map(|d| ((d.node_id, d.id), d.projection))
+        .collect();
     let query = query.to_owned();
     crate::blocking(move || {
         let mut fused = semantic::fuse(lexical, semantic);

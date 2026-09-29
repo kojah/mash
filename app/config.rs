@@ -56,7 +56,8 @@ pub(crate) enum IndexDestination {
 pub(crate) struct SharedConfig {
     pub(crate) group_id: String,
     pub(crate) node_id: String,
-    pub(crate) database_url_env: String,
+    pub(crate) api_url: String,
+    pub(crate) token_env: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -336,12 +337,25 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     if let Some(shared) = &raw.shared {
         validate_identifier(&shared.group_id, "group ID")?;
         validate_identifier(&shared.node_id, "node ID")?;
-        let name = &shared.database_url_env;
+        let name = &shared.token_env;
         if name.is_empty()
             || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
             || name.as_bytes()[0].is_ascii_digit()
         {
-            return Err(AppError::configuration("invalid database_url_env"));
+            return Err(AppError::configuration("invalid token_env"));
+        }
+        let url = reqwest::Url::parse(&shared.api_url)
+            .map_err(|_| AppError::configuration("invalid shared api_url"))?;
+        if !matches!(url.scheme(), "http" | "https")
+            || url.host_str().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(AppError::configuration(
+                "shared api_url must be HTTP(S), without credentials, query, or fragment",
+            ));
         }
     }
     let destination = raw.index.destination.unwrap_or(if raw.shared.is_some() {
@@ -426,7 +440,7 @@ fn validate_object_shapes(value: &serde_json::Value) -> Result<(), AppError> {
     Ok(())
 }
 
-fn validate_identifier(value: &str, label: &str) -> Result<(), AppError> {
+pub(crate) fn validate_identifier(value: &str, label: &str) -> Result<(), AppError> {
     let bytes = value.as_bytes();
     let valid = (1..=255).contains(&bytes.len())
         && bytes.first().is_some_and(u8::is_ascii_alphanumeric)
@@ -484,8 +498,7 @@ mod tests {
 
     #[test]
     fn destinations_and_independent_provider_filters_are_validated() {
-        let shared =
-            serde_json::json!({"group_id":"test","node_id":"node","database_url_env":"URL"});
+        let shared = serde_json::json!({"group_id":"test","node_id":"node","api_url":"http://127.0.0.1:8787","token_env":"URL"});
         for (mode, expected) in [
             ("local", IndexDestination::Local),
             ("shared", IndexDestination::Shared),
@@ -562,7 +575,7 @@ mod tests {
             parsed.providers.codex,
             Some(vec![PathBuf::from("/missing/codex")])
         );
-        let valid = r#"{"version":1,"providers":{},"index":{"since_days":null},"shared":{"group_id":"test", "node_id":"laptop","database_url_env":"MASH_DATABASE_URL"}}"#;
+        let valid = r#"{"version":1,"providers":{},"index":{"since_days":null},"shared":{"group_id":"test", "node_id":"laptop","api_url":"http://127.0.0.1:8787","token_env":"MASH_DATABASE_URL"}}"#;
         let parsed = parse_document(valid.as_bytes()).expect("shared config");
         assert_eq!(parsed.since_days, None);
         assert_eq!(parsed.shared.expect("shared").node_id, "laptop");
@@ -576,14 +589,37 @@ mod tests {
             r#"{"version":1,"providers":{},"index":{"since_days":0}}"#,
             r#"{"version":1,"providers":{},"index":{"since_days":36501}}"#,
             r#"{"version":1,"providers":{},"index":null}"#,
-            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"bad name","database_url_env":"URL"}}"#,
-            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","database_url_env":"1URL"}}"#,
-            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","database_url_env":"URL","password":"secret"}}"#,
+            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"bad name","api_url":"http://127.0.0.1:8787","token_env":"URL"}}"#,
+            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","api_url":"http://127.0.0.1:8787","token_env":"1URL"}}"#,
+            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","api_url":"http://127.0.0.1:8787","token_env":"URL","password":"secret"}}"#,
         ] {
             assert_configuration_error(
                 &parse_document(invalid.as_bytes()).expect_err("invalid config"),
             );
         }
+    }
+
+    #[test]
+    fn shared_http_configuration_rejects_credentials_and_old_database_access() {
+        let shared = serde_json::json!({"group_id":"test","node_id":"laptop","api_url":"https://mash.example.net/prefix/","token_env":"MASH_NODE_TOKEN"});
+        let mut document = serde_json::json!({"version":1,"providers":{},"shared":shared});
+        assert!(parse_document(&serde_json::to_vec(&document).unwrap()).is_ok());
+        for url in [
+            "postgresql://host/db",
+            "https://user:secret@host",
+            "https://host?token=secret",
+            "https://host/#fragment",
+            "invalid",
+        ] {
+            document["shared"]["api_url"] = serde_json::json!(url);
+            assert_configuration_error(
+                &parse_document(&serde_json::to_vec(&document).unwrap()).unwrap_err(),
+            );
+        }
+        document["shared"] = serde_json::json!({"group_id":"test","node_id":"laptop","database_url_env":"MASH_DATABASE_URL"});
+        assert_configuration_error(
+            &parse_document(&serde_json::to_vec(&document).unwrap()).unwrap_err(),
+        );
     }
 
     #[test]

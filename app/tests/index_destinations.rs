@@ -7,6 +7,7 @@ struct Fixture {
     models: std::path::PathBuf,
     codex: std::path::PathBuf,
     group: String,
+    server: Option<shared_server::Server>,
 }
 
 impl Fixture {
@@ -25,6 +26,13 @@ impl Fixture {
 "#).unwrap();
         Self::write_codex(&codex);
         let group = format!("routing-{}", root.file_name().unwrap().to_string_lossy());
+        let server = std::env::var("MASH_TEST_PG_URL").ok().map(|_| {
+            shared_server::Server::new(
+                root,
+                &group,
+                &["remote", "split", "first-delivery", "local"],
+            )
+        });
         Self {
             directory,
             config,
@@ -32,6 +40,7 @@ impl Fixture {
             models,
             codex,
             group,
+            server,
         }
     }
 
@@ -49,7 +58,7 @@ impl Fixture {
                 "codex":{"roots":[self.codex]}
             },
             "index":{"destination":destination,"local":{"providers":["claude-code"]},"shared":{"providers":["codex"]}},
-            "shared":{"group_id":self.group,"node_id":node,"database_url_env":"MASH_TEST_ROUTING_URL"}
+            "shared":{"group_id":self.group,"node_id":node,"api_url":self.server.as_ref().map_or("http://127.0.0.1:9",|s|s.url.as_str()),"token_env":"MASH_TEST_ROUTING_TOKEN"}
         })).unwrap()).unwrap();
     }
 
@@ -65,11 +74,16 @@ impl Fixture {
         ]);
         if online {
             command.env(
-                "MASH_TEST_ROUTING_URL",
-                std::env::var("MASH_TEST_PG_URL").unwrap(),
+                "MASH_TEST_ROUTING_TOKEN",
+                shared_server::token(
+                    serde_json::from_slice::<Value>(&std::fs::read(&self.config).unwrap()).unwrap()
+                        ["shared"]["node_id"]
+                        .as_str()
+                        .unwrap(),
+                ),
             );
         } else {
-            command.env_remove("MASH_TEST_ROUTING_URL");
+            command.env_remove("MASH_TEST_ROUTING_TOKEN");
         }
         command.args(arguments).output().unwrap()
     }

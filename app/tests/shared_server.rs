@@ -1,0 +1,59 @@
+use std::io::BufRead;
+use std::path::Path;
+use std::process::{Child, Stdio};
+
+pub fn token(node: &str) -> String {
+    format!("mash-http-test-node-token-32-bytes-{node}")
+}
+
+pub struct Server {
+    child: Child,
+    pub url: String,
+}
+impl Server {
+    pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
+        let path = root.join("server.json");
+        let credentials:Vec<_>=nodes.iter().enumerate().map(|(i,node)|serde_json::json!({"group_id":group,"node_id":node,"token_env":format!("MASH_TEST_TOKEN_{i}")})).collect();
+        std::fs::write(&path,serde_json::to_vec(&serde_json::json!({"version":1,"listen":"127.0.0.1:0","database_url_env":"MASH_TEST_PG_URL","nodes":credentials})).unwrap()).unwrap();
+        let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
+        command
+            .args(["serve", "--server-config", path.to_str().unwrap()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        for (i, node) in nodes.iter().enumerate() {
+            command.env(format!("MASH_TEST_TOKEN_{i}"), token(node));
+        }
+        let mut child = command.spawn().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let mut server = Self {
+            child,
+            url: String::new(),
+        };
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            std::io::BufReader::new(stderr)
+                .read_line(&mut line)
+                .unwrap();
+            let _ = sender.send(line);
+        });
+        let line = receiver
+            .recv_timeout(std::time::Duration::from_secs(45))
+            .expect("server startup");
+        let response: serde_json::Value = serde_json::from_str(&line).unwrap();
+        server.url = format!(
+            "http://{}",
+            response["listening"]
+                .as_str()
+                .unwrap_or_else(|| panic!("server startup failed: {line}"))
+        );
+        server
+    }
+}
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}

@@ -4,14 +4,14 @@
 
 mash is a JSON-only Rust CLI and stdio MCP server for Claude Code and Codex JSONL histories.
 Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
-`forget`, `models install`, and `mcp`.
+`forget`, `models install`, `mcp`, and `serve`.
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
-- Use tokio-postgres for asynchronous access to one shared index per configured
+- Use an authenticated Axum HTTP API backed by tokio-postgres and pgvector for one shared index per configured
   node group. Support local-only, shared-only without SQLite, and both indexing,
   with independent provider allowlists. Keep local operations offline-capable.
-  Never restore SSH query fan-out or add an HTTP service.
+  Only the HTTP service accesses PostgreSQL. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and share CLI operations.
 - Keep one concrete FastEmbed semantic backend with exact cosine search, RRF,
   and bounded reranking.

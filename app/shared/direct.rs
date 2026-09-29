@@ -1,20 +1,15 @@
-use std::path::Path;
-use std::time::Instant;
-
-use tokio_postgres::{GenericClient, Transaction};
-
-use super::{Publication, connection, initialize, pg_error, record_sync, validate_version};
+use super::protocol::{Checkpoint, Event, Forget, Forgotten, NodeState, Start};
+use super::{Publication, get, post, upload, write_event};
 use crate::AppError;
 use crate::config::SharedConfig;
 use crate::ingestion::{self, Conversation, DirectScan, IndexOptions, IndexSummary};
 use crate::semantic::{self, EmbeddingPool, EmbeddingSummary, Models};
 use crate::storage::Counts;
 use crate::storage::publication::DirectOwner;
-
+use std::path::Path;
+use std::time::Instant;
 const DIRECT_INSTANCE: &str = "shared-only:v1";
-
 pub(crate) struct IndexResult {
-    data_changed: bool,
     pub(crate) counts: Counts,
     pub(crate) summary: IndexSummary,
     pub(crate) embeddings: EmbeddingSummary,
@@ -26,45 +21,6 @@ pub(crate) struct IndexResult {
 
 fn elapsed(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
-}
-
-// A node lock serializes indexing and forget across processes. Its identity lives
-// entirely in PostgreSQL; no local database or retry journal is opened.
-async fn lock_node(
-    transaction: &mut Transaction<'_>,
-    config: &SharedConfig,
-    owner: Option<&DirectOwner>,
-) -> Result<(), AppError> {
-    let expected = owner.map_or(DIRECT_INSTANCE, |owner| owner.instance.as_str());
-    transaction
-        .execute(
-            "INSERT INTO nodes VALUES ($1,$2,0) ON CONFLICT DO NOTHING",
-            &[&config.node_id, &expected],
-        )
-        .await
-        .map_err(pg_error)?;
-    let row = transaction
-        .query_one(
-            "SELECT instance,revision FROM nodes WHERE node_id=$1 FOR UPDATE",
-            &[&config.node_id],
-        )
-        .await
-        .map_err(pg_error)?;
-    let instance: String = row.try_get(0).map_err(pg_error)?;
-    if instance != expected {
-        return Err(AppError::shared(
-            "node_id belongs to another database or indexing mode; choose a new node_id",
-        ));
-    }
-    if let Some(owner) = owner {
-        let accepted: i64 = row.try_get(1).map_err(pg_error)?;
-        if accepted >= owner.revision {
-            return Err(AppError::shared(
-                "shared index has a newer revision; retry index or check whether SQLite was restored",
-            ));
-        }
-    }
-    Ok(())
 }
 
 pub(crate) async fn index(
@@ -81,43 +37,44 @@ pub(crate) async fn index(
         ingestion::direct_scans(&input)
     })
     .await?;
-    let storage_started = Instant::now();
-    let (mut client, _) = connection(config).await?;
-    initialize(&mut client, config).await?;
-    let mut transaction = client.transaction().await.map_err(pg_error)?;
-    // Model loading/inference can legitimately take longer than the idle timeout.
-    transaction
-        .batch_execute("SET LOCAL idle_in_transaction_session_timeout = 0")
-        .await
-        .map_err(pg_error)?;
-    lock_node(&mut transaction, config, owner).await?;
-    let mut forgotten = false;
-    if let Some(owner) = owner {
-        for id in &owner.forgets {
-            forgotten |= forget_in_transaction(&mut transaction, config, id).await?;
-        }
+    let started = Instant::now();
+    let state: NodeState = get(config, "state").await?;
+    let instance = owner.map_or(DIRECT_INSTANCE, |o| o.instance.as_str());
+    if state.instance.as_deref().is_some_and(|i| i != instance) {
+        return Err(AppError::shared(
+            "node_id belongs to another database or indexing mode; choose a new node_id",
+        ));
     }
+    let mut file = crate::blocking(|| {
+        tempfile::NamedTempFile::new().map_err(|_| AppError::internal("create index upload"))
+    })
+    .await?;
+    write_event(
+        file.as_file_mut(),
+        &Event::Start(Start {
+            instance: instance.to_owned(),
+            revision: owner.map(|o| o.revision),
+            base_revision: Some(state.revision),
+            snapshot: false,
+            forgets: owner.map_or_else(Vec::new, |o| o.forgets.clone()),
+        }),
+    )?;
     let mut result = IndexResult {
-        data_changed: forgotten,
-        counts: Counts {
-            conversations: 0,
-            messages: 0,
-            searchable_messages: 0,
-            embeddings: 0,
-        },
+        counts: Counts::default(),
         summary: IndexSummary::default(),
         embeddings: EmbeddingSummary::default(),
         model_load_milliseconds: 0,
-        storage_setup_milliseconds: elapsed(storage_started),
+        storage_setup_milliseconds: elapsed(started),
         ingestion_milliseconds: 0,
         embedding_milliseconds: 0,
     };
-    let mut pool = None;
     let ingestion_started = Instant::now();
+    let mut pool = None;
     for scan in &scans {
         ingest_scan(
-            &mut transaction,
-            config,
+            file.as_file_mut(),
+            &state,
+            owner,
             scan,
             full,
             models_dir,
@@ -129,82 +86,64 @@ pub(crate) async fn index(
     result.ingestion_milliseconds = elapsed(ingestion_started)
         .saturating_sub(result.model_load_milliseconds)
         .saturating_sub(result.embedding_milliseconds);
-    result.counts = counts(&mut transaction, config).await?;
-    if let Some(owner) = owner {
-        transaction
-            .execute(
-                "UPDATE nodes SET revision=$2 WHERE node_id=$1",
-                &[&config.node_id, &owner.revision],
-            )
-            .await
-            .map_err(pg_error)?;
-    } else {
-        transaction
-            .execute(
-                "UPDATE nodes SET revision=revision+1 WHERE node_id=$1",
-                &[&config.node_id],
-            )
-            .await
-            .map_err(pg_error)?;
-    }
-    let changed = result.data_changed
-        || full
-        || result.summary.changed_messages > 0
-        || result.summary.removed_messages > 0
-        || result.summary.purged_conversations > 0;
-    record_sync(&transaction, &config.node_id, changed, true).await?;
-    transaction.commit().await.map_err(pg_error)?;
+    write_event(file.as_file_mut(), &Event::Finish)?;
+    let indexed = upload(config, &file).await?;
+    result.counts = indexed.counts;
+    result.summary.removed_messages += indexed.removed_messages;
+    result.summary.purged_conversations += indexed.purged_conversations;
     result.summary.committed_batches = 1;
     Ok(result)
 }
-
 #[allow(
     clippy::too_many_arguments,
-    reason = "one concrete ingestion transaction, without provider abstractions"
+    clippy::too_many_lines,
+    reason = "concrete source scan and bounded model work"
 )]
 async fn ingest_scan(
-    transaction: &mut Transaction<'_>,
-    config: &SharedConfig,
+    file: &mut std::fs::File,
+    state: &NodeState,
+    owner: Option<&DirectOwner>,
     scan: &DirectScan,
     full: bool,
     models_dir: &Path,
     pool: &mut Option<EmbeddingPool>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
+    let checkpoints: std::collections::HashMap<_, _> = state
+        .sources
+        .iter()
+        .filter(|s| s.provider == scan.provider)
+        .map(|s| (s.path_hash.as_str(), s))
+        .collect();
     let mut observed = Vec::new();
     for path in &scan.files {
         let hash = blake3::hash(path.to_string_lossy().as_bytes())
             .to_hex()
             .to_string();
         observed.push(hash.clone());
+        if observed.len() == 128 {
+            write_event(
+                file,
+                &Event::Seen {
+                    provider: scan.provider.to_owned(),
+                    hashes: std::mem::take(&mut observed),
+                },
+            )?;
+        }
         let source = path.clone();
         let (size, modified) = crate::blocking(move || ingestion::source_stamp(&source)).await?;
-        if scan.cutoff.is_some_and(|cutoff| modified < cutoff) {
+        if scan.cutoff.is_some_and(|c| modified < c) {
             continue;
         }
         result.summary.scanned_files += 1;
-        result.summary.discovered_bytes += u64::try_from(size).unwrap_or_default();
         result.summary.processed_files += 1;
+        result.summary.discovered_bytes += u64::try_from(size).unwrap_or_default();
         result.summary.processed_bytes += u64::try_from(size).unwrap_or_default();
-        let checkpoint = transaction.query_opt(
-            "SELECT size_bytes, modified_ns, NOT EXISTS (
-                SELECT 1 FROM messages m WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id
-                AND m.projection <> '' AND (generation IS DISTINCT FROM $4 OR COALESCE(array_length(vector,1),0)<>384)
-             ) FROM direct_sources s WHERE node_id = $1 AND provider = $2 AND path_hash = $3",
-            &[&config.node_id, &scan.provider, &hash, &semantic::SHARED_EMBEDDING_GENERATION],
-        ).await.map_err(pg_error)?;
-        let unchanged = checkpoint
-            .as_ref()
-            .map(|row| {
-                Ok::<_, AppError>(
-                    row.try_get::<_, i64>(0).map_err(pg_error)? == size
-                        && row.try_get::<_, i64>(1).map_err(pg_error)? == modified
-                        && row.try_get::<_, bool>(2).map_err(pg_error)?,
-                )
-            })
-            .transpose()?
-            .unwrap_or(false);
-        if !full && unchanged {
+        let checkpoint = checkpoints.get(hash.as_str());
+        if !full
+            && checkpoint
+                .is_some_and(|c| c.size_bytes == size && c.modified_ns == modified && c.ready)
+        {
             result.summary.unchanged_sources += 1;
             result.summary.checkpoint_skipped_sources += 1;
             continue;
@@ -223,73 +162,65 @@ async fn ingest_scan(
         .await?;
         if parsed.malformed_records != 0 {
             return Err(AppError::shared(
-                "shared-only indexing encountered malformed history; shared changes were rolled back",
+                "shared indexing encountered malformed history; upload was not committed",
             ));
         }
-        let conversation_id = parsed.conversation.as_ref().map(|c| c.id.as_str());
-        let previous = transaction.query_opt(
-            "SELECT conversation_id FROM direct_sources WHERE node_id = $1 AND provider = $2 AND path_hash = $3",
-            &[&config.node_id, &scan.provider, &hash],
-        ).await.map_err(pg_error)?.map(|r| r.try_get::<_, Option<String>>(0).map_err(pg_error)).transpose()?.flatten();
-        if let Some(previous) = previous
-            .as_deref()
-            .filter(|id| Some(*id) != conversation_id)
+        let conversation_id = parsed.conversation.as_ref().map(|c| c.id.clone());
+        if let Some(previous) = checkpoint
+            .and_then(|c| c.conversation_id.as_ref())
+            .filter(|id| Some(*id) != conversation_id.as_ref())
         {
-            remove_conversation(transaction, config, previous, result).await?;
+            write_event(
+                file,
+                &Event::Remove {
+                    id: previous.clone(),
+                },
+            )?;
         }
         if let Some(conversation) = &parsed.conversation {
-            replace_conversation(transaction, config, conversation, models_dir, pool, result)
-                .await?;
+            let forgotten = state.tombstones.iter().any(|t| {
+                t.provider == conversation.provider && t.conversation_id == conversation.id
+            }) || owner.is_some_and(|o| o.forgets.contains(&conversation.id));
+            if forgotten {
+                result.summary.tombstoned_sources += 1;
+            } else {
+                replace_conversation(file, conversation, models_dir, pool, result).await?;
+            }
         }
-        transaction.execute(
-            "INSERT INTO direct_sources VALUES ($1,$2,$3,$4,$5,$6)
-             ON CONFLICT (node_id,provider,path_hash) DO UPDATE SET size_bytes=$4,modified_ns=$5,conversation_id=$6",
-            &[&config.node_id, &scan.provider, &hash, &size, &modified, &conversation_id],
-        ).await.map_err(pg_error)?;
+        write_event(
+            file,
+            &Event::Source(Checkpoint {
+                provider: scan.provider.to_owned(),
+                path_hash: hash,
+                size_bytes: size,
+                modified_ns: modified,
+                conversation_id,
+                ready: true,
+            }),
+        )?;
     }
     let verification = scan.clone();
     crate::blocking(move || verification.verify()).await?;
+    if !observed.is_empty() {
+        write_event(
+            file,
+            &Event::Seen {
+                provider: scan.provider.to_owned(),
+                hashes: observed,
+            },
+        )?;
+    }
     if scan.complete {
-        let missing = transaction.query(
-            "DELETE FROM direct_sources WHERE node_id=$1 AND provider=$2 AND NOT(path_hash=ANY($3))
-             AND ($4::bigint IS NULL OR modified_ns >= $4) RETURNING conversation_id",
-            &[&config.node_id, &scan.provider, &observed, &scan.cutoff],
-        ).await.map_err(pg_error)?;
-        for row in missing {
-            if let Some(id) = row.try_get::<_, Option<String>>(0).map_err(pg_error)? {
-                remove_conversation(transaction, config, &id, result).await?;
-            }
-        }
+        write_event(
+            file,
+            &Event::Reconcile {
+                provider: scan.provider.to_owned(),
+                cutoff: scan.cutoff,
+            },
+        )?;
     }
     Ok(())
 }
-
-async fn remove_conversation(
-    transaction: &mut Transaction<'_>,
-    config: &SharedConfig,
-    id: &str,
-    result: &mut IndexResult,
-) -> Result<(), AppError> {
-    result.summary.removed_messages += transaction
-        .query_one(
-            "SELECT count(*) FROM messages WHERE node_id=$1 AND conversation_id=$2",
-            &[&config.node_id, &id],
-        )
-        .await
-        .map_err(pg_error)?
-        .try_get::<_, i64>(0)
-        .map_err(pg_error)?
-        .cast_unsigned();
-    result.summary.purged_conversations += transaction
-        .execute(
-            "DELETE FROM conversations WHERE node_id=$1 AND id=$2",
-            &[&config.node_id, &id],
-        )
-        .await
-        .map_err(pg_error)?;
-    Ok(())
-}
-
 async fn embed_texts(
     models_dir: &Path,
     pool: &mut Option<EmbeddingPool>,
@@ -328,57 +259,32 @@ async fn embed_texts(
 }
 
 async fn replace_conversation(
-    transaction: &mut Transaction<'_>,
-    config: &SharedConfig,
+    file: &mut std::fs::File,
     conversation: &Conversation,
     models_dir: &Path,
     pool: &mut Option<EmbeddingPool>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
-    let forgotten = transaction
-        .query_opt(
-            "SELECT 1 FROM tombstones WHERE node_id=$1 AND provider=$2 AND conversation_id=$3",
-            &[&config.node_id, &conversation.provider, &conversation.id],
-        )
-        .await
-        .map_err(pg_error)?
-        .is_some();
-    if forgotten {
-        result.summary.tombstoned_sources += 1;
-        return Ok(());
-    }
-    result.data_changed = true;
-    transaction
-        .execute(
-            "DELETE FROM conversations WHERE node_id=$1 AND id=$2",
-            &[&config.node_id, &conversation.id],
-        )
-        .await
-        .map_err(pg_error)?;
-    transaction
-        .execute(
-            "INSERT INTO conversations VALUES ($1,$2,$3,$4,$5,$6)",
-            &[
-                &config.node_id,
-                &conversation.id,
-                &conversation.provider,
-                &conversation.title,
-                &conversation.created_at,
-                &conversation.updated_at,
+    write_event(
+        file,
+        &Event::Batch {
+            kind: "conversations".to_owned(),
+            records: vec![
+                serde_json::json!({"id":conversation.id,"provider":conversation.provider,"title":conversation.title,"created_at":conversation.created_at,"updated_at":conversation.updated_at}),
             ],
-        )
-        .await
-        .map_err(pg_error)?;
+        },
+    )?;
     for batch in conversation.messages.chunks(32) {
         let texts = batch
             .iter()
             .map(|m| m.search_projection.as_deref().unwrap_or(&m.content))
-            .filter(|text| !text.is_empty())
+            .filter(|t| !t.is_empty())
             .collect::<Vec<_>>();
         let mut vectors = embed_texts(models_dir, pool, &texts, result)
             .await?
             .into_iter();
         result.embeddings.model_inferences += texts.len() as u64;
+        let mut records = Vec::new();
         for message in batch {
             let projection = message
                 .search_projection
@@ -396,122 +302,52 @@ async fn replace_conversation(
             let generation = vector
                 .as_ref()
                 .map(|_| semantic::SHARED_EMBEDDING_GENERATION);
-            transaction.execute(
-                "INSERT INTO messages (node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-                &[&config.node_id, &message.id, &conversation.id, &message.ordinal, &message.role,
-                  &message.content, &projection, &message.created_at, &generation, &vector],
-            ).await.map_err(pg_error)?;
+            records.push(serde_json::json!({"id":message.id,"conversation_id":conversation.id,"ordinal":message.ordinal,"role":message.role,"content":message.content,"projection":projection,"created_at":message.created_at,"generation":generation,"vector":vector}));
             result.summary.changed_messages += 1;
             result.embeddings.stored_vectors += u64::from(vector.is_some());
         }
+        write_event(
+            file,
+            &Event::Batch {
+                kind: "messages".to_owned(),
+                records,
+            },
+        )?;
     }
     Ok(())
 }
-
-pub(crate) async fn counts(
-    client: &mut (impl GenericClient + Sync),
-    config: &SharedConfig,
-) -> Result<Counts, AppError> {
-    let row = client
-        .query_one(
-            "SELECT (SELECT count(*) FROM conversations WHERE node_id=$1), count(*),
-         count(*) FILTER (WHERE projection <> ''),
-         count(*) FILTER (WHERE projection <> '' AND generation=$2 AND array_length(vector,1)=384)
-         FROM messages WHERE node_id=$1",
-            &[&config.node_id, &semantic::SHARED_EMBEDDING_GENERATION],
-        )
-        .await
-        .map_err(pg_error)?;
-    Ok(Counts {
-        conversations: row.try_get::<_, i64>(0).map_err(pg_error)?.cast_unsigned(),
-        messages: row.try_get::<_, i64>(1).map_err(pg_error)?.cast_unsigned(),
-        searchable_messages: row.try_get::<_, i64>(2).map_err(pg_error)?.cast_unsigned(),
-        embeddings: row.try_get::<_, i64>(3).map_err(pg_error)?.cast_unsigned(),
-    })
-}
-
 pub(crate) async fn status(config: &SharedConfig) -> Result<Counts, AppError> {
-    let (mut client, _) = connection(config).await?;
-    validate_version(&mut client).await?;
-    counts(&mut client, config).await
+    get(config, "status").await
 }
-
 pub(crate) async fn forget(config: &SharedConfig, id: &str) -> Result<bool, AppError> {
-    let (mut client, _) = connection(config).await?;
-    initialize(&mut client, config).await?;
-    let mut transaction = client.transaction().await.map_err(pg_error)?;
-    lock_node(&mut transaction, config, None).await?;
-    let forgotten = forget_in_transaction(&mut transaction, config, id).await?;
-    transaction
-        .execute(
-            "UPDATE nodes SET revision=revision+1 WHERE node_id=$1",
-            &[&config.node_id],
-        )
-        .await
-        .map_err(pg_error)?;
-    record_sync(&transaction, &config.node_id, forgotten, false).await?;
-    transaction.commit().await.map_err(pg_error)?;
-    Ok(forgotten)
+    let result: Forgotten = post(
+        config,
+        "forget",
+        &Forget {
+            instance: DIRECT_INSTANCE.to_owned(),
+            revision: None,
+            ids: vec![id.to_owned()],
+        },
+    )
+    .await?;
+    Ok(result.forgotten)
 }
-
 pub(crate) async fn flush_forgets(
     config: &SharedConfig,
     owner: &DirectOwner,
 ) -> Result<bool, AppError> {
-    let (mut client, _) = connection(config).await?;
-    initialize(&mut client, config).await?;
-    let mut transaction = client.transaction().await.map_err(pg_error)?;
-    lock_node(&mut transaction, config, Some(owner)).await?;
-    let mut forgotten = false;
-    for id in &owner.forgets {
-        forgotten |= forget_in_transaction(&mut transaction, config, id).await?;
-    }
-    transaction
-        .execute(
-            "UPDATE nodes SET revision=$2 WHERE node_id=$1",
-            &[&config.node_id, &owner.revision],
-        )
-        .await
-        .map_err(pg_error)?;
-    record_sync(&transaction, &config.node_id, forgotten, false).await?;
-    transaction.commit().await.map_err(pg_error)?;
-    Ok(forgotten)
+    let result: Forgotten = post(
+        config,
+        "forget",
+        &Forget {
+            instance: owner.instance.clone(),
+            revision: Some(owner.revision),
+            ids: owner.forgets.clone(),
+        },
+    )
+    .await?;
+    Ok(result.forgotten)
 }
-
-async fn forget_in_transaction(
-    transaction: &mut Transaction<'_>,
-    config: &SharedConfig,
-    id: &str,
-) -> Result<bool, AppError> {
-    let deleted = transaction
-        .query_opt(
-            "DELETE FROM conversations WHERE node_id=$1 AND id=$2 RETURNING provider",
-            &[&config.node_id, &id],
-        )
-        .await
-        .map_err(pg_error)?;
-    let forgotten = deleted.is_some();
-    if let Some(row) = deleted {
-        let provider: String = row.try_get(0).map_err(pg_error)?;
-        transaction
-            .execute(
-                "INSERT INTO tombstones VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
-                &[&config.node_id, &provider, &id],
-            )
-            .await
-            .map_err(pg_error)?;
-    } else {
-        // An offline forget can precede the very first upload of this source.
-        // Preserve the intent even though PostgreSQL cannot yet identify its provider.
-        transaction.execute(
-            "INSERT INTO tombstones SELECT $1,provider,$2 FROM (VALUES ('claude-code'),('codex')) AS p(provider)
-             ON CONFLICT DO NOTHING", &[&config.node_id, &id],
-        ).await.map_err(pg_error)?;
-    }
-    Ok(forgotten)
-}
-
 pub(crate) const fn publication() -> Publication {
     Publication::published()
 }

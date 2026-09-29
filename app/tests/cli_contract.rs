@@ -7,6 +7,7 @@ use serde_json::Value;
 use veritas_test_macros as veritas;
 
 mod index_destinations;
+mod shared_server;
 mod watch_flow;
 
 fn run_json(arguments: &[&str]) -> Value {
@@ -952,6 +953,7 @@ fn ssh_options_are_rejected_and_shared_access_requires_configuration() {
 
 #[test]
 #[ignore = "requires MASH_TEST_PG_URL pointing to an expendable PostgreSQL database"]
+#[allow(clippy::too_many_lines)]
 fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli() {
     let dir = tempfile::tempdir().expect("temp");
     let database = dir.path().join("local.sqlite3");
@@ -967,9 +969,10 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
         "cli-{}",
         dir.path().file_name().expect("name").to_string_lossy()
     );
+    let server = shared_server::Server::new(dir.path(), &group, &["cli-node"]);
     std::fs::write(&config, serde_json::to_vec(&serde_json::json!({
         "version":1,"providers":{},"shared":{
-            "group_id":group,"node_id":"cli-node","database_url_env":"MASH_TEST_SHARED_CLIENT_URL"
+            "group_id":group,"node_id":"cli-node","api_url":server.url,"token_env":"MASH_TEST_SHARED_CLIENT_TOKEN"
         }
     })).expect("JSON")).expect("config");
     let url = std::env::var("MASH_TEST_PG_URL").expect("test URL");
@@ -984,9 +987,12 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
             models.to_str().unwrap(),
         ]);
         if online {
-            command.env("MASH_TEST_SHARED_CLIENT_URL", &url);
+            command.env(
+                "MASH_TEST_SHARED_CLIENT_TOKEN",
+                shared_server::token("cli-node"),
+            );
         } else {
-            command.env_remove("MASH_TEST_SHARED_CLIENT_URL");
+            command.env_remove("MASH_TEST_SHARED_CLIENT_TOKEN");
         }
         let output = command.args(args).output().expect("run");
         assert!(

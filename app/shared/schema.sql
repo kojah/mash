@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS version (
     singleton BOOLEAN PRIMARY KEY CHECK (singleton), version INTEGER NOT NULL
 );
-INSERT INTO version VALUES (TRUE, 1) ON CONFLICT DO NOTHING;
+INSERT INTO version VALUES (TRUE, 2) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS nodes (
     node_id TEXT PRIMARY KEY, instance TEXT NOT NULL, revision BIGINT NOT NULL
 );
@@ -25,13 +25,22 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS messages (
     node_id TEXT NOT NULL, id TEXT NOT NULL, conversation_id TEXT NOT NULL,
     ordinal BIGINT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
-    projection TEXT NOT NULL, created_at BIGINT, generation TEXT, vector DOUBLE PRECISION[],
+    projection TEXT NOT NULL, created_at BIGINT, generation TEXT, vector public.vector(384),
     document TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple', projection)) STORED,
     PRIMARY KEY(node_id, id), UNIQUE(node_id, conversation_id, ordinal),
     FOREIGN KEY(node_id, conversation_id) REFERENCES conversations(node_id, id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS messages_document ON messages USING GIN(document);
 CREATE INDEX IF NOT EXISTS messages_generation ON messages(generation);
+-- Preserve the original shared index while switching its vectors to pgvector.
+-- Incomplete old embeddings remain NULL and are repaired by node reindexing.
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 1 THEN
+        ALTER TABLE messages ALTER COLUMN vector TYPE public.vector(384)
+        USING CASE WHEN cardinality(vector)=384 THEN vector::real[]::public.vector(384) END;
+        UPDATE version SET version=2 WHERE singleton;
+    END IF;
+END $$;
 -- Shared-only nodes keep ingestion checkpoints in PostgreSQL, never SQLite.
 -- Source paths are hashed before upload.
 CREATE TABLE IF NOT EXISTS direct_sources (
