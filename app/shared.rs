@@ -10,6 +10,7 @@ use std::time::Duration;
 mod backend;
 pub(crate) mod direct;
 mod protocol;
+mod redis_index;
 pub(crate) mod server;
 use protocol::{Event, Start};
 #[derive(Debug, Deserialize, Serialize)]

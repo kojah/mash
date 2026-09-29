@@ -40,10 +40,87 @@ struct Configuration {
     version: u32,
     #[serde(default = "default_listen")]
     listen: SocketAddr,
-    database_url_env: String,
+    #[serde(default)]
+    backend: BackendChoice,
+    database_url_env: Option<String>,
+    redis_url_env: Option<String>,
     #[serde(default = "default_connections")]
     max_connections: usize,
     nodes: Vec<AuthorizedNode>,
+}
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum BackendChoice {
+    #[default]
+    Postgres,
+    Redis,
+}
+#[derive(Clone)]
+enum Store {
+    Postgres(Pool),
+    Redis(super::redis_index::Store),
+}
+impl Store {
+    async fn freshness(&self, id: &Identity) -> Result<super::Freshness, AppError> {
+        match self {
+            Self::Postgres(pool) => backend::freshness(pool, id).await,
+            Self::Redis(store) => store.freshness(id).await,
+        }
+    }
+    async fn status(&self, id: &Identity) -> Result<crate::storage::Counts, AppError> {
+        match self {
+            Self::Postgres(pool) => backend::status(pool, id).await,
+            Self::Redis(store) => store.status(id).await,
+        }
+    }
+    async fn state(&self, id: &Identity) -> Result<protocol::NodeState, AppError> {
+        match self {
+            Self::Postgres(pool) => backend::state(pool, id).await,
+            Self::Redis(store) => store.state(id).await,
+        }
+    }
+    async fn search(
+        &self,
+        id: &Identity,
+        input: protocol::Search,
+    ) -> Result<protocol::Candidates, AppError> {
+        match self {
+            Self::Postgres(pool) => backend::search(pool, id, input).await,
+            Self::Redis(store) => store.search(id, input).await,
+        }
+    }
+    async fn view(
+        &self,
+        id: &Identity,
+        input: protocol::View,
+    ) -> Result<Vec<crate::storage::Message>, AppError> {
+        match self {
+            Self::Postgres(pool) => {
+                backend::view(pool, id, &input.node_id, &input.id, input.context).await
+            }
+            Self::Redis(store) => store.view(id, input).await,
+        }
+    }
+    async fn forget(
+        &self,
+        id: &Identity,
+        input: protocol::Forget,
+    ) -> Result<protocol::Forgotten, AppError> {
+        match self {
+            Self::Postgres(pool) => backend::forget(pool, id, input).await,
+            Self::Redis(store) => store.forget(id, input).await,
+        }
+    }
+    async fn index(
+        &self,
+        id: &Identity,
+        input: tempfile::NamedTempFile,
+    ) -> Result<protocol::Indexed, AppError> {
+        match self {
+            Self::Postgres(pool) => backend::index(pool, id, input).await,
+            Self::Redis(store) => store.index(id, input).await,
+        }
+    }
 }
 fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8787))
@@ -54,7 +131,7 @@ const fn default_connections() -> usize {
 
 #[derive(Clone)]
 struct App {
-    pool: Pool,
+    store: Store,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
     uploads: Arc<tokio::sync::Semaphore>,
 }
@@ -135,11 +212,14 @@ fn identities(config: &Configuration) -> Result<HashMap<blake3::Hash, Identity>,
     Ok(result)
 }
 fn pool(config: &Configuration) -> Result<Pool, AppError> {
-    env_name(&config.database_url_env)?;
-    let url = std::env::var(&config.database_url_env).map_err(|_| {
+    let name = config
+        .database_url_env
+        .as_ref()
+        .ok_or_else(|| AppError::configuration("PostgreSQL requires database_url_env"))?;
+    env_name(name)?;
+    let url = std::env::var(name).map_err(|_| {
         AppError::configuration(format!(
-            "set {} to the server PostgreSQL connection string",
-            config.database_url_env
+            "set {name} to the server PostgreSQL connection string"
         ))
     })?;
     let mut options: tokio_postgres::Config = url
@@ -240,26 +320,26 @@ async fn freshness(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
 ) -> Result<Json<super::Freshness>, ApiError> {
-    Ok(Json(backend::freshness(&app.pool, &id).await?))
+    Ok(Json(app.store.freshness(&id).await?))
 }
 async fn status(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
 ) -> Result<Json<crate::storage::Counts>, ApiError> {
-    Ok(Json(backend::status(&app.pool, &id).await?))
+    Ok(Json(app.store.status(&id).await?))
 }
 async fn state(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
 ) -> Result<Json<protocol::NodeState>, ApiError> {
-    Ok(Json(backend::state(&app.pool, &id).await?))
+    Ok(Json(app.store.state(&id).await?))
 }
 async fn search(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
     input: Result<Json<protocol::Search>, JsonRejection>,
 ) -> Result<Json<protocol::Candidates>, ApiError> {
-    Ok(Json(backend::search(&app.pool, &id, json(input)?).await?))
+    Ok(Json(app.store.search(&id, json(input)?).await?))
 }
 async fn view(
     State(app): State<App>,
@@ -270,18 +350,16 @@ async fn view(
     if input.context > 1000 || input.id.is_empty() || input.id.len() > 4096 {
         return Err(AppError::usage("invalid view request").into());
     }
-    Ok(Json(
-        backend::view(&app.pool, &id, &input.node_id, &input.id, input.context).await?,
-    ))
+    Ok(Json(app.store.view(&id, input).await?))
 }
 async fn forget(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
     input: Result<Json<protocol::Forget>, JsonRejection>,
 ) -> Result<Json<protocol::Forgotten>, ApiError> {
-    Ok(Json(backend::forget(&app.pool, &id, json(input)?).await?))
+    Ok(Json(app.store.forget(&id, json(input)?).await?))
 }
-async fn spool(body: Body) -> Result<tempfile::NamedTempFile, ApiError> {
+async fn spool(body: Body, max_bytes: u64) -> Result<tempfile::NamedTempFile, ApiError> {
     let file = crate::blocking(|| {
         tempfile::NamedTempFile::new().map_err(|_| AppError::internal("create incoming index"))
     })
@@ -305,7 +383,7 @@ async fn spool(body: Body) -> Result<tempfile::NamedTempFile, ApiError> {
         for byte in chunk {
             line_bytes += 1;
             total += 1;
-            if line_bytes > 8 * 1024 * 1024 || total > 8 * 1024 * 1024 * 1024 {
+            if line_bytes > 8 * 1024 * 1024 || total > max_bytes {
                 return Err(ApiError(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     AppError::usage("index upload exceeds limits"),
@@ -349,8 +427,12 @@ async fn index(
     {
         return Err(AppError::usage("index uploads require application/x-ndjson").into());
     }
-    let file = spool(request.into_body()).await?;
-    Ok(Json(backend::index(&app.pool, &id, file).await?))
+    let max_bytes = match &app.store {
+        Store::Postgres(_) => 8 * 1024 * 1024 * 1024,
+        Store::Redis(_) => 64 * 1024 * 1024,
+    };
+    let file = spool(request.into_body(), max_bytes).await?;
+    Ok(Json(app.store.index(&id, file).await?))
 }
 pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
     let path = path.to_path_buf();
@@ -380,9 +462,36 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
     })
     .await?;
     let identities = identities(&config)?;
-    let pool = pool(&config)?;
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
-    backend::initialize(&pool, &groups.into_iter().collect::<Vec<_>>()).await?;
+    let groups = groups.into_iter().collect::<Vec<_>>();
+    let store = match config.backend {
+        BackendChoice::Postgres => {
+            if config.redis_url_env.is_some() {
+                return Err(AppError::configuration(
+                    "PostgreSQL backend does not accept redis_url_env",
+                ));
+            }
+            let pool = pool(&config)?;
+            backend::initialize(&pool, &groups).await?;
+            Store::Postgres(pool)
+        }
+        BackendChoice::Redis => {
+            if config.database_url_env.is_some() {
+                return Err(AppError::configuration(
+                    "Redis backend does not accept database_url_env",
+                ));
+            }
+            let name = config
+                .redis_url_env
+                .as_ref()
+                .ok_or_else(|| AppError::configuration("Redis requires redis_url_env"))?;
+            env_name(name)?;
+            let url = std::env::var(name).map_err(|_| {
+                AppError::configuration(format!("set {name} to the server Redis connection string"))
+            })?;
+            Store::Redis(super::redis_index::Store::connect(&url, &groups).await?)
+        }
+    };
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| AppError::configuration("could not bind HTTP listener"))?;
@@ -391,7 +500,7 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
         .map_err(|_| AppError::internal("get HTTP listener address"))?;
     eprintln!("{}", serde_json::json!({"listening":address.to_string()}));
     let app = App {
-        pool,
+        store,
         identities: Arc::new(identities),
         uploads: Arc::new(tokio::sync::Semaphore::new(config.max_connections)),
     };

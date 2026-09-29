@@ -8,10 +8,11 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
-- Use an authenticated Axum HTTP API backed by tokio-postgres and pgvector for one shared index per configured
+- Use an authenticated Axum HTTP API backed by PostgreSQL/pgvector (tokio-postgres)
+  or Redis Search for one shared index per configured
   node group. Support local-only, shared-only without SQLite, and both indexing,
   with independent provider allowlists. Keep local operations offline-capable.
-  Only the HTTP service accesses PostgreSQL. Never restore SSH query fan-out.
+  Only the HTTP service accesses PostgreSQL or Redis. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and share CLI operations.
 - Keep one concrete FastEmbed semantic backend with exact cosine search, RRF,
   and bounded reranking.

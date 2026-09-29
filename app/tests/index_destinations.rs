@@ -12,6 +12,9 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_backend(false)
+    }
+    fn with_backend(redis: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         let config = root.join("config.json");
@@ -26,13 +29,21 @@ impl Fixture {
 "#).unwrap();
         Self::write_codex(&codex);
         let group = format!("routing-{}", root.file_name().unwrap().to_string_lossy());
-        let server = std::env::var("MASH_TEST_PG_URL").ok().map(|_| {
-            shared_server::Server::new(
+        let server = if redis {
+            Some(shared_server::Server::redis(
                 root,
                 &group,
                 &["remote", "split", "first-delivery", "local"],
-            )
-        });
+            ))
+        } else {
+            std::env::var("MASH_TEST_PG_URL").ok().map(|_| {
+                shared_server::Server::new(
+                    root,
+                    &group,
+                    &["remote", "split", "first-delivery", "local"],
+                )
+            })
+        };
         Self {
             directory,
             config,
@@ -338,4 +349,103 @@ fn postgres_publication_forget_before_initial_delivery_is_durable() {
         "forget before first upload is durable"
     );
     fixture.cleanup();
+}
+
+#[test]
+#[ignore = "requires MASH_TEST_REDIS_URL pointing to disposable Redis Search"]
+fn redis_publication_shared_only_checkpoints_and_filtered_offline_forgets_through_cli() {
+    let fixture = Fixture::with_backend(true);
+    fixture.configure("shared", "remote");
+    assert_eq!(fixture.json(&["index"], true)["indexed_conversations"], 1);
+    let initial = fixture.json(&["status"], true)["shared_index"].clone();
+    assert_eq!(
+        fixture.json(&["index"], true)["checkpoint_skipped_sources"],
+        1
+    );
+    assert_eq!(
+        fixture.json(&["status"], true)["shared_index"]["nodes"][0]["last_updated_at"],
+        initial["nodes"][0]["last_updated_at"]
+    );
+    assert!(!fixture.database.parent().unwrap().exists());
+    let mut invalid = std::fs::read_to_string(fixture.codex.join("session.jsonl")).unwrap();
+    invalid.push_str("invalid JSON\n");
+    std::fs::write(fixture.codex.join("session.jsonl"), invalid).unwrap();
+    assert_eq!(error_kind(&fixture.run(&["index"], true)), "shared-index");
+    assert_eq!(fixture.json(&["status"], true)["messages"], 1);
+    Fixture::write_codex(&fixture.codex);
+    assert_eq!(
+        fixture.json(&["forget", "codex-session"], true)["forgotten"],
+        true
+    );
+    assert_eq!(
+        fixture.json(&["index", "--full"], true)["tombstoned_sources"],
+        1
+    );
+    assert_eq!(fixture.json(&["status"], true)["messages"], 0);
+    let source = fixture.codex.join("session.jsonl");
+    std::fs::write(
+        &source,
+        std::fs::read_to_string(&source)
+            .unwrap()
+            .replace("codex-session", "another-session"),
+    )
+    .unwrap();
+    assert_eq!(fixture.json(&["index"], true)["indexed_conversations"], 1);
+    std::fs::remove_file(&source).unwrap();
+    assert_eq!(fixture.json(&["index"], true)["purged_conversations"], 1);
+
+    Fixture::write_codex(&fixture.codex);
+    fixture.configure("both", "split");
+    assert_eq!(
+        fixture.json(&["index"], false)["shared"]["state"],
+        "pending"
+    );
+    assert_eq!(
+        fixture.json(&["index"], true)["shared"]["state"],
+        "published"
+    );
+    assert_eq!(
+        fixture.json(&["forget", "codex-session"], false)["shared"]["state"],
+        "pending"
+    );
+    assert_eq!(
+        fixture.json(&["index"], true)["shared"]["state"],
+        "published"
+    );
+    assert_eq!(
+        fixture.json(&["index", "--full"], true)["shared"]["state"],
+        "published"
+    );
+    let status = fixture.json(&["status", "--shared"], true);
+    assert_eq!(status["conversations"], 1);
+    assert_eq!(
+        status["shared_index"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["node_id"] == "split")
+            .unwrap()["messages"],
+        0
+    );
+    let client = redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
+    let mut connection = client.get_connection().unwrap();
+    let prefix = format!(
+        "mash:r:{}:",
+        blake3::hash(fixture.group.as_bytes()).to_hex()
+    );
+    redis::cmd("FT.DROPINDEX")
+        .arg(format!("{prefix}index"))
+        .arg("DD")
+        .query::<()>(&mut connection)
+        .unwrap();
+    let keys: Vec<String> = redis::cmd("KEYS")
+        .arg(format!("{prefix}*"))
+        .query(&mut connection)
+        .unwrap();
+    if !keys.is_empty() {
+        redis::cmd("DEL")
+            .arg(keys)
+            .query::<usize>(&mut connection)
+            .unwrap();
+    }
 }

@@ -119,8 +119,8 @@ pub(super) struct Forgotten {
 
 pub(super) fn valid_vector(vector: &[f64]) -> bool {
     vector.len() == DIMENSIONS
+        && vector.iter().all(|v| v.is_finite() && v.abs() <= 127.0)
         && vector
             .iter()
-            .all(|v| v.is_finite() && v.abs() <= f64::from(f32::MAX))
-        && vector.iter().any(|v| *v != 0.0)
+            .any(|v| v.abs() >= f64::from(f32::MIN_POSITIVE))
 }

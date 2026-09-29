@@ -2,11 +2,12 @@
 
 mash (Multi-Agent Search History) searches Claude Code and Codex JSONL histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
-index locally, into a PostgreSQL + pgvector service over HTTP, or both, with independent provider allowlists.
+index locally, into a shared service over HTTP, or both, with independent provider allowlists.
 SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
 cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint PostgreSQL index, one per
 node group, so shared history remains searchable while source machines are offline.
+The service uses PostgreSQL + pgvector by default, with Redis Search as an alternative.
 
 ## Commands
 
@@ -136,6 +137,7 @@ choose or provision a host. Create a separate server configuration:
 {
   "version": 1,
   "listen": "127.0.0.1:8787",
+  "backend": "postgres",
   "database_url_env": "MASH_DATABASE_URL",
   "max_connections": 16,
   "nodes": [
@@ -194,6 +196,66 @@ Uploads are limited to 128 records per batch, 8 MiB per event and 8 GiB per
 request; ordinary JSON requests are limited to 64 KiB. Request timeouts and pool
 limits bound work. Source checkpoints use revisions to reject concurrent stale
 uploads; retry indexing after a conflict. Full snapshot retries are idempotent.
+
+### Redis alternative
+
+Select Redis in the HTTP service configuration. Node configuration and MCP tools
+stay the same; nodes still use an API URL and their node token. One service uses
+one storage backend for all its groups. Changing the backend creates a separate
+index: reindex from node histories to populate it; mash does not automatically
+copy data between PostgreSQL and Redis.
+
+```json
+{
+  "version": 1,
+  "listen": "127.0.0.1:8787",
+  "backend": "redis",
+  "redis_url_env": "MASH_REDIS_URL",
+  "nodes": [
+    {"group_id": "personal", "node_id": "xenia", "token_env": "MASH_XENIA_TOKEN"}
+  ]
+}
+```
+
+Use Redis with Search support, such as Redis 8 or Redis Stack, rather than a
+key-value-only Redis installation. A local development instance can run with:
+
+```bash
+docker run --rm --name mash-redis -p 127.0.0.1:6379:6379 \
+  redis:8.2 redis-server --appendonly yes --maxmemory-policy noeviction
+export MASH_REDIS_URL='redis://127.0.0.1:6379/'
+mash serve --server-config /absolute/path/to/redis-server.json
+```
+
+The service uses the `redis-rs` (`redis`) crate with async multiplexed connections
+and reconnection support. Use `rediss://` for TLS outside a trusted private
+network. Keep database credentials on the service. Configure persistence and
+`noeviction`: the Redis backend is a shared index, rather than an evictable cache.
+This implementation targets a single Redis instance; it does not configure a
+Redis Cluster deployment.
+
+Each group gets a separate full-text/vector index. Redis uses exact `FLAT` cosine
+search over the same 384-dimensional quantized embeddings, followed by node-side
+RRF and reranking. Provider/age filters, context-only tool output, per-node
+ownership, checkpoints, tombstones, and freshness are supported. Its lexical
+retrieval uses Redis token matching and ranking; PostgreSQL web-search operators
+are not interpreted as operators by the Redis backend. Consequently lexical
+candidates can differ between backends.
+
+For atomic publication, the service stages a complete changed node revision and
+then switches its visible metadata with a compare-and-swap Lua operation. Search
+and view use atomic Lua reads restricted to current revisions; partially staged
+or retired data cannot appear in results. Failed uploads leave the visible data
+and freshness unchanged. Superseded records are unlinked at commit; abandoned
+stages expire after ten minutes. Redis supplies synchronization timestamps.
+
+This first implementation caps each upload and each node's serialized canonical
+snapshot at **64 MiB**. Staging changed revisions uses extra memory and writes,
+and the service loads canonical node data when applying changes; unchanged data
+can reuse the existing stage. These are deliberate limits on the initial
+alternative, not a claim that Redis will outperform PostgreSQL for mash. Use
+PostgreSQL for larger histories and benchmark actual search latency, update cost,
+memory use, and retrieval quality before selecting Redis for a group.
 
 In both mode without destination filters, local indexing commits first. Changes
 mark a durable local publication revision;
@@ -348,13 +410,16 @@ The installed August 2026 nightly can hit a [Clippy compiler crash](https://gith
 when checking async code. On that toolchain, use
 `RUSTFLAGS=-Znext-solver=no cargo clippy --all-targets -- -D warnings`.
 
-The PostgreSQL integration tests are ignored by default and require a disposable
+The storage integration tests are ignored by default. PostgreSQL tests require a disposable
 database with pgvector installed in `MASH_TEST_PG_URL`. Tests start real HTTP
 services and create/remove isolated test-group schemas:
 
 ```bash
 MASH_TEST_PG_URL='postgresql://USER:PASSWORD@localhost/DATABASE?sslmode=disable' \
   cargo nextest run --run-ignored only postgres_publication
+
+MASH_TEST_REDIS_URL='redis://localhost:6379/' \
+  cargo nextest run --run-ignored only redis_publication
 ```
 
 The real-model integration test is ignored by default and requires

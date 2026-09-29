@@ -12,9 +12,20 @@ pub struct Server {
 }
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
+        Self::start(root, group, nodes, false)
+    }
+    pub fn redis(root: &Path, group: &str, nodes: &[&str]) -> Self {
+        Self::start(root, group, nodes, true)
+    }
+    fn start(root: &Path, group: &str, nodes: &[&str], redis: bool) -> Self {
         let path = root.join("server.json");
         let credentials:Vec<_>=nodes.iter().enumerate().map(|(i,node)|serde_json::json!({"group_id":group,"node_id":node,"token_env":format!("MASH_TEST_TOKEN_{i}")})).collect();
-        std::fs::write(&path,serde_json::to_vec(&serde_json::json!({"version":1,"listen":"127.0.0.1:0","database_url_env":"MASH_TEST_PG_URL","nodes":credentials})).unwrap()).unwrap();
+        let config = if redis {
+            serde_json::json!({"version":1,"listen":"127.0.0.1:0","backend":"redis","redis_url_env":"MASH_TEST_REDIS_URL","nodes":credentials})
+        } else {
+            serde_json::json!({"version":1,"listen":"127.0.0.1:0","database_url_env":"MASH_TEST_PG_URL","nodes":credentials})
+        };
+        std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
         let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
         command
             .args(["serve", "--server-config", path.to_str().unwrap()])

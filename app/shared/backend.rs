@@ -10,12 +10,12 @@ use deadpool_postgres::{Pool, Transaction};
 use std::collections::HashMap;
 use tokio::io::AsyncBufReadExt;
 use tokio_postgres::Row;
-fn conflict(message: &str) -> AppError {
+pub(super) fn conflict(message: &str) -> AppError {
     let mut error = AppError::shared(message);
     error.error.kind = "conflict";
     error
 }
-fn valid_id(id: &str) -> Result<(), AppError> {
+pub(super) fn valid_id(id: &str) -> Result<(), AppError> {
     if id.is_empty() || id.len() > 4096 {
         Err(AppError::usage("invalid record identity"))
     } else {
@@ -170,27 +170,27 @@ async fn remove(tx: &Transaction<'_>, node: &str, id: &str) -> Result<(u64, u64)
         .map_err(pg_error)?;
     Ok((messages.cast_unsigned(), conversations))
 }
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct ConversationRecord {
-    id: String,
-    provider: String,
-    title: Option<String>,
-    created_at: Option<i64>,
-    updated_at: Option<i64>,
+pub(super) struct ConversationRecord {
+    pub id: String,
+    pub provider: String,
+    pub title: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
 }
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct MessageRecord {
-    id: String,
-    conversation_id: String,
-    ordinal: i64,
-    role: String,
-    content: String,
-    projection: String,
-    created_at: Option<i64>,
-    generation: Option<String>,
-    vector: Option<Vec<f64>>,
+pub(super) struct MessageRecord {
+    pub id: String,
+    pub conversation_id: String,
+    pub ordinal: i64,
+    pub role: String,
+    pub content: String,
+    pub projection: String,
+    pub created_at: Option<i64>,
+    pub generation: Option<String>,
+    pub vector: Option<Vec<f64>>,
 }
 async fn upload_batch(
     tx: &Transaction<'_>,
@@ -683,7 +683,7 @@ pub(super) async fn search(
             .collect(),
     })
 }
-fn valid_provider(provider: Option<&str>) -> Result<(), AppError> {
+pub(super) fn valid_provider(provider: Option<&str>) -> Result<(), AppError> {
     if provider.is_some_and(|p| !matches!(p, "codex" | "claude-code")) {
         Err(AppError::usage("unknown provider"))
     } else {

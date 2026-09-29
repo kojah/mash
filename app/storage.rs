@@ -35,7 +35,7 @@ enum FtsRefreshStrategy {
     Deferred,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub(crate) struct Counts {
     pub(crate) conversations: u64,
     pub(crate) messages: u64,

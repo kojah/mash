@@ -26,6 +26,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
+      redis:
+        image: redis:8.2
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
       postgres:
         image: pgvector/pgvector:pg17
         env:
@@ -71,6 +80,10 @@ jobs:
         run: cargo nextest run --profile ci --run-ignored only postgres_publication
         env:
           MASH_TEST_PG_URL: postgresql://postgres:mash-test@localhost:5432/mash_test?sslmode=disable
+      - name: Verify shared Redis publication
+        run: cargo nextest run --profile ci --run-ignored only redis_publication
+        env:
+          MASH_TEST_REDIS_URL: redis://localhost:6379/
       - run: cargo test --doc
       - run: sccache --show-stats
       - name: Save Cargo cache

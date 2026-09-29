@@ -7,6 +7,7 @@ const OTHER: &str = "test-api-token-other-32-bytes-long";
 
 struct Service {
     pool: Pool,
+    store: Store,
     url: String,
     group: String,
     task: tokio::task::JoinHandle<()>,
@@ -18,6 +19,9 @@ impl Drop for Service {
 }
 impl Service {
     async fn new(database: bool) -> Self {
+        Self::new_backend(database, false).await
+    }
+    async fn new_backend(database: bool, redis: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let group = format!(
             "api-{}",
@@ -63,8 +67,20 @@ impl Service {
         ]));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
+        let store = if redis {
+            Store::Redis(
+                super::super::redis_index::Store::connect(
+                    &std::env::var("MASH_TEST_REDIS_URL").unwrap(),
+                    &[group.clone(), format!("{group}-other")],
+                )
+                .await
+                .unwrap(),
+            )
+        } else {
+            Store::Postgres(pool.clone())
+        };
         let app = App {
-            pool: pool.clone(),
+            store: store.clone(),
             identities,
             uploads: Arc::new(tokio::sync::Semaphore::new(4)),
         };
@@ -73,6 +89,7 @@ impl Service {
         });
         Self {
             pool,
+            store,
             url,
             group,
             task,
@@ -110,15 +127,45 @@ impl Service {
             .unwrap()
     }
     async fn cleanup(&self) {
-        let client = self.pool.get().await.unwrap();
-        for group in [&self.group, &format!("{}-other", self.group)] {
-            client
-                .batch_execute(&format!(
-                    "DROP SCHEMA {} CASCADE",
-                    backend::group_schema(group)
-                ))
-                .await
-                .unwrap();
+        match &self.store {
+            Store::Postgres(pool) => {
+                let client = pool.get().await.unwrap();
+                for group in [&self.group, &format!("{}-other", self.group)] {
+                    client
+                        .batch_execute(&format!(
+                            "DROP SCHEMA {} CASCADE",
+                            backend::group_schema(group)
+                        ))
+                        .await
+                        .unwrap();
+                }
+            }
+            Store::Redis(_) => {
+                let client =
+                    redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
+                let mut connection = client.get_multiplexed_async_connection().await.unwrap();
+                for group in [&self.group, &format!("{}-other", self.group)] {
+                    let prefix = format!("mash:r:{}:", blake3::hash(group.as_bytes()).to_hex());
+                    redis::cmd("FT.DROPINDEX")
+                        .arg(format!("{prefix}index"))
+                        .arg("DD")
+                        .query_async::<()>(&mut connection)
+                        .await
+                        .unwrap();
+                    let keys: Vec<String> = redis::cmd("KEYS")
+                        .arg(format!("{prefix}*"))
+                        .query_async(&mut connection)
+                        .await
+                        .unwrap();
+                    if !keys.is_empty() {
+                        redis::cmd("DEL")
+                            .arg(keys)
+                            .query_async::<usize>(&mut connection)
+                            .await
+                            .unwrap();
+                    }
+                }
+            }
         }
     }
 }
@@ -198,7 +245,15 @@ async fn authorization_and_request_limits_apply_before_database_access() {
 #[ignore = "requires MASH_TEST_PG_URL pointing to disposable PostgreSQL with pgvector"]
 #[allow(clippy::too_many_lines)]
 async fn postgres_publication_http_authorization_vectors_groups_rollback_and_retry() {
-    let service = Service::new(true).await;
+    http_storage_contract(Service::new(true).await).await;
+}
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL pointing to disposable Redis Search"]
+async fn redis_publication_http_authorization_vectors_groups_rollback_and_retry() {
+    http_storage_contract(Service::new_backend(false, true).await).await;
+}
+#[allow(clippy::too_many_lines)]
+async fn http_storage_contract(service: Service) {
     let events = snapshot(1);
     let initial = service.upload(FIRST, &events).await;
     assert_eq!(
@@ -309,10 +364,11 @@ async fn postgres_publication_http_authorization_vectors_groups_rollback_and_ret
         left.status(),
         StatusCode::OK | StatusCode::CONFLICT
     ));
-    assert!(matches!(
-        right.status(),
-        StatusCode::OK | StatusCode::CONFLICT
-    ));
+    assert!(
+        matches!(right.status(), StatusCode::OK | StatusCode::CONFLICT),
+        "{}",
+        right.text().await.unwrap()
+    );
     assert_eq!(
         service.upload(FIRST, &events).await.status(),
         StatusCode::CONFLICT
@@ -335,6 +391,19 @@ async fn postgres_publication_http_authorization_vectors_groups_rollback_and_ret
         0,
         "tombstones survive replay"
     );
+    let mut old_generation = snapshot(2);
+    old_generation[2]["records"][0]["generation"] = json!("older-model-space");
+    assert_eq!(
+        service.upload(SECOND, &old_generation).await.status(),
+        StatusCode::OK
+    );
+    let incompatible = service
+        .request("search", FIRST)
+        .json(&search)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(incompatible.status(), StatusCode::SERVICE_UNAVAILABLE);
     service.cleanup().await;
 }
 
