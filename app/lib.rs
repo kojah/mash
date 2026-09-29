@@ -10,12 +10,12 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
-/// Runs achi with the process arguments and writes its JSON response.
+/// Runs mash with the process arguments and writes its JSON response.
 ///
 /// # Examples
 ///
 /// ```no_run
-/// let exit_code = achi::main_entry();
+/// let exit_code = mash::main_entry();
 /// std::process::exit(exit_code);
 /// ```
 #[must_use]

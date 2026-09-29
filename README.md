@@ -1,23 +1,23 @@
-# achi
+# mash
 
-achi (Agent Chat History Index) is a small, JSON-only search CLI for Claude Code and Codex JSONL
+mash (Multi-Agent Search History) is a small, JSON-only search CLI for Claude Code and Codex JSONL
 histories. SQLite is the canonical store; SQLite FTS5, local FastEmbed
 embeddings, reciprocal-rank fusion, and bounded cross-encoder reranking provide
-hybrid retrieval. achi can also federate searches and views across configured
+hybrid retrieval. mash can also federate searches and views across configured
 machines over SSH.
 
 ## Commands
 
 ```text
-achi index [--full] [--provider claude-code|codex]... [--since-days N|--all-history]
-achi search <query> [--node NAME]... [--limit N] [--provider PROVIDER] [--days N]
-achi view <message-id> [--node NAME] [--context N]
-achi status
-achi forget <conversation-id>
-achi models install
+mash index [--full] [--provider claude-code|codex]... [--since-days N|--all-history]
+mash search <query> [--node NAME]... [--limit N] [--provider PROVIDER] [--days N]
+mash view <message-id> [--node NAME] [--context N]
+mash status
+mash forget <conversation-id>
+mash models install
 ```
 
-All operational commands emit one JSON value. Bare `achi` prints help. Global
+All operational commands emit one JSON value. Bare `mash` prints help. Global
 options are `--config PATH`, `--local-node NAME`, `--db PATH`, and
 `--models-dir PATH`.
 
@@ -27,8 +27,8 @@ Search is semantic by default and has no production lexical-only mode. Install
 models explicitly, then build the local index:
 
 ```bash
-achi models install
-achi index
+mash models install
+mash index
 ```
 
 No other command downloads models. Indexing fingerprints sources and messages,
@@ -41,18 +41,24 @@ state. The default source horizon is 90 days; `--since-days N` overrides it and
 On Apple Silicon, indexing runs the FP32 embedding model through Core ML and
 quantizes only the resulting vectors for storage. Other targets use the
 quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
-`achi models install` once to install the FP32 asset and compile its Core ML
+`mash models install` once to install the FP32 asset and compile its Core ML
 cache.
 
-Without a configuration file, achi indexes these built-in roots when present:
+Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`
 - Codex: `~/.codex/sessions`, `~/.local/share/codex/sessions`
 
 ## Configuration
 
-achi reads `config.json` from the platform achi configuration directory. Use
-`achi status` to see the resolved path, or pass `--config PATH` explicitly.
+The rename changes the default configuration and data directories to `mash`,
+and the database filename to `mash.sqlite3`. To reuse an existing achi installation,
+pass its paths with `--config`, `--db`, and `--models-dir`, or move its configuration,
+database, and installed models into the new locations reported by `mash status`.
+Federated nodes must install `mash` at `~/.local/bin/mash`.
+
+mash reads `config.json` from the platform mash configuration directory. Use
+`mash status` to see the resolved path, or pass `--config PATH` explicitly.
 The file is strict, versioned JSON. Provider presence enables that provider for
 the node; roots must be absolute. `since_days` defaults to 90 and may be `null`
 for all history.
@@ -106,7 +112,7 @@ cargo test --doc
 ```
 
 The real-model integration test is ignored by default and requires
-`ACHI_TEST_MODELS_DIR` pointing at assets created by `achi models install`.
+`MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
 
 The Veritas test annotations come from the private `jamesqo/veritas`
 repository at the exact revision recorded in `Cargo.toml`. Contributors running
@@ -115,7 +121,7 @@ tests need repository access and a GitHub SSH identity that can clone Veritas.
 ## Automatic deployment
 
 Every push to `main` builds the Linux x86-64 and Apple Silicon binaries in
-GitHub Actions, then atomically deploys `achi` to `~/.local/bin` on Xenia,
+GitHub Actions, then atomically deploys `mash` to `~/.local/bin` on Xenia,
 dev-macbook, and personal-macbook over Tailscale. The macOS binary is
 cross-compiled on the Linux runner with `cargo-zigbuild`; destination machines
 need neither this repository nor a Rust toolchain.

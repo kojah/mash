@@ -89,7 +89,7 @@ fn version_eight_provider_fixture() -> String {
 #[test]
 fn supported_schema_migrates_once_and_preserves_rows() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let connection = Connection::open(&path).expect("seed database");
     connection
         .execute_batch(VERSION_SEVEN_SCHEMA_FIXTURE)
@@ -155,7 +155,7 @@ fn supported_schema_migrates_once_and_preserves_rows() {
 #[test]
 fn version_eight_migration_removes_every_unsupported_provider_surface() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let connection = Connection::open(&path).expect("seed database");
     let fixture = version_eight_provider_fixture();
     connection
@@ -255,7 +255,7 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
 #[test]
 fn newer_schema_is_rejected_without_rewriting_version() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let connection = Connection::open(&path).expect("seed database");
     connection
         .pragma_update(None, "user_version", SCHEMA_VERSION + 1)

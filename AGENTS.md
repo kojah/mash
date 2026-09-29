@@ -1,8 +1,8 @@
-# achi development instructions
+# mash development instructions
 
 ## Product boundary
 
-achi is a small JSON-only Rust CLI for Claude Code and Codex JSONL histories.
+mash is a small JSON-only Rust CLI for Claude Code and Codex JSONL histories.
 Keep the command surface limited to `index`, `search`, `view`, `status`,
 `forget`, and `models install`.
 
@@ -12,7 +12,7 @@ Keep the command surface limited to `index`, `search`, `view`, `status`,
   and bounded reranking.
 - Do not add provider traits, registries, daemons, ANN indexes, compatibility
   shims, alternate output modes, a TUI, export, analytics, sync, or watch mode.
-- Keep ingestion to the two concrete achi-owned JSONL parsers. Do not add
+- Keep ingestion to the two concrete mash-owned JSONL parsers. Do not add
   external application databases, event-log providers, provider traits,
   registries, plugin systems, or compatibility layers.
 - Never download models outside the explicit `models install` command.
@@ -49,7 +49,7 @@ env TMPDIR=/home/james/scratch/achi-tmp \
 ```
 
 The real-model integration test is ignored by default and requires an explicit
-`ACHI_TEST_MODELS_DIR` pointing at assets created by `achi models install`.
+`MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
 
 ## Git
 

@@ -5,7 +5,7 @@ use veritas_test_macros as veritas;
 #[test]
 fn semantic_readiness_changes_atomically_with_canonical_messages() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("original text"))
@@ -75,7 +75,7 @@ fn semantic_readiness_changes_atomically_with_canonical_messages() {
 #[test]
 fn dirty_search_state_survives_a_batch_and_rebuilds_after_resume() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .defer_search_updates()
@@ -120,7 +120,7 @@ fn dirty_search_state_survives_a_batch_and_rebuilds_after_resume() {
 #[test]
 fn committed_embedding_checkpoint_resumes_from_only_missing_rows() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation_with_messages(&[
@@ -208,7 +208,7 @@ fn quantized_embedding_blobs_are_validated() {
 #[test]
 fn malformed_semantic_chunk_metadata_is_rejected() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("packed vector"))
@@ -238,7 +238,7 @@ fn malformed_semantic_chunk_metadata_is_rejected() {
 #[test]
 fn semantic_chunks_bound_incremental_rewrites_to_affected_rowid_ranges() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("first chunk"))
@@ -331,7 +331,7 @@ fn semantic_chunks_bound_incremental_rewrites_to_affected_rowid_ranges() {
 #[test]
 fn current_embedding_generation_cleanup_preserves_packed_chunks() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("current generation"))
@@ -368,7 +368,7 @@ fn current_embedding_generation_cleanup_preserves_packed_chunks() {
 #[test]
 fn explicit_semantic_storage_identifiers_survive_vacuum() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("stable identifier"))
@@ -429,7 +429,7 @@ fn explicit_semantic_storage_identifiers_survive_vacuum() {
 #[test]
 fn stale_embedding_generation_is_excluded_and_replaced() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("generation proof"))
@@ -504,7 +504,7 @@ fn stale_embedding_generation_is_excluded_and_replaced() {
 #[test]
 fn changed_searchable_messages_are_transactionally_queued_for_embedding() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("searchable message"))

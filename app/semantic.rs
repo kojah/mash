@@ -130,7 +130,7 @@ impl Models {
     pub(crate) fn require_installed(&self) -> Result<(), AppError> {
         if !self.root.join(MARKER_NAME).is_file() {
             return Err(AppError::model(
-                "semantic models are not installed; run `achi models install`",
+                "semantic models are not installed; run `mash models install`",
             ));
         }
         self.read_valid_marker().map(|_| ())
@@ -217,7 +217,7 @@ impl Models {
             || marker.files.is_empty()
         {
             return Err(AppError::model(
-                "model marker does not match this achi build",
+                "model marker does not match this mash build",
             ));
         }
         for file in &marker.files {
@@ -963,9 +963,9 @@ mod tests {
 
     #[veritas::claims("semantic-indexing/batching-preserves-vectors")]
     #[test]
-    #[ignore = "requires ACHI_TEST_MODELS_DIR containing an explicit model installation"]
+    #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
     fn real_model_length_aware_batches_preserve_quantized_vectors() {
-        let models = std::env::var_os("ACHI_TEST_MODELS_DIR")
+        let models = std::env::var_os("MASH_TEST_MODELS_DIR")
             .map(PathBuf::from)
             .expect("explicit model directory");
         let mut backend = Backend::load_local(&models).expect("load reference models");

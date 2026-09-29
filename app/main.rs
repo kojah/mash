@@ -1,3 +1,3 @@
 fn main() {
-    std::process::exit(achi::main_entry());
+    std::process::exit(mash::main_entry());
 }

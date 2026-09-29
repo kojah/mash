@@ -18,9 +18,9 @@ use crate::semantic::{self, Models};
 use crate::storage::Storage;
 
 #[derive(Debug, Parser)]
-#[command(name = "achi", version, about, arg_required_else_help = true)]
+#[command(name = "mash", version, about, arg_required_else_help = true)]
 struct Cli {
-    /// Versioned achi node and provider configuration.
+    /// Versioned mash node and provider configuration.
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<PathBuf>,
 
@@ -28,7 +28,7 @@ struct Cli {
     #[arg(long, global = true, value_name = "NAME")]
     local_node: Option<String>,
 
-    /// Canonical achi SQLite database.
+    /// Canonical mash SQLite database.
     #[arg(long, global = true, value_name = "PATH")]
     db: Option<PathBuf>,
 
@@ -372,7 +372,7 @@ fn index(
         storage.commit_and_continue_writer()?;
         let model_started = Instant::now();
         let mut embedding_pool = models.load_indexer()?.ok_or_else(|| {
-            AppError::model("semantic models are not installed; run `achi models install`")
+            AppError::model("semantic models are not installed; run `mash models install`")
         })?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
         semantic::rebuild_embeddings(&mut storage, &mut embedding_pool, emit_embedding_progress)?
@@ -526,11 +526,11 @@ fn local_search(
         || !storage.semantic_index_is_ready(semantic::embedding_generation())?
     {
         return Err(AppError::search_not_ready(
-            "semantic index is incomplete; run `achi index`",
+            "semantic index is incomplete; run `mash index`",
         ));
     }
     let mut backend = models.load()?.ok_or_else(|| {
-        AppError::model("semantic models are not installed; run `achi models install`")
+        AppError::model("semantic models are not installed; run `mash models install`")
     })?;
     let results = semantic::hybrid_search(&storage, &mut backend, &query, limit, provider, days)?;
     Ok(SearchResponse {
@@ -735,14 +735,14 @@ fn forget(database_path: &Path, id: String) -> Result<Response, AppError> {
 }
 
 fn default_database_path() -> PathBuf {
-    ProjectDirs::from("dev", "jamesqo", "achi").map_or_else(
-        || PathBuf::from("achi.sqlite3"),
-        |directories| directories.data_local_dir().join("achi.sqlite3"),
+    ProjectDirs::from("dev", "jamesqo", "mash").map_or_else(
+        || PathBuf::from("mash.sqlite3"),
+        |directories| directories.data_local_dir().join("mash.sqlite3"),
     )
 }
 
 fn default_models_path() -> PathBuf {
-    ProjectDirs::from("dev", "jamesqo", "achi").map_or_else(
+    ProjectDirs::from("dev", "jamesqo", "mash").map_or_else(
         || PathBuf::from("models"),
         |directories| directories.data_local_dir().join("models"),
     )
@@ -803,7 +803,7 @@ mod tests {
         codex_enabled: bool,
         since_days: Option<u32>,
     ) -> ResolvedConfig {
-        let root = std::env::temp_dir().join("achi-cli-options");
+        let root = std::env::temp_dir().join("mash-cli-options");
         ResolvedConfig {
             path: root.join("config.json"),
             loaded: true,

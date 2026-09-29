@@ -514,7 +514,7 @@ fn run_ssh(
             "ServerAliveCountMax=2",
             "--",
             node,
-            "~/.local/bin/achi",
+            "~/.local/bin/mash",
             operation,
             "--federation-request",
         ])
@@ -718,7 +718,7 @@ mod tests {
             concat!(
                 "shift 9\n",
                 "test \"$1\" = 'tailscale-destination' || exit 17\n",
-                "test \"$2\" = '~/.local/bin/achi' || exit 18\n",
+                "test \"$2\" = '~/.local/bin/mash' || exit 18\n",
                 "operation=$3\n",
                 "test \"$4\" = '--federation-request' || exit 19\n",
                 "cat >/dev/null\n",

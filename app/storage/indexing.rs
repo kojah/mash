@@ -14,21 +14,21 @@ impl Storage {
     pub(crate) fn begin_provider_scan(&self) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection
-            .execute_batch("SAVEPOINT achi_provider_scan")
+            .execute_batch("SAVEPOINT mash_provider_scan")
             .map_err(AppError::database)
     }
 
     pub(crate) fn finish_provider_scan(&self) -> Result<(), AppError> {
         self.connection
-            .execute_batch("RELEASE achi_provider_scan")
+            .execute_batch("RELEASE mash_provider_scan")
             .map_err(AppError::database)
     }
 
     pub(crate) fn rollback_provider_scan(&self) -> Result<(), AppError> {
         self.connection
             .execute_batch(
-                "ROLLBACK TO achi_provider_scan;
-                 RELEASE achi_provider_scan;",
+                "ROLLBACK TO mash_provider_scan;
+                 RELEASE mash_provider_scan;",
             )
             .map_err(AppError::database)
     }

@@ -1,11 +1,11 @@
 [package]
-name = "achi"
+name = "mash"
 version = "0.7.0"
 edition = "2024"
-description = "Agent Chat History Index for Claude Code and Codex JSONL sessions"
+description = "Multi-Agent Search History for Claude Code and Codex JSONL sessions"
 license = "MIT"
-repository = "https://github.com/kojah/achi"
-default-run = "achi"
+repository = "https://github.com/kojah/mash"
+default-run = "mash"
 autobins = false
 autotests = false
 autoexamples = false
@@ -16,7 +16,7 @@ build = false
 path = "app/lib.rs"
 
 [[bin]]
-name = "achi"
+name = "mash"
 path = "app/main.rs"
 test = false
 

@@ -166,7 +166,7 @@ pub(crate) fn load(
 }
 
 fn default_config_path() -> Result<PathBuf, AppError> {
-    let path = ProjectDirs::from("dev", "jamesqo", "achi")
+    let path = ProjectDirs::from("dev", "jamesqo", "mash")
         .ok_or_else(|| AppError::configuration("platform configuration directory is unavailable"))?
         .config_dir()
         .join("config.json");

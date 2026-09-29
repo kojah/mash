@@ -10,14 +10,14 @@ use serde_json::Value;
 use veritas_test_macros as veritas;
 
 fn run_json(arguments: &[&str]) -> Value {
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args(arguments)
         .output()
-        .expect("run achi");
+        .expect("run mash");
     assert!(
         output.status.success(),
-        "achi failed: {}",
+        "mash failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).expect("JSON response")
@@ -51,12 +51,12 @@ fn run_search_with_legacy_node_environment(
     root: &Path,
     log: &Path,
 ) -> std::process::Output {
-    Command::cargo_bin("achi")
-        .expect("achi binary")
+    Command::cargo_bin("mash")
+        .expect("mash binary")
         .env("PATH", path)
         .envs([("XDG_CONFIG_HOME", root), ("XDG_DATA_HOME", root)])
-        .env("ACHI_FAKE_SSH_LOG", log)
-        .env("ACHI_SEARCH_NODES", "dev-macbook")
+        .env("MASH_FAKE_SSH_LOG", log)
+        .env("MASH_SEARCH_NODES", "dev-macbook")
         .args(["search", "query"])
         .output()
         .expect("local-only search")
@@ -263,16 +263,16 @@ fn legacy_provider_root_environment_variables_are_ignored() {
     std::fs::create_dir_all(&home).expect("home");
     std::fs::create_dir_all(&config_home).expect("config home");
     let injected = directory.path().join("injected");
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .env("HOME", &home)
         .env("XDG_CONFIG_HOME", &config_home)
-        .env("ACHI_CLAUDE_ROOTS", &injected)
-        .env("ACHI_CODEX_ROOTS", &injected)
-        .env("ACHI_OPENCODE_ROOTS", &injected)
-        .env("ACHI_COPILOT_ROOTS", &injected)
-        .env("ACHI_HERMES_ROOTS", &injected)
-        .env("ACHI_PI_ROOTS", &injected)
+        .env("MASH_CLAUDE_ROOTS", &injected)
+        .env("MASH_CODEX_ROOTS", &injected)
+        .env("MASH_OPENCODE_ROOTS", &injected)
+        .env("MASH_COPILOT_ROOTS", &injected)
+        .env("MASH_HERMES_ROOTS", &injected)
+        .env("MASH_PI_ROOTS", &injected)
         .args([
             "--db",
             directory.path().join("missing.sqlite3").to_str().unwrap(),
@@ -289,7 +289,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
     assert_eq!(
         body["configuration"],
         serde_json::json!({
-            "path": config_home.join("achi/config.json"),
+            "path": config_home.join("mash/config.json"),
             "loaded": false,
             "local_node": null,
             "providers": {
@@ -331,13 +331,13 @@ fn every_public_command_rejects_malformed_configuration_before_effects() {
         let config = if explicit {
             directory.path().join("config.json")
         } else {
-            xdg.join("achi/config.json")
+            xdg.join("mash/config.json")
         };
-        let database = directory.path().join("achi.sqlite3");
+        let database = directory.path().join("mash.sqlite3");
         let models = directory.path().join("models");
         std::fs::create_dir_all(config.parent().expect("config parent")).expect("config parent");
         std::fs::write(&config, "{").expect("malformed configuration");
-        let mut command = Command::cargo_bin("achi").expect("achi binary");
+        let mut command = Command::cargo_bin("mash").expect("mash binary");
         if explicit {
             command.args(["--config", config.to_str().unwrap()]);
         } else {
@@ -382,7 +382,7 @@ fn hidden_workers_are_config_blind_and_reject_explicit_config_flags() {
         ),
     ] {
         for explicit_flag in ["config", "local-node"] {
-            let mut command = Command::cargo_bin("achi").expect("achi binary");
+            let mut command = Command::cargo_bin("mash").expect("mash binary");
             if explicit_flag == "config" {
                 command.args(["--config", explicit.to_str().unwrap()]);
             } else {
@@ -399,7 +399,7 @@ fn hidden_workers_are_config_blind_and_reject_explicit_config_flags() {
     }
 
     let xdg = directory.path().join("xdg");
-    let default_config = xdg.join("achi/config.json");
+    let default_config = xdg.join("mash/config.json");
     std::fs::create_dir_all(default_config.parent().expect("config parent"))
         .expect("default config parent");
     std::fs::write(default_config, "{").expect("malformed default config");
@@ -415,8 +415,8 @@ fn hidden_workers_are_config_blind_and_reject_explicit_config_flags() {
             "database-missing",
         ),
     ] {
-        let worker_output = Command::cargo_bin("achi")
-            .expect("achi binary")
+        let worker_output = Command::cargo_bin("mash")
+            .expect("mash binary")
             .env("XDG_CONFIG_HOME", &xdg)
             .args([
                 "--db",
@@ -440,14 +440,14 @@ fn hidden_workers_are_config_blind_and_reject_explicit_config_flags() {
 fn hidden_workers_never_start_ssh_from_config_or_environment() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let xdg = directory.path().join("xdg");
-    let config = xdg.join("achi/config.json");
+    let config = xdg.join("mash/config.json");
     std::fs::create_dir_all(config.parent().unwrap()).expect("config parent");
     write_federation_config(&config);
     let log = directory.path().join("ssh.log");
     let ssh = directory.path().join("ssh");
     std::fs::write(
         &ssh,
-        "#!/bin/sh\nprintf started >> \"$ACHI_FAKE_SSH_LOG\"\nexit 23\n",
+        "#!/bin/sh\nprintf started >> \"$MASH_FAKE_SSH_LOG\"\nexit 23\n",
     )
     .expect("fake ssh");
     let mut permissions = std::fs::metadata(&ssh).unwrap().permissions();
@@ -470,12 +470,12 @@ fn hidden_workers_never_start_ssh_from_config_or_environment() {
             "database-missing",
         ),
     ] {
-        let output = Command::cargo_bin("achi")
-            .expect("achi binary")
+        let output = Command::cargo_bin("mash")
+            .expect("mash binary")
             .env("PATH", &path)
             .env("XDG_CONFIG_HOME", &xdg)
-            .env("ACHI_SEARCH_NODES", "dev-macbook")
-            .env("ACHI_FAKE_SSH_LOG", &log)
+            .env("MASH_SEARCH_NODES", "dev-macbook")
+            .env("MASH_FAKE_SSH_LOG", &log)
             .args([
                 "--db",
                 directory.path().join("missing.sqlite3").to_str().unwrap(),
@@ -517,7 +517,7 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
         .expect("config JSON"),
     )
     .expect("config");
-    let database = directory.path().join("achi.sqlite3");
+    let database = directory.path().join("mash.sqlite3");
     let models = directory.path().join("models");
     for arguments in [
         vec!["--provider", "opencode"],
@@ -525,8 +525,8 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
         vec!["--since-days", "0"],
         vec!["--since-days", "30", "--all-history"],
     ] {
-        let output = Command::cargo_bin("achi")
-            .expect("achi binary")
+        let output = Command::cargo_bin("mash")
+            .expect("mash binary")
             .args(["--config", config.to_str().unwrap()])
             .args(["--db", database.to_str().unwrap()])
             .args(["--models-dir", models.to_str().unwrap()])
@@ -540,8 +540,8 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
         assert!(!models.exists());
     }
 
-    let accepted = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let accepted = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args(["--config", config.to_str().unwrap()])
         .args(["--db", database.to_str().unwrap()])
         .args(["--models-dir", models.to_str().unwrap()])
@@ -564,8 +564,8 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
 #[veritas::claims("cli/bare-invocation-prints-help")]
 #[test]
 fn bare_invocation_prints_help_without_starting_an_interface() {
-    Command::cargo_bin("achi")
-        .expect("achi binary")
+    Command::cargo_bin("mash")
+        .expect("mash binary")
         .assert()
         .failure()
         .stderr(predicate::str::contains("Usage:"));
@@ -575,8 +575,8 @@ fn bare_invocation_prints_help_without_starting_an_interface() {
 #[test]
 fn removed_commands_are_rejected() {
     for command in ["export", "doctor", "list", "sources"] {
-        Command::cargo_bin("achi")
-            .expect("achi binary")
+        Command::cargo_bin("mash")
+            .expect("mash binary")
             .arg(command)
             .assert()
             .failure();
@@ -587,10 +587,10 @@ fn removed_commands_are_rejected() {
 #[test]
 fn index_without_models_fails_before_creating_the_database() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let database = directory.path().join("achi.sqlite3");
+    let database = directory.path().join("mash.sqlite3");
     let models = directory.path().join("models");
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args([
             "--db",
             database.to_str().unwrap(),
@@ -614,7 +614,7 @@ fn index_without_models_fails_before_creating_the_database() {
 #[test]
 fn index_without_pending_embeddings_validates_but_does_not_load_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let database = directory.path().join("achi.sqlite3");
+    let database = directory.path().join("mash.sqlite3");
     let models = directory.path().join("models");
     let config = directory.path().join("config.json");
     let claude = directory.path().join("claude");
@@ -625,8 +625,8 @@ fn index_without_pending_embeddings_validates_but_does_not_load_models() {
     create_valid_model_marker(&models);
     write_config(&config, "test-node", &claude, &codex);
 
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args(["--config", config.to_str().unwrap()])
         .args(["--db", database.to_str().unwrap()])
         .args(["--models-dir", models.to_str().unwrap()])
@@ -649,8 +649,8 @@ fn index_without_pending_embeddings_validates_but_does_not_load_models() {
 fn search_without_models_fails_before_database_access() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args([
             "--db",
             directory.path().join("missing.sqlite3").to_str().unwrap(),
@@ -675,12 +675,12 @@ fn search_without_models_fails_before_database_access() {
 fn search_with_missing_embeddings_recommends_index_without_loading_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");
-    let database = directory.path().join("achi.sqlite3");
+    let database = directory.path().join("mash.sqlite3");
     create_valid_model_marker(&models);
     seed_readiness_database(&database, None);
 
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args([
             "--db",
             database.to_str().unwrap(),
@@ -706,11 +706,11 @@ fn invalid_installed_assets_fail_without_lexical_results() {
     let models = directory.path().join("models");
     std::fs::create_dir_all(&models).expect("model root");
     std::fs::write(models.join("installed.json"), "not-json").expect("broken marker");
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args([
             "--db",
-            directory.path().join("achi.sqlite3").to_str().unwrap(),
+            directory.path().join("mash.sqlite3").to_str().unwrap(),
             "--models-dir",
             models.to_str().unwrap(),
             "search",
@@ -733,11 +733,11 @@ fn missing_listed_model_asset_is_a_typed_model_error() {
     let models = directory.path().join("models");
     create_valid_model_marker(&models);
     std::fs::remove_file(models.join("dummy-model")).expect("remove listed model asset");
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args([
             "--db",
-            directory.path().join("achi.sqlite3").to_str().unwrap(),
+            directory.path().join("mash.sqlite3").to_str().unwrap(),
             "--models-dir",
             models.to_str().unwrap(),
             "search",
@@ -941,8 +941,8 @@ fn federated_search_fails_when_local_semantic_search_is_unready() {
     ))
     .expect("fake ssh path");
 
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .env("PATH", path)
         .args([
             "--config",
@@ -988,10 +988,10 @@ fn configured_federation_uses_inventory_destinations_and_logical_names() {
             "destination=$1\n",
             "operation=$3\n",
             "if test \"$destination\" = dev-tail || test \"$destination\" = backup-tail; then\n",
-            "  touch \"$ACHI_FAKE_SSH_SYNC/$destination\"\n",
-            "  while ! test -e \"$ACHI_FAKE_SSH_SYNC/dev-tail\" || ! test -e \"$ACHI_FAKE_SSH_SYNC/backup-tail\"; do sleep 0.01; done\n",
+            "  touch \"$MASH_FAKE_SSH_SYNC/$destination\"\n",
+            "  while ! test -e \"$MASH_FAKE_SSH_SYNC/dev-tail\" || ! test -e \"$MASH_FAKE_SSH_SYNC/backup-tail\"; do sleep 0.01; done\n",
             "fi\n",
-            "printf '%s %s\\n' \"$destination\" \"$operation\" >> \"$ACHI_FAKE_SSH_LOG\"\n",
+            "printf '%s %s\\n' \"$destination\" \"$operation\" >> \"$MASH_FAKE_SSH_LOG\"\n",
             "cat >/dev/null\n",
             "if test \"$operation\" = search; then\n",
             "  printf '%s\\n' '{\"protocol\":2,\"kind\":\"search\",\"response\":{\"query\":\"query\",\"realized_mode\":\"hybrid\",\"results\":[]}}'\n",
@@ -1010,11 +1010,11 @@ fn configured_federation_uses_inventory_destinations_and_logical_names() {
     .expect("fake ssh path");
 
     let run_search = |nodes: &[&str]| {
-        let mut command = Command::cargo_bin("achi").expect("achi binary");
+        let mut command = Command::cargo_bin("mash").expect("mash binary");
         command
             .env("PATH", &path)
-            .env("ACHI_FAKE_SSH_LOG", &log)
-            .env("ACHI_FAKE_SSH_SYNC", directory.path())
+            .env("MASH_FAKE_SSH_LOG", &log)
+            .env("MASH_FAKE_SSH_SYNC", directory.path())
             .args(["--config", config.to_str().unwrap()])
             .args([
                 "--db",
@@ -1051,10 +1051,10 @@ fn configured_federation_uses_inventory_destinations_and_logical_names() {
     }
 
     std::fs::write(&log, "").expect("clear log");
-    let viewed = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let viewed = Command::cargo_bin("mash")
+        .expect("mash binary")
         .env("PATH", &path)
-        .env("ACHI_FAKE_SSH_LOG", &log)
+        .env("MASH_FAKE_SSH_LOG", &log)
         .args(["--config", config.to_str().unwrap()])
         .args(["view", "message", "--node", "personal-macbook"])
         .output()
@@ -1086,7 +1086,7 @@ fn explicit_remote_nodes_require_configuration_before_local_work_or_ssh() {
     let ssh = directory.path().join("ssh");
     std::fs::write(
         &ssh,
-        "#!/bin/sh\nprintf started >> \"$ACHI_FAKE_SSH_LOG\"\nexit 23\n",
+        "#!/bin/sh\nprintf started >> \"$MASH_FAKE_SSH_LOG\"\nexit 23\n",
     )
     .expect("fake ssh");
     let mut permissions = std::fs::metadata(&ssh).unwrap().permissions();
@@ -1101,14 +1101,14 @@ fn explicit_remote_nodes_require_configuration_before_local_work_or_ssh() {
         ["search", "query", "--node", "dev-macbook"],
         ["view", "message", "--node", "dev-macbook"],
     ] {
-        let output = Command::cargo_bin("achi")
-            .expect("achi binary")
+        let output = Command::cargo_bin("mash")
+            .expect("mash binary")
             .env("PATH", &path)
             .envs([
                 ("XDG_CONFIG_HOME", directory.path()),
                 ("XDG_DATA_HOME", directory.path()),
             ])
-            .env("ACHI_FAKE_SSH_LOG", &log)
+            .env("MASH_FAKE_SSH_LOG", &log)
             .args(arguments)
             .output()
             .expect("explicit node without configuration");
@@ -1122,7 +1122,7 @@ fn explicit_remote_nodes_require_configuration_before_local_work_or_ssh() {
 #[test]
 fn view_returns_context_only_canonical_content_without_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let database = directory.path().join("achi.sqlite3");
+    let database = directory.path().join("mash.sqlite3");
     seed_readiness_database(&database, Some(""));
     let viewed = run_json(&[
         "--db",
@@ -1178,9 +1178,9 @@ fn maintained_repository_is_independent_and_minimal() {
     "search/mixed-message-excludes-tool-result-text"
 )]
 #[test]
-#[ignore = "requires ACHI_TEST_MODELS_DIR containing an explicit model installation"]
+#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 fn real_models_index_and_run_hybrid_search() {
-    let models = std::env::var_os("ACHI_TEST_MODELS_DIR")
+    let models = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(std::path::PathBuf::from)
         .expect("explicit model directory");
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -1200,12 +1200,12 @@ fn real_models_index_and_run_hybrid_search() {
         ),
     )
     .expect("Claude fixture");
-    let database = directory.path().join("achi.sqlite3");
+    let database = directory.path().join("mash.sqlite3");
     let config = directory.path().join("config.json");
     write_config(&config, "test-node", &claude, &codex);
     let model_arg = models.to_str().unwrap();
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args([
             "--config",
             config.to_str().unwrap(),
@@ -1263,15 +1263,15 @@ fn real_models_index_and_run_hybrid_search() {
 
 #[veritas::claims("semantic-indexing/cold-throughput-target")]
 #[test]
-#[ignore = "requires explicit ACHI_BENCHMARK_DB, ACHI_BENCHMARK_CONFIG, and ACHI_TEST_MODELS_DIR"]
+#[ignore = "requires explicit MASH_BENCHMARK_DB, MASH_BENCHMARK_CONFIG, and MASH_TEST_MODELS_DIR"]
 fn benchmark_real_corpus_semantic_generation() {
-    let source = std::env::var_os("ACHI_BENCHMARK_DB")
+    let source = std::env::var_os("MASH_BENCHMARK_DB")
         .map(std::path::PathBuf::from)
         .expect("explicit benchmark source database");
-    let config = std::env::var_os("ACHI_BENCHMARK_CONFIG")
+    let config = std::env::var_os("MASH_BENCHMARK_CONFIG")
         .map(std::path::PathBuf::from)
         .expect("explicit benchmark configuration");
-    let models = std::env::var_os("ACHI_TEST_MODELS_DIR")
+    let models = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(std::path::PathBuf::from)
         .expect("explicit model directory");
     let directory = tempfile::tempdir().expect("temporary benchmark directory");
@@ -1289,8 +1289,8 @@ fn benchmark_real_corpus_semantic_generation() {
         .expect("clear derived embeddings");
     drop(connection);
 
-    let output = Command::cargo_bin("achi")
-        .expect("achi binary")
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
         .args([
             "--config",
             config.to_str().unwrap(),

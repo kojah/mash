@@ -7,7 +7,7 @@ use veritas_test_macros as veritas;
 #[test]
 fn full_rebuild_is_idempotent() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let mut storage = Storage::open(&directory.path().join("achi.sqlite3")).expect("open database");
+    let mut storage = Storage::open(&directory.path().join("mash.sqlite3")).expect("open database");
     storage
         .rebuild_derived_search_state()
         .expect("first rebuild");
@@ -23,7 +23,7 @@ fn full_rebuild_is_idempotent() {
 #[test]
 fn writer_checkpoint_survives_a_later_rollback() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("durable needle"))
@@ -56,7 +56,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
 #[test]
 fn incremental_fts_and_canonical_changes_roll_back_together() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("durable old term"))
@@ -98,7 +98,7 @@ fn incremental_fts_and_canonical_changes_roll_back_together() {
 #[test]
 fn bulk_fts_and_canonical_changes_roll_back_together() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("durable bulk term"))
@@ -298,7 +298,7 @@ fn incremental_and_bulk_fts_produce_equivalent_results() {
 #[test]
 fn search_projection_controls_fts_embeddings_and_rerank_text_not_view() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut corpus = conversation_with_messages(&[
         ("tool-only", "private tool payload"),
         ("mixed", "visible request\nprivate mixed payload"),
@@ -397,7 +397,7 @@ fn search_projection_controls_fts_embeddings_and_rerank_text_not_view() {
 #[test]
 fn bulk_fts_refresh_preserves_unchanged_embeddings() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation_with_messages(&[
@@ -453,7 +453,7 @@ fn bulk_fts_refresh_preserves_unchanged_embeddings() {
 fn benchmark_fts_refresh_crossover() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let benchmark_path = directory.path().join("benchmark.sqlite3");
-    if let Some(source) = std::env::var_os("ACHI_FTS_BENCH_DB") {
+    if let Some(source) = std::env::var_os("MASH_FTS_BENCH_DB") {
         let source = Connection::open(PathBuf::from(source)).expect("open benchmark source");
         source
             .execute(
@@ -551,7 +551,7 @@ fn benchmark_fts_refresh_crossover() {
 #[test]
 fn full_rebuild_defers_per_message_search_writes() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut storage = Storage::open_writer(&path).expect("writer");
     storage
         .defer_search_updates()
@@ -584,7 +584,7 @@ fn full_rebuild_defers_per_message_search_writes() {
 #[test]
 fn concurrent_writer_is_rejected_and_first_writer_can_commit() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut first = Storage::open_writer(&path).expect("first writer");
     let error = Storage::open_writer(&path)
         .err()
@@ -601,7 +601,7 @@ fn concurrent_writer_is_rejected_and_first_writer_can_commit() {
 #[test]
 fn conversation_reconciliation_writes_only_changed_messages() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut storage = Storage::open_writer(&path).expect("writer");
     let first = storage
         .replace_conversation(&conversation("first"))
@@ -647,7 +647,7 @@ fn conversation_reconciliation_writes_only_changed_messages() {
 #[test]
 fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut storage = Storage::open_writer(&path).expect("writer");
     storage
         .replace_conversation(&conversation("first"))
@@ -673,7 +673,7 @@ fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal
 #[test]
 fn purging_a_conversation_removes_its_staged_fts_rows() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("disappearing sentinel"))
@@ -707,7 +707,7 @@ fn purging_a_conversation_removes_its_staged_fts_rows() {
 #[test]
 fn tombstone_prevents_reinsertion() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
         .replace_conversation(&conversation("remember me"))
@@ -731,7 +731,7 @@ fn tombstone_prevents_reinsertion() {
 #[test]
 fn ordinary_writer_commits_leave_wal_checkpointing_to_sqlite() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let path = directory.path().join("achi.sqlite3");
+    let path = directory.path().join("mash.sqlite3");
     let wal_path = std::path::PathBuf::from(format!("{}-wal", path.display()));
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer

@@ -1168,7 +1168,7 @@ mod tests {
     #[test]
     fn purge_requires_a_complete_provider_scan() {
         let directory = tempfile::tempdir().expect("temporary directory");
-        let database = directory.path().join("achi.sqlite3");
+        let database = directory.path().join("mash.sqlite3");
         let claude_root = directory.path().join("claude");
         fs::create_dir_all(&claude_root).expect("Claude root");
         let missing_source = claude_root.join("missing.jsonl");
@@ -1247,7 +1247,7 @@ mod tests {
         )
         .expect("Codex fixture");
         let mut writer =
-            Storage::open_writer(&directory.path().join("achi.sqlite3")).expect("writer");
+            Storage::open_writer(&directory.path().join("mash.sqlite3")).expect("writer");
         let summary = index(
             &mut writer,
             &IndexOptions {
@@ -1298,7 +1298,7 @@ mod tests {
             since_days: None,
         };
         let mut writer =
-            Storage::open_writer(&directory.path().join("achi.sqlite3")).expect("writer");
+            Storage::open_writer(&directory.path().join("mash.sqlite3")).expect("writer");
 
         let error = index(&mut writer, &options).err().expect("missing root");
 
@@ -1314,7 +1314,7 @@ mod tests {
         let root = directory.path().join("claude");
         fs::create_dir(&root).expect("Claude root");
         write_claude_session(&root.join("session.jsonl"), "session", "durable sentinel");
-        let database = directory.path().join("achi.sqlite3");
+        let database = directory.path().join("mash.sqlite3");
         let options = IndexOptions {
             claude_code: Some(vec![root.clone()]),
             codex: None,
@@ -1356,7 +1356,7 @@ mod tests {
         fs::create_dir(&root).expect("configured root");
         let discovery = discover_jsonl_files(std::slice::from_ref(&root), true)
             .expect("initial empty discovery");
-        let database = directory.path().join("achi.sqlite3");
+        let database = directory.path().join("mash.sqlite3");
         let mut writer = Storage::open_writer(&database).expect("seed writer");
         writer
             .replace_conversation(&test_conversation(
@@ -1396,7 +1396,7 @@ mod tests {
     #[test]
     fn late_configured_source_failure_rolls_back_provider_changes() {
         let directory = tempfile::tempdir().expect("temporary directory");
-        let database = directory.path().join("achi.sqlite3");
+        let database = directory.path().join("mash.sqlite3");
         let old_source = directory.path().join("old.jsonl");
         let mut writer = Storage::open_writer(&database).expect("seed writer");
         for (id, content) in [("existing", "durable sentinel"), ("forgotten", "forgotten")] {
@@ -1508,7 +1508,7 @@ mod tests {
         let boundary = run_started - Duration::from_hours(90 * 24);
         set_modified(&old_path, boundary - Duration::from_nanos(1));
         set_modified(&recent_path, boundary);
-        let database = directory.path().join("achi.sqlite3");
+        let database = directory.path().join("mash.sqlite3");
         let bounded = IndexOptions {
             claude_code: Some(vec![root.clone()]),
             codex: None,
@@ -1587,7 +1587,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temporary directory");
         let root = directory.path().join("codex");
         fs::create_dir(&root).expect("Codex root");
-        let database = directory.path().join("achi.sqlite3");
+        let database = directory.path().join("mash.sqlite3");
         let mut writer = Storage::open_writer(&database).expect("writer");
         for (id, provider, source_path) in [
             (

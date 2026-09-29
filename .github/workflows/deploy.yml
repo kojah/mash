@@ -1,4 +1,4 @@
-name: Deploy achi
+name: Deploy mash
 
 on:
   push:
@@ -9,16 +9,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-achi-main
+  group: deploy-mash-main
   cancel-in-progress: false
 
 jobs:
   deploy:
     uses: jamesqo/gha-workflows/.github/workflows/rust-cli-deploy.yml@v3
     with:
-      binary: achi
+      binary: mash
       rust-toolchain: nightly
-      cache-prefix: achi
+      cache-prefix: mash
       rustflags: -Zunstable-options --jobs-frontend=4
       private-git: true
       deploy-targets: >-
