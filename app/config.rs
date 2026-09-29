@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use directories::{BaseDirs, ProjectDirs};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
@@ -169,29 +169,12 @@ struct RawProvider {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawIndex {
+    since_days: Option<u32>,
     #[serde(default)]
-    since_days: RawSinceDays,
+    all_history: bool,
     destination: Option<IndexDestination>,
     local: Option<IndexFilter>,
     shared: Option<IndexFilter>,
-}
-
-#[derive(Debug)]
-struct RawSinceDays(Option<u32>);
-
-impl Default for RawSinceDays {
-    fn default() -> Self {
-        Self(Some(DEFAULT_SINCE_DAYS))
-    }
-}
-
-impl<'de> Deserialize<'de> for RawSinceDays {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Option::<u32>::deserialize(deserializer).map(Self)
-    }
 }
 
 pub(crate) fn load(explicit_path: Option<&Path>) -> Result<ResolvedConfig, AppError> {
@@ -202,7 +185,7 @@ fn default_config_path() -> Result<PathBuf, AppError> {
     let path = ProjectDirs::from("dev", "jamesqo", "mash")
         .ok_or_else(|| AppError::configuration("platform configuration directory is unavailable"))?
         .config_dir()
-        .join("config.json");
+        .join("config.toml");
     if !path.is_absolute() {
         return Err(AppError::configuration(
             "platform configuration path is not absolute",
@@ -325,11 +308,11 @@ fn path_error(operation: &str, path: &Path, error: &io::Error) -> AppError {
 }
 
 fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
-    let value: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|error| AppError::configuration(format!("invalid configuration JSON: {error}")))?;
-    validate_object_shapes(&value)?;
-    let raw: RawDocument = serde_json::from_value(value)
-        .map_err(|error| AppError::configuration(format!("invalid configuration JSON: {error}")))?;
+    let contents = std::str::from_utf8(bytes)
+        .map_err(|_| AppError::configuration("configuration must be UTF-8 TOML"))?;
+    let raw: RawDocument = toml::from_str(contents).map_err(|error: toml::de::Error| {
+        AppError::configuration(format!("invalid configuration TOML: {}", error.message()))
+    })?;
     if raw.version != 1 {
         return Err(AppError::configuration(format!(
             "unsupported configuration version: {}",
@@ -339,7 +322,16 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     if let Some(embeddings) = &raw.embeddings {
         embeddings.validate()?;
     }
-    let since_days = raw.index.since_days.0;
+    if raw.index.all_history && raw.index.since_days.is_some() {
+        return Err(AppError::configuration(
+            "index all_history and since_days cannot both be specified",
+        ));
+    }
+    let since_days = if raw.index.all_history {
+        None
+    } else {
+        Some(raw.index.since_days.unwrap_or(DEFAULT_SINCE_DAYS))
+    };
     if since_days.is_some_and(|days| !(1..=MAX_SINCE_DAYS).contains(&days)) {
         return Err(AppError::configuration(
             "index since_days must be between 1 and 36500",
@@ -410,48 +402,6 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     })
 }
 
-fn validate_object_shapes(value: &serde_json::Value) -> Result<(), AppError> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| AppError::configuration("configuration must be a JSON object"))?;
-    for name in ["index", "providers", "shared", "embeddings"] {
-        if let Some(value) = object.get(name)
-            && !value.is_object()
-        {
-            return Err(AppError::configuration(format!(
-                "{name} must be a JSON object"
-            )));
-        }
-    }
-    if let Some(providers) = object
-        .get("providers")
-        .and_then(serde_json::Value::as_object)
-        && providers.values().any(|value| !value.is_object())
-    {
-        return Err(AppError::configuration(
-            "provider configuration must be a JSON object",
-        ));
-    }
-    if let Some(index) = object.get("index").and_then(serde_json::Value::as_object) {
-        if index
-            .get("destination")
-            .is_some_and(serde_json::Value::is_null)
-        {
-            return Err(AppError::configuration(
-                "index destination must be local, shared, or both",
-            ));
-        }
-        for name in ["local", "shared"] {
-            if index.get(name).is_some_and(|value| !value.is_object()) {
-                return Err(AppError::configuration(
-                    "index destination filter must be a JSON object",
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn validate_identifier(value: &str, label: &str) -> Result<(), AppError> {
     let bytes = value.as_bytes();
     let valid = (1..=255).contains(&bytes.len())
@@ -505,20 +455,62 @@ mod tests {
 
     use super::*;
 
-    const VALID: &str = r#"{"version":1,"providers":{"codex":{"roots":["/missing/codex"]}}}"#;
+    const VALID: &str = r#""version" = 1
+"providers" = {"codex" = {"roots" = ["/missing/codex"]}}
+"#;
+
+    #[test]
+    fn toml_tables_comments_and_remote_models_are_supported_without_json_fallback() {
+        let document = r"
+version = 1 # node configuration
+[providers.codex]
+roots = ['/missing/codex']
+[index]
+all_history = true
+destination = 'local'
+[embeddings]
+api = 'voyage'
+url = 'https://api.voyageai.com/v1/embeddings'
+model = 'voyage-code-4'
+dimensions = 1024
+token_env = 'VOYAGE_API_KEY'
+";
+        let parsed = parse_document(document.as_bytes()).expect("TOML tables");
+        assert_eq!(parsed.since_days, None);
+        assert_eq!(parsed.embeddings.unwrap().model, "voyage-code-4");
+        for invalid in [
+            r#"{"version":1,"providers":{}}"#,
+            "version = 1\nversion = 1\n[providers]\n",
+            "version = 1\n[providers]\n[index]\nall_history = true\nsince_days = 90\n",
+            "version = 1\n[providers]\n[index]\nall_history = 'true'\n",
+        ] {
+            assert_configuration_error(&parse_document(invalid.as_bytes()).unwrap_err());
+        }
+        assert_configuration_error(&parse_document(b"\xff").unwrap_err());
+    }
 
     #[test]
     fn destinations_and_independent_provider_filters_are_validated() {
-        let shared = serde_json::json!({"group_id":"test","node_id":"node","api_url":"http://127.0.0.1:8787","token_env":"URL"});
+        let shared = toml::toml! {
+            group_id = "test"
+            node_id = "node"
+            api_url = "http://127.0.0.1:8787"
+            token_env = "URL"
+        };
         for (mode, expected) in [
             ("local", IndexDestination::Local),
             ("shared", IndexDestination::Shared),
             ("both", IndexDestination::Both),
         ] {
-            let document = serde_json::json!({"version":1,"providers":{
-                "claude-code":{"roots":["/claude"]},"codex":{"roots":["/codex"]}
-            },"shared":shared,"index":{"destination":mode,"local":{"providers":["claude-code"]},"shared":{"providers":["codex"]}}});
-            let parsed = parse_document(&serde_json::to_vec(&document).unwrap()).unwrap();
+            let document = toml::toml! {
+                version = 1
+                providers = {
+                claude-code = {roots = ["/claude"]},codex = {roots = ["/codex"]}
+                }
+                shared = (shared.clone())
+                index = {destination = (mode),local = {providers = ["claude-code"]},shared = {providers = ["codex"]}}
+            };
+            let parsed = parse_document(&toml::to_string(&document).unwrap().into_bytes()).unwrap();
             assert_eq!(parsed.destination, expected);
             let options = crate::ingestion::IndexOptions {
                 claude_code: parsed.providers.claude_code,
@@ -538,25 +530,45 @@ mod tests {
             assert!(remote.codex.is_none());
         }
         for index in [
-            serde_json::json!({"destination":"unsupported"}),
-            serde_json::json!({"destination":null}),
-            serde_json::json!({"local":null}),
-            serde_json::json!({"shared":{"providers":["other"]}}),
-            serde_json::json!({"local":{"providers":["codex","codex"]}}),
-            serde_json::json!({"local":{"providers":["claude-code"]}}),
+            toml::toml! {
+                destination = "unsupported"
+            },
+            toml::toml! {
+                destination = false
+            },
+            toml::toml! {
+                local = false
+            },
+            toml::toml! {
+                shared = { providers = ["other"] }
+            },
+            toml::toml! {
+                local = { providers = ["codex", "codex"] }
+            },
+            toml::toml! {
+                local = { providers = ["claude-code"] }
+            },
         ] {
-            let document = serde_json::json!({"version":1,"providers":{"codex":{"roots":["/codex"]}},"index":index,"shared":shared});
-            assert!(parse_document(&serde_json::to_vec(&document).unwrap()).is_err());
+            let document = toml::toml! {
+                version = 1
+                providers = {codex = {roots = ["/codex"]}}
+                index = (index.clone())
+                shared = (shared.clone())
+            };
+            assert!(parse_document(&toml::to_string(&document).unwrap().into_bytes()).is_err());
         }
         for mode in ["shared", "both"] {
-            let document =
-                serde_json::json!({"version":1,"providers":{},"index":{"destination":mode}});
-            assert!(parse_document(&serde_json::to_vec(&document).unwrap()).is_err());
+            let document = toml::toml! {
+                version = 1
+                providers = {}
+                index = {destination = (mode)}
+            };
+            assert!(parse_document(&toml::to_string(&document).unwrap().into_bytes()).is_err());
         }
     }
 
     fn write_config(directory: &TempDir, contents: &str) -> PathBuf {
-        let path = directory.path().join("config.json");
+        let path = directory.path().join("config.toml");
         fs::write(&path, contents).expect("temporary configuration is writable");
         path
     }
@@ -586,23 +598,58 @@ mod tests {
             parsed.providers.codex,
             Some(vec![PathBuf::from("/missing/codex")])
         );
-        let valid = r#"{"version":1,"providers":{},"index":{"since_days":null},"shared":{"group_id":"test", "node_id":"laptop","api_url":"http://127.0.0.1:8787","token_env":"MASH_DATABASE_URL"}}"#;
+        let valid = r#""version" = 1
+"providers" = {}
+"index" = {"all_history" = true}
+"shared" = {"group_id" = "test", "node_id" = "laptop", "api_url" = "http://127.0.0.1:8787", "token_env" = "MASH_DATABASE_URL"}
+"#;
         let parsed = parse_document(valid.as_bytes()).expect("shared config");
         assert_eq!(parsed.since_days, None);
         assert_eq!(parsed.shared.expect("shared").node_id, "laptop");
         for invalid in [
-            r#"{"version":1,"local_node":"old","nodes":[]}"#,
-            r#"{"version":2,"providers":{}}"#,
-            r#"{"version":1,"providers":{"other":{"roots":["/tmp"]}}}"#,
-            r#"{"version":1,"providers":{"codex":{"roots":["relative"]}}}"#,
-            r#"{"version":1,"providers":{"codex":{"roots":["/tmp","/tmp"]}}}"#,
-            r#"{"version":1,"providers":{"codex":{"roots":[]}}}"#,
-            r#"{"version":1,"providers":{},"index":{"since_days":0}}"#,
-            r#"{"version":1,"providers":{},"index":{"since_days":36501}}"#,
-            r#"{"version":1,"providers":{},"index":null}"#,
-            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"bad name","api_url":"http://127.0.0.1:8787","token_env":"URL"}}"#,
-            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","api_url":"http://127.0.0.1:8787","token_env":"1URL"}}"#,
-            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","api_url":"http://127.0.0.1:8787","token_env":"URL","password":"secret"}}"#,
+            r#""version" = 1
+"local_node" = "old"
+"nodes" = []
+"#,
+            r#""version" = 2
+"providers" = {}
+"#,
+            r#""version" = 1
+"providers" = {"other" = {"roots" = ["/tmp"]}}
+"#,
+            r#""version" = 1
+"providers" = {"codex" = {"roots" = ["relative"]}}
+"#,
+            r#""version" = 1
+"providers" = {"codex" = {"roots" = ["/tmp", "/tmp"]}}
+"#,
+            r#""version" = 1
+"providers" = {"codex" = {"roots" = []}}
+"#,
+            r#""version" = 1
+"providers" = {}
+"index" = {"since_days" = 0}
+"#,
+            r#""version" = 1
+"providers" = {}
+"index" = {"since_days" = 36501}
+"#,
+            r#""version" = 1
+"index" = false
+"providers" = {}
+"#,
+            r#""version" = 1
+"providers" = {}
+"shared" = {"group_id" = "test", "node_id" = "bad name", "api_url" = "http://127.0.0.1:8787", "token_env" = "URL"}
+"#,
+            r#""version" = 1
+"providers" = {}
+"shared" = {"group_id" = "test", "node_id" = "ok", "api_url" = "http://127.0.0.1:8787", "token_env" = "1URL"}
+"#,
+            r#""version" = 1
+"providers" = {}
+"shared" = {"group_id" = "test", "node_id" = "ok", "api_url" = "http://127.0.0.1:8787", "token_env" = "URL", "password" = "secret"}
+"#,
         ] {
             assert_configuration_error(
                 &parse_document(invalid.as_bytes()).expect_err("invalid config"),
@@ -612,9 +659,18 @@ mod tests {
 
     #[test]
     fn shared_http_configuration_rejects_credentials_and_old_database_access() {
-        let shared = serde_json::json!({"group_id":"test","node_id":"laptop","api_url":"https://mash.example.net/prefix/","token_env":"MASH_NODE_TOKEN"});
-        let mut document = serde_json::json!({"version":1,"providers":{},"shared":shared});
-        assert!(parse_document(&serde_json::to_vec(&document).unwrap()).is_ok());
+        let shared = toml::toml! {
+            group_id = "test"
+            node_id = "laptop"
+            api_url = "https://mash.example.net/prefix/"
+            token_env = "MASH_NODE_TOKEN"
+        };
+        let mut document = toml::toml! {
+            version = 1
+            providers = {}
+            shared = (shared.clone())
+        };
+        assert!(parse_document(&toml::to_string(&document).unwrap().into_bytes()).is_ok());
         for url in [
             "postgresql://host/db",
             "https://user:secret@host",
@@ -622,14 +678,18 @@ mod tests {
             "https://host/#fragment",
             "invalid",
         ] {
-            document["shared"]["api_url"] = serde_json::json!(url);
+            document["shared"]["api_url"] = toml::Value::String(url.into());
             assert_configuration_error(
-                &parse_document(&serde_json::to_vec(&document).unwrap()).unwrap_err(),
+                &parse_document(&toml::to_string(&document).unwrap().into_bytes()).unwrap_err(),
             );
         }
-        document["shared"] = serde_json::json!({"group_id":"test","node_id":"laptop","database_url_env":"MASH_DATABASE_URL"});
+        document["shared"] = toml::Value::Table(toml::toml! {
+            group_id = "test"
+            node_id = "laptop"
+            database_url_env = "MASH_DATABASE_URL"
+        });
         assert_configuration_error(
-            &parse_document(&serde_json::to_vec(&document).unwrap()).unwrap_err(),
+            &parse_document(&toml::to_string(&document).unwrap().into_bytes()).unwrap_err(),
         );
     }
 
@@ -653,15 +713,15 @@ mod tests {
     }
 
     #[test]
-    fn file_input_is_bounded_before_json_parsing() {
+    fn file_input_is_bounded_before_toml_parsing() {
         let directory = TempDir::new().expect("temporary directory");
         let mut exactly = VALID.as_bytes().to_vec();
         exactly.resize(MAX_CONFIG_BYTES, b' ');
-        let path = directory.path().join("exact.json");
+        let path = directory.path().join("exact.toml");
         fs::write(&path, exactly).expect("bounded file is writable");
         load_from_paths(Ok(path.clone()), Some(path)).expect("exactly 1 MiB");
 
-        let too_large = directory.path().join("large.json");
+        let too_large = directory.path().join("large.toml");
         let bytes = vec![b'{'; MAX_CONFIG_BYTES + 1];
         fs::write(&too_large, bytes).expect("oversized file is writable");
         assert_configuration_error_message(
@@ -678,7 +738,7 @@ mod tests {
 
         let directory = TempDir::new().expect("temporary directory");
         let target = write_config(&directory, VALID);
-        let link = directory.path().join("link.json");
+        let link = directory.path().join("link.toml");
         symlink(&target, &link).expect("file symlink");
         let loaded =
             load_from_paths(Ok(link.clone()), Some(link)).expect("symlink to regular file");
@@ -687,14 +747,14 @@ mod tests {
             fs::canonicalize(target).expect("canonical target")
         );
 
-        let directory_link = directory.path().join("directory.json");
+        let directory_link = directory.path().join("directory.toml");
         symlink(directory.path(), &directory_link).expect("directory symlink");
         assert_configuration_error(
             &load_from_paths(Ok(directory_link.clone()), Some(directory_link))
                 .expect_err("symlink to directory"),
         );
 
-        let broken = directory.path().join("broken.json");
+        let broken = directory.path().join("broken.toml");
         symlink(directory.path().join("absent"), &broken).expect("broken symlink");
         assert_configuration_error(
             &load_from_paths(Ok(broken.clone()), Some(broken)).expect_err("broken symlink"),
@@ -712,8 +772,8 @@ mod tests {
 
         let malformed = write_config(&directory, "{");
         assert_configuration_error_message(
-            &load_from_paths(Ok(malformed.clone()), Some(malformed)).expect_err("malformed JSON"),
-            "invalid configuration JSON",
+            &load_from_paths(Ok(malformed.clone()), Some(malformed)).expect_err("malformed TOML"),
+            "invalid configuration TOML",
         );
     }
 

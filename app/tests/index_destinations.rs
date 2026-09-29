@@ -17,7 +17,7 @@ impl Fixture {
     fn with_backend(redis: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
-        let config = root.join("config.json");
+        let config = root.join("config.toml");
         let database = root.join("local/mash.sqlite3");
         let models = root.join("models");
         create_valid_model_marker(&models);
@@ -62,15 +62,15 @@ impl Fixture {
     }
 
     fn configure(&self, destination: &str, node: &str) {
-        std::fs::write(&self.config, serde_json::to_vec(&serde_json::json!({
-            "version":1,
-            "providers":{
-                "claude-code":{"roots":[self.directory.path().join("claude")]},
-                "codex":{"roots":[self.codex]}
-            },
-            "index":{"destination":destination,"local":{"providers":["claude-code"]},"shared":{"providers":["codex"]}},
-            "shared":{"group_id":self.group,"node_id":node,"api_url":self.server.as_ref().map_or("http://127.0.0.1:9",|s|s.url.as_str()),"token_env":"MASH_TEST_ROUTING_TOKEN"}
-        })).unwrap()).unwrap();
+        std::fs::write(&self.config, toml::to_string(&toml::toml! {
+            version = 1
+            providers = {
+            claude-code = {roots = [(self.directory.path().join("claude").to_str().unwrap().to_owned())]},
+            codex = {roots = [(self.codex.to_str().unwrap())]}
+            }
+            index = {destination = (destination),local = {providers = ["claude-code"]},shared = {providers = ["codex"]}}
+            shared = {group_id = (self.group.as_str()),node_id = (node),api_url = (self.server.as_ref().map_or("http://127.0.0.1:9",|s|s.url.as_str())),token_env = "MASH_TEST_ROUTING_TOKEN"}
+        }).unwrap()).unwrap();
     }
 
     fn run(&self, arguments: &[&str], online: bool) -> std::process::Output {
@@ -87,8 +87,8 @@ impl Fixture {
             command.env(
                 "MASH_TEST_ROUTING_TOKEN",
                 shared_server::token(
-                    serde_json::from_slice::<Value>(&std::fs::read(&self.config).unwrap()).unwrap()
-                        ["shared"]["node_id"]
+                    toml::from_str::<toml::Value>(&std::fs::read_to_string(&self.config).unwrap())
+                        .unwrap()["shared"]["node_id"]
                         .as_str()
                         .unwrap(),
                 ),

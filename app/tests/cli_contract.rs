@@ -136,15 +136,15 @@ fn current_embedding_generation() -> String {
 fn write_config(path: &Path, claude_root: &Path, codex_root: &Path) {
     std::fs::write(
         path,
-        serde_json::to_vec_pretty(&serde_json::json!({
-            "version": 1,
-                "providers": {
-                    "claude-code": {"roots": [claude_root]},
-                    "codex": {"roots": [codex_root]}
-                },
-                "index": {"since_days": 30}
-        }))
-        .expect("configuration JSON"),
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {
+            claude-code = {roots = [(claude_root.to_str().unwrap())]},
+            codex = {roots = [(codex_root.to_str().unwrap())]}
+            }
+            index = {since_days = 30}
+        })
+        .expect("configuration TOML"),
     )
     .expect("configuration file");
 }
@@ -152,7 +152,7 @@ fn write_config(path: &Path, claude_root: &Path, codex_root: &Path) {
 #[test]
 fn status_reports_the_exact_resolved_local_configuration() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let config = directory.path().join("config.json");
+    let config = directory.path().join("config.toml");
     let claude = directory.path().join("remote-claude");
     let codex = directory.path().join("remote-codex");
     write_config(&config, &claude, &codex);
@@ -216,7 +216,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
     assert_eq!(
         body["configuration"],
         serde_json::json!({
-            "path": config_home.join("mash/config.json"),
+            "path": config_home.join("mash/config.toml"),
             "loaded": false,
             "shared": null,
             "providers": {
@@ -252,9 +252,9 @@ fn every_public_command_rejects_malformed_configuration_before_effects() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let xdg = directory.path().join("xdg");
         let config = if explicit {
-            directory.path().join("config.json")
+            directory.path().join("config.toml")
         } else {
-            xdg.join("mash/config.json")
+            xdg.join("mash/config.toml")
         };
         let database = directory.path().join("mash.sqlite3");
         let models = directory.path().join("models");
@@ -289,18 +289,41 @@ fn every_public_command_rejects_malformed_configuration_before_effects() {
 }
 
 #[test]
+fn server_rejects_json_duplicate_keys_and_unknown_fields_before_connecting() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("server.toml");
+    for contents in [
+        r#"{"version":1,"database_url_env":"MISSING","nodes":[]}"#,
+        "version = 1\nversion = 1\nnodes = []\n",
+        "version = 1\nnodes = []\nunknown = true\n",
+    ] {
+        std::fs::write(&config, contents).unwrap();
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args(["serve", "--server-config", config.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(9));
+        assert_eq!(output.stdout, [] as [u8; 0]);
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "configuration");
+        assert_eq!(error["error"]["message"], "invalid server configuration");
+    }
+}
+
+#[test]
 fn public_index_flags_validate_before_models_database_or_scanning() {
     let directory = tempfile::tempdir().expect("temporary directory");
-    let config = directory.path().join("config.json");
+    let config = directory.path().join("config.toml");
     let codex_root = directory.path().join("codex");
     std::fs::write(
         &config,
-        serde_json::to_vec(&serde_json::json!({
-            "version": 1,
-                "providers": {"codex": {"roots": [codex_root]}},
-                "index": {"since_days": 90}
-        }))
-        .expect("config JSON"),
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {codex = {roots = [(codex_root.to_str().unwrap())]}}
+            index = {since_days = 90}
+        })
+        .expect("config TOML"),
     )
     .expect("config");
     let database = directory.path().join("mash.sqlite3");
@@ -398,7 +421,7 @@ fn index_without_pending_embeddings_validates_but_does_not_load_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let database = directory.path().join("mash.sqlite3");
     let models = directory.path().join("models");
-    let config = directory.path().join("config.json");
+    let config = directory.path().join("config.toml");
     let claude = directory.path().join("claude");
     let codex = directory.path().join("codex");
     std::fs::create_dir_all(&claude).expect("Claude root");
@@ -755,7 +778,7 @@ fn real_models_index_and_run_hybrid_search() {
     )
     .expect("Claude fixture");
     let database = directory.path().join("mash.sqlite3");
-    let config = directory.path().join("config.json");
+    let config = directory.path().join("config.toml");
     write_config(&config, &claude, &codex);
     let model_arg = models.to_str().unwrap();
     let output = Command::cargo_bin("mash")
@@ -895,8 +918,14 @@ fn ssh_options_are_rejected_and_shared_access_requires_configuration() {
         assert_eq!(error_kind(&output), "usage");
     }
     let dir = tempfile::tempdir().expect("temp");
-    let config = dir.path().join("config.json");
-    std::fs::write(&config, r#"{"version":1,"providers":{}}"#).expect("config");
+    let config = dir.path().join("config.toml");
+    std::fs::write(
+        &config,
+        r#""version" = 1
+"providers" = {}
+"#,
+    )
+    .expect("config");
     for args in [
         vec!["search", "q", "--shared"],
         vec!["view", "id", "--shared", "node"],
@@ -924,17 +953,19 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
         .expect("exercise migration");
     let models = dir.path().join("models");
     create_valid_model_marker(&models);
-    let config = dir.path().join("config.json");
+    let config = dir.path().join("config.toml");
     let group = format!(
         "cli-{}",
         dir.path().file_name().expect("name").to_string_lossy()
     );
     let server = shared_server::Server::new(dir.path(), &group, &["cli-node"]);
-    std::fs::write(&config, serde_json::to_vec(&serde_json::json!({
-        "version":1,"providers":{},"shared":{
-            "group_id":group,"node_id":"cli-node","api_url":server.url,"token_env":"MASH_TEST_SHARED_CLIENT_TOKEN"
+    std::fs::write(&config, toml::to_string(&toml::toml! {
+        version = 1
+        providers = {}
+        shared = {
+        group_id = (group.as_str()),node_id = "cli-node",api_url = (server.url.as_str()),token_env = "MASH_TEST_SHARED_CLIENT_TOKEN"
         }
-    })).expect("JSON")).expect("config");
+    }).expect("TOML")).expect("config");
     let url = std::env::var("MASH_TEST_PG_URL").expect("test URL");
     let invoke = |args: &[&str], online: bool| {
         let mut command = Command::cargo_bin("mash").expect("binary");

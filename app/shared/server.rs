@@ -490,7 +490,9 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
                 "server configuration exceeds 65536 bytes",
             ));
         }
-        serde_json::from_slice(&bytes)
+        let contents = std::str::from_utf8(&bytes)
+            .map_err(|_| AppError::configuration("server configuration must be UTF-8 TOML"))?;
+        toml::from_str(contents)
             .map_err(|_| AppError::configuration("invalid server configuration"))
     })
     .await?;

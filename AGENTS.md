@@ -2,7 +2,8 @@
 
 ## Product boundary
 
-mash is a JSON-only Rust CLI and stdio MCP server for Claude Code and Codex JSONL histories.
+mash is a Rust CLI with JSON output and stdio MCP server for Claude Code and Codex JSONL histories.
+Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
 Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 `forget`, `models install`, `mcp`, and `serve`.
 

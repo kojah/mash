@@ -281,8 +281,14 @@ mod tests {
     #[tokio::test]
     async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         let dir = tempfile::tempdir().expect("temp");
-        let config = dir.path().join("config.json");
-        std::fs::write(&config, r#"{"version":1,"providers":{}}"#).expect("config");
+        let config = dir.path().join("config.toml");
+        std::fs::write(
+            &config,
+            r#""version" = 1
+"providers" = {}
+"#,
+        )
+        .expect("config");
         let server = Mash {
             arguments: Arc::new(vec![
                 "mash".into(),

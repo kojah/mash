@@ -207,8 +207,8 @@ mod tests {
     #[tokio::test]
     async fn pending_publication_retries_without_another_filesystem_event() {
         let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("config.json");
-        std::fs::write(&config, r#"{"version":1,"providers":{}}"#).unwrap();
+        let config = dir.path().join("config.toml");
+        std::fs::write(&config, "version = 1\n[providers]\n").unwrap();
         let arguments = vec![
             "mash".into(),
             "--config".into(),
@@ -247,14 +247,16 @@ mod tests {
     #[tokio::test]
     async fn changes_during_indexing_queue_a_sequential_followup() {
         let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("config.json");
+        let config = dir.path().join("config.toml");
         let root = dir.path().join("histories");
         std::fs::create_dir(&root).unwrap();
         std::fs::write(
             &config,
-            serde_json::to_vec(&serde_json::json!({
-                "version":1,"providers":{"codex":{"roots":[root]}}
-            }))
+            toml::to_string(&toml::toml! {
+                version = 1
+                [providers.codex]
+                roots = [(root.to_str().unwrap())]
+            })
             .unwrap(),
         )
         .unwrap();
@@ -318,7 +320,7 @@ mod tests {
     fn filter_ignores_reads_and_unrelated_files_but_tracks_removals_and_config() {
         let targets = Targets {
             roots: vec!["/history".into()],
-            files: vec!["/settings/config.json".into()],
+            files: vec!["/settings/config.toml".into()],
         };
         let event = |kind, path: &str| Event::new(kind).add_path(path.into());
         assert!(!targets.relevant(&event(
@@ -339,7 +341,7 @@ mod tests {
         )));
         assert!(targets.relevant(&event(
             EventKind::Modify(notify::event::ModifyKind::Any),
-            "/settings/config.json"
+            "/settings/config.toml"
         )));
     }
 }

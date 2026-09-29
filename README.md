@@ -64,32 +64,37 @@ and the database filename to `mash.sqlite3`. To reuse an existing achi installat
 pass its paths with `--config`, `--db`, and `--models-dir`, or move its configuration,
 database, and installed models into the new locations reported by `mash status`.
 
-mash reads `config.json` from the platform mash configuration directory. Use
+mash reads `config.toml` from the platform mash configuration directory. Use
 `mash status` to see the resolved path, or pass `--config PATH` explicitly.
-The file is strict, versioned JSON. Provider presence enables that provider;
-roots must be absolute. `since_days` defaults to 90 and may be `null` for all
-history. CLI indexing flags override these settings.
+The file is strict, versioned TOML. Provider presence enables that provider;
+roots must be absolute. `index.since_days` defaults to 90. Set
+`index.all_history = true` instead for all history; these settings cannot be
+combined. CLI indexing flags override these settings.
 
-```json
-{
-  "version": 1,
-  "providers": {
-    "claude-code": {"roots": ["/home/james/.claude/projects"]},
-    "codex": {"roots": ["/home/james/.codex/sessions"]}
-  },
-  "index": {
-    "since_days": 90,
-    "destination": "both",
-    "local": {"providers": ["claude-code"]},
-    "shared": {"providers": ["codex"]}
-  },
-  "shared": {
-    "group_id": "personal",
-    "node_id": "xenia",
-    "api_url": "https://mash.example.net",
-    "token_env": "MASH_NODE_TOKEN"
-  }
-}
+```toml
+version = 1
+
+[providers.claude-code]
+roots = ["/home/james/.claude/projects"]
+
+[providers.codex]
+roots = ["/home/james/.codex/sessions"]
+
+[index]
+since_days = 90
+destination = "both"
+
+[index.local]
+providers = ["claude-code"]
+
+[index.shared]
+providers = ["codex"]
+
+[shared]
+group_id = "personal"
+node_id = "xenia"
+api_url = "https://mash.example.net"
+token_env = "MASH_NODE_TOKEN"
 ```
 
 This example keeps Claude Code in SQLite and sends Codex to the shared service.
@@ -133,24 +138,28 @@ docker run --rm --name mash-postgres \
 The HTTP server can run on any host with database connectivity; mash does not
 choose or provision a host. Create a separate server configuration:
 
-```json
-{
-  "version": 1,
-  "listen": "127.0.0.1:8787",
-  "backend": "postgres",
-  "database_url_env": "MASH_DATABASE_URL",
-  "max_connections": 16,
-  "nodes": [
-    {"group_id": "personal", "node_id": "xenia", "token_env": "MASH_XENIA_TOKEN"},
-    {"group_id": "personal", "node_id": "macbook", "token_env": "MASH_MACBOOK_TOKEN"}
-  ]
-}
+```toml
+version = 1
+listen = "127.0.0.1:8787"
+backend = "postgres"
+database_url_env = "MASH_DATABASE_URL"
+max_connections = 16
+
+[[nodes]]
+group_id = "personal"
+node_id = "xenia"
+token_env = "MASH_XENIA_TOKEN"
+
+[[nodes]]
+group_id = "personal"
+node_id = "macbook"
+token_env = "MASH_MACBOOK_TOKEN"
 ```
 
 Use a different randomly generated token for each node (at least 32 printable
 ASCII bytes). Supply the same token to that node through its configured
 `shared.token_env`. Tokens and database credentials are environment variables,
-not values in JSON configuration or status output. Group membership comes from
+not values in TOML configuration or status output. Group membership comes from
 the server's `nodes` list; restart the service to change membership or rotate a
 token. A node can search and view its whole group, but can only publish or forget
 its own data. One service can host multiple groups with separate schemas.
@@ -158,7 +167,7 @@ its own data. One service can host multiple groups with separate schemas.
 ```bash
 # On the service host; set the node token variables from your secret store too.
 export MASH_DATABASE_URL='postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require'
-mash serve --server-config /absolute/path/to/server.json
+mash serve --server-config /absolute/path/to/server.toml
 
 # On a node, set MASH_NODE_TOKEN and configure shared.api_url before running:
 mash index
@@ -205,16 +214,16 @@ one storage backend for all its groups. Changing the backend creates a separate
 index: reindex from node histories to populate it; mash does not automatically
 copy data between PostgreSQL and Redis.
 
-```json
-{
-  "version": 1,
-  "listen": "127.0.0.1:8787",
-  "backend": "redis",
-  "redis_url_env": "MASH_REDIS_URL",
-  "nodes": [
-    {"group_id": "personal", "node_id": "xenia", "token_env": "MASH_XENIA_TOKEN"}
-  ]
-}
+```toml
+version = 1
+listen = "127.0.0.1:8787"
+backend = "redis"
+redis_url_env = "MASH_REDIS_URL"
+
+[[nodes]]
+group_id = "personal"
+node_id = "xenia"
+token_env = "MASH_XENIA_TOKEN"
 ```
 
 Use Redis with Search support, such as Redis 8 or Redis Stack, rather than a
@@ -224,7 +233,7 @@ key-value-only Redis installation. A local development instance can run with:
 docker run --rm --name mash-redis -p 127.0.0.1:6379:6379 \
   redis:8.2 redis-server --appendonly yes --maxmemory-policy noeviction
 export MASH_REDIS_URL='redis://127.0.0.1:6379/'
-mash serve --server-config /absolute/path/to/redis-server.json
+mash serve --server-config /absolute/path/to/redis-server.toml
 ```
 
 The service uses the `redis-rs` (`redis`) crate with async multiplexed connections
@@ -309,14 +318,13 @@ the corpus size, latency, and recall tradeoffs.
 Local FastEmbed inference remains the default. Add `embeddings` to the node
 configuration to use Voyage-4 for both document and query embeddings:
 
-```json
-"embeddings": {
-  "api": "voyage",
-  "url": "https://api.voyageai.com/v1/embeddings",
-  "model": "voyage-4",
-  "dimensions": 1024,
-  "token_env": "VOYAGE_API_KEY"
-}
+```toml
+[embeddings]
+api = "voyage"
+url = "https://api.voyageai.com/v1/embeddings"
+model = "voyage-4"
+dimensions = 1024
+token_env = "VOYAGE_API_KEY"
 ```
 
 Set `VOYAGE_API_KEY` in the node's environment. It is separate from the shared
@@ -329,7 +337,7 @@ Overlong inputs fail explicitly rather than being silently truncated.
 
 For an OpenAI-compatible endpoint, set `api` to `openai-compatible` and provide
 its complete embeddings URL, model, dimensions, and optional `token_env`.
-Set `request_dimensions: true` if the endpoint should receive the `dimensions`
+Set `request_dimensions = true` if the endpoint should receive the `dimensions`
 parameter. Fixed-dimension self-hosted endpoints can omit it. Mash supports
 1–2048 dimensions and validates vector count, ordering, dimensions, and values.
 HTTP requests are asynchronous, bounded, and time out after 60 seconds. Local
@@ -341,8 +349,10 @@ reranker before searching. No models are downloaded by indexing or searching.
 
 For shared indexing, configure the service's embedding space as well:
 
-```json
-"embeddings": {"model": "voyage-4", "dimensions": 1024}
+```toml
+[embeddings]
+model = "voyage-4"
+dimensions = 1024
 ```
 
 The service configuration applies to every group it serves. Publishers and
@@ -413,7 +423,7 @@ Example MCP client configuration:
   "mcpServers": {
     "mash": {
       "command": "/absolute/path/to/mash",
-      "args": ["mcp", "--config", "/absolute/path/to/config.json"]
+      "args": ["mcp", "--config", "/absolute/path/to/config.toml"]
     }
   }
 }

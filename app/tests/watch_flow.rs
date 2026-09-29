@@ -15,7 +15,7 @@ impl Watching {
         let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"))
             .args([
                 "--config",
-                root.join("config.json").to_str().unwrap(),
+                root.join("config.toml").to_str().unwrap(),
                 "--db",
                 root.join("index.sqlite3").to_str().unwrap(),
                 "--models-dir",
@@ -77,11 +77,12 @@ fn history(path: &Path, content: &str) {
 
 fn configure(root: &Path, sources: &Path) {
     std::fs::write(
-        root.join("config.json"),
-        serde_json::to_vec(&serde_json::json!({
-            "version":1,"providers":{"codex":{"roots":[sources]}},
-            "index":{"destination":"local","since_days":null}
-        }))
+        root.join("config.toml"),
+        toml::to_string(&toml::toml! {
+            version = 1
+            providers = {codex = {roots = [(sources.to_str().unwrap())]}}
+            index = {destination = "local",all_history = true}
+        })
         .unwrap(),
     )
     .unwrap();
@@ -170,7 +171,7 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
         .args([
             "mcp",
             "--config",
-            root.join("config.json").to_str().unwrap(),
+            root.join("config.toml").to_str().unwrap(),
             "--db",
             root.join("index.sqlite3").to_str().unwrap(),
             "--models-dir",

@@ -1051,7 +1051,7 @@ mod tests {
         let root = std::env::temp_dir().join("mash-cli-options");
         ResolvedConfig {
             embeddings: None,
-            path: root.join("config.json"),
+            path: root.join("config.toml"),
             loaded: true,
             shared: None,
             providers: crate::config::ResolvedProviders {

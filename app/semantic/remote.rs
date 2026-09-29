@@ -355,11 +355,16 @@ mod tests {
             "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"repeated searchable text\"}]}}\n",
             "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"repeated searchable text\"}]}}\n"
         )).unwrap();
-        let config = temp.path().join("config.json");
+        let config = temp.path().join("config.toml");
         let db = temp.path().join("mash.sqlite3");
         let models = temp.path().join("no-models");
-        let mut document = serde_json::json!({"version":1,"providers":{"codex":{"roots":[history]}},"index":{"since_days":null},"embeddings":remote});
-        std::fs::write(&config, serde_json::to_vec(&document).unwrap()).unwrap();
+        let mut document = toml::toml! {
+            version = 1
+            providers = {codex = {roots = [(history.to_str().unwrap())]}}
+            index = {all_history = true}
+            embeddings = (toml::Value::try_from(&remote).unwrap())
+        };
+        std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
         let args = vec![
             "mash".into(),
             "--config".into(),
@@ -380,12 +385,12 @@ mod tests {
         assert_eq!(mock.requests.lock().unwrap().len(), 1);
         crate::cli::run_async(args.clone()).await.unwrap();
         assert_eq!(mock.requests.lock().unwrap().len(), 1);
-        document["embeddings"]["model"] = serde_json::json!("voyage-4-large");
-        std::fs::write(&config, serde_json::to_vec(&document).unwrap()).unwrap();
+        document["embeddings"]["model"] = toml::Value::String("voyage-4-large".into());
+        std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
         crate::cli::run_async(args.clone()).await.unwrap();
         assert_eq!(mock.requests.lock().unwrap().len(), 2);
-        document["embeddings"]["model"] = serde_json::json!("voyage-4-lite");
-        std::fs::write(&config, serde_json::to_vec(&document).unwrap()).unwrap();
+        document["embeddings"]["model"] = toml::Value::String("voyage-4-lite".into());
+        std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
         mock.failure.store(429, Ordering::Relaxed);
         let error = crate::cli::run_async(args).await.unwrap_err();
         assert_eq!(error.error.kind, "remote-inference");
