@@ -50,7 +50,7 @@ jobs:
       - name: Build semantic binary
         run: cargo build --release --locked
       - name: Package
-        run: tar -C target/release -czf mash-linux-x86_64.tar.gz mash mash-mcp
+        run: tar -C target/release -czf mash-linux-x86_64.tar.gz mash
       - run: sccache --show-stats
       - name: Save Cargo cache
         if: always() && steps.cargo-cache.outputs.cache-hit != 'true'

@@ -20,12 +20,7 @@ async fn blocking<T: Send + 'static>(
         .map_err(|_| AppError::internal("blocking worker failed"))?
 }
 
-/// Runs the stdio MCP server using the same operations as the CLI.
-pub async fn mcp_entry() -> i32 {
-    mcp::run().await
-}
-
-/// Runs mash with the process arguments and writes its JSON response.
+/// Runs mash with the process arguments, writing JSON or serving stdio MCP.
 ///
 /// # Examples
 ///
@@ -44,6 +39,8 @@ where
     T: Into<OsString> + Clone,
 {
     match cli::run(args) {
+        // MCP owns stdout for its entire session, including shutdown.
+        Ok(cli::Response::McpStopped) => 0,
         Ok(response) => write_json(stdout, &response).map_or_else(
             |error| {
                 let _ = write_json(stderr, &error);

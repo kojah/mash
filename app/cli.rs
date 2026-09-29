@@ -93,6 +93,15 @@ enum Command {
         #[command(subcommand)]
         command: ModelsCommand,
     },
+    /// Serve search tools over the stdio MCP protocol.
+    Mcp {
+        /// Synchronize histories for this MCP session's lifetime.
+        #[arg(long)]
+        watch: bool,
+        /// Quiet period before a watch refresh (milliseconds).
+        #[arg(long, requires = "watch", default_value = "1000", value_parser = clap::value_parser!(u64).range(50..=60_000))]
+        debounce_ms: u64,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -111,6 +120,7 @@ pub(super) enum Response {
     Forget(ForgetResponse),
     ModelsInstall(ModelsInstallResponse),
     WatchStopped { watching: bool },
+    McpStopped,
 }
 
 #[derive(Debug, Serialize)]
@@ -207,11 +217,29 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    tokio::runtime::Builder::new_current_thread()
+    let arguments: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let cli =
+        Cli::try_parse_from(&arguments).map_err(|error| AppError::usage(error.to_string()))?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|_| AppError::internal("failed to start async runtime"))?
-        .block_on(run_async(args))
+        .map_err(|_| AppError::internal("failed to start async runtime"))?;
+    if let Command::Mcp { watch, debounce_ms } = cli.command {
+        let mut startup = vec![OsString::from("mash")];
+        for (name, path) in [
+            ("--config", cli.config),
+            ("--db", cli.db),
+            ("--models-dir", cli.models_dir),
+        ] {
+            if let Some(path) = path {
+                startup.extend([name.into(), path.into_os_string()]);
+            }
+        }
+        runtime.block_on(crate::mcp::run(startup, watch, debounce_ms))?;
+        Ok(Response::McpStopped)
+    } else {
+        runtime.block_on(run_async(arguments))
+    }
 }
 
 pub(super) async fn run_async<I, T>(args: I) -> Result<Response, AppError>
@@ -271,6 +299,7 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Command::Mcp { .. } => Err(AppError::usage("mcp must run as a process command")),
         Command::Index {
             full,
             provider,
@@ -996,7 +1025,9 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["index", "search", "view", "status", "forget", "models"]
+            [
+                "index", "search", "view", "status", "forget", "models", "mcp"
+            ]
         );
     }
 

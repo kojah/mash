@@ -1,8 +1,6 @@
 use std::ffi::OsString;
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use clap::Parser;
 use rmcp::{
     ServiceExt,
     handler::server::wrapper::Parameters,
@@ -10,26 +8,6 @@ use rmcp::{
     schemars, tool, tool_router,
 };
 use serde::Deserialize;
-
-#[derive(Parser)]
-#[command(
-    name = "mash-mcp",
-    version,
-    about = "Multi-Agent Search History MCP server"
-)]
-struct Options {
-    #[arg(long)]
-    config: Option<PathBuf>,
-    #[arg(long)]
-    db: Option<PathBuf>,
-    #[arg(long)]
-    models_dir: Option<PathBuf>,
-    /// Synchronize histories for this MCP session's lifetime.
-    #[arg(long)]
-    watch: bool,
-    #[arg(long, requires = "watch", default_value = "1000", value_parser = clap::value_parser!(u64).range(50..=60_000))]
-    debounce_ms: u64,
-}
 
 #[derive(Clone)]
 struct Mash {
@@ -239,40 +217,27 @@ impl rmcp::ServerHandler for Mash {
     }
 }
 
-pub(crate) async fn run() -> i32 {
-    let options = match Options::try_parse() {
-        Ok(options) => options,
-        Err(error) => {
-            let _ = error.print();
-            return error.exit_code();
-        }
-    };
-    let mut arguments = vec![OsString::from("mash")];
-    for (name, value) in [
-        ("--config", options.config),
-        ("--db", options.db),
-        ("--models-dir", options.models_dir),
-    ] {
-        if let Some(path) = value {
-            arguments.extend([name.into(), path.into_os_string()]);
-        }
-    }
+pub(crate) async fn run(
+    arguments: Vec<OsString>,
+    watch: bool,
+    debounce_ms: u64,
+) -> Result<(), crate::AppError> {
     let server = Mash {
         arguments: Arc::new(arguments),
         gate: Arc::new(tokio::sync::Mutex::new(())),
         model_work: Arc::new(tokio::sync::Semaphore::new(1)),
     };
     let background = server.clone();
-    let Ok(service) = server.serve(rmcp::transport::stdio()).await else {
-        eprintln!("MCP initialization failed");
-        return 1;
-    };
+    let service = server
+        .serve(rmcp::transport::stdio())
+        .await
+        .map_err(|_| crate::AppError::internal("MCP initialization failed"))?;
     let (stop, shutdown) = tokio::sync::watch::channel(false);
-    let watcher = options.watch.then(|| {
+    let watcher = watch.then(|| {
         tokio::spawn(async move {
             let mut args = background.arguments.as_ref().clone();
             args.push("index".into());
-            let result = crate::watch::run(args, options.debounce_ms, shutdown, move || {
+            let result = crate::watch::run(args, debounce_ms, shutdown, move || {
                 let server = background.clone();
                 async move {
                     let result = server.execute(vec!["index".into()]).await;
@@ -301,10 +266,9 @@ pub(crate) async fn run() -> i32 {
         let _ = watcher.await;
     }
     if success {
-        0
+        Ok(())
     } else {
-        eprintln!("MCP session failed");
-        1
+        Err(crate::AppError::internal("MCP session failed"))
     }
 }
 

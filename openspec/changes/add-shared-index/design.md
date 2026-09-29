@@ -76,7 +76,7 @@ vectors require publishing nodes to reindex. Tool output remains context-only.
 
 ## MCP
 
-mash-mcp uses the official rmcp SDK's stdio transport, initialization, tool routing,
+`mash mcp` uses the official rmcp SDK's stdio transport, initialization, tool routing,
 and schemas. Search, view, status, index, forget, and models_install invoke the
 same async CLI operations. PostgreSQL uses native async tokio-postgres calls;
 SQLite snapshots stream bounded batches from a blocking worker to the async

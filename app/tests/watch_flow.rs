@@ -166,8 +166,9 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
     history(&sources.join("session.jsonl"), "MCP watched output");
     configure(root, &sources);
     create_valid_model_marker(&root.join("models"));
-    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash-mcp"))
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"))
         .args([
+            "mcp",
             "--config",
             root.join("config.json").to_str().unwrap(),
             "--db",
@@ -253,4 +254,5 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
         );
         std::thread::sleep(Duration::from_millis(25));
     }
+    watcher.quiet(); // No CLI response may follow the MCP shutdown.
 }

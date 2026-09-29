@@ -4,7 +4,7 @@
 
 mash is a JSON-only Rust CLI and stdio MCP server for Claude Code and Codex JSONL histories.
 Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
-`forget`, and `models install`.
+`forget`, `models install`, and `mcp`.
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.

@@ -11,15 +11,17 @@ node group, so shared history remains searchable while source machines are offli
 ## Commands
 
 ```text
-mash index [--full] [--provider claude-code|codex]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex]... [--since-days N|--all-history]
 mash search <query> [--shared] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
-mash status
+mash status [--shared]
 mash forget <conversation-id>
 mash models install
+mash mcp [--watch [--debounce-ms N]]
 ```
 
-All operational commands emit one JSON value. Bare `mash` prints help. Global
+One-shot data commands emit one JSON value; watch mode emits newline-delimited
+results, and `mash mcp` serves the stdio protocol. Bare `mash` prints help. Global
 options are `--config PATH`, `--db PATH`, and
 `--models-dir PATH`.
 
@@ -197,7 +199,7 @@ creates no SQLite database.
 
 Watch mode writes one JSON result per completed pass to stdout (newline-delimited
 JSON); progress and typed errors go to stderr. Ctrl-C finishes the active pass
-and exits. For MCP, use `mash-mcp --watch` with optional `--debounce-ms`; watching
+and exits. For MCP, use `mash mcp --watch` with optional `--debounce-ms`; watching
 lasts for the MCP session and shares the tool mutation/model concurrency guards.
 Its refresh results go to stderr so stdout remains MCP protocol only.
 
@@ -221,7 +223,7 @@ read-only; older shared schemas need one indexing pass to add the metadata table
 
 ## MCP
 
-Run `mash-mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
+Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
 and `models_install`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`. Progress goes to stderr, leaving
@@ -233,8 +235,8 @@ Example MCP client configuration:
 {
   "mcpServers": {
     "mash": {
-      "command": "/absolute/path/to/mash-mcp",
-      "args": ["--config", "/absolute/path/to/config.json"]
+      "command": "/absolute/path/to/mash",
+      "args": ["mcp", "--config", "/absolute/path/to/config.json"]
     }
   }
 }
@@ -298,7 +300,7 @@ tests need repository access and a GitHub SSH identity that can clone Veritas.
 ## Automatic deployment
 
 Every push to `main` builds the Linux x86-64 and Apple Silicon binaries in
-GitHub Actions, then atomically deploys `mash` and `mash-mcp` to `~/.local/bin` on Xenia,
+GitHub Actions, then atomically deploys `mash` to `~/.local/bin` on Xenia,
 dev-macbook, and personal-macbook over Tailscale. The macOS binary is
 cross-compiled on the Linux runner with `cargo-zigbuild`; destination machines
 need neither this repository nor a Rust toolchain.
