@@ -31,7 +31,8 @@ path = "app/tests/cli_contract.rs"
 
 [dependencies]
 rmcp = { version = "3.4.0", default-features = false, features = ["server", "macros", "transport-io"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+notify = "8.2.0"
 blake3 = "1.8.5"
 chrono = { version = "0.4.44", default-features = false, features = ["std"] }
 clap = { version = "4.6.1", features = ["derive"] }

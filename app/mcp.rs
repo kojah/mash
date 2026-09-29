@@ -24,6 +24,11 @@ struct Options {
     db: Option<PathBuf>,
     #[arg(long)]
     models_dir: Option<PathBuf>,
+    /// Synchronize histories for this MCP session's lifetime.
+    #[arg(long)]
+    watch: bool,
+    #[arg(long, requires = "watch", default_value = "1000", value_parser = clap::value_parser!(u64).range(50..=60_000))]
+    debounce_ms: u64,
 }
 
 #[derive(Clone)]
@@ -41,6 +46,14 @@ struct Search {
     limit: Option<usize>,
     provider: Option<String>,
     days: Option<u32>,
+    #[serde(default)]
+    shared: bool,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct Status {
+    /// Query shared per-node synchronization and update timestamps.
     #[serde(default)]
     shared: bool,
 }
@@ -160,10 +173,14 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Report index/model readiness. Local and both modes inspect local state; shared-only mode queries PostgreSQL without opening SQLite."
+        description = "Report index/model readiness. Set shared=true to include per-node last_synced_at and last_updated_at from PostgreSQL. Shared-only queries PostgreSQL without opening SQLite."
     )]
-    async fn status(&self) -> CallToolResult {
-        self.execute(vec!["status".into()]).await
+    async fn status(&self, Parameters(request): Parameters<Status>) -> CallToolResult {
+        let mut args = vec!["status".into()];
+        if request.shared {
+            args.push("--shared".into());
+        }
+        self.execute(args).await
     }
 
     #[tool(
@@ -245,11 +262,45 @@ pub(crate) async fn run() -> i32 {
         gate: Arc::new(tokio::sync::Mutex::new(())),
         model_work: Arc::new(tokio::sync::Semaphore::new(1)),
     };
+    let background = server.clone();
     let Ok(service) = server.serve(rmcp::transport::stdio()).await else {
         eprintln!("MCP initialization failed");
         return 1;
     };
-    if service.waiting().await.is_ok() {
+    let (stop, shutdown) = tokio::sync::watch::channel(false);
+    let watcher = options.watch.then(|| {
+        tokio::spawn(async move {
+            let mut args = background.arguments.as_ref().clone();
+            args.push("index".into());
+            let result = crate::watch::run(args, options.debounce_ms, shutdown, move || {
+                let server = background.clone();
+                async move {
+                    let result = server.execute(vec!["index".into()]).await;
+                    let json = result.structured_content.as_ref();
+                    let retry = result.is_error == Some(true)
+                        || json.is_some_and(|body| {
+                            body["shared"]["state"] == "pending"
+                                || body["malformed_records"].as_u64().is_some_and(|n| n > 0)
+                        });
+                    crate::write_json(
+                        &mut std::io::stderr(),
+                        &serde_json::json!({"event":"watch-index","result":result}),
+                    )?;
+                    Ok(retry)
+                }
+            })
+            .await;
+            if let Err(error) = result {
+                let _ = crate::write_json(&mut std::io::stderr(), &error);
+            }
+        })
+    });
+    let success = service.waiting().await.is_ok();
+    let _ = stop.send(true);
+    if let Some(watcher) = watcher {
+        let _ = watcher.await;
+    }
+    if success {
         0
     } else {
         eprintln!("MCP session failed");

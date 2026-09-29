@@ -5,6 +5,7 @@ mod mcp;
 mod semantic;
 mod shared;
 mod storage;
+mod watch;
 
 use std::ffi::OsString;
 use std::io::{self, Write};

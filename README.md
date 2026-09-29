@@ -171,13 +171,58 @@ fallback. Local and shared result sets are selected explicitly and are not merge
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
-exact cosine scans the shared corpus. There is no background synchronization,
-ANN index, HTTP service, or automatic shared deployment.
+exact cosine scans the shared corpus. There is no ANN index, HTTP service, or
+automatic shared deployment.
+
+## Automatic synchronization
+
+Run `mash index --watch` for opt-in synchronization while the process remains
+running. It indexes once at startup, then waits for one second of quiet after
+history changes before refreshing. Set `--debounce-ms 500` to change that delay
+(50–60000 ms). Continuous writes trigger a pass within ten seconds, or the
+configured delay if longer. Passes run sequentially; changes during indexing
+queue another pass. Existing provider, age, destination, and per-index allowlist
+settings still apply. `--full` cannot be combined with `--watch`.
+
+The watcher uses native `notify` filesystem events, ignores file reads and
+unrelated files, and notices JSONL creation, modification, replacement, and
+deletion. It reloads configuration on each pass and watches for config/model
+marker changes. Missing roots are watched through their nearest existing parent.
+Removing an authoritative configured root reports an error rather than purging
+its history; removing individual sources from an existing root is reconciled.
+Failed indexing and pending PostgreSQL publication retry after 30 seconds without
+requiring another file change. A reconciliation pass every five minutes recovers
+missed events. No models are downloaded automatically, and shared-only still
+creates no SQLite database.
+
+Watch mode writes one JSON result per completed pass to stdout (newline-delimited
+JSON); progress and typed errors go to stderr. Ctrl-C finishes the active pass
+and exits. For MCP, use `mash-mcp --watch` with optional `--debounce-ms`; watching
+lasts for the MCP session and shares the tool mutation/model concurrency guards.
+Its refresh results go to stderr so stdout remains MCP protocol only.
+
+Run `mash status --shared`, or call the MCP `status` tool with `{"shared":true}`,
+to inspect `shared_index.nodes` for every publishing node in the configured
+group. Each node includes its revision, conversation/message counts, and UTC
+timestamps:
+
+- `last_synced_at`: last successfully committed indexing/publication check,
+  including a check with no new data.
+- `last_updated_at`: last committed data update or deletion. A check with no
+  changed data preserves this timestamp.
+
+PostgreSQL supplies these timestamps, which commit atomically with the node's
+data. Failed or rolled-back uploads leave them unchanged. They describe received
+index data, not the newest source message's timestamp or proof that a node is
+currently online. Older nodes can have null timestamps until they publish with
+this version. Shared-only status includes this information automatically;
+ordinary local/both status remains usable offline. Freshness inspection is
+read-only; older shared schemas need one indexing pass to add the metadata table.
 
 ## MCP
 
 Run `mash-mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
-`--models-dir` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
+`--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
 and `models_install`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`. Progress goes to stderr, leaving
 stdout for the SDK's protocol messages.

@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use tokio_postgres::{GenericClient, Transaction};
 
-use super::{Publication, connection, initialize, pg_error, validate_version};
+use super::{Publication, connection, initialize, pg_error, record_sync, validate_version};
 use crate::AppError;
 use crate::config::SharedConfig;
 use crate::ingestion::{self, Conversation, DirectScan, IndexOptions, IndexSummary};
@@ -14,6 +14,7 @@ use crate::storage::publication::DirectOwner;
 const DIRECT_INSTANCE: &str = "shared-only:v1";
 
 pub(crate) struct IndexResult {
+    data_changed: bool,
     pub(crate) counts: Counts,
     pub(crate) summary: IndexSummary,
     pub(crate) embeddings: EmbeddingSummary,
@@ -90,12 +91,14 @@ pub(crate) async fn index(
         .await
         .map_err(pg_error)?;
     lock_node(&mut transaction, config, owner).await?;
+    let mut forgotten = false;
     if let Some(owner) = owner {
         for id in &owner.forgets {
-            forget_in_transaction(&mut transaction, config, id).await?;
+            forgotten |= forget_in_transaction(&mut transaction, config, id).await?;
         }
     }
     let mut result = IndexResult {
+        data_changed: forgotten,
         counts: Counts {
             conversations: 0,
             messages: 0,
@@ -144,6 +147,12 @@ pub(crate) async fn index(
             .await
             .map_err(pg_error)?;
     }
+    let changed = result.data_changed
+        || full
+        || result.summary.changed_messages > 0
+        || result.summary.removed_messages > 0
+        || result.summary.purged_conversations > 0;
+    record_sync(&transaction, &config.node_id, changed, true).await?;
     transaction.commit().await.map_err(pg_error)?;
     result.summary.committed_batches = 1;
     Ok(result)
@@ -338,6 +347,7 @@ async fn replace_conversation(
         result.summary.tombstoned_sources += 1;
         return Ok(());
     }
+    result.data_changed = true;
     transaction
         .execute(
             "DELETE FROM conversations WHERE node_id=$1 AND id=$2",
@@ -440,6 +450,7 @@ pub(crate) async fn forget(config: &SharedConfig, id: &str) -> Result<bool, AppE
         )
         .await
         .map_err(pg_error)?;
+    record_sync(&transaction, &config.node_id, forgotten, false).await?;
     transaction.commit().await.map_err(pg_error)?;
     Ok(forgotten)
 }
@@ -463,6 +474,7 @@ pub(crate) async fn flush_forgets(
         )
         .await
         .map_err(pg_error)?;
+    record_sync(&transaction, &config.node_id, forgotten, false).await?;
     transaction.commit().await.map_err(pg_error)?;
     Ok(forgotten)
 }

@@ -166,6 +166,9 @@ fn postgres_publication_shared_only_uses_remote_checkpoints_and_tombstones_witho
     let status = fixture.json(&["status"], true);
     assert_eq!(status["database_path"], Value::Null);
     assert_eq!(status["messages"], 1);
+    let freshness = status["shared_index"].clone();
+    assert_eq!(freshness["nodes"][0]["node_id"], "remote");
+    assert!(freshness["nodes"][0]["last_updated_at"].is_string());
     let id: String = fixture
         .client()
         .query_one("SELECT id FROM messages", &[])
@@ -179,6 +182,11 @@ fn postgres_publication_shared_only_uses_remote_checkpoints_and_tombstones_witho
     content.push_str("invalid JSON\n");
     std::fs::write(fixture.codex.join("session.jsonl"), content).unwrap();
     assert_eq!(error_kind(&fixture.run(&["index"], true)), "shared-index");
+    assert_eq!(
+        fixture.json(&["status"], true)["shared_index"],
+        freshness,
+        "rolled-back ingestion does not change freshness"
+    );
     assert_eq!(
         fixture.json(&["status"], true)["messages"],
         1,

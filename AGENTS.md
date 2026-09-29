@@ -16,7 +16,9 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 - Keep one concrete FastEmbed semantic backend with exact cosine search, RRF,
   and bounded reranking.
 - Do not add provider traits, registries, daemons, ANN indexes, compatibility
-  shims, alternate output modes, a TUI, export, analytics, background sync, or watch mode.
+  shims, alternate output modes, a TUI, export, or analytics.
+- Support opt-in debounced synchronization with `index --watch` and MCP startup
+  `--watch`. Keep it within the running process; do not install a daemon.
 - Keep ingestion to the two concrete mash-owned JSONL parsers. Do not add
   external application databases, event-log providers, provider traits,
   registries, plugin systems, or compatibility layers.

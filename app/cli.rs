@@ -16,7 +16,7 @@ use crate::semantic::{self, Models};
 use crate::shared;
 use crate::storage::Storage;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(name = "mash", version, about, arg_required_else_help = true)]
 struct Cli {
     /// Versioned mash node and provider configuration.
@@ -35,13 +35,19 @@ struct Cli {
     command: Command,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 enum Command {
     /// Discover and index supported local histories.
     Index {
         /// Recreate all derived search state.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "watch")]
         full: bool,
+        /// Keep indexes synchronized until interrupted.
+        #[arg(long)]
+        watch: bool,
+        /// Quiet period before a watch refresh (milliseconds).
+        #[arg(long, requires = "watch", default_value = "1000", value_parser = clap::value_parser!(u64).range(50..=60_000))]
+        debounce_ms: u64,
         /// Restrict indexing to a supported provider.
         #[arg(long, value_name = "PROVIDER")]
         provider: Vec<String>,
@@ -75,7 +81,11 @@ enum Command {
         shared: Option<String>,
     },
     /// Report canonical storage and model readiness.
-    Status,
+    Status {
+        /// Inspect per-node freshness in the shared index.
+        #[arg(long)]
+        shared: bool,
+    },
     /// Remove one conversation and its derived search rows.
     Forget { id: String },
     /// Manage semantic retrieval models.
@@ -85,7 +95,7 @@ enum Command {
     },
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 enum ModelsCommand {
     /// Explicitly install embedding and reranking models.
     Install,
@@ -100,6 +110,7 @@ pub(super) enum Response {
     Status(StatusResponse),
     Forget(ForgetResponse),
     ModelsInstall(ModelsInstallResponse),
+    WatchStopped { watching: bool },
 }
 
 #[derive(Debug, Serialize)]
@@ -133,6 +144,13 @@ pub(super) struct IndexResponse {
     shared: Option<shared::Publication>,
 }
 
+impl Response {
+    pub(crate) fn needs_retry(&self) -> bool {
+        matches!(self, Self::Index(result) if result.malformed_records > 0
+            || result.shared.as_ref().is_some_and(shared::Publication::is_pending))
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SearchResponse {
     pub(crate) query: String,
@@ -163,6 +181,8 @@ pub(super) struct StatusResponse {
     configuration: ConfigurationStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     shared: Option<shared::Publication>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared_index: Option<shared::Freshness>,
 }
 
 #[derive(Debug, Serialize)]
@@ -199,7 +219,44 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let cli = Cli::try_parse_from(args).map_err(|error| AppError::usage(error.to_string()))?;
+    let arguments: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let mut cli =
+        Cli::try_parse_from(&arguments).map_err(|error| AppError::usage(error.to_string()))?;
+    if let Command::Index {
+        watch, debounce_ms, ..
+    } = &mut cli.command
+        && *watch
+    {
+        *watch = false;
+        let debounce = *debounce_ms;
+        let (stop, shutdown) = tokio::sync::watch::channel(false);
+        let signal = tokio::spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                let _ = stop.send(true);
+            }
+        });
+        let result = crate::watch::run(arguments, debounce, shutdown, move || {
+            let cli = cli.clone();
+            async move {
+                let response = run_parsed(cli).await?;
+                let retry = response.needs_retry();
+                let mut stdout = std::io::stdout();
+                crate::write_json(&mut stdout, &response)?;
+                stdout
+                    .flush()
+                    .map_err(|_| AppError::internal("flush watch output"))?;
+                Ok(retry)
+            }
+        })
+        .await;
+        signal.abort();
+        result?;
+        return Ok(Response::WatchStopped { watching: false });
+    }
+    run_parsed(cli).await
+}
+
+async fn run_parsed(cli: Cli) -> Result<Response, AppError> {
     let path = cli.config;
     let resolved_config = crate::blocking(move || config::load(path.as_deref())).await?;
     let database_path = cli.db.unwrap_or_else(default_database_path);
@@ -219,6 +276,7 @@ async fn dispatch(
             provider,
             since_days,
             all_history,
+            ..
         } => {
             let options = resolve_index_options(configuration, &provider, since_days, all_history)?;
             index_routes(configuration, database, models, full, &options).await
@@ -273,15 +331,24 @@ async fn dispatch(
                     .await
             }
         }
-        Command::Status => {
-            if configuration.destination == config::IndexDestination::Shared {
-                shared_status(models, configuration).await
+        Command::Status {
+            shared: inspect_shared,
+        } => {
+            let mut response = if configuration.destination == config::IndexDestination::Shared {
+                shared_status(models, configuration).await?
             } else {
                 let database = database.to_path_buf();
                 let models = models.to_path_buf();
                 let config = configuration.clone();
-                crate::blocking(move || status(&database, &models, &config)).await
+                crate::blocking(move || status(&database, &models, &config)).await?
+            };
+            if inspect_shared || configuration.destination == config::IndexDestination::Shared {
+                let freshness = shared::freshness(required_shared(configuration)?).await?;
+                if let Response::Status(status) = &mut response {
+                    status.shared_index = Some(freshness);
+                }
             }
+            Ok(response)
         }
         Command::Forget { id } => forget_routes(database, configuration, id).await,
         Command::Models {
@@ -351,6 +418,7 @@ async fn shared_status(
         },
         configuration: configuration.status(),
         shared: Some(shared::Publication::published()),
+        shared_index: None,
     }))
 }
 
@@ -695,6 +763,46 @@ fn resolve_index_options(
     })
 }
 
+pub(crate) fn watch_targets(arguments: &[OsString]) -> Result<crate::watch::Targets, AppError> {
+    let cli = Cli::try_parse_from(arguments).map_err(|e| AppError::usage(e.to_string()))?;
+    let configuration = config::load(cli.config.as_deref())?;
+    let Command::Index {
+        provider,
+        since_days,
+        all_history,
+        ..
+    } = cli.command
+    else {
+        return Err(AppError::usage("watch requires index arguments"));
+    };
+    let options = resolve_index_options(&configuration, &provider, since_days, all_history)?;
+    let mut roots = Vec::new();
+    for (enabled, filter) in [
+        (
+            configuration.destination != config::IndexDestination::Shared,
+            &configuration.local_filter,
+        ),
+        (
+            configuration.destination != config::IndexDestination::Local,
+            &configuration.shared_filter,
+        ),
+    ] {
+        if enabled {
+            let mut selected = options.clone();
+            config::IndexFilter::apply(filter.as_ref(), &mut selected);
+            roots.extend(selected.claude_code.into_iter().flatten());
+            roots.extend(selected.codex.into_iter().flatten());
+        }
+    }
+    roots.sort();
+    roots.dedup();
+    let models = cli.models_dir.unwrap_or_else(default_models_path);
+    Ok(crate::watch::Targets {
+        roots,
+        files: vec![configuration.path, models.join("installed.json")],
+    })
+}
+
 fn local_view(database_path: &Path, id: String, context: u32) -> Result<ViewResponse, AppError> {
     let storage = Storage::open_existing(database_path)?;
     let messages = storage.view(&id, context)?;
@@ -730,6 +838,7 @@ fn status(
             } else {
                 publication_config(configuration).map(|_| shared::Publication::pending())
             },
+            shared_index: None,
         }));
     }
 
@@ -768,6 +877,7 @@ fn status(
         } else {
             shared::status(database_path, publication_config(configuration))?
         },
+        shared_index: None,
     }))
 }
 

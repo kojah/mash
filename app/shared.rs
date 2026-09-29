@@ -20,6 +20,9 @@ pub(crate) struct Publication {
 }
 
 impl Publication {
+    pub(crate) fn is_pending(&self) -> bool {
+        self.state == "pending"
+    }
     pub(crate) const fn published() -> Self {
         Self {
             state: "published",
@@ -32,6 +35,76 @@ impl Publication {
             error: None,
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct Freshness {
+    group_id: String,
+    nodes: Vec<NodeFreshness>,
+}
+
+#[derive(Debug, Serialize)]
+struct NodeFreshness {
+    node_id: String,
+    revision: i64,
+    last_synced_at: Option<String>,
+    last_updated_at: Option<String>,
+    conversations: i64,
+    messages: i64,
+}
+
+pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppError> {
+    let (mut client, _) = connection(config).await?;
+    validate_version(&mut client).await?;
+    let rows = client
+        .query(
+            "SELECT n.node_id,n.revision,
+         to_char(s.last_synced_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
+         to_char(s.last_updated_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
+         (SELECT count(*) FROM conversations c WHERE c.node_id=n.node_id),
+         (SELECT count(*) FROM messages m WHERE m.node_id=n.node_id)
+         FROM nodes n LEFT JOIN node_sync s USING(node_id) ORDER BY n.node_id",
+            &[],
+        )
+        .await
+        .map_err(pg_error)?;
+    let nodes = rows
+        .into_iter()
+        .map(|row| {
+            Ok(NodeFreshness {
+                node_id: row.try_get(0).map_err(pg_error)?,
+                revision: row.try_get(1).map_err(pg_error)?,
+                last_synced_at: row.try_get(2).map_err(pg_error)?,
+                last_updated_at: row.try_get(3).map_err(pg_error)?,
+                conversations: row.try_get(4).map_err(pg_error)?,
+                messages: row.try_get(5).map_err(pg_error)?,
+            })
+        })
+        .collect::<Result<_, AppError>>()?;
+    Ok(Freshness {
+        group_id: config.group_id.clone(),
+        nodes,
+    })
+}
+
+async fn record_sync(
+    client: &impl tokio_postgres::GenericClient,
+    node: &str,
+    changed: bool,
+    checked: bool,
+) -> Result<(), AppError> {
+    client
+        .execute(
+            "INSERT INTO node_sync(node_id,last_synced_at,last_updated_at)
+         VALUES ($1,CASE WHEN $3 THEN clock_timestamp() END,CASE WHEN $2 THEN clock_timestamp() END)
+         ON CONFLICT(node_id) DO UPDATE SET
+         last_synced_at=CASE WHEN $3 THEN clock_timestamp() ELSE node_sync.last_synced_at END,
+         last_updated_at=CASE WHEN $2 THEN clock_timestamp() ELSE node_sync.last_updated_at END",
+            &[&node, &changed, &checked],
+        )
+        .await
+        .map_err(pg_error)?;
+    Ok(())
 }
 
 fn pg_error(error: tokio_postgres::Error) -> AppError {
@@ -356,6 +429,7 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
             .await
             .map_err(pg_error)?;
     }
+    record_sync(&transaction, &config.node_id, accepted != revision, true).await?;
     transaction.commit().await.map_err(pg_error)?;
     let db = path.to_path_buf();
     crate::blocking(move || Storage::open_existing(&db)?.acknowledge_publication(&target, revision))

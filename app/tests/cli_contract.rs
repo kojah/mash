@@ -7,6 +7,7 @@ use serde_json::Value;
 use veritas_test_macros as veritas;
 
 mod index_destinations;
+mod watch_flow;
 
 fn run_json(arguments: &[&str]) -> Value {
     let output = Command::cargo_bin("mash")
@@ -1000,6 +1001,25 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
     let retry = invoke(&["index"], true);
     assert_eq!(retry["changed_messages"], 0);
     assert_eq!(retry["shared"]["state"], "published");
+    let first_freshness = invoke(&["status", "--shared"], true)["shared_index"].clone();
+    assert_eq!(first_freshness["group_id"], group);
+    assert_eq!(first_freshness["nodes"][0]["node_id"], "cli-node");
+    assert!(
+        first_freshness["nodes"][0]["last_synced_at"]
+            .as_str()
+            .unwrap()
+            .ends_with('Z')
+    );
+    invoke(&["index"], true);
+    let unchanged = invoke(&["status", "--shared"], true)["shared_index"].clone();
+    assert_eq!(
+        unchanged["nodes"][0]["last_updated_at"],
+        first_freshness["nodes"][0]["last_updated_at"]
+    );
+    assert!(
+        unchanged["nodes"][0]["last_synced_at"].as_str()
+            > first_freshness["nodes"][0]["last_synced_at"].as_str()
+    );
     assert_eq!(
         invoke(&["view", "message", "--shared", "cli-node"], true)["messages"][0]["content"],
         "canonical tool output"
@@ -1007,6 +1027,11 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
     let forgotten = invoke(&["forget", "session"], false);
     assert_eq!(forgotten["forgotten"], true);
     assert_eq!(forgotten["shared"]["state"], "pending");
+    assert_eq!(
+        invoke(&["status", "--shared"], true)["shared_index"],
+        unchanged,
+        "failed upload does not advance remote freshness"
+    );
     assert_eq!(
         invoke(&["view", "message", "--shared", "cli-node"], true)["messages"]
             .as_array()

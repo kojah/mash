@@ -5,6 +5,12 @@ INSERT INTO version VALUES (TRUE, 1) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS nodes (
     node_id TEXT PRIMARY KEY, instance TEXT NOT NULL, revision BIGINT NOT NULL
 );
+-- Additive metadata: older publications remain readable and have unknown freshness.
+CREATE TABLE IF NOT EXISTS node_sync (
+    node_id TEXT PRIMARY KEY REFERENCES nodes(node_id),
+    last_synced_at TIMESTAMPTZ,
+    last_updated_at TIMESTAMPTZ
+);
 CREATE TABLE IF NOT EXISTS tombstones (
     node_id TEXT NOT NULL REFERENCES nodes(node_id),
     provider TEXT NOT NULL, conversation_id TEXT NOT NULL,
