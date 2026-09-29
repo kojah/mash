@@ -5,6 +5,78 @@ const FIRST: &str = "test-api-token-first-32-bytes-long";
 const SECOND: &str = "test-api-token-second-32-bytes-long";
 const OTHER: &str = "test-api-token-other-32-bytes-long";
 
+async fn remote_space_contract(service: Service) {
+    let generation = crate::semantic::model_space("voyage-4", 1024);
+    let mut events = snapshot(1);
+    for (i, record) in events[2]["records"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+        .take(2)
+    {
+        let mut vector = vec![0.0; 1024];
+        vector[0] = if i == 0 { 127.0 } else { -127.0 };
+        record["vector"] = json!(vector);
+        record["generation"] = json!(generation);
+    }
+    let upload = service.upload(FIRST, &events).await;
+    assert_eq!(
+        upload.status(),
+        StatusCode::OK,
+        "{}",
+        upload.text().await.unwrap()
+    );
+    assert_eq!(service.get("status", FIRST).await["embeddings"], 2);
+    let mut vector = vec![0.0; 1024];
+    vector[0] = 127.0;
+    let mut query = json!({"query":"hello", "vector":vector, "generation":generation});
+    let result: Value = service
+        .request("search", FIRST)
+        .json(&query)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(result["semantic"][0]["id"], "searchable");
+    query["generation"] = json!(crate::semantic::SHARED_EMBEDDING_GENERATION);
+    assert_eq!(
+        service
+            .request("search", FIRST)
+            .json(&query)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    let before = service.get("freshness", FIRST).await;
+    events[0]["revision"] = json!(2);
+    events[2]["records"][0]["vector"] = json!([127.0]);
+    assert_eq!(
+        service.upload(FIRST, &events).await.status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(service.get("freshness", FIRST).await, before);
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
+async fn postgres_publication_remote_model_space_supports_1024_dimensions() {
+    remote_space_contract(Service::with_dimensions(true, false, 1024).await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_publication_remote_model_space_supports_1024_dimensions() {
+    remote_space_contract(Service::with_dimensions(false, true, 1024).await).await;
+}
+
 struct Service {
     pool: Pool,
     store: Store,
@@ -22,6 +94,14 @@ impl Service {
         Self::new_backend(database, false).await
     }
     async fn new_backend(database: bool, redis: bool) -> Self {
+        Self::with_dimensions(database, redis, 384).await
+    }
+    async fn with_dimensions(database: bool, redis: bool, dimensions: usize) -> Self {
+        let generation = if dimensions == 384 {
+            crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
+        } else {
+            crate::semantic::model_space("voyage-4", dimensions)
+        };
         let directory = tempfile::tempdir().unwrap();
         let group = format!(
             "api-{}",
@@ -48,6 +128,8 @@ impl Service {
                 Identity {
                     group_id: group.clone(),
                     node_id: "first".into(),
+                    generation: generation.clone(),
+                    dimensions,
                 },
             ),
             (
@@ -55,6 +137,8 @@ impl Service {
                 Identity {
                     group_id: group.clone(),
                     node_id: "second".into(),
+                    generation: generation.clone(),
+                    dimensions,
                 },
             ),
             (
@@ -62,6 +146,8 @@ impl Service {
                 Identity {
                     group_id: format!("{group}-other"),
                     node_id: "first".into(),
+                    generation: generation.clone(),
+                    dimensions,
                 },
             ),
         ]));
@@ -72,6 +158,7 @@ impl Service {
                 super::super::redis_index::Store::connect(
                     &std::env::var("MASH_TEST_REDIS_URL").unwrap(),
                     &[group.clone(), format!("{group}-other")],
+                    dimensions,
                 )
                 .await
                 .unwrap(),

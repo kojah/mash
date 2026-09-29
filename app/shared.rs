@@ -247,7 +247,15 @@ pub(crate) async fn publish_routed(
         let owner =
             crate::blocking(move || Storage::open_existing(&db)?.direct_owner(&scope)).await?;
         let target = routed_target(configuration)?;
-        direct::index(config, models_dir, options, full, Some(&owner)).await?;
+        direct::index(
+            config,
+            models_dir,
+            configuration.embeddings.as_ref(),
+            options,
+            full,
+            Some(&owner),
+        )
+        .await?;
         let db = path.to_path_buf();
         crate::blocking(move || {
             Storage::open_existing(&db)?.acknowledge_direct(&target, &owner, true)
@@ -365,6 +373,7 @@ pub(crate) async fn view(
 pub(crate) async fn search(
     config: &SharedConfig,
     models_dir: &Path,
+    embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
     limit: usize,
     provider: Option<&str>,
@@ -375,8 +384,13 @@ pub(crate) async fn search(
     }
     let root = models_dir.to_path_buf();
     let text = query.to_owned();
+    let embeddings = embeddings.cloned();
+    let generation = embeddings.as_ref().map_or_else(
+        || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
+        |c| semantic::model_space(&c.model, c.dimensions),
+    );
     let (mut backend, vector) = crate::blocking(move || {
-        let models = Models::new(root);
+        let models = Models::new(root).with_remote(embeddings);
         models.require_installed()?;
         let mut backend = models
             .load()?
@@ -391,6 +405,7 @@ pub(crate) async fn search(
         &protocol::Search {
             query: query.to_owned(),
             vector,
+            generation,
             provider: provider.map(str::to_owned),
             days,
         },

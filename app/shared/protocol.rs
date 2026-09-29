@@ -3,8 +3,6 @@ use serde_json::Value;
 
 use crate::storage::{Counts, SearchHit};
 
-pub(super) const DIMENSIONS: usize = 384;
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Start {
@@ -77,6 +75,8 @@ pub(super) struct Indexed {
 #[serde(deny_unknown_fields)]
 pub(super) struct Search {
     pub query: String,
+    #[serde(default = "default_generation")]
+    pub generation: String,
     pub vector: Vec<f64>,
     pub provider: Option<String>,
     pub days: Option<u32>,
@@ -117,8 +117,12 @@ pub(super) struct Forgotten {
     pub forgotten: bool,
 }
 
-pub(super) fn valid_vector(vector: &[f64]) -> bool {
-    vector.len() == DIMENSIONS
+pub(super) fn default_generation() -> String {
+    crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
+}
+
+pub(super) fn valid_vector(vector: &[f64], dimensions: usize) -> bool {
+    vector.len() == dimensions
         && vector.iter().all(|v| v.is_finite() && v.abs() <= 127.0)
         && vector
             .iter()

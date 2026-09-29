@@ -337,6 +337,7 @@ async fn dispatch(
                 let results = shared::search(
                     required_shared(configuration)?,
                     models,
+                    configuration.embeddings.as_ref(),
                     &query,
                     limit,
                     provider,
@@ -352,8 +353,9 @@ async fn dispatch(
             } else {
                 let database = database.to_path_buf();
                 let models = models.to_path_buf();
+                let embeddings = configuration.embeddings.clone();
                 crate::blocking(move || {
-                    local_search(&database, &models, query, limit, provider, days)
+                    local_search(&database, &models, embeddings, query, limit, provider, days)
                         .map(Response::Search)
                 })
                 .await
@@ -399,7 +401,8 @@ async fn dispatch(
             command: ModelsCommand::Install,
         } => {
             let models = models.to_path_buf();
-            crate::blocking(move || install_models(&models)).await
+            let embeddings = configuration.embeddings.clone();
+            crate::blocking(move || install_models(&models, embeddings)).await
         }
     }
 }
@@ -438,7 +441,10 @@ async fn shared_status(
     configuration: &ResolvedConfig,
 ) -> Result<Response, AppError> {
     let root = models.to_path_buf();
-    let models_installed = crate::blocking(move || Ok(Models::new(root).is_installed())).await?;
+    let embeddings = configuration.embeddings.clone();
+    let models_installed =
+        crate::blocking(move || Ok(Models::new(root).with_remote(embeddings).is_installed()))
+            .await?;
     let counts = shared::direct::status(required_shared(configuration)?).await?;
     let ready =
         models_installed && counts.messages > 0 && counts.embeddings == counts.searchable_messages;
@@ -482,6 +488,7 @@ async fn index_routes(
         return direct_index(
             required_shared(configuration)?,
             models,
+            configuration.embeddings.as_ref(),
             full,
             &shared_options,
         )
@@ -489,7 +496,9 @@ async fn index_routes(
     }
     let db = database.to_path_buf();
     let root = models.to_path_buf();
-    let mut response = crate::blocking(move || index(&db, &root, full, &local_options)).await?;
+    let embeddings = configuration.embeddings.clone();
+    let mut response =
+        crate::blocking(move || index(&db, &root, embeddings, full, &local_options)).await?;
     if let Response::Index(result) = &mut response {
         if routed_both(configuration) {
             result.shared = Some(
@@ -527,11 +536,13 @@ fn routed_both(configuration: &ResolvedConfig) -> bool {
 async fn direct_index(
     configuration: &config::SharedConfig,
     models_dir: &Path,
+    embeddings: Option<&semantic::remote::Configuration>,
     full: bool,
     options: &ingestion::IndexOptions,
 ) -> Result<Response, AppError> {
     let started = Instant::now();
-    let result = shared::direct::index(configuration, models_dir, options, full, None).await?;
+    let result =
+        shared::direct::index(configuration, models_dir, embeddings, options, full, None).await?;
     let summary = result.summary;
     emit_index_phase("complete", &summary);
     Ok(Response::Index(IndexResponse {
@@ -567,12 +578,13 @@ async fn direct_index(
 fn index(
     database_path: &Path,
     models_dir: &Path,
+    embeddings_config: Option<semantic::remote::Configuration>,
     full: bool,
     options: &ingestion::IndexOptions,
 ) -> Result<Response, AppError> {
     let total_started = Instant::now();
-    let models = Models::new(models_dir.to_path_buf());
-    models.require_installed()?;
+    let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
+    models.require_indexer()?;
     let mut model_load_milliseconds = 0;
     let storage_started = Instant::now();
     let mut storage = Storage::open_writer(database_path)?;
@@ -594,11 +606,11 @@ fn index(
     let search_refresh_milliseconds = elapsed_milliseconds(search_started);
     emit_index_phase("semantic-embeddings", &summary);
     let embedding_started = Instant::now();
-    let generation = semantic::embedding_generation();
-    let already_published = storage.semantic_generation_is_published(generation)?
+    let generation = models.generation();
+    let already_published = storage.semantic_generation_is_published(&generation)?
         && !storage.has_pending_embeddings()?;
     if !already_published {
-        storage.invalidate_embedding_generation(generation)?;
+        storage.invalidate_embedding_generation(&generation)?;
     }
     let embeddings = if !already_published && storage.has_pending_embeddings()? {
         storage.commit_and_continue_writer()?;
@@ -607,14 +619,19 @@ fn index(
             AppError::model("semantic models are not installed; run `mash models install`")
         })?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
-        semantic::rebuild_embeddings(&mut storage, &mut embedding_pool, emit_embedding_progress)?
+        semantic::rebuild_embeddings(
+            &mut storage,
+            &mut embedding_pool,
+            &generation,
+            emit_embedding_progress,
+        )?
     } else {
         semantic::EmbeddingSummary::default()
     };
     let embedding_milliseconds = elapsed_milliseconds(embedding_started);
     let counts = storage.counts()?;
     if !already_published {
-        storage.mark_semantic_index_ready(generation)?;
+        storage.mark_semantic_index_ready(&generation)?;
     }
     storage.commit_writer()?;
     if full {
@@ -702,18 +719,19 @@ fn write_embedding_progress(
 fn local_search(
     database_path: &Path,
     models_dir: &Path,
+    embeddings_config: Option<semantic::remote::Configuration>,
     query: String,
     limit: usize,
     provider: Option<&str>,
     days: Option<u32>,
 ) -> Result<SearchResponse, AppError> {
     let provider = normalize_provider_filter(provider)?;
-    let models = Models::new(models_dir.to_path_buf());
+    let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_installed()?;
     let storage = Storage::open_existing(database_path)?;
     if storage.derived_search_is_dirty()?
         || !storage.has_messages()?
-        || !storage.semantic_index_is_ready(semantic::embedding_generation())?
+        || !storage.semantic_index_is_ready(&models.generation())?
     {
         return Err(AppError::search_not_ready(
             "semantic index is incomplete; run `mash index`",
@@ -722,7 +740,15 @@ fn local_search(
     let mut backend = models.load()?.ok_or_else(|| {
         AppError::model("semantic models are not installed; run `mash models install`")
     })?;
-    let results = semantic::hybrid_search(&storage, &mut backend, &query, limit, provider, days)?;
+    let results = semantic::hybrid_search(
+        &models.generation(),
+        &storage,
+        &mut backend,
+        &query,
+        limit,
+        provider,
+        days,
+    )?;
     Ok(SearchResponse {
         query,
         realized_mode: "hybrid".to_owned(),
@@ -858,7 +884,9 @@ fn status(
     models_dir: &Path,
     configuration: &ResolvedConfig,
 ) -> Result<Response, AppError> {
-    let models_installed = Models::new(models_dir.to_path_buf()).is_installed();
+    let models_installed = Models::new(models_dir.to_path_buf())
+        .with_remote(configuration.embeddings.clone())
+        .is_installed();
     if !database_path.is_file() {
         return Ok(Response::Status(StatusResponse {
             ready: false,
@@ -886,7 +914,10 @@ fn status(
         }));
     }
 
-    let snapshot = Storage::status_snapshot(database_path, semantic::embedding_generation())?;
+    let snapshot = Storage::status_snapshot(
+        database_path,
+        &semantic::configured_generation(configuration.embeddings.as_ref()),
+    )?;
     let counts = snapshot.counts;
     let current_embeddings = snapshot.current_embeddings;
     let hybrid_ready = models_installed
@@ -925,8 +956,13 @@ fn status(
     }))
 }
 
-fn install_models(models_dir: &Path) -> Result<Response, AppError> {
-    let summary = Models::new(models_dir.to_path_buf()).install()?;
+fn install_models(
+    models_dir: &Path,
+    embeddings: Option<semantic::remote::Configuration>,
+) -> Result<Response, AppError> {
+    let summary = Models::new(models_dir.to_path_buf())
+        .with_remote(embeddings)
+        .install()?;
     Ok(Response::ModelsInstall(ModelsInstallResponse {
         installed: true,
         model_directory: models_dir.to_path_buf(),
@@ -1016,6 +1052,7 @@ mod tests {
     ) -> ResolvedConfig {
         let root = std::env::temp_dir().join("mash-cli-options");
         ResolvedConfig {
+            embeddings: None,
             path: root.join("config.json"),
             loaded: true,
             shared: None,

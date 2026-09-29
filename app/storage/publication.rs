@@ -57,7 +57,13 @@ impl Snapshot<'_> {
                         .map_err(AppError::database)?;
                     let generation = (local_generation.as_deref()
                         == Some(crate::semantic::embedding_generation()))
-                    .then_some(crate::semantic::SHARED_EMBEDDING_GENERATION);
+                    .then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned())
+                    .or_else(|| {
+                        local_generation.filter(|g| {
+                            g.starts_with("remote:")
+                                || g == crate::semantic::SHARED_EMBEDDING_GENERATION
+                        })
+                    });
                     let vector = row
                         .get::<_, Option<Vec<u8>>>(8)
                         .map_err(AppError::database)?

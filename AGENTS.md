@@ -14,8 +14,9 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
   with independent provider allowlists. Keep local operations offline-capable.
   Only the HTTP service accesses PostgreSQL or Redis. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and share CLI operations.
-- Keep one concrete FastEmbed semantic backend with exact cosine search, RRF,
-  and bounded reranking.
+- Keep concrete local FastEmbed and remote HTTP embedding options with exact
+  cosine search, RRF, and bounded local reranking. Support Voyage and the
+  OpenAI-compatible embeddings API without provider traits or registries.
 - Do not add provider traits, registries, daemons, ANN indexes, compatibility
   shims, alternate output modes, a TUI, export, or analytics.
 - Support opt-in debounced synchronization with `index --watch` and MCP startup

@@ -119,7 +119,11 @@ fn timestamp(value: Option<String>) -> Result<Option<String>, AppError> {
         .transpose()
 }
 impl Store {
-    pub(super) async fn connect(url: &str, groups: &[String]) -> Result<Self, AppError> {
+    pub(super) async fn connect(
+        url: &str,
+        groups: &[String],
+        dimensions: usize,
+    ) -> Result<Self, AppError> {
         let client = redis::Client::open(url)
             .map_err(|_| AppError::configuration("invalid server Redis connection string"))?;
         let config = redis::aio::ConnectionManagerConfig::new()
@@ -130,11 +134,40 @@ impl Store {
             .await
             .map_err(redis_error)?;
         for group in groups {
+            let dimension_key = format!("{}dimensions", prefix(group));
             let name = index_name(group);
             let exists: Vec<String> = redis::cmd("FT._LIST")
                 .query_async(&mut connection)
                 .await
                 .map_err(redis_error)?;
+            let recorded: Option<usize> = redis::cmd("GET")
+                .arg(&dimension_key)
+                .query_async(&mut connection)
+                .await
+                .map_err(redis_error)?;
+            // Indexes created before dimension metadata existed were always 384.
+            if recorded.is_none() && exists.contains(&name) && dimensions != 384 {
+                return Err(AppError::configuration(
+                    "existing Redis group uses 384 dimensions; choose a new group_id",
+                ));
+            }
+            redis::cmd("SET")
+                .arg(&dimension_key)
+                .arg(dimensions)
+                .arg("NX")
+                .query_async::<Option<String>>(&mut connection)
+                .await
+                .map_err(redis_error)?;
+            let installed: usize = redis::cmd("GET")
+                .arg(&dimension_key)
+                .query_async(&mut connection)
+                .await
+                .map_err(redis_error)?;
+            if installed != dimensions {
+                return Err(AppError::configuration(
+                    "Redis group uses different embedding dimensions; use a new group_id when changing dimensions",
+                ));
+            }
             if !exists.contains(&name) {
                 let created: Result<(), _> = redis::cmd("FT.CREATE")
                     .arg(&name)
@@ -169,7 +202,7 @@ impl Store {
                     .arg("TYPE")
                     .arg("FLOAT32")
                     .arg("DIM")
-                    .arg(384)
+                    .arg(dimensions)
                     .arg("DISTANCE_METRIC")
                     .arg("COSINE")
                     .query_async(&mut connection)
@@ -279,7 +312,7 @@ impl Store {
             let mut state: NodeState = decode(&state)?;
             state.instance = Some(head.instance);
             state.revision = head.revision;
-            if head.generation != semantic::SHARED_EMBEDDING_GENERATION {
+            if head.generation != identity.generation {
                 for source in &mut state.sources {
                     source.ready = false;
                 }
@@ -311,7 +344,8 @@ impl Store {
             ));
         }
         let loaded = self.load(identity).await?;
-        let plan = crate::blocking(move || plan(&file, loaded)).await?;
+        let dimensions = identity.dimensions;
+        let plan = crate::blocking(move || plan(&file, loaded, dimensions)).await?;
         let instance = plan
             .loaded
             .head
@@ -384,7 +418,7 @@ impl Store {
             data_key(&identity.group_id, version),
             state_key(&identity.group_id, version),
         ];
-        let state = data.state();
+        let state = data.state(identity);
         let mut pipe = redis::pipe();
         pipe.cmd("SET")
             .arg(&keys[0])
@@ -491,7 +525,7 @@ impl Store {
         if !(1..=99_999_999_999_999).contains(&plan.revision) {
             return Err(AppError::usage("invalid Redis revision"));
         }
-        let counts = plan.loaded.data.counts();
+        let counts = plan.loaded.data.counts(identity);
         let mut random = [0u8; 32];
         getrandom::fill(&mut random)
             .map_err(|_| AppError::internal("create Redis staging identity"))?;
@@ -522,7 +556,7 @@ impl Store {
         };
         let head = Head {
             instance,
-            generation: semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
+            generation: identity.generation.clone(),
             revision: plan.revision,
             version: version.clone(),
             counts: counts.clone(),
@@ -568,7 +602,8 @@ impl Store {
     ) -> Result<protocol::Candidates, AppError> {
         if input.query.trim().is_empty()
             || input.query.len() > 16384
-            || !protocol::valid_vector(&input.vector)
+            || !protocol::valid_vector(&input.vector, identity.dimensions)
+            || input.generation != identity.generation
         {
             return Err(AppError::usage("invalid search query or vector"));
         }
@@ -612,7 +647,7 @@ impl Store {
             .arg(lexical)
             .arg(filters)
             .arg(vector_bytes(&input.vector))
-            .arg(semantic::SHARED_EMBEDDING_GENERATION)
+            .arg(&identity.generation)
             .query_async(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;
@@ -757,7 +792,7 @@ fn hits(value: redis::Value, lexical: bool) -> Result<(Vec<SearchHit>, Documents
     Ok((hits, documents))
 }
 impl Data {
-    fn counts(&self) -> Counts {
+    fn counts(&self, identity: &Identity) -> Counts {
         Counts {
             conversations: self.conversations.len() as u64,
             messages: self.messages.len() as u64,
@@ -771,20 +806,24 @@ impl Data {
                 .values()
                 .filter(|m| {
                     !m.projection.is_empty()
-                        && m.generation.as_deref() == Some(semantic::SHARED_EMBEDDING_GENERATION)
-                        && m.vector.as_ref().is_some_and(|v| protocol::valid_vector(v))
+                        && m.generation.as_deref() == Some(identity.generation.as_str())
+                        && m.vector
+                            .as_ref()
+                            .is_some_and(|v| protocol::valid_vector(v, identity.dimensions))
                 })
                 .count() as u64,
         }
     }
-    fn state(&self) -> NodeState {
+    fn state(&self, identity: &Identity) -> NodeState {
         let incompatible: HashSet<_> = self
             .messages
             .values()
             .filter(|m| {
                 !m.projection.is_empty()
-                    && (m.generation.as_deref() != Some(semantic::SHARED_EMBEDDING_GENERATION)
-                        || m.vector.as_ref().is_none_or(|v| !protocol::valid_vector(v)))
+                    && (m.generation.as_deref() != Some(identity.generation.as_str())
+                        || m.vector
+                            .as_ref()
+                            .is_none_or(|v| !protocol::valid_vector(v, identity.dimensions)))
             })
             .map(|m| m.conversation_id.as_str())
             .collect();
@@ -890,7 +929,11 @@ fn start(loaded: &mut Loaded, input: &Start) -> Result<(i64, bool), AppError> {
     clippy::too_many_lines,
     reason = "validate the complete upload before staging any Redis data"
 )]
-fn plan(file: &tempfile::NamedTempFile, mut loaded: Loaded) -> Result<Plan, AppError> {
+fn plan(
+    file: &tempfile::NamedTempFile,
+    mut loaded: Loaded,
+    dimensions: usize,
+) -> Result<Plan, AppError> {
     use std::io::BufRead;
     let mut lines = std::io::BufReader::new(
         file.reopen()
@@ -995,7 +1038,7 @@ fn plan(file: &tempfile::NamedTempFile, mut loaded: Loaded) -> Result<Plan, AppE
                             if m.ordinal < 0
                                 || m.vector
                                     .as_ref()
-                                    .is_some_and(|v| !protocol::valid_vector(v))
+                                    .is_some_and(|v| !protocol::valid_vector(v, dimensions))
                                 || (m.projection.is_empty()
                                     && (m.vector.is_some() || m.generation.is_some()))
                             {

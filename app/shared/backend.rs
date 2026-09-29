@@ -4,8 +4,8 @@ use super::protocol::{
 };
 use super::server::Identity;
 use super::{Freshness, NodeFreshness};
+use crate::AppError;
 use crate::storage::{Counts, Message, SearchHit};
-use crate::{AppError, semantic};
 use deadpool_postgres::{Pool, Transaction};
 use std::collections::HashMap;
 use tokio::io::AsyncBufReadExt;
@@ -198,6 +198,7 @@ async fn upload_batch(
     kind: &str,
     records: &[serde_json::Value],
     snapshot: bool,
+    dimensions: usize,
 ) -> Result<bool, AppError> {
     if records.len() > 128 {
         return Err(AppError::usage("index batch exceeds 128 records"));
@@ -239,13 +240,15 @@ async fn upload_batch(
                 valid_id(&r.id)?;
                 valid_id(&r.conversation_id)?;
                 if r.ordinal < 0
-                    || r.vector.as_ref().is_some_and(|v| !valid_vector(v))
+                    || r.vector
+                        .as_ref()
+                        .is_some_and(|v| !valid_vector(v, dimensions))
                     || (r.projection.is_empty() && (r.vector.is_some() || r.generation.is_some()))
                 {
                     return Err(AppError::usage("invalid message embedding or ordinal"));
                 }
             }
-            "INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector) SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,generation,vector::public.vector(384) FROM jsonb_to_recordset($2::text::jsonb) r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,generation text,vector real[]) WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id)"
+            "INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector) SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,generation,vector::public.vector FROM jsonb_to_recordset($2::text::jsonb) r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,generation text,vector real[]) WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id)"
         }
         _ => return Err(AppError::usage("unknown index batch kind")),
     };
@@ -332,7 +335,15 @@ pub(super) async fn index(
         }
         match event {
             Event::Batch { kind, records } => {
-                changed |= upload_batch(&tx, node, &kind, &records, start.snapshot).await?;
+                changed |= upload_batch(
+                    &tx,
+                    node,
+                    &kind,
+                    &records,
+                    start.snapshot,
+                    identity.dimensions,
+                )
+                .await?;
             }
             Event::Source(s) if !start.snapshot => {
                 valid_provider(Some(&s.provider))?;
@@ -396,7 +407,7 @@ pub(super) async fn index(
         .await
         .map_err(pg_error)?;
     }
-    let counts = counts(&mut tx, node).await?;
+    let counts = counts(&mut tx, node, identity).await?;
     record_sync(&mut tx, node, changed, true).await?;
     tx.commit().await.map_err(pg_error)?;
     Ok(Indexed {
@@ -473,7 +484,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .map_err(pg_error)?
             .try_get(0)
             .map_err(pg_error)?;
-        if version != 2 {
+        if version != 3 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
@@ -580,6 +591,7 @@ async fn candidates(
     client: &mut Transaction<'_>,
     query: &str,
     vector: &[f64],
+    identity: &Identity,
     provider: Option<&str>,
     days: Option<u32>,
 ) -> Result<Candidates, AppError> {
@@ -593,7 +605,9 @@ async fn candidates(
         .unwrap_or(i64::MAX)
         .saturating_sub(i64::from(days) * 86400)
     });
-    let generation = semantic::SHARED_EMBEDDING_GENERATION;
+    let generation = &identity.generation;
+    let dimensions =
+        i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?;
     let vector =
         serde_json::to_string(vector).map_err(|_| AppError::usage("invalid query vector"))?;
     let lexical = client
@@ -613,10 +627,10 @@ async fn candidates(
             "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
                 1.0 - (m.vector <=> $1::text::public.vector) AS score
          FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
-         WHERE generation=$2 AND vector_dims(vector)=384 AND projection <> ''
+         WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
          ORDER BY score DESC,m.node_id,m.id LIMIT 50",
-            &[&vector, &generation, &provider, &cutoff],
+            &[&vector, &generation, &provider, &cutoff, &dimensions],
         )
         .await
         .map_err(pg_error)?;
@@ -648,13 +662,17 @@ pub(super) async fn search(
     identity: &Identity,
     input: Search,
 ) -> Result<super::protocol::Candidates, AppError> {
-    if input.query.trim().is_empty() || input.query.len() > 16384 || !valid_vector(&input.vector) {
+    if input.query.trim().is_empty()
+        || input.query.len() > 16384
+        || !valid_vector(&input.vector, identity.dimensions)
+        || input.generation != identity.generation
+    {
         return Err(AppError::usage("invalid search query or vector"));
     }
     valid_provider(input.provider.as_deref())?;
     let mut connection = connection(pool).await?;
     let mut tx = transaction(&mut connection, identity).await?;
-    let incompatible: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM messages WHERE projection <> '' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>384))", &[&semantic::SHARED_EMBEDDING_GENERATION]).await.map_err(pg_error)?.try_get(0).map_err(pg_error)?;
+    let incompatible: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM messages WHERE projection <> '' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2))", &[&identity.generation, &i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?]).await.map_err(pg_error)?.try_get(0).map_err(pg_error)?;
     if incompatible {
         return Err(AppError::shared(
             "shared embeddings are incomplete or incompatible; run mash index on publishing nodes",
@@ -664,6 +682,7 @@ pub(super) async fn search(
         &mut tx,
         &input.query,
         &input.vector,
+        identity,
         input.provider.as_deref(),
         input.days,
     )
@@ -690,8 +709,12 @@ pub(super) fn valid_provider(provider: Option<&str>) -> Result<(), AppError> {
         Ok(())
     }
 }
-pub(super) async fn counts(tx: &mut Transaction<'_>, node: &str) -> Result<Counts, AppError> {
-    let row = tx.query_one("SELECT (SELECT count(*) FROM conversations WHERE node_id=$1), count(*), count(*) FILTER(WHERE projection<>''), count(*) FILTER(WHERE projection<>'' AND generation=$2 AND vector_dims(vector)=384) FROM messages WHERE node_id=$1", &[&node,&semantic::SHARED_EMBEDDING_GENERATION]).await.map_err(pg_error)?;
+pub(super) async fn counts(
+    tx: &mut Transaction<'_>,
+    node: &str,
+    identity: &Identity,
+) -> Result<Counts, AppError> {
+    let row = tx.query_one("SELECT (SELECT count(*) FROM conversations WHERE node_id=$1), count(*), count(*) FILTER(WHERE projection<>''), count(*) FILTER(WHERE projection<>'' AND generation=$2 AND vector_dims(vector)=$3) FROM messages WHERE node_id=$1", &[&node,&identity.generation,&i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?]).await.map_err(pg_error)?;
     Ok(Counts {
         conversations: row.try_get::<_, i64>(0).map_err(pg_error)?.cast_unsigned(),
         messages: row.try_get::<_, i64>(1).map_err(pg_error)?.cast_unsigned(),
@@ -702,7 +725,7 @@ pub(super) async fn counts(tx: &mut Transaction<'_>, node: &str) -> Result<Count
 pub(super) async fn status(pool: &Pool, identity: &Identity) -> Result<Counts, AppError> {
     let mut connection = connection(pool).await?;
     let mut tx = transaction(&mut connection, identity).await?;
-    counts(&mut tx, &identity.node_id).await
+    counts(&mut tx, &identity.node_id, identity).await
 }
 pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState, AppError> {
     let mut connection = connection(pool).await?;
@@ -723,7 +746,7 @@ pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState,
         (None, 0)
     };
     let mut sources = Vec::new();
-    for r in tx.query("SELECT provider,path_hash,size_bytes,modified_ns,conversation_id, NOT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $2 OR vector IS NULL OR vector_dims(vector)<>384)) FROM direct_sources s WHERE node_id=$1", &[&&identity.node_id,&semantic::SHARED_EMBEDDING_GENERATION]).await.map_err(pg_error)? {
+    for r in tx.query("SELECT provider,path_hash,size_bytes,modified_ns,conversation_id, NOT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $2 OR vector IS NULL OR vector_dims(vector)<>$3)) FROM direct_sources s WHERE node_id=$1", &[&&identity.node_id,&identity.generation,&i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?]).await.map_err(pg_error)? {
         sources.push(Checkpoint {provider:r.try_get(0).map_err(pg_error)?, path_hash:r.try_get(1).map_err(pg_error)?,size_bytes:r.try_get(2).map_err(pg_error)?,modified_ns:r.try_get(3).map_err(pg_error)?,conversation_id:r.try_get(4).map_err(pg_error)?,ready:r.try_get(5).map_err(pg_error)?});
     }
     let mut tombstones = Vec::new();

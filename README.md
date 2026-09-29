@@ -291,8 +291,8 @@ Changing between SQLite-backed and shared-only identity requires a new node ID.
 Models still live locally and are installed only by `models install`.
 
 Shared search uses PostgreSQL full-text retrieval, pgvector exact cosine over uploaded
-quantized vectors, RRF, and at most ten reranked candidates. The querying node
-runs the same installed FastEmbed models locally. CPU and Apple Core ML vectors
+quantized vectors, RRF, and at most ten reranked candidates. The querying node uses the configured embedding backend and local FastEmbed
+reranking. CPU and Apple Core ML vectors
 share a model-space identifier; outdated or missing embeddings cause an explicit
 shared error requiring publishing nodes to reindex. Shared hits include `node_id`
 for the matching `view` call. A shared outage does not trigger a silent local
@@ -303,6 +303,55 @@ simplicity over upload throughput. Large histories incur a full transfer on each
 exact cosine scans the shared corpus. There is no ANN index or automatic shared service deployment. The API keeps the
 current exact retrieval behavior; add approximate indexing only after measuring
 the corpus size, latency, and recall tradeoffs.
+
+## Remote embeddings
+
+Local FastEmbed inference remains the default. Add `embeddings` to the node
+configuration to use Voyage-4 for both document and query embeddings:
+
+```json
+"embeddings": {
+  "api": "voyage",
+  "url": "https://api.voyageai.com/v1/embeddings",
+  "model": "voyage-4",
+  "dimensions": 1024,
+  "token_env": "VOYAGE_API_KEY"
+}
+```
+
+Set `VOYAGE_API_KEY` in the node's environment. It is separate from the shared
+index token; the index service never receives it. History search projections
+and search queries are sent to the configured inference endpoint. There is no
+automatic fallback to another model. `model` is configurable, including
+`voyage-code-4`; Voyage dimensions can be 256, 512, 1024, or 2048. Requests use
+`input_type: document` for indexing and `input_type: query` for searching.
+Overlong inputs fail explicitly rather than being silently truncated.
+
+For an OpenAI-compatible endpoint, set `api` to `openai-compatible` and provide
+its complete embeddings URL, model, dimensions, and optional `token_env`.
+Set `request_dimensions: true` if the endpoint should receive the `dimensions`
+parameter. Fixed-dimension self-hosted endpoints can omit it. Mash supports
+1–2048 dimensions and validates vector count, ordering, dimensions, and values.
+HTTP requests are asynchronous, bounded, and time out after 60 seconds. Local
+SQLite pipelines remain on blocking workers while remote requests run on Tokio.
+
+Remote indexing needs no local model assets. Reranking remains local; run
+`mash models install` with remote embeddings configured to install only the
+reranker before searching. No models are downloaded by indexing or searching.
+
+For shared indexing, configure the service's embedding space as well:
+
+```json
+"embeddings": {"model": "voyage-4", "dimensions": 1024}
+```
+
+The service configuration applies to every group it serves. Publishers and
+searchers must use the matching model and dimensions. Changing them rebuilds
+local embeddings on the next index pass; reindex all shared publishers before
+searching. PostgreSQL startup migrates existing vectors without deleting history.
+Redis indexes have fixed dimensions: use a new group ID when changing dimensions,
+then reindex its members. Model identifiers and dimensions prevent mismatched
+queries from being compared with the stored embedding space.
 
 ## Automatic synchronization
 
@@ -378,7 +427,8 @@ is the only operation that downloads models. Shared node I/O uses async HTTP;
 service-side PostgreSQL I/O uses `tokio-postgres` and async/await. SQLite, parsing, and local FastEmbed inference run on blocking
 workers and are awaited by callers. MCP mutations serialize per session; status
 and view may run concurrently, while model-heavy operations use a single permit
-to bound memory and CPU use. No remote inference backend is currently configured.
+to bound memory and CPU use. Remote embeddings use the same node configuration
+for CLI and MCP operations.
 
 ## Verification
 

@@ -26,14 +26,16 @@ fn elapsed(started: Instant) -> u64 {
 pub(crate) async fn index(
     config: &SharedConfig,
     models_dir: &Path,
+    embeddings: Option<&semantic::remote::Configuration>,
     options: &IndexOptions,
     full: bool,
     owner: Option<&DirectOwner>,
 ) -> Result<IndexResult, AppError> {
     let root = models_dir.to_path_buf();
+    let remote = embeddings.cloned();
     let input = options.clone();
     let scans = crate::blocking(move || {
-        Models::new(root).require_installed()?;
+        Models::new(root).with_remote(remote).require_indexer()?;
         ingestion::direct_scans(&input)
     })
     .await?;
@@ -78,6 +80,7 @@ pub(crate) async fn index(
             scan,
             full,
             models_dir,
+            embeddings,
             &mut pool,
             &mut result,
         )
@@ -106,6 +109,7 @@ async fn ingest_scan(
     scan: &DirectScan,
     full: bool,
     models_dir: &Path,
+    embeddings: Option<&semantic::remote::Configuration>,
     pool: &mut Option<EmbeddingPool>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
@@ -184,7 +188,8 @@ async fn ingest_scan(
             if forgotten {
                 result.summary.tombstoned_sources += 1;
             } else {
-                replace_conversation(file, conversation, models_dir, pool, result).await?;
+                replace_conversation(file, conversation, models_dir, embeddings, pool, result)
+                    .await?;
             }
         }
         write_event(
@@ -223,6 +228,7 @@ async fn ingest_scan(
 }
 async fn embed_texts(
     models_dir: &Path,
+    embeddings: Option<&semantic::remote::Configuration>,
     pool: &mut Option<EmbeddingPool>,
     texts: &[&str],
     result: &mut IndexResult,
@@ -231,6 +237,7 @@ async fn embed_texts(
         return Ok(Vec::new());
     }
     let existing = pool.take();
+    let remote = embeddings.cloned();
     let root = models_dir.to_path_buf();
     let input = texts
         .iter()
@@ -241,9 +248,12 @@ async fn embed_texts(
         let load_started = Instant::now();
         let mut loaded = match existing {
             Some(pool) => pool,
-            None => Models::new(root).load_indexer()?.ok_or_else(|| {
-                AppError::model("semantic models are not installed; run `mash models install`")
-            })?,
+            None => Models::new(root)
+                .with_remote(remote)
+                .load_indexer()?
+                .ok_or_else(|| {
+                    AppError::model("semantic models are not installed; run `mash models install`")
+                })?,
         };
         let load_ms = if loading { elapsed(load_started) } else { 0 };
         let references = input.iter().map(String::as_str).collect::<Vec<_>>();
@@ -262,6 +272,7 @@ async fn replace_conversation(
     file: &mut std::fs::File,
     conversation: &Conversation,
     models_dir: &Path,
+    embeddings: Option<&semantic::remote::Configuration>,
     pool: &mut Option<EmbeddingPool>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
@@ -280,7 +291,7 @@ async fn replace_conversation(
             .map(|m| m.search_projection.as_deref().unwrap_or(&m.content))
             .filter(|t| !t.is_empty())
             .collect::<Vec<_>>();
-        let mut vectors = embed_texts(models_dir, pool, &texts, result)
+        let mut vectors = embed_texts(models_dir, embeddings, pool, &texts, result)
             .await?
             .into_iter();
         result.embeddings.model_inferences += texts.len() as u64;
@@ -299,9 +310,12 @@ async fn replace_conversation(
                         .ok_or_else(|| AppError::model("missing shared message embedding"))?,
                 )
             };
-            let generation = vector
-                .as_ref()
-                .map(|_| semantic::SHARED_EMBEDDING_GENERATION);
+            let generation = vector.as_ref().map(|_| {
+                embeddings.map_or_else(
+                    || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
+                    |c| semantic::model_space(&c.model, c.dimensions),
+                )
+            });
             records.push(serde_json::json!({"id":message.id,"conversation_id":conversation.id,"ordinal":message.ordinal,"role":message.role,"content":message.content,"projection":projection,"created_at":message.created_at,"generation":generation,"vector":vector}));
             result.summary.changed_messages += 1;
             result.embeddings.stored_vectors += u64::from(vector.is_some());

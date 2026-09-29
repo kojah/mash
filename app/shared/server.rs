@@ -24,6 +24,8 @@ use crate::AppError;
 pub(super) struct Identity {
     pub group_id: String,
     pub node_id: String,
+    pub generation: String,
+    pub dimensions: usize,
 }
 
 #[derive(Deserialize)]
@@ -38,6 +40,8 @@ struct AuthorizedNode {
 #[serde(deny_unknown_fields)]
 struct Configuration {
     version: u32,
+    #[serde(default)]
+    embeddings: EmbeddingSpace,
     #[serde(default = "default_listen")]
     listen: SocketAddr,
     #[serde(default)]
@@ -48,6 +52,21 @@ struct Configuration {
     max_connections: usize,
     nodes: Vec<AuthorizedNode>,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmbeddingSpace {
+    model: String,
+    dimensions: usize,
+}
+impl Default for EmbeddingSpace {
+    fn default() -> Self {
+        Self {
+            model: "sentence-transformers/all-MiniLM-L6-v2".into(),
+            dimensions: 384,
+        }
+    }
+}
+
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum BackendChoice {
@@ -179,6 +198,15 @@ fn identities(config: &Configuration) -> Result<HashMap<blake3::Hash, Identity>,
             "server requires version 1, configured nodes, and 1..128 connections",
         ));
     }
+    if !(1..=2048).contains(&config.embeddings.dimensions)
+        || config.embeddings.model.trim().is_empty()
+        || config.embeddings.model.len() > 255
+        || config.embeddings.model.chars().any(char::is_control)
+    {
+        return Err(AppError::configuration(
+            "invalid server embedding model or dimensions",
+        ));
+    }
     let mut result = HashMap::new();
     let mut unique = HashSet::new();
     for node in &config.nodes {
@@ -200,6 +228,11 @@ fn identities(config: &Configuration) -> Result<HashMap<blake3::Hash, Identity>,
                     Identity {
                         group_id: node.group_id.clone(),
                         node_id: node.node_id.clone(),
+                        generation: crate::semantic::model_space(
+                            &config.embeddings.model,
+                            config.embeddings.dimensions,
+                        ),
+                        dimensions: config.embeddings.dimensions,
                     },
                 )
                 .is_some()
@@ -489,7 +522,10 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
             let url = std::env::var(name).map_err(|_| {
                 AppError::configuration(format!("set {name} to the server Redis connection string"))
             })?;
-            Store::Redis(super::redis_index::Store::connect(&url, &groups).await?)
+            Store::Redis(
+                super::redis_index::Store::connect(&url, &groups, config.embeddings.dimensions)
+                    .await?,
+            )
         }
     };
     let listener = tokio::net::TcpListener::bind(config.listen)

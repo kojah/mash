@@ -1,3 +1,5 @@
+pub(crate) mod remote;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -47,10 +49,12 @@ static EMBEDDING_GENERATION: OnceLock<String> = OnceLock::new();
 
 pub(crate) struct Models {
     root: PathBuf,
+    remote: Option<remote::Configuration>,
 }
 
 pub(crate) struct Backend {
-    embedding: TextEmbedding,
+    embedding: Option<TextEmbedding>,
+    remote: Option<remote::Client>,
     reranker: TextRerank,
 }
 
@@ -59,6 +63,7 @@ pub(crate) struct EmbeddingPool {
 }
 
 enum EmbeddingPoolBackend {
+    Remote(remote::Client),
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     Cpu(Vec<TextEmbedding>),
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -109,6 +114,8 @@ struct InstallMarker {
     embedding_dimensions: usize,
     #[serde(default)]
     coreml_embedding: bool,
+    #[serde(default = "default_embedding_available")]
+    embedding_available: bool,
     files: Vec<InstalledFile>,
 }
 
@@ -118,9 +125,33 @@ struct InstalledFile {
     size: u64,
 }
 
+fn default_embedding_available() -> bool {
+    true
+}
+
 impl Models {
     pub(crate) fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self { root, remote: None }
+    }
+
+    pub(crate) fn with_remote(mut self, config: Option<remote::Configuration>) -> Self {
+        self.remote = config;
+        self
+    }
+
+    pub(crate) fn require_indexer(&self) -> Result<(), AppError> {
+        if let Some(config) = &self.remote {
+            remote::Client::new(config.clone()).map(|_| ())
+        } else {
+            self.require_installed()
+        }
+    }
+
+    pub(crate) fn generation(&self) -> String {
+        self.remote.as_ref().map_or_else(
+            || embedding_generation().to_owned(),
+            |c| model_space(&c.model, c.dimensions),
+        )
     }
 
     pub(crate) fn is_installed(&self) -> bool {
@@ -137,6 +168,39 @@ impl Models {
     }
 
     pub(crate) fn install(&self) -> Result<InstallSummary, AppError> {
+        if let Some(config) = &self.remote {
+            config.validate()?;
+            fs::create_dir_all(&self.root).map_err(AppError::io)?;
+            let mut reranker = TextRerank::try_new(
+                RerankInitOptions::new(RERANKER_MODEL)
+                    .with_cache_dir(self.root.clone())
+                    .with_show_download_progress(false),
+            )
+            .map_err(|_| AppError::model("failed to install reranking model"))?;
+            reranker
+                .rerank("installation check", ["installation check"], false, None)
+                .map_err(|_| AppError::model("reranking model installation check failed"))?;
+            let files = inventory(&self.root)?;
+            let summary = InstallSummary {
+                embedding_model: "remote",
+                reranker_model: "jinaai/jina-reranker-v1-turbo-en",
+                embedding_dimensions: config.dimensions,
+                files: files.len(),
+            };
+            write_marker(
+                &self.root,
+                &InstallMarker {
+                    schema: 1,
+                    embedding_model: EMBEDDING_MODEL.to_string(),
+                    reranker_model: RERANKER_MODEL.to_string(),
+                    embedding_dimensions: config.dimensions,
+                    coreml_embedding: coreml_embedding_enabled(),
+                    embedding_available: false,
+                    files,
+                },
+            )?;
+            return Ok(summary);
+        }
         fs::create_dir_all(&self.root).map_err(AppError::io)?;
         let mut backend = Backend::download_and_load(&self.root)?;
         let embeddings = backend.embed(&["semantic model installation check"])?;
@@ -177,6 +241,7 @@ impl Models {
             reranker_model: RERANKER_MODEL.to_string(),
             embedding_dimensions,
             coreml_embedding: coreml_embedding_enabled(),
+            embedding_available: true,
             files,
         };
         write_marker(&self.root, &marker)?;
@@ -193,10 +258,23 @@ impl Models {
             return Ok(None);
         }
         self.read_valid_marker()?;
-        Backend::load_local(&self.root).map(Some)
+        if let Some(config) = &self.remote {
+            Ok(Some(Backend {
+                embedding: None,
+                remote: Some(remote::Client::new(config.clone())?),
+                reranker: load_reranker(&self.root)?,
+            }))
+        } else {
+            Backend::load_local(&self.root).map(Some)
+        }
     }
 
     pub(crate) fn load_indexer(&self) -> Result<Option<EmbeddingPool>, AppError> {
+        if let Some(config) = &self.remote {
+            return Ok(Some(EmbeddingPool {
+                backend: EmbeddingPoolBackend::Remote(remote::Client::new(config.clone())?),
+            }));
+        }
         if !self.root.join(MARKER_NAME).is_file() {
             return Ok(None);
         }
@@ -210,17 +288,26 @@ impl Models {
         })?;
         let marker: InstallMarker = serde_json::from_slice(&bytes)
             .map_err(|error| AppError::model(format!("invalid model marker: {error}")))?;
-        if marker.schema != 1
+        if (self.remote.is_none() && !marker.embedding_available)
+            || marker.schema != 1
             || marker.embedding_model != EMBEDDING_MODEL.to_string()
             || marker.reranker_model != RERANKER_MODEL.to_string()
             || marker.coreml_embedding != coreml_embedding_enabled()
             || marker.files.is_empty()
+            || (self.remote.is_some()
+                && !marker
+                    .files
+                    .iter()
+                    .any(|file| file.path.contains(RERANKER_REPOSITORY)))
         {
             return Err(AppError::model(
                 "model marker does not match this mash build",
             ));
         }
         for file in &marker.files {
+            if self.remote.is_some() && !file.path.contains(RERANKER_REPOSITORY) {
+                continue;
+            }
             let path = self.root.join(&file.path);
             let metadata = fs::metadata(path).map_err(|error| {
                 AppError::model(format!("installed model asset is unavailable: {error}"))
@@ -231,6 +318,21 @@ impl Models {
         }
         Ok(marker)
     }
+}
+
+fn load_reranker(root: &Path) -> Result<TextRerank, AppError> {
+    let reranker_snapshot = snapshot(root, RERANKER_REPOSITORY)?;
+    let reranker_info = TextRerank::get_model_info(&RERANKER_MODEL);
+    let reranker_model = UserDefinedRerankingModel::new(
+        reranker_snapshot.join(reranker_info.model_file),
+        read_tokenizer_files(&reranker_snapshot)?,
+    );
+    let reranker = TextRerank::try_new_from_user_defined(
+        reranker_model,
+        RerankInitOptionsUserDefined::default(),
+    )
+    .map_err(|error| AppError::model(format!("failed to load reranking model: {error}")))?;
+    Ok(reranker)
 }
 
 impl Backend {
@@ -250,26 +352,18 @@ impl Backend {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         download_coreml_embedding(root)?;
         Ok(Self {
-            embedding,
+            embedding: Some(embedding),
+            remote: None,
             reranker,
         })
     }
 
     fn load_local(root: &Path) -> Result<Self, AppError> {
         let embedding = load_local_embedding(root, None)?;
-        let reranker_snapshot = snapshot(root, RERANKER_REPOSITORY)?;
-        let reranker_info = TextRerank::get_model_info(&RERANKER_MODEL);
-        let reranker_model = UserDefinedRerankingModel::new(
-            reranker_snapshot.join(reranker_info.model_file),
-            read_tokenizer_files(&reranker_snapshot)?,
-        );
-        let reranker = TextRerank::try_new_from_user_defined(
-            reranker_model,
-            RerankInitOptionsUserDefined::default(),
-        )
-        .map_err(|error| AppError::model(format!("failed to load reranking model: {error}")))?;
+        let reranker = load_reranker(root)?;
         Ok(Self {
-            embedding,
+            embedding: Some(embedding),
+            remote: None,
             reranker,
         })
     }
@@ -278,7 +372,18 @@ impl Backend {
         &mut self,
         texts: &[S],
     ) -> Result<Vec<Vec<f32>>, AppError> {
+        if let Some(client) = &self.remote {
+            return client.embed_on_worker(
+                &texts
+                    .iter()
+                    .map(|t| t.as_ref().to_owned())
+                    .collect::<Vec<_>>(),
+                true,
+            );
+        }
         self.embedding
+            .as_mut()
+            .ok_or_else(|| AppError::internal("missing local embedding model"))?
             .embed(texts, None)
             .map_err(|error| AppError::model(format!("embedding inference failed: {error}")))
     }
@@ -340,6 +445,10 @@ impl EmbeddingPool {
 
     fn embed_wave(&mut self, groups: &[EmbeddingGroup]) -> Result<Vec<Vec<f32>>, AppError> {
         match &mut self.backend {
+            EmbeddingPoolBackend::Remote(client) => client.embed_on_worker(
+                &groups.iter().map(|g| g.content.clone()).collect::<Vec<_>>(),
+                false,
+            ),
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
             EmbeddingPoolBackend::Cpu(workers) => embed_cpu_wave(workers, groups),
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -349,6 +458,7 @@ impl EmbeddingPool {
 
     const fn batch_size(&self) -> usize {
         match self.backend {
+            EmbeddingPoolBackend::Remote(_) => 32,
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
             EmbeddingPoolBackend::Cpu(_) => EMBEDDING_BATCH_SIZE,
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -358,6 +468,7 @@ impl EmbeddingPool {
 
     const fn wave_size(&self) -> usize {
         match self.backend {
+            EmbeddingPoolBackend::Remote(_) => 32,
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
             EmbeddingPoolBackend::Cpu(_) => EMBEDDING_WAVE_SIZE,
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -561,9 +672,9 @@ pub(crate) fn embedding_generation() -> &'static str {
 pub(crate) fn rebuild_embeddings(
     storage: &mut Storage,
     pool: &mut EmbeddingPool,
+    generation: &str,
     mut on_progress: impl FnMut(EmbeddingProgress),
 ) -> Result<EmbeddingSummary, AppError> {
-    let generation = embedding_generation();
     let groups = plan_embedding_groups(storage.messages_needing_embeddings()?);
     if groups.is_empty() {
         return Ok(EmbeddingSummary::default());
@@ -687,6 +798,7 @@ fn count_embeddings(count: usize) -> Result<u64, AppError> {
 }
 
 pub(crate) fn hybrid_search(
+    generation: &str,
     storage: &Storage,
     backend: &mut Backend,
     query: &str,
@@ -700,7 +812,7 @@ pub(crate) fn hybrid_search(
         .pop()
         .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
     let query_vector = quantize_vector(&query_vector);
-    let semantic = storage.semantic_chunks(embedding_generation(), provider, days)?;
+    let semantic = storage.semantic_chunks(generation, provider, days)?;
     let ranked = rank_quantized(&query_vector, &semantic, CANDIDATE_LIMIT);
     if ranked.is_empty() {
         return Ok(lexical.into_iter().take(limit).collect());
@@ -741,6 +853,21 @@ pub(crate) fn hybrid_search(
 
 /// Model-space identity shared by the CPU ONNX and Apple Core ML executions.
 /// Unlike the local storage generation, batching and chunk layout do not affect it.
+pub(crate) fn model_space(model: &str, dimensions: usize) -> String {
+    if model == "sentence-transformers/all-MiniLM-L6-v2" && dimensions == 384 {
+        SHARED_EMBEDDING_GENERATION.to_owned()
+    } else {
+        format!("remote:{model}:{dimensions}:i8-cosine:v1")
+    }
+}
+
+pub(crate) fn configured_generation(config: Option<&remote::Configuration>) -> String {
+    config.map_or_else(
+        || embedding_generation().to_owned(),
+        |c| model_space(&c.model, c.dimensions),
+    )
+}
+
 pub(crate) const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";
 
 pub(crate) fn shared_query_vector(

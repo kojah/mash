@@ -17,6 +17,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) path: PathBuf,
     pub(crate) loaded: bool,
     pub(crate) shared: Option<SharedConfig>,
+    pub(crate) embeddings: Option<crate::semantic::remote::Configuration>,
     pub(crate) providers: ResolvedProviders,
     pub(crate) since_days: Option<u32>,
     pub(crate) destination: IndexDestination,
@@ -71,6 +72,8 @@ pub(crate) struct ConfigurationStatus {
     path: PathBuf,
     loaded: bool,
     shared: Option<SharedConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    embeddings: Option<Box<crate::semantic::remote::Configuration>>,
     providers: ProviderStatusMap,
     index: IndexStatus,
 }
@@ -104,6 +107,7 @@ impl ResolvedConfig {
             path: self.path.clone(),
             loaded: self.loaded,
             shared: self.shared.clone(),
+            embeddings: self.embeddings.clone().map(Box::new),
             providers: ProviderStatusMap {
                 claude_code: self
                     .providers
@@ -131,6 +135,7 @@ struct ParsedDocument {
     providers: ResolvedProviders,
     since_days: Option<u32>,
     shared: Option<SharedConfig>,
+    embeddings: Option<crate::semantic::remote::Configuration>,
     destination: IndexDestination,
     local_filter: Option<IndexFilter>,
     shared_filter: Option<IndexFilter>,
@@ -144,6 +149,7 @@ struct RawDocument {
     #[serde(default)]
     index: RawIndex,
     shared: Option<SharedConfig>,
+    embeddings: Option<crate::semantic::remote::Configuration>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -229,6 +235,7 @@ fn load_from_paths(
                 path,
                 loaded: false,
                 shared: None,
+                embeddings: None,
                 providers,
                 since_days: Some(DEFAULT_SINCE_DAYS),
                 destination: IndexDestination::Local,
@@ -275,6 +282,7 @@ fn load_from_paths(
         providers: parsed.providers,
         since_days: parsed.since_days,
         shared: parsed.shared,
+        embeddings: parsed.embeddings,
         destination: parsed.destination,
         local_filter: parsed.local_filter,
         shared_filter: parsed.shared_filter,
@@ -327,6 +335,9 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             "unsupported configuration version: {}",
             raw.version
         )));
+    }
+    if let Some(embeddings) = &raw.embeddings {
+        embeddings.validate()?;
     }
     let since_days = raw.index.since_days.0;
     if since_days.is_some_and(|days| !(1..=MAX_SINCE_DAYS).contains(&days)) {
@@ -392,6 +403,7 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         },
         since_days,
         shared: raw.shared,
+        embeddings: raw.embeddings,
         destination,
         local_filter: raw.index.local,
         shared_filter: raw.index.shared,
@@ -402,7 +414,7 @@ fn validate_object_shapes(value: &serde_json::Value) -> Result<(), AppError> {
     let object = value
         .as_object()
         .ok_or_else(|| AppError::configuration("configuration must be a JSON object"))?;
-    for name in ["index", "providers", "shared"] {
+    for name in ["index", "providers", "shared", "embeddings"] {
         if let Some(value) = object.get(name)
             && !value.is_object()
         {
