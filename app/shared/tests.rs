@@ -47,6 +47,39 @@ fn seed(path: &Path) -> Storage {
 }
 
 #[test]
+fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = seed(&dir.path().join("local.sqlite3"));
+    let (hits, documents) = semantic::local_candidates(
+        &storage,
+        semantic::embedding_generation(),
+        "hello",
+        &[127.0, 0.0],
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, "searchable");
+    assert_eq!(hits[0].node_id, None);
+    assert!(hits[0].semantic_score.unwrap() > 0.99);
+    assert_eq!(documents, ["hello shared history"]);
+    assert!(
+        semantic::local_candidates(
+            &storage,
+            semantic::embedding_generation(),
+            "hello",
+            &[127.0, 0.0],
+            Some("claude-code"),
+            None
+        )
+        .unwrap()
+        .0
+        .is_empty()
+    );
+}
+
+#[test]
 fn routed_forget_acknowledgements_preserve_newer_intents_and_pending_indexing() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("local.sqlite3");

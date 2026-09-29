@@ -84,6 +84,131 @@ struct Service {
     group: String,
     task: tokio::task::JoinHandle<()>,
 }
+
+async fn exclude_own_contract(service: Service) {
+    let mut own = snapshot(1);
+    let template = own[2]["records"][0].clone();
+    for i in 0..60 {
+        let mut record = template.clone();
+        record["id"] = json!(format!("own-{i}"));
+        record["ordinal"] = json!(i + 3);
+        own[2]["records"].as_array_mut().unwrap().push(record);
+    }
+    assert_eq!(service.upload(FIRST, &own).await.status(), StatusCode::OK);
+    assert_eq!(
+        service.upload(SECOND, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
+    let query = json!({"query":"hello", "vector":vector, "exclude_self":true});
+    let found: Value = service
+        .request("search", FIRST)
+        .json(&query)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(found["lexical"].as_array().unwrap().len(), 1);
+    assert_eq!(found["semantic"].as_array().unwrap().len(), 2);
+    for hit in found["lexical"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(found["semantic"].as_array().unwrap())
+    {
+        assert_eq!(hit["node_id"], "second");
+    }
+    // Own incomplete embeddings must not block searches of other nodes.
+    own[0]["revision"] = json!(2);
+    own[2]["records"][0]["vector"] = Value::Null;
+    own[2]["records"][0]["generation"] = Value::Null;
+    assert_eq!(service.upload(FIRST, &own).await.status(), StatusCode::OK);
+    assert_eq!(
+        service
+            .request("search", FIRST)
+            .json(&query)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let mut query = query;
+    query["exclude_self"] = json!(false);
+    assert!(
+        !service
+            .request("search", FIRST)
+            .json(&query)
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success()
+    );
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
+async fn postgres_publication_excludes_own_node_before_candidate_limit_and_readiness() {
+    exclude_own_contract(Service::new(true).await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_publication_excludes_own_node_before_candidate_limit_and_readiness() {
+    exclude_own_contract(Service::with_dimensions(false, true, 384).await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_publication_configured_limits_and_chunked_canonical_data_round_trip() {
+    let small = Service::with_limit(false, true, 384, 1024 * 1024).await;
+    let large = Service::with_limit(false, true, 384, 32 * 1024 * 1024).await;
+    let mut events = snapshot(1);
+    let text = "hello ".repeat(450_000);
+    events[2]["records"][0]["content"] = json!(text);
+    events[2]["records"][0]["projection"] = json!(text);
+    events[2]["records"][1]["content"] = json!(text);
+    events[2]["records"][1]["projection"] = json!(text);
+    let records = events[2]["records"].as_array().unwrap().clone();
+    events.truncate(2);
+    for record in records {
+        events.push(json!({"type":"batch","kind":"messages","records":[record]}));
+    }
+    events.push(json!({"type":"finish"}));
+    assert_eq!(
+        small.upload(FIRST, &events).await.status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    assert_eq!(small.get("status", FIRST).await["messages"], 0);
+    assert_eq!(large.upload(FIRST, &events).await.status(), StatusCode::OK);
+    assert_eq!(large.get("status", FIRST).await["messages"], 3);
+    let unchanged = vec![
+        json!({"type":"start","instance":"snapshot-instance","revision":2,"base_revision":1,"snapshot":false,"forgets":[]}),
+        json!({"type":"finish"}),
+    ];
+    assert_eq!(
+        large.upload(FIRST, &unchanged).await.status(),
+        StatusCode::OK
+    );
+    assert_eq!(large.get("status", FIRST).await["messages"], 3);
+    let forget = large
+        .request("forget", FIRST)
+        .json(&json!({"instance":"snapshot-instance","revision":3,"ids":["conversation"]}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forget.status(), StatusCode::OK);
+    assert_eq!(large.get("status", FIRST).await["messages"], 0);
+    small.cleanup().await;
+    large.cleanup().await;
+}
 impl Drop for Service {
     fn drop(&mut self) {
         self.task.abort();
@@ -97,6 +222,14 @@ impl Service {
         Self::with_dimensions(database, redis, 384).await
     }
     async fn with_dimensions(database: bool, redis: bool, dimensions: usize) -> Self {
+        Self::with_limit(database, redis, dimensions, 64 * 1024 * 1024).await
+    }
+    async fn with_limit(
+        database: bool,
+        redis: bool,
+        dimensions: usize,
+        max_node_bytes: usize,
+    ) -> Self {
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
         } else {
@@ -159,6 +292,7 @@ impl Service {
                     &std::env::var("MASH_TEST_REDIS_URL").unwrap(),
                     &[group.clone(), format!("{group}-other")],
                     dimensions,
+                    max_node_bytes,
                 )
                 .await
                 .unwrap(),

@@ -13,14 +13,22 @@ use super::{Freshness, NodeFreshness};
 use crate::storage::{Counts, Message, SearchHit};
 use crate::{AppError, semantic};
 
-// Redis is the optional in-memory backend. Bound the node snapshot and staging
-// allocation; PostgreSQL remains the backend for larger histories.
-const MAX_NODE_BYTES: usize = 64 * 1024 * 1024;
+// Bound uploads and canonical node snapshots to the configured memory budget.
 const STAGE_TTL: u32 = 600;
+const CANONICAL_CHUNK_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct CanonicalManifest {
+    bytes: usize,
+    chunks: usize,
+    digest: String,
+}
 
 #[derive(Clone)]
 pub(super) struct Store {
     connection: ConnectionManager,
+    max_node_bytes: usize,
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Head {
@@ -40,6 +48,7 @@ struct Data {
     tombstones: BTreeMap<String, Tombstone>,
 }
 struct Loaded {
+    digest: Option<String>,
     head: Option<Head>,
     expected: String,
     data: Data,
@@ -123,6 +132,7 @@ impl Store {
         url: &str,
         groups: &[String],
         dimensions: usize,
+        max_node_bytes: usize,
     ) -> Result<Self, AppError> {
         let client = redis::Client::open(url)
             .map_err(|_| AppError::configuration("invalid server Redis connection string"))?;
@@ -218,7 +228,14 @@ impl Store {
                 }
             }
         }
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            max_node_bytes,
+        })
+    }
+
+    pub(super) fn max_node_bytes(&self) -> u64 {
+        u64::try_from(self.max_node_bytes).unwrap_or(u64::MAX)
     }
     async fn head(&self, identity: &Identity) -> Result<(Option<Head>, String), AppError> {
         let raw: Option<String> = redis::cmd("HGET")
@@ -234,7 +251,7 @@ impl Store {
     }
     async fn load(&self, identity: &Identity) -> Result<Loaded, AppError> {
         let (head, expected) = self.head(identity).await?;
-        let data = if let Some(head) = &head {
+        let (data, digest) = if let Some(head) = &head {
             let raw: Option<String> = redis::cmd("GET")
                 .arg(data_key(&identity.group_id, &head.version))
                 .query_async(&mut self.connection.clone())
@@ -250,16 +267,53 @@ impl Store {
                     "Redis canonical data is missing; use persistence and noeviction",
                 ));
             };
-            if raw.len() > MAX_NODE_BYTES {
+            let manifest: CanonicalManifest = decode(&raw)?;
+            if manifest.bytes > self.max_node_bytes
+                || manifest.chunks == 0
+                || manifest.chunks != manifest.bytes.div_ceil(CANONICAL_CHUNK_BYTES)
+            {
                 return Err(AppError::shared(
-                    "Redis node exceeds the 64 MiB snapshot limit",
+                    "Redis canonical manifest exceeds the configured snapshot limit or is invalid",
                 ));
             }
-            crate::blocking(move || decode(&raw)).await?
+            let mut bytes = Vec::with_capacity(manifest.bytes);
+            for chunk in 0..manifest.chunks {
+                let part: Option<Vec<u8>> = redis::cmd("GET")
+                    .arg(format!(
+                        "{}:chunk:{chunk}",
+                        data_key(&identity.group_id, &head.version)
+                    ))
+                    .query_async(&mut self.connection.clone())
+                    .await
+                    .map_err(redis_error)?;
+                let part =
+                    part.ok_or_else(|| AppError::shared("Redis canonical chunk is missing"))?;
+                if part.len() > CANONICAL_CHUNK_BYTES
+                    || bytes.len().saturating_add(part.len()) > manifest.bytes
+                {
+                    return Err(AppError::shared("invalid Redis canonical chunk length"));
+                }
+                bytes.extend_from_slice(&part);
+            }
+            if bytes.len() != manifest.bytes
+                || blake3::hash(&bytes).to_hex().as_str() != manifest.digest
+            {
+                return Err(AppError::shared(
+                    "Redis canonical snapshot checksum mismatch",
+                ));
+            }
+            let data = crate::blocking(move || {
+                let text = String::from_utf8(bytes)
+                    .map_err(|_| AppError::shared("invalid Redis canonical data"))?;
+                decode(&text)
+            })
+            .await?;
+            (data, Some(manifest.digest))
         } else {
-            Data::default()
+            (Data::default(), None)
         };
         Ok(Loaded {
+            digest,
             head,
             expected,
             data,
@@ -337,10 +391,10 @@ impl Store {
             .metadata()
             .map_err(|_| AppError::internal("inspect index upload"))?
             .len()
-            > MAX_NODE_BYTES as u64
+            > self.max_node_bytes()
         {
             return Err(AppError::usage(
-                "Redis uploads are limited to 64 MiB; use PostgreSQL for larger histories",
+                "Redis upload exceeds the configured snapshot limit",
             ));
         }
         let loaded = self.load(identity).await?;
@@ -409,20 +463,38 @@ impl Store {
         version: &str,
     ) -> Result<Vec<String>, AppError> {
         let json = encode(data)?;
-        if json.len() > MAX_NODE_BYTES {
+        if json.len() > self.max_node_bytes {
             return Err(AppError::usage(
-                "Redis node exceeds the 64 MiB snapshot limit; use PostgreSQL",
+                "Redis node exceeds the configured snapshot limit",
             ));
         }
         let mut keys = vec![
             data_key(&identity.group_id, version),
             state_key(&identity.group_id, version),
         ];
+        let manifest = CanonicalManifest {
+            bytes: json.len(),
+            chunks: json.len().div_ceil(CANONICAL_CHUNK_BYTES),
+            digest: blake3::hash(json.as_bytes()).to_hex().to_string(),
+        };
+        // Each Redis value remains small even when a node snapshot exceeds 512 MiB.
+        for (chunk, bytes) in json.as_bytes().chunks(CANONICAL_CHUNK_BYTES).enumerate() {
+            let key = format!("{}:chunk:{chunk}", keys[0]);
+            redis::cmd("SET")
+                .arg(&key)
+                .arg(bytes)
+                .arg("EX")
+                .arg(STAGE_TTL)
+                .query_async::<()>(&mut self.connection.clone())
+                .await
+                .map_err(redis_error)?;
+            keys.push(key);
+        }
         let state = data.state(identity);
         let mut pipe = redis::pipe();
         pipe.cmd("SET")
             .arg(&keys[0])
-            .arg(json)
+            .arg(encode(&manifest)?)
             .arg("EX")
             .arg(STAGE_TTL)
             .ignore();
@@ -533,14 +605,12 @@ impl Store {
         let previous = plan.loaded.head.as_ref();
         let reuse = previous.is_some()
             && !plan.changed
-            && encode(&plan.loaded.data)? == {
-                let old: Option<String> = redis::cmd("GET")
-                    .arg(data_key(&identity.group_id, &previous.unwrap().version))
-                    .query_async(&mut self.connection.clone())
-                    .await
-                    .map_err(redis_error)?;
-                old.unwrap_or_default()
-            };
+            && plan.loaded.digest.as_deref()
+                == Some(
+                    blake3::hash(encode(&plan.loaded.data)?.as_bytes())
+                        .to_hex()
+                        .as_str(),
+                );
         let version = if reuse {
             previous.unwrap().version.clone()
         } else {
@@ -648,6 +718,11 @@ impl Store {
             .arg(filters)
             .arg(vector_bytes(&input.vector))
             .arg(&identity.generation)
+            .arg(if input.exclude_self {
+                identity.node_id.as_str()
+            } else {
+                ""
+            })
             .query_async(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;

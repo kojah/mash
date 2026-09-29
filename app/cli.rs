@@ -67,9 +67,12 @@ enum Command {
         provider: Option<String>,
         #[arg(long)]
         days: Option<u32>,
-        /// Query the joint PostgreSQL index instead of the local index.
+        /// Query only the shared index (including this node).
         #[arg(long)]
         shared: bool,
+        /// Query only SQLite, without contacting the shared service.
+        #[arg(long, conflicts_with = "shared")]
+        local: bool,
     },
     /// Return a message and adjacent context.
     View {
@@ -172,6 +175,8 @@ pub(crate) struct SearchResponse {
     pub(crate) realized_mode: String,
     pub(crate) results: Vec<crate::storage::SearchHit>,
     pub(crate) shared: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) shared_error: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -331,24 +336,26 @@ async fn dispatch(
             provider,
             days,
             shared: use_shared,
+            local: use_local,
         } => {
             let provider = normalize_provider_filter(provider.as_deref())?;
-            if use_shared || configuration.destination == config::IndexDestination::Shared {
-                let results = shared::search(
+            if use_shared || (!use_local && configuration.shared.is_some()) {
+                let (results, shared_error) = shared::search(
                     required_shared(configuration)?,
+                    (!use_shared).then_some(database),
                     models,
                     configuration.embeddings.as_ref(),
                     &query,
                     limit,
-                    provider,
-                    days,
+                    (provider, days),
                 )
                 .await?;
                 Ok(Response::Search(SearchResponse {
                     query,
-                    realized_mode: "hybrid".to_owned(),
+                    realized_mode: search_mode(shared_error.is_some(), use_shared).to_owned(),
                     results,
-                    shared: true,
+                    shared: shared_error.is_none(),
+                    shared_error,
                 }))
             } else {
                 let database = database.to_path_buf();
@@ -366,7 +373,7 @@ async fn dispatch(
             context,
             shared: node,
         } => {
-            if node.is_some() || configuration.destination == config::IndexDestination::Shared {
+            if node.is_some() {
                 let config = required_shared(configuration)?;
                 let node = node.as_deref().unwrap_or(&config.node_id);
                 let messages = shared::view(config, node, &id, context).await?;
@@ -380,15 +387,11 @@ async fn dispatch(
         Command::Status {
             shared: inspect_shared,
         } => {
-            let mut response = if configuration.destination == config::IndexDestination::Shared {
-                shared_status(models, configuration).await?
-            } else {
-                let database = database.to_path_buf();
-                let models = models.to_path_buf();
-                let config = configuration.clone();
-                crate::blocking(move || status(&database, &models, &config)).await?
-            };
-            if inspect_shared || configuration.destination == config::IndexDestination::Shared {
+            let database = database.to_path_buf();
+            let models = models.to_path_buf();
+            let config = configuration.clone();
+            let mut response = crate::blocking(move || status(&database, &models, &config)).await?;
+            if inspect_shared {
                 let freshness = shared::freshness(required_shared(configuration)?).await?;
                 if let Response::Status(status) = &mut response {
                     status.shared_index = Some(freshness);
@@ -412,14 +415,6 @@ async fn forget_routes(
     configuration: &ResolvedConfig,
     id: String,
 ) -> Result<Response, AppError> {
-    if configuration.destination == config::IndexDestination::Shared {
-        let forgotten = shared::direct::forget(required_shared(configuration)?, &id).await?;
-        return Ok(Response::Forget(ForgetResponse {
-            id,
-            forgotten,
-            shared: Some(shared::Publication::published()),
-        }));
-    }
     let db = database.to_path_buf();
     let local_id = id.clone();
     let mut response = crate::blocking(move || forget(&db, local_id)).await?;
@@ -436,42 +431,6 @@ async fn forget_routes(
     Ok(response)
 }
 
-async fn shared_status(
-    models: &Path,
-    configuration: &ResolvedConfig,
-) -> Result<Response, AppError> {
-    let root = models.to_path_buf();
-    let embeddings = configuration.embeddings.clone();
-    let models_installed =
-        crate::blocking(move || Ok(Models::new(root).with_remote(embeddings).is_installed()))
-            .await?;
-    let counts = shared::direct::status(required_shared(configuration)?).await?;
-    let ready =
-        models_installed && counts.messages > 0 && counts.embeddings == counts.searchable_messages;
-    Ok(Response::Status(StatusResponse {
-        ready,
-        database_path: None,
-        conversations: counts.conversations,
-        messages: counts.messages,
-        searchable_messages: counts.searchable_messages,
-        embeddings: counts.embeddings,
-        stored_embeddings: counts.embeddings,
-        models_installed,
-        semantic_support: true,
-        realized_mode: if ready { "hybrid" } else { "unavailable" },
-        recommended_action: if !models_installed {
-            Some("models install")
-        } else if ready {
-            None
-        } else {
-            Some("index")
-        },
-        configuration: configuration.status(),
-        shared: Some(shared::Publication::published()),
-        shared_index: None,
-    }))
-}
-
 async fn index_routes(
     configuration: &ResolvedConfig,
     database: &Path,
@@ -484,16 +443,6 @@ async fn index_routes(
     let mut shared_options = options.clone();
     config::IndexFilter::apply(configuration.local_filter.as_ref(), &mut local_options);
     config::IndexFilter::apply(configuration.shared_filter.as_ref(), &mut shared_options);
-    if configuration.destination == config::IndexDestination::Shared {
-        return direct_index(
-            required_shared(configuration)?,
-            models,
-            configuration.embeddings.as_ref(),
-            full,
-            &shared_options,
-        )
-        .await;
-    }
     let db = database.to_path_buf();
     let root = models.to_path_buf();
     let embeddings = configuration.embeddings.clone();
@@ -531,48 +480,6 @@ fn publication_config(configuration: &ResolvedConfig) -> Option<&config::SharedC
 fn routed_both(configuration: &ResolvedConfig) -> bool {
     configuration.destination == config::IndexDestination::Both
         && (configuration.local_filter.is_some() || configuration.shared_filter.is_some())
-}
-
-async fn direct_index(
-    configuration: &config::SharedConfig,
-    models_dir: &Path,
-    embeddings: Option<&semantic::remote::Configuration>,
-    full: bool,
-    options: &ingestion::IndexOptions,
-) -> Result<Response, AppError> {
-    let started = Instant::now();
-    let result =
-        shared::direct::index(configuration, models_dir, embeddings, options, full, None).await?;
-    let summary = result.summary;
-    emit_index_phase("complete", &summary);
-    Ok(Response::Index(IndexResponse {
-        indexed_conversations: result.counts.conversations,
-        indexed_messages: result.counts.messages,
-        searchable_messages: result.counts.searchable_messages,
-        scanned_files: summary.scanned_files,
-        malformed_records: summary.malformed_records,
-        changed_messages: summary.changed_messages,
-        removed_messages: summary.removed_messages,
-        unchanged_sources: summary.unchanged_sources,
-        checkpoint_skipped_sources: summary.checkpoint_skipped_sources,
-        tombstoned_sources: summary.tombstoned_sources,
-        purged_conversations: summary.purged_conversations,
-        committed_batches: summary.committed_batches,
-        discovered_bytes: summary.discovered_bytes,
-        processed_bytes: summary.processed_bytes,
-        full,
-        embeddings: result.embeddings.stored_vectors,
-        model_inferences: result.embeddings.model_inferences,
-        reused_embeddings: result.embeddings.reused_vectors,
-        realized_mode: "hybrid",
-        model_load_milliseconds: result.model_load_milliseconds,
-        storage_setup_milliseconds: result.storage_setup_milliseconds,
-        ingestion_milliseconds: result.ingestion_milliseconds,
-        search_refresh_milliseconds: 0,
-        embedding_milliseconds: result.embedding_milliseconds,
-        total_milliseconds: elapsed_milliseconds(started),
-        shared: Some(shared::direct::publication()),
-    }))
 }
 
 fn index(
@@ -754,6 +661,7 @@ fn local_search(
         realized_mode: "hybrid".to_owned(),
         results,
         shared: false,
+        shared_error: None,
     })
 }
 
@@ -848,10 +756,7 @@ pub(crate) fn watch_targets(arguments: &[OsString]) -> Result<crate::watch::Targ
     let options = resolve_index_options(&configuration, &provider, since_days, all_history)?;
     let mut roots = Vec::new();
     for (enabled, filter) in [
-        (
-            configuration.destination != config::IndexDestination::Shared,
-            &configuration.local_filter,
-        ),
+        (true, &configuration.local_filter),
         (
             configuration.destination != config::IndexDestination::Local,
             &configuration.shared_filter,
@@ -993,6 +898,16 @@ fn default_models_path() -> PathBuf {
         || PathBuf::from("models"),
         |directories| directories.data_local_dir().join("models"),
     )
+}
+
+fn search_mode(failed: bool, shared_only: bool) -> &'static str {
+    if failed {
+        "local-hybrid"
+    } else if shared_only {
+        "hybrid"
+    } else {
+        "merged-hybrid"
+    }
 }
 
 #[cfg(test)]

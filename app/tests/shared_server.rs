@@ -34,7 +34,6 @@ impl Server {
             toml::toml! {
                 version = 1
                 listen = "127.0.0.1:0"
-                backend = "redis"
                 redis_url_env = "MASH_TEST_REDIS_URL"
                 nodes = (credentials.clone())
             }
@@ -42,6 +41,7 @@ impl Server {
             toml::toml! {
                 version = 1
                 listen = "127.0.0.1:0"
+                backend = "postgres"
                 database_url_env = "MASH_TEST_PG_URL"
                 nodes = (credentials.clone())
             }

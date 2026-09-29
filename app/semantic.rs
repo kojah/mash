@@ -885,6 +885,31 @@ pub(crate) fn shared_query_vector(
         .collect())
 }
 
+// Shared query vectors contain bounded, quantized integers; conversion is exact.
+#[allow(clippy::cast_possible_truncation)]
+pub(crate) fn local_candidates(
+    storage: &Storage,
+    generation: &str,
+    query: &str,
+    vector: &[f64],
+    provider: Option<&str>,
+    days: Option<u32>,
+) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
+    let lexical = storage.search(query, CANDIDATE_LIMIT, provider, days)?;
+    let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
+    let chunks = storage.semantic_chunks(generation, provider, days)?;
+    let ranked = rank_quantized(&quantize_vector(&vector), &chunks, CANDIDATE_LIMIT);
+    let rowids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+    let mut semantic = storage.search_hits(&rowids)?;
+    for (hit, (_, score)) in semantic.iter_mut().zip(ranked) {
+        hit.semantic_score = Some(score);
+    }
+    let fused = fuse(lexical, semantic);
+    let ids = fused.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>();
+    let documents = storage.search_documents(&ids)?;
+    Ok((fused, documents))
+}
+
 pub(crate) fn fuse(lexical: Vec<SearchHit>, semantic: Vec<SearchHit>) -> Vec<SearchHit> {
     let mut hits = HashMap::new();
     let mut scores = HashMap::<String, f32>::new();

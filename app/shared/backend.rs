@@ -594,6 +594,7 @@ async fn candidates(
     identity: &Identity,
     provider: Option<&str>,
     days: Option<u32>,
+    exclude_node: Option<&str>,
 ) -> Result<Candidates, AppError> {
     let cutoff = days.map(|days| {
         i64::try_from(
@@ -617,8 +618,9 @@ async fn candidates(
          FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
+           AND ($5::text IS NULL OR m.node_id<>$5)
          ORDER BY score DESC,m.node_id,m.id LIMIT 50",
-            &[&query, &generation, &provider, &cutoff],
+            &[&query, &generation, &provider, &cutoff, &exclude_node],
         )
         .await
         .map_err(pg_error)?;
@@ -629,8 +631,16 @@ async fn candidates(
          FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
+           AND ($6::text IS NULL OR m.node_id<>$6)
          ORDER BY score DESC,m.node_id,m.id LIMIT 50",
-            &[&vector, &generation, &provider, &cutoff, &dimensions],
+            &[
+                &vector,
+                &generation,
+                &provider,
+                &cutoff,
+                &dimensions,
+                &exclude_node,
+            ],
         )
         .await
         .map_err(pg_error)?;
@@ -672,7 +682,8 @@ pub(super) async fn search(
     valid_provider(input.provider.as_deref())?;
     let mut connection = connection(pool).await?;
     let mut tx = transaction(&mut connection, identity).await?;
-    let incompatible: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM messages WHERE projection <> '' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2))", &[&identity.generation, &i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?]).await.map_err(pg_error)?.try_get(0).map_err(pg_error)?;
+    let exclude_node = input.exclude_self.then_some(identity.node_id.as_str());
+    let incompatible: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM messages WHERE projection <> '' AND ($3::text IS NULL OR node_id<>$3) AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2))", &[&identity.generation, &i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?, &exclude_node]).await.map_err(pg_error)?.try_get(0).map_err(pg_error)?;
     if incompatible {
         return Err(AppError::shared(
             "shared embeddings are incomplete or incompatible; run mash index on publishing nodes",
@@ -685,6 +696,7 @@ pub(super) async fn search(
         identity,
         input.provider.as_deref(),
         input.days,
+        exclude_node,
     )
     .await?;
     tx.commit().await.map_err(pg_error)?;

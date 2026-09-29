@@ -26,6 +26,9 @@ struct Search {
     days: Option<u32>,
     #[serde(default)]
     shared: bool,
+    /// Search only the local SQLite index.
+    #[serde(default)]
+    local: bool,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -123,7 +126,7 @@ fn flag(arguments: &mut Vec<OsString>, name: &str, value: Option<impl ToString>)
 impl Mash {
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search local chat history, or the configured node group's shared PostgreSQL index. Requires explicitly installed models."
+        description = "Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index. Requires explicitly installed models."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         let mut args = vec!["search".into()];
@@ -132,6 +135,9 @@ impl Mash {
         flag(&mut args, "--days", request.days);
         if request.shared {
             args.push("--shared".into());
+        }
+        if request.local {
+            args.push("--local".into());
         }
         args.extend(["--".into(), request.query.into()]);
         self.execute(args).await
@@ -163,7 +169,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Index Claude Code and Codex histories into the configured local, shared, or both destinations, applying each index's provider allowlist. Shared-only uses no SQLite database. Never downloads models."
+        description = "Index Claude Code and Codex histories into required local SQLite and optionally the shared index, applying provider allowlists. Never downloads models."
     )]
     async fn index(&self, Parameters(request): Parameters<Index>) -> CallToolResult {
         let mut args = vec!["index".into()];
@@ -212,7 +218,7 @@ impl rmcp::ServerHandler for Mash {
             .enable_tools()
             .build();
         info.server_info = rmcp::model::Implementation::new("mash", env!("CARGO_PKG_VERSION"));
-        info.instructions = Some("Search Claude Code and Codex history. Search/view/status are read-only. Index and forget write data; models_install explicitly downloads models. Provider allowlists and destinations are configured at startup. Shared-only mode defaults to shared search and this node's shared view; supply the result's node ID to view another node's message.".to_owned());
+        info.instructions = Some("Search Claude Code and Codex history. Search/view/status are read-only. Index and forget write data; models_install explicitly downloads models. Provider allowlists and destinations are configured at startup. Search merges local results with other nodes in the shared group by default. Supply a shared result's node ID to view its message.".to_owned());
         info
     }
 }

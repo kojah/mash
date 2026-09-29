@@ -1,12 +1,14 @@
-local heads = redis.call('HVALS', KEYS[1])
+local heads = redis.call('HGETALL', KEYS[1])
 local versions = {}
-for _, value in ipairs(heads) do
-    local head = cjson.decode(value)
+for i = 1, #heads, 2 do
+  if heads[i] ~= ARGV[5] then
+    local head = cjson.decode(heads[i + 1])
     if head.counts.searchable_messages ~= head.counts.embeddings or
         (head.counts.searchable_messages > 0 and head.generation ~= ARGV[4]) then
         return redis.error_reply('MASH_INCOMPATIBLE')
     end
     table.insert(versions, head.version)
+  end
 end
 if #versions == 0 then return {{0}, {0}} end
 local active = '@version:{' .. table.concat(versions, '|') .. '}'

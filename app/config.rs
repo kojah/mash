@@ -48,7 +48,6 @@ impl IndexFilter {
 #[serde(rename_all = "lowercase")]
 pub(crate) enum IndexDestination {
     Local,
-    Shared,
     Both,
 }
 
@@ -368,7 +367,7 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     });
     if destination != IndexDestination::Local && raw.shared.is_none() {
         return Err(AppError::configuration(
-            "shared and both indexing destinations require shared configuration",
+            "both indexing destinations require shared configuration",
         ));
     }
     for filter in [&raw.index.local, &raw.index.shared].into_iter().flatten() {
@@ -388,6 +387,7 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             }
         }
     }
+    validate_local_coverage(&raw, destination)?;
     Ok(ParsedDocument {
         providers: ResolvedProviders {
             claude_code: validate_roots(raw.providers.claude_code, "claude-code")?,
@@ -446,6 +446,34 @@ fn validate_roots(
     Ok(Some(provider.roots))
 }
 
+fn validate_local_coverage(
+    raw: &RawDocument,
+    destination: IndexDestination,
+) -> Result<(), AppError> {
+    if destination == IndexDestination::Both
+        && let Some(local) = &raw.index.local
+    {
+        for provider in ["claude-code", "codex"] {
+            let enabled = if provider == "claude-code" {
+                raw.providers.claude_code.is_some()
+            } else {
+                raw.providers.codex.is_some()
+            };
+            let forwarded = raw
+                .index
+                .shared
+                .as_ref()
+                .is_none_or(|shared| shared.providers.iter().any(|p| p == provider));
+            if enabled && forwarded && !local.providers.iter().any(|p| p == provider) {
+                return Err(AppError::configuration(
+                    "the local provider allowlist must include every provider forwarded to the shared index",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -499,7 +527,6 @@ token_env = 'VOYAGE_API_KEY'
         };
         for (mode, expected) in [
             ("local", IndexDestination::Local),
-            ("shared", IndexDestination::Shared),
             ("both", IndexDestination::Both),
         ] {
             let document = toml::toml! {
@@ -508,7 +535,7 @@ token_env = 'VOYAGE_API_KEY'
                 claude-code = {roots = ["/claude"]},codex = {roots = ["/codex"]}
                 }
                 shared = (shared.clone())
-                index = {destination = (mode),local = {providers = ["claude-code"]},shared = {providers = ["codex"]}}
+                index = {destination = (mode),local = {providers = ["claude-code", "codex"]},shared = {providers = ["codex"]}}
             };
             let parsed = parse_document(&toml::to_string(&document).unwrap().into_bytes()).unwrap();
             assert_eq!(parsed.destination, expected);
@@ -521,7 +548,7 @@ token_env = 'VOYAGE_API_KEY'
             let mut local = options.clone();
             IndexFilter::apply(parsed.local_filter.as_ref(), &mut local);
             assert!(local.claude_code.is_some());
-            assert!(local.codex.is_none());
+            assert!(local.codex.is_some());
             let mut remote = options;
             IndexFilter::apply(parsed.shared_filter.as_ref(), &mut remote);
             assert!(remote.claude_code.is_none());

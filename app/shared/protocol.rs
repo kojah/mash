@@ -80,6 +80,8 @@ pub(super) struct Search {
     pub vector: Vec<f64>,
     pub provider: Option<String>,
     pub days: Option<u32>,
+    #[serde(default)]
+    pub exclude_self: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

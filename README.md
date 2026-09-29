@@ -5,15 +5,15 @@ through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
 index locally, into a shared service over HTTP, or both, with independent provider allowlists.
 SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
 cross-encoder reranking provide
-hybrid retrieval. Nodes optionally publish to a joint PostgreSQL index, one per
+hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
-The service uses PostgreSQL + pgvector by default, with Redis Search as an alternative.
+The service uses Redis Search by default, with PostgreSQL + pgvector as an alternative.
 
 ## Commands
 
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex]... [--since-days N|--all-history]
-mash search <query> [--shared] [--limit N] [--provider PROVIDER] [--days N]
+mash search <query> [--local | --shared] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <conversation-id>
@@ -85,7 +85,7 @@ since_days = 90
 destination = "both"
 
 [index.local]
-providers = ["claude-code"]
+providers = ["claude-code", "codex"]
 
 [index.shared]
 providers = ["codex"]
@@ -97,19 +97,20 @@ api_url = "https://mash.example.net"
 token_env = "MASH_NODE_TOKEN"
 ```
 
-This example keeps Claude Code in SQLite and sends Codex to the shared service.
-`index.destination` accepts `local`, `shared`, or `both`. Shared and both require
-the top-level `shared` connection settings. Without an explicit destination,
-mash selects both when shared settings exist, and local otherwise.
+This example keeps both providers in SQLite and forwards only Codex to the shared service.
+SQLite is required on every node. `index.destination` accepts `local` or `both`;
+`both` requires the top-level `shared` connection settings. Without an explicit
+destination, mash selects both when shared settings exist, and local otherwise.
+The local provider allowlist must contain every provider in the shared allowlist.
+Shared-only configurations are rejected.
 
 Each destination's optional `providers` list is an allowlist of enabled providers.
-Omit a destination filter to include all enabled providers; `providers: []` sends
+Omit a destination filter to include all enabled providers; `providers = []` sends
 none to that destination. `index --provider` further restricts these lists and
 cannot bypass them. Filters control subsequent ingestion; narrowing them does
 not automatically erase previously indexed history. Use `forget` for deletion.
 
-Omit the top-level `shared` for a fully local installation. Search defaults to
-local in local/both modes and to PostgreSQL in shared-only mode. Configure the same
+Omit the top-level `shared` for a fully local installation. Search defaults to SQLite plus other nodes in the shared group when shared settings exist; otherwise it uses SQLite. Configure the same
 group ID and API URL on every member, with a distinct node ID and token for each
 publisher. The service authorizes each token for a fixed group and node. Group IDs select
 separate PostgreSQL schemas; every node within a group contributes to one joint
@@ -206,9 +207,11 @@ request; ordinary JSON requests are limited to 64 KiB. Request timeouts and pool
 limits bound work. Source checkpoints use revisions to reject concurrent stale
 uploads; retry indexing after a conflict. Full snapshot retries are idempotent.
 
-### Redis alternative
+### Redis backend (default)
 
-Select Redis in the HTTP service configuration. Node configuration and MCP tools
+Redis is the default HTTP service backend. Set `redis_url_env` and omit `backend`,
+or select `backend = "redis"` explicitly. Select `backend = "postgres"` for
+PostgreSQL/pgvector. Node configuration and MCP tools
 stay the same; nodes still use an API URL and their node token. One service uses
 one storage backend for all its groups. Changing the backend creates a separate
 index: reindex from node histories to populate it; mash does not automatically
@@ -258,13 +261,18 @@ or retired data cannot appear in results. Failed uploads leave the visible data
 and freshness unchanged. Superseded records are unlinked at commit; abandoned
 stages expire after ten minutes. Redis supplies synchronization timestamps.
 
-This first implementation caps each upload and each node's serialized canonical
-snapshot at **64 MiB**. Staging changed revisions uses extra memory and writes,
+Each upload and each node's serialized canonical snapshot is limited to
+**64 MiB by default**. Set `redis_max_node_mib` in the server configuration
+to raise that bound (1–4096 MiB). Size Redis memory for all nodes' canonical
+data, searchable documents, vectors, and temporary staging copies; this limit
+does not reserve memory or change Redis's `maxmemory` setting.
+Canonical snapshots use bounded 8 MiB Redis values with a checksummed manifest.
+Set `max_concurrent_uploads` (default 4, range 1–16) to bound concurrent staging
+work; large histories should use 1. Staging changed revisions uses extra memory and writes,
 and the service loads canonical node data when applying changes; unchanged data
 can reuse the existing stage. These are deliberate limits on the initial
-alternative, not a claim that Redis will outperform PostgreSQL for mash. Use
-PostgreSQL for larger histories and benchmark actual search latency, update cost,
-memory use, and retrieval quality before selecting Redis for a group.
+backend. Benchmark actual search latency, update cost, memory use, and retrieval
+quality for a group. See [the measured comparison](benchmarks/2026-09-30-shared-index.md).
 
 In both mode without destination filters, local indexing commits first. Changes
 mark a durable local publication revision;
@@ -290,22 +298,19 @@ original shared history files. Shared forget intents are durably queued in SQLit
 when offline and applied before the next shared ingestion. A successful forget
 can leave index status pending until `index` catches up other changes.
 
-Shared-only mode never opens or creates SQLite, including for bookkeeping or
-retries. PostgreSQL holds source checkpoints and persistent tombstones. Indexing
-and deletion require connectivity; failures return typed errors and indexing
-rolls back atomically. Retry indexing from the original history files. Shared-only
-`status` contacts the API and returns `database_path: null`; plain `view`
-addresses this node, while `view --shared NODE_ID` can read another group member.
-Changing between SQLite-backed and shared-only identity requires a new node ID.
-Models still live locally and are installed only by `models install`.
+Default search queries SQLite and shared records belonging to other nodes. The
+shared service excludes the authenticated node before candidate limits and
+embedding-readiness checks. Both sources use one query embedding, independent
+lexical/semantic reciprocal-rank fusion, and a single reranking pass over the ten
+best combined candidates. Local hits have no `node_id`; shared hits include their
+publishing node for `view --shared NODE_ID`. Plain `view` always reads SQLite.
 
-Shared search uses PostgreSQL full-text retrieval, pgvector exact cosine over uploaded
-quantized vectors, RRF, and at most ten reranked candidates. The querying node uses the configured embedding backend and local FastEmbed
-reranking. CPU and Apple Core ML vectors
-share a model-space identifier; outdated or missing embeddings cause an explicit
-shared error requiring publishing nodes to reindex. Shared hits include `node_id`
-for the matching `view` call. A shared outage does not trigger a silent local
-fallback. Local and shared result sets are selected explicitly and are not merged.
+Use `search --local` to avoid the shared API, or `search --shared` for the complete
+shared index, including this node. MCP search exposes equivalent `local` and
+`shared` booleans. An API failure during default search returns local results
+with `realized_mode = "local-hybrid"` and `shared_error`; explicit shared search
+returns an error. Incomplete local embeddings still require `mash index`.
+Models remain local and are installed only by `models install`.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
@@ -381,8 +386,7 @@ Removing an authoritative configured root reports an error rather than purging
 its history; removing individual sources from an existing root is reconciled.
 Failed indexing and pending PostgreSQL publication retry after 30 seconds without
 requiring another file change. A reconciliation pass every five minutes recovers
-missed events. No models are downloaded automatically, and shared-only still
-creates no SQLite database.
+missed events. No models are downloaded automatically; every node retains SQLite.
 
 Watch mode writes one JSON result per completed pass to stdout (newline-delimited
 JSON); progress and typed errors go to stderr. Ctrl-C finishes the active pass

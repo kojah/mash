@@ -372,34 +372,59 @@ pub(crate) async fn view(
 }
 pub(crate) async fn search(
     config: &SharedConfig,
+    local_database: Option<&Path>,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
     limit: usize,
-    provider: Option<&str>,
-    days: Option<u32>,
-) -> Result<Vec<SearchHit>, AppError> {
+    filters: (Option<&str>, Option<u32>),
+) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
+    let (provider, days) = filters;
     if query.trim().is_empty() {
         return Err(AppError::usage("search query must not be empty"));
     }
     let root = models_dir.to_path_buf();
+    let local_database = local_database.map(Path::to_path_buf);
+    let exclude_self = local_database.is_some();
+    let local_query = query.to_owned();
+    let local_provider = provider.map(str::to_owned);
     let text = query.to_owned();
     let embeddings = embeddings.cloned();
     let generation = embeddings.as_ref().map_or_else(
         || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
         |c| semantic::model_space(&c.model, c.dimensions),
     );
-    let (mut backend, vector) = crate::blocking(move || {
+    let (mut backend, vector, local_hits, local_documents) = crate::blocking(move || {
         let models = Models::new(root).with_remote(embeddings);
         models.require_installed()?;
         let mut backend = models
             .load()?
             .ok_or_else(|| AppError::model("run `mash models install`"))?;
         let vector = semantic::shared_query_vector(&mut backend, &text)?;
-        Ok((backend, vector))
+        let (hits, documents) = if let Some(database) = local_database {
+            let storage = Storage::open_existing(&database)?;
+            if storage.derived_search_is_dirty()?
+                || !storage.semantic_index_is_ready(&models.generation())?
+            {
+                return Err(AppError::search_not_ready(
+                    "local semantic index is incomplete; run mash index",
+                ));
+            }
+            semantic::local_candidates(
+                &storage,
+                &models.generation(),
+                &local_query,
+                &vector,
+                local_provider.as_deref(),
+                days,
+            )?
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        Ok((backend, vector, hits, documents))
     })
     .await?;
-    let candidates: protocol::Candidates = post(
+    let candidates = post::<protocol::Candidates>(
         config,
         "search",
         &protocol::Search {
@@ -408,50 +433,84 @@ pub(crate) async fn search(
             generation,
             provider: provider.map(str::to_owned),
             days,
+            exclude_self,
         },
     )
-    .await?;
+    .await;
+    let (candidates, shared_error) = match candidates {
+        Ok(candidates) => (candidates, None),
+        Err(error) if exclude_self => (
+            protocol::Candidates {
+                lexical: Vec::new(),
+                semantic: Vec::new(),
+                documents: Vec::new(),
+            },
+            Some(error.error.message),
+        ),
+        Err(error) => return Err(error),
+    };
     let protocol::Candidates {
         lexical,
         semantic,
         documents,
     } = candidates;
-    let documents: HashMap<_, _> = documents
+    let mut documents: HashMap<_, _> = documents
         .into_iter()
         .map(|d| ((d.node_id, d.id), d.projection))
         .collect();
+    for (hit, projection) in local_hits.iter().zip(local_documents) {
+        documents.insert((String::new(), hit.id.clone()), projection);
+    }
     let query = query.to_owned();
     crate::blocking(move || {
         let mut fused = semantic::fuse(lexical, semantic);
-        let count = fused.len().min(10);
-        let documents = fused[..count]
-            .iter()
-            .map(|hit| {
-                documents
-                    .get(&(hit.node_id.clone().unwrap_or_default(), hit.id.clone()))
-                    .map(String::as_str)
-                    .ok_or_else(|| AppError::shared("shared candidate has no search projection"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        if count > 0 {
-            for result in backend.rerank(query.as_str(), &documents)? {
-                if let Some(hit) = fused[..count].get_mut(result.index) {
-                    hit.rerank_score = Some(result.score);
-                }
-            }
-            fused[..count].sort_by(|a, b| {
-                b.rerank_score
-                    .unwrap_or(f32::NEG_INFINITY)
-                    .total_cmp(&a.rerank_score.unwrap_or(f32::NEG_INFINITY))
-                    .then_with(|| b.fusion_score.total_cmp(&a.fusion_score))
-                    .then_with(|| a.node_id.cmp(&b.node_id))
-                    .then_with(|| a.id.cmp(&b.id))
-            });
-        }
-        fused.truncate(limit.min(1000));
-        Ok(fused)
+        fused.extend(local_hits);
+        fused.sort_by(|a, b| {
+            b.fusion_score
+                .total_cmp(&a.fusion_score)
+                .then_with(|| a.node_id.cmp(&b.node_id))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        let fused = rerank_combined(&mut backend, &query, fused, &documents, limit)?;
+        Ok((fused, shared_error))
     })
     .await
+}
+
+fn rerank_combined(
+    backend: &mut semantic::Backend,
+    query: &str,
+    mut fused: Vec<SearchHit>,
+    documents: &HashMap<(String, String), String>,
+    limit: usize,
+) -> Result<Vec<SearchHit>, AppError> {
+    let count = fused.len().min(10);
+    let documents = fused[..count]
+        .iter()
+        .map(|hit| {
+            documents
+                .get(&(hit.node_id.clone().unwrap_or_default(), hit.id.clone()))
+                .map(String::as_str)
+                .ok_or_else(|| AppError::shared("shared candidate has no search projection"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if count > 0 {
+        for result in backend.rerank(query, &documents)? {
+            if let Some(hit) = fused[..count].get_mut(result.index) {
+                hit.rerank_score = Some(result.score);
+            }
+        }
+        fused[..count].sort_by(|a, b| {
+            b.rerank_score
+                .unwrap_or(f32::NEG_INFINITY)
+                .total_cmp(&a.rerank_score.unwrap_or(f32::NEG_INFINITY))
+                .then_with(|| b.fusion_score.total_cmp(&a.fusion_score))
+                .then_with(|| a.node_id.cmp(&b.node_id))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+    }
+    fused.truncate(limit.min(1000));
+    Ok(fused)
 }
 
 #[cfg(test)]

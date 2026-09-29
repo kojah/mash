@@ -68,7 +68,7 @@ impl Fixture {
             claude-code = {roots = [(self.directory.path().join("claude").to_str().unwrap().to_owned())]},
             codex = {roots = [(self.codex.to_str().unwrap())]}
             }
-            index = {destination = (destination),local = {providers = ["claude-code"]},shared = {providers = ["codex"]}}
+            index = {destination = (destination),local = {providers = (if destination == "local" {vec!["claude-code"]} else {vec!["claude-code", "codex"]})},shared = {providers = ["codex"]}}
             shared = {group_id = (self.group.as_str()),node_id = (node),api_url = (self.server.as_ref().map_or("http://127.0.0.1:9",|s|s.url.as_str())),token_env = "MASH_TEST_ROUTING_TOKEN"}
         }).unwrap()).unwrap();
     }
@@ -150,7 +150,7 @@ fn local_destination_filters_before_scanning_and_never_publishes() {
 }
 
 #[test]
-fn offline_shared_only_never_opens_or_creates_sqlite() {
+fn shared_only_configuration_is_rejected_before_opening_sqlite() {
     let fixture = Fixture::new();
     fixture.configure("shared", "remote");
     for command in [
@@ -159,84 +159,19 @@ fn offline_shared_only_never_opens_or_creates_sqlite() {
         vec!["view", "id"],
         vec!["forget", "id"],
     ] {
-        assert_eq!(error_kind(&fixture.run(&command, false)), "shared-index");
+        assert_eq!(error_kind(&fixture.run(&command, false)), "configuration");
         assert!(!fixture.database.parent().unwrap().exists());
     }
     std::fs::create_dir(fixture.database.parent().unwrap()).unwrap();
     std::fs::write(&fixture.database, b"invalid SQLite sentinel").unwrap();
-    assert_eq!(error_kind(&fixture.run(&["status"], false)), "shared-index");
+    assert_eq!(
+        error_kind(&fixture.run(&["status"], false)),
+        "configuration"
+    );
     assert_eq!(
         std::fs::read(&fixture.database).unwrap(),
         b"invalid SQLite sentinel"
     );
-}
-
-#[test]
-#[ignore = "requires MASH_TEST_PG_URL pointing to an expendable PostgreSQL database"]
-fn postgres_publication_shared_only_uses_remote_checkpoints_and_tombstones_without_sqlite() {
-    let fixture = Fixture::new();
-    fixture.configure("shared", "remote");
-    let first = fixture.json(&["index"], true);
-    assert_eq!(first["indexed_conversations"], 1);
-    assert_eq!(first["scanned_files"], 1);
-    assert_eq!(
-        fixture.json(&["index", "--provider", "claude-code"], true)["scanned_files"],
-        0,
-        "command filters cannot bypass the shared allowlist"
-    );
-    assert_eq!(
-        fixture.json(&["index"], true)["checkpoint_skipped_sources"],
-        1
-    );
-    let status = fixture.json(&["status"], true);
-    assert_eq!(status["database_path"], Value::Null);
-    assert_eq!(status["messages"], 1);
-    let freshness = status["shared_index"].clone();
-    assert_eq!(freshness["nodes"][0]["node_id"], "remote");
-    assert!(freshness["nodes"][0]["last_updated_at"].is_string());
-    let id: String = fixture
-        .client()
-        .query_one("SELECT id FROM messages", &[])
-        .unwrap()
-        .get(0);
-    assert_eq!(
-        fixture.json(&["view", &id], true)["messages"][0]["content"],
-        "shared Codex output"
-    );
-    let mut content = std::fs::read_to_string(fixture.codex.join("session.jsonl")).unwrap();
-    content.push_str("invalid JSON\n");
-    std::fs::write(fixture.codex.join("session.jsonl"), content).unwrap();
-    assert_eq!(error_kind(&fixture.run(&["index"], true)), "shared-index");
-    assert_eq!(
-        fixture.json(&["status"], true)["shared_index"],
-        freshness,
-        "rolled-back ingestion does not change freshness"
-    );
-    assert_eq!(
-        fixture.json(&["status"], true)["messages"],
-        1,
-        "malformed ingestion rolled back"
-    );
-    Fixture::write_codex(&fixture.codex);
-    assert_eq!(
-        fixture.json(&["forget", "codex-session"], true)["forgotten"],
-        true
-    );
-    assert_eq!(
-        fixture.json(&["index", "--full"], true)["tombstoned_sources"],
-        1
-    );
-    assert_eq!(fixture.json(&["status"], true)["messages"], 0);
-    let source = fixture.codex.join("session.jsonl");
-    let next = std::fs::read_to_string(&source)
-        .unwrap()
-        .replace("codex-session", "another-session");
-    std::fs::write(&source, next).unwrap();
-    assert_eq!(fixture.json(&["index"], true)["indexed_conversations"], 1);
-    std::fs::remove_file(source).unwrap();
-    assert_eq!(fixture.json(&["index"], true)["purged_conversations"], 1);
-    assert!(!fixture.database.parent().unwrap().exists());
-    fixture.cleanup();
 }
 
 #[test]
@@ -258,13 +193,13 @@ fn postgres_publication_routes_providers_independently_and_retries_shared_forget
     );
     let connection = Connection::open(&fixture.database).unwrap();
     let providers: Vec<String> = connection
-        .prepare("SELECT provider FROM conversations")
+        .prepare("SELECT provider FROM conversations ORDER BY provider")
         .unwrap()
         .query_map([], |r| r.get(0))
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    assert_eq!(providers, ["claude-code"]);
+    assert_eq!(providers, ["claude-code", "codex"]);
     let remote: Vec<String> = fixture
         .client()
         .query("SELECT provider FROM conversations", &[])
@@ -353,48 +288,8 @@ fn postgres_publication_forget_before_initial_delivery_is_durable() {
 
 #[test]
 #[ignore = "requires MASH_TEST_REDIS_URL pointing to disposable Redis Search"]
-fn redis_publication_shared_only_checkpoints_and_filtered_offline_forgets_through_cli() {
+fn redis_publication_local_required_and_filtered_offline_forgets_through_cli() {
     let fixture = Fixture::with_backend(true);
-    fixture.configure("shared", "remote");
-    assert_eq!(fixture.json(&["index"], true)["indexed_conversations"], 1);
-    let initial = fixture.json(&["status"], true)["shared_index"].clone();
-    assert_eq!(
-        fixture.json(&["index"], true)["checkpoint_skipped_sources"],
-        1
-    );
-    assert_eq!(
-        fixture.json(&["status"], true)["shared_index"]["nodes"][0]["last_updated_at"],
-        initial["nodes"][0]["last_updated_at"]
-    );
-    assert!(!fixture.database.parent().unwrap().exists());
-    let mut invalid = std::fs::read_to_string(fixture.codex.join("session.jsonl")).unwrap();
-    invalid.push_str("invalid JSON\n");
-    std::fs::write(fixture.codex.join("session.jsonl"), invalid).unwrap();
-    assert_eq!(error_kind(&fixture.run(&["index"], true)), "shared-index");
-    assert_eq!(fixture.json(&["status"], true)["messages"], 1);
-    Fixture::write_codex(&fixture.codex);
-    assert_eq!(
-        fixture.json(&["forget", "codex-session"], true)["forgotten"],
-        true
-    );
-    assert_eq!(
-        fixture.json(&["index", "--full"], true)["tombstoned_sources"],
-        1
-    );
-    assert_eq!(fixture.json(&["status"], true)["messages"], 0);
-    let source = fixture.codex.join("session.jsonl");
-    std::fs::write(
-        &source,
-        std::fs::read_to_string(&source)
-            .unwrap()
-            .replace("codex-session", "another-session"),
-    )
-    .unwrap();
-    assert_eq!(fixture.json(&["index"], true)["indexed_conversations"], 1);
-    std::fs::remove_file(&source).unwrap();
-    assert_eq!(fixture.json(&["index"], true)["purged_conversations"], 1);
-
-    Fixture::write_codex(&fixture.codex);
     fixture.configure("both", "split");
     assert_eq!(
         fixture.json(&["index"], false)["shared"]["state"],

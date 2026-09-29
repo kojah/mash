@@ -1,5 +1,5 @@
 use super::protocol::{Checkpoint, Event, Forget, Forgotten, NodeState, Start};
-use super::{Publication, get, post, upload, write_event};
+use super::{get, post, upload, write_event};
 use crate::AppError;
 use crate::config::SharedConfig;
 use crate::ingestion::{self, Conversation, DirectScan, IndexOptions, IndexSummary};
@@ -14,7 +14,6 @@ pub(crate) struct IndexResult {
     pub(crate) summary: IndexSummary,
     pub(crate) embeddings: EmbeddingSummary,
     pub(crate) model_load_milliseconds: u64,
-    pub(crate) storage_setup_milliseconds: u64,
     pub(crate) ingestion_milliseconds: u64,
     pub(crate) embedding_milliseconds: u64,
 }
@@ -39,7 +38,6 @@ pub(crate) async fn index(
         ingestion::direct_scans(&input)
     })
     .await?;
-    let started = Instant::now();
     let state: NodeState = get(config, "state").await?;
     let instance = owner.map_or(DIRECT_INSTANCE, |o| o.instance.as_str());
     if state.instance.as_deref().is_some_and(|i| i != instance) {
@@ -66,7 +64,6 @@ pub(crate) async fn index(
         summary: IndexSummary::default(),
         embeddings: EmbeddingSummary::default(),
         model_load_milliseconds: 0,
-        storage_setup_milliseconds: elapsed(started),
         ingestion_milliseconds: 0,
         embedding_milliseconds: 0,
     };
@@ -330,22 +327,6 @@ async fn replace_conversation(
     }
     Ok(())
 }
-pub(crate) async fn status(config: &SharedConfig) -> Result<Counts, AppError> {
-    get(config, "status").await
-}
-pub(crate) async fn forget(config: &SharedConfig, id: &str) -> Result<bool, AppError> {
-    let result: Forgotten = post(
-        config,
-        "forget",
-        &Forget {
-            instance: DIRECT_INSTANCE.to_owned(),
-            revision: None,
-            ids: vec![id.to_owned()],
-        },
-    )
-    .await?;
-    Ok(result.forgotten)
-}
 pub(crate) async fn flush_forgets(
     config: &SharedConfig,
     owner: &DirectOwner,
@@ -361,7 +342,4 @@ pub(crate) async fn flush_forgets(
     )
     .await?;
     Ok(result.forgotten)
-}
-pub(crate) const fn publication() -> Publication {
-    Publication::published()
 }

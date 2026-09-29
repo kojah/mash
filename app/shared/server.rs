@@ -50,6 +50,10 @@ struct Configuration {
     redis_url_env: Option<String>,
     #[serde(default = "default_connections")]
     max_connections: usize,
+    #[serde(default = "default_redis_node_mib")]
+    redis_max_node_mib: usize,
+    #[serde(default = "default_uploads")]
+    max_concurrent_uploads: usize,
     nodes: Vec<AuthorizedNode>,
 }
 #[derive(Deserialize)]
@@ -70,9 +74,16 @@ impl Default for EmbeddingSpace {
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum BackendChoice {
-    #[default]
     Postgres,
+    #[default]
     Redis,
+}
+
+fn default_redis_node_mib() -> usize {
+    64
+}
+fn default_uploads() -> usize {
+    4
 }
 #[derive(Clone)]
 enum Store {
@@ -190,6 +201,16 @@ fn env_name(name: &str) -> Result<(), AppError> {
     Ok(())
 }
 fn identities(config: &Configuration) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
+    if !(1..=16).contains(&config.max_concurrent_uploads) {
+        return Err(AppError::configuration(
+            "max_concurrent_uploads must be between 1 and 16",
+        ));
+    }
+    if !(1..=4096).contains(&config.redis_max_node_mib) {
+        return Err(AppError::configuration(
+            "redis_max_node_mib must be between 1 and 4096",
+        ));
+    }
     if config.version != 1
         || config.nodes.is_empty()
         || !(1..=128).contains(&config.max_connections)
@@ -462,7 +483,7 @@ async fn index(
     }
     let max_bytes = match &app.store {
         Store::Postgres(_) => 8 * 1024 * 1024 * 1024,
-        Store::Redis(_) => 64 * 1024 * 1024,
+        Store::Redis(store) => store.max_node_bytes(),
     };
     let file = spool(request.into_body(), max_bytes).await?;
     Ok(Json(app.store.index(&id, file).await?))
@@ -525,8 +546,20 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
                 AppError::configuration(format!("set {name} to the server Redis connection string"))
             })?;
             Store::Redis(
-                super::redis_index::Store::connect(&url, &groups, config.embeddings.dimensions)
-                    .await?,
+                super::redis_index::Store::connect(
+                    &url,
+                    &groups,
+                    config.embeddings.dimensions,
+                    config
+                        .redis_max_node_mib
+                        .checked_mul(1024 * 1024)
+                        .ok_or_else(|| {
+                            AppError::configuration(
+                                "Redis snapshot limit exceeds platform capacity",
+                            )
+                        })?,
+                )
+                .await?,
             )
         }
     };
@@ -540,7 +573,7 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
     let app = App {
         store,
         identities: Arc::new(identities),
-        uploads: Arc::new(tokio::sync::Semaphore::new(config.max_connections)),
+        uploads: Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_uploads)),
     };
     axum::serve(listener, router(app))
         .with_graceful_shutdown(async {

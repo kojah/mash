@@ -6,8 +6,13 @@ revision=${2:?usage: deploy-smoke BINARY REVISION}
 scratch=${TMPDIR:-/tmp}/mash-deploy-$revision-$$
 trap 'rm -rf -- "$scratch"' EXIT HUP INT TERM
 mkdir -p "$scratch/models"
+cat > "$scratch/config.toml" <<'CONFIG'
+version = 1
+[providers]
+CONFIG
 
 "$binary" \
+  --config "$scratch/config.toml" \
   --db "$scratch/mash.sqlite3" \
   --models-dir "$scratch/models" \
   status | grep -q '"ready":false'
