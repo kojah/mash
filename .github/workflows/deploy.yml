@@ -14,9 +14,12 @@ concurrency:
 
 jobs:
   deploy:
+    strategy:
+      matrix:
+        binary: [mash, mash-mcp]
     uses: jamesqo/gha-workflows/.github/workflows/rust-cli-deploy.yml@v3
     with:
-      binary: mash
+      binary: ${{ matrix.binary }}
       rust-toolchain: nightly
       cache-prefix: mash
       rustflags: -Zunstable-options --jobs-frontend=4

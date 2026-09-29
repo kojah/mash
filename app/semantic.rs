@@ -283,7 +283,7 @@ impl Backend {
             .map_err(|error| AppError::model(format!("embedding inference failed: {error}")))
     }
 
-    fn rerank<S: AsRef<str> + Send + Sync>(
+    pub(crate) fn rerank<S: AsRef<str> + Send + Sync>(
         &mut self,
         query: S,
         documents: &[S],
@@ -713,16 +713,35 @@ pub(crate) fn hybrid_search(
     Ok(fused)
 }
 
-fn fuse(lexical: Vec<SearchHit>, semantic: Vec<SearchHit>) -> Vec<SearchHit> {
+/// Model-space identity shared by the CPU ONNX and Apple Core ML executions.
+/// Unlike the local storage generation, batching and chunk layout do not affect it.
+pub(crate) const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";
+
+pub(crate) fn shared_query_vector(
+    backend: &mut Backend,
+    query: &str,
+) -> Result<Vec<f64>, AppError> {
+    let vector = backend
+        .embed(&[query])?
+        .pop()
+        .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
+    Ok(quantize_vector(&vector)
+        .values
+        .into_iter()
+        .map(|value| f64::from(value.cast_signed()))
+        .collect())
+}
+
+pub(crate) fn fuse(lexical: Vec<SearchHit>, semantic: Vec<SearchHit>) -> Vec<SearchHit> {
     let mut hits = HashMap::new();
     let mut scores = HashMap::<String, f32>::new();
     for (rank, hit) in lexical.into_iter().enumerate() {
-        let id = hit.id.clone();
+        let id = format!("{:?}:{}", hit.node_id, hit.id);
         scores.insert(id.clone(), reciprocal_rank(rank));
         hits.insert(id, hit);
     }
     for (rank, hit) in semantic.into_iter().enumerate() {
-        let id = hit.id.clone();
+        let id = format!("{:?}:{}", hit.node_id, hit.id);
         *scores.entry(id.clone()).or_default() += reciprocal_rank(rank);
         if let Some(existing) = hits.get_mut(&id) {
             existing.semantic_score = hit.semantic_score;
@@ -1085,8 +1104,7 @@ mod tests {
                 semantic_score: None,
                 fusion_score: 0.0,
                 rerank_score: None,
-                origins: Vec::new(),
-                federated_score: None,
+                node_id: None,
             }
         }
 

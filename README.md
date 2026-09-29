@@ -1,24 +1,24 @@
 # mash
 
-mash (Multi-Agent Search History) is a small, JSON-only search CLI for Claude Code and Codex JSONL
-histories. SQLite is the canonical store; SQLite FTS5, local FastEmbed
+mash (Multi-Agent Search History) searches Claude Code and Codex JSONL histories
+through a JSON CLI and an MCP server built with the official Rust SDK. SQLite is the canonical store; SQLite FTS5, local FastEmbed
 embeddings, reciprocal-rank fusion, and bounded cross-encoder reranking provide
-hybrid retrieval. mash can also federate searches and views across configured
-machines over SSH.
+hybrid retrieval. Nodes optionally publish to a joint PostgreSQL index, one per
+node group, so shared history remains searchable while source machines are offline.
 
 ## Commands
 
 ```text
 mash index [--full] [--provider claude-code|codex]... [--since-days N|--all-history]
-mash search <query> [--node NAME]... [--limit N] [--provider PROVIDER] [--days N]
-mash view <message-id> [--node NAME] [--context N]
+mash search <query> [--shared] [--limit N] [--provider PROVIDER] [--days N]
+mash view <message-id> [--shared NODE_ID] [--context N]
 mash status
 mash forget <conversation-id>
 mash models install
 ```
 
 All operational commands emit one JSON value. Bare `mash` prints help. Global
-options are `--config PATH`, `--local-node NAME`, `--db PATH`, and
+options are `--config PATH`, `--db PATH`, and
 `--models-dir PATH`.
 
 ## Models and indexing
@@ -55,52 +55,115 @@ The rename changes the default configuration and data directories to `mash`,
 and the database filename to `mash.sqlite3`. To reuse an existing achi installation,
 pass its paths with `--config`, `--db`, and `--models-dir`, or move its configuration,
 database, and installed models into the new locations reported by `mash status`.
-Federated nodes must install `mash` at `~/.local/bin/mash`.
 
 mash reads `config.json` from the platform mash configuration directory. Use
 `mash status` to see the resolved path, or pass `--config PATH` explicitly.
-The file is strict, versioned JSON. Provider presence enables that provider for
-the node; roots must be absolute. `since_days` defaults to 90 and may be `null`
-for all history.
+The file is strict, versioned JSON. Provider presence enables that provider;
+roots must be absolute. `since_days` defaults to 90 and may be `null` for all
+history. CLI indexing flags override these settings.
 
 ```json
 {
   "version": 1,
-  "local_node": "xenia",
-  "nodes": [
-    {
-      "name": "xenia",
-      "ssh": "xenia",
-      "search": true,
-      "providers": {
-        "claude-code": {"roots": ["/home/james/.claude/projects"]},
-        "codex": {"roots": ["/home/james/.codex/sessions"]}
-      },
-      "index": {"since_days": 90}
-    },
-    {
-      "name": "dev-macbook",
-      "ssh": "dev-macbook",
-      "search": true,
-      "providers": {
-        "claude-code": {"roots": ["/Users/jko/.claude/projects"]},
-        "codex": {"roots": ["/Users/jko/.codex/sessions"]}
-      }
-    }
-  ]
+  "providers": {
+    "claude-code": {"roots": ["/home/james/.claude/projects"]},
+    "codex": {"roots": ["/home/james/.codex/sessions"]}
+  },
+  "index": {"since_days": 90},
+  "shared": {
+    "group_id": "personal",
+    "node_id": "xenia",
+    "database_url_env": "MASH_DATABASE_URL"
+  }
 }
 ```
 
-The configured `local_node` selects this machine's roots and indexing horizon;
-`--local-node` overrides that identity. CLI indexing flags override the local
-node settings. A search without `--node` contacts every other node with
-`"search": true`; repeated `--node NAME` values replace that default set and
-may explicitly select a node whose `search` value is false. Logical node names
-are reported in results while `ssh` supplies the transport destination.
+Omit `shared` for a fully local installation. A configured shared connection
+never changes the default search scope. Configure the same group ID and database
+on every member, with a distinct node ID for each local database. Group IDs select
+separate PostgreSQL schemas; every node within a group contributes to one joint
+index. The database can live wherever you choose.
 
-There are no provider or federation environment-variable overrides. There is
-also no TUI, export, daemon, remote sync, watch mode, analytics platform,
-provider registry, compatibility layer, or alternate output encoding.
+The former `nodes`, `local_node`, SSH destinations, `--node`, `--local-node`,
+and hidden federation workers are removed. To migrate a configuration, move this
+machine's `providers` and `index` settings to the top level and optionally add
+`shared`. Old configuration shapes are rejected rather than guessed.
+
+## Shared PostgreSQL index
+
+Provision a PostgreSQL database and supply its connection string through the
+configured environment variable. Credentials are not stored in the JSON config,
+returned by status, or echoed in connection errors. TLS with certificate and
+hostname verification is required by default, using public CA roots. Explicit
+`sslmode=disable` is supported for a trusted local development instance.
+
+```bash
+export MASH_DATABASE_URL='postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require'
+mash index
+mash search 'sqlite migration' --shared
+mash view MESSAGE_ID --shared xenia --context 2
+```
+
+The first publication creates the group's schema and tables; the database role
+must have schema-creation and table-write privileges. This initial design is for
+trusted nodes with direct database access. Group namespaces prevent accidental
+mixing; they are not an authorization boundary against a database user who can
+access other groups' schemas.
+
+Local indexing commits first. Changes mark a durable local publication revision;
+a changed node publishes its complete snapshot in one PostgreSQL transaction,
+using batches of up to 128 records or about 1 MiB. Raw tool outputs are uploaded
+for context but remain excluded from search. Unchanged revisions are acknowledged
+without replacing shared records. A failed upload returns local success with
+`shared.state: "pending"`; subsequent `index` runs retry even with no new history.
+`status` checks publication state locally and does not contact PostgreSQL.
+
+`forget` deletes a locally owned conversation and publishes a persistent
+shared tombstone. Check its `shared.state`: an offline deletion remains pending
+until a later successful `index` or `forget`. Copies owned by other nodes remain.
+Node identity is tied to the local database instance; a recreated database must
+use a new node ID. Stale snapshots cannot replace newer accepted revisions.
+
+Shared search uses PostgreSQL full-text retrieval, exact cosine over uploaded
+quantized vectors, RRF, and at most ten reranked candidates. The querying node
+runs the same installed FastEmbed models locally. CPU and Apple Core ML vectors
+share a model-space identifier; outdated or missing embeddings cause an explicit
+shared error requiring publishing nodes to reindex. Shared hits include `node_id`
+for the matching `view` call. A shared outage does not trigger a silent local
+fallback. Local and shared result sets are selected explicitly and are not merged.
+
+Full snapshot replacement favors correctness and simplicity over upload
+throughput. Large histories incur a full transfer on each changed revision, and
+exact cosine scans the shared corpus. There is no background synchronization,
+ANN index, HTTP service, or automatic shared deployment.
+
+## MCP
+
+Run `mash-mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
+`--models-dir` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
+and `models_install`. The server uses the same operations and typed JSON errors
+as the CLI; tool failures set MCP `isError`. Progress goes to stderr, leaving
+stdout for the SDK's protocol messages.
+
+Example MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "mash": {
+      "command": "/absolute/path/to/mash-mcp",
+      "args": ["--config", "/absolute/path/to/config.json"]
+    }
+  }
+}
+```
+
+For shared operations, provide the configured database environment variable to
+the server through your MCP client's environment mechanism. `search` accepts a
+`shared` boolean; `view` accepts a `shared` publishing node ID. Search, view, and
+status are annotated read-only. Index and forget mutate data; `models_install`
+is the only operation that downloads models. Synchronous storage/model work runs
+on a blocking worker, serialized per MCP session.
 
 ## Verification
 
@@ -128,6 +191,18 @@ cargo clippy --all-targets -- -D warnings
 cargo test --doc
 ```
 
+The installed August 2026 nightly can hit a [Clippy compiler crash](https://github.com/rust-lang/rust/issues/161495)
+when checking async code. On that toolchain, use
+`RUSTFLAGS=-Znext-solver=no cargo clippy --all-targets -- -D warnings`.
+
+The PostgreSQL integration tests are ignored by default and require a disposable
+database in `MASH_TEST_PG_URL`. It creates and removes isolated test-group schemas:
+
+```bash
+MASH_TEST_PG_URL='postgresql://USER:PASSWORD@localhost/DATABASE?sslmode=disable' \
+  cargo nextest run --run-ignored only postgres_publication
+```
+
 The real-model integration test is ignored by default and requires
 `MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
 
@@ -138,7 +213,7 @@ tests need repository access and a GitHub SSH identity that can clone Veritas.
 ## Automatic deployment
 
 Every push to `main` builds the Linux x86-64 and Apple Silicon binaries in
-GitHub Actions, then atomically deploys `mash` to `~/.local/bin` on Xenia,
+GitHub Actions, then atomically deploys `mash` and `mash-mcp` to `~/.local/bin` on Xenia,
 dev-macbook, and personal-macbook over Tailscale. The macOS binary is
 cross-compiled on the Linux runner with `cargo-zigbuild`; destination machines
 need neither this repository nor a Rust toolchain.

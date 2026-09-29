@@ -3,9 +3,18 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 12;
+pub(super) const SCHEMA_VERSION: i64 = 13;
 
 const SCHEMA: &str = r"
+CREATE TABLE IF NOT EXISTS shared_publication (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    instance TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1,
+    acknowledged INTEGER NOT NULL DEFAULT 0,
+    target TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO shared_publication(singleton, instance)
+VALUES (1, lower(hex(randomblob(16))));
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (
@@ -159,6 +168,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version < 12 {
         backfill_pending_embeddings(&transaction)?;
     }
+    install_publication_triggers(&transaction)?;
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(AppError::database)?;
@@ -166,6 +176,27 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     connection
         .pragma_update(None, "foreign_keys", true)
         .map_err(AppError::database)
+}
+
+fn install_publication_triggers(connection: &Connection) -> Result<(), AppError> {
+    for table in [
+        "conversations",
+        "messages",
+        "message_embeddings",
+        "tombstones",
+    ] {
+        for operation in ["INSERT", "UPDATE", "DELETE"] {
+            connection
+                .execute_batch(&format!(
+                    "CREATE TRIGGER IF NOT EXISTS shared_{table}_{operation}
+                 AFTER {operation} ON {table} BEGIN
+                 UPDATE shared_publication SET revision = revision + 1 WHERE singleton = 1;
+                 END;"
+                ))
+                .map_err(AppError::database)?;
+        }
+    }
+    Ok(())
 }
 
 fn backfill_pending_embeddings(connection: &Connection) -> Result<(), AppError> {

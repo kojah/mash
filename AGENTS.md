@@ -2,16 +2,20 @@
 
 ## Product boundary
 
-mash is a small JSON-only Rust CLI for Claude Code and Codex JSONL histories.
-Keep the command surface limited to `index`, `search`, `view`, `status`,
+mash is a JSON-only Rust CLI and stdio MCP server for Claude Code and Codex JSONL histories.
+Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 `forget`, and `models install`.
 
 - Use Rusqlite as the sole SQLite library.
-- Use SQLite FTS5 for lexical search.
+- Use SQLite FTS5 for local lexical search.
+- Use one direct PostgreSQL shared index per configured node group. Keep local
+  operations offline-capable and shared access optional. Never restore SSH query
+  fan-out or add an HTTP service.
+- Use the official Rust MCP SDK (rmcp) for the stdio server and share CLI operations.
 - Keep one concrete FastEmbed semantic backend with exact cosine search, RRF,
   and bounded reranking.
 - Do not add provider traits, registries, daemons, ANN indexes, compatibility
-  shims, alternate output modes, a TUI, export, analytics, sync, or watch mode.
+  shims, alternate output modes, a TUI, export, analytics, background sync, or watch mode.
 - Keep ingestion to the two concrete mash-owned JSONL parsers. Do not add
   external application databases, event-log providers, provider traits,
   registries, plugin systems, or compatibility layers.

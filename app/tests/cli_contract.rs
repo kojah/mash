@@ -1,8 +1,5 @@
 use std::path::Path;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-
 use assert_cmd::Command;
 use predicates::prelude::*;
 use rusqlite::Connection;
@@ -33,33 +30,6 @@ fn error_kind(output: &std::process::Output) -> Value {
         )
     })["error"]["kind"]
         .clone()
-}
-
-fn sorted_lines(path: &Path) -> Vec<String> {
-    let mut lines = std::fs::read_to_string(path)
-        .expect("text file")
-        .lines()
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    lines.sort();
-    lines
-}
-
-#[cfg(unix)]
-fn run_search_with_legacy_node_environment(
-    path: &std::ffi::OsStr,
-    root: &Path,
-    log: &Path,
-) -> std::process::Output {
-    Command::cargo_bin("mash")
-        .expect("mash binary")
-        .env("PATH", path)
-        .envs([("XDG_CONFIG_HOME", root), ("XDG_DATA_HOME", root)])
-        .env("MASH_FAKE_SSH_LOG", log)
-        .env("MASH_SEARCH_NODES", "dev-macbook")
-        .args(["search", "query"])
-        .output()
-        .expect("local-only search")
 }
 
 fn create_valid_model_marker(root: &Path) {
@@ -128,7 +98,7 @@ fn seed_readiness_database(path: &Path, search_projection: Option<&str>) {
              INSERT INTO derived_state VALUES (1, 0, NULL);
              INSERT INTO conversations(id, provider, source_path)
                 VALUES ('session', 'codex', '/tmp/session.jsonl');
-             PRAGMA user_version = 12;",
+             PRAGMA user_version = 13;",
         )
         .expect("readiness schema");
     connection
@@ -160,64 +130,20 @@ fn current_embedding_generation() -> String {
     blake3::hash(specification.as_bytes()).to_hex().to_string()
 }
 
-fn write_config(path: &Path, local_node: &str, claude_root: &Path, codex_root: &Path) {
+fn write_config(path: &Path, claude_root: &Path, codex_root: &Path) {
     std::fs::write(
         path,
         serde_json::to_vec_pretty(&serde_json::json!({
             "version": 1,
-            "local_node": local_node,
-            "nodes": [{
-                "name": local_node,
-                "ssh": local_node,
-                "search": true,
                 "providers": {
                     "claude-code": {"roots": [claude_root]},
                     "codex": {"roots": [codex_root]}
                 },
                 "index": {"since_days": 30}
-            }]
         }))
         .expect("configuration JSON"),
     )
     .expect("configuration file");
-}
-
-fn write_federation_config(path: &Path) {
-    std::fs::write(
-        path,
-        serde_json::to_vec_pretty(&serde_json::json!({
-            "version": 1,
-            "local_node": "xenia",
-            "nodes": [
-                {
-                    "name": "xenia",
-                    "ssh": "xenia-tail",
-                    "search": true,
-                    "providers": {}
-                },
-                {
-                    "name": "dev-macbook",
-                    "ssh": "dev-tail",
-                    "search": true,
-                    "providers": {}
-                },
-                {
-                    "name": "personal-macbook",
-                    "ssh": "personal-tail",
-                    "search": false,
-                    "providers": {}
-                },
-                {
-                    "name": "backup-macbook",
-                    "ssh": "backup-tail",
-                    "search": true,
-                    "providers": {}
-                }
-            ]
-        }))
-        .expect("federation configuration JSON"),
-    )
-    .expect("federation configuration");
 }
 
 #[veritas::claims("configuration/status-reports-resolved-settings")]
@@ -227,7 +153,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
     let config = directory.path().join("config.json");
     let claude = directory.path().join("remote-claude");
     let codex = directory.path().join("remote-codex");
-    write_config(&config, "xenia", &claude, &codex);
+    write_config(&config, &claude, &codex);
 
     let body = run_json(&[
         "--config",
@@ -244,7 +170,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
         serde_json::json!({
             "path": std::fs::canonicalize(&config).expect("canonical config"),
             "loaded": true,
-            "local_node": "xenia",
+            "shared": null,
             "providers": {
                 "claude-code": {"roots": [claude]},
                 "codex": {"roots": [codex]}
@@ -291,7 +217,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
         serde_json::json!({
             "path": config_home.join("mash/config.json"),
             "loaded": false,
-            "local_node": null,
+            "shared": null,
             "providers": {
                 "claude-code": {"roots": [
                     home.join(".claude/projects"),
@@ -315,8 +241,8 @@ fn legacy_provider_root_environment_variables_are_ignored() {
 fn every_public_command_rejects_malformed_configuration_before_effects() {
     let command_arguments: &[&[&str]] = &[
         &["index"],
-        &["search", "needle", "--node", "remote"],
-        &["view", "message", "--node", "remote"],
+        &["search", "needle"],
+        &["view", "message"],
         &["status"],
         &["forget", "conversation"],
         &["models", "install"],
@@ -365,133 +291,6 @@ fn every_public_command_rejects_malformed_configuration_before_effects() {
     }
 }
 
-#[veritas::claims("configuration/invalid-loaded-file-fails-before-effects")]
-#[test]
-fn hidden_workers_are_config_blind_and_reject_explicit_config_flags() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let explicit = directory.path().join("config.json");
-    std::fs::write(&explicit, "{").expect("malformed explicit config");
-    for (worker, request) in [
-        (
-            ["search", "--federation-request"],
-            r#"{"protocol":2,"query":"needle","limit":1}"#,
-        ),
-        (
-            ["view", "--federation-request"],
-            r#"{"protocol":2,"id":"message","context":0}"#,
-        ),
-    ] {
-        for explicit_flag in ["config", "local-node"] {
-            let mut command = Command::cargo_bin("mash").expect("mash binary");
-            if explicit_flag == "config" {
-                command.args(["--config", explicit.to_str().unwrap()]);
-            } else {
-                command.args(["--local-node", "xenia"]);
-            }
-            let output = command
-                .args(worker)
-                .write_stdin(request)
-                .output()
-                .expect("explicit worker invocation");
-            let error: Value = serde_json::from_slice(&output.stderr).expect("worker usage error");
-            assert_eq!(error["error"]["kind"], "usage");
-        }
-    }
-
-    let xdg = directory.path().join("xdg");
-    let default_config = xdg.join("mash/config.json");
-    std::fs::create_dir_all(default_config.parent().expect("config parent"))
-        .expect("default config parent");
-    std::fs::write(default_config, "{").expect("malformed default config");
-    for (worker, request, expected_kind) in [
-        (
-            ["search", "--federation-request"],
-            r#"{"protocol":2,"query":"needle","limit":1}"#,
-            "model",
-        ),
-        (
-            ["view", "--federation-request"],
-            r#"{"protocol":2,"id":"message","context":0}"#,
-            "database-missing",
-        ),
-    ] {
-        let worker_output = Command::cargo_bin("mash")
-            .expect("mash binary")
-            .env("XDG_CONFIG_HOME", &xdg)
-            .args([
-                "--db",
-                directory.path().join("missing.sqlite3").to_str().unwrap(),
-                "--models-dir",
-                directory.path().join("missing-models").to_str().unwrap(),
-            ])
-            .args(worker)
-            .write_stdin(request)
-            .output()
-            .expect("config-blind worker invocation");
-        let worker_error: Value =
-            serde_json::from_slice(&worker_output.stderr).expect("worker runtime error");
-        assert_eq!(worker_error["error"]["kind"], expected_kind);
-    }
-}
-
-#[cfg(unix)]
-#[veritas::claims("federated-search/remote-worker-is-nonrecursive")]
-#[test]
-fn hidden_workers_never_start_ssh_from_config_or_environment() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let xdg = directory.path().join("xdg");
-    let config = xdg.join("mash/config.json");
-    std::fs::create_dir_all(config.parent().unwrap()).expect("config parent");
-    write_federation_config(&config);
-    let log = directory.path().join("ssh.log");
-    let ssh = directory.path().join("ssh");
-    std::fs::write(
-        &ssh,
-        "#!/bin/sh\nprintf started >> \"$MASH_FAKE_SSH_LOG\"\nexit 23\n",
-    )
-    .expect("fake ssh");
-    let mut permissions = std::fs::metadata(&ssh).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&ssh, permissions).expect("executable ssh");
-    let path = std::env::join_paths(std::iter::once(directory.path().to_path_buf()).chain(
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
-    ))
-    .expect("fake ssh path");
-
-    for (worker, request, expected_kind) in [
-        (
-            ["search", "--federation-request"],
-            r#"{"protocol":2,"query":"needle","limit":1}"#,
-            "model",
-        ),
-        (
-            ["view", "--federation-request"],
-            r#"{"protocol":2,"id":"message","context":0}"#,
-            "database-missing",
-        ),
-    ] {
-        let output = Command::cargo_bin("mash")
-            .expect("mash binary")
-            .env("PATH", &path)
-            .env("XDG_CONFIG_HOME", &xdg)
-            .env("MASH_SEARCH_NODES", "dev-macbook")
-            .env("MASH_FAKE_SSH_LOG", &log)
-            .args([
-                "--db",
-                directory.path().join("missing.sqlite3").to_str().unwrap(),
-                "--models-dir",
-                directory.path().join("missing-models").to_str().unwrap(),
-            ])
-            .args(worker)
-            .write_stdin(request)
-            .output()
-            .expect("hidden worker");
-        let error: Value = serde_json::from_slice(&output.stderr).expect("worker JSON");
-        assert_eq!(error["error"]["kind"], expected_kind);
-        assert!(!log.exists());
-    }
-}
-
 #[veritas::claims(
     "configuration/cli-values-have-precedence",
     "indexing/cli-provider-selection-is-bounded"
@@ -505,14 +304,8 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
         &config,
         serde_json::to_vec(&serde_json::json!({
             "version": 1,
-            "local_node": "test-node",
-            "nodes": [{
-                "name": "test-node",
-                "ssh": "test-node",
-                "search": true,
                 "providers": {"codex": {"roots": [codex_root]}},
                 "index": {"since_days": 90}
-            }]
         }))
         .expect("config JSON"),
     )
@@ -623,7 +416,7 @@ fn index_without_pending_embeddings_validates_but_does_not_load_models() {
     std::fs::create_dir_all(&codex).expect("Codex root");
     seed_readiness_database(&database, Some(""));
     create_valid_model_marker(&models);
-    write_config(&config, "test-node", &claude, &codex);
+    write_config(&config, &claude, &codex);
 
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
@@ -914,210 +707,6 @@ fn status_reads_an_older_database_without_migrating_it() {
     assert!(!projection_exists);
 }
 
-#[cfg(unix)]
-#[veritas::claims("federated-search/local-semantic-readiness-is-required")]
-#[test]
-fn federated_search_fails_when_local_semantic_search_is_unready() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let config = directory.path().join("config.json");
-    write_federation_config(&config);
-    let ssh = directory.path().join("ssh");
-    std::fs::write(
-        &ssh,
-        concat!(
-            "#!/bin/sh\n",
-            "cat >/dev/null\n",
-            "printf '%s\\n' '{\"protocol\":2,\"kind\":\"search\",",
-            "\"response\":{\"query\":\"query\",\"realized_mode\":\"hybrid\",",
-            "\"results\":[]}}'\n"
-        ),
-    )
-    .expect("fake ssh");
-    let mut permissions = std::fs::metadata(&ssh).expect("ssh metadata").permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&ssh, permissions).expect("executable ssh");
-    let path = std::env::join_paths(std::iter::once(directory.path().to_path_buf()).chain(
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
-    ))
-    .expect("fake ssh path");
-
-    let output = Command::cargo_bin("mash")
-        .expect("mash binary")
-        .env("PATH", path)
-        .args([
-            "--config",
-            config.to_str().unwrap(),
-            "--db",
-            directory.path().join("missing.sqlite3").to_str().unwrap(),
-            "--models-dir",
-            directory.path().join("missing-models").to_str().unwrap(),
-            "search",
-            "query",
-            "--node",
-            "dev-macbook",
-        ])
-        .output()
-        .expect("federated search");
-    assert!(!output.status.success());
-    assert_eq!(output.stdout, Vec::<u8>::new());
-    let error: Value = serde_json::from_slice(&output.stderr).expect("typed local error");
-    assert_eq!(error["error"]["kind"], "model");
-    assert_eq!(error["error"]["recommended_action"], "models install");
-}
-
-#[cfg(unix)]
-#[veritas::claims(
-    "configuration/environment-inputs-are-ignored",
-    "federated-search/node-selection-precedence",
-    "federated-search/configured-default-fanout",
-    "federated-search/concurrent-fanout",
-    "federated-search/remote-view"
-)]
-#[test]
-fn configured_federation_uses_inventory_destinations_and_logical_names() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let config = directory.path().join("config.json");
-    let log = directory.path().join("ssh.log");
-    write_federation_config(&config);
-    let ssh = directory.path().join("ssh");
-    std::fs::write(
-        &ssh,
-        concat!(
-            "#!/bin/sh\n",
-            "shift 9\n",
-            "destination=$1\n",
-            "operation=$3\n",
-            "if test \"$destination\" = dev-tail || test \"$destination\" = backup-tail; then\n",
-            "  touch \"$MASH_FAKE_SSH_SYNC/$destination\"\n",
-            "  while ! test -e \"$MASH_FAKE_SSH_SYNC/dev-tail\" || ! test -e \"$MASH_FAKE_SSH_SYNC/backup-tail\"; do sleep 0.01; done\n",
-            "fi\n",
-            "printf '%s %s\\n' \"$destination\" \"$operation\" >> \"$MASH_FAKE_SSH_LOG\"\n",
-            "cat >/dev/null\n",
-            "if test \"$operation\" = search; then\n",
-            "  printf '%s\\n' '{\"protocol\":2,\"kind\":\"search\",\"response\":{\"query\":\"query\",\"realized_mode\":\"hybrid\",\"results\":[]}}'\n",
-            "else\n",
-            "  printf '%s\\n' '{\"protocol\":2,\"kind\":\"view\",\"response\":{\"id\":\"message\",\"messages\":[{\"id\":\"message\",\"ordinal\":0,\"role\":\"user\",\"content\":\"remote view\",\"created_at\":null}]}}'\n",
-            "fi\n"
-        ),
-    )
-    .expect("fake ssh");
-    let mut permissions = std::fs::metadata(&ssh).expect("ssh metadata").permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&ssh, permissions).expect("executable ssh");
-    let path = std::env::join_paths(std::iter::once(directory.path().to_path_buf()).chain(
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
-    ))
-    .expect("fake ssh path");
-
-    let run_search = |nodes: &[&str]| {
-        let mut command = Command::cargo_bin("mash").expect("mash binary");
-        command
-            .env("PATH", &path)
-            .env("MASH_FAKE_SSH_LOG", &log)
-            .env("MASH_FAKE_SSH_SYNC", directory.path())
-            .args(["--config", config.to_str().unwrap()])
-            .args([
-                "--db",
-                directory.path().join("missing.sqlite3").to_str().unwrap(),
-                "--models-dir",
-                directory.path().join("missing-models").to_str().unwrap(),
-                "search",
-                "query",
-            ]);
-        for node in nodes {
-            command.args(["--node", node]);
-        }
-        command.output().expect("configured search")
-    };
-
-    let default = run_search(&[]);
-    assert_eq!(error_kind(&default), "model");
-    assert_eq!(
-        sorted_lines(&log),
-        ["backup-tail search", "dev-tail search"]
-    );
-    std::fs::write(&log, "").expect("clear log");
-    let explicit = run_search(&["personal-macbook", "personal-macbook"]);
-    assert_eq!(error_kind(&explicit), "model");
-    assert_eq!(
-        std::fs::read_to_string(&log).unwrap(),
-        "personal-tail search\n"
-    );
-    for invalid in ["xenia", "unknown"] {
-        std::fs::write(&log, "").expect("clear log");
-        let output = run_search(&[invalid]);
-        assert_eq!(error_kind(&output), "usage");
-        assert_eq!(std::fs::read_to_string(&log).unwrap(), "");
-    }
-
-    std::fs::write(&log, "").expect("clear log");
-    let viewed = Command::cargo_bin("mash")
-        .expect("mash binary")
-        .env("PATH", &path)
-        .env("MASH_FAKE_SSH_LOG", &log)
-        .args(["--config", config.to_str().unwrap()])
-        .args(["view", "message", "--node", "personal-macbook"])
-        .output()
-        .expect("configured remote view");
-    assert!(viewed.status.success());
-    let response: Value = serde_json::from_slice(&viewed.stdout).expect("view JSON");
-    assert_eq!(response["messages"][0]["content"], "remote view");
-    assert_eq!(
-        std::fs::read_to_string(&log).unwrap(),
-        "personal-tail view\n"
-    );
-
-    std::fs::write(&log, "").expect("clear log");
-    let ignored = run_search_with_legacy_node_environment(&path, directory.path(), &log);
-    assert_eq!(error_kind(&ignored), "model");
-    assert_eq!(std::fs::read_to_string(&log).unwrap(), "");
-}
-
-#[cfg(unix)]
-#[veritas::claims(
-    "federated-search/node-selection-precedence",
-    "federated-search/node-validation",
-    "federated-search/remote-view"
-)]
-#[test]
-fn explicit_remote_nodes_require_configuration_before_local_work_or_ssh() {
-    let directory = tempfile::tempdir().expect("temporary directory");
-    let log = directory.path().join("ssh.log");
-    let ssh = directory.path().join("ssh");
-    std::fs::write(
-        &ssh,
-        "#!/bin/sh\nprintf started >> \"$MASH_FAKE_SSH_LOG\"\nexit 23\n",
-    )
-    .expect("fake ssh");
-    let mut permissions = std::fs::metadata(&ssh).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&ssh, permissions).expect("executable ssh");
-    let path = std::env::join_paths(std::iter::once(directory.path().to_path_buf()).chain(
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
-    ))
-    .expect("fake ssh path");
-
-    for arguments in [
-        ["search", "query", "--node", "dev-macbook"],
-        ["view", "message", "--node", "dev-macbook"],
-    ] {
-        let output = Command::cargo_bin("mash")
-            .expect("mash binary")
-            .env("PATH", &path)
-            .envs([
-                ("XDG_CONFIG_HOME", directory.path()),
-                ("XDG_DATA_HOME", directory.path()),
-            ])
-            .env("MASH_FAKE_SSH_LOG", &log)
-            .args(arguments)
-            .output()
-            .expect("explicit node without configuration");
-        let error: Value = serde_json::from_slice(&output.stderr).expect("usage JSON");
-        assert_eq!(error["error"]["kind"], "usage");
-        assert!(!log.exists());
-    }
-}
-
 #[veritas::claims("view/tool-results-remain-visible")]
 #[test]
 fn view_returns_context_only_canonical_content_without_models() {
@@ -1202,7 +791,7 @@ fn real_models_index_and_run_hybrid_search() {
     .expect("Claude fixture");
     let database = directory.path().join("mash.sqlite3");
     let config = directory.path().join("config.json");
-    write_config(&config, "test-node", &claude, &codex);
+    write_config(&config, &claude, &codex);
     let model_arg = models.to_str().unwrap();
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
@@ -1322,4 +911,119 @@ fn benchmark_real_corpus_semantic_generation() {
         "semantic benchmark stored={stored} inferred={inferred} elapsed_ms={elapsed} rate={rate:.1}"
     );
     assert!(rate >= 220.0, "semantic generation rate was {rate:.1}/s");
+}
+
+#[test]
+fn ssh_options_are_rejected_and_shared_access_requires_configuration() {
+    for args in [
+        vec!["search", "q", "--node", "remote"],
+        vec!["view", "id", "--node", "remote"],
+        vec!["search", "--federation-request"],
+        vec!["view", "--federation-request"],
+        vec!["--local-node", "node", "status"],
+    ] {
+        let output = Command::cargo_bin("mash")
+            .expect("binary")
+            .args(args)
+            .output()
+            .expect("run");
+        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(error_kind(&output), "usage");
+    }
+    let dir = tempfile::tempdir().expect("temp");
+    let config = dir.path().join("config.json");
+    std::fs::write(&config, r#"{"version":1,"providers":{}}"#).expect("config");
+    for args in [
+        vec!["search", "q", "--shared"],
+        vec!["view", "id", "--shared", "node"],
+    ] {
+        let output = Command::cargo_bin("mash")
+            .expect("binary")
+            .args(["--config", config.to_str().unwrap()])
+            .args(args)
+            .output()
+            .expect("run");
+        assert_eq!(error_kind(&output), "configuration");
+    }
+}
+
+#[test]
+#[ignore = "requires MASH_TEST_PG_URL pointing to an expendable PostgreSQL database"]
+fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli() {
+    let dir = tempfile::tempdir().expect("temp");
+    let database = dir.path().join("local.sqlite3");
+    seed_readiness_database(&database, Some(""));
+    Connection::open(&database)
+        .expect("seed connection")
+        .pragma_update(None, "user_version", 12)
+        .expect("exercise migration");
+    let models = dir.path().join("models");
+    create_valid_model_marker(&models);
+    let config = dir.path().join("config.json");
+    let group = format!(
+        "cli-{}",
+        dir.path().file_name().expect("name").to_string_lossy()
+    );
+    std::fs::write(&config, serde_json::to_vec(&serde_json::json!({
+        "version":1,"providers":{},"shared":{
+            "group_id":group,"node_id":"cli-node","database_url_env":"MASH_TEST_SHARED_CLIENT_URL"
+        }
+    })).expect("JSON")).expect("config");
+    let url = std::env::var("MASH_TEST_PG_URL").expect("test URL");
+    let invoke = |args: &[&str], online: bool| {
+        let mut command = Command::cargo_bin("mash").expect("binary");
+        command.args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+        ]);
+        if online {
+            command.env("MASH_TEST_SHARED_CLIENT_URL", &url);
+        } else {
+            command.env_remove("MASH_TEST_SHARED_CLIENT_URL");
+        }
+        let output = command.args(args).output().expect("run");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<Value>(&output.stdout).expect("JSON response")
+    };
+    let first = invoke(&["index"], false);
+    assert_eq!(first["shared"]["state"], "pending");
+    let retry = invoke(&["index"], true);
+    assert_eq!(retry["changed_messages"], 0);
+    assert_eq!(retry["shared"]["state"], "published");
+    assert_eq!(
+        invoke(&["view", "message", "--shared", "cli-node"], true)["messages"][0]["content"],
+        "canonical tool output"
+    );
+    let forgotten = invoke(&["forget", "session"], false);
+    assert_eq!(forgotten["forgotten"], true);
+    assert_eq!(forgotten["shared"]["state"], "pending");
+    assert_eq!(
+        invoke(&["view", "message", "--shared", "cli-node"], true)["messages"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1,
+        "shared deletion is pending"
+    );
+    assert_eq!(invoke(&["index"], true)["shared"]["state"], "published");
+    assert_eq!(
+        invoke(&["view", "message", "--shared", "cli-node"], true)["messages"]
+            .as_array()
+            .unwrap()
+            .as_slice(),
+        &[] as &[serde_json::Value]
+    );
+    let schema = format!("mash_g_{}", &blake3::hash(group.as_bytes()).to_hex()[..32]);
+    postgres::Client::connect(&url, postgres::NoTls)
+        .expect("cleanup client")
+        .batch_execute(&format!("DROP SCHEMA {schema} CASCADE"))
+        .expect("cleanup");
 }

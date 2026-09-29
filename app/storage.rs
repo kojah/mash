@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppError;
 
 mod indexing;
+mod publication;
 mod queries;
 mod schema;
 mod semantic;
@@ -62,19 +63,17 @@ pub(crate) struct SearchHit {
     pub(crate) fusion_score: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) rerank_score: Option<f32>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) origins: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) federated_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) node_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Message {
-    id: String,
-    ordinal: i64,
-    role: String,
-    content: String,
-    created_at: Option<i64>,
+    pub(crate) id: String,
+    pub(crate) ordinal: i64,
+    pub(crate) role: String,
+    pub(crate) content: String,
+    pub(crate) created_at: Option<i64>,
 }
 
 pub(crate) struct SearchableMessage {

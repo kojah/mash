@@ -1,21 +1,13 @@
-# Shared index implementation plan
+# Shared index delivery
 
-- [ ] Select the client access boundary with the user.
-- [ ] Finalize search/view scope, record ownership, and forget semantics.
-- [ ] Define and test the new strict local/shared configuration format.
-- [ ] Add transactional publication state and deletion records to SQLite.
-- [ ] Implement one concrete shared store with idempotent bounded ingestion,
-      revision ordering, and authenticated publisher isolation.
-- [ ] Implement shared lexical/semantic retrieval and stored message context.
-- [ ] Connect index and forget to publication; expose pending work in status.
-- [ ] Connect search and view to the selected shared scope.
-- [ ] Test lost acknowledgements, offline retries on no-change indexing,
-      out-of-order edits/deletions, owner isolation, incompatible embeddings,
-      and context-only message handling.
-- [ ] Remove SSH federation and its configuration, worker flags, and tests.
-      Add explicit rejection tests for the removed flags and old config shape.
-- [ ] Update product instructions, documentation, and configuration examples.
-- [ ] Run nextest, Clippy, formatting, and doctests with the persistent build
-      directories. Commit only task changes and push main.
+- [x] Select direct PostgreSQL access and optional per-group configuration.
+- [x] Keep explicit local/shared search and owner-scoped forget semantics.
+- [x] Add durable local publication revisions and PostgreSQL atomic snapshots.
+- [x] Implement exact shared retrieval and stored message context.
+- [x] Replace SSH federation, configuration, and worker flags.
+- [x] Add the official Rust MCP SDK stdio executable and shared CLI operations.
+- [x] Update documentation, release packaging, and binary deployment.
+- [x] Complete default, PostgreSQL, MCP, Clippy, formatting, and doctest checks.
+- [x] Commit task changes and push main.
 
-Production hosting and deployment remain separate pending decisions.
+Production hosting and credentials remain deployment decisions.

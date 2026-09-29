@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -7,14 +7,13 @@ use std::time::Instant;
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
 use directories::ProjectDirs;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 use crate::config::{self, ConfigurationStatus, ResolvedConfig};
-use crate::federation::{self, SearchEnvelope, SearchRequest, ViewEnvelope, ViewRequest};
 use crate::ingestion;
 use crate::semantic::{self, Models};
+use crate::shared;
 use crate::storage::Storage;
 
 #[derive(Debug, Parser)]
@@ -23,10 +22,6 @@ struct Cli {
     /// Versioned mash node and provider configuration.
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<PathBuf>,
-
-    /// Exact configured node to treat as local.
-    #[arg(long, global = true, value_name = "NAME")]
-    local_node: Option<String>,
 
     /// Canonical mash SQLite database.
     #[arg(long, global = true, value_name = "PATH")]
@@ -59,29 +54,25 @@ enum Command {
     },
     /// Search indexed messages.
     Search {
-        query: Option<String>,
+        query: String,
         #[arg(long, default_value_t = 20)]
         limit: usize,
         #[arg(long)]
         provider: Option<String>,
         #[arg(long)]
         days: Option<u32>,
-        /// Search an SSH node in addition to this machine.
-        #[arg(long, value_name = "NAME")]
-        node: Vec<String>,
-        #[arg(long, hide = true)]
-        federation_request: bool,
+        /// Query the joint PostgreSQL index instead of the local index.
+        #[arg(long)]
+        shared: bool,
     },
     /// Return a message and adjacent context.
     View {
-        id: Option<String>,
+        id: String,
         #[arg(long, default_value_t = 0)]
         context: u32,
-        /// Read the message from an SSH node.
-        #[arg(long, value_name = "NAME")]
-        node: Option<String>,
-        #[arg(long, hide = true)]
-        federation_request: bool,
+        /// Read shared context for this publishing node.
+        #[arg(long, value_name = "NODE_ID")]
+        shared: Option<String>,
     },
     /// Report canonical storage and model readiness.
     Status,
@@ -105,9 +96,7 @@ enum ModelsCommand {
 pub(super) enum Response {
     Index(IndexResponse),
     Search(SearchResponse),
-    FederationSearch(SearchEnvelope),
     View(ViewResponse),
-    FederationView(ViewEnvelope),
     Status(StatusResponse),
     Forget(ForgetResponse),
     ModelsInstall(ModelsInstallResponse),
@@ -140,6 +129,8 @@ pub(super) struct IndexResponse {
     search_refresh_milliseconds: u64,
     embedding_milliseconds: u64,
     total_milliseconds: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared: Option<shared::Publication>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -147,8 +138,7 @@ pub(crate) struct SearchResponse {
     pub(crate) query: String,
     pub(crate) realized_mode: String,
     pub(crate) results: Vec<crate::storage::SearchHit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) nodes: Option<Vec<federation::NodeOutcome>>,
+    pub(crate) shared: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -171,12 +161,16 @@ pub(super) struct StatusResponse {
     realized_mode: &'static str,
     recommended_action: Option<&'static str>,
     configuration: ConfigurationStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared: Option<shared::Publication>,
 }
 
 #[derive(Debug, Serialize)]
 pub(super) struct ForgetResponse {
     id: String,
     forgotten: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared: Option<shared::Publication>,
 }
 
 #[derive(Debug, Serialize)]
@@ -194,42 +188,15 @@ where
     T: Into<OsString> + Clone,
 {
     let cli = Cli::try_parse_from(args).map_err(|error| AppError::usage(error.to_string()))?;
-    let hidden_worker = matches!(
-        &cli.command,
-        Command::Search {
-            federation_request: true,
-            ..
-        } | Command::View {
-            federation_request: true,
-            ..
-        }
-    );
-    if hidden_worker && (cli.config.is_some() || cli.local_node.is_some()) {
-        return Err(AppError::usage(
-            "--config and --local-node are invalid with --federation-request",
-        ));
-    }
-    let resolved_config = if hidden_worker {
-        None
-    } else {
-        Some(config::load(
-            cli.config.as_deref(),
-            cli.local_node.as_deref(),
-        )?)
-    };
+    let resolved_config = config::load(cli.config.as_deref())?;
     let database_path = cli.db.unwrap_or_else(default_database_path);
     let models_dir = cli.models_dir.unwrap_or_else(default_models_path);
-    dispatch(
-        cli.command,
-        resolved_config.as_ref(),
-        &database_path,
-        &models_dir,
-    )
+    dispatch(cli.command, &resolved_config, &database_path, &models_dir)
 }
 
 fn dispatch(
     command: Command,
-    resolved_config: Option<&ResolvedConfig>,
+    resolved_config: &ResolvedConfig,
     database_path: &Path,
     models_dir: &Path,
 ) -> Result<Response, AppError> {
@@ -240,92 +207,60 @@ fn dispatch(
             since_days,
             all_history,
         } => {
-            let options = resolve_index_options(
-                resolved_config.expect("public command resolved configuration above"),
-                &provider,
-                since_days,
-                all_history,
-            )?;
-            index(database_path, models_dir, full, &options)
+            let options =
+                resolve_index_options(resolved_config, &provider, since_days, all_history)?;
+            index(
+                database_path,
+                models_dir,
+                full,
+                &options,
+                resolved_config.shared.as_ref(),
+            )
         }
         Command::Search {
             query,
             limit,
             provider,
             days,
-            node,
-            federation_request,
+            shared: use_shared,
         } => {
-            if federation_request {
-                if query.is_some() || !node.is_empty() {
-                    return Err(AppError::usage(
-                        "--federation-request reads its search request from stdin",
-                    ));
-                }
-                let request: SearchRequest = read_federation_request()?;
-                federation::validate_protocol(request.protocol)?;
-                local_search(
-                    database_path,
-                    models_dir,
-                    request.query,
-                    request.limit,
-                    request.provider.as_deref(),
-                    request.days,
+            let provider = normalize_provider_filter(provider.as_deref())?;
+            if use_shared {
+                let configuration = resolved_config.shared.as_ref().ok_or_else(|| {
+                    AppError::configuration("--shared requires shared configuration")
+                })?;
+                shared::search(configuration, models_dir, &query, limit, provider, days).map(
+                    |results| {
+                        Response::Search(SearchResponse {
+                            query,
+                            realized_mode: "hybrid".to_owned(),
+                            results,
+                            shared: true,
+                        })
+                    },
                 )
-                .map(|response| Response::FederationSearch(SearchEnvelope::new(response)))
             } else {
-                let query = query.ok_or_else(|| AppError::usage("search requires a query"))?;
-                let nodes = federation::select_nodes(
-                    resolved_config.expect("public command resolved configuration above"),
-                    &node,
-                )?;
-                search(
-                    database_path,
-                    models_dir,
-                    query,
-                    limit,
-                    provider.as_deref(),
-                    days,
-                    &nodes,
-                )
+                local_search(database_path, models_dir, query, limit, provider, days)
+                    .map(Response::Search)
             }
         }
         Command::View {
             id,
             context,
-            node,
-            federation_request,
+            shared: node,
         } => {
-            if federation_request {
-                if id.is_some() || node.is_some() {
-                    return Err(AppError::usage(
-                        "--federation-request reads its view request from stdin",
-                    ));
-                }
-                let request: ViewRequest = read_federation_request()?;
-                federation::validate_protocol(request.protocol)?;
-                local_view(database_path, request.id, request.context)
-                    .map(|response| Response::FederationView(ViewEnvelope::new(response)))
+            if let Some(node) = node {
+                let configuration = resolved_config.shared.as_ref().ok_or_else(|| {
+                    AppError::configuration("--shared requires shared configuration")
+                })?;
+                shared::view(configuration, &node, &id, context)
+                    .map(|messages| Response::View(ViewResponse { id, messages }))
             } else {
-                let id = id.ok_or_else(|| AppError::usage("view requires an id"))?;
-                let node = node
-                    .map(|name| {
-                        federation::select_nodes(
-                            resolved_config.expect("public command resolved configuration above"),
-                            &[name],
-                        )
-                        .map(|mut nodes| nodes.pop().expect("one explicit node selected"))
-                    })
-                    .transpose()?;
-                view(database_path, id, context, node)
+                local_view(database_path, id, context).map(Response::View)
             }
         }
-        Command::Status => status(
-            database_path,
-            models_dir,
-            resolved_config.expect("public command resolved configuration above"),
-        ),
-        Command::Forget { id } => forget(database_path, id),
+        Command::Status => status(database_path, models_dir, resolved_config),
+        Command::Forget { id } => forget(database_path, id, resolved_config.shared.as_ref()),
         Command::Models {
             command: ModelsCommand::Install,
         } => install_models(models_dir),
@@ -337,6 +272,7 @@ fn index(
     models_dir: &Path,
     full: bool,
     options: &ingestion::IndexOptions,
+    shared_config: Option<&config::SharedConfig>,
 ) -> Result<Response, AppError> {
     let total_started = Instant::now();
     let models = Models::new(models_dir.to_path_buf());
@@ -415,6 +351,7 @@ fn index(
         search_refresh_milliseconds,
         embedding_milliseconds,
         total_milliseconds: elapsed_milliseconds(total_started),
+        shared: shared_config.map(|config| shared::publish(&mut storage, config)),
     }))
 }
 
@@ -466,49 +403,6 @@ fn write_embedding_progress(
         .map_err(|error| AppError::internal(format!("failed to write progress: {error}")))
 }
 
-fn search(
-    database_path: &Path,
-    models_dir: &Path,
-    query: String,
-    limit: usize,
-    provider: Option<&str>,
-    days: Option<u32>,
-    nodes: &[federation::RemoteNode],
-) -> Result<Response, AppError> {
-    if nodes.is_empty() {
-        return local_search(database_path, models_dir, query, limit, provider, days)
-            .map(Response::Search);
-    }
-    let request = SearchRequest::new(query.clone(), limit, provider.map(ToOwned::to_owned), days);
-    let (local, remote) = std::thread::scope(|scope| {
-        let handles = nodes
-            .iter()
-            .map(|node| {
-                let node = node.clone();
-                let name = node.name.clone();
-                let request = &request;
-                (
-                    name,
-                    scope.spawn(move || federation::remote_search(node, request)),
-                )
-            })
-            .collect::<Vec<_>>();
-        let local = local_search(database_path, models_dir, query, limit, provider, days);
-        let remote = handles
-            .into_iter()
-            .map(|(node, handle)| {
-                handle
-                    .join()
-                    .unwrap_or_else(|_| federation::thread_failure(node))
-            })
-            .collect::<Vec<_>>();
-        (local, remote)
-    });
-    Ok(Response::Search(federation::merge_search(
-        local?, remote, limit,
-    )))
-}
-
 fn local_search(
     database_path: &Path,
     models_dir: &Path,
@@ -537,7 +431,7 @@ fn local_search(
         query,
         realized_mode: "hybrid".to_owned(),
         results,
-        nodes: None,
+        shared: false,
     })
 }
 
@@ -617,45 +511,10 @@ fn resolve_index_options(
     })
 }
 
-fn view(
-    database_path: &Path,
-    id: String,
-    context: u32,
-    node: Option<federation::RemoteNode>,
-) -> Result<Response, AppError> {
-    let Some(node) = node else {
-        return local_view(database_path, id, context).map(Response::View);
-    };
-    let remote = federation::remote_view(node, &ViewRequest::new(id, context));
-    if let Some(response) = remote.response {
-        return Ok(Response::View(response));
-    }
-    let kind = remote.outcome.error_kind.as_deref().unwrap_or("remote");
-    let detail = remote
-        .outcome
-        .error
-        .as_deref()
-        .unwrap_or("remote view failed");
-    Err(AppError::internal(format!(
-        "remote view on {} failed ({kind}): {detail}",
-        remote.outcome.node
-    )))
-}
-
 fn local_view(database_path: &Path, id: String, context: u32) -> Result<ViewResponse, AppError> {
     let storage = Storage::open_existing(database_path)?;
     let messages = storage.view(&id, context)?;
     Ok(ViewResponse { id, messages })
-}
-
-fn read_federation_request<T: DeserializeOwned>() -> Result<T, AppError> {
-    let mut input = Vec::new();
-    std::io::stdin()
-        .take(16 * 1024 * 1024)
-        .read_to_end(&mut input)
-        .map_err(AppError::io)?;
-    serde_json::from_slice(&input)
-        .map_err(|error| AppError::usage(format!("invalid federation request: {error}")))
 }
 
 fn status(
@@ -682,6 +541,10 @@ fn status(
                 "models install"
             }),
             configuration: configuration.status(),
+            shared: configuration
+                .shared
+                .as_ref()
+                .map(|_| shared::Publication::pending()),
         }));
     }
 
@@ -715,6 +578,7 @@ fn status(
             Some("index")
         },
         configuration: configuration.status(),
+        shared: shared::status(database_path, configuration.shared.as_ref())?,
     }))
 }
 
@@ -728,10 +592,18 @@ fn install_models(models_dir: &Path) -> Result<Response, AppError> {
     }))
 }
 
-fn forget(database_path: &Path, id: String) -> Result<Response, AppError> {
+fn forget(
+    database_path: &Path,
+    id: String,
+    shared_config: Option<&config::SharedConfig>,
+) -> Result<Response, AppError> {
     let mut storage = Storage::open_existing(database_path)?;
     let forgotten = storage.forget(&id)?;
-    Ok(Response::Forget(ForgetResponse { id, forgotten }))
+    Ok(Response::Forget(ForgetResponse {
+        id,
+        forgotten,
+        shared: shared_config.map(|config| shared::publish(&mut storage, config)),
+    }))
 }
 
 fn default_database_path() -> PathBuf {
@@ -807,8 +679,7 @@ mod tests {
         ResolvedConfig {
             path: root.join("config.json"),
             loaded: true,
-            local: None,
-            nodes: Vec::new(),
+            shared: None,
             providers: crate::config::ResolvedProviders {
                 claude_code: claude_enabled.then(|| vec![root.join("claude")]),
                 codex: codex_enabled.then(|| vec![root.join("codex")]),

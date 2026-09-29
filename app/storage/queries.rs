@@ -138,8 +138,7 @@ impl Storage {
                     semantic_score: None,
                     fusion_score: 0.0,
                     rerank_score: None,
-                    origins: Vec::new(),
-                    federated_score: None,
+                    node_id: None,
                 })
             })
             .map_err(AppError::database)?;
@@ -171,8 +170,7 @@ impl Storage {
                         semantic_score: None,
                         fusion_score: 0.0,
                         rerank_score: None,
-                        origins: Vec::new(),
-                        federated_score: None,
+                        node_id: None,
                     })
                 })
                 .optional()

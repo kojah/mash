@@ -1,80 +1,74 @@
-# Local and shared index design proposal
+# Direct PostgreSQL shared index
 
-## Access boundary
+## Configuration and groups
 
-Recommended: nodes publish to and query a small HTTP service backed by
-PostgreSQL. The service owns shared mutation rules, query ranking, authorization,
-and message context. The CLI retains its existing SQLite and FastEmbed pipeline.
+Strict local configuration contains providers and indexing settings. Optional
+shared configuration supplies a group ID, node ID, and connection-string
+environment variable name. No hosting location or credentials are hardcoded.
+Old SSH inventory configuration and flags are rejected.
 
-This recommendation is pending user selection. Direct PostgreSQL access would
-require a different client boundary and should not be implemented alongside it.
+A deterministic hash of the group ID selects a PostgreSQL schema. All members
+of that group use one joint index; records are owned by node ID within the group.
+Namespaces prevent accidental group mixing, not access by privileged database
+users. Direct access assumes trusted nodes. TLS verifies public-root certificates
+and hostnames by default; plaintext requires explicit sslmode=disable.
 
-## Configuration
+## Publication and deletion
 
-Use a strict local configuration document containing provider roots and the
-indexing horizon. Shared configuration is optional. When absent, the CLI is
-fully local and performs no shared requests.
+SQLite schema 13 stores a random local database instance ID, monotonically
+increasing revision, acknowledged revision, and destination fingerprint.
+Triggers record canonical message/conversation, embedding, and tombstone changes
+in their existing transactions, including checkpointed indexing changes.
 
-For the recommended HTTP boundary, the proposed shared fields are:
+After local indexing commits, publication opens a consistent SQLite read snapshot
+and locks the PostgreSQL publisher row. A different database instance cannot
+reuse an existing node ID. Newer accepted revisions reject stale snapshots;
+equal revisions acknowledge retries without rewriting records.
 
-- `endpoint`: deployment-supplied service URL; no hardcoded machine or host.
-- `node_id`: stable publisher identity, independent of hostname or SSH aliases.
-- `token_env`: name of an environment variable holding an access token; status
-  reports configuration and pending work without printing token values.
+Changed snapshots upload bounded batches inside one PostgreSQL transaction.
+Only the publishing node's records are replaced. Cumulative tombstones filter
+restored conversations. Edits, removed messages, and purged sources therefore
+reconcile without a separate outbox protocol. The acknowledgement is recorded
+only after PostgreSQL commits and only while the local revision still matches.
 
-An existing node-inventory configuration needs an explicit migration to the
-new format. Reject the old shape with a useful configuration error rather than
-silently choosing roots or continuing SSH behavior.
+Failures preserve local success and return pending publication. A no-change
+index retries pending snapshots. Forget also attempts publication after its local
+deletion. Copies owned by other nodes remain. Status reads local acknowledgement
+state without a network request; it does not promise current server health.
 
-## Publishing and failures
+Full replacement transfers the complete node history whenever its revision
+changes. This is an intentional first-version throughput limitation.
 
-Record pending publication in SQLite in the same transaction as each canonical
-change. Publish bounded batches after local commits. Advance acknowledgements
-only after the shared store confirms acceptance. A dropped response may cause
-the same batch to be retried; retries must be idempotent.
+## Search and context
 
-Each node uses a persistent publication sequence. The shared store tracks the
-last accepted revision for each owned record and rejects stale mutations.
-Message removal, conversation removal, and forget must all emit deletions.
-A later local no-change index run still drains outstanding work.
+Default search/view remain local. Search --shared queries only the joint index;
+view --shared NODE_ID retrieves a shared owner's message context. Source machines
+need not be reachable. Cross-owner copies remain distinct and hits include owner
+identity. There is no implicit merge or local fallback.
 
-Local success and shared failure are separate outcomes. Shared failures never
-roll back local indexing. Status exposes pending publication and the last
-acknowledged state. Explicit shared search reports an actionable shared error
-when the service is unavailable; it never silently substitutes local results.
+PostgreSQL full-text search and exact cosine over stored signed quantized vectors
+produce bounded candidates. Local FastEmbed query embeddings, RRF, and bounded
+reranking provide hybrid retrieval. Both CPU and Core ML use the same model-space
+identifier, independent of local chunk layout and batching. Missing or outdated
+vectors require publishing nodes to reindex. Tool output remains context-only.
 
-## Identity and deletion
+## MCP
 
-Authenticate publisher identity rather than trusting a `node_id` in a request.
-Initially isolate ownership by authenticated node, provider, conversation ID,
-and message ID. Repeated uploads from the same owner update existing records.
-Copies of a conversation on different nodes remain separate until a deliberate
-cross-node identity and conflict policy is chosen.
+mash-mcp uses the official rmcp SDK's stdio transport, initialization, tool routing,
+and schemas. Search, view, status, index, forget, and models_install invoke the
+same CLI operations in a serialized blocking worker. Tool arguments cannot inject
+CLI flags. Read-only and destructive annotations describe tool effects; typed
+application errors become MCP error tool results. Only explicit models_install
+can download models. No separate HTTP endpoint or application server is added.
 
-Forget creates a durable tombstone. An acknowledged tombstone blocks stale
-uploads from resurrecting the owned conversation. A global forget across all
-owners requires a separate explicit policy; do not imply that a local forget
-has removed another node's copy.
+## Verification and deployment
 
-## Search and view
+Default tests cover local behavior, strict configuration, removed SSH options,
+durable publication state, and SDK initialization/discovery/tool calls. A
+PostgreSQL integration test uses disposable schemas for multiple nodes/groups,
+idempotent retries, exact candidates, stored context, stale revision rejection,
+node identity conflicts, and deletion propagation.
 
-Initially propose explicit local/shared scope for search and view. A shared hit
-includes its owner so a subsequent view can address the same stored record.
-Shared view includes ordinary context and raw tool-result messages without
-requiring the source machine to be reachable.
-
-Store embedding generation and dimensionality with uploaded vectors. Search
-must never compare incompatible vectors. Determine shared lexical retrieval,
-exact cosine retrieval, RRF, and bounded reranking before selecting database
-extensions. No ANN index is implied by choosing PostgreSQL.
-
-If merged local/shared search is subsequently selected, define deduplication,
-ranking, and explicit partial-failure behavior before making it the default.
-Pending local uploads and already-published local records otherwise overlap.
-
-## Hosting
-
-Provide a development instance and integration fixtures after the access
-boundary is selected. Keep deployment-specific URLs and credentials out of the
-repository. Choose production hosting independently. Do not deploy or migrate
-existing histories as part of implementation verification.
+Releases and the existing deployment workflow include both executables.
+Production PostgreSQL provisioning, credentials, and shared-index configuration
+remain deployment choices. No production history is uploaded during validation.

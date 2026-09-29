@@ -11,25 +11,22 @@ use crate::AppError;
 const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 const DEFAULT_SINCE_DAYS: u32 = 90;
 const MAX_SINCE_DAYS: u32 = 36_500;
-const MAX_DEFAULT_REMOTE_NODES: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedConfig {
     pub(crate) path: PathBuf,
     pub(crate) loaded: bool,
-    pub(crate) local: Option<ResolvedNode>,
-    pub(crate) nodes: Vec<ResolvedNode>,
+    pub(crate) shared: Option<SharedConfig>,
     pub(crate) providers: ResolvedProviders,
     pub(crate) since_days: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResolvedNode {
-    pub(crate) name: String,
-    pub(crate) ssh: String,
-    pub(crate) search: bool,
-    pub(crate) providers: ResolvedProviders,
-    pub(crate) since_days: Option<u32>,
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SharedConfig {
+    pub(crate) group_id: String,
+    pub(crate) node_id: String,
+    pub(crate) database_url_env: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -42,7 +39,7 @@ pub(crate) struct ResolvedProviders {
 pub(crate) struct ConfigurationStatus {
     path: PathBuf,
     loaded: bool,
-    local_node: Option<String>,
+    shared: Option<SharedConfig>,
     providers: ProviderStatusMap,
     index: IndexStatus,
 }
@@ -70,7 +67,7 @@ impl ResolvedConfig {
         ConfigurationStatus {
             path: self.path.clone(),
             loaded: self.loaded,
-            local_node: self.local.as_ref().map(|node| node.name.clone()),
+            shared: self.shared.clone(),
             providers: ProviderStatusMap {
                 claude_code: self
                     .providers
@@ -92,27 +89,19 @@ impl ResolvedConfig {
 
 #[derive(Debug)]
 struct ParsedDocument {
-    local: ResolvedNode,
-    nodes: Vec<ResolvedNode>,
+    providers: ResolvedProviders,
+    since_days: Option<u32>,
+    shared: Option<SharedConfig>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawDocument {
     version: u32,
-    local_node: String,
-    nodes: Vec<RawNode>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawNode {
-    name: String,
-    ssh: String,
-    search: bool,
     providers: RawProviders,
     #[serde(default)]
     index: RawIndex,
+    shared: Option<SharedConfig>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -154,15 +143,8 @@ impl<'de> Deserialize<'de> for RawSinceDays {
     }
 }
 
-pub(crate) fn load(
-    explicit_path: Option<&Path>,
-    local_override: Option<&str>,
-) -> Result<ResolvedConfig, AppError> {
-    load_from_paths(
-        default_config_path(),
-        explicit_path.map(Path::to_path_buf),
-        local_override,
-    )
+pub(crate) fn load(explicit_path: Option<&Path>) -> Result<ResolvedConfig, AppError> {
+    load_from_paths(default_config_path(), explicit_path.map(Path::to_path_buf))
 }
 
 fn default_config_path() -> Result<PathBuf, AppError> {
@@ -181,7 +163,6 @@ fn default_config_path() -> Result<PathBuf, AppError> {
 fn load_from_paths(
     default_path: Result<PathBuf, AppError>,
     explicit_path: Option<PathBuf>,
-    local_override: Option<&str>,
 ) -> Result<ResolvedConfig, AppError> {
     let explicit = explicit_path.is_some();
     let path = match explicit_path {
@@ -198,17 +179,11 @@ fn load_from_paths(
     match fs::symlink_metadata(&path) {
         Ok(_) => {}
         Err(error) if error.kind() == io::ErrorKind::NotFound && !explicit => {
-            if local_override.is_some() {
-                return Err(AppError::configuration(
-                    "--local-node requires a loaded configuration",
-                ));
-            }
             let providers = built_in_providers()?;
             return Ok(ResolvedConfig {
                 path,
                 loaded: false,
-                local: None,
-                nodes: Vec::new(),
+                shared: None,
                 providers,
                 since_days: Some(DEFAULT_SINCE_DAYS),
             });
@@ -246,17 +221,12 @@ fn load_from_paths(
     }
 
     let parsed = parse_document(&bytes)?;
-    let selected_name = local_override.unwrap_or(&parsed.local.name);
-    let local = find_local(&parsed.nodes, selected_name)?.clone();
-    validate_default_remote_count(&parsed.nodes, &local.name)?;
-
     Ok(ResolvedConfig {
         path: canonical,
         loaded: true,
-        providers: local.providers.clone(),
-        since_days: local.since_days,
-        local: Some(local),
-        nodes: parsed.nodes,
+        providers: parsed.providers,
+        since_days: parsed.since_days,
+        shared: parsed.shared,
     })
 }
 
@@ -307,91 +277,54 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             raw.version
         )));
     }
-    if raw.nodes.is_empty() {
+    let since_days = raw.index.since_days.0;
+    if since_days.is_some_and(|days| !(1..=MAX_SINCE_DAYS).contains(&days)) {
         return Err(AppError::configuration(
-            "configuration nodes must not be empty",
+            "index since_days must be between 1 and 36500",
         ));
     }
-
-    let mut names = HashSet::with_capacity(raw.nodes.len());
-    let mut destinations = HashSet::with_capacity(raw.nodes.len());
-    let mut nodes = Vec::with_capacity(raw.nodes.len());
-    for raw_node in raw.nodes {
-        validate_identifier(&raw_node.name, "node name")?;
-        if raw_node.name == "local" {
-            return Err(AppError::configuration("node name 'local' is reserved"));
+    if let Some(shared) = &raw.shared {
+        validate_identifier(&shared.group_id, "group ID")?;
+        validate_identifier(&shared.node_id, "node ID")?;
+        let name = &shared.database_url_env;
+        if name.is_empty()
+            || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            || name.as_bytes()[0].is_ascii_digit()
+        {
+            return Err(AppError::configuration("invalid database_url_env"));
         }
-        validate_identifier(&raw_node.ssh, "SSH destination")?;
-        if !names.insert(raw_node.name.clone()) {
-            return Err(AppError::configuration(format!(
-                "duplicate node name: {}",
-                raw_node.name
-            )));
-        }
-        if !destinations.insert(raw_node.ssh.clone()) {
-            return Err(AppError::configuration(format!(
-                "duplicate SSH destination: {}",
-                raw_node.ssh
-            )));
-        }
-        let since_days = raw_node.index.since_days.0;
-        if matches!(since_days, Some(days) if !(1..=MAX_SINCE_DAYS).contains(&days)) {
-            return Err(AppError::configuration(format!(
-                "index since_days must be null or between 1 and {MAX_SINCE_DAYS}"
-            )));
-        }
-        nodes.push(ResolvedNode {
-            name: raw_node.name,
-            ssh: raw_node.ssh,
-            search: raw_node.search,
-            providers: ResolvedProviders {
-                claude_code: validate_roots(raw_node.providers.claude_code, "claude-code")?,
-                codex: validate_roots(raw_node.providers.codex, "codex")?,
-            },
-            since_days,
-        });
     }
-
-    let local = find_local(&nodes, &raw.local_node)?.clone();
-    Ok(ParsedDocument { local, nodes })
+    Ok(ParsedDocument {
+        providers: ResolvedProviders {
+            claude_code: validate_roots(raw.providers.claude_code, "claude-code")?,
+            codex: validate_roots(raw.providers.codex, "codex")?,
+        },
+        since_days,
+        shared: raw.shared,
+    })
 }
 
 fn validate_object_shapes(value: &serde_json::Value) -> Result<(), AppError> {
-    let document = value
+    let object = value
         .as_object()
-        .ok_or_else(|| AppError::configuration("configuration document must be a JSON object"))?;
-    let Some(nodes) = document.get("nodes") else {
-        return Ok(());
-    };
-    let Some(nodes) = nodes.as_array() else {
-        return Ok(());
-    };
-    for node in nodes {
-        let Some(node) = node.as_object() else {
-            return Err(AppError::configuration(
-                "each configured node must be a JSON object",
-            ));
-        };
-        if let Some(index) = node.get("index")
-            && !index.is_object()
+        .ok_or_else(|| AppError::configuration("configuration must be a JSON object"))?;
+    for name in ["index", "providers", "shared"] {
+        if let Some(value) = object.get(name)
+            && !value.is_object()
         {
-            return Err(AppError::configuration("node index must be a JSON object"));
+            return Err(AppError::configuration(format!(
+                "{name} must be a JSON object"
+            )));
         }
-        let Some(providers) = node.get("providers") else {
-            continue;
-        };
-        let Some(providers) = providers.as_object() else {
-            return Err(AppError::configuration(
-                "node providers must be a JSON object",
-            ));
-        };
-        for provider in providers.values() {
-            if !provider.is_object() {
-                return Err(AppError::configuration(
-                    "each provider configuration must be a JSON object",
-                ));
-            }
-        }
+    }
+    if let Some(providers) = object
+        .get("providers")
+        .and_then(serde_json::Value::as_object)
+        && providers.values().any(|value| !value.is_object())
+    {
+        return Err(AppError::configuration(
+            "provider configuration must be a JSON object",
+        ));
     }
     Ok(())
 }
@@ -440,26 +373,6 @@ fn validate_roots(
     Ok(Some(provider.roots))
 }
 
-fn find_local<'a>(nodes: &'a [ResolvedNode], name: &str) -> Result<&'a ResolvedNode, AppError> {
-    nodes
-        .iter()
-        .find(|node| node.name == name)
-        .ok_or_else(|| AppError::configuration(format!("local node is not configured: {name}")))
-}
-
-fn validate_default_remote_count(nodes: &[ResolvedNode], local: &str) -> Result<(), AppError> {
-    let remote_count = nodes
-        .iter()
-        .filter(|node| node.name != local && node.search)
-        .count();
-    if remote_count > MAX_DEFAULT_REMOTE_NODES {
-        return Err(AppError::configuration(format!(
-            "configuration enables more than {MAX_DEFAULT_REMOTE_NODES} remote search nodes"
-        )));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -470,19 +383,7 @@ mod tests {
 
     use super::*;
 
-    const VALID: &str = r#"{
-        "version": 1,
-        "local_node": "xenia",
-        "nodes": [{
-            "name": "xenia",
-            "ssh": "xenia",
-            "search": true,
-            "providers": {
-                "claude-code": {"roots": ["/home/james/.claude/projects"]},
-                "codex": {"roots": ["/home/james/.codex/sessions"]}
-            }
-        }]
-    }"#;
+    const VALID: &str = r#"{"version":1,"providers":{"codex":{"roots":["/missing/codex"]}}}"#;
 
     fn write_config(directory: &TempDir, contents: &str) -> PathBuf {
         let path = directory.path().join("config.json");
@@ -506,376 +407,55 @@ mod tests {
         );
     }
 
-    #[veritas::claims(
-        "configuration/document-version-and-fields-are-validated",
-        "configuration/provider-roots-are-valid"
-    )]
     #[test]
-    fn document_validation_rejects_versions_unknown_fields_and_providers() {
-        let cases = [
-            (
-                VALID.replacen("\"version\": 1", "\"version\": 2", 1),
-                "version",
-            ),
-            (
-                VALID.replacen("\"version\": 1,", "\"version\": 1, \"extra\": true,", 1),
-                "document field",
-            ),
-            (
-                VALID.replacen("\"search\": true,", "\"search\": true, \"extra\": true,", 1),
-                "node field",
-            ),
-            (
-                VALID.replacen(
-                    "{\"roots\": [\"/home/james/.codex/sessions\"]}",
-                    "{\"roots\": [\"/home/james/.codex/sessions\"], \"extra\": true}",
-                    1,
-                ),
-                "provider field",
-            ),
-            (
-                VALID.replacen(
-                    "\"providers\": {",
-                    "\"index\": {\"extra\": true}, \"providers\": {",
-                    1,
-                ),
-                "index field",
-            ),
-            (
-                VALID.replacen("\"codex\":", "\"opencode\":", 1),
-                "provider name",
-            ),
-        ];
-
-        for (document, description) in cases {
-            let error = parse_document(document.as_bytes()).expect_err(description);
-            assert_configuration_error(&error);
-        }
-    }
-
-    #[veritas::claims("configuration/document-version-and-fields-are-validated")]
-    #[test]
-    fn document_validation_rejects_missing_fields_and_wrong_shapes() {
-        let base: serde_json::Value = serde_json::from_str(VALID).expect("valid fixture JSON");
-        let mut cases = Vec::new();
-
-        let mut missing_version = base.clone();
-        missing_version
-            .as_object_mut()
-            .expect("document object")
-            .remove("version");
-        cases.push((missing_version, "missing version"));
-
-        let mut missing_local = base.clone();
-        missing_local
-            .as_object_mut()
-            .expect("document object")
-            .remove("local_node");
-        cases.push((missing_local, "missing local_node"));
-
-        let mut missing_nodes = base.clone();
-        missing_nodes
-            .as_object_mut()
-            .expect("document object")
-            .remove("nodes");
-        cases.push((missing_nodes, "missing nodes"));
-
-        for field in ["name", "ssh", "search", "providers"] {
-            let mut value = base.clone();
-            value["nodes"][0]
-                .as_object_mut()
-                .expect("node object")
-                .remove(field);
-            cases.push((value, field));
-        }
-
-        let mut missing_roots = base.clone();
-        missing_roots["nodes"][0]["providers"]["codex"]
-            .as_object_mut()
-            .expect("provider object")
-            .remove("roots");
-        cases.push((missing_roots, "missing roots"));
-
-        for (pointer, replacement, description) in [
-            ("/version", serde_json::json!("1"), "version type"),
-            ("/local_node", serde_json::json!([]), "local_node type"),
-            ("/nodes", serde_json::json!({}), "nodes type"),
-            ("/nodes/0", serde_json::json!("node"), "node type"),
-            (
-                "/nodes/0/providers",
-                serde_json::json!([]),
-                "providers type",
-            ),
-            (
-                "/nodes/0/providers/codex",
-                serde_json::json!([]),
-                "provider type",
-            ),
-            (
-                "/nodes/0/providers/codex/roots",
-                serde_json::json!("/tmp"),
-                "roots type",
-            ),
-        ] {
-            let mut value = base.clone();
-            *value.pointer_mut(pointer).expect("fixture pointer exists") = replacement;
-            cases.push((value, description));
-        }
-
-        cases.push((
-            serde_json::json!({"version": 1, "local_node": "xenia", "nodes": []}),
-            "empty nodes",
-        ));
-
-        for (value, description) in cases {
-            let bytes = serde_json::to_vec(&value).expect("fixture serializes");
-            assert_configuration_error(&parse_document(&bytes).expect_err(description));
-        }
-
-        let wrong_index = VALID.replacen("\"providers\": {", "\"index\": [], \"providers\": {", 1);
-        assert_configuration_error(
-            &parse_document(wrong_index.as_bytes()).expect_err("index type"),
+    fn local_and_shared_configuration_is_strict() {
+        let parsed = parse_document(VALID.as_bytes()).expect("local config");
+        assert_eq!(parsed.since_days, Some(90));
+        assert!(parsed.shared.is_none());
+        assert_eq!(
+            parsed.providers.codex,
+            Some(vec![PathBuf::from("/missing/codex")])
         );
-    }
-
-    #[veritas::claims("configuration/node-inventory-is-valid")]
-    #[test]
-    fn node_inventory_and_local_identity_are_exact_and_bounded() {
-        let duplicate = VALID.replacen(
-            "]\n    }",
-            ", {\"name\": \"dev\", \"ssh\": \"xenia\", \"search\": false, \"providers\": {}}]\n    }",
-            1,
-        );
-        let duplicate_name = VALID.replacen(
-            "]\n    }",
-            ", {\"name\": \"xenia\", \"ssh\": \"dev\", \"search\": false, \"providers\": {}}]\n    }",
-            1,
-        );
-        let invalid_name = VALID.replacen("\"name\": \"xenia\"", "\"name\": \"bad name\"", 1);
-        let option_shaped_ssh = VALID.replacen("\"ssh\": \"xenia\"", "\"ssh\": \"-xenia\"", 1);
-        let too_long = "x".repeat(256);
-        let too_long_name = VALID
-            .replacen(
-                "\"local_node\": \"xenia\"",
-                &format!("\"local_node\": \"{too_long}\""),
-                1,
-            )
-            .replacen(
-                "\"name\": \"xenia\"",
-                &format!("\"name\": \"{too_long}\""),
-                1,
-            );
-        let reserved_name = VALID
-            .replacen("\"name\": \"xenia\"", "\"name\": \"local\"", 1)
-            .replacen("\"local_node\": \"xenia\"", "\"local_node\": \"local\"", 1);
-        let missing_local = VALID.replacen(
-            "\"local_node\": \"xenia\"",
-            "\"local_node\": \"missing\"",
-            1,
-        );
-
-        for (document, description) in [
-            (duplicate, "duplicate SSH destination"),
-            (duplicate_name, "duplicate node name"),
-            (invalid_name, "invalid node name"),
-            (option_shaped_ssh, "option-shaped SSH destination"),
-            (too_long_name, "overlong node name"),
-            (reserved_name, "reserved node name"),
-            (missing_local, "missing local node"),
-        ] {
-            let error = parse_document(document.as_bytes()).expect_err(description);
-            assert_configuration_error(&error);
-        }
-
-        let boundary = "x".repeat(255);
-        let valid_boundary = VALID
-            .replacen(
-                "\"local_node\": \"xenia\"",
-                &format!("\"local_node\": \"{boundary}\""),
-                1,
-            )
-            .replacen(
-                "\"name\": \"xenia\"",
-                &format!("\"name\": \"{boundary}\""),
-                1,
-            );
-        parse_document(valid_boundary.as_bytes()).expect("255-byte node name is valid");
-    }
-
-    #[veritas::claims("configuration/provider-roots-are-valid")]
-    #[test]
-    fn provider_roots_are_absolute_unique_and_never_probed() {
-        let relative = VALID.replacen("/home/james/.codex/sessions", "relative/codex", 1);
-        let duplicate = VALID.replacen(
-            "[\"/home/james/.codex/sessions\"]",
-            "[\"/missing/remote\", \"/missing/remote\"]",
-            1,
-        );
-        let empty = VALID.replacen("[\"/home/james/.codex/sessions\"]", "[]", 1);
-        for (document, description) in [
-            (relative, "relative root"),
-            (duplicate, "duplicate root"),
-            (empty, "empty roots"),
+        let valid = r#"{"version":1,"providers":{},"index":{"since_days":null},"shared":{"group_id":"test", "node_id":"laptop","database_url_env":"MASH_DATABASE_URL"}}"#;
+        let parsed = parse_document(valid.as_bytes()).expect("shared config");
+        assert_eq!(parsed.since_days, None);
+        assert_eq!(parsed.shared.expect("shared").node_id, "laptop");
+        for invalid in [
+            r#"{"version":1,"local_node":"old","nodes":[]}"#,
+            r#"{"version":2,"providers":{}}"#,
+            r#"{"version":1,"providers":{"other":{"roots":["/tmp"]}}}"#,
+            r#"{"version":1,"providers":{"codex":{"roots":["relative"]}}}"#,
+            r#"{"version":1,"providers":{"codex":{"roots":["/tmp","/tmp"]}}}"#,
+            r#"{"version":1,"providers":{"codex":{"roots":[]}}}"#,
+            r#"{"version":1,"providers":{},"index":{"since_days":0}}"#,
+            r#"{"version":1,"providers":{},"index":{"since_days":36501}}"#,
+            r#"{"version":1,"providers":{},"index":null}"#,
+            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"bad name","database_url_env":"URL"}}"#,
+            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","database_url_env":"1URL"}}"#,
+            r#"{"version":1,"providers":{},"shared":{"group_id":"test", "node_id":"ok","database_url_env":"URL","password":"secret"}}"#,
         ] {
             assert_configuration_error(
-                &parse_document(document.as_bytes()).expect_err(description),
+                &parse_document(invalid.as_bytes()).expect_err("invalid config"),
             );
-        }
-
-        let remote = VALID.replacen("/home/james/.codex/sessions", "/definitely/not/local", 1);
-        let resolved = parse_document(remote.as_bytes()).expect("remote roots are lexical");
-        assert_eq!(
-            resolved.local.providers.codex,
-            Some(vec![PathBuf::from("/definitely/not/local")])
-        );
-
-        let empty_providers = VALID.replacen(
-            r#""providers": {
-                "claude-code": {"roots": ["/home/james/.claude/projects"]},
-                "codex": {"roots": ["/home/james/.codex/sessions"]}
-            }"#,
-            r#""providers": {}"#,
-            1,
-        );
-        let resolved =
-            parse_document(empty_providers.as_bytes()).expect("empty providers are valid");
-        assert_eq!(resolved.local.providers, ResolvedProviders::default());
-    }
-
-    #[veritas::claims("configuration/index-horizon-is-valid")]
-    #[test]
-    fn horizon_defaults_accepts_bounds_and_null() {
-        let cases = [
-            (VALID.to_owned(), Some(90)),
-            (
-                VALID.replacen(
-                    "\"providers\": {",
-                    "\"index\": {\"since_days\": 1}, \"providers\": {",
-                    1,
-                ),
-                Some(1),
-            ),
-            (
-                VALID.replacen(
-                    "\"providers\": {",
-                    "\"index\": {\"since_days\": 36500}, \"providers\": {",
-                    1,
-                ),
-                Some(36500),
-            ),
-            (
-                VALID.replacen(
-                    "\"providers\": {",
-                    "\"index\": {\"since_days\": null}, \"providers\": {",
-                    1,
-                ),
-                None,
-            ),
-        ];
-        for (document, expected) in cases {
-            assert_eq!(
-                parse_document(document.as_bytes())
-                    .expect("valid horizon")
-                    .local
-                    .since_days,
-                expected
-            );
-        }
-
-        for value in ["0", "36501", "-1", "1.5", "\"90\""] {
-            let document = VALID.replacen(
-                "\"providers\": {",
-                &format!("\"index\": {{\"since_days\": {value}}}, \"providers\": {{"),
-                1,
-            );
-            assert_configuration_error(&parse_document(document.as_bytes()).expect_err(value));
         }
     }
 
     #[test]
     fn loading_distinguishes_optional_default_and_required_explicit_paths() {
-        let directory = TempDir::new().expect("temporary directory");
-        let missing = directory.path().join("missing.json");
-        let absent = load_from_paths(Ok(missing.clone()), None, None)
-            .expect("an absent default is optional");
+        let dir = TempDir::new().expect("temp");
+        let missing = dir.path().join("missing");
+        let absent = load_from_paths(Ok(missing.clone()), None).expect("optional default");
         assert!(!absent.loaded);
-        assert_eq!(absent.path, missing);
-        assert!(absent.local.is_none());
-        assert_eq!(absent.since_days, Some(90));
-        assert_eq!(
-            absent
-                .providers
-                .claude_code
-                .as_ref()
-                .expect("built-in Claude roots")
-                .len(),
-            2
-        );
-        assert_eq!(
-            absent
-                .providers
-                .codex
-                .as_ref()
-                .expect("built-in Codex roots")
-                .len(),
-            2
-        );
-        assert!(!absent.path.exists(), "optional default is not created");
-
+        assert!(absent.shared.is_none());
+        assert!(absent.providers.codex.is_some());
         assert_configuration_error(
-            &load_from_paths(Ok(missing.clone()), Some(missing.clone()), None)
-                .expect_err("an explicit file is required"),
+            &load_from_paths(Ok(missing.clone()), Some(missing)).expect_err("explicit missing"),
         );
-        assert_configuration_error(
-            &load_from_paths(Ok(missing), None, Some("xenia"))
-                .expect_err("override requires loaded configuration"),
-        );
-
-        let path = write_config(&directory, VALID);
-        let loaded = load_from_paths(Ok(path.clone()), Some(path), None)
-            .expect("valid explicit configuration");
-        assert!(loaded.loaded);
-        assert!(loaded.path.is_absolute());
-        assert_eq!(loaded.providers.codex.as_ref().map(Vec::len), Some(1));
-        assert_eq!(loaded.since_days, Some(90));
-        assert_eq!(loaded.local.expect("loaded local node").name, "xenia");
-    }
-
-    #[test]
-    fn local_override_does_not_excuse_an_invalid_document_identity() {
-        let directory = TempDir::new().expect("temporary directory");
-        let second_node = r#", {
-            "name": "dev-macbook", "ssh": "dev-macbook", "search": true,
-            "providers": {}
-        }"#;
-        let valid = VALID.replacen("}]", &format!("}}{second_node}]"), 1);
-        let path = write_config(&directory, &valid);
-        let overridden = load_from_paths(Ok(path.clone()), Some(path), Some("dev-macbook"))
-            .expect("exact alternate local node");
-        assert_eq!(
-            overridden.local.expect("overridden local node").name,
-            "dev-macbook"
-        );
-
-        let invalid = valid.replacen(
-            "\"local_node\": \"xenia\"",
-            "\"local_node\": \"missing\"",
-            1,
-        );
-        let invalid_path = write_config(&directory, &invalid);
-        assert_configuration_error(
-            &load_from_paths(
-                Ok(invalid_path.clone()),
-                Some(invalid_path),
-                Some("dev-macbook"),
-            )
-            .expect_err("document identity must be valid first"),
-        );
-
-        let valid_path = write_config(&directory, &valid);
-        assert_configuration_error(
-            &load_from_paths(Ok(valid_path.clone()), Some(valid_path), Some("unknown"))
-                .expect_err("override must name an exact node"),
+        let path = write_config(&dir, VALID);
+        assert!(
+            load_from_paths(Ok(path.clone()), Some(path))
+                .expect("loaded")
+                .loaded
         );
     }
 
@@ -887,13 +467,13 @@ mod tests {
         exactly.resize(MAX_CONFIG_BYTES, b' ');
         let path = directory.path().join("exact.json");
         fs::write(&path, exactly).expect("bounded file is writable");
-        load_from_paths(Ok(path.clone()), Some(path), None).expect("exactly 1 MiB");
+        load_from_paths(Ok(path.clone()), Some(path)).expect("exactly 1 MiB");
 
         let too_large = directory.path().join("large.json");
         let bytes = vec![b'{'; MAX_CONFIG_BYTES + 1];
         fs::write(&too_large, bytes).expect("oversized file is writable");
         assert_configuration_error_message(
-            &load_from_paths(Ok(too_large.clone()), Some(too_large), None)
+            &load_from_paths(Ok(too_large.clone()), Some(too_large))
                 .expect_err("1 MiB plus one byte"),
             "exceeds 1048576 bytes",
         );
@@ -910,7 +490,7 @@ mod tests {
         let link = directory.path().join("link.json");
         symlink(&target, &link).expect("file symlink");
         let loaded =
-            load_from_paths(Ok(link.clone()), Some(link), None).expect("symlink to regular file");
+            load_from_paths(Ok(link.clone()), Some(link)).expect("symlink to regular file");
         assert_eq!(
             loaded.path,
             fs::canonicalize(target).expect("canonical target")
@@ -919,14 +499,14 @@ mod tests {
         let directory_link = directory.path().join("directory.json");
         symlink(directory.path(), &directory_link).expect("directory symlink");
         assert_configuration_error(
-            &load_from_paths(Ok(directory_link.clone()), Some(directory_link), None)
+            &load_from_paths(Ok(directory_link.clone()), Some(directory_link))
                 .expect_err("symlink to directory"),
         );
 
         let broken = directory.path().join("broken.json");
         symlink(directory.path().join("absent"), &broken).expect("broken symlink");
         assert_configuration_error(
-            &load_from_paths(Ok(broken.clone()), Some(broken), None).expect_err("broken symlink"),
+            &load_from_paths(Ok(broken.clone()), Some(broken)).expect_err("broken symlink"),
         );
     }
 
@@ -936,61 +516,15 @@ mod tests {
         let directory = TempDir::new().expect("temporary directory");
         let directory_path = directory.path().to_path_buf();
         assert_configuration_error(
-            &load_from_paths(Ok(directory_path.clone()), Some(directory_path), None)
+            &load_from_paths(Ok(directory_path.clone()), Some(directory_path))
                 .expect_err("directory is not a configuration file"),
         );
 
         let malformed = write_config(&directory, "{");
         assert_configuration_error_message(
-            &load_from_paths(Ok(malformed.clone()), Some(malformed), None)
-                .expect_err("malformed JSON"),
+            &load_from_paths(Ok(malformed.clone()), Some(malformed)).expect_err("malformed JSON"),
             "invalid configuration JSON",
         );
-    }
-
-    #[veritas::claims("configuration/node-inventory-is-valid")]
-    #[test]
-    fn default_remote_search_membership_is_bounded() {
-        let mut value: serde_json::Value = serde_json::from_str(VALID).expect("valid fixture");
-        value["nodes"][0]["search"] = serde_json::json!(false);
-        let nodes = value["nodes"].as_array_mut().expect("nodes array");
-        for index in 0..16 {
-            nodes.push(serde_json::json!({
-                "name": format!("remote-{index}"),
-                "ssh": format!("remote-{index}"),
-                "search": true,
-                "providers": {}
-            }));
-        }
-        let directory = TempDir::new().expect("temporary directory");
-        let path = write_config(
-            &directory,
-            &serde_json::to_string(&value).expect("fixture serializes"),
-        );
-        load_from_paths(Ok(path.clone()), Some(path.clone()), None)
-            .expect("exactly 16 default remotes");
-
-        value["nodes"]
-            .as_array_mut()
-            .expect("nodes array")
-            .push(serde_json::json!({
-                "name": "remote-16",
-                "ssh": "remote-16",
-                "search": true,
-                "providers": {}
-            }));
-        fs::write(
-            &path,
-            serde_json::to_vec(&value).expect("fixture serializes"),
-        )
-        .expect("configuration is writable");
-        assert_configuration_error_message(
-            &load_from_paths(Ok(path.clone()), Some(path.clone()), None)
-                .expect_err("more than 16 default remotes"),
-            "more than 16",
-        );
-        load_from_paths(Ok(path.clone()), Some(path), Some("remote-0"))
-            .expect("override leaves exactly 16 enabled nonlocal nodes");
     }
 
     #[cfg(unix)]
@@ -1004,8 +538,7 @@ mod tests {
             .expect("mkfifo is available on supported Unix platforms");
         assert!(status.success(), "mkfifo creates the test FIFO");
         assert_configuration_error_message(
-            &load_from_paths(Ok(fifo.clone()), Some(fifo), None)
-                .expect_err("FIFO is not a regular file"),
+            &load_from_paths(Ok(fifo.clone()), Some(fifo)).expect_err("FIFO is not a regular file"),
             "not a regular file",
         );
     }
@@ -1023,7 +556,7 @@ mod tests {
         permissions.set_mode(0o000);
         fs::set_permissions(&path, permissions).expect("permissions are mutable");
 
-        let result = load_from_paths(Ok(path.clone()), Some(path.clone()), None);
+        let result = load_from_paths(Ok(path.clone()), Some(path.clone()));
 
         let mut restored = fs::metadata(&path)
             .expect("configuration metadata")
@@ -1041,7 +574,6 @@ mod tests {
             Err(crate::AppError::configuration(
                 "no absolute config directory",
             )),
-            None,
             None,
         )
         .expect_err("missing platform path");

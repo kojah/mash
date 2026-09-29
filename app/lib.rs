@@ -1,14 +1,20 @@
 mod cli;
 mod config;
-mod federation;
 mod ingestion;
+mod mcp;
 mod semantic;
+mod shared;
 mod storage;
 
 use std::ffi::OsString;
 use std::io::{self, Write};
 
 use serde::Serialize;
+
+/// Runs the stdio MCP server using the same operations as the CLI.
+pub async fn mcp_entry() -> i32 {
+    mcp::run().await
+}
 
 /// Runs mash with the process arguments and writes its JSON response.
 ///
@@ -67,6 +73,10 @@ struct ErrorBody {
 }
 
 impl AppError {
+    fn shared(message: impl Into<String>) -> Self {
+        Self::new(11, "shared-index", message, true)
+    }
+
     fn configuration(message: impl Into<String>) -> Self {
         Self::new(9, "configuration", message, false)
     }
