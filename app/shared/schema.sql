@@ -26,3 +26,12 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_document ON messages USING GIN(document);
 CREATE INDEX IF NOT EXISTS messages_generation ON messages(generation);
+-- Shared-only nodes keep ingestion checkpoints in PostgreSQL, never SQLite.
+-- Source paths are hashed before upload.
+CREATE TABLE IF NOT EXISTS direct_sources (
+    node_id TEXT NOT NULL REFERENCES nodes(node_id),
+    provider TEXT NOT NULL, path_hash TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL, modified_ns BIGINT NOT NULL,
+    conversation_id TEXT,
+    PRIMARY KEY(node_id, provider, path_hash)
+);

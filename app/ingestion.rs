@@ -18,6 +18,7 @@ const MAX_TOOL_OUTPUT_CHARS: usize = 128 * 1024;
 const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 
+#[derive(Clone)]
 pub(crate) struct IndexOptions {
     pub(crate) claude_code: Option<Vec<PathBuf>>,
     pub(crate) codex: Option<Vec<PathBuf>>,
@@ -25,6 +26,7 @@ pub(crate) struct IndexOptions {
     pub(crate) since_days: Option<u32>,
 }
 
+#[derive(Default)]
 pub(crate) struct IndexSummary {
     pub(crate) scanned_files: u64,
     pub(crate) malformed_records: u64,
@@ -61,9 +63,9 @@ pub(crate) struct NormalizedMessage {
     pub(crate) created_at: Option<i64>,
 }
 
-struct ParsedFile {
-    conversation: Option<Conversation>,
-    malformed_records: u64,
+pub(crate) struct ParsedFile {
+    pub(crate) conversation: Option<Conversation>,
+    pub(crate) malformed_records: u64,
 }
 
 struct Discovery {
@@ -524,7 +526,7 @@ fn parser_worker_count(source_count: usize) -> usize {
     source_count.min(available.saturating_sub(1).max(1)).min(8)
 }
 
-fn source_stamp(path: &Path) -> Result<(i64, i64), AppError> {
+pub(crate) fn source_stamp(path: &Path) -> Result<(i64, i64), AppError> {
     let metadata = path.metadata().map_err(AppError::io)?;
     let size_bytes = i64::try_from(metadata.len())
         .map_err(|_| AppError::internal("source file is too large"))?;
@@ -647,6 +649,61 @@ fn cutoff_modified_ns(
     let nanoseconds = i64::try_from(nanoseconds)
         .map_err(|_| AppError::internal("index cutoff is out of range"))?;
     Ok(Some(nanoseconds))
+}
+
+// Shared-only ingestion reuses discovery and both concrete parsers, without SQLite.
+#[derive(Clone)]
+pub(crate) struct DirectScan {
+    pub(crate) provider: &'static str,
+    roots: Vec<PathBuf>,
+    pub(crate) files: Vec<PathBuf>,
+    pub(crate) complete: bool,
+    authoritative: bool,
+    pub(crate) cutoff: Option<i64>,
+}
+
+impl DirectScan {
+    pub(crate) fn parse_path(provider: &str, path: &Path) -> Result<ParsedFile, AppError> {
+        match provider {
+            "claude-code" => parse_claude(path),
+            "codex" => parse_codex(path),
+            _ => Err(AppError::internal("unsupported direct ingestion provider")),
+        }
+    }
+
+    pub(crate) fn verify(&self) -> Result<(), AppError> {
+        if self.authoritative {
+            let observed = self
+                .files
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            verify_authoritative_discovery(&self.roots, &observed)?;
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn direct_scans(options: &IndexOptions) -> Result<Vec<DirectScan>, AppError> {
+    let cutoff = cutoff_modified_ns(SystemTime::now(), options.since_days)?;
+    [
+        ("claude-code", &options.claude_code),
+        ("codex", &options.codex),
+    ]
+    .into_iter()
+    .filter_map(|(provider, roots)| roots.as_ref().map(|roots| (provider, roots)))
+    .map(|(provider, roots)| {
+        let discovery = discover_jsonl_files(roots, options.roots_are_authoritative)?;
+        Ok(DirectScan {
+            provider,
+            roots: roots.clone(),
+            files: discovery.files,
+            complete: discovery.complete,
+            authoritative: options.roots_are_authoritative,
+            cutoff,
+        })
+    })
+    .collect()
 }
 
 fn is_jsonl(path: &Path) -> bool {

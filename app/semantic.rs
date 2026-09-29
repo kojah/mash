@@ -295,6 +295,32 @@ impl Backend {
 }
 
 impl EmbeddingPool {
+    pub(crate) fn shared_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
+        let groups = texts
+            .iter()
+            .map(|text| EmbeddingGroup {
+                content: (*text).to_owned(),
+                message_ids: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        let vectors = self.embed_wave(&groups)?;
+        if vectors.len() != texts.len() {
+            return Err(AppError::model(
+                "embedding model returned an unexpected result count",
+            ));
+        }
+        Ok(vectors
+            .iter()
+            .map(|vector| {
+                quantize_vector(vector)
+                    .values
+                    .into_iter()
+                    .map(|value| f64::from(value.cast_signed()))
+                    .collect()
+            })
+            .collect())
+    }
+
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     fn load_local(root: &Path) -> Result<Self, AppError> {
         Ok(Self {

@@ -1417,6 +1417,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-postgres",
  "tokio-postgres-rustls",
  "veritas-test-macros",
  "walkdir",

@@ -1,8 +1,10 @@
 # mash
 
 mash (Multi-Agent Search History) searches Claude Code and Codex JSONL histories
-through a JSON CLI and an MCP server built with the official Rust SDK. SQLite is the canonical store; SQLite FTS5, local FastEmbed
-embeddings, reciprocal-rank fusion, and bounded cross-encoder reranking provide
+through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
+index locally, into PostgreSQL, or both, with independent provider allowlists.
+SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
+cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint PostgreSQL index, one per
 node group, so shared history remains searchable while source machines are offline.
 
@@ -69,7 +71,12 @@ history. CLI indexing flags override these settings.
     "claude-code": {"roots": ["/home/james/.claude/projects"]},
     "codex": {"roots": ["/home/james/.codex/sessions"]}
   },
-  "index": {"since_days": 90},
+  "index": {
+    "since_days": 90,
+    "destination": "both",
+    "local": {"providers": ["claude-code"]},
+    "shared": {"providers": ["codex"]}
+  },
   "shared": {
     "group_id": "personal",
     "node_id": "xenia",
@@ -78,9 +85,20 @@ history. CLI indexing flags override these settings.
 }
 ```
 
-Omit `shared` for a fully local installation. A configured shared connection
-never changes the default search scope. Configure the same group ID and database
-on every member, with a distinct node ID for each local database. Group IDs select
+This example keeps Claude Code in SQLite and sends Codex directly to PostgreSQL.
+`index.destination` accepts `local`, `shared`, or `both`. Shared and both require
+the top-level `shared` connection settings. Without an explicit destination,
+mash selects both when shared settings exist, and local otherwise.
+
+Each destination's optional `providers` list is an allowlist of enabled providers.
+Omit a destination filter to include all enabled providers; `providers: []` sends
+none to that destination. `index --provider` further restricts these lists and
+cannot bypass them. Filters control subsequent ingestion; narrowing them does
+not automatically erase previously indexed history. Use `forget` for deletion.
+
+Omit the top-level `shared` for a fully local installation. Search defaults to
+local in local/both modes and to PostgreSQL in shared-only mode. Configure the same
+group ID and database on every member, with a distinct node ID for each publisher. Group IDs select
 separate PostgreSQL schemas; every node within a group contributes to one joint
 index. The database can live wherever you choose.
 
@@ -110,7 +128,8 @@ trusted nodes with direct database access. Group namespaces prevent accidental
 mixing; they are not an authorization boundary against a database user who can
 access other groups' schemas.
 
-Local indexing commits first. Changes mark a durable local publication revision;
+In both mode without destination filters, local indexing commits first. Changes
+mark a durable local publication revision;
 a changed node publishes its complete snapshot in one PostgreSQL transaction,
 using batches of up to 128 records or about 1 MiB. Raw tool outputs are uploaded
 for context but remain excluded from search. Unchanged revisions are acknowledged
@@ -121,8 +140,26 @@ without replacing shared records. A failed upload returns local success with
 `forget` deletes a locally owned conversation and publishes a persistent
 shared tombstone. Check its `shared.state`: an offline deletion remains pending
 until a later successful `index` or `forget`. Copies owned by other nodes remain.
-Node identity is tied to the local database instance; a recreated database must
-use a new node ID. Stale snapshots cannot replace newer accepted revisions.
+In local/both modes, node identity is tied to the local database instance; a
+recreated database must use a new node ID. Stale snapshots cannot replace newer
+accepted revisions.
+
+With per-index filters in both mode, SQLite ingests only the local allowlist and
+PostgreSQL independently ingests the shared allowlist from the original history
+files. PostgreSQL stores its own source checkpoints. Local work still commits
+first and shared failures return pending; retry with `index` while retaining the
+original shared history files. Shared forget intents are durably queued in SQLite
+when offline and applied before the next shared ingestion. A successful forget
+can leave index status pending until `index` catches up other changes.
+
+Shared-only mode never opens or creates SQLite, including for bookkeeping or
+retries. PostgreSQL holds source checkpoints and persistent tombstones. Indexing
+and deletion require connectivity; failures return typed errors and indexing
+rolls back atomically. Retry indexing from the original history files. Shared-only
+`status` contacts PostgreSQL and returns `database_path: null`; plain `view`
+addresses this node, while `view --shared NODE_ID` can read another group member.
+Changing between SQLite-backed and shared-only identity requires a new node ID.
+Models still live locally and are installed only by `models install`.
 
 Shared search uses PostgreSQL full-text retrieval, exact cosine over uploaded
 quantized vectors, RRF, and at most ten reranked candidates. The querying node
@@ -132,8 +169,8 @@ shared error requiring publishing nodes to reindex. Shared hits include `node_id
 for the matching `view` call. A shared outage does not trigger a silent local
 fallback. Local and shared result sets are selected explicitly and are not merged.
 
-Full snapshot replacement favors correctness and simplicity over upload
-throughput. Large histories incur a full transfer on each changed revision, and
+For unfiltered both mode, full snapshot replacement favors correctness and
+simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
 exact cosine scans the shared corpus. There is no background synchronization,
 ANN index, HTTP service, or automatic shared deployment.
 
@@ -162,13 +199,16 @@ For shared operations, provide the configured database environment variable to
 the server through your MCP client's environment mechanism. `search` accepts a
 `shared` boolean; `view` accepts a `shared` publishing node ID. Search, view, and
 status are annotated read-only. Index and forget mutate data; `models_install`
-is the only operation that downloads models. Synchronous storage/model work runs
-on a blocking worker, serialized per MCP session.
+is the only operation that downloads models. PostgreSQL I/O uses `tokio-postgres`
+and async/await. SQLite, parsing, and local FastEmbed inference run on blocking
+workers and are awaited by callers. MCP mutations serialize per session; status
+and view may run concurrently, while model-heavy operations use a single permit
+to bound memory and CPU use. No remote inference backend is currently configured.
 
 ## Verification
 
-For faster development code generation, optionally install the nightly Cranelift
-component and use the Cargo aliases:
+Use Cranelift for development builds and tests. Install the nightly component
+and use the Cargo aliases:
 
 ```bash
 rustup component add rustc-codegen-cranelift-preview --toolchain nightly

@@ -6,6 +6,8 @@ use rusqlite::Connection;
 use serde_json::Value;
 use veritas_test_macros as veritas;
 
+mod index_destinations;
+
 fn run_json(arguments: &[&str]) -> Value {
     let output = Command::cargo_bin("mash")
         .expect("mash binary")
@@ -98,7 +100,7 @@ fn seed_readiness_database(path: &Path, search_projection: Option<&str>) {
              INSERT INTO derived_state VALUES (1, 0, NULL);
              INSERT INTO conversations(id, provider, source_path)
                 VALUES ('session', 'codex', '/tmp/session.jsonl');
-             PRAGMA user_version = 13;",
+             PRAGMA user_version = 14;",
         )
         .expect("readiness schema");
     connection
@@ -175,7 +177,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
                 "claude-code": {"roots": [claude]},
                 "codex": {"roots": [codex]}
             },
-            "index": {"since_days": 30}
+            "index": {"since_days": 30, "destination": "local"}
         })
     );
 }
@@ -228,7 +230,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
                     home.join(".local/share/codex/sessions")
                 ]}
             },
-            "index": {"since_days": 90}
+            "index": {"since_days": 90, "destination": "local"}
         })
     );
 }

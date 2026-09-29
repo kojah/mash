@@ -11,6 +11,14 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| AppError::internal("blocking worker failed"))?
+}
+
 /// Runs the stdio MCP server using the same operations as the CLI.
 pub async fn mcp_entry() -> i32 {
     mcp::run().await

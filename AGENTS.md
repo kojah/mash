@@ -8,9 +8,10 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
-- Use one direct PostgreSQL shared index per configured node group. Keep local
-  operations offline-capable and shared access optional. Never restore SSH query
-  fan-out or add an HTTP service.
+- Use tokio-postgres for asynchronous access to one shared index per configured
+  node group. Support local-only, shared-only without SQLite, and both indexing,
+  with independent provider allowlists. Keep local operations offline-capable.
+  Never restore SSH query fan-out or add an HTTP service.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and share CLI operations.
 - Keep one concrete FastEmbed semantic backend with exact cosine search, RRF,
   and bounded reranking.
@@ -25,9 +26,10 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 ## Implementation style
 
 Prefer concrete functions and structs. External input returns typed JSON errors
-and never panics. Keep parsing, storage, and search synchronous unless a current
-API proves async is necessary. Add a dependency only when it is smaller and
-clearer than a local implementation of the required behavior.
+and never panics. Await PostgreSQL I/O and model-work boundaries. Keep Rusqlite,
+parsing, and local inference on blocking workers; bound model work and serialize
+MCP mutations while permitting read concurrency. Add a dependency only when it
+is smaller and clearer than a local implementation of the required behavior.
 
 Use `apply_patch` for source edits. Preserve unrelated worktree changes. Do not
 create compatibility copies or versioned replacement files.
@@ -39,7 +41,7 @@ Use the persistent Xenia target and temp directories:
 ```bash
 env TMPDIR=/home/james/scratch/achi-tmp \
   CARGO_TARGET_DIR=/home/james/scratch/achi-targets/integrated \
-  CARGO_INCREMENTAL=0 cargo nextest run
+  CARGO_INCREMENTAL=0 cargo test-clif
 
 env TMPDIR=/home/james/scratch/achi-tmp \
   CARGO_TARGET_DIR=/home/james/scratch/achi-targets/integrated \
@@ -54,6 +56,11 @@ env TMPDIR=/home/james/scratch/achi-tmp \
 
 The real-model integration test is ignored by default and requires an explicit
 `MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
+
+Use `cargo build-clif`, `cargo run-clif`, and `cargo test-clif` for development
+iteration. Retain Clippy, formatting, and doctest validation. On the installed
+August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
+async-code compiler crash.
 
 ## Git
 

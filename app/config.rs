@@ -19,6 +19,36 @@ pub(crate) struct ResolvedConfig {
     pub(crate) shared: Option<SharedConfig>,
     pub(crate) providers: ResolvedProviders,
     pub(crate) since_days: Option<u32>,
+    pub(crate) destination: IndexDestination,
+    pub(crate) local_filter: Option<IndexFilter>,
+    pub(crate) shared_filter: Option<IndexFilter>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IndexFilter {
+    pub(crate) providers: Vec<String>,
+}
+
+impl IndexFilter {
+    pub(crate) fn apply(filter: Option<&Self>, options: &mut crate::ingestion::IndexOptions) {
+        if let Some(filter) = filter {
+            if !filter.providers.iter().any(|p| p == "claude-code") {
+                options.claude_code = None;
+            }
+            if !filter.providers.iter().any(|p| p == "codex") {
+                options.codex = None;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum IndexDestination {
+    Local,
+    Shared,
+    Both,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -60,6 +90,11 @@ struct ProviderStatus {
 #[derive(Debug, Serialize)]
 struct IndexStatus {
     since_days: Option<u32>,
+    destination: IndexDestination,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local: Option<IndexFilter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared: Option<IndexFilter>,
 }
 
 impl ResolvedConfig {
@@ -82,6 +117,9 @@ impl ResolvedConfig {
             },
             index: IndexStatus {
                 since_days: self.since_days,
+                destination: self.destination,
+                local: self.local_filter.clone(),
+                shared: self.shared_filter.clone(),
             },
         }
     }
@@ -92,6 +130,9 @@ struct ParsedDocument {
     providers: ResolvedProviders,
     since_days: Option<u32>,
     shared: Option<SharedConfig>,
+    destination: IndexDestination,
+    local_filter: Option<IndexFilter>,
+    shared_filter: Option<IndexFilter>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,6 +164,9 @@ struct RawProvider {
 struct RawIndex {
     #[serde(default)]
     since_days: RawSinceDays,
+    destination: Option<IndexDestination>,
+    local: Option<IndexFilter>,
+    shared: Option<IndexFilter>,
 }
 
 #[derive(Debug)]
@@ -186,6 +230,9 @@ fn load_from_paths(
                 shared: None,
                 providers,
                 since_days: Some(DEFAULT_SINCE_DAYS),
+                destination: IndexDestination::Local,
+                local_filter: None,
+                shared_filter: None,
             });
         }
         Err(error) => return Err(path_error("inspect", &path, &error)),
@@ -227,6 +274,9 @@ fn load_from_paths(
         providers: parsed.providers,
         since_days: parsed.since_days,
         shared: parsed.shared,
+        destination: parsed.destination,
+        local_filter: parsed.local_filter,
+        shared_filter: parsed.shared_filter,
     })
 }
 
@@ -294,6 +344,33 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             return Err(AppError::configuration("invalid database_url_env"));
         }
     }
+    let destination = raw.index.destination.unwrap_or(if raw.shared.is_some() {
+        IndexDestination::Both
+    } else {
+        IndexDestination::Local
+    });
+    if destination != IndexDestination::Local && raw.shared.is_none() {
+        return Err(AppError::configuration(
+            "shared and both indexing destinations require shared configuration",
+        ));
+    }
+    for filter in [&raw.index.local, &raw.index.shared].into_iter().flatten() {
+        let mut unique = HashSet::new();
+        for provider in &filter.providers {
+            if !matches!(provider.as_str(), "claude-code" | "codex") || !unique.insert(provider) {
+                return Err(AppError::configuration(
+                    "index provider filters must contain unique supported provider names",
+                ));
+            }
+            if (provider == "claude-code" && raw.providers.claude_code.is_none())
+                || (provider == "codex" && raw.providers.codex.is_none())
+            {
+                return Err(AppError::configuration(
+                    "index provider filter selects a disabled provider",
+                ));
+            }
+        }
+    }
     Ok(ParsedDocument {
         providers: ResolvedProviders {
             claude_code: validate_roots(raw.providers.claude_code, "claude-code")?,
@@ -301,6 +378,9 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         },
         since_days,
         shared: raw.shared,
+        destination,
+        local_filter: raw.index.local,
+        shared_filter: raw.index.shared,
     })
 }
 
@@ -325,6 +405,23 @@ fn validate_object_shapes(value: &serde_json::Value) -> Result<(), AppError> {
         return Err(AppError::configuration(
             "provider configuration must be a JSON object",
         ));
+    }
+    if let Some(index) = object.get("index").and_then(serde_json::Value::as_object) {
+        if index
+            .get("destination")
+            .is_some_and(serde_json::Value::is_null)
+        {
+            return Err(AppError::configuration(
+                "index destination must be local, shared, or both",
+            ));
+        }
+        for name in ["local", "shared"] {
+            if index.get(name).is_some_and(|value| !value.is_object()) {
+                return Err(AppError::configuration(
+                    "index destination filter must be a JSON object",
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -384,6 +481,55 @@ mod tests {
     use super::*;
 
     const VALID: &str = r#"{"version":1,"providers":{"codex":{"roots":["/missing/codex"]}}}"#;
+
+    #[test]
+    fn destinations_and_independent_provider_filters_are_validated() {
+        let shared =
+            serde_json::json!({"group_id":"test","node_id":"node","database_url_env":"URL"});
+        for (mode, expected) in [
+            ("local", IndexDestination::Local),
+            ("shared", IndexDestination::Shared),
+            ("both", IndexDestination::Both),
+        ] {
+            let document = serde_json::json!({"version":1,"providers":{
+                "claude-code":{"roots":["/claude"]},"codex":{"roots":["/codex"]}
+            },"shared":shared,"index":{"destination":mode,"local":{"providers":["claude-code"]},"shared":{"providers":["codex"]}}});
+            let parsed = parse_document(&serde_json::to_vec(&document).unwrap()).unwrap();
+            assert_eq!(parsed.destination, expected);
+            let options = crate::ingestion::IndexOptions {
+                claude_code: parsed.providers.claude_code,
+                codex: parsed.providers.codex,
+                since_days: None,
+                roots_are_authoritative: true,
+            };
+            let mut local = options.clone();
+            IndexFilter::apply(parsed.local_filter.as_ref(), &mut local);
+            assert!(local.claude_code.is_some());
+            assert!(local.codex.is_none());
+            let mut remote = options;
+            IndexFilter::apply(parsed.shared_filter.as_ref(), &mut remote);
+            assert!(remote.claude_code.is_none());
+            assert!(remote.codex.is_some());
+            IndexFilter::apply(Some(&IndexFilter { providers: vec![] }), &mut remote);
+            assert!(remote.codex.is_none());
+        }
+        for index in [
+            serde_json::json!({"destination":"unsupported"}),
+            serde_json::json!({"destination":null}),
+            serde_json::json!({"local":null}),
+            serde_json::json!({"shared":{"providers":["other"]}}),
+            serde_json::json!({"local":{"providers":["codex","codex"]}}),
+            serde_json::json!({"local":{"providers":["claude-code"]}}),
+        ] {
+            let document = serde_json::json!({"version":1,"providers":{"codex":{"roots":["/codex"]}},"index":index,"shared":shared});
+            assert!(parse_document(&serde_json::to_vec(&document).unwrap()).is_err());
+        }
+        for mode in ["shared", "both"] {
+            let document =
+                serde_json::json!({"version":1,"providers":{},"index":{"destination":mode}});
+            assert!(parse_document(&serde_json::to_vec(&document).unwrap()).is_err());
+        }
+    }
 
     fn write_config(directory: &TempDir, contents: &str) -> PathBuf {
         let path = directory.path().join("config.json");

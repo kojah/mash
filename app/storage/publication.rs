@@ -10,6 +10,13 @@ pub(crate) struct Snapshot<'a> {
     pub(crate) revision: i64,
 }
 
+pub(crate) struct DirectOwner {
+    pub(crate) instance: String,
+    pub(crate) revision: i64,
+    pub(crate) scope: String,
+    pub(crate) forgets: Vec<String>,
+}
+
 impl Snapshot<'_> {
     /// Bound each network batch without materializing the complete local history.
     pub(crate) fn visit(
@@ -93,6 +100,89 @@ impl Snapshot<'_> {
 }
 
 impl Storage {
+    pub(crate) fn queue_shared_forget(&self, scope: &str, id: &str) -> Result<(), AppError> {
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO shared_forgets VALUES (?1,?2)",
+                (scope, id),
+            )
+            .map_err(AppError::database)?;
+        transaction
+            .execute(
+                "UPDATE shared_publication SET revision=revision+1 WHERE singleton=1",
+                [],
+            )
+            .map_err(AppError::database)?;
+        transaction.commit().map_err(AppError::database)
+    }
+
+    pub(crate) fn direct_owner(&self, scope: &str) -> Result<DirectOwner, AppError> {
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        transaction
+            .execute(
+                "UPDATE shared_publication SET revision=revision+1 WHERE singleton=1",
+                [],
+            )
+            .map_err(AppError::database)?;
+        let (instance, revision) = transaction
+            .query_row(
+                "SELECT instance,revision FROM shared_publication WHERE singleton=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::database)?;
+        let forgets = transaction.prepare("SELECT conversation_id FROM shared_forgets WHERE scope=?1 ORDER BY conversation_id").map_err(AppError::database)?
+            .query_map([scope], |r| r.get(0)).map_err(AppError::database)?.collect::<Result<Vec<_>, _>>().map_err(AppError::database)?;
+        transaction.commit().map_err(AppError::database)?;
+        Ok(DirectOwner {
+            instance,
+            revision,
+            scope: scope.to_owned(),
+            forgets,
+        })
+    }
+
+    pub(crate) fn acknowledge_direct(
+        &self,
+        target: &str,
+        owner: &DirectOwner,
+        indexed: bool,
+    ) -> Result<(), AppError> {
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        let revision: i64 = transaction
+            .query_row(
+                "SELECT revision FROM shared_publication WHERE singleton=1",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::database)?;
+        // A concurrent mutation stays pending; never erase a newer forget intent.
+        if revision == owner.revision {
+            for id in &owner.forgets {
+                transaction
+                    .execute(
+                        "DELETE FROM shared_forgets WHERE scope=?1 AND conversation_id=?2",
+                        (&owner.scope, id),
+                    )
+                    .map_err(AppError::database)?;
+            }
+            if indexed {
+                transaction.execute("UPDATE shared_publication SET target=?1,acknowledged=revision WHERE singleton=1", [target]).map_err(AppError::database)?;
+            }
+        }
+        transaction.commit().map_err(AppError::database)
+    }
+
     pub(crate) fn with_publication_snapshot(
         &self,
         publish: impl FnOnce(&Snapshot<'_>) -> Result<(), AppError>,

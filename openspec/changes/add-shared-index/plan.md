@@ -6,6 +6,10 @@
 - [x] Implement exact shared retrieval and stored message context.
 - [x] Replace SSH federation, configuration, and worker flags.
 - [x] Add the official Rust MCP SDK stdio executable and shared CLI operations.
+- [x] Add local/shared/both destinations and independent provider allowlists.
+- [x] Keep shared-only checkpoints and deletions entirely in PostgreSQL.
+- [x] Await native PostgreSQL I/O and blocking model work; permit MCP read concurrency.
+- [x] Use Cranelift for development builds and tests.
 - [x] Update documentation, release packaging, and binary deployment.
 - [x] Complete default, PostgreSQL, MCP, Clippy, formatting, and doctest checks.
 - [x] Commit task changes and push main.

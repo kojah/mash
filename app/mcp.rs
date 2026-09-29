@@ -29,8 +29,9 @@ struct Options {
 #[derive(Clone)]
 struct Mash {
     arguments: Arc<Vec<OsString>>,
-    // Serialize expensive model loading and mutations for this stdio session.
+    // Mutations serialize, while read-only calls may run concurrently.
     gate: Arc<tokio::sync::Mutex<()>>,
+    model_work: Arc<tokio::sync::Semaphore>,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -73,20 +74,50 @@ struct Forget {
 
 impl Mash {
     async fn execute(&self, arguments: Vec<OsString>) -> CallToolResult {
-        let _guard = self.gate.lock().await;
+        // Blocking work cannot be interrupted once started. Keep its guards in
+        // the operation task even if the client stops awaiting this request.
+        let server = self.clone();
+        tokio::spawn(async move { server.perform(arguments).await })
+            .await
+            .unwrap_or_else(|_| {
+                CallToolResult::error(vec![ContentBlock::text("tool worker failed")])
+            })
+    }
+
+    async fn perform(&self, arguments: Vec<OsString>) -> CallToolResult {
+        let operation = arguments
+            .first()
+            .and_then(|arg| arg.to_str())
+            .unwrap_or_default();
+        let _guard = if matches!(operation, "index" | "forget" | "models") {
+            Some(self.gate.lock().await)
+        } else {
+            None
+        };
+        let _permit = if matches!(operation, "search" | "index" | "models") {
+            match self.model_work.acquire().await {
+                Ok(permit) => Some(permit),
+                Err(_) => {
+                    return CallToolResult::error(vec![ContentBlock::text(
+                        "model worker unavailable",
+                    )]);
+                }
+            }
+        } else {
+            None
+        };
         let mut all = self.arguments.as_ref().clone();
         all.extend(arguments);
-        match tokio::task::spawn_blocking(move || crate::cli::run(all)).await {
-            Ok(Ok(value)) => match serde_json::to_value(&value) {
+        match crate::cli::run_async(all).await {
+            Ok(value) => match serde_json::to_value(&value) {
                 Ok(json) => CallToolResult::structured(json),
                 Err(_) => CallToolResult::error(vec![ContentBlock::text(
                     "failed to serialize tool response",
                 )]),
             },
-            Ok(Err(error)) => CallToolResult::structured_error(
+            Err(error) => CallToolResult::structured_error(
                 serde_json::to_value(&error).unwrap_or_else(|_| serde_json::json!({"error":{"kind":"internal","message":"tool failed","retryable":false}})),
             ),
-            Err(_) => CallToolResult::error(vec![ContentBlock::text("tool worker failed")]),
         }
     }
 }
@@ -129,7 +160,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Report local index/model readiness and pending publication. Does not connect to PostgreSQL."
+        description = "Report index/model readiness. Local and both modes inspect local state; shared-only mode queries PostgreSQL without opening SQLite."
     )]
     async fn status(&self) -> CallToolResult {
         self.execute(vec!["status".into()]).await
@@ -137,7 +168,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Index local Claude Code and Codex histories, then publish to the configured node group. Never downloads models. Writes local and shared data."
+        description = "Index Claude Code and Codex histories into the configured local, shared, or both destinations, applying each index's provider allowlist. Shared-only uses no SQLite database. Never downloads models."
     )]
     async fn index(&self, Parameters(request): Parameters<Index>) -> CallToolResult {
         let mut args = vec!["index".into()];
@@ -156,7 +187,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = true),
-        description = "Forget a locally owned conversation and publish its deletion. Other nodes' copies are unaffected. Check shared.state for deferred deletion."
+        description = "Forget a conversation owned by this node in its configured indexes. Shared-only deletes directly in PostgreSQL. Other nodes' copies are unaffected. Check shared.state for deferred deletion."
     )]
     async fn forget(&self, Parameters(request): Parameters<Forget>) -> CallToolResult {
         self.execute(vec![
@@ -186,7 +217,7 @@ impl rmcp::ServerHandler for Mash {
             .enable_tools()
             .build();
         info.server_info = rmcp::model::Implementation::new("mash", env!("CARGO_PKG_VERSION"));
-        info.instructions = Some("Search Claude Code and Codex history. Search/view/status are read-only. Index and forget write data; models_install explicitly downloads models. Shared search addresses the configured node group.".to_owned());
+        info.instructions = Some("Search Claude Code and Codex history. Search/view/status are read-only. Index and forget write data; models_install explicitly downloads models. Provider allowlists and destinations are configured at startup. Shared-only mode defaults to shared search and this node's shared view; supply the result's node ID to view another node's message.".to_owned());
         info
     }
 }
@@ -212,6 +243,7 @@ pub(crate) async fn run() -> i32 {
     let server = Mash {
         arguments: Arc::new(arguments),
         gate: Arc::new(tokio::sync::Mutex::new(())),
+        model_work: Arc::new(tokio::sync::Semaphore::new(1)),
     };
     let Ok(service) = server.serve(rmcp::transport::stdio()).await else {
         eprintln!("MCP initialization failed");
@@ -247,7 +279,10 @@ mod tests {
                 dir.path().join("models").into_os_string(),
             ]),
             gate: Arc::new(tokio::sync::Mutex::new(())),
+            model_work: Arc::new(tokio::sync::Semaphore::new(1)),
         };
+        let write_gate = server.gate.clone();
+        let model_work = server.model_work.clone();
         let (server_io, client_io) = tokio::io::duplex(64 * 1024);
         let server = tokio::spawn(async move { server.serve(server_io).await.expect("server") });
         let client = ().serve(client_io).await.expect("SDK client initialization");
@@ -269,10 +304,17 @@ mod tests {
                 "view"
             ]
         );
-        let status = client
-            .call_tool(CallToolRequestParams::new("status"))
-            .await
-            .expect("status");
+        let write_guard = write_gate.lock().await;
+        let model_permit = model_work.acquire().await.expect("model permit");
+        let status = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            client.call_tool(CallToolRequestParams::new("status")),
+        )
+        .await
+        .expect("status remains responsive during a mutation and model work")
+        .expect("status");
+        drop(model_permit);
+        drop(write_guard);
         assert_ne!(status.is_error, Some(true));
         let value = serde_json::to_value(&status).expect("serialize");
         let body: serde_json::Value =

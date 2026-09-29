@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 13;
+pub(super) const SCHEMA_VERSION: i64 = 14;
 
 const SCHEMA: &str = r"
 CREATE TABLE IF NOT EXISTS shared_publication (
@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS shared_publication (
 );
 INSERT OR IGNORE INTO shared_publication(singleton, instance)
 VALUES (1, lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS shared_forgets (
+    scope TEXT NOT NULL, conversation_id TEXT NOT NULL,
+    PRIMARY KEY(scope, conversation_id)
+);
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (

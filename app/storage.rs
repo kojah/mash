@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::AppError;
 
 mod indexing;
-mod publication;
+pub(crate) mod publication;
 mod queries;
 mod schema;
 mod semantic;
