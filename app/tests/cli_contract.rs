@@ -4,7 +4,6 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use rusqlite::Connection;
 use serde_json::Value;
-use veritas_test_macros as veritas;
 
 mod index_destinations;
 mod shared_server;
@@ -150,7 +149,6 @@ fn write_config(path: &Path, claude_root: &Path, codex_root: &Path) {
     .expect("configuration file");
 }
 
-#[veritas::claims("configuration/status-reports-resolved-settings")]
 #[test]
 fn status_reports_the_exact_resolved_local_configuration() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -184,7 +182,6 @@ fn status_reports_the_exact_resolved_local_configuration() {
     );
 }
 
-#[veritas::claims("configuration/status-reports-resolved-settings")]
 #[test]
 fn legacy_provider_root_environment_variables_are_ignored() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -237,10 +234,6 @@ fn legacy_provider_root_environment_variables_are_ignored() {
     );
 }
 
-#[veritas::claims(
-    "configuration/invalid-loaded-file-fails-before-effects",
-    "configuration/errors-are-stable-and-nonretryable"
-)]
 #[test]
 fn every_public_command_rejects_malformed_configuration_before_effects() {
     let command_arguments: &[&[&str]] = &[
@@ -295,10 +288,6 @@ fn every_public_command_rejects_malformed_configuration_before_effects() {
     }
 }
 
-#[veritas::claims(
-    "configuration/cli-values-have-precedence",
-    "indexing/cli-provider-selection-is-bounded"
-)]
 #[test]
 fn public_index_flags_validate_before_models_database_or_scanning() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -358,7 +347,6 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
     assert!(!database.exists());
 }
 
-#[veritas::claims("cli/bare-invocation-prints-help")]
 #[test]
 fn bare_invocation_prints_help_without_starting_an_interface() {
     Command::cargo_bin("mash")
@@ -368,7 +356,6 @@ fn bare_invocation_prints_help_without_starting_an_interface() {
         .stderr(predicate::str::contains("Usage:"));
 }
 
-#[veritas::claims("cli/removed-commands-are-rejected")]
 #[test]
 fn removed_commands_are_rejected() {
     for command in ["export", "doctor", "list", "sources"] {
@@ -380,7 +367,6 @@ fn removed_commands_are_rejected() {
     }
 }
 
-#[veritas::claims("semantic/index-requires-models", "models/download-is-explicit")]
 #[test]
 fn index_without_models_fails_before_creating_the_database() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -407,7 +393,6 @@ fn index_without_models_fails_before_creating_the_database() {
     assert!(!models.exists());
 }
 
-#[veritas::claims("semantic/index-noop-does-not-load-model")]
 #[test]
 fn index_without_pending_embeddings_validates_but_does_not_load_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -441,7 +426,6 @@ fn index_without_pending_embeddings_validates_but_does_not_load_models() {
     assert_eq!(indexed["model_load_milliseconds"], 0);
 }
 
-#[veritas::claims("semantic/missing-models-fail-search", "models/download-is-explicit")]
 #[test]
 fn search_without_models_fails_before_database_access() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -467,7 +451,6 @@ fn search_without_models_fails_before_database_access() {
     assert!(!models.exists());
 }
 
-#[veritas::claims("semantic/missing-embeddings-fail-search")]
 #[test]
 fn search_with_missing_embeddings_recommends_index_without_loading_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -496,7 +479,6 @@ fn search_with_missing_embeddings_recommends_index_without_loading_models() {
     assert_eq!(error["error"]["recommended_action"], "index");
 }
 
-#[veritas::claims("semantic/inference-failure-fails-search")]
 #[test]
 fn invalid_installed_assets_fail_without_lexical_results() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -523,7 +505,6 @@ fn invalid_installed_assets_fail_without_lexical_results() {
     assert_eq!(error["error"]["recommended_action"], "models install");
 }
 
-#[veritas::claims("semantic/inference-failure-fails-search")]
 #[test]
 fn missing_listed_model_asset_is_a_typed_model_error() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -549,10 +530,6 @@ fn missing_listed_model_asset_is_a_typed_model_error() {
     assert_eq!(error["error"]["recommended_action"], "models install");
 }
 
-#[veritas::claims(
-    "status/missing-models-recommends-install",
-    "models/download-is-explicit"
-)]
 #[test]
 fn status_without_models_recommends_install_without_downloading() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -569,12 +546,6 @@ fn status_without_models_recommends_install_without_downloading() {
     assert!(!models.exists());
 }
 
-#[veritas::claims(
-    "status/missing-database-recommends-index",
-    "status/missing-embeddings-recommends-index",
-    "status/semantic-search-ready",
-    "status/zero-searchable-messages-can-be-ready"
-)]
 #[test]
 fn status_uses_model_then_database_then_embedding_readiness() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -711,7 +682,6 @@ fn status_reads_an_older_database_without_migrating_it() {
     assert!(!projection_exists);
 }
 
-#[veritas::claims("view/tool-results-remain-visible")]
 #[test]
 fn view_returns_context_only_canonical_content_without_models() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -728,7 +698,6 @@ fn view_returns_context_only_canonical_content_without_models() {
     assert_eq!(viewed["messages"][0]["content"], "canonical tool output");
 }
 
-#[veritas::claims("distribution/every-build-includes-semantic")]
 #[test]
 fn cargo_and_ci_make_semantic_support_unconditional() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -746,7 +715,6 @@ fn cargo_and_ci_make_semantic_support_unconditional() {
     assert!(!root.join("app/semantic_disabled.rs").exists());
 }
 
-#[veritas::claims("independence/no-dickles-franken-surface")]
 #[test]
 fn maintained_repository_is_independent_and_minimal() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -763,13 +731,6 @@ fn maintained_repository_is_independent_and_minimal() {
     }
 }
 
-#[veritas::claims(
-    "semantic/hybrid-reranks-with-models",
-    "semantic-indexing/batching-preserves-vectors",
-    "search/fts-contributes-to-hybrid",
-    "search/tool-results-are-not-searchable",
-    "search/mixed-message-excludes-tool-result-text"
-)]
 #[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 fn real_models_index_and_run_hybrid_search() {
@@ -854,7 +815,6 @@ fn real_models_index_and_run_hybrid_search() {
     }));
 }
 
-#[veritas::claims("semantic-indexing/cold-throughput-target")]
 #[test]
 #[ignore = "requires explicit MASH_BENCHMARK_DB, MASH_BENCHMARK_CONFIG, and MASH_TEST_MODELS_DIR"]
 fn benchmark_real_corpus_semantic_generation() {

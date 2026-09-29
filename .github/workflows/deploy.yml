@@ -20,7 +20,6 @@ jobs:
       rust-toolchain: nightly
       cache-prefix: mash
       rustflags: -Zunstable-options --jobs-frontend=4
-      private-git: true
       deploy-targets: >-
         [{"ssh":"deploy@linux-node","platform":"linux-amd64"},{"ssh":"deploy@mac-node-1","platform":"darwin-arm64"},{"ssh":"deploy@mac-node-2","platform":"darwin-arm64"}]
     secrets:
@@ -28,4 +27,3 @@ jobs:
       TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
       DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
-      PRIVATE_GIT_SSH_KEY: ${{ secrets.VERITAS_DEPLOY_KEY }}

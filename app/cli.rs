@@ -998,9 +998,7 @@ fn default_models_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use veritas_test_macros as veritas;
 
-    #[veritas::claims("semantic-indexing/progress-is-monotonic")]
     #[test]
     fn embedding_progress_is_a_monotonic_newline_delimited_json_stream() {
         let first = semantic::EmbeddingProgress {
@@ -1067,7 +1065,6 @@ mod tests {
         }
     }
 
-    #[veritas::claims("cli/operational-command-surface")]
     #[test]
     fn command_surface_contains_only_the_contract_commands() {
         let command = Cli::command();
@@ -1083,10 +1080,6 @@ mod tests {
         );
     }
 
-    #[veritas::claims(
-        "configuration/cli-values-have-precedence",
-        "indexing/cli-provider-selection-is-bounded"
-    )]
     #[test]
     fn index_options_validate_deduplicate_and_apply_horizon_precedence() {
         let configuration = test_configuration(true, true, Some(90));

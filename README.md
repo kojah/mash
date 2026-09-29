@@ -475,9 +475,6 @@ MASH_TEST_REDIS_URL='redis://localhost:6379/' \
 The real-model integration test is ignored by default and requires
 `MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
 
-The Veritas test annotations come from the private `jamesqo/veritas`
-repository at the exact revision recorded in `Cargo.toml`. Contributors running
-tests need repository access and a GitHub SSH identity that can clone Veritas.
 
 ## Automatic deployment
 

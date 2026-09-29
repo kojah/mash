@@ -502,7 +502,6 @@ mod tests {
     use std::path::PathBuf;
 
     use tempfile::TempDir;
-    use veritas_test_macros as veritas;
 
     use super::*;
 
@@ -653,7 +652,6 @@ mod tests {
         );
     }
 
-    #[veritas::claims("configuration/document-version-and-fields-are-validated")]
     #[test]
     fn file_input_is_bounded_before_json_parsing() {
         let directory = TempDir::new().expect("temporary directory");
@@ -674,7 +672,6 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[veritas::claims("configuration/document-version-and-fields-are-validated")]
     #[test]
     fn symlink_must_resolve_to_a_regular_file() {
         use std::os::unix::fs::symlink;
@@ -704,7 +701,6 @@ mod tests {
         );
     }
 
-    #[veritas::claims("configuration/document-version-and-fields-are-validated")]
     #[test]
     fn explicit_directory_and_malformed_file_are_typed_errors() {
         let directory = TempDir::new().expect("temporary directory");

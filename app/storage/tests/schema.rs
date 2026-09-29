@@ -1,7 +1,6 @@
 use super::*;
 
 use rusqlite::params;
-use veritas_test_macros as veritas;
 
 const VERSION_SEVEN_SCHEMA_FIXTURE: &str = "CREATE TABLE conversations (
     id TEXT PRIMARY KEY,
@@ -82,10 +81,6 @@ fn version_eight_provider_fixture() -> String {
         )
 }
 
-#[veritas::claims(
-    "storage/supported-schema-migrates",
-    "storage/tool-search-projection-migrates"
-)]
 #[test]
 fn supported_schema_migrates_once_and_preserves_rows() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -151,7 +146,6 @@ fn supported_schema_migrates_once_and_preserves_rows() {
     assert!(reopened.derived_search_is_dirty().expect("still dirty"));
 }
 
-#[veritas::claims("storage/unsupported-provider-data-is-removed")]
 #[test]
 fn version_eight_migration_removes_every_unsupported_provider_surface() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -251,7 +245,6 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
     );
 }
 
-#[veritas::claims("storage/newer-schema-is-rejected")]
 #[test]
 fn newer_schema_is_rejected_without_rewriting_version() {
     let directory = tempfile::tempdir().expect("temporary directory");

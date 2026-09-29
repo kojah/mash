@@ -1001,7 +1001,6 @@ mod tests {
     use std::io::Write;
 
     use super::*;
-    use veritas_test_macros as veritas;
 
     fn write_claude_session(path: &Path, session: &str, message: &str) {
         fs::write(
@@ -1074,10 +1073,6 @@ mod tests {
         parse_claude(path)
     }
 
-    #[veritas::claims(
-        "ingestion/provider-boundary",
-        "ingestion/malformed-records-do-not-panic"
-    )]
     #[test]
     fn claude_parser_skips_malformed_lines_and_keeps_messages() {
         let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
@@ -1093,11 +1088,6 @@ mod tests {
         assert_eq!(conversation.messages[1].content, "world");
     }
 
-    #[veritas::claims(
-        "search/tool-results-are-not-searchable",
-        "search/mixed-message-excludes-tool-result-text",
-        "view/tool-results-remain-visible"
-    )]
     #[test]
     fn claude_parser_separates_tool_results_from_searchable_text() {
         let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
@@ -1129,7 +1119,6 @@ mod tests {
         assert_eq!(object.search_projection.as_deref(), Some(""));
     }
 
-    #[veritas::claims("ingestion/provider-boundary")]
     #[test]
     fn codex_parser_keeps_messages_and_tool_calls() {
         let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
@@ -1144,7 +1133,6 @@ mod tests {
         assert!(conversation.messages[1].content.contains("Tool search"));
     }
 
-    #[veritas::claims("ingestion/provider-boundary")]
     #[test]
     fn codex_parser_keeps_the_rollout_session_identity() {
         let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
@@ -1166,7 +1154,6 @@ mod tests {
         assert_eq!(conversation.id, "rollout-session");
     }
 
-    #[veritas::claims("ingestion/provider-boundary", "ingestion/supported-jsonl-indexes")]
     #[test]
     fn codex_parser_ignores_mirrored_event_messages() {
         let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
@@ -1186,7 +1173,6 @@ mod tests {
         assert_eq!(conversation.messages[0].content, "mirrored turn");
     }
 
-    #[veritas::claims("ingestion/provider-boundary", "ingestion/supported-jsonl-indexes")]
     #[test]
     fn codex_parser_keeps_custom_tool_calls() {
         let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
@@ -1218,10 +1204,6 @@ mod tests {
         );
     }
 
-    #[veritas::claims(
-        "indexing/incomplete-scan-preserves-state",
-        "indexing/complete-scan-purges-missing-source"
-    )]
     #[test]
     fn purge_requires_a_complete_provider_scan() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -1274,10 +1256,6 @@ mod tests {
         assert_eq!(writer.counts().expect("counts").conversations, 0);
     }
 
-    #[veritas::claims(
-        "ingestion/configured-provider-roots-index",
-        "ingestion/unsupported-providers-ignored"
-    )]
     #[test]
     fn authoritative_roots_index_only_the_two_concrete_formats() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -1341,7 +1319,6 @@ mod tests {
         );
     }
 
-    #[veritas::claims("indexing/inaccessible-roots-never-authorize-purge")]
     #[test]
     fn every_authoritative_root_is_preflighted_before_ingestion_writes() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -1364,7 +1341,6 @@ mod tests {
         assert_eq!(writer.counts().expect("counts").messages, 0);
     }
 
-    #[veritas::claims("indexing/incomplete-scan-preserves-state")]
     #[test]
     fn missing_builtin_root_is_nonfatal_but_never_authorizes_purge() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -1405,7 +1381,6 @@ mod tests {
         assert_eq!(writer.counts().expect("counts").conversations, 1);
     }
 
-    #[veritas::claims("indexing/inaccessible-roots-never-authorize-purge")]
     #[test]
     fn configured_root_disappearing_after_discovery_rolls_back_without_purge() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -1449,7 +1424,6 @@ mod tests {
         assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
     }
 
-    #[veritas::claims("indexing/inaccessible-roots-never-authorize-purge")]
     #[test]
     fn late_configured_source_failure_rolls_back_provider_changes() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -1541,10 +1515,6 @@ mod tests {
         assert!(tombstone.tombstoned);
     }
 
-    #[veritas::claims(
-        "indexing/recency-horizon-bounds-admission-not-retention",
-        "indexing/recency-exclusion-preserves-stored-state"
-    )]
     #[test]
     fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -1638,7 +1608,6 @@ mod tests {
         assert!(writer.search("recent", 10, None, None).unwrap().is_empty());
     }
 
-    #[veritas::claims("indexing/partial-provider-scan-preserves-others")]
     #[test]
     fn selecting_one_provider_never_reconciles_an_unselected_provider() {
         let directory = tempfile::tempdir().expect("temporary directory");

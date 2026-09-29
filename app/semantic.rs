@@ -1067,14 +1067,12 @@ fn write_marker(root: &Path, marker: &InstallMarker) -> Result<(), AppError> {
 mod tests {
     use super::*;
     use crate::storage::SearchableMessage;
-    use veritas_test_macros as veritas;
 
     #[test]
     fn reranking_is_bounded_to_ten_documents() {
         assert_eq!(RERANK_LIMIT, 10);
     }
 
-    #[veritas::claims("semantic-indexing/repeated-text-reuses-inference")]
     #[test]
     fn embedding_plan_groups_identical_text_and_sorts_message_ids() {
         let groups = plan_embedding_groups(vec![
@@ -1100,7 +1098,6 @@ mod tests {
         assert_eq!(repeated.message_ids, ["message-a", "message-c"]);
     }
 
-    #[veritas::claims("semantic-indexing/batching-preserves-vectors")]
     #[test]
     fn embedding_plan_is_length_ordered_and_input_order_independent() {
         fn contents(groups: &[EmbeddingGroup]) -> Vec<&str> {
@@ -1133,7 +1130,6 @@ mod tests {
         assert_eq!(contents(&forward), contents(&reverse));
     }
 
-    #[veritas::claims("semantic-indexing/batching-preserves-vectors")]
     #[test]
     #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
     fn real_model_length_aware_batches_preserve_quantized_vectors() {

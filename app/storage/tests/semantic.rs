@@ -1,7 +1,5 @@
 use super::*;
 
-use veritas_test_macros as veritas;
-
 #[test]
 fn semantic_readiness_changes_atomically_with_canonical_messages() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -116,7 +114,6 @@ fn dirty_search_state_survives_a_batch_and_rebuilds_after_resume() {
     resumed.commit_writer().expect("commit rebuilt state");
 }
 
-#[veritas::claims("indexing/partial-embeddings-resume")]
 #[test]
 fn committed_embedding_checkpoint_resumes_from_only_missing_rows() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -425,7 +422,6 @@ fn explicit_semantic_storage_identifiers_survive_vacuum() {
     );
 }
 
-#[veritas::claims("semantic/stale-embedding-generation-invalidated")]
 #[test]
 fn stale_embedding_generation_is_excluded_and_replaced() {
     let directory = tempfile::tempdir().expect("temporary directory");

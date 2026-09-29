@@ -1,9 +1,7 @@
 use super::*;
 
 use std::collections::BTreeSet;
-use veritas_test_macros as veritas;
 
-#[veritas::claims("storage/full-rebuild-is-idempotent")]
 #[test]
 fn full_rebuild_is_idempotent() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -52,7 +50,6 @@ fn writer_checkpoint_survives_a_later_rollback() {
     );
 }
 
-#[veritas::claims("indexing/canonical-and-fts-are-atomic")]
 #[test]
 fn incremental_fts_and_canonical_changes_roll_back_together() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -94,7 +91,6 @@ fn incremental_fts_and_canonical_changes_roll_back_together() {
     );
 }
 
-#[veritas::claims("indexing/canonical-and-fts-are-atomic")]
 #[test]
 fn bulk_fts_and_canonical_changes_roll_back_together() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -290,11 +286,6 @@ fn incremental_and_bulk_fts_produce_equivalent_results() {
     );
 }
 
-#[veritas::claims(
-    "search/tool-results-are-not-searchable",
-    "search/mixed-message-excludes-tool-result-text",
-    "view/tool-results-remain-visible"
-)]
 #[test]
 fn search_projection_controls_fts_embeddings_and_rerank_text_not_view() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -580,7 +571,6 @@ fn full_rebuild_defers_per_message_search_writes() {
     );
 }
 
-#[veritas::claims("indexing/concurrent-writer-is-rejected")]
 #[test]
 fn concurrent_writer_is_rejected_and_first_writer_can_commit() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -594,10 +584,6 @@ fn concurrent_writer_is_rejected_and_first_writer_can_commit() {
     Storage::open_writer(&path).expect("writer available after commit");
 }
 
-#[veritas::claims(
-    "indexing/unchanged-source-is-skipped",
-    "indexing/only-changed-messages-refresh"
-)]
 #[test]
 fn conversation_reconciliation_writes_only_changed_messages() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -643,7 +629,6 @@ fn conversation_reconciliation_writes_only_changed_messages() {
     );
 }
 
-#[veritas::claims("indexing/only-changed-messages-refresh")]
 #[test]
 fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -703,7 +688,6 @@ fn purging_a_conversation_removes_its_staged_fts_rows() {
     assert_eq!(writer.counts().unwrap().messages, 0);
 }
 
-#[veritas::claims("storage/forget-persists-through-indexing")]
 #[test]
 fn tombstone_prevents_reinsertion() {
     let directory = tempfile::tempdir().expect("temporary directory");

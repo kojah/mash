@@ -59,7 +59,6 @@ postgres = "0.19.14"
 rmcp = { version = "3.4.0", default-features = false, features = ["client", "server", "macros", "transport-io"] }
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
-veritas-test-macros = { git = "ssh://git@github.com/jamesqo/veritas.git", rev = "9eb6b751c13523f2174b0040eadb5858f31c9e04" }
 
 [profile.release]
 codegen-units = 16
