@@ -3,3 +3,8 @@ jobs = -1
 
 [net]
 git-fetch-with-cli = true
+
+[alias]
+build-clif = ["build", "-Zcodegen-backend", "--config", "profile.dev.package.mash.codegen-backend=\"cranelift\""]
+run-clif = ["run", "-Zcodegen-backend", "--config", "profile.dev.package.mash.codegen-backend=\"cranelift\""]
+test-clif = ["nextest", "run", "-Zcodegen-backend", "--config", "profile.dev.package.mash.codegen-backend=\"cranelift\""]

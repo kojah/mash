@@ -104,6 +104,23 @@ provider registry, compatibility layer, or alternate output encoding.
 
 ## Verification
 
+For faster development code generation, optionally install the nightly Cranelift
+component and use the Cargo aliases:
+
+```bash
+rustup component add rustc-codegen-cranelift-preview --toolchain nightly
+cargo build-clif
+cargo run-clif -- status
+cargo test-clif
+```
+
+These aliases select Cranelift for mash in the development profile. Dependencies
+keep LLVM, so their existing build cache can be reused. `test-clif` requires
+`cargo-nextest`. Use the usual commands below for standard LLVM verification
+and `cargo build --release` for optimized builds. Cranelift is an experimental
+nightly component and is available only on supported host platforms; see the
+[Cranelift backend documentation](https://github.com/rust-lang/rustc_codegen_cranelift#usage).
+
 ```bash
 cargo fmt --check
 cargo nextest run
