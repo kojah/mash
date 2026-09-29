@@ -24,6 +24,8 @@ struct Search {
     limit: Option<usize>,
     provider: Option<String>,
     days: Option<u32>,
+    /// Boolean metadata filter: all/any/not, node/provider/role/conversation/project/repository lists, after/before Unix timestamps.
+    filter: Option<crate::search_filter::Filter>,
     #[serde(default)]
     shared: bool,
     /// Search only the local SQLite index.
@@ -133,6 +135,12 @@ impl Mash {
         flag(&mut args, "--limit", request.limit);
         flag(&mut args, "--provider", request.provider);
         flag(&mut args, "--days", request.days);
+        if let Some(filter) = request.filter {
+            let Ok(json) = serde_json::to_string(&filter) else {
+                return CallToolResult::error(vec![ContentBlock::text("invalid search filter")]);
+            };
+            flag(&mut args, "--filter", Some(json));
+        }
         if request.shared {
             args.push("--shared".into());
         }
@@ -284,6 +292,11 @@ mod tests {
     use rmcp::model::CallToolRequestParams;
     use serde_json::json;
 
+    fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
+        let search = tools.iter().find(|tool| tool.name == "search").unwrap();
+        assert!(search.input_schema["properties"].get("filter").is_some());
+    }
+
     #[tokio::test]
     async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         let dir = tempfile::tempdir().expect("temp");
@@ -315,6 +328,7 @@ mod tests {
         let client = ().serve(client_io).await.expect("SDK client initialization");
         let server = server.await.expect("server task");
         let tools = client.list_all_tools().await.expect("tools/list");
+        assert_filter_schema(&tools);
         let mut names = tools
             .iter()
             .map(|tool| tool.name.as_ref())

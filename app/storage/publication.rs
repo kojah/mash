@@ -26,7 +26,7 @@ impl Snapshot<'_> {
     ) -> Result<(), AppError> {
         let sql = match kind {
             "conversations" => {
-                "SELECT id, provider, title, created_at, updated_at FROM conversations ORDER BY id"
+                "SELECT id, provider, title, created_at, updated_at, project, repository FROM conversations ORDER BY id"
             }
             "messages" => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
@@ -50,6 +50,8 @@ impl Snapshot<'_> {
                     "title": row.get::<_, Option<String>>(2).map_err(AppError::database)?,
                     "created_at": row.get::<_, Option<i64>>(3).map_err(AppError::database)?,
                     "updated_at": row.get::<_, Option<i64>>(4).map_err(AppError::database)?,
+                    "project": row.get::<_, Option<String>>(5).map_err(AppError::database)?,
+                    "repository": row.get::<_, Option<String>>(6).map_err(AppError::database)?,
                 }),
                 "messages" => {
                     let local_generation = row

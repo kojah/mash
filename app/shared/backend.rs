@@ -176,6 +176,8 @@ pub(super) struct ConversationRecord {
     pub id: String,
     pub provider: String,
     pub title: Option<String>,
+    pub project: Option<String>,
+    pub repository: Option<String>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
 }
@@ -231,7 +233,7 @@ async fn upload_batch(
                 .await
                 .map_err(pg_error)?;
             }
-            "INSERT INTO conversations SELECT $1,r.id,r.provider,title,created_at,updated_at FROM jsonb_to_recordset($2::text::jsonb) r(id text,provider text,title text,created_at bigint,updated_at bigint) WHERE NOT EXISTS(SELECT 1 FROM tombstones t WHERE t.node_id=$1 AND t.provider=r.provider AND t.conversation_id=r.id)"
+            "INSERT INTO conversations(node_id,id,provider,title,created_at,updated_at,project,repository) SELECT $1,r.id,r.provider,title,created_at,updated_at,project,repository FROM jsonb_to_recordset($2::text::jsonb) r(id text,provider text,title text,created_at bigint,updated_at bigint,project text,repository text) WHERE NOT EXISTS(SELECT 1 FROM tombstones t WHERE t.node_id=$1 AND t.provider=r.provider AND t.conversation_id=r.id)"
         }
         "messages" => {
             for record in records {
@@ -448,7 +450,7 @@ async fn transaction<'a>(
     )
     .await
     .map_err(pg_error)?;
-    tx.batch_execute("SET LOCAL statement_timeout='30s'; SET LOCAL lock_timeout='5s'; SET LOCAL idle_in_transaction_session_timeout='60s'").await.map_err(pg_error)?;
+    tx.batch_execute("SET LOCAL standard_conforming_strings=on; SET LOCAL statement_timeout='30s'; SET LOCAL lock_timeout='5s'; SET LOCAL idle_in_transaction_session_timeout='60s'").await.map_err(pg_error)?;
     Ok(tx)
 }
 async fn connection(pool: &Pool) -> Result<deadpool_postgres::Object, AppError> {
@@ -484,7 +486,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .map_err(pg_error)?
             .try_get(0)
             .map_err(pg_error)?;
-        if version != 3 {
+        if version != 4 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
@@ -592,10 +594,11 @@ async fn candidates(
     query: &str,
     vector: &[f64],
     identity: &Identity,
-    provider: Option<&str>,
-    days: Option<u32>,
-    exclude_node: Option<&str>,
+    legacy: (Option<&str>, Option<u32>, Option<&str>),
+    filter: Option<&crate::search_filter::Filter>,
 ) -> Result<Candidates, AppError> {
+    let (provider, days, exclude_node) = legacy;
+    let predicate = filter.map_or_else(|| "TRUE".to_owned(), |f| f.sql(None));
     let cutoff = days.map(|days| {
         i64::try_from(
             std::time::SystemTime::now()
@@ -605,6 +608,7 @@ async fn candidates(
         )
         .unwrap_or(i64::MAX)
         .saturating_sub(i64::from(days) * 86400)
+        .saturating_mul(1000)
     });
     let generation = &identity.generation;
     let dimensions =
@@ -613,26 +617,32 @@ async fn candidates(
         serde_json::to_string(vector).map_err(|_| AppError::usage("invalid query vector"))?;
     let lexical = client
         .query(
-            "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
+            &format!(
+                "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
                 ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score
          FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
            AND ($5::text IS NULL OR m.node_id<>$5)
-         ORDER BY score DESC,m.node_id,m.id LIMIT 50",
+           AND ({predicate})
+         ORDER BY score DESC,m.node_id,m.id LIMIT 50"
+            ),
             &[&query, &generation, &provider, &cutoff, &exclude_node],
         )
         .await
         .map_err(pg_error)?;
     let semantic = client
         .query(
-            "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
+            &format!(
+                "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
                 1.0 - (m.vector <=> $1::text::public.vector) AS score
          FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
            AND ($6::text IS NULL OR m.node_id<>$6)
-         ORDER BY score DESC,m.node_id,m.id LIMIT 50",
+           AND ({predicate})
+         ORDER BY score DESC,m.node_id,m.id LIMIT 50"
+            ),
             &[
                 &vector,
                 &generation,
@@ -680,6 +690,9 @@ pub(super) async fn search(
         return Err(AppError::usage("invalid search query or vector"));
     }
     valid_provider(input.provider.as_deref())?;
+    if let Some(filter) = &input.filter {
+        filter.validate()?;
+    }
     let mut connection = connection(pool).await?;
     let mut tx = transaction(&mut connection, identity).await?;
     let exclude_node = input.exclude_self.then_some(identity.node_id.as_str());
@@ -694,9 +707,8 @@ pub(super) async fn search(
         &input.query,
         &input.vector,
         identity,
-        input.provider.as_deref(),
-        input.days,
-        exclude_node,
+        (input.provider.as_deref(), input.days, exclude_node),
+        input.filter.as_ref(),
     )
     .await?;
     tx.commit().await.map_err(pg_error)?;

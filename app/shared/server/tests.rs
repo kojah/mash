@@ -153,6 +153,100 @@ async fn exclude_own_contract(service: Service) {
     service.cleanup().await;
 }
 
+async fn rich_filter_contract(service: Service) {
+    let mut first = snapshot(1);
+    let repository = "ssh://git/example/o'reilly\\repo";
+    first[1]["records"][0]["project"] = json!("/work/alpha");
+    first[1]["records"][0]["repository"] = json!(repository);
+    first[2]["records"][0]["created_at"] = json!(1000);
+    first[2]["records"][1]["created_at"] = json!(2000);
+    first[2]["records"][1]["role"] = json!("assistant");
+    first[2]["records"][1]["projection"] = json!("hello assistant");
+    first[2]["records"][2]["created_at"] = Value::Null;
+    let template = first[2]["records"][0].clone();
+    for i in 0..60 {
+        let mut record = template.clone();
+        record["id"] = json!(format!("noise-{i}"));
+        record["ordinal"] = json!(i + 3);
+        first[2]["records"].as_array_mut().unwrap().push(record);
+    }
+    assert_eq!(service.upload(FIRST, &first).await.status(), StatusCode::OK);
+    assert_eq!(
+        service.upload(SECOND, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
+    let filter = json!({"all":[{"node":["first"]},{"provider":["codex"]},{"role":["assistant"]},{"conversation":["conversation"]},{"project":["/work/alpha"]},{"repository":[repository]},{"after":2},{"before":3}]});
+    let query = json!({"query":"hello", "vector":vector,"filter":filter});
+    let found: Value = service
+        .request("search", FIRST)
+        .json(&query)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    for kind in ["lexical", "semantic"] {
+        assert_eq!(found[kind].as_array().unwrap().len(), 1, "{found}");
+        assert_eq!(found[kind][0]["id"], "opposite");
+    }
+    for filter in [
+        json!({"not":{"project":["/work/alpha"]}}),
+        json!({"any":[{"node":["second"]},{"role":["nonexistent"]}]}),
+    ] {
+        let mut query = query.clone();
+        query["filter"] = filter;
+        let found: Value = service
+            .request("search", FIRST)
+            .json(&query)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(found["semantic"].as_array().unwrap().len(), 2, "{found}");
+        assert!(
+            found["semantic"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|h| h["node_id"] == "second")
+        );
+    }
+    let mut invalid = query;
+    invalid["filter"] = json!({"provider":["unsupported"]});
+    assert_eq!(
+        service
+            .request("search", FIRST)
+            .json(&invalid)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
+async fn postgres_publication_rich_filters_apply_before_ranking() {
+    rich_filter_contract(Service::new(true).await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_publication_rich_filters_apply_before_ranking() {
+    rich_filter_contract(Service::with_dimensions(false, true, 384).await).await;
+}
+
 #[tokio::test]
 #[ignore = "requires MASH_TEST_PG_URL with pgvector"]
 async fn postgres_publication_excludes_own_node_before_candidate_limit_and_readiness() {

@@ -49,7 +49,15 @@ DO $$ BEGIN
         UPDATE version SET version=3 WHERE singleton;
     END IF;
 END $$;
--- Shared-only nodes keep ingestion checkpoints in PostgreSQL, never SQLite.
+-- Preserve history while adding project/repository metadata.
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 3 THEN
+        ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project TEXT;
+        ALTER TABLE conversations ADD COLUMN IF NOT EXISTS repository TEXT;
+        UPDATE version SET version=4 WHERE singleton;
+    END IF;
+END $$;
+-- Routed shared ingestion keeps its independent source checkpoints here.
 -- Source paths are hashed before upload.
 CREATE TABLE IF NOT EXISTS direct_sources (
     node_id TEXT NOT NULL REFERENCES nodes(node_id),

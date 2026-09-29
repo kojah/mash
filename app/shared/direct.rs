@@ -118,7 +118,7 @@ async fn ingest_scan(
         .collect();
     let mut observed = Vec::new();
     for path in &scan.files {
-        let hash = blake3::hash(path.to_string_lossy().as_bytes())
+        let hash = blake3::hash(format!("metadata-v1:{}", path.to_string_lossy()).as_bytes())
             .to_hex()
             .to_string();
         observed.push(hash.clone());
@@ -278,7 +278,7 @@ async fn replace_conversation(
         &Event::Batch {
             kind: "conversations".to_owned(),
             records: vec![
-                serde_json::json!({"id":conversation.id,"provider":conversation.provider,"title":conversation.title,"created_at":conversation.created_at,"updated_at":conversation.updated_at}),
+                serde_json::json!({"id":conversation.id,"provider":conversation.provider,"title":conversation.title,"project":conversation.project,"repository":conversation.repository,"created_at":conversation.created_at,"updated_at":conversation.updated_at}),
             ],
         },
     )?;

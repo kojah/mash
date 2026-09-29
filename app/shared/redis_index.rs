@@ -60,6 +60,66 @@ struct Plan {
     removed: u64,
     purged: u64,
 }
+async fn extend_metadata_schema(
+    connection: &mut ConnectionManager,
+    name: &str,
+) -> Result<(), AppError> {
+    let info: redis::Value = redis::cmd("FT.INFO")
+        .arg(name)
+        .query_async(connection)
+        .await
+        .map_err(redis_error)?;
+    let mut fields = std::collections::HashSet::new();
+    schema_fields(&info, &mut fields);
+    for (field, kind) in [
+        ("node_tag", "TAG"),
+        ("role_tag", "TAG"),
+        ("project_tag", "TAG"),
+        ("repository_tag", "TAG"),
+        ("dated", "NUMERIC"),
+    ] {
+        if !fields.contains(field) {
+            let result = redis::cmd("FT.ALTER")
+                .arg(name)
+                .arg("SCHEMA")
+                .arg("ADD")
+                .arg(field)
+                .arg(kind)
+                .query_async::<()>(connection)
+                .await;
+            if let Err(error) = result {
+                // A second server may have added the same field concurrently.
+                let info = redis::cmd("FT.INFO")
+                    .arg(name)
+                    .query_async::<redis::Value>(connection)
+                    .await
+                    .map_err(redis_error)?;
+                fields.clear();
+                schema_fields(&info, &mut fields);
+                if !fields.contains(field) {
+                    return Err(redis_error(error));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn schema_fields(value: &redis::Value, names: &mut std::collections::HashSet<String>) {
+    if let redis::Value::Array(values) = value {
+        for pair in values.windows(2) {
+            if redis::from_redis_value::<String>(pair[0].clone()).is_ok_and(|s| s == "identifier")
+                && let Ok(name) = redis::from_redis_value::<String>(pair[1].clone())
+            {
+                names.insert(name);
+            }
+        }
+        for value in values {
+            schema_fields(value, names);
+        }
+    }
+}
+
 fn prefix(group: &str) -> String {
     format!("mash:r:{}:", blake3::hash(group.as_bytes()).to_hex())
 }
@@ -227,6 +287,7 @@ impl Store {
                     }
                 }
             }
+            extend_metadata_schema(&mut connection, &name).await?;
         }
         Ok(Self {
             connection,
@@ -522,6 +583,20 @@ impl Store {
                 .arg(version)
                 .arg("node_id")
                 .arg(&identity.node_id)
+                .arg("node_tag")
+                .arg(crate::search_filter::tag(&identity.node_id))
+                .arg("role_tag")
+                .arg(crate::search_filter::tag(&message.role))
+                .arg("project_tag")
+                .arg(crate::search_filter::tag(
+                    conversation.project.as_deref().unwrap_or_default(),
+                ))
+                .arg("repository_tag")
+                .arg(crate::search_filter::tag(
+                    conversation.repository.as_deref().unwrap_or_default(),
+                ))
+                .arg("dated")
+                .arg(u8::from(message.created_at.is_some()))
                 .arg("conversation")
                 .arg(
                     blake3::hash(message.conversation_id.as_bytes())
@@ -678,6 +753,9 @@ impl Store {
             return Err(AppError::usage("invalid search query or vector"));
         }
         valid_provider(input.provider.as_deref())?;
+        if let Some(filter) = &input.filter {
+            filter.validate()?;
+        }
         let words = input
             .query
             .split(|c: char| !c.is_alphanumeric())
@@ -705,9 +783,14 @@ impl Store {
                 .as_secs();
             let cutoff = i64::try_from(now)
                 .unwrap_or(i64::MAX)
-                .saturating_sub(i64::from(days) * 86400);
+                .saturating_sub(i64::from(days) * 86400)
+                .saturating_mul(1000);
             write!(&mut filters, " @created_at:[{cutoff} +inf]")
                 .map_err(|_| AppError::internal("format search filter"))?;
+        }
+        if let Some(filter) = &input.filter {
+            filters.push(' ');
+            filters.push_str(&filter.redis());
         }
         let (lexical, semantic): (redis::Value, redis::Value) = redis::cmd("EVAL_RO")
             .arg(include_str!("redis/search.lua"))

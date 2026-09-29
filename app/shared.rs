@@ -377,9 +377,10 @@ pub(crate) async fn search(
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
     limit: usize,
-    filters: (Option<&str>, Option<u32>),
+    filters: &crate::search_filter::Scope,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
-    let (provider, days) = filters;
+    filters.filter.validate()?;
+    let local_filters = filters.clone();
     if query.trim().is_empty() {
         return Err(AppError::usage("search query must not be empty"));
     }
@@ -387,7 +388,6 @@ pub(crate) async fn search(
     let local_database = local_database.map(Path::to_path_buf);
     let exclude_self = local_database.is_some();
     let local_query = query.to_owned();
-    let local_provider = provider.map(str::to_owned);
     let text = query.to_owned();
     let embeddings = embeddings.cloned();
     let generation = embeddings.as_ref().map_or_else(
@@ -415,8 +415,9 @@ pub(crate) async fn search(
                 &models.generation(),
                 &local_query,
                 &vector,
-                local_provider.as_deref(),
-                days,
+                None,
+                None,
+                Some(&local_filters),
             )?
         } else {
             (Vec::new(), Vec::new())
@@ -431,8 +432,9 @@ pub(crate) async fn search(
             query: query.to_owned(),
             vector,
             generation,
-            provider: provider.map(str::to_owned),
-            days,
+            provider: None,
+            days: None,
+            filter: Some(filters.filter.clone()),
             exclude_self,
         },
     )

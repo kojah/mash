@@ -116,10 +116,72 @@ publisher. The service authorizes each token for a fixed group and node. Group I
 separate PostgreSQL schemas; every node within a group contributes to one joint
 index. The database can live wherever you choose.
 
-The former `nodes`, `local_node`, SSH destinations, `--node`, `--local-node`,
+The former `nodes`, `local_node`, SSH destinations, `--local-node`,
 and hidden federation workers are removed. To migrate a configuration, move this
 machine's `providers` and `index` settings to the top level and optionally add
 `shared`. Old configuration shapes are rejected rather than guessed.
+
+## Search filters
+
+CLI search accepts repeatable `--provider`, `--node`, `--role`, `--conversation`,
+`--project`, and `--repository`. Repeated values for one field are alternatives;
+different fields are combined with AND. `--node` filters publishing identity and
+does not connect directly to another node. A standalone local installation uses
+the node label `local`. `--days` is a rolling message-age window. `--after` is
+inclusive and `--before` exclusive; both accept `YYYY-MM-DD` (UTC midnight) or
+RFC3339 timestamps with an explicit offset.
+
+```bash
+mash search 'database migration' --provider codex --provider claude-code \
+  --role user --role assistant --after 2026-09-01 --before 2026-10-01
+mash search 'deployment' --repository https://github.com/kojah/mash.git \
+  --node dev-macbook --node xenia
+```
+
+For Boolean combinations, use `--filter` with a structured JSON expression, or
+the MCP search tool's `filter` argument. This is a query expression; configuration
+files remain TOML. Each expression contains exactly one operator:
+
+- `all`: AND of expressions; an empty list matches everything.
+- `any`: OR of expressions; an empty list matches nothing.
+- `not`: negation of one expression.
+- `node`, `provider`, `role`, `conversation`, `project`, `repository`: lists of exact, case-sensitive values.
+- `after`, `before`: inclusive/exclusive Unix timestamps **in seconds**.
+
+An MCP request can select either repository while excluding tool messages:
+
+```json
+{
+  "query": "database migration",
+  "filter": {
+    "all": [
+      {"provider": ["codex", "claude-code"]},
+      {"any": [
+        {"repository": ["https://github.com/kojah/mash.git"]},
+        {"project": ["/home/james/scratch/mash"]}
+      ]},
+      {"not": {"role": ["tool"]}}
+    ]
+  }
+}
+```
+
+The CLI accepts the same expression through `--filter '...JSON...'`. Convenience
+flags and the structured expression are combined with AND. Filters apply before
+lexical/semantic candidate limits on SQLite, PostgreSQL, and Redis, then the
+combined results are reranked. Raw SQL, regular expressions, and glob patterns
+are not supported. Limits are eight levels of nesting, 128 expressions, and 100
+values per field list.
+
+Project means the session's first recorded working directory. Repository means
+the session's logged Git repository URL, or the locally available Git origin for
+that directory at ingestion time. They are conversation metadata; the first
+directory applies to the whole session. Unavailable metadata remains unknown,
+so a positive filter does not match it and a negated filter does. Date filters do
+not match messages without timestamps. Schema upgrades preserve history and
+embeddings and invalidate local ingestion checkpoints, allowing the next
+`mash index` to capture metadata from source files. Independently routed shared
+ingestion also refreshes its source checkpoints when upgrading metadata support.
 
 ## Shared PostgreSQL index
 

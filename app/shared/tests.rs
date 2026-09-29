@@ -9,6 +9,8 @@ fn seed(path: &Path) -> Storage {
             id: "conversation".to_owned(),
             provider: "codex",
             source_path: "/tmp/shared-fixture.jsonl".into(),
+            project: None,
+            repository: None,
             title: Some("fixture".to_owned()),
             created_at: Some(1),
             updated_at: Some(2),
@@ -57,6 +59,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
         &[127.0, 0.0],
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(hits.len(), 1);
@@ -71,11 +74,87 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
             "hello",
             &[127.0, 0.0],
             Some("claude-code"),
+            None,
             None
         )
         .unwrap()
         .0
         .is_empty()
+    );
+}
+
+#[test]
+fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("filters.sqlite3");
+    let mut storage = Storage::open_writer(&path).unwrap();
+    let mut conversation = Conversation {
+        id: "conversation".into(),
+        provider: "codex",
+        source_path: "/tmp/filters.jsonl".into(),
+        project: Some("/work/o'reilly".into()),
+        repository: Some("repo://alpha".into()),
+        title: None,
+        created_at: None,
+        updated_at: None,
+        messages: Vec::new(),
+    };
+    for i in 0..61 {
+        conversation.messages.push(NormalizedMessage {
+            id: format!("message-{i:02}"),
+            ordinal: i,
+            role: if i == 60 { "assistant" } else { "user" }.into(),
+            content: "hello filter".into(),
+            search_projection: None,
+            created_at: Some(2000),
+        });
+    }
+    storage.replace_conversation(&conversation).unwrap();
+    let embeddings = conversation
+        .messages
+        .iter()
+        .map(|m| EmbeddingWrite {
+            message_id: &m.id,
+            vector: &[127, 0],
+            norm: 127.0,
+        })
+        .collect::<Vec<_>>();
+    storage
+        .replace_embeddings(semantic::embedding_generation(), &embeddings)
+        .unwrap();
+    storage.commit_writer().unwrap();
+    let filter = crate::search_filter::Filter::All(vec![
+        crate::search_filter::Filter::Node(vec!["local-node".into()]),
+        crate::search_filter::Filter::Role(vec!["assistant".into()]),
+        crate::search_filter::Filter::Project(vec!["/work/o'reilly".into()]),
+        crate::search_filter::Filter::Repository(vec!["repo://alpha".into()]),
+        crate::search_filter::Filter::After(2),
+        crate::search_filter::Filter::Before(3),
+    ]);
+    filter.validate().unwrap();
+    let scope = crate::search_filter::Scope {
+        filter,
+        node: "local-node".into(),
+    };
+    let (hits, _) = semantic::local_candidates(
+        &storage,
+        semantic::embedding_generation(),
+        "hello",
+        &[127.0, 0.0],
+        None,
+        None,
+        Some(&scope),
+    )
+    .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, "message-60");
+    assert!(hits[0].lexical_score.is_some() && hits[0].semantic_score.is_some());
+    assert_eq!(
+        storage
+            .search_filtered("hello", 1, None, None, Some(&scope))
+            .unwrap()[0]
+            .id,
+        "message-60"
     );
 }
 

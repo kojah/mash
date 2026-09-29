@@ -222,15 +222,16 @@ impl Storage {
         self.connection
             .execute(
                 "INSERT INTO conversations(
-                    id, provider, source_path, title, created_at, updated_at, source_fingerprint
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    id, provider, source_path, title, created_at, updated_at, source_fingerprint, project, repository
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                  ON CONFLICT(id) DO UPDATE SET
                     provider = excluded.provider,
                     source_path = excluded.source_path,
                     title = excluded.title,
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at,
-                    source_fingerprint = excluded.source_fingerprint",
+                    source_fingerprint = excluded.source_fingerprint,
+                    project = excluded.project, repository = excluded.repository",
                 params![
                     conversation.id,
                     conversation.provider,
@@ -239,6 +240,8 @@ impl Storage {
                     conversation.created_at,
                     conversation.updated_at,
                     source_fingerprint,
+                    conversation.project,
+                    conversation.repository,
                 ],
             )
             .map_err(AppError::database)?;
@@ -676,6 +679,14 @@ fn conversation_fingerprint(conversation: &Conversation) -> String {
     let mut hasher = blake3::Hasher::new();
     update_hash(&mut hasher, conversation.provider);
     update_hash(&mut hasher, &conversation.id);
+    update_hash(
+        &mut hasher,
+        conversation.project.as_deref().unwrap_or_default(),
+    );
+    update_hash(
+        &mut hasher,
+        conversation.repository.as_deref().unwrap_or_default(),
+    );
     update_hash(
         &mut hasher,
         conversation.title.as_deref().unwrap_or_default(),

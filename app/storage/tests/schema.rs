@@ -2,6 +2,46 @@ use super::*;
 
 use rusqlite::params;
 
+#[test]
+fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("upgrade.sqlite3");
+    let mut storage = Storage::open_writer(&path).unwrap();
+    let conversation = conversation("hello metadata upgrade");
+    storage.replace_conversation(&conversation).unwrap();
+    storage
+        .replace_embeddings(
+            "fixture-generation",
+            &[EmbeddingWrite {
+                message_id: &conversation.messages[0].id,
+                vector: &[127, 0],
+                norm: 127.0,
+            }],
+        )
+        .unwrap();
+    storage
+        .record_source_checkpoint("codex", "/tmp/old.jsonl", 10, 20)
+        .unwrap();
+    storage.commit_writer().unwrap();
+    storage.connection.execute_batch("ALTER TABLE conversations DROP COLUMN project; ALTER TABLE conversations DROP COLUMN repository; PRAGMA user_version=14;").unwrap();
+    drop(storage);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 1);
+    assert_eq!(storage.embedding_count("fixture-generation").unwrap(), 1);
+    assert!(
+        !storage
+            .source_checkpoint_matches("codex", "/tmp/old.jsonl", 10, 20)
+            .unwrap()
+    );
+    let metadata: (Option<String>, Option<String>) = storage
+        .connection
+        .query_row("SELECT project,repository FROM conversations", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(metadata, (None, None));
+}
+
 const VERSION_SEVEN_SCHEMA_FIXTURE: &str = "CREATE TABLE conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (provider IN (
@@ -178,7 +218,7 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
                 |row| row.get::<_, i64>(0),
             )
             .expect("supported checkpoint count"),
-        1
+        0
     );
     assert_eq!(
         storage

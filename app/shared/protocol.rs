@@ -82,6 +82,7 @@ pub(super) struct Search {
     pub days: Option<u32>,
     #[serde(default)]
     pub exclude_self: bool,
+    pub filter: Option<crate::search_filter::Filter>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

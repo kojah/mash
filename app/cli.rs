@@ -63,10 +63,8 @@ enum Command {
         query: String,
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        #[arg(long)]
-        provider: Option<String>,
-        #[arg(long)]
-        days: Option<u32>,
+        #[command(flatten)]
+        filters: Box<crate::search_filter::Arguments>,
         /// Query only the shared index (including this node).
         #[arg(long)]
         shared: bool,
@@ -333,12 +331,16 @@ async fn dispatch(
         Command::Search {
             query,
             limit,
-            provider,
-            days,
+            filters,
             shared: use_shared,
             local: use_local,
         } => {
-            let provider = normalize_provider_filter(provider.as_deref())?;
+            let filters = filters.resolve(
+                configuration
+                    .shared
+                    .as_ref()
+                    .map_or("local", |c| c.node_id.as_str()),
+            )?;
             if use_shared || (!use_local && configuration.shared.is_some()) {
                 let (results, shared_error) = shared::search(
                     required_shared(configuration)?,
@@ -347,7 +349,7 @@ async fn dispatch(
                     configuration.embeddings.as_ref(),
                     &query,
                     limit,
-                    (provider, days),
+                    &filters,
                 )
                 .await?;
                 Ok(Response::Search(SearchResponse {
@@ -362,7 +364,7 @@ async fn dispatch(
                 let models = models.to_path_buf();
                 let embeddings = configuration.embeddings.clone();
                 crate::blocking(move || {
-                    local_search(&database, &models, embeddings, query, limit, provider, days)
+                    local_search(&database, &models, embeddings, query, limit, &filters)
                         .map(Response::Search)
                 })
                 .await
@@ -629,10 +631,8 @@ fn local_search(
     embeddings_config: Option<semantic::remote::Configuration>,
     query: String,
     limit: usize,
-    provider: Option<&str>,
-    days: Option<u32>,
+    filters: &crate::search_filter::Scope,
 ) -> Result<SearchResponse, AppError> {
-    let provider = normalize_provider_filter(provider)?;
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_installed()?;
     let storage = Storage::open_existing(database_path)?;
@@ -647,14 +647,14 @@ fn local_search(
     let mut backend = models.load()?.ok_or_else(|| {
         AppError::model("semantic models are not installed; run `mash models install`")
     })?;
-    let results = semantic::hybrid_search(
+    let results = semantic::hybrid_search_filtered(
         &models.generation(),
         &storage,
         &mut backend,
         &query,
         limit,
-        provider,
-        days,
+        (None, None),
+        Some(filters),
     )?;
     Ok(SearchResponse {
         query,
@@ -663,17 +663,6 @@ fn local_search(
         shared: false,
         shared_error: None,
     })
-}
-
-fn normalize_provider_filter(provider: Option<&str>) -> Result<Option<&'static str>, AppError> {
-    match provider {
-        None => Ok(None),
-        Some("claude-code") => Ok(Some("claude-code")),
-        Some("codex") => Ok(Some("codex")),
-        Some(provider) => Err(AppError::usage(format!(
-            "unsupported provider filter: {provider}"
-        ))),
-    }
 }
 
 fn resolve_index_options(

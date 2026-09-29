@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 14;
+pub(super) const SCHEMA_VERSION: i64 = 15;
 
 const SCHEMA: &str = r"
 CREATE TABLE IF NOT EXISTS shared_publication (
@@ -152,6 +152,13 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     purge_unsupported_providers(&transaction)?;
     if version < 11 || !provider_schema_is_current(&transaction)? {
         rebuild_provider_schema(&transaction)?;
+    }
+    add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
+    add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
+    if version < 15 {
+        transaction
+            .execute("DELETE FROM source_checkpoints", [])
+            .map_err(AppError::database)?;
     }
     if version < 8 {
         transaction

@@ -797,22 +797,23 @@ fn count_embeddings(count: usize) -> Result<u64, AppError> {
     u64::try_from(count).map_err(|_| AppError::internal("too many embeddings"))
 }
 
-pub(crate) fn hybrid_search(
+pub(crate) fn hybrid_search_filtered(
     generation: &str,
     storage: &Storage,
     backend: &mut Backend,
     query: &str,
     limit: usize,
-    provider: Option<&str>,
-    days: Option<u32>,
+    legacy: (Option<&str>, Option<u32>),
+    filters: Option<&crate::search_filter::Scope>,
 ) -> Result<Vec<SearchHit>, AppError> {
-    let lexical = storage.search(query, CANDIDATE_LIMIT, provider, days)?;
+    let (provider, days) = legacy;
+    let lexical = storage.search_filtered(query, CANDIDATE_LIMIT, provider, days, filters)?;
     let query_vector = backend
         .embed(&[query])?
         .pop()
         .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
     let query_vector = quantize_vector(&query_vector);
-    let semantic = storage.semantic_chunks(generation, provider, days)?;
+    let semantic = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
     let ranked = rank_quantized(&query_vector, &semantic, CANDIDATE_LIMIT);
     if ranked.is_empty() {
         return Ok(lexical.into_iter().take(limit).collect());
@@ -894,10 +895,11 @@ pub(crate) fn local_candidates(
     vector: &[f64],
     provider: Option<&str>,
     days: Option<u32>,
+    filters: Option<&crate::search_filter::Scope>,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
-    let lexical = storage.search(query, CANDIDATE_LIMIT, provider, days)?;
+    let lexical = storage.search_filtered(query, CANDIDATE_LIMIT, provider, days, filters)?;
     let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
-    let chunks = storage.semantic_chunks(generation, provider, days)?;
+    let chunks = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
     let ranked = rank_quantized(&quantize_vector(&vector), &chunks, CANDIDATE_LIMIT);
     let rowids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
     let mut semantic = storage.search_hits(&rowids)?;

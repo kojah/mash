@@ -99,6 +99,7 @@ impl Storage {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn search(
         &self,
         query: &str,
@@ -106,14 +107,26 @@ impl Storage {
         provider: Option<&str>,
         days: Option<u32>,
     ) -> Result<Vec<SearchHit>, AppError> {
+        self.search_filtered(query, limit, provider, days, None)
+    }
+
+    pub(crate) fn search_filtered(
+        &self,
+        query: &str,
+        limit: usize,
+        provider: Option<&str>,
+        days: Option<u32>,
+        filters: Option<&crate::search_filter::Scope>,
+    ) -> Result<Vec<SearchHit>, AppError> {
         if query.trim().is_empty() {
             return Err(AppError::usage("search query must not be empty"));
         }
         let limit = i64::try_from(limit.min(1_000)).unwrap_or(1_000);
         let cutoff = cutoff_timestamp(days)?;
+        let predicate = filters.map_or_else(|| "TRUE".to_owned(), |f| f.filter.sql(Some(&f.node)));
         let mut statement = self
             .connection
-            .prepare(
+            .prepare(&format!(
                 "SELECT m.id, m.conversation_id, c.provider, m.role, m.content,
                         bm25(message_fts) AS lexical_score
                    FROM message_fts
@@ -122,9 +135,10 @@ impl Storage {
                   WHERE message_fts MATCH ?1
                     AND (?2 IS NULL OR c.provider = ?2)
                     AND (?3 IS NULL OR m.created_at >= ?3)
+                    AND ({predicate})
                   ORDER BY lexical_score, m.id
-                  LIMIT ?4",
-            )
+                  LIMIT ?4"
+            ))
             .map_err(AppError::database)?;
         let rows = statement
             .query_map(params![query, provider, cutoff, limit], |row| {

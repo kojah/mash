@@ -59,7 +59,7 @@ fn seed_readiness_database(path: &Path, search_projection: Option<&str>) {
         .execute_batch(
             "CREATE TABLE conversations (
                 id TEXT PRIMARY KEY, provider TEXT NOT NULL, source_path TEXT NOT NULL UNIQUE,
-                title TEXT, created_at INTEGER, updated_at INTEGER,
+                title TEXT, created_at INTEGER, updated_at INTEGER, project TEXT, repository TEXT,
                 source_fingerprint TEXT NOT NULL DEFAULT ''
              );
              CREATE TABLE messages (
@@ -101,7 +101,7 @@ fn seed_readiness_database(path: &Path, search_projection: Option<&str>) {
              INSERT INTO derived_state VALUES (1, 0, NULL);
              INSERT INTO conversations(id, provider, source_path)
                 VALUES ('session', 'codex', '/tmp/session.jsonl');
-             PRAGMA user_version = 14;",
+             PRAGMA user_version = 15;",
         )
         .expect("readiness schema");
     connection
@@ -903,7 +903,6 @@ fn benchmark_real_corpus_semantic_generation() {
 #[test]
 fn ssh_options_are_rejected_and_shared_access_requires_configuration() {
     for args in [
-        vec!["search", "q", "--node", "remote"],
         vec!["view", "id", "--node", "remote"],
         vec!["search", "--federation-request"],
         vec!["view", "--federation-request"],

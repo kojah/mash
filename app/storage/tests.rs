@@ -8,6 +8,8 @@ fn conversation(content: &str) -> Conversation {
         id: "session-1".to_owned(),
         provider: "codex",
         source_path: PathBuf::from("/tmp/session-1.jsonl"),
+        project: None,
+        repository: None,
         title: Some("session".to_owned()),
         created_at: Some(1),
         updated_at: Some(2),

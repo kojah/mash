@@ -241,12 +241,29 @@ impl Storage {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn semantic_chunks(
         &self,
         generation: &str,
         provider: Option<&str>,
         days: Option<u32>,
     ) -> Result<SemanticChunks, AppError> {
+        self.semantic_chunks_filtered(generation, provider, days, None)
+    }
+
+    pub(crate) fn semantic_chunks_filtered(
+        &self,
+        generation: &str,
+        provider: Option<&str>,
+        days: Option<u32>,
+        filters: Option<&crate::search_filter::Scope>,
+    ) -> Result<SemanticChunks, AppError> {
+        let filters = filters.filter(|f| !matches!(&f.filter, crate::search_filter::Filter::All(children) if children.is_empty()));
+        let allowed = filters.map(|f| {
+            let predicate = f.filter.sql(Some(&f.node));
+            let mut statement = self.connection.prepare(&format!("SELECT m.rowid FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE {predicate}")).map_err(AppError::database)?;
+            statement.query_map([], |r| r.get::<_, i64>(0)).map_err(AppError::database)?.collect::<Result<std::collections::HashSet<_>, _>>().map_err(AppError::database)
+        }).transpose()?;
         let cutoff = cutoff_timestamp(days)?;
         let requested_provider = provider.map(provider_code).transpose()?;
         let mut statement = self
@@ -318,8 +335,10 @@ impl Storage {
             let eligible = providers
                 .iter()
                 .zip(&created_ats)
-                .map(|(stored_provider, created_at)| {
-                    requested_provider.is_none_or(|wanted| wanted == *stored_provider)
+                .zip(&message_rowids)
+                .map(|((stored_provider, created_at), rowid)| {
+                    allowed.as_ref().is_none_or(|ids| ids.contains(rowid))
+                        && requested_provider.is_none_or(|wanted| wanted == *stored_provider)
                         && cutoff.is_none_or(|minimum| {
                             *created_at != MISSING_CREATED_AT && *created_at >= minimum
                         })

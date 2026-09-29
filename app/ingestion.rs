@@ -46,6 +46,8 @@ pub(crate) struct Conversation {
     pub(crate) id: String,
     pub(crate) provider: &'static str,
     pub(crate) source_path: PathBuf,
+    pub(crate) project: Option<String>,
+    pub(crate) repository: Option<String>,
     pub(crate) title: Option<String>,
     pub(crate) created_at: Option<i64>,
     pub(crate) updated_at: Option<i64>,
@@ -813,6 +815,8 @@ fn parse_jsonl(
     let mut malformed_records = 0;
     let mut messages = Vec::new();
     let mut session_id = None;
+    let mut project = None;
+    let mut repository = None;
     for line in BufReader::new(file).lines() {
         let line = line.map_err(AppError::io)?;
         if line.trim().is_empty() {
@@ -824,6 +828,7 @@ fn parse_jsonl(
             malformed_records += 1;
             continue;
         };
+        capture_metadata(&raw, &mut project, &mut repository);
         if provider == "codex"
             && session_id.is_none()
             && raw.get("type").and_then(Value::as_str) == Some("session_meta")
@@ -883,6 +888,8 @@ fn parse_jsonl(
             id,
             provider,
             source_path: path.to_path_buf(),
+            repository: repository.or_else(|| project.as_deref().and_then(repository_origin)),
+            project,
             title,
             created_at,
             updated_at,
@@ -890,6 +897,53 @@ fn parse_jsonl(
         }),
         malformed_records,
     })
+}
+
+fn capture_metadata(raw: &Value, project: &mut Option<String>, repository: &mut Option<String>) {
+    let meta = if raw.get("type").and_then(Value::as_str) == Some("session_meta") {
+        raw.get("payload").unwrap_or(raw)
+    } else {
+        raw
+    };
+    if project.is_none() {
+        *project = meta
+            .get("cwd")
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .map(str::to_owned);
+    }
+    if repository.is_none() {
+        *repository = meta
+            .get("git")
+            .and_then(|v| v.get("repository_url"))
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .map(str::to_owned);
+    }
+}
+
+fn repository_origin(project: &str) -> Option<String> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Option<String>>>,
+    > = std::sync::OnceLock::new();
+    let mut cache = CACHE.get_or_init(Default::default).lock().ok()?;
+    cache
+        .entry(project.to_owned())
+        .or_insert_with(|| {
+            if !Path::new(project).is_absolute() {
+                return None;
+            }
+            let output = std::process::Command::new("git")
+                .args(["-C", project, "config", "--get", "remote.origin.url"])
+                .output()
+                .ok()?;
+            if !output.status.success() {
+                return None;
+            }
+            let url = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+            (!url.is_empty()).then_some(url)
+        })
+        .clone()
 }
 
 fn flatten_content(value: &Value) -> Option<String> {
@@ -1002,6 +1056,36 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn session_metadata_keeps_first_project_and_logged_repository() {
+        let mut project = None;
+        let mut repository = None;
+        capture_metadata(
+            &serde_json::json!({"type":"session_meta","payload":{"cwd":"/work/project","git":{"repository_url":"https://example.test/team/repo.git"}}}),
+            &mut project,
+            &mut repository,
+        );
+        capture_metadata(
+            &serde_json::json!({"cwd":"/work/later","git":{"repository_url":"different"}}),
+            &mut project,
+            &mut repository,
+        );
+        assert_eq!(project.as_deref(), Some("/work/project"));
+        assert_eq!(
+            repository.as_deref(),
+            Some("https://example.test/team/repo.git")
+        );
+        let mut project = None;
+        let mut repository = None;
+        capture_metadata(
+            &serde_json::json!({"cwd":"/work/claude"}),
+            &mut project,
+            &mut repository,
+        );
+        assert_eq!(project.as_deref(), Some("/work/claude"));
+        assert_eq!(repository, None);
+    }
+
     fn write_claude_session(path: &Path, session: &str, message: &str) {
         fs::write(
             path,
@@ -1022,6 +1106,8 @@ mod tests {
             id: id.to_owned(),
             provider,
             source_path,
+            project: None,
+            repository: None,
             title: None,
             created_at: None,
             updated_at: None,
@@ -1218,6 +1304,8 @@ mod tests {
                 id: "old-session".to_owned(),
                 provider: "claude-code",
                 source_path: missing_source,
+                project: None,
+                repository: None,
                 title: None,
                 created_at: None,
                 updated_at: None,
