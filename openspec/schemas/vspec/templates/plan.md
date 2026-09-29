@@ -1,6 +1,10 @@
+---
+schema_version: 1
+status: proposed
+planner: planning-base
+plan_review: questions
+---
 # <!-- Change name --> Delivery Plan
-
-Status: proposed
 
 ## Scope
 
@@ -28,9 +32,9 @@ Status: proposed
 
 ## Delivery Plan
 
-<!-- PH-n units with their dependency edges, ready set, and observable exits. Use
-one `- [ ]` progress item per bounded phase, integration gate, and final
-consolidation unit; apply updates these checkboxes in place. -->
+<!-- Approved delivery units, dependency edges, constraints, and observable
+exits in the selected planner's structure. This document is durable intent,
+not an execution-progress record. -->
 
 ## Traceability and Evidence Assignment
 

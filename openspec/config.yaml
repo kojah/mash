@@ -1,9 +1,7 @@
 schema: vspec
 
 context: |
-  Implementation language: Rust.
   Native test framework and runner: cargo nextest 0.9.143.
-  Veritas evidence producer: rust-test (discovery); nextest executes tests.
   Configured agent hosts: Codex and Claude Code.
   Veritas access mode: project-bound CLI fallback via vtas until host reload
   exposes the project-scoped MCP server.
@@ -15,6 +13,9 @@ context: |
   Test execution uses cargo nextest run for parallelism; cargo test remains
   only for doctests or cases nextest cannot execute.
 
+  Workflow skills: packaged VSpec plugin
+  VSpec settings: vspec.yaml
+  Veritas configuration: owned by vtas
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.

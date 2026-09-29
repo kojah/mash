@@ -24,11 +24,17 @@ artifacts:
       after `vtas --project <absolute-project-root> status --json` succeeds.
       Record access mode in project context. Stop only when neither path works.
 
-      Create a concise proposal explaining WHY this change exists.
+      Invoke `draft-spec` to create or revise proposal.md. Treat this change's
+      proposal path and the requirements below as that workflow's output
+      contract; do not create a separate requirements artifact.
 
       Name every new or modified OpenSpec capability. Keep implementation
       choices out of this artifact. Record observable success and explicit
-      non-goals so later artifacts cannot grow scope silently.
+      non-goals so later artifacts cannot grow scope silently. Inspect
+      `openspec/product/README.md` and `openspec/architecture/README.md` plus
+      linked current documents. Identify product areas and architecture systems
+      whose canonical current state may need reconciliation after acceptance;
+      do not copy that current state into proposal.md.
     requires: []
 
   - id: specs
@@ -48,7 +54,9 @@ artifacts:
       requirement uses `### Requirement:` and has at least one testable
       `#### Scenario:` using WHEN and THEN. MODIFIED requirements contain the
       complete replacement block. Specs own observable behavior, not internal
-      design or execution steps.
+      design, product goals, architecture descriptions, change history, or
+      execution steps. Preserve `specs/<capability>/spec.md`; capability
+      directory name is stable OpenSpec identity.
     requires:
       - proposal
 
@@ -70,6 +78,10 @@ artifacts:
       Record only material architecture decisions, alternatives, ownership
       boundaries, dependency direction, risks, migration, and rollback. Do not
       restate requirements. Any new observable guarantee belongs back in specs.
+      Identify accepted product-area and architecture-system documents that
+      implementation must reconcile. When change has no architecture delta,
+      state that briefly instead of inventing design. Keep temporal rationale
+      here; do not create a separate decision log.
       Record the approved language, test framework, evidence producer, and any
       bridge in Tooling Compatibility. Resolve questions that would change
       behavior, architecture, delivery decomposition, or evidence support
@@ -79,9 +91,16 @@ artifacts:
 
   - id: plan
     generates: plan.md
-    description: Veritas delivery plan with components, phases, dependency order, and proof gates
-    template: plan.md
+    description: In-house durable delivery intent and proof expectations
     instruction: |
+      Enter this artifact only through `vspec plan --change <name>` after
+      `vspec review` records the current behavioral revision. Drafting must
+      leave plan.md absent. VSpec must not create or seed plan.md: it reports
+      the destination, and `create-implementation-plan` creates it using a
+      right-sized structure. Once present, the plan
+      command inspects this durable artifact; `vspec start` only consumes an
+      approved result and never creates or revises it.
+
       Use Veritas itself as the planning-readiness gate. Do not create or
       maintain a separate evidence-readiness artifact.
 
@@ -108,20 +127,37 @@ artifacts:
       a `[[coverage.exclude]]` entry carrying the claim and required `reason`;
       exclusions grant no coverage, proof, or approval.
 
-      Invoke `create-implementation-plan` only for delivery that needs a
-      durable phase plan. Direct or validation-only work may proceed from the
-      reviewed contract and record proof at completion. Any resulting plan must
-      preserve Veritas as the completion gate and must not schedule work that
-      pretends an excluded non-falsifiable claim has runnable proof.
+      Use `create-implementation-plan` to author or revise this change's
+      durable plan.md. The skill consumes the reviewed contract, settled
+      conversation decisions, repository seams and learnings, current Veritas
+      state, and conditional external research. It may draw on its packaged
+      light authoring template, but must adapt, combine, reorder, or omit
+      sections rather than treating that template as a validation schema. It
+      owns the Markdown structure; VSpec requires only a nonempty regular file
+      and imposes no frontmatter, checklist, phase-DAG, or runtime-scheduling
+      syntax.
 
-      Redirect its approved output into this change's plan.md. Do not write a
-      second project-level plan. The plan must consume proposal, specs, design,
-      current code seams, and fresh Veritas state. It owns component
-      responsibility, preservation, phase dependencies, parallel groups, risks,
-      evidence transitions, and execution progress. Include one OpenSpec-trackable
-      checkbox per bounded phase, integration gate, and final consolidation
-      unit. It must not invent behavior or architecture decisions missing from
-      specs or design.
+      Inspect the result before owner acceptance. Only
+      `vspec plan --change <name> --accept` binds acceptance to the exact
+      reviewed-contract and plan hashes. Planning findings change OpenSpec
+      plan.md, never a projected copy. Gas City performs no planning or plan
+      review.
+
+      Do not write a second project-level plan. The plan must consume proposal,
+      specs, design, current code seams, and fresh Veritas state. It owns
+      stable implementation units, component responsibility, preservation,
+      dependencies, risks, evidence transitions, and proof expectations. Its
+      structure is methodology-owned; VSpec must not require checkboxes or any
+      other progress-marker form. It must preserve Veritas as the completion gate, must
+      not pretend an excluded non-falsifiable claim has runnable proof, and must
+      not invent behavior or architecture decisions missing from specs or
+      design. When accepted scope changes product requirements or architecture,
+      include explicit work to update each affected
+      `openspec/product/<area>.md` or `openspec/architecture/<system>.md` and
+      its README index. Never schedule automatic textual merging. Do not create
+      `tasks.md`, `spec-requirements.md`,
+      `behavioral-test-requirements.md`, `discovery.md`, or `DECISIONS.md`
+      as shadow gates.
     requires:
       - specs
       - design
@@ -130,18 +166,28 @@ apply:
   requires: [plan]
   tracks: plan.md
   instruction: |
-    Read plan.md, then invoke `autonomous-software-development` for
+    Require nonempty plan.md plus current checkout-local owner acceptance
+    recorded by `vspec plan --accept` for the exact contract and plan hashes.
+    Read the accepted plan, then invoke `autonomous-software-development` for
     implementation.
 
-    Execute one dependency-ready phase at a time. Before each bounded phase,
-    use `plan-implementation-phase` for a just-in-time execution brief;
-    implement through `implement-plan-phase`. Follow configured
-    isolation, review, verification, and checkpoint policies. Mark a plan.md
-    checkbox complete only after its phase exit and selected proof gates pass.
+    Enter execution through `vspec start --change <name>` or
+    `vspec start --change <name> --swarm`. Direct execution consumes the
+    approved plan without creating phase briefs. Swarm execution continues
+    through Gas City `build-from-decompose`; Gas City owns task decomposition,
+    readiness, scheduling, assignment, retry, and dynamic reprioritization.
+    Follow configured isolation, review, verification, and checkpoint policies.
+    Never interpret or mutate plan.md checkboxes or other progress markers.
+    Direct execution progress belongs to VSpec run state; swarm progress belongs
+    to Gas City.
     Completion requires current Veritas evidence for the chosen proof policy;
     implementation progress itself does not require a separate coverage model
     or acceptance-test-authoring ceremony.
 
-    OpenSpec tracks progress. Veritas phase state and evidence determine
-    completion. Missing Veritas capabilities or stale plan inputs stop apply;
-    never degrade silently to generic checkbox execution.
+    Veritas evidence determines completion independently from executor progress.
+    Missing Veritas capabilities or stale plan inputs stop apply; never degrade
+    silently to generic plan-text execution. Before archive,
+    require every planned product and architecture reconciliation complete.
+    OpenSpec archive owns capability delta promotion and temporal history;
+    product and architecture prose changes remain explicit delivery edits, not
+    automatic archive merges.
