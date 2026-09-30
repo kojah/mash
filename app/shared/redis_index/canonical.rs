@@ -134,6 +134,7 @@ pub(super) fn start(loaded: &mut Loaded, input: &Start) -> Result<(i64, bool), A
             counts: Counts::default(),
             last_synced_at: None,
             last_updated_at: None,
+            metadata_ready: false,
         });
     }
     Ok((revision, input.snapshot && revision == accepted))

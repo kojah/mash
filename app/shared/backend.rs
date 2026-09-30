@@ -488,6 +488,7 @@ pub(super) async fn view(
     node: &str,
     id: &str,
     context: u32,
+    representation: crate::storage::MessageContent,
 ) -> Result<Vec<Message>, AppError> {
     let mut connection = connection(pool).await?;
     let client = transaction(&mut connection, config).await?;
@@ -502,7 +503,10 @@ pub(super) async fn view(
             id: row.id,
             ordinal: row.ordinal,
             role: row.role.into(),
-            content: row.content,
+            content: match representation {
+                crate::storage::MessageContent::Canonical => row.content,
+                crate::storage::MessageContent::SearchProjection => row.projection,
+            },
             created_at: row.created_at,
         })
         .collect())
@@ -736,7 +740,8 @@ pub(super) async fn search(
     identity: &Identity,
     input: Search,
 ) -> Result<super::protocol::Candidates, AppError> {
-    if input.query.trim().is_empty()
+    crate::search_query::validate(&input.query)?;
+    if !crate::search_query::has_terms(&input.query)
         || input.query.len() > 16384
         || !valid_vector(&input.vector, identity.dimensions)
         || input.generation != identity.generation

@@ -176,6 +176,11 @@ pub(super) struct View {
     pub node_id: String,
     pub id: String,
     pub context: u32,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::storage::MessageContent::is_canonical"
+    )]
+    pub content: crate::storage::MessageContent,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

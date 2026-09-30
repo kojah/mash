@@ -87,6 +87,22 @@ pub(crate) struct Message {
     pub(crate) created_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum MessageContent {
+    #[default]
+    Canonical,
+    SearchProjection,
+}
+
+impl MessageContent {
+    // serde's skip_serializing_if callback takes a reference.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub(crate) fn is_canonical(&self) -> bool {
+        matches!(self, Self::Canonical)
+    }
+}
+
 pub(crate) struct SearchableMessage {
     pub(crate) id: String,
     pub(crate) content: String,

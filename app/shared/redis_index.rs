@@ -1,6 +1,7 @@
 //! Redis connection/schema setup and internal snapshot representation.
 mod canonical;
 mod fields;
+mod metadata;
 mod publish;
 mod read;
 mod response;
@@ -56,6 +57,8 @@ struct Head {
     counts: Counts,
     last_synced_at: Option<String>,
     last_updated_at: Option<String>,
+    #[serde(default)]
+    metadata_ready: bool,
 }
 #[derive(Default, Deserialize, Serialize)]
 struct Data {

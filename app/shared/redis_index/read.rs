@@ -81,7 +81,8 @@ impl Store {
         identity: &Identity,
         input: Search,
     ) -> Result<protocol::Candidates, AppError> {
-        if input.query.trim().is_empty()
+        crate::search_query::validate(&input.query)?;
+        if !crate::search_query::has_terms(&input.query)
             || input.query.len() > 16384
             || !protocol::valid_vector(&input.vector, identity.dimensions)
             || input.generation != identity.generation
@@ -194,7 +195,12 @@ impl Store {
             .query_async(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;
-        response::view(&value)
+        match input.content {
+            crate::storage::MessageContent::Canonical => response::view(&value),
+            crate::storage::MessageContent::SearchProjection => {
+                response::view_content(&value, input.content)
+            }
+        }
     }
 }
 type Documents = HashMap<(String, String), String>;

@@ -92,3 +92,13 @@ async-code compiler crash.
 ## Git
 
 Work on and push `main`; it is the repository's sole development branch.
+
+## Agent work tracking
+
+Use Beads (`bd`) for substantive work and discovered follow-ups. On a fresh clone,
+run `bd bootstrap`; then run `bd prime` for the workflow and `bd ready` for available
+tasks. Create focused issues, claim work with `bd update ID --status in_progress`,
+record dependencies with `bd dep add`, and close issues only after validation.
+Preserve existing issues. Beads uses a separate Dolt database; do not commit its
+runtime files or credentials. Before finishing work, run `bd dolt commit` and
+`bd dolt push` as well as committing and pushing the implementation.

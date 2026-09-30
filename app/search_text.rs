@@ -11,6 +11,7 @@ const CONTEXT_TAGS: &[&str] = &[
     "recommended_plugins",
     "multi_agent_role",
     "multi_agent_mode",
+    "in-app-browser-context",
 ];
 
 /// Remove known agent-injected context without matching ordinary mentions of it.
@@ -21,7 +22,15 @@ pub(crate) fn project<'a>(role: &Role, text: &'a str) -> Cow<'a, str> {
     // Skill bodies have no reliable closing delimiter. These are dedicated
     // injected messages, not arbitrary references to skills in ordinary prose.
     let trimmed = text.trim_start();
-    if trimmed.starts_with("Base directory for this skill:") {
+    if trimmed.starts_with("Base directory for this skill:")
+        || trimmed.starts_with(
+            "The following is the Codex agent history added since your last approval assessment.",
+        )
+        || trimmed.starts_with(
+            "This session is being continued from a previous conversation that ran out of context.",
+        )
+        || trimmed.starts_with("This conversation is a continuation of an earlier chat.")
+    {
         return Cow::Borrowed("");
     }
     let mut result = Cow::Borrowed(text);
@@ -107,6 +116,20 @@ pub(crate) fn title(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dedicated_review_transcripts_and_compaction_summaries_are_not_user_evidence() {
+        for text in [
+            "The following is the Codex agent history added since your last approval assessment.\nsearch authentication",
+            "This session is being continued from a previous conversation that ran out of context.\nredis",
+            "This conversation is a continuation of an earlier chat.\ncbioportal",
+            "<in-app-browser-context>automatic state</in-app-browser-context>",
+        ] {
+            assert_eq!(project(&Role::User, text).trim(), "");
+        }
+        let ordinary = "Can we remove automatic approval-review transcripts from search?";
+        assert_eq!(project(&Role::User, ordinary), ordinary);
+    }
 
     #[test]
     fn removes_context_preserves_requests_and_ordinary_mentions() {

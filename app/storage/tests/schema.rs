@@ -70,7 +70,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
     storage.commit_writer().unwrap();
     storage
         .connection
-        .execute_batch("PRAGMA user_version=15")
+        .execute_batch("PRAGMA user_version=16")
         .unwrap();
     drop(storage);
     let storage = Storage::open(&path).unwrap();
@@ -90,6 +90,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
         storage.view(&conversation.messages[0].id, 0).unwrap()[0].content,
         "preserved request"
     );
+    assert!(Storage::open_search(&path, "fixture").is_err());
 }
 
 const VERSION_SEVEN_SCHEMA_FIXTURE: &str = "CREATE TABLE conversations (

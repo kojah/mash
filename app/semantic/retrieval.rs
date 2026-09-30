@@ -45,11 +45,19 @@ pub(crate) fn hybrid_search_filtered(
     }
     let mut fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit), unit);
     let rerank_count = fused.len().min(unit.rerank_limit());
-    let rerank_ids = fused[..rerank_count]
+    let documents = fused[..rerank_count]
         .iter()
-        .map(|hit| hit.id.as_str())
-        .collect::<Vec<_>>();
-    let documents = storage.search_documents(&rerank_ids)?;
+        .map(|hit| {
+            let context = storage.view_content(
+                &hit.id,
+                2,
+                crate::storage::MessageContent::SearchProjection,
+            )?;
+            Ok(crate::search_results::contextual_document(
+                hit, query, &context,
+            ))
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
     let document_refs = documents.iter().map(String::as_str).collect::<Vec<_>>();
     let reranked = backend.rerank_search(query, &document_refs)?;
     for result in reranked {

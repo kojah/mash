@@ -3,6 +3,40 @@ use super::*;
 use std::collections::BTreeSet;
 
 #[test]
+fn literal_search_handles_urls_hyphens_questions_and_phrases() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("mash.sqlite3")).unwrap();
+    storage
+        .replace_conversation(&conversation_with_messages(&[
+            (
+                "url",
+                "https://github.com/cBioPortal/cbioportal-core/pull/180",
+            ),
+            ("model", "use voyage-code-4"),
+            ("question", "why is Redis faster than PostgreSQL"),
+            ("phrase", "one shared index per node group"),
+            ("separated", "one shared separate index per node group"),
+        ]))
+        .unwrap();
+    storage.commit_writer().unwrap();
+    for (query, expected) in [
+        (
+            "https://github.com/cBioPortal/cbioportal-core/pull/180",
+            "url",
+        ),
+        ("voyage-code-4", "model"),
+        ("why is Redis faster than PostgreSQL?", "question"),
+        ("\"shared index\"", "phrase"),
+        ("\"shared index", "phrase"),
+    ] {
+        let hits = storage.search(query, 10, None, None).unwrap();
+        assert_eq!(hits.len(), 1, "query {query}");
+        assert_eq!(hits[0].id, expected);
+    }
+    assert!(storage.search("!!!", 10, None, None).is_err());
+}
+
+#[test]
 fn full_rebuild_is_idempotent() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let mut storage = Storage::open(&directory.path().join("mash.sqlite3")).expect("open database");

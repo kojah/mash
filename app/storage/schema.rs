@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 16;
+pub(super) const SCHEMA_VERSION: i64 = 17;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -70,10 +70,15 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     }
     add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
     add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
-    if version < 16 {
+    if version < 17 {
         transaction
             .execute("DELETE FROM source_checkpoints", [])
             .map_err(AppError::database)?;
+    }
+    if version == 16 {
+        transaction.execute_batch(
+            "UPDATE derived_state SET search_dirty = 1, semantic_ready_generation = NULL WHERE singleton = 1;"
+        ).map_err(AppError::database)?;
     }
     if version < 8 {
         transaction

@@ -169,9 +169,19 @@ pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit
 /// Lexical evidence remains eligible even outside the model budget. Semantic-only
 /// candidates must have been evaluated by the reranker before becoming excerpts.
 /// An unscored nearest neighbour is not evidence. Raw logits are not calibrated:
-/// negative scores can still describe useful matches, so do not threshold them.
+/// negative scores can still describe useful matches. The joint cosine/logit
+/// gate rejects weak neighbours while preserving the audited negative-logit
+/// paraphrases; these are model-specific heuristics, not confidence probabilities.
 fn qualifies_as_evidence(hit: &SearchHit) -> bool {
-    hit.lexical_score.is_some() || hit.rerank_score.is_some_and(f32::is_finite)
+    hit.lexical_score.is_some()
+        || hit.rerank_score.is_some_and(|score| {
+            score.is_finite()
+                && (score > 0.0
+                    || (score > -2.5
+                        && hit
+                            .semantic_score
+                            .is_some_and(|similarity| similarity >= 0.30)))
+        })
 }
 
 pub(crate) fn collect(
@@ -180,14 +190,25 @@ pub(crate) fn collect(
     limit: usize,
     query: &str,
 ) -> Results {
+    let exact_reference = crate::search_query::has_reference(query);
     if matches!(unit, SearchUnit::Messages) {
-        return Results::Messages(eligible(hits).into_iter().take(limit.min(1000)).collect());
+        return Results::Messages(
+            eligible(hits)
+                .into_iter()
+                .filter(|hit| exact_reference || qualifies_as_evidence(hit))
+                .filter(|hit| crate::search_query::matches_reference(&hit.content, query))
+                .take(limit.min(1000))
+                .collect(),
+        );
     }
     let mut threads = Vec::<ThreadHit>::new();
     let mut groups = HashMap::new();
     for (rank, hit) in deduplicate(hits, unit)
         .into_iter()
-        .filter(qualifies_as_evidence)
+        // A literal reference is independently verifiable even outside the
+        // bounded model budget; its exact number is checked below.
+        .filter(|hit| exact_reference || qualifies_as_evidence(hit))
+        .filter(|hit| crate::search_query::matches_reference(&hit.content, query))
         .enumerate()
     {
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
@@ -266,11 +287,39 @@ pub(crate) fn rerank_document<'a>(content: &'a str, query: &str) -> std::borrow:
     }
 }
 
+/// Neighbours inform follow-up intent but never become the displayed anchor.
+/// Only searchable projections enter inference, with a fixed character budget.
+pub(crate) fn contextual_document(
+    hit: &SearchHit,
+    query: &str,
+    messages: &[crate::storage::Message],
+) -> String {
+    let mut document = format!(
+        "Matched message: {}",
+        evidence_window(&hit.content, query, 700)
+    );
+    for message in messages
+        .iter()
+        .filter(|message| message.id != hit.id)
+        .take(4)
+    {
+        let text = crate::search_text::project(&message.role, &message.content);
+        if text.trim().is_empty() {
+            continue;
+        }
+        document.push_str("\nNearby ");
+        document.push_str(message.role.as_str());
+        document.push_str(" message: ");
+        document.push_str(&evidence_window(&text, query, 400));
+    }
+    document
+}
+
 fn evidence_window(content: &str, query: &str, length: usize) -> String {
     let offset = query
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.len() >= 3 && word.is_ascii())
-        .filter(|word| !is_query_stop_word(word))
+        .filter(|word| !crate::search_query::is_stop_word(word))
         .filter_map(|word| {
             content
                 .as_bytes()
@@ -291,17 +340,6 @@ fn evidence_window(content: &str, query: &str, length: usize) -> String {
         snippet.push('…');
     }
     snippet
-}
-
-fn is_query_stop_word(word: &str) -> bool {
-    const WORDS: &[&str] = &[
-        "about", "and", "are", "can", "could", "did", "does", "for", "from", "how", "into", "our",
-        "that", "the", "their", "there", "these", "this", "was", "were", "what", "when", "where",
-        "which", "with", "would", "you", "your",
-    ];
-    WORDS
-        .iter()
-        .any(|candidate| word.eq_ignore_ascii_case(candidate))
 }
 
 #[cfg(test)]

@@ -16,5 +16,5 @@ SELECT COALESCE(search_projection,content) AS content FROM messages WHERE id=?1;
 SELECT conversation_id,ordinal FROM messages WHERE id=?1;
 
 -- name: ViewMessages :many
-SELECT id,ordinal,role,content,created_at FROM messages
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM messages
 WHERE conversation_id=sqlc.arg(conversation_id) AND ordinal>=sqlc.arg(first_ordinal) AND ordinal<=sqlc.arg(last_ordinal) ORDER BY ordinal;

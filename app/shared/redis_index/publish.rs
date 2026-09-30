@@ -274,6 +274,7 @@ impl Store {
             counts: counts.clone(),
             last_synced_at: previous.and_then(|h| h.last_synced_at.clone()),
             last_updated_at: previous.and_then(|h| h.last_updated_at.clone()),
+            metadata_ready: !reuse || previous.is_some_and(|h| h.metadata_ready),
         };
         let mut command = redis::cmd("EVAL");
         command

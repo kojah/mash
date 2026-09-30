@@ -126,7 +126,15 @@ impl Store {
     ) -> Result<Vec<crate::storage::Message>, AppError> {
         match self {
             Self::Postgres(pool) => {
-                backend::view(pool, id, &input.node_id, &input.id, input.context).await
+                backend::view(
+                    pool,
+                    id,
+                    &input.node_id,
+                    &input.id,
+                    input.context,
+                    input.content,
+                )
+                .await
             }
             Self::Redis(store) => store.view(id, input).await,
         }
@@ -568,6 +576,11 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
             )
         }
     };
+    if let Store::Redis(redis) = &store {
+        for identity in identities.values() {
+            redis.repair_metadata(identity).await?;
+        }
+    }
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| AppError::configuration("could not bind HTTP listener"))?;

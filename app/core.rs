@@ -229,6 +229,7 @@ async fn dispatch(
                     "local and shared search are mutually exclusive",
                 ));
             }
+            crate::search_query::validate(&query)?;
             let filters = filters.resolve(
                 configuration
                     .shared

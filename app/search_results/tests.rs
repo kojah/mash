@@ -1,5 +1,34 @@
 use super::*;
 
+#[test]
+fn weak_semantic_neighbours_abstain_but_negative_logit_paraphrases_survive() {
+    for unit in [SearchUnit::Threads, SearchUnit::Messages] {
+        let mut useful = hit("useful", "model caching");
+        useful.lexical_score = None;
+        useful.semantic_score = Some(0.396);
+        useful.rerank_score = Some(-1.704);
+        let mut weak = hit("weak", "unrelated message");
+        weak.lexical_score = None;
+        weak.semantic_score = Some(0.253);
+        weak.rerank_score = Some(-2.958);
+        let results = collect(vec![weak, useful], unit, 5, "keep the model warm");
+        match results {
+            Results::Threads(hits) => assert_eq!(
+                hits.iter()
+                    .map(|h| h.conversation_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["useful"]
+            ),
+            Results::Messages(hits) => assert_eq!(
+                hits.iter()
+                    .map(|h| h.conversation_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["useful"]
+            ),
+        }
+    }
+}
+
 fn hit(thread: &str, id: &str) -> SearchHit {
     SearchHit {
         id: id.into(),
@@ -26,6 +55,30 @@ fn threads(hits: Vec<SearchHit>, limit: usize) -> Vec<ThreadHit> {
         panic!("threads");
     };
     results
+}
+
+#[test]
+fn explicit_references_cannot_be_replaced_by_nearby_issue_numbers() {
+    for unit in [SearchUnit::Threads, SearchUnit::Messages] {
+        let mut wrong = hit("wrong", "wrong-pr");
+        wrong.content = "review PR 183".into();
+        wrong.rerank_score = Some(3.0);
+        let mut correct = hit("correct", "correct-pr");
+        correct.content = "https://github.com/cBioPortal/cbioportal-core/pull/180".into();
+        // Exact references remain evidence outside the reranking/FTS budget.
+        correct.lexical_score = None;
+        correct.rerank_score = None;
+        match collect(vec![wrong, correct], unit, 5, "PR 180") {
+            Results::Threads(results) => {
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].conversation_id, "correct");
+            }
+            Results::Messages(results) => {
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].id, "correct-pr");
+            }
+        }
+    }
 }
 
 #[test]
@@ -99,6 +152,7 @@ fn semantic_paraphrases_and_lexical_tail_survive_without_forcing_a_full_page() {
     let mut paraphrase = hit("semantic", "login-token");
     paraphrase.lexical_score = None;
     paraphrase.rerank_score = Some(-0.3);
+    paraphrase.semantic_score = Some(0.5);
     assert_eq!(threads(vec![paraphrase], 20).len(), 1);
     let mut unknown = hit("noise", "unscored");
     unknown.lexical_score = None;
@@ -106,7 +160,7 @@ fn semantic_paraphrases_and_lexical_tail_survive_without_forcing_a_full_page() {
     else {
         panic!("messages");
     };
-    assert_eq!(results.len(), 1);
+    assert!(results.is_empty());
 }
 
 #[test]

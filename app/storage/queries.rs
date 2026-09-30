@@ -124,9 +124,12 @@ impl Storage {
         days: Option<u32>,
         filters: Option<&crate::search_filter::Scope>,
     ) -> Result<Vec<SearchHit>, AppError> {
-        if query.trim().is_empty() {
-            return Err(AppError::usage("search query must not be empty"));
+        if !crate::search_query::has_terms(query) {
+            return Err(AppError::usage(
+                "search query must contain letters or numbers",
+            ));
         }
+        let query = crate::search_query::sqlite(query);
         let limit = i64::try_from(limit.min(1_000)).unwrap_or(1_000);
         let cutoff = cutoff_timestamp(days)?;
         let predicate = filters.map_or_else(|| "TRUE".to_owned(), |f| f.filter.sql(Some(&f.node)));
@@ -204,6 +207,15 @@ impl Storage {
     }
 
     pub(crate) fn view(&self, id: &str, context: u32) -> Result<Vec<Message>, AppError> {
+        self.view_content(id, context, super::MessageContent::Canonical)
+    }
+
+    pub(crate) fn view_content(
+        &self,
+        id: &str,
+        context: u32,
+        representation: super::MessageContent,
+    ) -> Result<Vec<Message>, AppError> {
         let anchor = sql::Anchor::builder()
             .id(id)
             .build()
@@ -226,7 +238,10 @@ impl Storage {
                 id: row.id,
                 ordinal: row.ordinal,
                 role: row.role.into(),
-                content: row.content,
+                content: match representation {
+                    super::MessageContent::Canonical => row.content,
+                    super::MessageContent::SearchProjection => row.projection,
+                },
                 created_at: row.created_at,
             })
             .collect())

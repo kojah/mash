@@ -1,5 +1,11 @@
 # mash
 
+Agent work is tracked with [Beads](https://github.com/steveyegge/beads). With `bd`
+and Dolt installed, run `bd bootstrap` after cloning, then `bd prime` and `bd ready`.
+Issue history lives on a separate Dolt Git remote in this GitHub repository;
+`bd dolt commit` and `bd dolt push` persist tracking updates. Configuration is
+versioned; database files and credentials remain local.
+
 mash (Multi-Agent Search History) searches Claude Code and Codex JSONL histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
 index locally, into a shared service over HTTP, or both, with independent provider allowlists.
@@ -429,6 +435,15 @@ role, timestamp, and relevance scores. Open an excerpt with `view MESSAGE_ID
 Unix milliseconds; unknown metadata is null. Search never returns an entire
 conversation automatically.
 
+Local lexical search treats query text as literal words, including URLs, dotted
+names and hyphenated identifiers; double quotes group a lexical phrase. Punctuation
+does not become SQLite FTS syntax. Queries must contain a letter or number and
+fit within 16,384 bytes. Explicit PR/issue references require that exact reference
+in each returned excerpt/message, so `PR 180` cannot be replaced by `PR 183`
+or an incidental numeric value of 180. Use the metadata filters for Boolean scopes.
+See [the search quality audit](docs/search-audit-2026-09-30.md) for measured failures
+and remaining relevance limitations.
+
 Thread retrieval considers up to 200 lexical and 200 semantic candidates per
 index. Before reranking, it keeps at most three distinct messages per conversation
 and considers one from each conversation before second and third matches.
@@ -437,7 +452,8 @@ their score is reciprocal rank of the best qualifying message plus a bounded
 bonus for up to two additional qualifying excerpts. The bonus is smaller than
 the gap to the next message rank, so weaker matches cannot push a thread above
 one with stronger primary evidence. Scores express relative relevance, not probabilities.
-Lexical matches remain eligible outside the reranking budget. Semantic-only
+Lexical matches and verified exact PR/issue references remain eligible outside
+the reranking budget. Other semantic-only
 matches qualify only after being evaluated by the reranker; unreranked neighbours
 do not fill out thread results. Raw model logits are not calibrated probabilities,
 so a negative score alone does not disqualify a semantic paraphrase. A query may

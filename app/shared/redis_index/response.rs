@@ -178,6 +178,13 @@ pub(super) fn candidates(value: &Value, ranking: Ranking) -> Result<Vec<SearchHi
 }
 
 pub(super) fn view(value: &Value) -> Result<Vec<Message>, AppError> {
+    view_content(value, crate::storage::MessageContent::Canonical)
+}
+
+pub(super) fn view_content(
+    value: &Value,
+    content: crate::storage::MessageContent,
+) -> Result<Vec<Message>, AppError> {
     let mut conversation = None;
     let mut ordinals = HashSet::new();
     let mut ids = HashSet::new();
@@ -197,7 +204,10 @@ pub(super) fn view(value: &Value) -> Result<Vec<Message>, AppError> {
             id: message.id,
             ordinal: message.ordinal,
             role: message.role,
-            content: message.content,
+            content: match content {
+                crate::storage::MessageContent::Canonical => message.content,
+                crate::storage::MessageContent::SearchProjection => message.projection,
+            },
             created_at: message.created_at,
         });
     }

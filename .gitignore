@@ -26,3 +26,6 @@
 # Gas City
 .beads/*
 !.beads/identity.toml
+!.beads/config.yaml
+!.beads/metadata.json
+!.beads/.gitignore

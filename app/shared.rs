@@ -420,6 +420,7 @@ pub(crate) async fn view(
             node_id: node.to_owned(),
             id: id.to_owned(),
             context,
+            content: crate::storage::MessageContent::Canonical,
         },
     )
     .await
@@ -434,9 +435,7 @@ pub(crate) async fn search(
     filters: &crate::search_filter::Scope,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
     filters.filter.validate()?;
-    if query.trim().is_empty() {
-        return Err(AppError::usage("search query must not be empty"));
-    }
+    crate::search_query::validate(query)?;
     let prepared = prepare_search(local_database, models_dir, embeddings, query).await?;
     search_prepared(config, local_database, query, options, filters, prepared).await
 }
@@ -499,6 +498,8 @@ async fn search_prepared(
     let (limit, unit) = options;
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);
+    let context_database = local_database.clone();
+    let context_generation = local_generation.clone();
     let exclude_self = local_database.is_some();
     let local_query = query.to_owned();
     let local_vector = vector.clone();
@@ -552,29 +553,15 @@ async fn search_prepared(
         mut semantic,
         documents,
     } = candidates;
-    let mut documents: HashMap<_, _> = documents
-        .into_iter()
-        .map(|d| {
-            (
-                (d.node_id, d.id),
-                crate::search_text::project(&crate::role::Role::User, &d.projection).into_owned(),
-            )
-        })
-        .collect();
+    let mut documents = projected_documents(documents);
     for (hit, projection) in local_hits.iter().zip(local_documents) {
         documents.insert((String::new(), hit.id.clone()), projection);
     }
     // Older servers returned canonical history in hits. Always search and
     // display their projection, which also omits embedded tool results.
-    for hit in lexical.iter_mut().chain(&mut semantic) {
-        if let Some(projection) =
-            documents.get(&(hit.node_id.clone().unwrap_or_default(), hit.id.clone()))
-        {
-            hit.content.clone_from(projection);
-        }
-    }
+    apply_projections(lexical.iter_mut().chain(&mut semantic), &documents);
     let query = query.to_owned();
-    crate::blocking(move || {
+    let fused = crate::blocking(move || {
         let mut fused = semantic::fuse(lexical, semantic, unit);
         fused.extend(local_hits);
         fused.sort_by(|a, b| {
@@ -583,16 +570,131 @@ async fn search_prepared(
                 .then_with(|| a.node_id.cmp(&b.node_id))
                 .then_with(|| a.id.cmp(&b.id))
         });
-        let fused = rerank_combined(
-            &mut backend,
-            &query,
-            crate::search_results::diversify(fused, unit),
-            &documents,
-            (limit, unit),
-        )?;
-        Ok((fused, shared_error))
+        Ok(crate::search_results::diversify(fused, unit))
+    })
+    .await?;
+    let count = fused.len().min(unit.rerank_limit());
+    let (context, context_error) = context_documents(
+        config,
+        context_database,
+        context_generation,
+        &query,
+        &fused[..count],
+    )
+    .await?;
+    documents.extend(context);
+    crate::blocking(move || {
+        let fused = rerank_combined(&mut backend, &query, fused, &documents, (limit, unit))?;
+        Ok((fused, shared_error.or(context_error)))
     })
     .await
+}
+
+fn projected_documents(documents: Vec<protocol::Document>) -> HashMap<(String, String), String> {
+    documents
+        .into_iter()
+        .map(|d| {
+            (
+                (d.node_id, d.id),
+                crate::search_text::project(&crate::role::Role::User, &d.projection).into_owned(),
+            )
+        })
+        .collect()
+}
+
+fn apply_projections<'a>(
+    hits: impl Iterator<Item = &'a mut SearchHit>,
+    documents: &HashMap<(String, String), String>,
+) {
+    for hit in hits {
+        if let Some(projection) =
+            documents.get(&(hit.node_id.clone().unwrap_or_default(), hit.id.clone()))
+        {
+            hit.content.clone_from(projection);
+        }
+    }
+}
+
+async fn context_documents(
+    config: &SharedConfig,
+    database: Option<std::path::PathBuf>,
+    generation: String,
+    query: &str,
+    hits: &[SearchHit],
+) -> Result<(HashMap<(String, String), String>, Option<String>), AppError> {
+    use futures_util::{StreamExt, stream};
+    let local_ids = hits
+        .iter()
+        .filter(|hit| hit.node_id.is_none())
+        .map(|hit| hit.id.clone())
+        .collect::<Vec<_>>();
+    let local = crate::blocking(move || {
+        let mut contexts = HashMap::new();
+        if let Some(database) = database.filter(|_| !local_ids.is_empty()) {
+            let storage = Storage::open_search(&database, &generation)?;
+            for id in local_ids {
+                contexts.insert(
+                    (String::new(), id.clone()),
+                    storage.view_content(
+                        &id,
+                        2,
+                        crate::storage::MessageContent::SearchProjection,
+                    )?,
+                );
+            }
+        }
+        Ok(contexts)
+    });
+    let anchors = hits
+        .iter()
+        .filter_map(|hit| hit.node_id.clone().map(|node| (node, hit.id.clone())))
+        .collect::<Vec<_>>();
+    let remote = stream::iter(anchors)
+        .map(|(node, id)| {
+            let config = config.clone();
+            async move {
+                let result = post::<Vec<Message>>(
+                    &config,
+                    "view",
+                    &protocol::View {
+                        node_id: node.clone(),
+                        id: id.clone(),
+                        context: 2,
+                        content: crate::storage::MessageContent::SearchProjection,
+                    },
+                )
+                .await;
+                ((node, id), result)
+            }
+        })
+        .buffer_unordered(8)
+        .collect::<Vec<_>>();
+    let (contexts, remote) = tokio::join!(local, remote);
+    let mut contexts = contexts?;
+    let mut error = None;
+    for (key, result) in remote {
+        match result {
+            Ok(messages) => {
+                contexts.insert(key, messages);
+            }
+            Err(failure) => {
+                error.get_or_insert(failure.error.message);
+            }
+        }
+    }
+    let documents = hits
+        .iter()
+        .filter_map(|hit| {
+            let key = (hit.node_id.clone().unwrap_or_default(), hit.id.clone());
+            contexts.get(&key).map(|messages| {
+                (
+                    key,
+                    crate::search_results::contextual_document(hit, query, messages),
+                )
+            })
+        })
+        .collect();
+    Ok((documents, error))
 }
 
 fn retrieve_local_candidates(

@@ -100,6 +100,7 @@ pub struct View {
     pub ordinal: i64,
     pub role: String,
     pub content: String,
+    pub projection: String,
     pub created_at: Option<i64>,
 }
 pub struct ViewBorrowed<'a> {
@@ -107,6 +108,7 @@ pub struct ViewBorrowed<'a> {
     pub ordinal: i64,
     pub role: &'a str,
     pub content: &'a str,
+    pub projection: &'a str,
     pub created_at: Option<i64>,
 }
 impl<'a> From<ViewBorrowed<'a>> for View {
@@ -116,6 +118,7 @@ impl<'a> From<ViewBorrowed<'a>> for View {
             ordinal,
             role,
             content,
+            projection,
             created_at,
         }: ViewBorrowed<'a>,
     ) -> Self {
@@ -124,6 +127,7 @@ impl<'a> From<ViewBorrowed<'a>> for View {
             ordinal,
             role: role.into(),
             content: content.into(),
+            projection: projection.into(),
             created_at,
         }
     }
@@ -1149,7 +1153,7 @@ impl<'c, 'a, 's, C: GenericClient, T1: crate::StringSql, T2: crate::StringSql>
 pub struct ViewStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn view() -> ViewStmt {
     ViewStmt(
-        "SELECT m.id,m.ordinal,m.role,m.content,m.created_at FROM messages m JOIN messages anchor ON anchor.node_id=m.node_id AND anchor.conversation_id=m.conversation_id WHERE anchor.node_id=$1 AND anchor.id=$2 AND m.ordinal BETWEEN anchor.ordinal-$3 AND anchor.ordinal+$3 ORDER BY m.ordinal",
+        "SELECT m.id,m.ordinal,m.role,m.content,m.projection,m.created_at FROM messages m JOIN messages anchor ON anchor.node_id=m.node_id AND anchor.conversation_id=m.conversation_id WHERE anchor.node_id=$1 AND anchor.id=$2 AND m.ordinal BETWEEN anchor.ordinal-$3 AND anchor.ordinal+$3 ORDER BY m.ordinal",
         None,
     )
 }
@@ -1179,7 +1183,8 @@ impl ViewStmt {
                     ordinal: row.try_get(1)?,
                     role: row.try_get(2)?,
                     content: row.try_get(3)?,
-                    created_at: row.try_get(4)?,
+                    projection: row.try_get(4)?,
+                    created_at: row.try_get(5)?,
                 })
             },
             mapper: |it| View::from(it),

@@ -18,7 +18,7 @@ SELECT EXISTS(SELECT 1 FROM messages WHERE projection<>'' AND (:exclude_node::te
  AND (generation IS DISTINCT FROM :generation OR vector IS NULL OR vector_dims(vector)<>:dimensions)) AS incompatible;
 
 --! view : (created_at?)
-SELECT m.id,m.ordinal,m.role,m.content,m.created_at FROM messages m
+SELECT m.id,m.ordinal,m.role,m.content,m.projection,m.created_at FROM messages m
 JOIN messages anchor ON anchor.node_id=m.node_id AND anchor.conversation_id=m.conversation_id
 WHERE anchor.node_id=:node AND anchor.id=:id AND m.ordinal BETWEEN anchor.ordinal-:context AND anchor.ordinal+:context ORDER BY m.ordinal;
 

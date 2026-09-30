@@ -248,6 +248,70 @@ async fn redis_publication_rich_filters_apply_before_ranking() {
 }
 
 #[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_repairs_old_metadata_without_changing_snapshot_freshness() {
+    let service = Service::with_dimensions(false, true, 384).await;
+    assert_eq!(
+        service.upload(FIRST, &snapshot(1)).await.status(),
+        StatusCode::OK
+    );
+    let before = service.get("freshness", FIRST).await;
+    let url = std::env::var("MASH_TEST_REDIS_URL").unwrap();
+    let mut connection = redis::Client::open(url)
+        .unwrap()
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
+    let pattern = format!(
+        "mash:r:{}:message:*",
+        blake3::hash(service.group.as_bytes()).to_hex()
+    );
+    let keys: Vec<String> = redis::cmd("KEYS")
+        .arg(pattern)
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    assert_eq!(keys.len(), 3);
+    let heads = format!(
+        "mash:r:{}:nodes",
+        blake3::hash(service.group.as_bytes()).to_hex()
+    );
+    redis::cmd("EVAL").arg("local h=cjson.decode(redis.call('HGET',KEYS[1],ARGV[1])); h.metadata_ready=nil; redis.call('HSET',KEYS[1],ARGV[1],cjson.encode(h))").arg(1).arg(heads).arg("first").query_async::<()>(&mut connection).await.unwrap();
+    for key in &keys {
+        redis::cmd("HDEL")
+            .arg(key)
+            .arg("conversation_record")
+            .query_async::<i64>(&mut connection)
+            .await
+            .unwrap();
+    }
+    let Store::Redis(store) = &service.store else {
+        panic!("Redis fixture");
+    };
+    let identity = Identity {
+        group_id: service.group.clone(),
+        node_id: "first".into(),
+        generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
+        dimensions: 384,
+    };
+    store.repair_metadata(&identity).await.unwrap();
+    store.repair_metadata(&identity).await.unwrap(); // Idempotent.
+    for key in &keys {
+        let raw: String = redis::cmd("HGET")
+            .arg(key)
+            .arg("conversation_record")
+            .query_async(&mut connection)
+            .await
+            .unwrap();
+        let conversation: protocol::ConversationRecord = serde_json::from_str(&raw).unwrap();
+        assert_eq!(conversation.project.as_deref(), Some("/work/mash"));
+        assert_eq!(conversation.repository.as_deref(), Some("repo://mash"));
+    }
+    assert_eq!(service.get("freshness", FIRST).await, before);
+    service.cleanup().await;
+}
+
+#[tokio::test]
 #[ignore = "requires MASH_TEST_PG_URL with pgvector"]
 async fn postgres_publication_excludes_own_node_before_candidate_limit_and_readiness() {
     exclude_own_contract(Service::new(true).await).await;
@@ -643,6 +707,22 @@ async fn http_storage_contract(service: Service) {
         .await
         .unwrap();
     assert_eq!(context.len(), 3);
+    let projected: Vec<Value> = service
+        .request("view", SECOND)
+        .json(
+            &json!({"node_id":"first","id":"searchable","context":2,"content":"search-projection"}),
+        )
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(projected[0]["content"], "hello shared history");
+    assert_eq!(projected[2]["content"], "");
+    assert_eq!(context[2]["content"], "raw context");
     let other: Vec<Value> = service
         .request("view", OTHER)
         .json(&view)

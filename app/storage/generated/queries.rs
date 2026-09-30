@@ -320,6 +320,7 @@ pub struct ViewMessagesRow {
     pub ordinal: i64,
     pub role: String,
     pub content: String,
+    pub projection: String,
     pub created_at: Option<i64>,
 }
 impl ViewMessagesRow {
@@ -329,7 +330,8 @@ impl ViewMessagesRow {
             ordinal: row.get(1)?,
             role: row.get(2)?,
             content: row.get(3)?,
-            created_at: row.get(4)?,
+            projection: row.get(4)?,
+            created_at: row.get(5)?,
         })
     }
 }
@@ -339,7 +341,7 @@ pub struct ViewMessages<'a> {
     last_ordinal: i64,
 }
 impl<'a> ViewMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,created_at FROM messages
+    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM messages
 WHERE conversation_id=?1 AND ordinal>=?2 AND ordinal<=?3 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY

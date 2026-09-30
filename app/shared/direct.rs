@@ -122,7 +122,7 @@ async fn ingest_scan(
         .collect();
     let mut observed = Vec::new();
     for path in &scan.files {
-        let hash = blake3::hash(format!("search-text-v1:{}", path.to_string_lossy()).as_bytes())
+        let hash = blake3::hash(format!("search-text-v2:{}", path.to_string_lossy()).as_bytes())
             .to_hex()
             .to_string();
         observed.push(hash.clone());
