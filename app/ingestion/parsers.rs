@@ -18,7 +18,9 @@ struct ExtractedMessage {
 }
 
 pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
-    parse_jsonl(path, Provider::ClaudeCode, |raw| {
+    let file = File::open(path).map_err(AppError::io)?;
+    let lines = super::records::Lines::new(BufReader::new(file));
+    parse_jsonl(path, Provider::ClaudeCode, lines, |raw| {
         if !matches!(raw.kind, Kind::User | Kind::Assistant) {
             return None;
         }
@@ -39,7 +41,9 @@ pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
 }
 
 pub(super) fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
-    parse_jsonl(path, Provider::Codex, |raw| {
+    let file = File::open(path).map_err(AppError::io)?;
+    let lines = super::records::codex::Lines::new(BufReader::new(file));
+    parse_jsonl(path, Provider::Codex, lines, |raw| {
         if raw.kind == Kind::ResponseItem {
             extract_codex_response_item(raw)
         } else {
@@ -101,15 +105,15 @@ fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
 fn parse_jsonl(
     path: &Path,
     provider: Provider,
+    lines: impl Iterator<Item = Result<String, AppError>>,
     mut extract: impl FnMut(&Record) -> Option<ExtractedMessage>,
 ) -> Result<ParsedFile, AppError> {
-    let file = File::open(path).map_err(AppError::io)?;
     let mut malformed_records = 0;
     let mut messages = Vec::new();
     let mut session_id = None;
     let mut project = None;
     let mut repository = None;
-    for line in super::records::Lines::new(BufReader::new(file)) {
+    for line in lines {
         let line = line?;
         if line.trim().is_empty() {
             continue;

@@ -103,7 +103,12 @@ state. The default source horizon is 90 days; `--since-days N` overrides it and
 `--all-history` removes it for one run.
 
 Claude Code and Codex JSONL records are limited to 8 MiB of UTF-8 payload per
-line, excluding LF/CRLF. Aider uses the same line limit and an 8 MiB limit per
+line, excluding LF/CRLF. Oversized Codex completed `FileChange` and
+`CommandExecution` lifecycle mirrors are validated as JSON and UTF-8 while
+streaming, then omitted; their canonical tool records remain indexed as context.
+These envelopes have a separate 64 MiB input limit, including line endings.
+Malformed envelopes, oversized canonical messages, and unsupported oversized
+event types fail indexing. Aider uses the same line limit and an 8 MiB limit per
 complete turn, including code fences and embedded newlines. Oversized input
 fails indexing with a source-specific error; it is never truncated or marked
 complete. A failed configured provider scan retains its previous messages and

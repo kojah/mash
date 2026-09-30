@@ -2,6 +2,7 @@
 use crate::AppError;
 use std::io::{BufRead, Read};
 
+pub(super) mod codex;
 mod json;
 pub(super) use json::decode;
 
