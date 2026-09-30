@@ -3,6 +3,8 @@ use crate::ingestion::{Conversation, NormalizedMessage};
 use crate::search_results::SearchUnit;
 use crate::storage::EmbeddingWrite;
 
+mod correlation;
+
 #[tokio::test]
 async fn context_deadline_preserves_completed_evidence_without_waiting_for_every_wave() {
     use axum::{Json, Router};

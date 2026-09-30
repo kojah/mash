@@ -1,3 +1,6 @@
+// Typed async search futures include transport tracing and concurrent retrieval.
+#![recursion_limit = "256"]
+
 mod cli;
 mod config;
 mod core;

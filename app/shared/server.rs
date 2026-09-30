@@ -333,8 +333,26 @@ fn pool(config: &Configuration) -> Result<Pool, AppError> {
         .build()
         .map_err(|_| AppError::configuration("could not configure PostgreSQL pool"))
 }
-#[tracing::instrument(name = "http_request", skip_all, fields(request_id = crate::observability::request_id(), process_id = std::process::id(), status = tracing::field::Empty, elapsed_ms = tracing::field::Empty))]
+#[tracing::instrument(name = "http_request", skip_all, fields(request_id = crate::observability::request_id(), process_id = std::process::id(), trace_id = tracing::field::Empty, status = tracing::field::Empty, elapsed_ms = tracing::field::Empty))]
 async fn authorize(State(app): State<App>, request: Request, next: Next) -> Response {
+    let span = tracing::Span::current();
+    if !span.is_disabled() {
+        use crate::observability::http::{HEADER, TraceId};
+        let mut values = request.headers().get_all(HEADER).iter();
+        let id = values
+            .next()
+            .and_then(|value| {
+                values
+                    .next()
+                    .is_none()
+                    .then(|| TraceId::parse(value.as_bytes()))
+                    .flatten()
+            })
+            .or_else(TraceId::generate);
+        if let Some(id) = id {
+            span.record("trace_id", id.as_str());
+        }
+    }
     let started = std::time::Instant::now();
     let response = authorize_inner(app, request, next).await;
     tracing::Span::current().record("status", response.status().as_u16());

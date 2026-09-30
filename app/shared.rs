@@ -162,6 +162,35 @@ fn request(
         .timeout(endpoint.timeout()))
 }
 async fn response<T: serde::de::DeserializeOwned>(
+    mut request: reqwest::RequestBuilder,
+) -> Result<T, AppError> {
+    use tracing::Instrument;
+    let span = tracing::info_span!(
+        "shared_http_request",
+        trace_id = tracing::field::Empty,
+        status = tracing::field::Empty,
+        outcome = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty,
+    );
+    if !span.is_disabled()
+        && let Some(id) = crate::observability::http::TraceId::generate()
+    {
+        span.record("trace_id", id.as_str());
+        request = request.header(crate::observability::http::HEADER, id.as_str());
+    }
+    async {
+        let started = std::time::Instant::now();
+        let result = response_inner(request).await;
+        tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
+        tracing::Span::current()
+            .record("outcome", if result.is_ok() { "success" } else { "error" });
+        result
+    }
+    .instrument(span)
+    .await
+}
+
+async fn response_inner<T: serde::de::DeserializeOwned>(
     request: reqwest::RequestBuilder,
 ) -> Result<T, AppError> {
     let response = request.send().await.map_err(|error| {
@@ -171,6 +200,7 @@ async fn response<T: serde::de::DeserializeOwned>(
             "shared index HTTP request failed; check the API address and network"
         })
     })?;
+    tracing::Span::current().record("status", response.status().as_u16());
     if !response.status().is_success() {
         let status = response.status();
         let message = match status.as_u16() {

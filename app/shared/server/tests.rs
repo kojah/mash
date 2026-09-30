@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 
 mod antigravity;
 mod context;
+mod correlation;
 mod cursor;
 mod native;
 mod windsurf;

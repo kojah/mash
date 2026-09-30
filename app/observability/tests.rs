@@ -1,20 +1,7 @@
+use super::test_support::Capture;
 use super::*;
-use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tracing::instrument::WithSubscriber;
-
-#[derive(Clone)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
-
-impl Write for Capture {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn concurrent_requests_keep_blocking_spans_and_exclude_dependency_payloads() {
