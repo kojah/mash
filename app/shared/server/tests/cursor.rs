@@ -1,0 +1,190 @@
+//! Native IDE direct ingestion through the authenticated shared API and both stores.
+use super::*;
+use crate::shared::protocol::{
+    Batch, Candidates, ConversationRecord, Event, MessageRecord, Search, Start, View,
+};
+use crate::{
+    ingestion::{DirectScan, IndexOptions, direct_scans},
+    provider::Provider,
+};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct Fixture {
+    rows: Vec<Row>,
+}
+#[derive(Deserialize)]
+struct Row {
+    key: String,
+    value: String,
+}
+
+fn native_publication() -> (Vec<Value>, Vec<String>) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("state.vscdb");
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.execute_batch("PRAGMA user_version=1; PRAGMA journal_mode=WAL; CREATE TABLE ItemTable(key TEXT UNIQUE ON CONFLICT REPLACE,value BLOB); CREATE TABLE cursorDiskKV(key TEXT UNIQUE ON CONFLICT REPLACE,value BLOB);").unwrap();
+    let fixture: Fixture = serde_json::from_str(include_str!(
+        "../../../../docs/fixtures/cursor-ide-native-v18.json"
+    ))
+    .unwrap();
+    for row in fixture.rows {
+        connection
+            .execute(
+                "INSERT INTO cursorDiskKV VALUES(?1,?2)",
+                rusqlite::params![row.key, row.value],
+            )
+            .unwrap();
+    }
+    let options = IndexOptions {
+        providers: [(Provider::Cursor, vec![path])].into(),
+        since_days: None,
+        roots_are_authoritative: true,
+    };
+    let scan = direct_scans(&options).unwrap().remove(0);
+    let source = &scan.sources[0];
+    let conversation = DirectScan::parse_source(Provider::Cursor, source, &source.stamp().unwrap())
+        .unwrap()
+        .conversation
+        .unwrap();
+    scan.verify().unwrap();
+    let ids = conversation.messages.iter().map(|m| m.id.clone()).collect();
+    let record = ConversationRecord {
+        id: conversation.id.clone(),
+        provider: conversation.provider,
+        title: conversation.title,
+        project: conversation.project,
+        repository: conversation.repository,
+        created_at: conversation.created_at,
+        updated_at: conversation.updated_at,
+    };
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
+    let messages = conversation
+        .messages
+        .into_iter()
+        .map(|m| {
+            let projection = m.search_projection.unwrap();
+            let visible = !projection.is_empty();
+            MessageRecord {
+                id: m.id,
+                conversation_id: conversation.id.clone(),
+                ordinal: m.ordinal,
+                context: m.context,
+                role: m.role,
+                content: m.content,
+                projection,
+                created_at: m.created_at,
+                generation: visible.then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
+                vector: visible.then(|| vector.clone()),
+            }
+        })
+        .collect();
+    let events = [
+        Event::Start(Start {
+            instance: "native-cursor-ide".into(),
+            revision: Some(1),
+            base_revision: None,
+            snapshot: true,
+            forgets: Vec::new(),
+        }),
+        Event::Batch(Batch::Conversations {
+            records: vec![record],
+        }),
+        Event::Batch(Batch::Messages { records: messages }),
+        Event::Finish,
+    ]
+    .into_iter()
+    .map(|event| serde_json::to_value(event).unwrap())
+    .collect();
+    (events, ids)
+}
+
+async fn contract(service: Service) {
+    let (events, ids) = native_publication();
+    assert_eq!(ids.len(), 6);
+    let response = service.upload(FIRST, &events).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "{}",
+        response.text().await.unwrap()
+    );
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
+    for (query, lexical) in [("cbioportal", 2), ("private", 0)] {
+        let input = Search {
+            unit: crate::search_results::SearchUnit::Messages,
+            query: query.into(),
+            generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
+            vector: vector.clone(),
+            provider: Some(Provider::Cursor),
+            days: None,
+            exclude_self: false,
+            filter: Some(crate::search_filter::Filter::All(vec![
+                crate::search_filter::Filter::Project(vec!["/work/cbioportal".into()]),
+                crate::search_filter::Filter::Repository(vec!["/work/cbioportal".into()]),
+            ])),
+        };
+        let result: Candidates = service
+            .request("search", FIRST)
+            .json(&input)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(result.lexical.len(), lexical);
+        assert_eq!(result.semantic.len(), 4);
+        assert!(
+            result
+                .lexical
+                .iter()
+                .chain(&result.semantic)
+                .all(|m| m.id != ids[2] && m.id != ids[3])
+        );
+        if lexical == 2 {
+            assert_ne!(result.lexical[0].id, result.lexical[1].id);
+        }
+    }
+    for (id, expected) in [
+        (&ids[1], "private-ide-reasoning"),
+        (&ids[2], "private-ide-simulated-context"),
+        (&ids[3], "Tool 51"),
+    ] {
+        let input = View {
+            node_id: "first".into(),
+            id: id.clone(),
+            context: 0,
+            content: crate::storage::MessageContent::Canonical,
+        };
+        let messages: Vec<crate::storage::Message> = service
+            .request("view", FIRST)
+            .json(&input)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].content.contains(expected));
+    }
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
+async fn postgres_native_cursor_ide_publication_preserves_provenance_and_metadata() {
+    contract(Service::new_backend(true, false).await).await;
+}
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_native_cursor_ide_publication_preserves_provenance_and_metadata() {
+    contract(Service::new_backend(false, true).await).await;
+}

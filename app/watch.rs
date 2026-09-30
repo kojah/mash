@@ -31,7 +31,7 @@ impl Targets {
                     || self.roots.iter().any(|root| {
                         root.starts_with(path)
                             || (root.extension().is_some_and(|extension| {
-                                matches!(extension.to_str(), Some("db" | "sqlite"))
+                                matches!(extension.to_str(), Some("db" | "sqlite" | "vscdb"))
                             }) && root.parent() == path.parent()
                                 && path.file_name().is_some_and(|name| {
                                     let mut wal_name =
@@ -59,6 +59,8 @@ impl Targets {
                                             || name == "state.db-wal"
                                             || name == "store.db"
                                             || name == "store.db-wal"
+                                            || name == "state.vscdb"
+                                            || name == "state.vscdb-wal"
                                             || name == "opencode.db"
                                             || name == "opencode.db-wal"
                                             || name == "openclaw-agent.sqlite"
@@ -255,6 +257,10 @@ mod tests {
             roots: vec![root.join("custom.db")],
             files: Vec::new(),
         };
+        let ide = Targets {
+            roots: vec![root.join("state.vscdb")],
+            files: Vec::new(),
+        };
         let change = |path| {
             Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(path)
         };
@@ -264,6 +270,9 @@ mod tests {
         assert!(directory.relevant(&change(root.join("state.db-wal"))));
         assert!(directory.relevant(&change(root.join("store.db"))));
         assert!(directory.relevant(&change(root.join("store.db-wal"))));
+        assert!(directory.relevant(&change(root.join("state.vscdb"))));
+        assert!(directory.relevant(&change(root.join("state.vscdb-wal"))));
+        assert!(ide.relevant(&change(root.join("state.vscdb-wal"))));
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));
         assert!(directory.relevant(&change(root.join("openclaw-agent.sqlite-wal"))));
         assert!(directory.relevant(&change(root.join("cold/archive.jsonl.zst"))));

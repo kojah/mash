@@ -116,9 +116,9 @@ Malformed input preserves the last successfully indexed revision.
    inputs rather than executing a real compaction operation.
 3. Verify project/repository metadata, native text visibility and stable message
    identities without deriving a repository from arbitrary files the model read.
-4. Implement and validate the separate IDE reader using the verified
+4. Validate captured real IDE sessions against the separate bounded reader and
    [desktop contract and native fixture](cursor-ide-ingestion-contract.md).
-   Do not declare IDE coverage based on Agent or transcript formats.
+   Older formats and cloud-only hydration need independent evidence.
 5. Validate production deployment and real-session retrieval across local and
    shared indexes before closing the parent task. Routing is wired through the
    shared provider enum, including config, indexing, watching and search filters.

@@ -283,9 +283,16 @@ Native workspace URIs and tracked repositories supply project/repository filters
 Each blob is limited to 8 MiB, each protobuf to 65,536 fields, cumulative reads
 to 64 MiB and retained normalized history to 32 MiB. Missing, corrupt or oversized
 reachable history fails indexing and preserves the previous revision. These are
-parser limits rather than process RSS limits. Cursor IDE storage is not yet
-supported; its [native storage contract](docs/cursor-ide-ingestion-contract.md)
-and deterministic fixture are recorded for the pending reader.
+parser limits rather than process RSS limits. Cursor IDE is also supported through
+explicit `state.vscdb` files or directories containing them. It reads the native
+application KV schema and v18 composer roots, follows saved bubble order, and
+keeps native bubble IDs stable through edits and rewinds. Drafts, summaries,
+orphaned bubbles, simulated/agent-sent prompts and operational rows do not enter
+search prose. Older or unknown root versions fail explicitly. Each JSON record
+is limited to 8 MiB and 65,536 nodes; each conversation has a 64 MiB read budget
+and 32 MiB retained-history budget. IDE and Agent identities remain distinct.
+Its [native storage contract](docs/cursor-ide-ingestion-contract.md) records the
+fixture provenance and remaining captured-session validation gates.
 The [Cursor ingestion contract](docs/cursor-ingestion-contract.md)
 records first-party fixture provenance and remaining real-session validation gates.
 

@@ -101,7 +101,11 @@ impl Store {
 
 // The selected models have one nested message level. Inspect those known
 // fields before prost allocates repeated containers; unknown fields are skipped.
-fn inspect(mut input: &[u8], nested: &[u32], remaining: &mut usize) -> Result<(), AppError> {
+pub(super) fn inspect(
+    mut input: &[u8],
+    nested: &[u32],
+    remaining: &mut usize,
+) -> Result<(), AppError> {
     while !input.is_empty() {
         *remaining = remaining
             .checked_sub(1)

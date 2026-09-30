@@ -282,7 +282,8 @@ fn discover_physical_sources(
 ) -> Result<Discovery, AppError> {
     discover_files(roots, authoritative, |path, explicit| match provider {
         Provider::Cursor => {
-            path.file_name().is_some_and(|n| n == "store.db")
+            path.file_name()
+                .is_some_and(|n| n == "store.db" || n == "state.vscdb")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))
         }
         Provider::Cline => {

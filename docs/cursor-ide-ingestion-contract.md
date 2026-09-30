@@ -1,7 +1,8 @@
 # Cursor IDE native ingestion contract
 
-Status: first-party desktop storage and serializers inspected; a deterministic
-native serialization fixture is captured. The IDE reader remains unimplemented.
+Status: bounded typed IDE v18 ingestion and provider routing are implemented,
+using a deterministic native serialization fixture. Actual IDE sessions and
+production deployment still require validation.
 This format is separate from the implemented [Agent CLI reader](cursor-ingestion-contract.md).
 
 ## Pinned evidence
@@ -94,8 +95,9 @@ Root `text`/`richText` and `composerDraft:<composerId>` can hold unsent input.
 `latestConversationSummary` is model context. Neither belongs in message search.
 Native subagent metadata also needs conservative visibility handling.
 
-Root `workspaceIdentifier`, native state workspace URIs, `trackedGitRepos` and
-worktree metadata can supply project/repository evidence. Resolve only unambiguous
+Root `workspaceIdentifier`, native state workspace URIs and `trackedGitRepos`
+can supply project/repository evidence. IDE repository records use `repoPath`
+and `branches`, rather than the protobuf state's `path` field. Resolve only unambiguous
 native paths; do not derive repositories from files read by the model. Encryption
 keys and other configuration fields must never enter canonical content, titles,
 errors or search projections.
@@ -124,7 +126,8 @@ input. Six bubbles are reachable in saved header order, including two identical
 requests with distinct native IDs. It includes simulated input, a tool row,
 reasoning, unsent draft/summary metadata and an abandoned branch bubble. A
 display-only input is omitted by the native writer; image data is stripped by
-native serialization.
+native serialization. The repository input uses the native `repoPath`/`branches`
+shape verified in the desktop metadata helpers.
 
 The exact desktop root descriptor was executed using the pinned first-party
 Agent package's protobuf runtime and referenced child types. Field numbers/names
@@ -139,6 +142,29 @@ distinct repeated IDs and the unreachable branch row were checked. This validate
 serialization and the relevant SQL layout, not the full desktop database opener,
 real editing/compaction, cloud hydration or installed-version compatibility.
 
-Remaining work: implement bounded typed IDE ingestion; test local/shared routing,
-project filters and real-model retrieval; capture actual IDE edit/resume/compaction
-and subagent histories; validate deployment. The parent Cursor task stays open.
+## Reader behavior and remaining gates
+
+The reader identifies Agent versus IDE databases by their native tables. IDE
+discovery enumerates bounded composer keys; each source uses a distinct IDE
+session identity. It requires v18 root/key agreement and unique ordered headers,
+then reads reachable TEXT bubble records within one read-only WAL snapshot.
+Bubble identity/type disagreement, invalid timestamps or malformed inline state
+fail indexing without replacing the previous revision. Display-only headers do
+not require a saved payload. Native bubble IDs survive edits and repeated prose.
+
+Known root/bubble schemas use typed Rust models and message-kind enums; tool-owned
+arguments/results remain opaque. Operational status records accept native JSON
+strings or structured status objects. Synthetic, hidden, placeholder, capability,
+tool, notification, status, agent-sent and subagent rows remain context-only.
+Canonical messages retain reasoning and selected tool/status/notification context;
+root secrets, unsent drafts, summaries and orphaned records are excluded.
+
+Each JSON record is bounded to 8 MiB before fetching and 65,536 nodes before typed
+decode. A conversation has a 64 MiB cumulative read budget and 32 MiB normalized
+retention budget. Discovery bounds key lengths, total key memory and composer
+count. Inline native protobuf structure is checked before decoding. These are
+parser bounds, not process RSS limits.
+
+Remaining work: capture actual IDE edit/resume/compaction and subagent histories,
+validate older versions and cloud-only hydration where applicable, and verify
+production deployment. The parent Cursor task stays open.

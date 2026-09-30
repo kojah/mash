@@ -1,9 +1,10 @@
-//! Native Cursor Agent SQLite/protobuf history. IDE history is a separate format.
+//! Native Cursor Agent and IDE histories, selected by their physical schemas.
 use super::{Conversation, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use std::{collections::HashMap, path::Path};
 
 mod evidence;
+mod ide;
 mod models;
 mod proto;
 mod store;
@@ -17,6 +18,9 @@ fn invalid(message: &str) -> AppError {
 }
 
 pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
+    if format(path)? == Format::Ide {
+        return ide::discover(path);
+    }
     let store = Store::open(path)?;
     let metadata = store.metadata()?;
     Ok(vec![HistorySource {
@@ -109,6 +113,41 @@ impl Messages {
 }
 
 pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
+    if format(&source.path)? == Format::Ide {
+        return ide::parse(source);
+    }
+    parse_agent(source)
+}
+
+#[derive(PartialEq, Eq)]
+enum Format {
+    Agent,
+    Ide,
+}
+
+fn format(path: &Path) -> Result<Format, AppError> {
+    let connection = super::sqlite_source::open(path)?;
+    let mut statement = connection
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('meta','blobs','ItemTable','cursorDiskKV')")
+        .map_err(AppError::database)?;
+    let names = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(AppError::database)?
+        .collect::<Result<std::collections::BTreeSet<_>, _>>()
+        .map_err(AppError::database)?;
+    match (
+        names.contains("meta") && names.contains("blobs"),
+        names.contains("ItemTable") && names.contains("cursorDiskKV"),
+    ) {
+        (true, false) => Ok(Format::Agent),
+        (false, true) => Ok(Format::Ide),
+        _ => Err(AppError::configuration(
+            "unsupported or ambiguous Cursor storage schema",
+        )),
+    }
+}
+
+fn parse_agent(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
     let mut store = Store::open(&source.path)?;
     let metadata = store.metadata()?;
     if source.session.as_deref() != Some(metadata.agent_id.as_str()) {
