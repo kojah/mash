@@ -1,5 +1,7 @@
 //! Literal SQLite query compilation and exact reference matching.
 
+mod language;
+
 pub(crate) fn has_terms(query: &str) -> bool {
     query.chars().any(char::is_alphanumeric)
 }
@@ -10,9 +12,7 @@ pub(crate) fn validate(query: &str) -> Result<(), crate::AppError> {
             "search query must contain letters or numbers and be at most 16384 bytes",
         ));
     }
-    if query.chars().any(|character| character.is_alphabetic() && !matches!(u32::from(character), 0..=0x024f | 0x1e00..=0x1eff | 0x2c60..=0x2c7f | 0xa720..=0xa7ff | 0xab30..=0xab6f)) {
-        return Err(crate::AppError::usage("the current search models support English queries in Latin script; queries in other scripts are unsupported"));
-    }
+    language::validate(query)?;
     if !query.contains('"') && terms(query).all(is_stop_word) {
         return Err(crate::AppError::usage(
             "enter a more specific search query; common words alone do not identify a topic",

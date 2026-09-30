@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn unsupported_language_is_explained_before_model_or_index_access() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let database = directory.path().join("missing.sqlite3");
+    let models = directory.path().join("missing-models");
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "search",
+            "wie konfiguriere ich den gemeinsamen Suchindex",
+            "--local",
+            "--no-worker",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.stdout, [] as [u8; 0]);
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "usage");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("German")
+    );
+    assert!(!database.exists());
+    assert!(!models.exists());
+}
+
+#[test]
 fn search_without_models_fails_before_database_access() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");

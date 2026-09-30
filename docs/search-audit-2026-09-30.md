@@ -63,9 +63,12 @@ is unchanged; the internal
 HTTP view request can select searchable projections. Context errors preserve
 local fallback and surface through shared-search status.
 
-The language guard recognizes unsupported scripts. Accented Latin text and
-technical identifiers remain accepted; it does not reliably identify every
-non-English language written in Latin characters.
+The language guard rejects unsupported scripts and now also confidently
+detected non-English Latin-script queries using a local trigram detector.
+Detection requires at least three alphabetic words, a reliable prediction,
+and confidence of at least 0.9. Short names, accented terms, URLs, and ambiguous
+technical phrases remain accepted. This conservative guard does not guarantee
+recognition of every non-English query, especially short or mixed-language text.
 
 SQLite schema 17 invalidates old checkpoints/readiness so users explicitly run
 `mash index` to refresh projections and embeddings. Search never performs this

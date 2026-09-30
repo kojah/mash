@@ -410,6 +410,12 @@ machine's `providers` and `index` settings to the top level and optionally add
 
 ## Search filters
 
+The current models support English queries. Unsupported scripts and confidently
+detected non-English queries return a usage error asking for an English query,
+before loading models or opening an index. Short names and ambiguous technical
+terms remain searchable; language detection cannot reliably classify every short
+or mixed-language query.
+
 CLI search accepts repeatable `--provider`, `--node`, `--role`, `--conversation`,
 `--project`, and `--repository`. Repeated values for one field are alternatives;
 different fields are combined with AND. `--node` filters publishing identity and

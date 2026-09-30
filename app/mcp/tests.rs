@@ -36,6 +36,27 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
         assert_eq!(result.is_error, Some(true));
         assert_eq!(result.structured_content.unwrap()["error"]["kind"], "usage");
     }
+    let result = server
+        .search(Parameters(Search {
+            query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
+            limit: None,
+            unit: crate::search_results::SearchUnit::Threads,
+            provider: None,
+            days: None,
+            filter: None,
+            local: true,
+            shared: false,
+        }))
+        .await;
+    assert_eq!(result.is_error, Some(true));
+    let error = result.structured_content.unwrap();
+    assert_eq!(error["error"]["kind"], "usage");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("German")
+    );
     assert!(!database.exists());
     assert!(!models.exists());
 }
