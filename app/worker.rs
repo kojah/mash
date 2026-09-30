@@ -46,7 +46,7 @@ fn private_directory(path: &Path, owner: u32) -> std::io::Result<()> {
 fn socket_path(profile: &[u8], environment: &[String], owner: u32) -> std::io::Result<PathBuf> {
     let executable = std::env::current_exe()?;
     let metadata = fs::metadata(&executable)?;
-    let directory = PathBuf::from(format!("/tmp/mash-search-{owner}"));
+    let directory = std::env::temp_dir().join(format!("mash-search-{owner}"));
     private_directory(&directory, owner)?;
     let mut hash = blake3::Hasher::new();
     hash.update(executable.as_os_str().as_bytes());
@@ -251,6 +251,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let profile = directory.path().as_os_str().as_bytes();
         let socket = socket_path(profile, &[], uid().unwrap()).unwrap();
+        assert!(socket.starts_with(std::env::temp_dir()));
         assert!(!socket.exists());
         for (query, local, shared, filter) in [
             ("the and of", true, false, None),
