@@ -102,6 +102,13 @@ embeddings while preserving it for `view`. `--full` rebuilds derived search
 state. The default source horizon is 90 days; `--since-days N` overrides it and
 `--all-history` removes it for one run.
 
+Claude Code and Codex JSONL records are limited to 8 MiB of UTF-8 payload per
+line, excluding LF/CRLF. Aider uses the same line limit and an 8 MiB limit per
+complete turn, including code fences and embedded newlines. Oversized input
+fails indexing with a source-specific error; it is never truncated or marked
+complete. A failed configured provider scan retains its previous messages and
+checkpoints. These are record limits, not a total conversation memory limit.
+
 Upgrading an existing index to schema 18 requires an explicit `mash index`.
 The migration retains canonical history and existing vectors, preserves recorded
 project/repository metadata, and invalidates source checkpoints and search

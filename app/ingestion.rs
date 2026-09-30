@@ -12,6 +12,7 @@ mod json;
 mod openclaw;
 mod opencode;
 mod parsers;
+mod records;
 mod source;
 mod sqlite_source;
 #[cfg(test)]
@@ -30,6 +31,7 @@ use crate::AppError;
 use crate::storage::Storage;
 
 const MAX_TOOL_OUTPUT_CHARS: usize = 128 * 1024;
+const MAX_RECORD_BYTES: usize = 8 * 1024 * 1024;
 const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 

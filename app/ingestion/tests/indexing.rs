@@ -1,6 +1,82 @@
 use super::*;
 
 #[test]
+fn oversized_jsonl_rolls_back_messages_and_checkpoint_then_recovers() {
+    for provider in [Provider::ClaudeCode, Provider::Codex] {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("session.jsonl");
+        let database = directory.path().join("index.sqlite3");
+        let write = |text: &str| {
+            let record = match provider {
+                Provider::ClaudeCode => serde_json::json!({
+                    "type": "user", "sessionId": "session", "uuid": "message",
+                    "message": { "role": "user", "content": text }
+                }),
+                Provider::Codex => serde_json::json!({
+                    "type": "response_item",
+                    "payload": { "type": "message", "role": "user", "id": "message",
+                        "content": [{ "type": "input_text", "text": text }] }
+                }),
+                _ => unreachable!(),
+            };
+            fs::write(&source, format!("{record}\n")).unwrap();
+        };
+        write("durable sentinel");
+        let options = IndexOptions {
+            providers: [(provider, vec![source.clone()])].into(),
+            roots_are_authoritative: true,
+            since_days: None,
+        };
+        let mut storage = Storage::open_writer(&database).unwrap();
+        index(&mut storage, &options).unwrap();
+        storage.commit_writer().unwrap();
+        drop(storage);
+        let stamp = source_stamp(&source).unwrap();
+        write("uncommitted sentinel");
+        let mut file = fs::OpenOptions::new().append(true).open(&source).unwrap();
+        file.write_all(&vec![b'x'; MAX_RECORD_BYTES + 1]).unwrap();
+        file.write_all(b"\n").unwrap();
+        let mut storage = Storage::open_writer(&database).unwrap();
+        let error = index(&mut storage, &options)
+            .err()
+            .expect("oversized record");
+        assert!(
+            error.error.message.contains("8 MiB ingestion limit"),
+            "{error:?}"
+        );
+        storage.commit_writer().unwrap();
+        assert_eq!(storage.search("durable", 10, None, None).unwrap().len(), 1);
+        assert!(
+            storage
+                .search("uncommitted", 10, None, None)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            storage
+                .source_checkpoint_matches(provider, &SourceIdentity::file(&source), &stamp)
+                .unwrap()
+        );
+
+        drop(storage);
+        write("recovered sentinel");
+        let mut storage = Storage::open_writer(&database).unwrap();
+        assert_eq!(index(&mut storage, &options).unwrap().changed_messages, 1);
+        storage.commit_writer().unwrap();
+        assert_eq!(
+            storage.search("recovered", 10, None, None).unwrap().len(),
+            1
+        );
+        assert!(
+            storage
+                .search("durable", 10, None, None)
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
 fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let root = directory.path().join("claude");

@@ -2,13 +2,14 @@
 use super::{Conversation, NormalizedMessage, ParsedFile};
 use crate::{AppError, provider::Provider, role::Role};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 #[derive(Default)]
 struct Turn {
     role: Option<Role>,
-    lines: Vec<String>,
+    content: String,
+    has_lines: bool,
 }
 
 impl Turn {
@@ -17,11 +18,12 @@ impl Turn {
         path: &Path,
         messages: &mut Vec<NormalizedMessage>,
     ) -> Result<(), AppError> {
+        let content = std::mem::take(&mut self.content);
+        self.has_lines = false;
         let Some(role) = self.role.take() else {
-            self.lines.clear();
             return Ok(());
         };
-        let content = std::mem::take(&mut self.lines).join("\n").trim().to_owned();
+        let content = content.trim().to_owned();
         if content.is_empty() {
             return Ok(());
         }
@@ -58,7 +60,24 @@ impl Turn {
             self.flush(path, messages)?;
         }
         self.role = Some(role);
-        self.lines.push(line.to_owned());
+        self.push_line(line)
+    }
+
+    fn push_line(&mut self, line: &str) -> Result<(), AppError> {
+        if self.role.is_none() {
+            return Ok(());
+        }
+        let separator = usize::from(self.has_lines);
+        if self.content.len() + separator + line.len() > super::MAX_RECORD_BYTES {
+            return Err(AppError::configuration(
+                "Aider turn exceeds the 8 MiB ingestion limit",
+            ));
+        }
+        if separator > 0 {
+            self.content.push('\n');
+        }
+        self.content.push_str(line);
+        self.has_lines = true;
         Ok(())
     }
 }
@@ -72,11 +91,11 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let mut fence = None::<(u8, usize)>;
     let mut recognized = false;
     let mut user_continues = false;
-    for line in BufReader::new(file).lines() {
-        let line = line.map_err(AppError::io)?;
+    for line in super::records::Lines::new(BufReader::new(file)) {
+        let line = line?;
         if let Some((character, length)) = fence {
             let marker = fence_marker(&line);
-            turn.lines.push(line.clone());
+            turn.push_line(&line)?;
             if marker.is_some_and(|(c, n)| c == character && n >= length)
                 && line.trim().bytes().all(|c| c == character)
             {
@@ -102,7 +121,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             if turn.role == Some(Role::User) {
                 turn.flush(path, &mut messages)?;
             } else {
-                turn.lines.push(String::new());
+                turn.push_line("")?;
             }
             user_continues = false;
         } else if recognized {
@@ -167,6 +186,45 @@ fn fence_marker(line: &str) -> Option<(u8, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn multiline_turn_limit_includes_fences_and_blank_lines() {
+        let mut turn = Turn {
+            role: Some(Role::Assistant),
+            ..Turn::default()
+        };
+        let half = "x".repeat(super::super::MAX_RECORD_BYTES / 2);
+        turn.push_line(&half).unwrap();
+        assert!(turn.push_line(&half).is_err());
+        assert_eq!(turn.content, half);
+
+        let mut turn = Turn {
+            role: Some(Role::Assistant),
+            content: "x".repeat(super::super::MAX_RECORD_BYTES),
+            has_lines: true,
+        };
+        assert!(
+            turn.push_line("").is_err(),
+            "blank lines also consume bytes"
+        );
+        let mut ignored = Turn::default();
+        for _ in 0..100 {
+            ignored.push_line("").unwrap();
+        }
+        assert_eq!(ignored.content, "");
+        assert!(!ignored.has_lines);
+
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(
+            file.path(),
+            format!(
+                "# aider chat started at 2026-09-30\n\n#### request\n\n```\n{half}\n{half}\n```\n"
+            ),
+        )
+        .unwrap();
+        let error = parse(file.path()).err().expect("oversized fenced response");
+        assert!(error.error.message.contains("Aider turn exceeds"));
+    }
 
     #[tokio::test]
     #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]

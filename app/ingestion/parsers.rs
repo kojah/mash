@@ -5,7 +5,7 @@ use crate::AppError;
 use crate::provider::Provider;
 use chrono::DateTime;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 struct ExtractedMessage {
@@ -109,8 +109,8 @@ fn parse_jsonl(
     let mut session_id = None;
     let mut project = None;
     let mut repository = None;
-    for line in BufReader::new(file).lines() {
-        let line = line.map_err(AppError::io)?;
+    for line in super::records::Lines::new(BufReader::new(file)) {
+        let line = line?;
         if line.trim().is_empty() {
             continue;
         }
