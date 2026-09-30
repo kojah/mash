@@ -258,9 +258,10 @@ repositories are not inferred from files read by the model.
 Snapshots are limited to 8 MiB and each decoded message/block sequence to 16,384
 entries. Invalid or interrupted writes preserve the previous indexed revision.
 Metadata and external artifact changes invalidate source checkpoints and are
-included in watch targets. Mixed extension/SDK histories with the same task ID
-are rejected pending migration reconstruction, rather than allowing one source
-to overwrite the other. That migration case remains tracked in Beads.
+included in watch targets. When both extension and SDK roots are configured,
+histories with the same task ID retain the legacy UI prefix and append SDK turns
+after Cline's native resume warning. Without that boundary, SDK history alone
+is authoritative. Ambiguous multiple histories of the same kind are rejected.
 See the source-linked [Cline contract](docs/cline-ingestion-contract.md) for
 verified schemas and remaining validation gates.
 

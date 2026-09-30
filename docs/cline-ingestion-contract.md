@@ -1,8 +1,8 @@
 # Cline ingestion contract
 
 Status: typed native UI and SDK/catalog ingestion implemented; production
-completion is still tracked by `mash-c0d.1.8`. Mixed legacy-to-SDK migration
-reconstruction and upstream resume/compaction fixtures remain open. This
+completion is still tracked by `mash-c0d.1.8`. Mixed legacy-to-SDK reconstruction
+is implemented; recorded upstream resume/compaction validation remains open. This
 contract covers both native extension history and current SDK/CLI history.
 
 ## Evidence
@@ -146,13 +146,21 @@ the upstream [message translator](https://github.com/cline/cline/blob/3435f72fcf
 [synthetic-user mapping](https://github.com/cline/cline/blob/3435f72fcf4cb843bee946b8f9e981683564c9e3/apps/vscode/src/sdk/sdk-user-message-mapping.ts)
 and [tool definitions](https://github.com/cline/cline/blob/3435f72fcf4cb843bee946b8f9e981683564c9e3/sdk/packages/core/src/extensions/tools/definitions.ts).
 
-Migration remains a material gap: the extension preserves the legacy task ID
+The extension preserves the legacy task ID
 when adopting SDK history and merges the legacy UI prefix with SDK messages
 after a resume-warning boundary. See
 [sdk-task-history.ts](https://github.com/cline/cline/blob/3435f72fcf4cb843bee946b8f9e981683564c9e3/apps/vscode/src/sdk/sdk-task-history.ts).
-Mash rejects discovered legacy UI/catalog collisions explicitly until it can
-reconstruct that combined history, including when SDK artifacts are configured
-without a catalog. Existing tests use native
+Mash reconstructs that combined history when both roots are configured, for
+catalog-backed and direct SDK artifacts. The legacy UI is a required watched
+dependency; both local ingestion and shared publication receive the complete
+source descriptor. A visible native user warning selects the boundary; absent
+that marker, SDK history alone is authoritative. Multiple same-kind histories
+remain an explicit ambiguity error. Discovery verification detects dependency
+changes even when the SDK source identity stays unchanged.
+
+Source-based fixtures cover repeated turns, regenerated SDK IDs/timestamps,
+compaction sidecars, interrupted writes and rewinds. Real-model searches exercise
+legacy user requests and feedback after migration. These tests use native
 schema fixtures; actual upstream resume/compaction fixtures are still needed
 to prove the full production gate. Do not close the provider task on the
 strength of parser fixtures alone.

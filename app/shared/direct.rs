@@ -160,7 +160,7 @@ async fn ingest_scan(
             result.summary.checkpoint_skipped_sources += 1;
             continue;
         }
-        let source = source.identity.clone();
+        let source = source.clone();
         let expected_stamp = stamp.clone();
         let provider = scan.provider;
         let parsed =

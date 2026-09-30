@@ -1,4 +1,5 @@
 use super::*;
+mod migration;
 use crate::{
     ingestion::{IndexOptions, direct_scans, index},
     storage::Storage,
@@ -284,34 +285,6 @@ fn sdk_native_question_replies_and_completion_summaries_are_visible_prose() {
     );
 }
 
-#[test]
-fn mixed_migrated_histories_fail_instead_of_overwriting_visible_turns() {
-    let dir = tempfile::tempdir().unwrap();
-    let ui = ui_path(dir.path());
-    write(&ui, &ui_fixture());
-    let artifact = sdk_path(dir.path());
-    write(&artifact, &sdk_fixture());
-    let (database, connection) = catalog(dir.path(), &artifact);
-    assert!(
-        direct_scans(&options(dir.path()))
-            .err()
-            .unwrap()
-            .error
-            .message
-            .contains("mixed migration")
-    );
-    drop(connection);
-    std::fs::remove_file(database).unwrap();
-    assert!(
-        direct_scans(&options(dir.path()))
-            .err()
-            .unwrap()
-            .error
-            .message
-            .contains("mixed migration")
-    );
-}
-
 fn catalog(root: &Path, artifact: &Path) -> (PathBuf, Connection) {
     let path = root.join("sessions.db");
     let connection = Connection::open(&path).unwrap();
@@ -450,14 +423,29 @@ fn malformed_and_oversized_snapshots_and_sequences_fail_explicitly() {
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 async fn core_retrieves_native_cline_threads_with_real_models() {
     use crate::core::{IndexRequest, Operation, Paths, Request, Response};
-    for sdk in [false, true] {
+    #[derive(Debug)]
+    enum Store {
+        Ui,
+        Sdk,
+        Migrated,
+    }
+    for store in [Store::Ui, Store::Sdk, Store::Migrated] {
+        let sdk = !matches!(store, Store::Ui);
         let dir = tempfile::tempdir().unwrap();
         let path = if sdk {
             sdk_path(dir.path())
         } else {
             ui_path(dir.path())
         };
-        write(&path, &if sdk { sdk_fixture() } else { ui_fixture() });
+        let fixture = match store {
+            Store::Ui => ui_fixture(),
+            Store::Sdk => sdk_fixture(),
+            Store::Migrated => {
+                write(&ui_path(dir.path()), &ui_fixture());
+                migration::resumed()
+            }
+        };
+        write(&path, &fixture);
         write(
             &metadata_path(&path).unwrap(),
             &if sdk {
@@ -466,8 +454,13 @@ async fn core_retrieves_native_cline_threads_with_real_models() {
                 json!([{"id":"task-1","task":"Fix the cBioPortal importer","cwdOnTaskInitialization":"/work/cbioportal"}])
             },
         );
+        let root = if matches!(store, Store::Migrated) {
+            dir.path()
+        } else {
+            &path
+        };
         let config = dir.path().join("config.toml");
-        std::fs::write(&config,toml::to_string(&toml::toml!{version=1 providers={cline={roots=[(path.to_str().unwrap())]}} index={all_history=true}}).unwrap()).unwrap();
+        std::fs::write(&config,toml::to_string(&toml::toml!{version=1 providers={cline={roots=[(root.to_str().unwrap())]}} index={all_history=true}}).unwrap()).unwrap();
         let paths = Paths {
             config: Some(config),
             db: Some(dir.path().join("index.sqlite3")),
@@ -493,6 +486,7 @@ async fn core_retrieves_native_cline_threads_with_real_models() {
                         filters: Box::new(crate::search_filter::Selection {
                             provider: vec![Provider::Cline],
                             project: vec!["/work/cbioportal".into()],
+                            role: vec![crate::role::Role::User],
                             ..Default::default()
                         }),
                         shared: false,
@@ -505,7 +499,7 @@ async fn core_retrieves_native_cline_threads_with_real_models() {
                 };
                 match response.results {
                     crate::search_results::Results::Threads(threads) => {
-                        assert_eq!(threads.len(), 1, "{query} SDK={sdk}");
+                        assert_eq!(threads.len(), 1, "{query} {store:?}");
                         assert_eq!(threads[0].provider, Provider::Cline);
                         assert_eq!(
                             threads[0].metadata.project.as_deref(),
@@ -513,7 +507,7 @@ async fn core_retrieves_native_cline_threads_with_real_models() {
                         );
                     }
                     crate::search_results::Results::Messages(messages) => {
-                        assert!(!messages.is_empty(), "{query} SDK={sdk}");
+                        assert!(!messages.is_empty(), "{query} {store:?}");
                         assert!(messages.iter().all(|m| m.provider == Provider::Cline));
                     }
                 }

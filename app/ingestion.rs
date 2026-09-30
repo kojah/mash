@@ -40,18 +40,18 @@ const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 
 impl Provider {
-    fn parser(self) -> fn(&SourceIdentity) -> Result<ParsedFile, AppError> {
+    fn parser(self) -> fn(&HistorySource) -> Result<ParsedFile, AppError> {
         match self {
-            Self::ClaudeCode => |source| parsers::parse_claude(&source.path),
-            Self::Codex => |source| parsers::parse_codex(&source.path),
-            Self::Aider => |source| aider::parse(&source.path),
-            Self::Hermes => hermes::parse,
-            Self::Opencode => opencode::parse,
-            Self::Openclaw => openclaw::parse,
-            Self::Pi => |source| pi::parse(&source.path),
-            Self::Copilot => |source| copilot::parse(&source.path),
-            Self::GeminiCli => |source| gemini::parse(&source.path),
-            Self::Cline => cline::parse,
+            Self::ClaudeCode => |source| parsers::parse_claude(&source.identity.path),
+            Self::Codex => |source| parsers::parse_codex(&source.identity.path),
+            Self::Aider => |source| aider::parse(&source.identity.path),
+            Self::Hermes => |source| hermes::parse(&source.identity),
+            Self::Opencode => |source| opencode::parse(&source.identity),
+            Self::Openclaw => |source| openclaw::parse(&source.identity),
+            Self::Pi => |source| pi::parse(&source.identity.path),
+            Self::Copilot => |source| copilot::parse(&source.identity.path),
+            Self::GeminiCli => |source| gemini::parse(&source.identity.path),
+            Self::Cline => cline::parse_source,
         }
     }
 }
@@ -113,12 +113,12 @@ struct ProviderScan<'a> {
     provider: Provider,
     roots: &'a [PathBuf],
     cutoff_modified_ns: Option<i64>,
-    parse: fn(&SourceIdentity) -> Result<ParsedFile, AppError>,
+    parse: fn(&HistorySource) -> Result<ParsedFile, AppError>,
     authoritative: bool,
 }
 
 struct SourceFile {
-    identity: SourceIdentity,
+    history: HistorySource,
     stamp: SourceStamp,
     estimated_bytes: u64,
 }
@@ -236,6 +236,7 @@ fn index_provider_inner(
         parse,
         authoritative,
     } = scan;
+    let observed_layout = discovery::source_layout(&discovery.sources);
     let (mut pending, observed_paths, mut complete) = prepare_sources(
         storage,
         provider,
@@ -249,8 +250,13 @@ fn index_provider_inner(
             .stamp
             .size_bytes
             .cmp(&left.stamp.size_bytes)
-            .then_with(|| left.identity.path.cmp(&right.identity.path))
-            .then_with(|| left.identity.session.cmp(&right.identity.session))
+            .then_with(|| left.history.identity.path.cmp(&right.history.identity.path))
+            .then_with(|| {
+                left.history
+                    .identity
+                    .session
+                    .cmp(&right.history.identity.session)
+            })
     });
     progress.phase_started = Instant::now();
     progress.estimate = crate::progress::Estimate::starting_at(summary.processed_bytes);
@@ -273,16 +279,16 @@ fn index_provider_inner(
                     let Some(source) = pending.get(index) else {
                         break;
                     };
-                    let parsed = parse_stable_source(&source.identity, &source.stamp, parse)
+                    let parsed = parse_stable_source(&source.history, &source.stamp, parse)
                         .map_err(|error| {
                             if authoritative {
-                                configured_source_error(&source.identity.path, &error)
+                                configured_source_error(&source.history.identity.path, &error)
                             } else {
                                 error
                             }
                         });
                     let source = SourceFile {
-                        identity: source.identity.clone(),
+                        history: source.history.clone(),
                         stamp: source.stamp.clone(),
                         estimated_bytes: source.estimated_bytes,
                     };
@@ -331,7 +337,7 @@ fn index_provider_inner(
         }
     });
     if authoritative {
-        verify_authoritative_discovery(provider, roots, &observed_paths)?;
+        verify_authoritative_discovery(provider, roots, &observed_layout)?;
     }
     summary.purged_conversations += reconcile_complete_sources(
         storage,
@@ -419,7 +425,7 @@ fn prepare_sources(
             summary.processed_bytes = summary.processed_bytes.saturating_add(bytes);
         } else {
             pending.push(SourceFile {
-                identity,
+                history: source,
                 stamp,
                 estimated_bytes: bytes,
             });
@@ -437,13 +443,13 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
 }
 
 fn parse_stable_source(
-    source: &SourceIdentity,
+    source: &HistorySource,
     stamp: &SourceStamp,
-    parse: fn(&SourceIdentity) -> Result<ParsedFile, AppError>,
+    parse: fn(&HistorySource) -> Result<ParsedFile, AppError>,
 ) -> Result<ParsedFile, AppError> {
-    stamp.verify(source)?;
+    stamp.verify(&source.identity)?;
     let parsed = parse(source)?;
-    stamp.verify(source)?;
+    stamp.verify(&source.identity)?;
     Ok(parsed)
 }
 
@@ -456,19 +462,22 @@ fn apply_parsed_source(
     let parsed = result.parsed?;
     // A producer can wait in the bounded queue while another source is applied.
     // Reject a change during that wait before replacing content or checkpoints.
-    result.source.stamp.verify(&result.source.identity)?;
+    result
+        .source
+        .stamp
+        .verify(&result.source.history.identity)?;
     summary.malformed_records += parsed.malformed_records;
     if let Some(conversation) = parsed.conversation {
         apply_conversation(storage, &conversation, summary)?;
     } else if parsed.malformed_records == 0
-        && storage.remove_source(provider, &result.source.identity)?
+        && storage.remove_source(provider, &result.source.history.identity)?
     {
         summary.purged_conversations += 1;
     }
     if parsed.malformed_records == 0 {
         storage.record_source_checkpoint(
             provider,
-            &result.source.identity,
+            &result.source.history.identity,
             &result.source.stamp,
         )?;
     }

@@ -175,19 +175,24 @@ pub(crate) fn source_stamp_for(source: &SourceIdentity) -> Result<SourceStamp, A
 pub(super) fn verify_authoritative_discovery(
     provider: Provider,
     roots: &[PathBuf],
-    observed_keys: &BTreeSet<String>,
+    observed_layout: &std::collections::BTreeMap<String, Vec<Dependency>>,
 ) -> Result<(), AppError> {
-    let final_paths = discover_history_files(provider, roots, true)?
-        .sources
-        .into_iter()
-        .map(|source| source.identity.key())
-        .collect::<BTreeSet<_>>();
-    if final_paths != *observed_keys {
+    let sources = discover_history_files(provider, roots, true)?.sources;
+    if source_layout(&sources) != *observed_layout {
         return Err(AppError::configuration(
             "configured provider roots changed while indexing",
         ));
     }
     Ok(())
+}
+
+pub(super) fn source_layout(
+    sources: &[HistorySource],
+) -> std::collections::BTreeMap<String, Vec<Dependency>> {
+    sources
+        .iter()
+        .map(|s| (s.identity.key(), s.dependencies.clone()))
+        .collect()
 }
 
 pub(super) fn discover_history_files(
@@ -435,7 +440,7 @@ pub(crate) struct DirectScan {
 impl DirectScan {
     pub(crate) fn parse_source(
         provider: Provider,
-        source: &SourceIdentity,
+        source: &HistorySource,
         stamp: &SourceStamp,
     ) -> Result<ParsedFile, AppError> {
         super::parse_stable_source(source, stamp, provider.parser())
@@ -443,11 +448,7 @@ impl DirectScan {
 
     pub(crate) fn verify(&self) -> Result<(), AppError> {
         if self.authoritative {
-            let observed = self
-                .sources
-                .iter()
-                .map(|source| source.identity.key())
-                .collect();
+            let observed = source_layout(&self.sources);
             verify_authoritative_discovery(self.provider, &self.roots, &observed)?;
         }
         Ok(())

@@ -154,7 +154,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
         write_claude_session(&source, "session", "queued sentinel");
         let stamp = source_stamp(&source).unwrap();
         let parsed = parse_stable_source(
-            &SourceIdentity::file(&source),
+            &HistorySource::file(&source),
             &stamp,
             Provider::ClaudeCode.parser(),
         )
@@ -170,7 +170,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
             Provider::ClaudeCode,
             ParsedSource {
                 source: SourceFile {
-                    identity: SourceIdentity::file(&source),
+                    history: HistorySource::file(&source),
                     stamp: stamp.clone(),
                     estimated_bytes: u64::try_from(stamp.size_bytes).unwrap(),
                 },
@@ -195,7 +195,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
 
 #[test]
 fn a_changed_discovered_stamp_is_rejected_before_parsing() {
-    fn must_not_parse(_: &SourceIdentity) -> Result<ParsedFile, AppError> {
+    fn must_not_parse(_: &HistorySource) -> Result<ParsedFile, AppError> {
         panic!("changed source must be rejected before the parser runs")
     }
     let directory = tempfile::tempdir().unwrap();
@@ -203,7 +203,7 @@ fn a_changed_discovered_stamp_is_rejected_before_parsing() {
     write_claude_session(&source, "session", "initial");
     let stamp = source_stamp(&source).unwrap();
     write_claude_session(&source, "session", "changed after discovery");
-    let error = parse_stable_source(&SourceIdentity::file(&source), &stamp, must_not_parse)
+    let error = parse_stable_source(&HistorySource::file(&source), &stamp, must_not_parse)
         .err()
         .expect("discovery stamp is stale");
     assert!(error.error.message.contains("history changed"));

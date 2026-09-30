@@ -11,6 +11,7 @@ use std::{
 };
 
 mod discovery;
+mod migration;
 mod models;
 mod text;
 use discovery::catalog_session;
@@ -68,15 +69,16 @@ struct Session {
 fn sdk(
     path: &Path,
     session: Option<Session>,
+    legacy_ui: Option<&Path>,
 ) -> Result<(Session, Vec<NormalizedMessage>), AppError> {
-    let history: SdkHistory = read(path)?;
+    let mut history: SdkHistory = read(path)?;
     if history.version != 1 || history.session_id.trim().is_empty() {
         return Err(invalid(
             "unsupported SDK snapshot or empty session identity",
         ));
     }
     let updated_at = timestamp(&history.updated_at)?;
-    let session = if let Some(session) = session {
+    let mut session = if let Some(session) = session {
         if session.id != history.session_id {
             return Err(invalid("catalog and transcript identities disagree"));
         }
@@ -108,7 +110,7 @@ fn sdk(
         }
     };
     let searchable = matches!(history.agent, Agent::Lead) && !session.subagent;
-    let mut messages = Vec::new();
+    let mut messages = migration::prefix(&mut session, &mut history.messages, legacy_ui)?;
     let mut questions = HashSet::new();
     let mut occurrences = HashMap::<String, u64>::new();
     for message in history.messages {
@@ -235,12 +237,30 @@ fn ui(path: &Path) -> Result<(Session, Vec<NormalizedMessage>), AppError> {
     ))
 }
 
-pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
+#[cfg(test)]
+fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
+    parse_native(source, None)
+}
+
+pub(super) fn parse_source(source: &super::HistorySource) -> Result<ParsedFile, AppError> {
+    let mut legacy = source
+        .dependencies
+        .iter()
+        .map(super::source::Dependency::path)
+        .filter(|p| p.file_name().is_some_and(|n| n == "ui_messages.json"));
+    let legacy_ui = legacy.next();
+    if legacy.next().is_some() {
+        return Err(invalid("multiple legacy UI histories for one SDK source"));
+    }
+    parse_native(&source.identity, legacy_ui)
+}
+
+fn parse_native(source: &SourceIdentity, legacy_ui: Option<&Path>) -> Result<ParsedFile, AppError> {
     let (session, messages) = if let Some(id) = &source.session {
         let connection = super::sqlite_source::open(&source.path)?;
         let session = catalog_session(&connection, &source.path, id)?;
         let artifact = session.artifact.clone();
-        sdk(&artifact, Some(session))?
+        sdk(&artifact, Some(session), legacy_ui)?
     } else if source
         .path
         .file_name()
@@ -248,7 +268,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
     {
         ui(&source.path)?
     } else {
-        sdk(&source.path, None)?
+        sdk(&source.path, None, legacy_ui)?
     };
     let title = session
         .title

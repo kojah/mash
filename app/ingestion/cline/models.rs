@@ -161,6 +161,31 @@ pub(super) struct SdkMessage {
     pub metadata: Option<MessageMetadata>,
 }
 
+impl SdkMessage {
+    pub(super) fn legacy_boundary(&self) -> bool {
+        if self.role != Role::User
+            || self.metadata.as_ref().is_some_and(|m| {
+                m.user_run_span == Some(0)
+                    || matches!(
+                        m.display_role,
+                        Some(
+                            DisplayRole::System
+                                | DisplayRole::Status
+                                | DisplayRole::Error
+                                | DisplayRole::Unknown
+                        )
+                    )
+            })
+        {
+            return false;
+        }
+        match &self.content {
+            Content::Text(text) => text.contains(super::migration::RESUME_WARNING),
+            Content::Blocks(blocks) => blocks.iter().any(|b|matches!(b,Block::Text {text} if text.contains(super::migration::RESUME_WARNING))),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct MessageMetadata {

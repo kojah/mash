@@ -6,10 +6,7 @@ use crate::{
     ingestion::{HistorySource, SourceIdentity, source::Dependency, sqlite_source},
 };
 use rusqlite::{Connection, OptionalExtension};
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 pub(in crate::ingestion) fn metadata_path(path: &Path) -> Option<PathBuf> {
     if path.file_name().is_some_and(|n| n == "ui_messages.json") {
@@ -116,7 +113,7 @@ pub(in crate::ingestion) fn discover(path: &Path) -> Result<Vec<HistorySource>, 
                     session: Some(id),
                 },
                 activity_ns: session.updated_at.and_then(|t| t.checked_mul(1_000_000)),
-                estimated_bytes: None,
+                estimated_bytes: Some(session.artifact.metadata().map_err(AppError::io)?.len()),
                 dependencies: vec![Dependency::Required(session.artifact)],
             })
         })
@@ -134,26 +131,6 @@ pub(in crate::ingestion) fn sources(
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
-    let ui_ids = expanded
-        .iter()
-        .filter(|s| {
-            s.identity
-                .path
-                .file_name()
-                .is_some_and(|n| n == "ui_messages.json")
-        })
-        .filter_map(|s| s.identity.path.parent()?.file_name()?.to_str())
-        .collect::<HashSet<_>>();
-    if expanded.iter().any(|s| {
-        s.identity
-            .session
-            .as_deref()
-            .is_some_and(|id| ui_ids.contains(id))
-    }) {
-        return Err(invalid(
-            "legacy UI and SDK histories share a task identity; mixed migration reconstruction is not yet supported",
-        ));
-    }
     let owned = expanded
         .iter()
         .filter(|s| s.identity.session.is_some())
@@ -173,16 +150,11 @@ pub(in crate::ingestion) fn sources(
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let mut identities = HashSet::new();
-    for source in &sources {
+    let mut groups = std::collections::BTreeMap::<String, Vec<HistorySource>>::new();
+    for source in sources {
         let id = if let Some(id) = &source.identity.session {
             id.clone()
-        } else if source
-            .identity
-            .path
-            .file_name()
-            .is_some_and(|n| n == "ui_messages.json")
-        {
+        } else if is_ui(&source) {
             source
                 .identity
                 .path
@@ -197,11 +169,44 @@ pub(in crate::ingestion) fn sources(
         if id.trim().is_empty() {
             return Err(invalid("empty session identity"));
         }
-        if !identities.insert(id) {
-            return Err(invalid(
-                "multiple native histories share a task identity; mixed migration reconstruction is not yet supported",
-            ));
-        }
+        groups.entry(id).or_default().push(source);
     }
-    Ok(sources)
+    groups
+        .into_values()
+        .map(|mut group| {
+            if group.len() == 1 {
+                return Ok(group.remove(0));
+            }
+            if group.len() != 2 || group.iter().filter(|s| is_ui(s)).count() != 1 {
+                return Err(invalid(
+                    "multiple native sources have the same task identity",
+                ));
+            }
+            let mut sdk = group.remove(
+                group
+                    .iter()
+                    .position(|s| !is_ui(s))
+                    .ok_or_else(|| invalid("missing SDK source"))?,
+            );
+            let legacy = group.remove(0);
+            let legacy_bytes = legacy.identity.path.metadata().map_err(AppError::io)?.len();
+            sdk.dependencies
+                .push(Dependency::Required(legacy.identity.path));
+            sdk.dependencies.extend(legacy.dependencies);
+            // Include both snapshots in progress estimates, without counting the
+            // shared SDK catalog once per logical conversation.
+            if let Some(bytes) = sdk.estimated_bytes {
+                sdk.estimated_bytes = Some(bytes.saturating_add(legacy_bytes));
+            }
+            Ok(sdk)
+        })
+        .collect()
+}
+
+fn is_ui(source: &HistorySource) -> bool {
+    source
+        .identity
+        .path
+        .file_name()
+        .is_some_and(|n| n == "ui_messages.json")
 }

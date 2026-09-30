@@ -127,6 +127,7 @@ pub(super) fn sdk_text(content: Content, role: &Role, questions: &mut HashSet<St
     if *role == Role::User {
         projection = strip_envelope(&projection);
         if projection.starts_with("[TASK RESUMPTION]")
+            || projection.contains(super::migration::RESUME_WARNING)
             || projection
                 == "The user approved switching to act mode. Continue with the approved plan now."
             || projection.starts_with("<hook_context")
