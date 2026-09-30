@@ -1,5 +1,5 @@
-//! Native Copilot CLI v1 event logs. Event parent IDs describe chronology,
-//! not agent ancestry: each agent retains its own canonical context chain.
+//! Native Copilot CLI events and the separate regular VS Code Chat store.
+//! CLI event parents describe chronology; each agent has its own context chain.
 use super::{Conversation, NormalizedMessage, ParsedFile, SourceIdentity, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use serde::Deserialize;
@@ -12,6 +12,21 @@ use std::{
 
 #[cfg(test)]
 mod tests;
+
+mod chat;
+pub(super) fn sources(
+    input: Vec<super::HistorySource>,
+) -> Result<Vec<super::HistorySource>, AppError> {
+    chat::sources(input)
+}
+
+pub(super) fn parse_source(source: &super::HistorySource) -> Result<ParsedFile, AppError> {
+    if source.identity.session.is_some() {
+        chat::parse(source)
+    } else {
+        parse(&source.identity.path)
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

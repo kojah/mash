@@ -59,7 +59,7 @@ base64 = "0.22.1"
 prost = "0.14.4"
 ring = "0.17"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = { version = "1.0.149", features = ["raw_value"] }
 walkdir = "2.5.0"
 whatlang = "0.18.0"
 

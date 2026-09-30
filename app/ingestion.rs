@@ -61,7 +61,7 @@ impl Provider {
             Self::Opencode => |source| opencode::parse(&source.identity),
             Self::Openclaw => |source| openclaw::parse(&source.identity),
             Self::Pi => |source| pi::parse(&source.identity.path),
-            Self::Copilot => |source| copilot::parse(&source.identity.path),
+            Self::Copilot => copilot::parse_source,
             Self::GeminiCli => |source| gemini::parse(&source.identity.path),
             Self::Cline => cline::parse_source,
             Self::Cursor => |source| cursor::parse(&source.identity),

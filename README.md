@@ -279,7 +279,7 @@ The format follows Pi's [session manager](https://github.com/earendil-works/pi/b
 
 GitHub Copilot CLI is opt-in through `[providers.copilot]`, with
 `roots = ["/absolute/path/to/.copilot/session-state"]` or explicit `.jsonl`
-event files. Directory discovery accepts only native `events.jsonl` logs.
+event files. CLI directory discovery accepts native `events.jsonl` logs.
 The adapter reads the v1 event schema: displayed human requests and complete
 main-agent answers are searchable. Streaming deltas are omitted; augmented
 model prompts and binary attachments are not indexed. Tools, reasoning,
@@ -294,6 +294,38 @@ Missing headers, unsupported versions and incomplete records fail explicitly,
 preserving the previous indexed snapshot until a complete refresh succeeds.
 The native format follows the official [Copilot event schema](https://github.com/github/copilot-sdk/blob/main/nodejs/src/generated/session-events.ts)
 and [VS Code history reader](https://github.com/microsoft/vscode-copilot-chat/blob/main/src/extension/chatSessions/copilotcli/common/copilotCLITools.ts).
+
+Regular **Copilot Chat in VS Code** uses a separate adapter under the same
+`[providers.copilot]` setting. Add VS Code's `User/workspaceStorage` and
+`User/globalStorage` directories, or explicit `state.vscdb` files, alongside
+the CLI root. On macOS these are under
+`~/Library/Application Support/Code/User`; on Linux usually `~/.config/Code/User`;
+on Windows `%APPDATA%/Code/User`. Insiders and custom user-data directories can
+be configured the same way. Both formats can be indexed together:
+
+```toml
+[providers.copilot]
+roots = [
+  "/absolute/path/to/.copilot/session-state",
+  "/absolute/path/to/Code/User/workspaceStorage",
+  "/absolute/path/to/Code/User/globalStorage",
+]
+```
+
+The read-only VS Code catalog selects local sessions, including empty-window
+chats. Orphaned files and external CLI/cloud session entries are excluded.
+Native JSON snapshots (including older plain-string responses) and JSONL
+mutation logs are supported; logs take
+precedence over retained snapshots. Edits, response updates and array rewinds
+retain stable identities and remove discarded history on refresh. A partial
+or invalid log preserves the previous indexed snapshot for retry. Draft input
+is excluded. Human requests and answer markdown are searchable; hidden requests,
+reasoning, tools and explicitly identified third-party participants remain
+context only. Workspace and logged repository metadata support normal filters.
+CLI and Chat session/message IDs have distinct namespaces. Both use the existing
+`copilot` provider filter and per-index allowlists. Their upstream schemas are
+the [VS Code session store](https://github.com/microsoft/vscode/blob/f5f73df304d9c5eeab64d4d07eed57e007742a92/src/vs/workbench/contrib/chat/common/model/chatSessionStore.ts)
+and [typed mutation schema](https://github.com/microsoft/vscode/blob/f5f73df304d9c5eeab64d4d07eed57e007742a92/src/vs/workbench/contrib/chat/common/model/chatSessionOperationLog.ts).
 
 Gemini CLI is opt-in through `[providers.gemini-cli]`, with
 `roots = ["/absolute/path/to/.gemini/tmp"]` or explicit native `.jsonl`/`.json`

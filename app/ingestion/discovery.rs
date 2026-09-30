@@ -37,6 +37,25 @@ pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
                     }
                 }
             }
+            if provider == Provider::Copilot
+                && path.file_name().is_some_and(|name| name == "state.vscdb")
+                && let Some(parent) = path.parent()
+            {
+                roots.push(parent.into());
+            }
+            if provider == Provider::Copilot {
+                let global = if path.file_name().is_some_and(|name| name == "state.vscdb") {
+                    path.parent()
+                } else {
+                    Some(path.as_path())
+                };
+                if let Some(global) =
+                    global.filter(|p| p.file_name().is_some_and(|n| n == "globalStorage"))
+                    && let Some(user) = global.parent()
+                {
+                    roots.push(user.join("workspaceStorage/no-workspace/chatSessions"));
+                }
+            }
             if provider == Provider::GeminiCli
                 && let Some(marker) = super::gemini::project_marker(path)
             {
@@ -210,6 +229,10 @@ pub(super) fn discover_history_files(
         discovery.sources = super::cline::sources(discovery.sources)?;
         return Ok(discovery);
     }
+    if provider == Provider::Copilot {
+        discovery.sources = super::copilot::sources(discovery.sources)?;
+        return Ok(discovery);
+    }
     if provider == Provider::GeminiCli {
         let paths: BTreeSet<_> = discovery
             .sources
@@ -317,6 +340,7 @@ fn discover_physical_sources(
         Provider::ClaudeCode | Provider::Codex | Provider::Pi => is_jsonl(path),
         Provider::Copilot => {
             path.file_name().is_some_and(|name| name == "events.jsonl")
+                || path.file_name().is_some_and(|name| name == "state.vscdb")
                 || (explicit && is_jsonl(path))
         }
         Provider::GeminiCli => {
