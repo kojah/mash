@@ -147,8 +147,9 @@ estimate rather than a process-memory ceiling; a single large history may need
 more memory.
 
 Normalized message payloads spill to private temporary files above a 16 MiB
-inline budget. JSONL parsing and Claude reconciliation feed this staging
-incrementally; local storage and shared uploads read it in bounded batches.
+inline budget. JSONL parsing, native Copilot CLI parsing and Claude reconciliation
+feed this staging incrementally; local storage and shared uploads read it in
+bounded batches.
 Scratch files use `TMPDIR` and are removed when their owner finishes or fails.
 Checksums detect corrupt staging before publication. Metadata still grows with
 message count, and some native adapters buffer their input before normalization.

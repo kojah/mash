@@ -6,6 +6,8 @@ use crate::{
 use serde_json::{Value, json};
 use std::io::Write;
 
+mod staging;
+
 fn record(id: &str, kind: &str, data: Value) -> Value {
     let mut result =
         json!({"id":id,"parentId":"previous-event","timestamp":"2026-09-30T10:00:01Z","type":kind});

@@ -362,7 +362,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let mut workspace = start.context.filter(|w| !w.pending_git_context);
     let mut ids = HashSet::from([first_id]);
     let mut heads = HashMap::<Option<String>, i64>::new();
-    let mut messages = Vec::new();
+    let mut messages = super::messages::Builder::default();
     for line in lines {
         let record = event(&line?)?;
         let time = timestamp(&record.timestamp)?;
@@ -416,14 +416,11 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             content: text.canonical,
             search_projection: Some(text.projection),
             created_at: Some(time),
-        });
+        })?;
         heads.insert(lane, ordinal);
     }
-    let title = messages.iter().find_map(|m| {
-        (m.role == Role::User)
-            .then(|| crate::search_text::title(m.search_projection.as_deref().unwrap_or_default()))
-            .flatten()
-    });
+    let messages = messages.finish()?;
+    let title = messages.summary()?.title;
     let (project, repository) = workspace.map_or((None, None), |w| {
         (
             Some(w.cwd).filter(|s| !s.is_empty()),
@@ -444,7 +441,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             title,
             created_at: Some(created_at),
             updated_at: Some(updated_at),
-            messages: super::messages::Messages::stage(messages)?,
+            messages,
         }),
         malformed_records: 0,
     })
