@@ -146,16 +146,8 @@ fn pack_semantic_chunk(
                 "embedding rows have inconsistent dimensions",
             ));
         }
-        let provider: String = row.get(4).map_err(AppError::database)?;
-        let provider = match provider.as_str() {
-            "claude-code" => 1_u8,
-            "codex" => 2_u8,
-            _ => {
-                return Err(AppError::database_data(
-                    "unsupported provider in semantic index",
-                ));
-            }
-        };
+        let provider: crate::provider::Provider = row.get(4).map_err(AppError::database)?;
+        let provider = provider_code(provider);
         let created_at: Option<i64> = row.get(5).map_err(AppError::database)?;
         message_rowids.extend_from_slice(&rowid.to_le_bytes());
         norms.extend_from_slice(&norm.to_le_bytes());
@@ -265,13 +257,10 @@ pub(super) fn decode_f32_blob(
         .collect())
 }
 
-pub(super) fn provider_code(provider: &str) -> Result<u8, AppError> {
+pub(super) const fn provider_code(provider: crate::provider::Provider) -> u8 {
     match provider {
-        "claude-code" => Ok(1),
-        "codex" => Ok(2),
-        _ => Err(AppError::usage(format!(
-            "unsupported provider filter: {provider}"
-        ))),
+        crate::provider::Provider::ClaudeCode => 1,
+        crate::provider::Provider::Codex => 2,
     }
 }
 

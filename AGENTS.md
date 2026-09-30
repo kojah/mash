@@ -39,6 +39,11 @@ parsing, and local inference on blocking workers; bound model work and serialize
 MCP mutations while permitting read concurrency. Add a dependency only when it
 is smaller and clearer than a local implementation of the required behavior.
 
+Use typed Rust models for known serialized schemas throughout the application.
+Use enums for providers, roles, phases, states, modes, and other known alternatives;
+preserve unknown variants when external vocabularies are extensible. Keep generic
+JSON limited to opaque provider tool payloads and SDK boundaries requiring it.
+
 Use `apply_patch` for source edits. Preserve unrelated worktree changes. Do not
 create compatibility copies or versioned replacement files.
 

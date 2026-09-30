@@ -1,3 +1,4 @@
+use crate::provider::Provider;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
@@ -7,13 +8,13 @@ use crate::AppError;
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Arguments {
     #[arg(long)]
-    provider: Vec<String>,
+    provider: Vec<Provider>,
     #[arg(long)]
     days: Option<u32>,
     #[arg(long)]
     node: Vec<String>,
     #[arg(long)]
-    role: Vec<String>,
+    role: Vec<crate::role::Role>,
     #[arg(long)]
     conversation: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
@@ -42,10 +43,14 @@ pub(crate) struct Scope {
 impl Arguments {
     pub(crate) fn resolve(self, node: &str) -> Result<Scope, AppError> {
         let mut all = Vec::new();
+        if !self.provider.is_empty() {
+            all.push(Filter::Provider(self.provider));
+        }
+        if !self.role.is_empty() {
+            all.push(Filter::Role(self.role));
+        }
         for (values, constructor) in [
-            (self.provider, Filter::Provider as fn(Vec<String>) -> Filter),
-            (self.node, Filter::Node),
-            (self.role, Filter::Role),
+            (self.node, Filter::Node as fn(Vec<String>) -> Filter),
             (self.conversation, Filter::Conversation),
             (self.project, Filter::Project),
             (self.repository, Filter::Repository),
@@ -96,8 +101,8 @@ pub(crate) enum Filter {
     Any(Vec<Self>),
     Not(Box<Self>),
     Node(Vec<String>),
-    Provider(Vec<String>),
-    Role(Vec<String>),
+    Provider(Vec<Provider>),
+    Role(Vec<crate::role::Role>),
     Conversation(Vec<String>),
     Project(Vec<String>),
     Repository(Vec<String>),
@@ -144,27 +149,19 @@ impl Filter {
                         "filter lists accept up to 100 nonempty values of at most 4096 bytes",
                     ));
                 }
-                if matches!(self, Self::Provider(_))
-                    && values
-                        .iter()
-                        .any(|s| !matches!(s.as_str(), "claude-code" | "codex"))
-                {
-                    return Err(AppError::usage("unsupported provider in search filter"));
-                }
             }
         }
         Ok(())
     }
 
-    fn values(&self) -> &[String] {
+    fn values(&self) -> Vec<&str> {
         match self {
-            Self::Node(v)
-            | Self::Provider(v)
-            | Self::Role(v)
-            | Self::Conversation(v)
-            | Self::Project(v)
-            | Self::Repository(v) => v,
-            _ => &[],
+            Self::Node(v) | Self::Conversation(v) | Self::Project(v) | Self::Repository(v) => {
+                v.iter().map(String::as_str).collect()
+            }
+            Self::Provider(v) => v.iter().map(|p| p.as_str()).collect(),
+            Self::Role(v) => v.iter().map(crate::role::Role::as_str).collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -228,7 +225,7 @@ impl Filter {
                     .iter()
                     .map(|v| {
                         if matches!(self, Self::Provider(_)) {
-                            if v == "codex" {
+                            if *v == "codex" {
                                 "x".to_owned()
                             } else {
                                 "c".to_owned()
@@ -313,7 +310,7 @@ mod tests {
         );
         assert_eq!(timestamp("2026-09-30").unwrap(), 1_790_726_400);
         assert!(timestamp("yesterday").is_err());
-        assert!(Filter::Provider(vec!["invalid".into()]).validate().is_err());
+        assert!(serde_json::from_str::<Filter>(r#"{"provider":["invalid"]}"#).is_err());
         assert!(Filter::Project(vec!["nul\0".into()]).validate().is_err());
         let mut deep = Filter::All(vec![]);
         for _ in 0..10 {

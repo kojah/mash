@@ -20,7 +20,7 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
         )
         .unwrap();
     storage
-        .record_source_checkpoint("codex", "/tmp/old.jsonl", 10, 20)
+        .record_source_checkpoint(crate::provider::Provider::Codex, "/tmp/old.jsonl", 10, 20)
         .unwrap();
     storage.commit_writer().unwrap();
     storage.connection.execute_batch("ALTER TABLE conversations DROP COLUMN project; ALTER TABLE conversations DROP COLUMN repository; PRAGMA user_version=14;").unwrap();
@@ -30,7 +30,7 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
     assert_eq!(storage.embedding_count("fixture-generation").unwrap(), 1);
     assert!(
         !storage
-            .source_checkpoint_matches("codex", "/tmp/old.jsonl", 10, 20)
+            .source_checkpoint_matches(crate::provider::Provider::Codex, "/tmp/old.jsonl", 10, 20)
             .unwrap()
     );
     let metadata: (Option<String>, Option<String>) = storage
@@ -296,7 +296,7 @@ fn newer_schema_is_rejected_without_rewriting_version() {
     drop(connection);
 
     let error = Storage::open(&path).err().expect("newer schema rejected");
-    assert_eq!(error.error.kind, "schema-incompatible");
+    assert_eq!(error.error.kind, crate::ErrorKind::SchemaIncompatible);
     let connection = Connection::open(&path).expect("reopen seed");
     assert_eq!(
         connection

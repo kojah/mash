@@ -1,3 +1,4 @@
+use crate::provider::Provider;
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -7,8 +8,8 @@ use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::DateTime;
-use serde::Serialize;
-use serde_json::Value;
+mod json;
+use json::{Content, Kind, Record};
 use walkdir::WalkDir;
 
 use crate::AppError;
@@ -44,7 +45,7 @@ pub(crate) struct IndexSummary {
 
 pub(crate) struct Conversation {
     pub(crate) id: String,
-    pub(crate) provider: &'static str,
+    pub(crate) provider: Provider,
     pub(crate) source_path: PathBuf,
     pub(crate) project: Option<String>,
     pub(crate) repository: Option<String>,
@@ -57,7 +58,7 @@ pub(crate) struct Conversation {
 pub(crate) struct NormalizedMessage {
     pub(crate) id: String,
     pub(crate) ordinal: i64,
-    pub(crate) role: String,
+    pub(crate) role: crate::role::Role,
     pub(crate) content: String,
     /// `None` searches canonical content, an empty string makes the message
     /// context-only, and a nonempty value searches that filtered projection.
@@ -77,7 +78,7 @@ struct Discovery {
 
 #[derive(Clone, Copy)]
 struct ProviderScan<'a> {
-    provider: &'static str,
+    provider: Provider,
     roots: &'a [PathBuf],
     cutoff_modified_ns: Option<i64>,
     parse: fn(&Path) -> Result<ParsedFile, AppError>,
@@ -103,26 +104,9 @@ struct IndexProgress {
     estimate: crate::progress::Estimate,
 }
 
-#[derive(Serialize)]
-struct ProgressEvent<'a> {
-    event: &'static str,
-    phase: &'a str,
-    processed_files: u64,
-    scanned_files: u64,
-    processed_bytes: u64,
-    discovered_bytes: u64,
-    changed_messages: u64,
-    committed_batches: u64,
-    elapsed_milliseconds: u64,
-    messages_per_second: u64,
-    bytes_per_second: u64,
-    eta_seconds: Option<u64>,
-    eta_scope: &'static str,
-}
-
 struct ExtractedMessage {
     source_id: Option<String>,
-    role: String,
+    role: crate::role::Role,
     content: String,
     search_projection: Option<String>,
     created_at: Option<i64>,
@@ -164,7 +148,7 @@ fn index_at(
         .claude_code
         .as_ref()
         .map(|roots| {
-            crate::progress::during("source-discovery", || {
+            crate::progress::during(crate::progress::Phase::SourceDiscovery, || {
                 discover_jsonl_files(roots, options.roots_are_authoritative)
             })
         })
@@ -173,7 +157,7 @@ fn index_at(
         .codex
         .as_ref()
         .map(|roots| {
-            crate::progress::during("source-discovery", || {
+            crate::progress::during(crate::progress::Phase::SourceDiscovery, || {
                 discover_jsonl_files(roots, options.roots_are_authoritative)
             })
         })
@@ -183,7 +167,7 @@ fn index_at(
         index_provider(
             storage,
             ProviderScan {
-                provider: "claude-code",
+                provider: Provider::ClaudeCode,
                 roots,
                 cutoff_modified_ns,
                 parse: parse_claude,
@@ -198,7 +182,7 @@ fn index_at(
         index_provider(
             storage,
             ProviderScan {
-                provider: "codex",
+                provider: Provider::Codex,
                 roots,
                 cutoff_modified_ns,
                 parse: parse_codex,
@@ -211,7 +195,7 @@ fn index_at(
     }
 
     summary.processed_files = summary.scanned_files;
-    progress.emit(&summary, "ingestion-complete", true);
+    progress.emit(&summary, crate::progress::Phase::IngestionComplete, true);
 
     Ok(summary)
 }
@@ -270,7 +254,7 @@ fn index_provider_inner(
     });
     progress.phase_started = Instant::now();
     progress.estimate = crate::progress::Estimate::starting_at(summary.processed_bytes);
-    progress.emit(summary, "discovered", true);
+    progress.emit(summary, crate::progress::Phase::Discovered, true);
 
     let worker_count = parser_worker_count(pending.len());
     let next_source = AtomicUsize::new(0);
@@ -314,7 +298,7 @@ fn index_provider_inner(
             let result = match receiver.recv_timeout(Duration::from_secs(1)) {
                 Ok(result) => result,
                 Err(RecvTimeoutError::Timeout) => {
-                    progress.emit(summary, "indexing", true);
+                    progress.emit(summary, crate::progress::Phase::Indexing, true);
                     continue;
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
@@ -343,7 +327,7 @@ fn index_provider_inner(
             {
                 record_first_error(&mut complete, &mut first_error, error);
             }
-            progress.emit(summary, "indexing", false);
+            progress.emit(summary, crate::progress::Phase::Indexing, false);
         }
     });
     if authoritative {
@@ -363,7 +347,7 @@ fn index_provider_inner(
 fn reconcile_complete_sources(
     storage: &mut Storage,
     complete: bool,
-    provider: &str,
+    provider: Provider,
     observed_paths: &BTreeSet<String>,
     roots: &[PathBuf],
     cutoff_modified_ns: Option<i64>,
@@ -409,13 +393,13 @@ fn checkpoint_provider_batch(
     summary.committed_batches += 1;
     *batch_files = 0;
     *batch_bytes = 0;
-    progress.emit(summary, "checkpoint", true);
+    progress.emit(summary, crate::progress::Phase::Checkpoint, true);
     Ok(())
 }
 
 fn prepare_sources(
     storage: &Storage,
-    provider: &str,
+    provider: Provider,
     cutoff_modified_ns: Option<i64>,
     authoritative: bool,
     discovery: Discovery,
@@ -467,7 +451,7 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
 
 fn apply_parsed_source(
     storage: &mut Storage,
-    provider: &str,
+    provider: Provider,
     result: ParsedSource,
     summary: &mut IndexSummary,
 ) -> Result<bool, AppError> {
@@ -502,7 +486,7 @@ impl IndexProgress {
         }
     }
 
-    fn emit(&mut self, summary: &IndexSummary, phase: &str, force: bool) {
+    fn emit(&mut self, summary: &IndexSummary, phase: crate::progress::Phase, force: bool) {
         let now = Instant::now();
         if !force && now.duration_since(self.last_event) < Duration::from_secs(1) {
             return;
@@ -510,36 +494,35 @@ impl IndexProgress {
         self.last_event = now;
         let elapsed_milliseconds =
             u64::try_from(now.duration_since(self.started).as_millis().max(1)).unwrap_or(u64::MAX);
-        let event = ProgressEvent {
-            event: "index-progress",
-            phase,
-            processed_files: summary.processed_files,
-            scanned_files: summary.scanned_files,
-            processed_bytes: summary.processed_bytes,
-            discovered_bytes: summary.discovered_bytes,
-            changed_messages: summary.changed_messages,
-            committed_batches: summary.committed_batches,
-            elapsed_milliseconds,
-            messages_per_second: summary
-                .changed_messages
-                .saturating_mul(1_000)
-                .checked_div(elapsed_milliseconds)
-                .unwrap_or_default(),
-            bytes_per_second: summary
-                .processed_bytes
-                .saturating_mul(1_000)
-                .checked_div(elapsed_milliseconds)
-                .unwrap_or_default(),
-            eta_seconds: self.estimate.observe(
-                summary.processed_bytes,
-                summary.discovered_bytes,
-                crate::progress::milliseconds(self.phase_started),
+        let eta = self.estimate.observe(
+            summary.processed_bytes,
+            summary.discovered_bytes,
+            crate::progress::milliseconds(self.phase_started),
+        );
+        let event = crate::progress::Event {
+            messages_per_second: Some(
+                summary
+                    .changed_messages
+                    .saturating_mul(1_000)
+                    .checked_div(elapsed_milliseconds)
+                    .unwrap_or_default(),
             ),
-            eta_scope: "provider-ingestion",
+            bytes_per_second: Some(
+                summary
+                    .processed_bytes
+                    .saturating_mul(1_000)
+                    .checked_div(elapsed_milliseconds)
+                    .unwrap_or_default(),
+            ),
+            ..crate::progress::Event::files(
+                phase,
+                summary,
+                elapsed_milliseconds,
+                eta,
+                crate::progress::EtaScope::ProviderIngestion,
+            )
         };
-        if let Ok(event) = serde_json::to_value(event) {
-            crate::progress::emit(&event);
-        }
+        crate::progress::emit(&event);
     }
 }
 
@@ -676,7 +659,7 @@ fn cutoff_modified_ns(
 // Shared-only ingestion reuses discovery and both concrete parsers, without SQLite.
 #[derive(Clone)]
 pub(crate) struct DirectScan {
-    pub(crate) provider: &'static str,
+    pub(crate) provider: Provider,
     roots: Vec<PathBuf>,
     pub(crate) files: Vec<PathBuf>,
     pub(crate) complete: bool,
@@ -685,11 +668,10 @@ pub(crate) struct DirectScan {
 }
 
 impl DirectScan {
-    pub(crate) fn parse_path(provider: &str, path: &Path) -> Result<ParsedFile, AppError> {
+    pub(crate) fn parse_path(provider: Provider, path: &Path) -> Result<ParsedFile, AppError> {
         match provider {
-            "claude-code" => parse_claude(path),
-            "codex" => parse_codex(path),
-            _ => Err(AppError::internal("unsupported direct ingestion provider")),
+            Provider::ClaudeCode => parse_claude(path),
+            Provider::Codex => parse_codex(path),
         }
     }
 
@@ -709,8 +691,8 @@ impl DirectScan {
 pub(crate) fn direct_scans(options: &IndexOptions) -> Result<Vec<DirectScan>, AppError> {
     let cutoff = cutoff_modified_ns(SystemTime::now(), options.since_days)?;
     [
-        ("claude-code", &options.claude_code),
-        ("codex", &options.codex),
+        (Provider::ClaudeCode, &options.claude_code),
+        (Provider::Codex, &options.codex),
     ]
     .into_iter()
     .filter_map(|(provider, roots)| roots.as_ref().map(|roots| (provider, roots)))
@@ -735,35 +717,29 @@ fn is_jsonl(path: &Path) -> bool {
 }
 
 fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
-    parse_jsonl(path, "claude-code", |raw| {
-        let entry_type = raw.get("type").and_then(Value::as_str)?;
-        if !matches!(entry_type, "user" | "assistant") {
+    parse_jsonl(path, Provider::ClaudeCode, |raw| {
+        if !matches!(raw.kind, Kind::User | Kind::Assistant) {
             return None;
         }
-        let message = raw.get("message")?;
-        let role = message
-            .get("role")
-            .and_then(Value::as_str)
-            .unwrap_or(entry_type);
-        let (content, search_projection) = claude_content(message.get("content")?)?;
+        let message = raw.message.as_ref()?;
+        let (content, search_projection) = message.content.as_ref()?.claude()?;
         Some(ExtractedMessage {
-            source_id: raw.get("uuid").and_then(Value::as_str).map(str::to_owned),
-            role: role.to_owned(),
+            source_id: raw.uuid.clone(),
+            role: message
+                .role
+                .clone()
+                .unwrap_or_else(|| raw.kind.as_str().into()),
             content,
             search_projection,
-            created_at: parse_timestamp(raw.get("timestamp")),
-            session_id: raw
-                .get("sessionId")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
+            created_at: parse_timestamp(raw.timestamp.as_deref()),
+            session_id: raw.session_id.clone(),
         })
     })
 }
 
 fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
-    parse_jsonl(path, "codex", |raw| {
-        let entry_type = raw.get("type").and_then(Value::as_str)?;
-        if entry_type == "response_item" {
+    parse_jsonl(path, Provider::Codex, |raw| {
+        if raw.kind == Kind::ResponseItem {
             extract_codex_response_item(raw)
         } else {
             None
@@ -771,65 +747,57 @@ fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
     })
 }
 
-fn extract_codex_response_item(raw: &Value) -> Option<ExtractedMessage> {
-    let payload = raw.get("payload")?;
-    let payload_type = payload.get("type").and_then(Value::as_str)?;
-    let (role, content, search_projection) = match payload_type {
-        "message" => (
-            payload
-                .get("role")
-                .and_then(Value::as_str)
-                .unwrap_or("assistant")
-                .to_owned(),
-            flatten_content(payload.get("content")?)?,
+fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
+    let payload = raw.payload.as_ref()?;
+    let (role, content, search_projection) = match payload.kind {
+        Kind::Message => (
+            payload.role.clone().unwrap_or(crate::role::Role::Assistant),
+            payload.content.as_ref().and_then(Content::flatten)?,
             None,
         ),
-        "function_call" | "custom_tool_call" => {
-            let name = payload
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
+        Kind::FunctionCall | Kind::CustomToolCall => {
+            let name = payload.name.as_deref().unwrap_or("unknown");
             let arguments = payload
-                .get("arguments")
-                .or_else(|| payload.get("input"))
-                .map(stringify_value)
+                .arguments
+                .as_ref()
+                .or(payload.input.as_ref())
+                .map(json::stringify)
                 .unwrap_or_default();
             (
-                "assistant".to_owned(),
+                crate::role::Role::Assistant,
                 format!("Tool {name}: {arguments}"),
                 None,
             )
         }
-        "function_call_output" | "custom_tool_call_output" => {
-            let output = payload.get("output").map(stringify_value)?;
-            let content = truncate_chars(&output, MAX_TOOL_OUTPUT_CHARS);
-            ("tool".to_owned(), content, Some(String::new()))
+        Kind::FunctionCallOutput | Kind::CustomToolCallOutput => {
+            let output = payload.output.as_ref().map(json::stringify)?;
+            (
+                crate::role::Role::Tool,
+                truncate_chars(&output, MAX_TOOL_OUTPUT_CHARS),
+                Some(String::new()),
+            )
         }
         _ => return None,
     };
     Some(ExtractedMessage {
-        source_id: payload
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| {
-                payload
-                    .get("call_id")
-                    .and_then(Value::as_str)
-                    .map(|call_id| format!("{payload_type}:{call_id}"))
-            }),
+        source_id: payload.id.clone().or_else(|| {
+            payload
+                .call_id
+                .as_ref()
+                .map(|id| format!("{}:{id}", payload.kind.as_str()))
+        }),
         role,
         content,
         search_projection,
-        created_at: parse_timestamp(raw.get("timestamp")),
+        created_at: parse_timestamp(raw.timestamp.as_deref()),
         session_id: None,
     })
 }
 
 fn parse_jsonl(
     path: &Path,
-    provider: &'static str,
-    mut extract: impl FnMut(&Value) -> Option<ExtractedMessage>,
+    provider: Provider,
+    mut extract: impl FnMut(&Record) -> Option<ExtractedMessage>,
 ) -> Result<ParsedFile, AppError> {
     let file = File::open(path).map_err(AppError::io)?;
     let mut malformed_records = 0;
@@ -842,22 +810,19 @@ fn parse_jsonl(
         if line.trim().is_empty() {
             continue;
         }
-        let raw: Value = if let Ok(raw) = serde_json::from_str(&line) {
+        let raw: Record = if let Ok(raw) = serde_json::from_str(&line) {
             raw
         } else {
             malformed_records += 1;
             continue;
         };
         capture_metadata(&raw, &mut project, &mut repository);
-        if provider == "codex"
-            && session_id.is_none()
-            && raw.get("type").and_then(Value::as_str) == Some("session_meta")
-        {
+        if provider == Provider::Codex && session_id.is_none() && raw.kind == Kind::SessionMeta {
             session_id = raw
-                .get("payload")
-                .and_then(|payload| payload.get("id").or_else(|| payload.get("session_id")))
-                .and_then(Value::as_str)
-                .map(str::to_owned);
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.id.as_ref().or(payload.session_id.as_ref()))
+                .cloned();
         }
         let Some(extracted) = extract(&raw) else {
             continue;
@@ -874,7 +839,7 @@ fn parse_jsonl(
         messages.push(NormalizedMessage {
             id: stable_id(
                 "message",
-                &[provider, &path.to_string_lossy(), &message_key],
+                &[provider.as_str(), &path.to_string_lossy(), &message_key],
             ),
             ordinal,
             role: extracted.role,
@@ -889,8 +854,8 @@ fn parse_jsonl(
             malformed_records,
         });
     }
-    let id =
-        session_id.unwrap_or_else(|| stable_id("session", &[provider, &path.to_string_lossy()]));
+    let id = session_id
+        .unwrap_or_else(|| stable_id("session", &[provider.as_str(), &path.to_string_lossy()]));
     let created_at = messages
         .iter()
         .filter_map(|message| message.created_at)
@@ -901,7 +866,7 @@ fn parse_jsonl(
         .max();
     let title = messages
         .iter()
-        .find(|message| message.role == "user")
+        .find(|message| message.role == crate::role::Role::User)
         .map(|message| truncate_chars(message.content.trim(), 120));
     Ok(ParsedFile {
         conversation: Some(Conversation {
@@ -919,26 +884,24 @@ fn parse_jsonl(
     })
 }
 
-fn capture_metadata(raw: &Value, project: &mut Option<String>, repository: &mut Option<String>) {
-    let meta = if raw.get("type").and_then(Value::as_str) == Some("session_meta") {
-        raw.get("payload").unwrap_or(raw)
+fn capture_metadata(raw: &Record, project: &mut Option<String>, repository: &mut Option<String>) {
+    let meta = if raw.kind == Kind::SessionMeta {
+        raw.payload
+            .as_ref()
+            .map_or(&raw.metadata, |payload| &payload.metadata)
     } else {
-        raw
+        &raw.metadata
     };
     if project.is_none() {
-        *project = meta
-            .get("cwd")
-            .and_then(Value::as_str)
-            .filter(|v| !v.is_empty())
-            .map(str::to_owned);
+        *project = meta.cwd.as_ref().filter(|value| !value.is_empty()).cloned();
     }
     if repository.is_none() {
         *repository = meta
-            .get("git")
-            .and_then(|v| v.get("repository_url"))
-            .and_then(Value::as_str)
-            .filter(|v| !v.is_empty())
-            .map(str::to_owned);
+            .git
+            .as_ref()
+            .and_then(|git| git.repository_url.as_ref())
+            .filter(|value| !value.is_empty())
+            .cloned();
     }
 }
 
@@ -966,89 +929,6 @@ fn repository_origin(project: &str) -> Option<String> {
         .clone()
 }
 
-fn flatten_content(value: &Value) -> Option<String> {
-    match value {
-        Value::String(text) => Some(text.clone()),
-        Value::Array(blocks) => {
-            let parts: Vec<String> = blocks.iter().filter_map(flatten_block).collect();
-            (!parts.is_empty()).then(|| parts.join("\n"))
-        }
-        Value::Object(_) => flatten_block(value),
-        _ => None,
-    }
-}
-
-fn claude_content(value: &Value) -> Option<(String, Option<String>)> {
-    let content = flatten_content(value)?;
-    if is_tool_result(value) {
-        return Some((content, Some(String::new())));
-    }
-    let Value::Array(blocks) = value else {
-        return Some((content, None));
-    };
-    let contains_tool_result = blocks.iter().any(is_tool_result);
-    if !contains_tool_result {
-        return Some((content, None));
-    }
-    let projection = blocks
-        .iter()
-        .filter(|block| !is_tool_result(block))
-        .filter_map(flatten_block)
-        .collect::<Vec<_>>()
-        .join("\n");
-    Some((content, Some(projection)))
-}
-
-fn is_tool_result(block: &Value) -> bool {
-    block.get("type").and_then(Value::as_str) == Some("tool_result")
-}
-
-fn flatten_block(block: &Value) -> Option<String> {
-    if let Some(text) = block
-        .get("text")
-        .or_else(|| block.get("content"))
-        .and_then(Value::as_str)
-    {
-        return Some(text.to_owned());
-    }
-    match block.get("type").and_then(Value::as_str) {
-        Some("thinking") => block
-            .get("thinking")
-            .and_then(Value::as_str)
-            .map(|thinking| format!("[Thinking] {thinking}")),
-        Some("toolCall") => {
-            let name = block
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            let arguments = block
-                .get("arguments")
-                .map(stringify_value)
-                .unwrap_or_default();
-            Some(format!("Tool {name}: {arguments}"))
-        }
-        Some("tool_use") => {
-            let name = block
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            let input = block.get("input").map(stringify_value).unwrap_or_default();
-            Some(format!("Tool {name}: {input}"))
-        }
-        Some("tool_result") => block.get("content").and_then(flatten_content),
-        Some("input_text" | "output_text") => {
-            block.get("text").and_then(Value::as_str).map(str::to_owned)
-        }
-        _ => None,
-    }
-}
-
-fn stringify_value(value: &Value) -> String {
-    value
-        .as_str()
-        .map_or_else(|| value.to_string(), str::to_owned)
-}
-
 fn stable_id(domain: &str, parts: &[&str]) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(domain.as_bytes());
@@ -1059,8 +939,8 @@ fn stable_id(domain: &str, parts: &[&str]) -> String {
     hasher.finalize().to_hex()[..24].to_owned()
 }
 
-fn parse_timestamp(value: Option<&Value>) -> Option<i64> {
-    DateTime::parse_from_rfc3339(value?.as_str()?)
+fn parse_timestamp(value: Option<&str>) -> Option<i64> {
+    DateTime::parse_from_rfc3339(value?)
         .ok()
         .map(|timestamp| timestamp.timestamp_millis())
 }
@@ -1081,12 +961,15 @@ mod tests {
         let mut project = None;
         let mut repository = None;
         capture_metadata(
-            &serde_json::json!({"type":"session_meta","payload":{"cwd":"/work/project","git":{"repository_url":"https://example.test/team/repo.git"}}}),
+            &serde_json::from_value(serde_json::json!({"type":"session_meta","payload":{"cwd":"/work/project","git":{"repository_url":"https://example.test/team/repo.git"}}})).unwrap(),
             &mut project,
             &mut repository,
         );
         capture_metadata(
-            &serde_json::json!({"cwd":"/work/later","git":{"repository_url":"different"}}),
+            &serde_json::from_value(
+                serde_json::json!({"cwd":"/work/later","git":{"repository_url":"different"}}),
+            )
+            .unwrap(),
             &mut project,
             &mut repository,
         );
@@ -1098,7 +981,7 @@ mod tests {
         let mut project = None;
         let mut repository = None;
         capture_metadata(
-            &serde_json::json!({"cwd":"/work/claude"}),
+            &serde_json::from_value(serde_json::json!({"cwd":"/work/claude"})).unwrap(),
             &mut project,
             &mut repository,
         );
@@ -1118,7 +1001,7 @@ mod tests {
 
     fn test_conversation(
         id: &str,
-        provider: &'static str,
+        provider: Provider,
         source_path: PathBuf,
         content: &str,
     ) -> Conversation {
@@ -1134,7 +1017,7 @@ mod tests {
             messages: vec![NormalizedMessage {
                 id: format!("{id}-message"),
                 ordinal: 0,
-                role: "user".to_owned(),
+                role: crate::role::Role::User,
                 content: content.to_owned(),
                 search_projection: None,
                 created_at: None,
@@ -1302,7 +1185,7 @@ mod tests {
             conversation.messages[0].content,
             "Tool imagegen: draw a diagram"
         );
-        assert_eq!(conversation.messages[1].role, "tool");
+        assert_eq!(conversation.messages[1].role, crate::role::Role::Tool);
         assert_eq!(conversation.messages[1].content, "created diagram.png");
         assert_eq!(
             conversation.messages[1].search_projection.as_deref(),
@@ -1322,7 +1205,7 @@ mod tests {
         writer
             .replace_conversation(&Conversation {
                 id: "old-session".to_owned(),
-                provider: "claude-code",
+                provider: Provider::ClaudeCode,
                 source_path: missing_source,
                 project: None,
                 repository: None,
@@ -1332,7 +1215,7 @@ mod tests {
                 messages: vec![NormalizedMessage {
                     id: "old-message".to_owned(),
                     ordinal: 0,
-                    role: "user".to_owned(),
+                    role: crate::role::Role::User,
                     content: "preserve until complete".to_owned(),
                     search_projection: None,
                     created_at: None,
@@ -1407,14 +1290,19 @@ mod tests {
         writer.commit_writer().expect("commit configured index");
         assert_eq!(
             writer
-                .search("claude", 10, Some("claude-code"), None)
+                .search(
+                    "claude",
+                    10,
+                    Some(crate::provider::Provider::ClaudeCode),
+                    None
+                )
                 .unwrap()
                 .len(),
             1
         );
         assert_eq!(
             writer
-                .search("codex", 10, Some("codex"), None)
+                .search("codex", 10, Some(crate::provider::Provider::Codex), None)
                 .unwrap()
                 .len(),
             1
@@ -1444,7 +1332,7 @@ mod tests {
 
         let error = index(&mut writer, &options).err().expect("missing root");
 
-        assert_eq!(error.error.kind, "configuration");
+        assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
         assert_eq!(writer.counts().expect("counts").conversations, 0);
         assert_eq!(writer.counts().expect("counts").messages, 0);
     }
@@ -1501,7 +1389,7 @@ mod tests {
         writer
             .replace_conversation(&test_conversation(
                 "existing",
-                "claude-code",
+                Provider::ClaudeCode,
                 root.join("missing.jsonl"),
                 "durable sentinel",
             ))
@@ -1514,7 +1402,7 @@ mod tests {
         let error = index_provider(
             &mut writer,
             ProviderScan {
-                provider: "claude-code",
+                provider: Provider::ClaudeCode,
                 roots: std::slice::from_ref(&root),
                 cutoff_modified_ns: None,
                 parse: parse_claude,
@@ -1526,7 +1414,7 @@ mod tests {
         )
         .expect_err("disappearing configured root");
 
-        assert_eq!(error.error.kind, "configuration");
+        assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
         assert_eq!(writer.counts().expect("counts").conversations, 1);
         writer.commit_writer().expect("commit unchanged state");
         assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
@@ -1542,7 +1430,7 @@ mod tests {
             writer
                 .replace_conversation(&test_conversation(
                     id,
-                    "claude-code",
+                    Provider::ClaudeCode,
                     if id == "existing" {
                         old_source.clone()
                     } else {
@@ -1553,7 +1441,12 @@ mod tests {
                 .expect("seed conversation");
         }
         writer
-            .record_source_checkpoint("claude-code", old_source.to_str().unwrap(), 10, 20)
+            .record_source_checkpoint(
+                crate::provider::Provider::ClaudeCode,
+                old_source.to_str().unwrap(),
+                10,
+                20,
+            )
             .expect("seed checkpoint");
         writer
             .replace_embeddings(
@@ -1584,7 +1477,7 @@ mod tests {
         let error = index_provider(
             &mut writer,
             ProviderScan {
-                provider: "claude-code",
+                provider: Provider::ClaudeCode,
                 roots: std::slice::from_ref(&root),
                 cutoff_modified_ns: None,
                 parse: parse_with_late_failure,
@@ -1596,13 +1489,18 @@ mod tests {
         )
         .expect_err("late source failure");
 
-        assert_eq!(error.error.kind, "configuration");
+        assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
         assert_eq!(summary.committed_batches, 0);
         assert_eq!(writer.counts().expect("counts").conversations, 1);
         assert_eq!(writer.embedding_count("test-generation").unwrap(), 1);
         assert!(
             writer
-                .source_checkpoint_matches("claude-code", old_source.to_str().unwrap(), 10, 20)
+                .source_checkpoint_matches(
+                    crate::provider::Provider::ClaudeCode,
+                    old_source.to_str().unwrap(),
+                    10,
+                    20
+                )
                 .unwrap()
         );
         assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
@@ -1615,7 +1513,7 @@ mod tests {
         let tombstone = writer
             .replace_conversation(&test_conversation(
                 "forgotten",
-                "claude-code",
+                Provider::ClaudeCode,
                 directory.path().join("forgotten.jsonl"),
                 "forgotten",
             ))
@@ -1704,7 +1602,7 @@ mod tests {
         assert!(
             writer
                 .source_checkpoint_matches(
-                    "claude-code",
+                    crate::provider::Provider::ClaudeCode,
                     old_path.to_str().unwrap(),
                     old_size_bytes,
                     old_modified_ns,
@@ -1726,13 +1624,13 @@ mod tests {
         for (id, provider, source_path) in [
             (
                 "claude-session",
-                "claude-code",
+                Provider::ClaudeCode,
                 directory.path().join("claude.jsonl"),
             ),
-            ("codex-session", "codex", root.join("missing.jsonl")),
+            ("codex-session", Provider::Codex, root.join("missing.jsonl")),
             (
                 "claude-forgotten",
-                "claude-code",
+                Provider::ClaudeCode,
                 directory.path().join("claude-forgotten.jsonl"),
             ),
         ] {
@@ -1747,7 +1645,7 @@ mod tests {
         }
         writer
             .record_source_checkpoint(
-                "claude-code",
+                crate::provider::Provider::ClaudeCode,
                 directory.path().join("claude.jsonl").to_str().unwrap(),
                 10,
                 20,
@@ -1791,7 +1689,7 @@ mod tests {
         assert!(
             writer
                 .source_checkpoint_matches(
-                    "claude-code",
+                    crate::provider::Provider::ClaudeCode,
                     directory.path().join("claude.jsonl").to_str().unwrap(),
                     10,
                     20,
@@ -1808,7 +1706,7 @@ mod tests {
         let tombstone = writer
             .replace_conversation(&test_conversation(
                 "claude-forgotten",
-                "claude-code",
+                Provider::ClaudeCode,
                 directory.path().join("claude-forgotten.jsonl"),
                 "forgotten",
             ))

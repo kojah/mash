@@ -166,12 +166,17 @@ struct App {
     uploads: Arc<tokio::sync::Semaphore>,
 }
 
+#[derive(serde::Serialize)]
+struct Listening {
+    listening: std::net::SocketAddr,
+}
+
 struct ApiError(StatusCode, AppError);
 impl From<AppError> for ApiError {
     fn from(error: AppError) -> Self {
-        let status = match error.error.kind.as_str() {
-            "usage" | "configuration" => StatusCode::BAD_REQUEST,
-            "conflict" => StatusCode::CONFLICT,
+        let status = match error.error.kind {
+            crate::ErrorKind::Usage | crate::ErrorKind::Configuration => StatusCode::BAD_REQUEST,
+            crate::ErrorKind::Conflict => StatusCode::CONFLICT,
             _ => StatusCode::SERVICE_UNAVAILABLE,
         };
         Self(status, error)
@@ -569,7 +574,7 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
     let address = listener
         .local_addr()
         .map_err(|_| AppError::internal("get HTTP listener address"))?;
-    eprintln!("{}", serde_json::json!({"listening":address.to_string()}));
+    crate::write_json(&mut std::io::stderr(), &Listening { listening: address })?;
     let app = App {
         store,
         identities: Arc::new(identities),

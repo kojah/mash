@@ -1,3 +1,5 @@
+use crate::provider::Provider;
+use futures_util::FutureExt;
 use std::ffi::OsString;
 use std::sync::Arc;
 
@@ -22,7 +24,7 @@ struct Mash {
 struct Search {
     query: String,
     limit: Option<usize>,
-    provider: Option<String>,
+    provider: Option<Provider>,
     days: Option<u32>,
     /// Boolean metadata filter: all/any/not, node/provider/role/conversation/project/repository lists, after/before Unix timestamps.
     filter: Option<crate::search_filter::Filter>,
@@ -56,7 +58,7 @@ struct Index {
     #[serde(default)]
     full: bool,
     #[serde(default)]
-    provider: Vec<String>,
+    provider: Vec<Provider>,
     since_days: Option<u32>,
     #[serde(default)]
     all_history: bool,
@@ -70,17 +72,93 @@ struct Forget {
 
 impl Mash {
     async fn execute(&self, arguments: Vec<OsString>) -> CallToolResult {
+        self.execute_with_progress(arguments, None).await
+    }
+
+    async fn execute_with_progress(
+        &self,
+        arguments: Vec<OsString>,
+        context: Option<rmcp::service::RequestContext<rmcp::RoleServer>>,
+    ) -> CallToolResult {
         // Blocking work cannot be interrupted once started. Keep its guards in
         // the operation task even if the client stops awaiting this request.
         let server = self.clone();
-        tokio::spawn(async move { server.perform(arguments).await })
-            .await
-            .unwrap_or_else(|_| {
-                CallToolResult::error(vec![ContentBlock::text("tool worker failed")])
+        tokio::spawn(async move {
+            match context.filter(|ctx| ctx.meta.get_progress_token().is_some()) {
+                Some(ctx) => server.perform_streamed(arguments, ctx).await,
+                None => server.perform(arguments).await,
+            }
+        })
+        .await
+        .unwrap_or_else(|_| CallToolResult::error(vec![ContentBlock::text("tool worker failed")]))
+    }
+
+    async fn perform_streamed(
+        &self,
+        arguments: Vec<OsString>,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> CallToolResult {
+        let Some(token) = context.meta.get_progress_token() else {
+            return self.perform(arguments).await;
+        };
+        let (sender, mut events) = tokio::sync::mpsc::channel(64);
+        let (finished, done) = tokio::sync::oneshot::channel();
+        let work = async {
+            let result = crate::progress::scope(sender, async {
+                crate::progress::phase(crate::progress::Phase::WaitingForIndex, 0);
+                self.perform(arguments).await
             })
+            .boxed()
+            .await;
+            let _ = finished.send(());
+            result
+        };
+        let notifications = async {
+            tokio::pin!(done);
+            let mut sequence = 0.0;
+            let mut complete = false;
+            loop {
+                let event = tokio::select! {
+                    _ = &mut done, if !complete => {
+                        complete = true;
+                        events.close();
+                        continue;
+                    }
+                    event = events.recv() => match event { Some(event) => event, None => break },
+                };
+                sequence += 1.0;
+                let mut notification =
+                    rmcp::model::ProgressNotificationParam::new(token.clone(), sequence)
+                        .with_message(crate::progress::display(&event));
+                let mut meta = rmcp::model::NotificationMetaObject::new();
+                if let Ok(event) = serde_json::to_value(&event) {
+                    meta.insert("dev.jamesqo.mash/index-progress".to_owned(), event);
+                }
+                notification.meta = Some(meta);
+                if !matches!(
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        context.peer.notify_progress(notification)
+                    )
+                    .await,
+                    Ok(Ok(()))
+                ) {
+                    break;
+                }
+            }
+        };
+        let (result, ()) = tokio::join!(work, notifications);
+        result
     }
 
     async fn perform(&self, arguments: Vec<OsString>) -> CallToolResult {
+        tool_result(self.perform_response(arguments).await)
+    }
+
+    async fn perform_response(
+        &self,
+        arguments: Vec<OsString>,
+    ) -> Result<crate::cli::Response, crate::AppError> {
         let operation = arguments
             .first()
             .and_then(|arg| arg.to_str())
@@ -94,9 +172,7 @@ impl Mash {
             match self.model_work.acquire().await {
                 Ok(permit) => Some(permit),
                 Err(_) => {
-                    return CallToolResult::error(vec![ContentBlock::text(
-                        "model worker unavailable",
-                    )]);
+                    return Err(crate::AppError::internal("model worker unavailable"));
                 }
             }
         } else {
@@ -104,17 +180,24 @@ impl Mash {
         };
         let mut all = self.arguments.as_ref().clone();
         all.extend(arguments);
-        match crate::cli::run_async(all).await {
-            Ok(value) => match serde_json::to_value(&value) {
-                Ok(json) => CallToolResult::structured(json),
-                Err(_) => CallToolResult::error(vec![ContentBlock::text(
-                    "failed to serialize tool response",
-                )]),
-            },
-            Err(error) => CallToolResult::structured_error(
-                serde_json::to_value(&error).unwrap_or_else(|_| serde_json::json!({"error":{"kind":"internal","message":"tool failed","retryable":false}})),
-            ),
-        }
+        crate::cli::run_async(all).await
+    }
+}
+
+fn tool_result(result: Result<crate::cli::Response, crate::AppError>) -> CallToolResult {
+    match result {
+        Ok(value) => match serde_json::to_value(&value) {
+            Ok(json) => CallToolResult::structured(json),
+            Err(_) => CallToolResult::error(vec![ContentBlock::text(
+                "failed to serialize tool response",
+            )]),
+        },
+        Err(error) => match serde_json::to_value(&error) {
+            Ok(json) => CallToolResult::structured_error(json),
+            Err(_) => {
+                CallToolResult::error(vec![ContentBlock::text("failed to serialize tool error")])
+            }
+        },
     }
 }
 
@@ -177,9 +260,13 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Index Claude Code and Codex histories into required local SQLite and optionally the shared index, applying provider allowlists. Never downloads models."
+        description = "Explicitly index Claude Code and Codex histories into local SQLite and optionally the shared index, applying provider allowlists. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
-    async fn index(&self, Parameters(request): Parameters<Index>) -> CallToolResult {
+    async fn index(
+        &self,
+        Parameters(request): Parameters<Index>,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> CallToolResult {
         let mut args = vec!["index".into()];
         if request.full {
             args.push("--full".into());
@@ -191,7 +278,7 @@ impl Mash {
         for provider in request.provider {
             flag(&mut args, "--provider", Some(provider));
         }
-        self.execute(args).await
+        self.execute_with_progress(args, Some(context)).await
     }
 
     #[tool(
@@ -231,6 +318,17 @@ impl rmcp::ServerHandler for Mash {
     }
 }
 
+#[derive(serde::Serialize)]
+struct WatchIndex {
+    event: WatchEvent,
+    result: CallToolResult,
+}
+#[derive(serde::Serialize)]
+enum WatchEvent {
+    #[serde(rename = "watch-index")]
+    Index,
+}
+
 pub(crate) async fn run(
     arguments: Vec<OsString>,
     watch: bool,
@@ -254,16 +352,21 @@ pub(crate) async fn run(
             let result = crate::watch::run(args, debounce_ms, shutdown, move || {
                 let server = background.clone();
                 async move {
-                    let result = server.execute(vec!["index".into()]).await;
-                    let json = result.structured_content.as_ref();
-                    let retry = result.is_error == Some(true)
-                        || json.is_some_and(|body| {
-                            body["shared"]["state"] == "pending"
-                                || body["malformed_records"].as_u64().is_some_and(|n| n > 0)
-                        });
+                    let result =
+                        tokio::spawn(
+                            async move { server.perform_response(vec!["index".into()]).await },
+                        )
+                        .await
+                        .map_err(|_| crate::AppError::internal("index worker failed"))?;
+                    let retry = result
+                        .as_ref()
+                        .map_or(true, crate::cli::Response::needs_retry);
                     crate::write_json(
                         &mut std::io::stderr(),
-                        &serde_json::json!({"event":"watch-index","result":result}),
+                        &WatchIndex {
+                            event: WatchEvent::Index,
+                            result: tool_result(result),
+                        },
                     )?;
                     Ok(retry)
                 }
@@ -291,6 +394,159 @@ mod tests {
     use super::*;
     use rmcp::model::CallToolRequestParams;
     use serde_json::json;
+
+    fn install_test_marker(models: &std::path::Path) {
+        std::fs::create_dir(models).unwrap();
+        std::fs::write(models.join("dummy-model"), [0]).unwrap();
+        std::fs::write(
+            models.join("installed.json"),
+            serde_json::to_vec(&json!({
+                "schema":1,"embedding_model":"AllMiniLML6V2Q",
+                "reranker_model":"jinaai/jina-reranker-v1-turbo-en","embedding_dimensions":384,
+                "coreml_embedding":cfg!(all(target_os = "macos", target_arch = "aarch64")),
+                "files":[{"path":"dummy-model","size":1}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
+    async fn wire_send(
+        writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+        value: serde_json::Value,
+    ) {
+        use tokio::io::AsyncWriteExt;
+        let mut bytes = serde_json::to_vec(&value).unwrap();
+        bytes.push(b'\n');
+        writer.write_all(&bytes).await.unwrap();
+    }
+
+    async fn wire_next(
+        reader: &mut tokio::io::BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
+    ) -> serde_json::Value {
+        use tokio::io::AsyncBufReadExt;
+        let mut line = String::new();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            reader.read_line(&mut line),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        serde_json::from_str(&line).unwrap()
+    }
+
+    #[tokio::test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "wire-level handshake, live progress, token omission, and failure form one session"
+    )]
+    async fn indexing_streams_correlated_progress_before_the_tool_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        let database = dir.path().join("index.sqlite3");
+        let models = dir.path().join("models");
+        std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+        install_test_marker(&models);
+        let server = Mash {
+            arguments: Arc::new(vec![
+                "mash".into(),
+                "--config".into(),
+                config.into_os_string(),
+                "--db".into(),
+                database.clone().into_os_string(),
+                "--models-dir".into(),
+                models.clone().into_os_string(),
+            ]),
+            gate: Arc::new(tokio::sync::Mutex::new(())),
+            model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+        };
+        let gate = server.gate.clone();
+        let held = gate.lock().await;
+        let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+        let serving = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
+        let (read, mut write) = tokio::io::split(client_io);
+        let mut read = tokio::io::BufReader::new(read);
+        // Use the wire directly: rmcp's client replaces caller-supplied tokens
+        // and adds one even when none was requested.
+        wire_send(&mut write, json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"progress-test","version":"1"}}})).await;
+        assert_eq!(wire_next(&mut read).await["id"], 1);
+        wire_send(
+            &mut write,
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        )
+        .await;
+        let server = serving.await.unwrap();
+        wire_send(&mut write, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"index","arguments":{},"_meta":{"progressToken":"index-one"}}})).await;
+        let waiting = wire_next(&mut read).await;
+        assert_eq!(waiting["method"], "notifications/progress");
+        assert_eq!(waiting["params"]["progressToken"], "index-one");
+        assert_eq!(
+            waiting["params"]["_meta"]["dev.jamesqo.mash/index-progress"]["phase"],
+            "waiting-for-index"
+        );
+        assert!(
+            !database.exists(),
+            "progress arrives while indexing is still queued"
+        );
+        drop(held);
+        let mut previous = waiting["params"]["progress"].as_f64().unwrap();
+        let mut complete = false;
+        loop {
+            let message = wire_next(&mut read).await;
+            if message.get("id").is_some() {
+                assert_eq!(message["id"], 2);
+                assert_ne!(message["result"]["isError"], true);
+                assert_eq!(
+                    message["result"]["structuredContent"]["indexed_messages"],
+                    0
+                );
+                break;
+            }
+            assert_eq!(message["method"], "notifications/progress");
+            let event: rmcp::model::ProgressNotificationParam =
+                serde_json::from_value(message["params"].clone()).unwrap();
+            assert_eq!(
+                event.progress_token,
+                rmcp::model::ProgressToken(rmcp::model::NumberOrString::String("index-one".into()))
+            );
+            assert!(event.progress > previous);
+            assert!(
+                event.total.is_none(),
+                "phase totals are not an overall total"
+            );
+            previous = event.progress;
+            let metadata: crate::progress::Event = serde_json::from_value(
+                event.meta.unwrap()["dev.jamesqo.mash/index-progress"].clone(),
+            )
+            .unwrap();
+            if metadata.phase == crate::progress::Phase::Complete {
+                complete = true;
+                assert_eq!(metadata.eta_seconds, Some(0));
+                assert!(event.message.unwrap().contains("ETA 0m 00s"));
+            }
+        }
+        assert!(complete, "completion progress precedes the tool result");
+        wire_send(&mut write, json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"index","arguments":{}}})).await;
+        let result = wire_next(&mut read).await;
+        assert_eq!(result["id"], 3, "no token means no unsolicited progress");
+        assert_ne!(result["result"]["isError"], true);
+        std::fs::remove_file(models.join("dummy-model")).unwrap();
+        wire_send(&mut write, json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"index","arguments":{},"_meta":{"progressToken":42}}})).await;
+        let event = wire_next(&mut read).await;
+        assert_eq!(event["params"]["progressToken"], 42);
+        assert_eq!(event["params"]["progress"], 1.0);
+        let result = wire_next(&mut read).await;
+        assert_eq!(result["id"], 4);
+        assert_eq!(result["result"]["isError"], true);
+        assert_eq!(
+            result["result"]["structuredContent"]["error"]["recommended_action"],
+            "models install"
+        );
+        drop(write);
+        drop(read);
+        server.waiting().await.unwrap();
+    }
 
     fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
         let search = tools.iter().find(|tool| tool.name == "search").unwrap();

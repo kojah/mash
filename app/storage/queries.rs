@@ -129,7 +129,7 @@ impl Storage {
         &self,
         query: &str,
         limit: usize,
-        provider: Option<&str>,
+        provider: Option<crate::provider::Provider>,
         days: Option<u32>,
     ) -> Result<Vec<SearchHit>, AppError> {
         self.search_filtered(query, limit, provider, days, None)
@@ -139,7 +139,7 @@ impl Storage {
         &self,
         query: &str,
         limit: usize,
-        provider: Option<&str>,
+        provider: Option<crate::provider::Provider>,
         days: Option<u32>,
         filters: Option<&crate::search_filter::Scope>,
     ) -> Result<Vec<SearchHit>, AppError> {

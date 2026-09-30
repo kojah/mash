@@ -1,3 +1,4 @@
+use crate::provider::Provider;
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -51,7 +52,7 @@ enum Command {
         debounce_ms: u64,
         /// Restrict indexing to a supported provider.
         #[arg(long, value_name = "PROVIDER")]
-        provider: Vec<String>,
+        provider: Vec<Provider>,
         /// Admit sources modified within this many days.
         #[arg(long, value_name = "DAYS")]
         since_days: Option<u32>,
@@ -153,7 +154,7 @@ pub(super) struct IndexResponse {
     embeddings: u64,
     model_inferences: u64,
     reused_embeddings: u64,
-    realized_mode: &'static str,
+    realized_mode: SearchMode,
     model_load_milliseconds: u64,
     storage_setup_milliseconds: u64,
     ingestion_milliseconds: u64,
@@ -172,9 +173,18 @@ impl Response {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SearchMode {
+    Hybrid,
+    LocalHybrid,
+    MergedHybrid,
+    Unavailable,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SearchResponse {
     pub(crate) query: String,
-    pub(crate) realized_mode: String,
+    pub(crate) realized_mode: SearchMode,
     pub(crate) results: Vec<crate::storage::SearchHit>,
     pub(crate) shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -198,8 +208,8 @@ pub(super) struct StatusResponse {
     stored_embeddings: u64,
     models_installed: bool,
     semantic_support: bool,
-    realized_mode: &'static str,
-    recommended_action: Option<&'static str>,
+    realized_mode: SearchMode,
+    recommended_action: Option<crate::Action>,
     configuration: ConfigurationStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     shared: Option<shared::Publication>,
@@ -221,7 +231,7 @@ pub(super) struct ModelsInstallResponse {
     model_directory: PathBuf,
     #[serde(flatten)]
     summary: semantic::InstallSummary,
-    recommended_action: &'static str,
+    recommended_action: crate::Action,
 }
 
 pub(super) fn run<I, T>(args: I) -> Result<Response, AppError>
@@ -436,7 +446,7 @@ async fn dispatch(
                 .await?;
                 Ok(Response::Search(SearchResponse {
                     query,
-                    realized_mode: search_mode(shared_error.is_some(), use_shared).to_owned(),
+                    realized_mode: search_mode(shared_error.is_some(), use_shared),
                     results,
                     shared: shared_error.is_none(),
                     shared_error,
@@ -544,10 +554,19 @@ async fn index_routes(
             result.shared = Some(shared::publish(database, config).await);
         }
         result.total_milliseconds = elapsed_milliseconds(started);
-        crate::progress::emit(&serde_json::json!({"event":"index-progress",
-            "phase":if result.shared.as_ref().is_some_and(shared::Publication::is_pending) { "shared-pending" } else { "complete" },
-            "elapsed_milliseconds":result.total_milliseconds,
-            "eta_seconds":0,"eta_scope":"phase"}));
+        crate::progress::emit(&crate::progress::Event::new(
+            if result
+                .shared
+                .as_ref()
+                .is_some_and(shared::Publication::is_pending)
+            {
+                crate::progress::Phase::SharedPending
+            } else {
+                crate::progress::Phase::Complete
+            },
+            result.total_milliseconds,
+            Some(0),
+        ));
     }
     Ok(response)
 }
@@ -597,11 +616,13 @@ fn index(
     let ingestion_milliseconds = elapsed_milliseconds(ingestion_started);
     let search_started = Instant::now();
     if storage.derived_search_is_dirty()? {
-        emit_index_phase("search-rebuild", &summary);
-        crate::progress::during("search-rebuild", || storage.rebuild_derived_search_state())?;
+        emit_index_phase(crate::progress::Phase::SearchRebuild, &summary);
+        crate::progress::during(crate::progress::Phase::SearchRebuild, || {
+            storage.rebuild_derived_search_state()
+        })?;
     }
     let search_refresh_milliseconds = elapsed_milliseconds(search_started);
-    emit_index_phase("semantic-embeddings", &summary);
+    emit_index_phase(crate::progress::Phase::SemanticEmbeddings, &summary);
     let embedding_started = Instant::now();
     let generation = models.generation();
     let already_published = storage.semantic_generation_is_published(&generation)?
@@ -613,9 +634,12 @@ fn index(
         storage.commit_and_continue_writer()?;
         let model_started = Instant::now();
         let mut embedding_pool =
-            crate::progress::during("model-loading", || models.load_indexer())?.ok_or_else(
-                || AppError::model("semantic models are not installed; run `mash models install`"),
-            )?;
+            crate::progress::during(crate::progress::Phase::ModelLoading, || {
+                models.load_indexer()
+            })?
+            .ok_or_else(|| {
+                AppError::model("semantic models are not installed; run `mash models install`")
+            })?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
         semantic::rebuild_embeddings(
             &mut storage,
@@ -629,15 +653,17 @@ fn index(
     let embedding_milliseconds = elapsed_milliseconds(embedding_started);
     let counts = storage.counts()?;
     if !already_published {
-        crate::progress::during("semantic-finalize", || {
+        crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
             storage.mark_semantic_index_ready(&generation)
         })?;
     }
     storage.commit_writer()?;
     if full {
-        crate::progress::during("database-checkpoint", || storage.truncate_wal())?;
+        crate::progress::during(crate::progress::Phase::DatabaseCheckpoint, || {
+            storage.truncate_wal()
+        })?;
     }
-    emit_index_phase("local-complete", &summary);
+    emit_index_phase(crate::progress::Phase::LocalComplete, &summary);
     Ok(Response::Index(IndexResponse {
         indexed_conversations: counts.conversations,
         indexed_messages: counts.messages,
@@ -657,7 +683,7 @@ fn index(
         embeddings: embeddings.stored_vectors,
         model_inferences: embeddings.model_inferences,
         reused_embeddings: embeddings.reused_vectors,
-        realized_mode: "hybrid",
+        realized_mode: SearchMode::Hybrid,
         model_load_milliseconds,
         storage_setup_milliseconds,
         ingestion_milliseconds,
@@ -672,17 +698,9 @@ fn elapsed_milliseconds(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-fn emit_index_phase(phase: &'static str, summary: &ingestion::IndexSummary) {
-    let event = serde_json::json!({
-        "event": "index-progress",
-        "phase": phase,
-        "processed_files": summary.processed_files,
-        "scanned_files": summary.scanned_files,
-        "processed_bytes": summary.processed_bytes,
-        "discovered_bytes": summary.discovered_bytes,
-        "changed_messages": summary.changed_messages,
-        "committed_batches": summary.committed_batches,
-    });
+fn emit_index_phase(phase: crate::progress::Phase, summary: &ingestion::IndexSummary) {
+    let event =
+        crate::progress::Event::files(phase, summary, 0, None, crate::progress::EtaScope::Phase);
     crate::progress::emit(&event);
 }
 
@@ -702,19 +720,19 @@ fn write_embedding_progress(
         .map_err(|error| AppError::internal(format!("failed to write progress: {error}")))
 }
 
-fn embedding_progress_event(progress: &semantic::EmbeddingProgress) -> serde_json::Value {
-    serde_json::json!({
-        "event": "index-progress",
-        "phase": "semantic-embeddings",
-        "stored_vectors": progress.stored_vectors,
-        "total_vectors": progress.total_vectors,
-        "model_inferences": progress.model_inferences,
-        "reused_vectors": progress.reused_vectors,
-        "elapsed_milliseconds": progress.elapsed_milliseconds,
-        "stored_vectors_per_second": progress.stored_vectors_per_second,
-        "eta_seconds": progress.eta_seconds,
-        "eta_scope": "phase",
-    })
+fn embedding_progress_event(progress: &semantic::EmbeddingProgress) -> crate::progress::Event {
+    crate::progress::Event {
+        stored_vectors: Some(progress.stored_vectors),
+        total_vectors: Some(progress.total_vectors),
+        model_inferences: Some(progress.model_inferences),
+        reused_vectors: Some(progress.reused_vectors),
+        stored_vectors_per_second: Some(progress.stored_vectors_per_second),
+        ..crate::progress::Event::new(
+            crate::progress::Phase::SemanticEmbeddings,
+            progress.elapsed_milliseconds,
+            progress.eta_seconds,
+        )
+    }
 }
 
 fn local_search(
@@ -742,7 +760,7 @@ fn local_search(
     )?;
     Ok(SearchResponse {
         query,
-        realized_mode: "hybrid".to_owned(),
+        realized_mode: SearchMode::Hybrid,
         results,
         shared: false,
         shared_error: None,
@@ -751,7 +769,7 @@ fn local_search(
 
 fn resolve_index_options(
     configuration: &ResolvedConfig,
-    requested_providers: &[String],
+    requested_providers: &[Provider],
     since_days: Option<u32>,
     all_history: bool,
 ) -> Result<ingestion::IndexOptions, AppError> {
@@ -768,14 +786,9 @@ fn resolve_index_options(
     let mut select_claude = !explicit && configuration.providers.claude_code.is_some();
     let mut select_codex = !explicit && configuration.providers.codex.is_some();
     for provider in requested_providers {
-        match provider.as_str() {
-            "claude-code" => select_claude = true,
-            "codex" => select_codex = true,
-            _ => {
-                return Err(AppError::usage(format!(
-                    "unsupported index provider: {provider}"
-                )));
-            }
+        match provider {
+            Provider::ClaudeCode => select_claude = true,
+            Provider::Codex => select_codex = true,
         }
     }
 
@@ -876,11 +889,11 @@ fn status(
             stored_embeddings: 0,
             models_installed,
             semantic_support: true,
-            realized_mode: "unavailable",
+            realized_mode: SearchMode::Unavailable,
             recommended_action: Some(if models_installed {
-                "index"
+                crate::Action::Index
             } else {
-                "models install"
+                crate::Action::ModelsInstall
             }),
             configuration: configuration.status(),
             shared: if routed_both(configuration) {
@@ -911,16 +924,16 @@ fn status(
         models_installed,
         semantic_support: true,
         realized_mode: if hybrid_ready {
-            "hybrid"
+            SearchMode::Hybrid
         } else {
-            "unavailable"
+            SearchMode::Unavailable
         },
         recommended_action: if !models_installed {
-            Some("models install")
+            Some(crate::Action::ModelsInstall)
         } else if hybrid_ready {
             None
         } else {
-            Some("index")
+            Some(crate::Action::Index)
         },
         configuration: configuration.status(),
         shared: if routed_both(configuration) {
@@ -943,7 +956,7 @@ fn install_models(
         installed: true,
         model_directory: models_dir.to_path_buf(),
         summary,
-        recommended_action: "index",
+        recommended_action: crate::Action::Index,
     }))
 }
 
@@ -971,13 +984,13 @@ fn default_models_path() -> PathBuf {
     )
 }
 
-fn search_mode(failed: bool, shared_only: bool) -> &'static str {
+fn search_mode(failed: bool, shared_only: bool) -> SearchMode {
     if failed {
-        "local-hybrid"
+        SearchMode::LocalHybrid
     } else if shared_only {
-        "hybrid"
+        SearchMode::Hybrid
     } else {
-        "merged-hybrid"
+        SearchMode::MergedHybrid
     }
 }
 
@@ -1074,7 +1087,7 @@ mod tests {
         let configuration = test_configuration(true, true, Some(90));
         let selected = resolve_index_options(
             &configuration,
-            &["codex".to_owned(), "codex".to_owned()],
+            &[Provider::Codex, Provider::Codex],
             Some(30),
             false,
         )
@@ -1093,13 +1106,11 @@ mod tests {
             assert!(resolve_index_options(&configuration, &[], invalid, false).is_err());
         }
         assert!(resolve_index_options(&configuration, &[], Some(1), true).is_err());
-        assert!(
-            resolve_index_options(&configuration, &["opencode".to_owned()], None, false).is_err()
-        );
+        assert!("opencode".parse::<Provider>().is_err());
         assert!(
             resolve_index_options(
                 &test_configuration(false, true, Some(90)),
-                &["claude-code".to_owned()],
+                &[Provider::ClaudeCode],
                 None,
                 false,
             )

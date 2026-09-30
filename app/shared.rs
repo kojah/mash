@@ -10,30 +10,37 @@ use std::sync::LazyLock;
 use std::time::Duration;
 mod backend;
 pub(crate) mod direct;
-mod protocol;
+pub(crate) mod protocol;
 mod redis_index;
 pub(crate) mod server;
 use protocol::{Event, Start};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum PublicationState {
+    Pending,
+    Published,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Publication {
-    state: &'static str,
+    state: PublicationState,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
 impl Publication {
     pub(crate) fn is_pending(&self) -> bool {
-        self.state == "pending"
+        self.state == PublicationState::Pending
     }
     pub(crate) const fn published() -> Self {
         Self {
-            state: "published",
+            state: PublicationState::Published,
             error: None,
         }
     }
     pub(crate) const fn pending() -> Self {
         Self {
-            state: "pending",
+            state: PublicationState::Pending,
             error: None,
         }
     }
@@ -203,10 +210,10 @@ async fn upload(
                 let elapsed = crate::progress::milliseconds(started);
                 let committing = uploaded_bytes >= total_bytes;
                 let eta = if committing { None } else { estimate.observe(uploaded_bytes, total_bytes, elapsed) };
-                crate::progress::emit(&serde_json::json!({"event":"index-progress",
-                    "phase":if committing {"shared-commit"} else {"shared-upload"},
-                    "uploaded_bytes":uploaded_bytes,"total_bytes":total_bytes,
-                    "elapsed_milliseconds":elapsed,"eta_seconds":eta,"eta_scope":"phase"}));
+                crate::progress::emit(&crate::progress::Event {
+                    uploaded_bytes:Some(uploaded_bytes), total_bytes:Some(total_bytes),
+                    ..crate::progress::Event::new(if committing {crate::progress::Phase::SharedCommit} else {crate::progress::Phase::SharedUpload}, elapsed, eta)
+                });
             }
         }
     }
@@ -223,7 +230,11 @@ pub(crate) fn status(
     };
     let pending = !path.is_file() || Storage::publication_is_pending(path, &target(config))?;
     Ok(Some(Publication {
-        state: if pending { "pending" } else { "published" },
+        state: if pending {
+            PublicationState::Pending
+        } else {
+            PublicationState::Published
+        },
         error: None,
     }))
 }
@@ -232,7 +243,7 @@ pub(crate) async fn publish(path: &Path, config: &SharedConfig) -> Publication {
     match publish_result(path, config).await {
         Ok(()) => Publication::published(),
         Err(error) => Publication {
-            state: "pending",
+            state: PublicationState::Pending,
             error: Some(error.error.message),
         },
     }
@@ -307,7 +318,7 @@ pub(crate) async fn publish_routed(
     match attempt {
         Ok(()) => Publication::published(),
         Err(error) => Publication {
-            state: "pending",
+            state: PublicationState::Pending,
             error: Some(error.error.message),
         },
     }
@@ -345,7 +356,7 @@ pub(crate) async fn forget_routed(
         Ok(forgotten) => (Publication::published(), forgotten),
         Err(error) => (
             Publication {
-                state: "pending",
+                state: PublicationState::Pending,
                 error: Some(error.error.message),
             },
             false,
@@ -358,7 +369,7 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
     // only the outgoing data, have restrictive permissions, and are deleted on drop.
     let db = path.to_path_buf();
     let (file, revision) = crate::blocking(move || {
-        crate::progress::during("shared-snapshot", || {
+        crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
             let mut file = tempfile::NamedTempFile::new()
                 .map_err(|_| AppError::internal("create index upload"))?;
             let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
@@ -373,16 +384,12 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
                         forgets: Vec::new(),
                     }),
                 )?;
-                for kind in ["tombstones", "conversations", "messages"] {
-                    snapshot.visit(kind, |records| {
-                        write_event(
-                            &mut writer,
-                            &Event::Batch {
-                                kind: kind.to_owned(),
-                                records: records.to_vec(),
-                            },
-                        )
-                    })?;
+                for kind in [
+                    protocol::BatchKind::Tombstones,
+                    protocol::BatchKind::Conversations,
+                    protocol::BatchKind::Messages,
+                ] {
+                    snapshot.visit(kind, |batch| write_event(&mut writer, &Event::Batch(batch)))?;
                 }
                 write_event(&mut writer, &Event::Finish)
             })?;

@@ -1,3 +1,4 @@
+use crate::provider::Provider;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -28,16 +29,16 @@ pub(crate) struct ResolvedConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IndexFilter {
-    pub(crate) providers: Vec<String>,
+    pub(crate) providers: Vec<Provider>,
 }
 
 impl IndexFilter {
     pub(crate) fn apply(filter: Option<&Self>, options: &mut crate::ingestion::IndexOptions) {
         if let Some(filter) = filter {
-            if !filter.providers.iter().any(|p| p == "claude-code") {
+            if !filter.providers.contains(&Provider::ClaudeCode) {
                 options.claude_code = None;
             }
-            if !filter.providers.iter().any(|p| p == "codex") {
+            if !filter.providers.contains(&Provider::Codex) {
                 options.codex = None;
             }
         }
@@ -373,13 +374,13 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     for filter in [&raw.index.local, &raw.index.shared].into_iter().flatten() {
         let mut unique = HashSet::new();
         for provider in &filter.providers {
-            if !matches!(provider.as_str(), "claude-code" | "codex") || !unique.insert(provider) {
+            if !unique.insert(provider) {
                 return Err(AppError::configuration(
                     "index provider filters must contain unique supported provider names",
                 ));
             }
-            if (provider == "claude-code" && raw.providers.claude_code.is_none())
-                || (provider == "codex" && raw.providers.codex.is_none())
+            if (*provider == Provider::ClaudeCode && raw.providers.claude_code.is_none())
+                || (*provider == Provider::Codex && raw.providers.codex.is_none())
             {
                 return Err(AppError::configuration(
                     "index provider filter selects a disabled provider",
@@ -453,8 +454,8 @@ fn validate_local_coverage(
     if destination == IndexDestination::Both
         && let Some(local) = &raw.index.local
     {
-        for provider in ["claude-code", "codex"] {
-            let enabled = if provider == "claude-code" {
+        for provider in [Provider::ClaudeCode, Provider::Codex] {
+            let enabled = if provider == Provider::ClaudeCode {
                 raw.providers.claude_code.is_some()
             } else {
                 raw.providers.codex.is_some()
@@ -463,8 +464,8 @@ fn validate_local_coverage(
                 .index
                 .shared
                 .as_ref()
-                .is_none_or(|shared| shared.providers.iter().any(|p| p == provider));
-            if enabled && forwarded && !local.providers.iter().any(|p| p == provider) {
+                .is_none_or(|shared| shared.providers.contains(&provider));
+            if enabled && forwarded && !local.providers.contains(&provider) {
                 return Err(AppError::configuration(
                     "the local provider allowlist must include every provider forwarded to the shared index",
                 ));
@@ -602,7 +603,7 @@ token_env = 'VOYAGE_API_KEY'
 
     fn assert_configuration_error(error: &crate::AppError) {
         assert_eq!(error.code, 9);
-        assert_eq!(error.error.kind, "configuration");
+        assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
         assert!(!error.error.retryable);
         assert_eq!(error.error.recommended_action, None);
     }

@@ -1,4 +1,7 @@
-use super::protocol::{Checkpoint, Event, Forget, Forgotten, NodeState, Start};
+use super::protocol::{
+    Batch, Checkpoint, ConversationRecord, Event, Forget, Forgotten, MessageRecord, NodeState,
+    Start,
+};
 use super::{get, post, upload, write_event};
 use crate::AppError;
 use crate::config::SharedConfig;
@@ -68,7 +71,7 @@ pub(crate) async fn index(
         embedding_milliseconds: 0,
     };
     let ingestion_started = Instant::now();
-    crate::progress::phase("shared-ingestion", 0);
+    crate::progress::phase(crate::progress::Phase::SharedIngestion, 0);
     let mut pool = None;
     for scan in &scans {
         ingest_scan(
@@ -127,7 +130,7 @@ async fn ingest_scan(
             write_event(
                 file,
                 &Event::Seen {
-                    provider: scan.provider.to_owned(),
+                    provider: scan.provider,
                     hashes: std::mem::take(&mut observed),
                 },
             )?;
@@ -193,7 +196,7 @@ async fn ingest_scan(
         write_event(
             file,
             &Event::Source(Checkpoint {
-                provider: scan.provider.to_owned(),
+                provider: scan.provider,
                 path_hash: hash,
                 size_bytes: size,
                 modified_ns: modified,
@@ -208,7 +211,7 @@ async fn ingest_scan(
         write_event(
             file,
             &Event::Seen {
-                provider: scan.provider.to_owned(),
+                provider: scan.provider,
                 hashes: observed,
             },
         )?;
@@ -217,7 +220,7 @@ async fn ingest_scan(
         write_event(
             file,
             &Event::Reconcile {
-                provider: scan.provider.to_owned(),
+                provider: scan.provider,
                 cutoff: scan.cutoff,
             },
         )?;
@@ -246,7 +249,7 @@ async fn embed_texts(
         let load_started = Instant::now();
         let mut loaded = match existing {
             Some(pool) => pool,
-            None => crate::progress::during("model-loading", || {
+            None => crate::progress::during(crate::progress::Phase::ModelLoading, || {
                 Models::new(root).with_remote(remote).load_indexer()
             })?
             .ok_or_else(|| {
@@ -290,12 +293,17 @@ async fn replace_conversation(
     let mut estimate = crate::progress::Estimate::new();
     write_event(
         file,
-        &Event::Batch {
-            kind: "conversations".to_owned(),
-            records: vec![
-                serde_json::json!({"id":conversation.id,"provider":conversation.provider,"title":conversation.title,"project":conversation.project,"repository":conversation.repository,"created_at":conversation.created_at,"updated_at":conversation.updated_at}),
-            ],
-        },
+        &Event::Batch(Batch::Conversations {
+            records: vec![ConversationRecord {
+                id: conversation.id.clone(),
+                provider: conversation.provider,
+                title: conversation.title.clone(),
+                project: conversation.project.clone(),
+                repository: conversation.repository.clone(),
+                created_at: conversation.created_at,
+                updated_at: conversation.updated_at,
+            }],
+        }),
     )?;
     for batch in conversation.messages.chunks(32) {
         let texts = batch
@@ -328,24 +336,34 @@ async fn replace_conversation(
                     |c| semantic::model_space(&c.model, c.dimensions),
                 )
             });
-            records.push(serde_json::json!({"id":message.id,"conversation_id":conversation.id,"ordinal":message.ordinal,"role":message.role,"content":message.content,"projection":projection,"created_at":message.created_at,"generation":generation,"vector":vector}));
+            let has_vector = vector.is_some();
+            records.push(MessageRecord {
+                id: message.id.clone(),
+                conversation_id: conversation.id.clone(),
+                ordinal: message.ordinal,
+                role: message.role.clone(),
+                content: message.content.clone(),
+                projection: projection.to_owned(),
+                created_at: message.created_at,
+                generation,
+                vector,
+            });
             result.summary.changed_messages += 1;
-            result.embeddings.stored_vectors += u64::from(vector.is_some());
+            result.embeddings.stored_vectors += u64::from(has_vector);
         }
-        write_event(
-            file,
-            &Event::Batch {
-                kind: "messages".to_owned(),
-                records,
-            },
-        )?;
+        write_event(file, &Event::Batch(Batch::Messages { records }))?;
         let stored_vectors = result.embeddings.stored_vectors - initial_vectors;
         let elapsed_ms = elapsed(started);
-        crate::progress::emit(&serde_json::json!({"event":"index-progress",
-            "phase":"shared-embeddings","stored_vectors":stored_vectors,"total_vectors":total_vectors,
-            "elapsed_milliseconds":elapsed_ms,
-            "eta_seconds":estimate.observe(stored_vectors,total_vectors,elapsed_ms),
-            "eta_scope":"conversation"}));
+        crate::progress::emit(&crate::progress::Event {
+            stored_vectors: Some(stored_vectors),
+            total_vectors: Some(total_vectors),
+            eta_scope: crate::progress::EtaScope::Conversation,
+            ..crate::progress::Event::new(
+                crate::progress::Phase::SharedEmbeddings,
+                elapsed_ms,
+                estimate.observe(stored_vectors, total_vectors, elapsed_ms),
+            )
+        });
     }
     Ok(())
 }

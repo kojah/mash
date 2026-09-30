@@ -3,6 +3,8 @@ mod config;
 mod ingestion;
 mod mcp;
 mod progress;
+mod provider;
+mod role;
 mod search_filter;
 mod semantic;
 mod shared;
@@ -19,7 +21,8 @@ use serde::{Deserialize, Serialize};
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
 ) -> Result<T, AppError> {
-    tokio::task::spawn_blocking(work)
+    let sink = progress::current_sink();
+    tokio::task::spawn_blocking(move || progress::on_blocking_thread(sink, work))
         .await
         .map_err(|_| AppError::internal("blocking worker failed"))?
 }
@@ -83,33 +86,59 @@ struct AppError {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ErrorBody {
-    kind: String,
+    kind: ErrorKind,
     message: String,
     retryable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    recommended_action: Option<String>,
+    recommended_action: Option<Action>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ErrorKind {
+    SharedIndex,
+    Configuration,
+    Usage,
+    DatabaseMissing,
+    IndexBusy,
+    Database,
+    Io,
+    Internal,
+    Model,
+    SearchNotReady,
+    SchemaIncompatible,
+    RemoteInference,
+    Conflict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+enum Action {
+    #[serde(rename = "index")]
+    Index,
+    #[serde(rename = "models install")]
+    ModelsInstall,
 }
 
 impl AppError {
     fn shared(message: impl Into<String>) -> Self {
-        Self::new(11, "shared-index", message, true)
+        Self::new(11, ErrorKind::SharedIndex, message, true)
     }
 
     fn configuration(message: impl Into<String>) -> Self {
-        Self::new(9, "configuration", message, false)
+        Self::new(9, ErrorKind::Configuration, message, false)
     }
 
     fn usage(message: impl Into<String>) -> Self {
-        Self::new(2, "usage", message, false)
+        Self::new(2, ErrorKind::Usage, message, false)
     }
 
     fn missing_database(path: &std::path::Path) -> Self {
         Self::with_action(
             3,
-            "database-missing",
+            ErrorKind::DatabaseMissing,
             format!("database does not exist: {}", path.display()),
             true,
-            "index",
+            Action::Index,
         )
     }
 
@@ -122,43 +151,48 @@ impl AppError {
                     rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
                 )
         ) {
-            return Self::new(6, "index-busy", "another index writer is active", true);
+            return Self::new(
+                6,
+                ErrorKind::IndexBusy,
+                "another index writer is active",
+                true,
+            );
         }
         let message = error.to_string();
         drop(error);
-        Self::new(5, "database", message, true)
+        Self::new(5, ErrorKind::Database, message, true)
     }
 
     fn database_data(message: impl Into<String>) -> Self {
-        Self::new(5, "database", message, false)
+        Self::new(5, ErrorKind::Database, message, false)
     }
 
     fn io(error: io::Error) -> Self {
         let message = error.to_string();
         drop(error);
-        Self::new(5, "io", message, true)
+        Self::new(5, ErrorKind::Io, message, true)
     }
 
     fn internal(message: impl Into<String>) -> Self {
-        Self::new(10, "internal", message, false)
+        Self::new(10, ErrorKind::Internal, message, false)
     }
 
     fn model(message: impl Into<String>) -> Self {
-        Self::with_action(4, "model", message, true, "models install")
+        Self::with_action(4, ErrorKind::Model, message, true, Action::ModelsInstall)
     }
 
     fn search_not_ready(message: impl Into<String>) -> Self {
-        Self::with_action(8, "search-not-ready", message, true, "index")
+        Self::with_action(8, ErrorKind::SearchNotReady, message, true, Action::Index)
     }
 
     fn schema(message: impl Into<String>) -> Self {
-        Self::new(7, "schema-incompatible", message, false)
+        Self::new(7, ErrorKind::SchemaIncompatible, message, false)
     }
 
-    fn new(code: i32, kind: &'static str, message: impl Into<String>, retryable: bool) -> Self {
+    fn new(code: i32, kind: ErrorKind, message: impl Into<String>, retryable: bool) -> Self {
         Self {
             error: ErrorBody {
-                kind: kind.to_owned(),
+                kind,
                 message: message.into(),
                 retryable,
                 recommended_action: None,
@@ -169,13 +203,13 @@ impl AppError {
 
     fn with_action(
         code: i32,
-        kind: &'static str,
+        kind: ErrorKind,
         message: impl Into<String>,
         retryable: bool,
-        recommended_action: &'static str,
+        recommended_action: Action,
     ) -> Self {
         let mut error = Self::new(code, kind, message, retryable);
-        error.error.recommended_action = Some(recommended_action.to_owned());
+        error.error.recommended_action = Some(recommended_action);
         error
     }
 }

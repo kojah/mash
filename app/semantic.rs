@@ -963,7 +963,7 @@ pub(crate) fn hybrid_search_filtered(
     backend: &mut Backend,
     query: &str,
     limit: usize,
-    legacy: (Option<&str>, Option<u32>),
+    legacy: (Option<crate::provider::Provider>, Option<u32>),
     filters: Option<&crate::search_filter::Scope>,
 ) -> Result<Vec<SearchHit>, AppError> {
     let (provider, days) = legacy;
@@ -1053,7 +1053,7 @@ pub(crate) fn local_candidates(
     generation: &str,
     query: &str,
     vector: &[f64],
-    provider: Option<&str>,
+    provider: Option<crate::provider::Provider>,
     days: Option<u32>,
     filters: Option<&crate::search_filter::Scope>,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
@@ -1599,8 +1599,8 @@ mod tests {
             SearchHit {
                 id: id.to_owned(),
                 conversation_id: "conversation".to_owned(),
-                provider: "codex".to_owned(),
-                role: "user".to_owned(),
+                provider: crate::provider::Provider::Codex,
+                role: crate::role::Role::User,
                 content: id.to_owned(),
                 lexical_score: None,
                 semantic_score: None,

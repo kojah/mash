@@ -1,10 +1,11 @@
 use super::protocol::{
-    Checkpoint, Document, Event, Forget, Forgotten, Indexed, NodeState, Search, Start, Tombstone,
-    valid_vector,
+    Batch, Checkpoint, Document, Event, Forget, Forgotten, Indexed, NodeState, Search, Start,
+    Tombstone, valid_vector,
 };
 use super::server::Identity;
 use super::{Freshness, NodeFreshness};
 use crate::AppError;
+use crate::provider::Provider;
 use crate::storage::{Counts, Message, SearchHit};
 use deadpool_postgres::{Pool, Transaction};
 use std::collections::HashMap;
@@ -12,7 +13,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio_postgres::Row;
 pub(super) fn conflict(message: &str) -> AppError {
     let mut error = AppError::shared(message);
-    "conflict".clone_into(&mut error.error.kind);
+    error.error.kind = crate::ErrorKind::Conflict;
     error
 }
 pub(super) fn valid_id(id: &str) -> Result<(), AppError> {
@@ -89,10 +90,10 @@ async fn forget_in_transaction(
         .await
         .map_err(pg_error)?;
     if let Some(row) = &deleted {
-        let provider: String = row.try_get(0).map_err(pg_error)?;
+        let provider: Provider = row.try_get(0).map_err(pg_error)?;
         tx.execute(
             "INSERT INTO tombstones VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-            &[&node, &provider, &id],
+            &[&node, &provider.as_str(), &id],
         )
         .await
         .map_err(pg_error)?;
@@ -170,60 +171,29 @@ async fn remove(tx: &Transaction<'_>, node: &str, id: &str) -> Result<(u64, u64)
         .map_err(pg_error)?;
     Ok((messages.cast_unsigned(), conversations))
 }
-#[derive(Clone, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ConversationRecord {
-    pub id: String,
-    pub provider: String,
-    pub title: Option<String>,
-    pub project: Option<String>,
-    pub repository: Option<String>,
-    pub created_at: Option<i64>,
-    pub updated_at: Option<i64>,
-}
-#[derive(Clone, serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct MessageRecord {
-    pub id: String,
-    pub conversation_id: String,
-    pub ordinal: i64,
-    pub role: String,
-    pub content: String,
-    pub projection: String,
-    pub created_at: Option<i64>,
-    pub generation: Option<String>,
-    pub vector: Option<Vec<f64>>,
-}
 async fn upload_batch(
     tx: &Transaction<'_>,
     node: &str,
-    kind: &str,
-    records: &[serde_json::Value],
+    batch: &Batch,
     snapshot: bool,
     dimensions: usize,
 ) -> Result<bool, AppError> {
-    if records.len() > 128 {
+    if batch.len() > 128 {
         return Err(AppError::usage("index batch exceeds 128 records"));
     }
     // Validate first, then write one bounded batch per round trip.
-    let sql = match kind {
-        "tombstones" => {
-            for record in records {
-                let r: Tombstone = serde_json::from_value(record.clone())
-                    .map_err(|_| AppError::usage("invalid tombstone"))?;
-                valid_provider(Some(&r.provider))?;
+    let sql = match batch {
+        Batch::Tombstones { records } => {
+            for r in records {
                 valid_id(&r.conversation_id)?;
             }
             "INSERT INTO tombstones SELECT $1,provider,conversation_id FROM jsonb_to_recordset($2::text::jsonb) r(provider text,conversation_id text) ON CONFLICT DO NOTHING"
         }
-        "conversations" => {
+        Batch::Conversations { records } => {
             let mut ids = Vec::new();
-            for record in records {
-                let r: ConversationRecord = serde_json::from_value(record.clone())
-                    .map_err(|_| AppError::usage("invalid conversation"))?;
-                valid_provider(Some(&r.provider))?;
+            for r in records {
                 valid_id(&r.id)?;
-                ids.push(r.id);
+                ids.push(&r.id);
             }
             if !snapshot {
                 tx.execute(
@@ -235,10 +205,8 @@ async fn upload_batch(
             }
             "INSERT INTO conversations(node_id,id,provider,title,created_at,updated_at,project,repository) SELECT $1,r.id,r.provider,title,created_at,updated_at,project,repository FROM jsonb_to_recordset($2::text::jsonb) r(id text,provider text,title text,created_at bigint,updated_at bigint,project text,repository text) WHERE NOT EXISTS(SELECT 1 FROM tombstones t WHERE t.node_id=$1 AND t.provider=r.provider AND t.conversation_id=r.id)"
         }
-        "messages" => {
-            for record in records {
-                let r: MessageRecord = serde_json::from_value(record.clone())
-                    .map_err(|_| AppError::usage("invalid message"))?;
+        Batch::Messages { records } => {
+            for r in records {
                 valid_id(&r.id)?;
                 valid_id(&r.conversation_id)?;
                 if r.ordinal < 0
@@ -252,12 +220,12 @@ async fn upload_batch(
             }
             "INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector) SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,generation,vector::public.vector FROM jsonb_to_recordset($2::text::jsonb) r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,generation text,vector real[]) WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id)"
         }
-        _ => return Err(AppError::usage("unknown index batch kind")),
     };
-    let json =
-        serde_json::to_string(records).map_err(|_| AppError::usage("invalid index batch"))?;
+    let json = batch
+        .records_json()
+        .map_err(|_| AppError::usage("invalid index batch"))?;
     let affected = tx.execute(sql, &[&node, &json]).await.map_err(pg_error)?;
-    if kind == "tombstones" {
+    if matches!(batch, Batch::Tombstones { .. }) {
         tx.execute("DELETE FROM conversations c USING jsonb_to_recordset($2::text::jsonb) r(provider text,conversation_id text) WHERE c.node_id=$1 AND c.provider=r.provider AND c.id=r.conversation_id", &[&node,&json]).await.map_err(pg_error)?;
     }
     Ok(affected > 0)
@@ -298,7 +266,7 @@ pub(super) async fn index(
     let mut changed = false;
     let mut removed_messages = 0;
     let mut purged_conversations = 0;
-    let mut seen: HashMap<String, Vec<String>> = HashMap::new();
+    let mut seen: HashMap<Provider, Vec<String>> = HashMap::new();
     let mut reconciled = std::collections::HashSet::new();
     if !duplicate {
         for id in &start.forgets {
@@ -336,27 +304,18 @@ pub(super) async fn index(
             continue;
         }
         match event {
-            Event::Batch { kind, records } => {
-                changed |= upload_batch(
-                    &tx,
-                    node,
-                    &kind,
-                    &records,
-                    start.snapshot,
-                    identity.dimensions,
-                )
-                .await?;
+            Event::Batch(batch) => {
+                changed |=
+                    upload_batch(&tx, node, &batch, start.snapshot, identity.dimensions).await?;
             }
             Event::Source(s) if !start.snapshot => {
-                valid_provider(Some(&s.provider))?;
                 valid_id(&s.path_hash)?;
                 if s.size_bytes < 0 || reconciled.contains(&s.provider) {
                     return Err(AppError::usage("invalid source checkpoint"));
                 }
-                tx.execute("INSERT INTO direct_sources VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(node_id,provider,path_hash) DO UPDATE SET size_bytes=$4,modified_ns=$5,conversation_id=$6", &[&node,&s.provider,&s.path_hash,&s.size_bytes,&s.modified_ns,&s.conversation_id]).await.map_err(pg_error)?;
+                tx.execute("INSERT INTO direct_sources VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(node_id,provider,path_hash) DO UPDATE SET size_bytes=$4,modified_ns=$5,conversation_id=$6", &[&node,&s.provider.as_str(),&s.path_hash,&s.size_bytes,&s.modified_ns,&s.conversation_id]).await.map_err(pg_error)?;
             }
             Event::Seen { provider, hashes } if !start.snapshot => {
-                valid_provider(Some(&provider))?;
                 if hashes.len() > 128 || reconciled.contains(&provider) {
                     return Err(AppError::usage("invalid observed sources"));
                 }
@@ -367,12 +326,11 @@ pub(super) async fn index(
                 observed.extend(hashes);
             }
             Event::Reconcile { provider, cutoff } if !start.snapshot => {
-                valid_provider(Some(&provider))?;
-                if !reconciled.insert(provider.clone()) {
+                if !reconciled.insert(provider) {
                     return Err(AppError::usage("duplicate reconciliation"));
                 }
                 let observed = seen.get(&provider).cloned().unwrap_or_default();
-                let missing=tx.query("DELETE FROM direct_sources WHERE node_id=$1 AND provider=$2 AND NOT(path_hash=ANY($3)) AND ($4::bigint IS NULL OR modified_ns>=$4) RETURNING conversation_id", &[&node,&provider,&observed,&cutoff]).await.map_err(pg_error)?;
+                let missing=tx.query("DELETE FROM direct_sources WHERE node_id=$1 AND provider=$2 AND NOT(path_hash=ANY($3)) AND ($4::bigint IS NULL OR modified_ns>=$4) RETURNING conversation_id", &[&node,&provider.as_str(),&observed,&cutoff]).await.map_err(pg_error)?;
                 for r in missing {
                     if let Some(id) = r.try_get::<_, Option<String>>(0).map_err(pg_error)? {
                         let referenced=tx.query_opt("SELECT 1 FROM direct_sources WHERE node_id=$1 AND conversation_id=$2", &[&node,&id]).await.map_err(pg_error)?.is_some();
@@ -594,10 +552,11 @@ async fn candidates(
     query: &str,
     vector: &[f64],
     identity: &Identity,
-    legacy: (Option<&str>, Option<u32>, Option<&str>),
+    legacy: (Option<crate::provider::Provider>, Option<u32>, Option<&str>),
     filter: Option<&crate::search_filter::Filter>,
 ) -> Result<Candidates, AppError> {
     let (provider, days, exclude_node) = legacy;
+    let provider = provider.map(Provider::as_str);
     let predicate = filter.map_or_else(|| "TRUE".to_owned(), |f| f.sql(None));
     let cutoff = days.map(|days| {
         i64::try_from(
@@ -689,7 +648,7 @@ pub(super) async fn search(
     {
         return Err(AppError::usage("invalid search query or vector"));
     }
-    valid_provider(input.provider.as_deref())?;
+
     if let Some(filter) = &input.filter {
         filter.validate()?;
     }
@@ -707,7 +666,7 @@ pub(super) async fn search(
         &input.query,
         &input.vector,
         identity,
-        (input.provider.as_deref(), input.days, exclude_node),
+        (input.provider, input.days, exclude_node),
         input.filter.as_ref(),
     )
     .await?;
@@ -725,13 +684,6 @@ pub(super) async fn search(
             })
             .collect(),
     })
-}
-pub(super) fn valid_provider(provider: Option<&str>) -> Result<(), AppError> {
-    if provider.is_some_and(|p| !matches!(p, "codex" | "claude-code")) {
-        Err(AppError::usage("unknown provider"))
-    } else {
-        Ok(())
-    }
 }
 pub(super) async fn counts(
     tx: &mut Transaction<'_>,

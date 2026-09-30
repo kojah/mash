@@ -515,8 +515,23 @@ read-only; the service adds missing metadata tables during startup migration.
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
 and `models_install`. The server uses the same operations and typed JSON errors
-as the CLI; tool failures set MCP `isError`. Progress goes to stderr, leaving
-stdout for the SDK's protocol messages.
+as the CLI; tool failures set MCP `isError`.
+
+To stream an `index` tool call's progress, include a string or numeric
+`params._meta.progressToken` in the `tools/call` request. The server sends
+standard `notifications/progress` with the same token while the job runs,
+including when it waits for another mutation. `message` contains the phase,
+counts, elapsed time, and phase ETA. Structured progress fields are also available
+under `params._meta["dev.jamesqo.mash/index-progress"]` in each notification.
+The numeric `progress` is an increasing update counter across all phases;
+`total` is omitted because the whole job's work is unknown. Phase-specific
+totals and `eta_seconds` are in the structured metadata. Unknown ETAs are `null`.
+
+Progress delivery uses a bounded queue and skips intermediate updates if a
+client is slow; a disconnected client does not block indexing. The normal
+tool result follows progress and retains the CLI's success/error structure.
+Without a progress token, the tool returns only its final result. CLI progress
+still goes to stderr; MCP stdout remains exclusively SDK protocol messages.
 
 Example MCP client configuration:
 

@@ -272,7 +272,10 @@ mod tests {
         let reply: Reply =
             serde_json::from_slice(&read_frame(&mut stream, MAX_RESPONSE).await.unwrap()).unwrap();
         assert_eq!(reply.code, 2);
-        assert_eq!(reply.result.unwrap_err().error.kind, "usage");
+        assert_eq!(
+            reply.result.unwrap_err().error.kind,
+            crate::ErrorKind::Usage
+        );
         tokio::time::timeout(Duration::from_secs(2), task)
             .await
             .unwrap()

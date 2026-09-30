@@ -4,6 +4,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+#[derive(Serialize)]
+#[serde(untagged)]
+enum Request<'a> {
+    OpenAi {
+        model: &'a str,
+        input: &'a [String],
+        encoding_format: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        dimensions: Option<usize>,
+    },
+    Voyage {
+        model: &'a str,
+        input: &'a [String],
+        output_dimension: usize,
+        input_type: InputType,
+        truncation: bool,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum InputType {
+    Query,
+    Document,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Configuration {
@@ -130,19 +156,29 @@ impl Client {
                     false,
                 ));
             }
-            let mut body = serde_json::json!({
-                "model": self.config.model, "input": batch, "encoding_format": "float"
-            });
-            if self.config.api == Api::Voyage {
-                body.as_object_mut()
-                    .ok_or_else(|| AppError::internal("invalid request body"))?
-                    .remove("encoding_format");
-                body["output_dimension"] = serde_json::json!(self.config.dimensions);
-                body["input_type"] = serde_json::json!(if query { "query" } else { "document" });
-                body["truncation"] = serde_json::json!(false);
-            } else if self.config.request_dimensions {
-                body["dimensions"] = serde_json::json!(self.config.dimensions);
-            }
+            let body = if self.config.api == Api::Voyage {
+                Request::Voyage {
+                    model: &self.config.model,
+                    input: batch,
+                    output_dimension: self.config.dimensions,
+                    input_type: if query {
+                        InputType::Query
+                    } else {
+                        InputType::Document
+                    },
+                    truncation: false,
+                }
+            } else {
+                Request::OpenAi {
+                    model: &self.config.model,
+                    input: batch,
+                    encoding_format: "float",
+                    dimensions: self
+                        .config
+                        .request_dimensions
+                        .then_some(self.config.dimensions),
+                }
+            };
             let mut response = self
                 .client
                 .post(&self.config.url)
@@ -195,7 +231,7 @@ impl Client {
 }
 
 fn error(message: impl Into<String>, retryable: bool) -> AppError {
-    AppError::new(4, "remote-inference", message, retryable)
+    AppError::new(4, crate::ErrorKind::RemoteInference, message, retryable)
 }
 
 fn decode(bytes: &[u8], count: usize, dimensions: usize) -> Result<Vec<Vec<f32>>, AppError> {
@@ -393,7 +429,7 @@ mod tests {
         std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
         mock.failure.store(429, Ordering::Relaxed);
         let error = crate::cli::run_async(args).await.unwrap_err();
-        assert_eq!(error.error.kind, "remote-inference");
+        assert_eq!(error.error.kind, crate::ErrorKind::RemoteInference);
         assert!(
             !crate::storage::Storage::open_existing(&db)
                 .unwrap()

@@ -1,3 +1,4 @@
+use crate::provider::Provider;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -54,8 +55,8 @@ pub(crate) struct StatusSnapshot {
 pub(crate) struct SearchHit {
     pub(crate) id: String,
     pub(crate) conversation_id: String,
-    pub(crate) provider: String,
-    pub(crate) role: String,
+    pub(crate) provider: Provider,
+    pub(crate) role: crate::role::Role,
     pub(crate) content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_score: Option<f64>,
@@ -72,7 +73,7 @@ pub(crate) struct SearchHit {
 pub(crate) struct Message {
     pub(crate) id: String,
     pub(crate) ordinal: i64,
-    pub(crate) role: String,
+    pub(crate) role: crate::role::Role,
     pub(crate) content: String,
     pub(crate) created_at: Option<i64>,
 }

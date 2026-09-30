@@ -1,3 +1,4 @@
+use crate::provider::Provider;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -263,7 +264,7 @@ impl Storage {
 
     pub(crate) fn source_checkpoint_matches(
         &self,
-        provider: &str,
+        provider: Provider,
         source_path: &str,
         size_bytes: i64,
         modified_ns: i64,
@@ -284,7 +285,7 @@ impl Storage {
 
     pub(crate) fn record_source_checkpoint(
         &mut self,
-        provider: &str,
+        provider: Provider,
         source_path: &str,
         size_bytes: i64,
         modified_ns: i64,
@@ -455,7 +456,7 @@ impl Storage {
 
     pub(crate) fn purge_missing_sources(
         &mut self,
-        provider: &str,
+        provider: Provider,
         observed_paths: &BTreeSet<String>,
         authoritative_roots: &[std::path::PathBuf],
         cutoff_modified_ns: Option<i64>,
@@ -549,7 +550,7 @@ impl Storage {
 
     pub(crate) fn remove_source(
         &mut self,
-        provider: &str,
+        provider: Provider,
         source_path: &str,
     ) -> Result<bool, AppError> {
         self.require_writer()?;
@@ -592,7 +593,7 @@ impl Storage {
 
     pub(crate) fn forget(&mut self, id: &str) -> Result<bool, AppError> {
         let transaction = self.connection.transaction().map_err(AppError::database)?;
-        let provider: Option<String> = transaction
+        let provider: Option<Provider> = transaction
             .query_row(
                 "SELECT provider FROM conversations WHERE id = ?1",
                 [id],
@@ -677,7 +678,7 @@ fn source_is_in_reconciliation_scope(
 }
 fn conversation_fingerprint(conversation: &Conversation) -> String {
     let mut hasher = blake3::Hasher::new();
-    update_hash(&mut hasher, conversation.provider);
+    update_hash(&mut hasher, conversation.provider.as_str());
     update_hash(&mut hasher, &conversation.id);
     update_hash(
         &mut hasher,
@@ -709,7 +710,7 @@ fn message_fingerprint(message: &crate::ingestion::NormalizedMessage) -> String 
     let mut hasher = blake3::Hasher::new();
     update_hash(&mut hasher, &message.id);
     update_hash(&mut hasher, &message.ordinal.to_string());
-    update_hash(&mut hasher, &message.role);
+    update_hash(&mut hasher, message.role.as_str());
     update_hash(&mut hasher, &message.content);
     match &message.search_projection {
         None => update_hash(&mut hasher, "canonical"),

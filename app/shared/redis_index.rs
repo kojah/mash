@@ -1,12 +1,14 @@
+use crate::provider::Provider;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 
 use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
-use super::backend::{ConversationRecord, MessageRecord, conflict, valid_id, valid_provider};
+use super::backend::{conflict, valid_id};
 use super::protocol::{
-    self, Checkpoint, Event, Forget, Forgotten, Indexed, NodeState, Search, Start, Tombstone,
+    self, Batch, Checkpoint, ConversationRecord, Event, Forget, Forgotten, Indexed, MessageRecord,
+    NodeState, Search, Start, Tombstone,
 };
 use super::server::Identity;
 use super::{Freshness, NodeFreshness};
@@ -142,7 +144,7 @@ fn state_key(group: &str, version: &str) -> String {
 fn data_key(group: &str, version: &str) -> String {
     format!("{}stage:{version}:data", prefix(group))
 }
-fn identity_key(provider: &str, id: &str) -> String {
+fn identity_key(provider: Provider, id: &str) -> String {
     format!("{provider}\0{id}")
 }
 fn encode(value: &impl Serialize) -> Result<String, AppError> {
@@ -586,7 +588,7 @@ impl Store {
                 .arg("node_tag")
                 .arg(crate::search_filter::tag(&identity.node_id))
                 .arg("role_tag")
-                .arg(crate::search_filter::tag(&message.role))
+                .arg(crate::search_filter::tag(message.role.as_str()))
                 .arg("project_tag")
                 .arg(crate::search_filter::tag(
                     conversation.project.as_deref().unwrap_or_default(),
@@ -604,9 +606,9 @@ impl Store {
                         .to_string(),
                 )
                 .arg("provider")
-                .arg(&conversation.provider)
+                .arg(conversation.provider.as_str())
                 .arg("provider_tag")
-                .arg(if conversation.provider == "codex" {
+                .arg(if conversation.provider == Provider::Codex {
                     "x"
                 } else {
                     "c"
@@ -752,7 +754,7 @@ impl Store {
         {
             return Err(AppError::usage("invalid search query or vector"));
         }
-        valid_provider(input.provider.as_deref())?;
+
         if let Some(filter) = &input.filter {
             filter.validate()?;
         }
@@ -769,7 +771,7 @@ impl Store {
         };
         let mut filters = String::new();
         if let Some(provider) = input.provider {
-            filters.push_str(if provider == "codex" {
+            filters.push_str(if provider == Provider::Codex {
                 " @provider_tag:{x}"
             } else {
                 " @provider_tag:{c}"
@@ -925,7 +927,7 @@ fn hits(value: redis::Value, lexical: bool) -> Result<(Vec<SearchHit>, Documents
             node_id: Some(node_id),
             id: message.id,
             conversation_id: message.conversation_id,
-            provider,
+            provider: provider.parse()?,
             role: message.role,
             content: message.content,
             lexical_score: lexical.then_some(-score),
@@ -1016,13 +1018,13 @@ impl Data {
 fn forget(data: &mut Data, id: &str) -> Result<bool, AppError> {
     valid_id(id)?;
     let providers = data.conversations.get(id).map_or_else(
-        || vec!["claude-code".to_owned(), "codex".to_owned()],
-        |c| vec![c.provider.clone()],
+        || vec![Provider::ClaudeCode, Provider::Codex],
+        |c| vec![c.provider],
     );
     let (_, removed) = data.remove(id);
     for provider in providers {
         data.tombstones.insert(
-            identity_key(&provider, id),
+            identity_key(provider, id),
             Tombstone {
                 provider,
                 conversation_id: id.to_owned(),
@@ -1126,7 +1128,7 @@ fn plan(
             plan.changed = true;
         }
     }
-    let mut seen: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut seen: HashMap<Provider, HashSet<String>> = HashMap::new();
     let mut reconciled = HashSet::new();
     let mut finished = false;
     for line in lines {
@@ -1148,16 +1150,13 @@ fn plan(
         }
         let data = &mut plan.loaded.data;
         match event {
-            Event::Batch { kind, records } => {
-                if records.len() > 128 {
+            Event::Batch(batch) => {
+                if batch.len() > 128 {
                     return Err(AppError::usage("index batch exceeds 128 records"));
                 }
-                for value in records {
-                    match kind.as_str() {
-                        "tombstones" => {
-                            let t: Tombstone = serde_json::from_value(value)
-                                .map_err(|_| AppError::usage("invalid tombstone"))?;
-                            valid_provider(Some(&t.provider))?;
+                match batch {
+                    Batch::Tombstones { records } => {
+                        for t in records {
                             valid_id(&t.conversation_id)?;
                             if data
                                 .conversations
@@ -1167,13 +1166,12 @@ fn plan(
                                 data.remove(&t.conversation_id);
                             }
                             data.tombstones
-                                .insert(identity_key(&t.provider, &t.conversation_id), t);
+                                .insert(identity_key(t.provider, &t.conversation_id), t);
                             plan.changed = true;
                         }
-                        "conversations" => {
-                            let c: ConversationRecord = serde_json::from_value(value)
-                                .map_err(|_| AppError::usage("invalid conversation"))?;
-                            valid_provider(Some(&c.provider))?;
+                    }
+                    Batch::Conversations { records } => {
+                        for c in records {
                             valid_id(&c.id)?;
                             if !input.snapshot {
                                 data.remove(&c.id);
@@ -1182,15 +1180,15 @@ fn plan(
                             }
                             if !data
                                 .tombstones
-                                .contains_key(&identity_key(&c.provider, &c.id))
+                                .contains_key(&identity_key(c.provider, &c.id))
                             {
                                 data.conversations.insert(c.id.clone(), c);
                                 plan.changed = true;
                             }
                         }
-                        "messages" => {
-                            let m: MessageRecord = serde_json::from_value(value)
-                                .map_err(|_| AppError::usage("invalid message"))?;
+                    }
+                    Batch::Messages { records } => {
+                        for m in records {
                             valid_id(&m.id)?;
                             valid_id(&m.conversation_id)?;
                             if m.ordinal < 0
@@ -1211,29 +1209,25 @@ fn plan(
                                 plan.changed = true;
                             }
                         }
-                        _ => return Err(AppError::usage("unknown index batch kind")),
                     }
                 }
             }
             Event::Source(s) if !input.snapshot => {
-                valid_provider(Some(&s.provider))?;
                 valid_id(&s.path_hash)?;
                 if s.size_bytes < 0 || reconciled.contains(&s.provider) {
                     return Err(AppError::usage("invalid source checkpoint"));
                 }
                 data.sources
-                    .insert(identity_key(&s.provider, &s.path_hash), s);
+                    .insert(identity_key(s.provider, &s.path_hash), s);
             }
             Event::Seen { provider, hashes } if !input.snapshot => {
-                valid_provider(Some(&provider))?;
                 if hashes.len() > 128 || reconciled.contains(&provider) {
                     return Err(AppError::usage("invalid observed sources"));
                 }
                 seen.entry(provider).or_default().extend(hashes);
             }
             Event::Reconcile { provider, cutoff } if !input.snapshot => {
-                valid_provider(Some(&provider))?;
-                if !reconciled.insert(provider.clone()) {
+                if !reconciled.insert(provider) {
                     return Err(AppError::usage("duplicate reconciliation"));
                 }
                 let observed = seen.get(&provider);

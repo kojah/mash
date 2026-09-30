@@ -230,7 +230,7 @@ async fn rich_filter_contract(service: Service) {
             .await
             .unwrap()
             .status(),
-        StatusCode::BAD_REQUEST
+        StatusCode::UNPROCESSABLE_ENTITY
     );
     service.cleanup().await;
 }

@@ -234,7 +234,7 @@ impl Storage {
     pub(crate) fn semantic_chunks(
         &self,
         generation: &str,
-        provider: Option<&str>,
+        provider: Option<crate::provider::Provider>,
         days: Option<u32>,
     ) -> Result<SemanticChunks, AppError> {
         self.semantic_chunks_filtered(generation, provider, days, None)
@@ -243,7 +243,7 @@ impl Storage {
     pub(crate) fn semantic_chunks_filtered(
         &self,
         generation: &str,
-        provider: Option<&str>,
+        provider: Option<crate::provider::Provider>,
         days: Option<u32>,
         filters: Option<&crate::search_filter::Scope>,
     ) -> Result<SemanticChunks, AppError> {
@@ -254,7 +254,7 @@ impl Storage {
             statement.query_map([], |r| r.get::<_, i64>(0)).map_err(AppError::database)?.collect::<Result<std::collections::HashSet<_>, _>>().map_err(AppError::database)
         }).transpose()?;
         let cutoff = cutoff_timestamp(days)?;
-        let requested_provider = provider.map(provider_code).transpose()?;
+        let requested_provider = provider.map(provider_code);
         let mut statement = self
             .connection
             .prepare(

@@ -27,7 +27,12 @@ fn writer_checkpoint_survives_a_later_rollback() {
         .replace_conversation(&conversation("durable needle"))
         .expect("durable mutation");
     writer
-        .record_source_checkpoint("codex", "/tmp/session-1.jsonl", 100, 200)
+        .record_source_checkpoint(
+            crate::provider::Provider::Codex,
+            "/tmp/session-1.jsonl",
+            100,
+            200,
+        )
         .expect("durable source checkpoint");
     writer.checkpoint_writer().expect("checkpoint batch");
     writer
@@ -45,7 +50,12 @@ fn writer_checkpoint_survives_a_later_rollback() {
     );
     assert!(
         storage
-            .source_checkpoint_matches("codex", "/tmp/session-1.jsonl", 100, 200)
+            .source_checkpoint_matches(
+                crate::provider::Provider::Codex,
+                "/tmp/session-1.jsonl",
+                100,
+                200
+            )
             .expect("read checkpoint")
     );
 }
@@ -243,9 +253,14 @@ fn incremental_and_bulk_fts_produce_equivalent_results() {
     let bulk = Storage::open_existing(&bulk_path).unwrap();
     for (query, limit, provider, days) in [
         ("shared", 10, None, None),
-        ("shared", 1, Some("codex"), None),
-        ("shared", 10, Some("codex"), Some(1)),
-        ("gamma", 10, Some("codex"), None),
+        ("shared", 1, Some(crate::provider::Provider::Codex), None),
+        (
+            "shared",
+            10,
+            Some(crate::provider::Provider::Codex),
+            Some(1),
+        ),
+        ("gamma", 10, Some(crate::provider::Provider::Codex), None),
         ("removed", 10, None, None),
     ] {
         let ids = |storage: &Storage| {
@@ -458,7 +473,7 @@ fn benchmark_fts_refresh_crossover() {
             .map(|index| crate::ingestion::NormalizedMessage {
                 id: format!("message-{index:05}"),
                 ordinal: i64::from(index),
-                role: "user".to_owned(),
+                role: crate::role::Role::User,
                 content: format!("representative searchable text number {index}"),
                 search_projection: None,
                 created_at: Some(1),
@@ -579,7 +594,7 @@ fn concurrent_writer_is_rejected_and_first_writer_can_commit() {
     let error = Storage::open_writer(&path)
         .err()
         .expect("second writer rejected");
-    assert_eq!(error.error.kind, "index-busy");
+    assert_eq!(error.error.kind, crate::ErrorKind::IndexBusy);
     first.commit_writer().expect("first writer commits");
     Storage::open_writer(&path).expect("writer available after commit");
 }
@@ -670,7 +685,7 @@ fn purging_a_conversation_removes_its_staged_fts_rows() {
     assert_eq!(
         writer
             .purge_missing_sources(
-                "codex",
+                crate::provider::Provider::Codex,
                 &BTreeSet::new(),
                 &[std::path::PathBuf::from("/tmp")],
                 None,

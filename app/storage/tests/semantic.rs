@@ -451,7 +451,11 @@ fn explicit_semantic_storage_identifiers_survive_vacuum() {
     assert_eq!(chunks.chunks[0].message_rowids, [1]);
     assert_eq!(
         storage
-            .semantic_chunks("generation", Some("claude-code"), None)
+            .semantic_chunks(
+                "generation",
+                Some(crate::provider::Provider::ClaudeCode),
+                None
+            )
             .expect("apply provider metadata filter")
             .chunks[0]
             .eligible,

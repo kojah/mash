@@ -1,5 +1,6 @@
+use crate::provider::Provider;
+use crate::shared::protocol::{Batch, BatchKind, ConversationRecord, MessageRecord, Tombstone};
 use rusqlite::{Connection, OpenFlags};
-use serde_json::{Value, json};
 
 use super::Storage;
 use crate::AppError;
@@ -21,90 +22,126 @@ impl Snapshot<'_> {
     /// Bound each network batch without materializing the complete local history.
     pub(crate) fn visit(
         &self,
-        kind: &str,
-        mut accept: impl FnMut(&[Value]) -> Result<(), AppError>,
+        kind: BatchKind,
+        mut accept: impl FnMut(Batch) -> Result<(), AppError>,
     ) -> Result<(), AppError> {
         let sql = match kind {
-            "conversations" => {
+            BatchKind::Conversations => {
                 "SELECT id, provider, title, created_at, updated_at, project, repository FROM conversations ORDER BY id"
             }
-            "messages" => {
+            BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
                 COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector
                 FROM messages m LEFT JOIN message_embeddings e ON e.message_id = m.id ORDER BY m.id"
             }
-            "tombstones" => {
+            BatchKind::Tombstones => {
                 "SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id"
             }
-            _ => return Err(AppError::internal("unknown publication record kind")),
         };
         let mut statement = self.connection.prepare(sql).map_err(AppError::database)?;
         let mut rows = statement.query([]).map_err(AppError::database)?;
-        let mut batch = Vec::new();
+        let mut batch = match kind {
+            BatchKind::Conversations => Batch::Conversations {
+                records: Vec::new(),
+            },
+            BatchKind::Messages => Batch::Messages {
+                records: Vec::new(),
+            },
+            BatchKind::Tombstones => Batch::Tombstones {
+                records: Vec::new(),
+            },
+        };
         let mut bytes = 0;
         while let Some(row) = rows.next().map_err(AppError::database)? {
-            let value = match kind {
-                "conversations" => json!({
-                    "id": row.get::<_, String>(0).map_err(AppError::database)?,
-                    "provider": row.get::<_, String>(1).map_err(AppError::database)?,
-                    "title": row.get::<_, Option<String>>(2).map_err(AppError::database)?,
-                    "created_at": row.get::<_, Option<i64>>(3).map_err(AppError::database)?,
-                    "updated_at": row.get::<_, Option<i64>>(4).map_err(AppError::database)?,
-                    "project": row.get::<_, Option<String>>(5).map_err(AppError::database)?,
-                    "repository": row.get::<_, Option<String>>(6).map_err(AppError::database)?,
-                }),
-                "messages" => {
-                    let local_generation = row
-                        .get::<_, Option<String>>(7)
-                        .map_err(AppError::database)?;
-                    let generation = (local_generation.as_deref()
-                        == Some(crate::semantic::embedding_generation()))
-                    .then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned())
-                    .or_else(|| {
-                        local_generation.filter(|g| {
-                            g.starts_with("remote:")
-                                || g == crate::semantic::SHARED_EMBEDDING_GENERATION
-                        })
-                    });
-                    let vector = row
-                        .get::<_, Option<Vec<u8>>>(8)
-                        .map_err(AppError::database)?
-                        .map(|bytes| {
-                            bytes
-                                .into_iter()
-                                .map(|v| f64::from(v.cast_signed()))
-                                .collect::<Vec<_>>()
-                        });
-                    json!({
-                        "id": row.get::<_, String>(0).map_err(AppError::database)?,
-                        "conversation_id": row.get::<_, String>(1).map_err(AppError::database)?,
-                        "ordinal": row.get::<_, i64>(2).map_err(AppError::database)?,
-                        "role": row.get::<_, String>(3).map_err(AppError::database)?,
-                        "content": row.get::<_, String>(4).map_err(AppError::database)?,
-                        "projection": row.get::<_, String>(5).map_err(AppError::database)?,
-                        "created_at": row.get::<_, Option<i64>>(6).map_err(AppError::database)?,
-                        "generation": generation,
-                        "vector": vector,
-                    })
+            let size = match &mut batch {
+                Batch::Conversations { records } => {
+                    let record = ConversationRecord {
+                        id: row.get::<_, String>(0).map_err(AppError::database)?,
+                        provider: row.get::<_, Provider>(1).map_err(AppError::database)?,
+                        title: row
+                            .get::<_, Option<String>>(2)
+                            .map_err(AppError::database)?,
+                        created_at: row.get::<_, Option<i64>>(3).map_err(AppError::database)?,
+                        updated_at: row.get::<_, Option<i64>>(4).map_err(AppError::database)?,
+                        project: row
+                            .get::<_, Option<String>>(5)
+                            .map_err(AppError::database)?,
+                        repository: row
+                            .get::<_, Option<String>>(6)
+                            .map_err(AppError::database)?,
+                    };
+                    let size = serde_json::to_vec(&record)
+                        .map_err(|_| AppError::internal("serialize index record"))?
+                        .len();
+                    records.push(record);
+                    size
                 }
-                _ => json!({
-                    "provider": row.get::<_, String>(0).map_err(AppError::database)?,
-                    "conversation_id": row.get::<_, String>(1).map_err(AppError::database)?,
-                }),
+                Batch::Messages { records } => {
+                    let record = message_record(row)?;
+                    let size = serde_json::to_vec(&record)
+                        .map_err(|_| AppError::internal("serialize index record"))?
+                        .len();
+                    records.push(record);
+                    size
+                }
+                Batch::Tombstones { records } => {
+                    let record = Tombstone {
+                        provider: row.get::<_, Provider>(0).map_err(AppError::database)?,
+                        conversation_id: row.get::<_, String>(1).map_err(AppError::database)?,
+                    };
+                    let size = serde_json::to_vec(&record)
+                        .map_err(|_| AppError::internal("serialize index record"))?
+                        .len();
+                    records.push(record);
+                    size
+                }
             };
-            bytes += value.to_string().len();
-            batch.push(value);
+            bytes += size;
             if batch.len() >= 128 || bytes >= 1024 * 1024 {
-                accept(&batch)?;
-                batch.clear();
+                accept(batch.take())?;
                 bytes = 0;
             }
         }
-        if !batch.is_empty() {
-            accept(&batch)?;
+        if batch.len() > 0 {
+            accept(batch)?;
         }
         Ok(())
     }
+}
+
+fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
+    let local_generation = row
+        .get::<_, Option<String>>(7)
+        .map_err(AppError::database)?;
+    let generation = (local_generation.as_deref() == Some(crate::semantic::embedding_generation()))
+        .then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned())
+        .or_else(|| {
+            local_generation.filter(|g| {
+                g.starts_with("remote:") || g == crate::semantic::SHARED_EMBEDDING_GENERATION
+            })
+        });
+    let vector = row
+        .get::<_, Option<Vec<u8>>>(8)
+        .map_err(AppError::database)?
+        .map(|bytes| {
+            bytes
+                .into_iter()
+                .map(|v| f64::from(v.cast_signed()))
+                .collect::<Vec<_>>()
+        });
+    Ok(MessageRecord {
+        id: row.get::<_, String>(0).map_err(AppError::database)?,
+        conversation_id: row.get::<_, String>(1).map_err(AppError::database)?,
+        ordinal: row.get::<_, i64>(2).map_err(AppError::database)?,
+        role: row
+            .get::<_, crate::role::Role>(3)
+            .map_err(AppError::database)?,
+        content: row.get::<_, String>(4).map_err(AppError::database)?,
+        projection: row.get::<_, String>(5).map_err(AppError::database)?,
+        created_at: row.get::<_, Option<i64>>(6).map_err(AppError::database)?,
+        generation,
+        vector,
+    })
 }
 
 impl Storage {

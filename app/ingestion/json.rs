@@ -1,0 +1,226 @@
+//! Known history fields are typed; provider-owned tool payloads remain opaque JSON.
+use serde::Deserialize;
+use serde_json::Value;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum Kind {
+    User,
+    Assistant,
+    ResponseItem,
+    SessionMeta,
+    Message,
+    FunctionCall,
+    CustomToolCall,
+    FunctionCallOutput,
+    CustomToolCallOutput,
+    Thinking,
+    #[serde(rename = "toolCall")]
+    ToolCall,
+    ToolUse,
+    ToolResult,
+    InputText,
+    OutputText,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl Kind {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::ResponseItem => "response_item",
+            Self::SessionMeta => "session_meta",
+            Self::Message => "message",
+            Self::FunctionCall => "function_call",
+            Self::CustomToolCall => "custom_tool_call",
+            Self::FunctionCallOutput => "function_call_output",
+            Self::CustomToolCallOutput => "custom_tool_call_output",
+            Self::Thinking => "thinking",
+            Self::ToolCall => "toolCall",
+            Self::ToolUse => "tool_use",
+            Self::ToolResult => "tool_result",
+            Self::InputText => "input_text",
+            Self::OutputText => "output_text",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
+pub(super) struct Record {
+    #[serde(rename = "type", default)]
+    pub kind: Kind,
+    pub uuid: Option<String>,
+    pub timestamp: Option<String>,
+    #[serde(rename = "sessionId")]
+    pub session_id: Option<String>,
+    pub message: Option<Payload>,
+    pub payload: Option<Payload>,
+    #[serde(flatten)]
+    pub metadata: Metadata,
+}
+
+#[derive(Default, Deserialize)]
+pub(super) struct Metadata {
+    pub cwd: Option<String>,
+    pub git: Option<Git>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct Git {
+    pub repository_url: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+pub(super) struct Payload {
+    #[serde(rename = "type", default)]
+    pub kind: Kind,
+    pub id: Option<String>,
+    pub session_id: Option<String>,
+    pub call_id: Option<String>,
+    pub role: Option<crate::role::Role>,
+    pub name: Option<String>,
+    pub content: Option<Content>,
+    #[serde(default, deserialize_with = "opaque")]
+    pub arguments: Option<Value>,
+    #[serde(default, deserialize_with = "opaque")]
+    pub input: Option<Value>,
+    #[serde(default, deserialize_with = "opaque")]
+    pub output: Option<Value>,
+    #[serde(flatten)]
+    pub metadata: Metadata,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(super) enum Content {
+    Text(String),
+    Blocks(Vec<Block>),
+    Block(Box<Block>),
+}
+
+#[derive(Default, Deserialize)]
+pub(super) struct Block {
+    #[serde(rename = "type", default)]
+    pub kind: Kind,
+    pub text: Option<String>,
+    pub content: Option<Content>,
+    pub thinking: Option<String>,
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "opaque")]
+    pub arguments: Option<Value>,
+    #[serde(default, deserialize_with = "opaque")]
+    pub input: Option<Value>,
+}
+
+impl Content {
+    pub fn flatten(&self) -> Option<String> {
+        match self {
+            Self::Text(text) => Some(text.clone()),
+            Self::Blocks(blocks) => {
+                let parts = blocks.iter().filter_map(Block::flatten).collect::<Vec<_>>();
+                (!parts.is_empty()).then(|| parts.join("\n"))
+            }
+            Self::Block(block) => block.flatten(),
+        }
+    }
+
+    pub fn claude(&self) -> Option<(String, Option<String>)> {
+        let content = self.flatten()?;
+        match self {
+            Self::Block(block) if block.kind == Kind::ToolResult => {
+                Some((content, Some(String::new())))
+            }
+            Self::Blocks(blocks) if blocks.iter().any(|block| block.kind == Kind::ToolResult) => {
+                let projection = blocks
+                    .iter()
+                    .filter(|block| block.kind != Kind::ToolResult)
+                    .filter_map(Block::flatten)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Some((content, Some(projection)))
+            }
+            _ => Some((content, None)),
+        }
+    }
+}
+
+impl Block {
+    fn flatten(&self) -> Option<String> {
+        if let Some(text) = self.text.as_ref().or(match self.content.as_ref() {
+            Some(Content::Text(text)) => Some(text),
+            _ => None,
+        }) {
+            return Some(text.clone());
+        }
+        match self.kind {
+            Kind::Thinking => self
+                .thinking
+                .as_ref()
+                .map(|thinking| format!("[Thinking] {thinking}")),
+            Kind::ToolCall | Kind::ToolUse => {
+                let input = if self.kind == Kind::ToolCall {
+                    &self.arguments
+                } else {
+                    &self.input
+                };
+                Some(format!(
+                    "Tool {}: {}",
+                    self.name.as_deref().unwrap_or("unknown"),
+                    input.as_ref().map(stringify).unwrap_or_default()
+                ))
+            }
+            Kind::ToolResult => self.content.as_ref().and_then(Content::flatten),
+            _ => None,
+        }
+    }
+}
+
+pub(super) fn stringify(value: &Value) -> String {
+    value
+        .as_str()
+        .map_or_else(|| value.to_string(), str::to_owned)
+}
+
+// A present JSON null is tool data, distinct from an absent field.
+fn opaque<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(input).map(Some)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_history_accepts_evolving_fields_and_preserves_opaque_tool_data() {
+        let record: Record = serde_json::from_str(r#"{"type":"response_item","new_field":true,"payload":{"type":"custom_tool_call","input":{"nested":[null,3,true]},"role":"future-role"}}"#).unwrap();
+        let payload = record.payload.unwrap();
+        assert_eq!(payload.kind, Kind::CustomToolCall);
+        assert_eq!(
+            payload.role.unwrap(),
+            crate::role::Role::Other("future-role".into())
+        );
+        assert_eq!(
+            stringify(payload.input.as_ref().unwrap()),
+            r#"{"nested":[null,3,true]}"#
+        );
+        let record: Record = serde_json::from_str(
+            r#"{"type":"future_event","payload":{"type":"future_payload","output":null}}"#,
+        )
+        .unwrap();
+        assert_eq!(record.kind, Kind::Unknown);
+        assert_eq!(
+            stringify(record.payload.unwrap().output.as_ref().unwrap()),
+            "null"
+        );
+        assert!(
+            serde_json::from_str::<Record>(
+                r#"{"type":"user","message":{"role":3,"content":"text"}}"#
+            )
+            .is_err()
+        );
+    }
+}

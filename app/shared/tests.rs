@@ -40,7 +40,10 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
         api_url: format!("http://{address}"),
         token_env: "HOME".into(),
     };
-    assert_eq!(publish(&path, &config).await.state, "published");
+    assert_eq!(
+        publish(&path, &config).await.state,
+        PublicationState::Published
+    );
     let events = received.recv().await.unwrap();
     assert_eq!(events.first().unwrap()["type"], "start");
     assert_eq!(events.last().unwrap()["type"], "finish");
@@ -280,7 +283,7 @@ fn seed(path: &Path) -> Storage {
     storage
         .replace_conversation(&Conversation {
             id: "conversation".to_owned(),
-            provider: "codex",
+            provider: crate::provider::Provider::Codex,
             source_path: "/tmp/shared-fixture.jsonl".into(),
             project: None,
             repository: None,
@@ -291,7 +294,7 @@ fn seed(path: &Path) -> Storage {
                 NormalizedMessage {
                     id: "searchable".to_owned(),
                     ordinal: 0,
-                    role: "user".to_owned(),
+                    role: crate::role::Role::User,
                     content: "hello shared history".to_owned(),
                     search_projection: None,
                     created_at: Some(1),
@@ -299,7 +302,7 @@ fn seed(path: &Path) -> Storage {
                 NormalizedMessage {
                     id: "context".to_owned(),
                     ordinal: 1,
-                    role: "tool".to_owned(),
+                    role: crate::role::Role::Tool,
                     content: "hello raw tool output".to_owned(),
                     search_projection: Some(String::new()),
                     created_at: Some(2),
@@ -346,7 +349,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
             semantic::embedding_generation(),
             "hello",
             &[127.0, 0.0],
-            Some("claude-code"),
+            Some(crate::provider::Provider::ClaudeCode),
             None,
             None
         )
@@ -363,7 +366,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     let mut storage = Storage::open_writer(&path).unwrap();
     let mut conversation = Conversation {
         id: "conversation".into(),
-        provider: "codex",
+        provider: crate::provider::Provider::Codex,
         source_path: "/tmp/filters.jsonl".into(),
         project: Some("/work/o'reilly".into()),
         repository: Some("repo://alpha".into()),
@@ -469,23 +472,23 @@ async fn publication_state_survives_failed_delivery_and_forget() {
         token_env: "MASH_TEST_UNCONFIGURED_TOKEN_71B9".to_owned(),
     };
     let delivery = publish(&path, &unavailable).await;
-    assert_eq!(delivery.state, "pending");
+    assert_eq!(delivery.state, PublicationState::Pending);
     assert!(delivery.error.is_some());
     assert!(Storage::publication_is_pending(&path, "target").expect("pending"));
     let revision = storage
         .with_publication_snapshot(|snapshot| {
             let mut messages = Vec::new();
-            snapshot.visit("messages", |batch| {
-                messages.extend_from_slice(batch);
+            snapshot.visit(protocol::BatchKind::Messages, |batch| {
+                let protocol::Batch::Messages { records } = batch else {
+                    panic!("message batch")
+                };
+                messages.extend(records);
                 Ok(())
             })?;
             assert_eq!(messages.len(), 2);
-            let tool = messages
-                .iter()
-                .find(|m| m["id"] == "context")
-                .expect("tool");
-            assert_eq!(tool["projection"], "");
-            assert_eq!(tool["content"], "hello raw tool output");
+            let tool = messages.iter().find(|m| m.id == "context").expect("tool");
+            assert_eq!(tool.projection, "");
+            assert_eq!(tool.content, "hello raw tool output");
             Ok(())
         })
         .expect("snapshot");
@@ -504,8 +507,11 @@ async fn publication_state_survives_failed_delivery_and_forget() {
     assert!(Storage::publication_is_pending(&path, "target").expect("still pending"));
     storage
         .with_publication_snapshot(|snapshot| {
-            snapshot.visit("tombstones", |batch| {
-                assert_eq!(batch[0]["conversation_id"], "conversation");
+            snapshot.visit(protocol::BatchKind::Tombstones, |batch| {
+                let protocol::Batch::Tombstones { records } = batch else {
+                    panic!("tombstone batch")
+                };
+                assert_eq!(records[0].conversation_id, "conversation");
                 Ok(())
             })
         })
