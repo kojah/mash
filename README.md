@@ -1101,15 +1101,20 @@ database with pgvector installed in `MASH_TEST_PG_URL`. Tests start real HTTP
 services and create/remove isolated test-group schemas:
 
 ```bash
-MASH_TEST_PG_URL='postgresql://USER:PASSWORD@localhost/DATABASE?sslmode=disable' \
-  cargo nextest run --run-ignored only -E 'test(postgres)'
+MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
+  MASH_TEST_PG_URL='postgresql://USER:PASSWORD@localhost/DATABASE?sslmode=disable' \
+  cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(postgres)'
 
-MASH_TEST_REDIS_URL='redis://localhost:6379/' \
-  cargo nextest run --run-ignored only -E 'test(redis)'
+MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
+  MASH_TEST_REDIS_URL='redis://localhost:6379/' \
+  cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(redis)'
 ```
 
-The real-model integration test is ignored by default and requires
+The real-model integration tests are ignored by default and require
 `MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
+The shared-backend selections include Claude copy reconciliation with real
+embeddings and require that directory too. Selected tests fail when prerequisites
+are missing; `--no-tests fail` rejects an accidentally empty selection.
 
 For an instrumented coverage report, install
 [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/releases/tag/v0.9.1)
@@ -1162,7 +1167,11 @@ inference workspace limit, not a total indexing memory limit.
 ## Automatic deployment
 
 Every push to `main` first runs CI, including generated-query checks, linting,
-and SQLite, PostgreSQL, and Redis tests. Only a successful run can build and
+and SQLite, real embedding/reranking/hybrid-search, PostgreSQL, and Redis tests.
+CI explicitly installs and smoke-tests local models on cache misses; model assets
+are cached by platform, dependency lockfile and installation implementation.
+Both shared-backend gates include normal and routed Claude-copy reconciliation.
+Only a successful run can build and
 deploy the Linux x86-64 and Apple Silicon binaries from that same commit.
 Deployments are serialized; a superseded commit is skipped after acquiring
 the deployment lock. New pushes do not interrupt an active deployment.

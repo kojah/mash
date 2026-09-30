@@ -88,16 +88,39 @@ jobs:
           MASH_CODEGEN_POSTGRES_URL: postgresql://postgres:mash-test@localhost:5432
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo nextest run --profile ci
+      - name: Configure explicit test model directory
+        run: echo "MASH_TEST_MODELS_DIR=$RUNNER_TEMP/mash-test-models" >> "$GITHUB_ENV"
+      - name: Restore installed test models
+        id: model-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/mash-test-models
+          key: mash-models-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'app/semantic.rs', 'app/semantic/models.rs', 'app/semantic/models/assets.rs', 'app/semantic/models/downloads.rs', 'app/semantic/models/install.rs', 'app/semantic/models/generations.rs') }}
+      - name: Explicitly install and smoke-test local models
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          printf 'version = 1\n[providers]\n' > "$RUNNER_TEMP/mash-model-install.toml"
+          cargo run --locked -- --config "$RUNNER_TEMP/mash-model-install.toml" --models-dir "$MASH_TEST_MODELS_DIR" models install
+      - name: Verify real embedding, reranking, hybrid search and parallel retrieval
+        run: >-
+          cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
+          -E 'test(real_models_index_and_run_hybrid_search) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked)'
       - name: Verify shared PostgreSQL publication
-        run: cargo nextest run --profile ci --run-ignored only -E 'test(postgres)'
+        run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(postgres)'
         env:
           MASH_TEST_PG_URL: postgresql://postgres:mash-test@localhost:5432/mash_test?sslmode=disable
       - name: Verify shared Redis publication
-        run: cargo nextest run --profile ci --run-ignored only -E 'test(redis)'
+        run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(redis)'
         env:
           MASH_TEST_REDIS_URL: redis://localhost:6379/
       - run: cargo test --doc
       - run: sccache --show-stats
+      - name: Save verified installed test models
+        if: success() && steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/mash-test-models
+          key: ${{ steps.model-cache.outputs.cache-primary-key }}
       - name: Save Cargo cache
         if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5

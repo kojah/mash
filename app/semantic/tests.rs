@@ -176,8 +176,15 @@ fn real_model_length_aware_batches_preserve_quantized_vectors() {
     let models = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(PathBuf::from)
         .expect("explicit model directory");
-    let mut backend = Backend::load_local(&models).expect("load reference models");
-    let mut pool = EmbeddingPool::load_local(&models).expect("load embedding pool");
+    let models = Models::new(models);
+    let mut backend = models
+        .load()
+        .expect("load reference models")
+        .expect("installed reference models");
+    let mut pool = models
+        .load_indexer()
+        .expect("load embedding pool")
+        .expect("installed embedding pool");
     let samples = [
         "brief status".to_owned(),
         "a somewhat longer explanation of a database transaction boundary".to_owned(),
