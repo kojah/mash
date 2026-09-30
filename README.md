@@ -512,6 +512,11 @@ read-only; the service adds missing metadata tables during startup migration.
 
 ## MCP
 
+CLI and MCP are wrappers around the same typed application core in `app/core.rs`.
+The core owns indexing, search, view, status, forgetting, and model installation.
+MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
+The cached search worker and watcher also use typed core requests.
+
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
 and `models_install`. The server uses the same operations and typed JSON errors

@@ -1,6 +1,6 @@
+use crate::core::{self, IndexRequest, Operation, Paths, Request};
 use crate::provider::Provider;
 use futures_util::FutureExt;
-use std::ffi::OsString;
 use std::sync::Arc;
 
 use rmcp::{
@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 #[derive(Clone)]
 struct Mash {
-    arguments: Arc<Vec<OsString>>,
+    paths: Arc<Paths>,
     // Mutations serialize, while read-only calls may run concurrently.
     gate: Arc<tokio::sync::Mutex<()>>,
     model_work: Arc<tokio::sync::Semaphore>,
@@ -71,13 +71,13 @@ struct Forget {
 }
 
 impl Mash {
-    async fn execute(&self, arguments: Vec<OsString>) -> CallToolResult {
-        self.execute_with_progress(arguments, None).await
+    async fn execute(&self, operation: Operation) -> CallToolResult {
+        self.execute_with_progress(operation, None).await
     }
 
     async fn execute_with_progress(
         &self,
-        arguments: Vec<OsString>,
+        operation: Operation,
         context: Option<rmcp::service::RequestContext<rmcp::RoleServer>>,
     ) -> CallToolResult {
         // Blocking work cannot be interrupted once started. Keep its guards in
@@ -85,8 +85,8 @@ impl Mash {
         let server = self.clone();
         tokio::spawn(async move {
             match context.filter(|ctx| ctx.meta.get_progress_token().is_some()) {
-                Some(ctx) => server.perform_streamed(arguments, ctx).await,
-                None => server.perform(arguments).await,
+                Some(ctx) => server.perform_streamed(operation, ctx).await,
+                None => server.perform(operation).await,
             }
         })
         .await
@@ -95,18 +95,18 @@ impl Mash {
 
     async fn perform_streamed(
         &self,
-        arguments: Vec<OsString>,
+        operation: Operation,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> CallToolResult {
         let Some(token) = context.meta.get_progress_token() else {
-            return self.perform(arguments).await;
+            return self.perform(operation).await;
         };
         let (sender, mut events) = tokio::sync::mpsc::channel(64);
         let (finished, done) = tokio::sync::oneshot::channel();
         let work = async {
             let result = crate::progress::scope(sender, async {
                 crate::progress::phase(crate::progress::Phase::WaitingForIndex, 0);
-                self.perform(arguments).await
+                self.perform(operation).await
             })
             .boxed()
             .await;
@@ -151,24 +151,26 @@ impl Mash {
         result
     }
 
-    async fn perform(&self, arguments: Vec<OsString>) -> CallToolResult {
-        tool_result(self.perform_response(arguments).await)
+    async fn perform(&self, operation: Operation) -> CallToolResult {
+        tool_result(self.perform_response(operation).await)
     }
 
     async fn perform_response(
         &self,
-        arguments: Vec<OsString>,
-    ) -> Result<crate::cli::Response, crate::AppError> {
-        let operation = arguments
-            .first()
-            .and_then(|arg| arg.to_str())
-            .unwrap_or_default();
-        let _guard = if matches!(operation, "index" | "forget" | "models") {
+        operation: Operation,
+    ) -> Result<core::Response, crate::AppError> {
+        let _guard = if matches!(
+            operation,
+            Operation::Index(_) | Operation::Forget { .. } | Operation::ModelsInstall
+        ) {
             Some(self.gate.lock().await)
         } else {
             None
         };
-        let _permit = if matches!(operation, "search" | "index" | "models") {
+        let _permit = if matches!(
+            operation,
+            Operation::Search { .. } | Operation::Index(_) | Operation::ModelsInstall
+        ) {
             match self.model_work.acquire().await {
                 Ok(permit) => Some(permit),
                 Err(_) => {
@@ -178,13 +180,15 @@ impl Mash {
         } else {
             None
         };
-        let mut all = self.arguments.as_ref().clone();
-        all.extend(arguments);
-        crate::cli::run_async(all).await
+        core::execute(Request {
+            paths: self.paths.as_ref().clone(),
+            operation,
+        })
+        .await
     }
 }
 
-fn tool_result(result: Result<crate::cli::Response, crate::AppError>) -> CallToolResult {
+fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResult {
     match result {
         Ok(value) => match serde_json::to_value(&value) {
             Ok(json) => CallToolResult::structured(json),
@@ -201,12 +205,6 @@ fn tool_result(result: Result<crate::cli::Response, crate::AppError>) -> CallToo
     }
 }
 
-fn flag(arguments: &mut Vec<OsString>, name: &str, value: Option<impl ToString>) {
-    if let Some(value) = value {
-        arguments.extend([name.into(), value.to_string().into()]);
-    }
-}
-
 #[tool_router]
 impl Mash {
     #[tool(
@@ -214,24 +212,19 @@ impl Mash {
         description = "Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
-        let mut args = vec!["search".into()];
-        flag(&mut args, "--limit", request.limit);
-        flag(&mut args, "--provider", request.provider);
-        flag(&mut args, "--days", request.days);
-        if let Some(filter) = request.filter {
-            let Ok(json) = serde_json::to_string(&filter) else {
-                return CallToolResult::error(vec![ContentBlock::text("invalid search filter")]);
-            };
-            flag(&mut args, "--filter", Some(json));
-        }
-        if request.shared {
-            args.push("--shared".into());
-        }
-        if request.local {
-            args.push("--local".into());
-        }
-        args.extend(["--".into(), request.query.into()]);
-        self.execute(args).await
+        self.execute(Operation::Search {
+            query: request.query,
+            limit: request.limit.unwrap_or(20),
+            filters: Box::new(crate::search_filter::Selection {
+                provider: request.provider.into_iter().collect(),
+                days: request.days,
+                filter: request.filter,
+                ..Default::default()
+            }),
+            shared: request.shared,
+            local: request.local,
+        })
+        .await
     }
 
     #[tool(
@@ -239,11 +232,12 @@ impl Mash {
         description = "Read a message and adjacent context. Supply shared with its publishing node ID to read shared history."
     )]
     async fn view(&self, Parameters(request): Parameters<View>) -> CallToolResult {
-        let mut args = vec!["view".into()];
-        flag(&mut args, "--context", request.context);
-        flag(&mut args, "--shared", request.shared);
-        args.extend(["--".into(), request.id.into()]);
-        self.execute(args).await
+        self.execute(Operation::View {
+            id: request.id,
+            context: request.context.unwrap_or(0),
+            shared: request.shared,
+        })
+        .await
     }
 
     #[tool(
@@ -251,11 +245,10 @@ impl Mash {
         description = "Report index/model readiness. Set shared=true to include per-node last_synced_at and last_updated_at from PostgreSQL. Shared-only queries PostgreSQL without opening SQLite."
     )]
     async fn status(&self, Parameters(request): Parameters<Status>) -> CallToolResult {
-        let mut args = vec!["status".into()];
-        if request.shared {
-            args.push("--shared".into());
-        }
-        self.execute(args).await
+        self.execute(Operation::Status {
+            shared: request.shared,
+        })
+        .await
     }
 
     #[tool(
@@ -267,18 +260,16 @@ impl Mash {
         Parameters(request): Parameters<Index>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> CallToolResult {
-        let mut args = vec!["index".into()];
-        if request.full {
-            args.push("--full".into());
-        }
-        if request.all_history {
-            args.push("--all-history".into());
-        }
-        flag(&mut args, "--since-days", request.since_days);
-        for provider in request.provider {
-            flag(&mut args, "--provider", Some(provider));
-        }
-        self.execute_with_progress(args, Some(context)).await
+        self.execute_with_progress(
+            Operation::Index(IndexRequest {
+                full: request.full,
+                provider: request.provider,
+                since_days: request.since_days,
+                all_history: request.all_history,
+            }),
+            Some(context),
+        )
+        .await
     }
 
     #[tool(
@@ -286,11 +277,9 @@ impl Mash {
         description = "Forget a conversation owned by this node in its configured indexes. Shared-only deletes directly in PostgreSQL. Other nodes' copies are unaffected. Check shared.state for deferred deletion."
     )]
     async fn forget(&self, Parameters(request): Parameters<Forget>) -> CallToolResult {
-        self.execute(vec![
-            "forget".into(),
-            "--".into(),
-            request.conversation_id.into(),
-        ])
+        self.execute(Operation::Forget {
+            id: request.conversation_id,
+        })
         .await
     }
 
@@ -299,7 +288,7 @@ impl Mash {
         description = "Explicitly download and install embedding and reranking models. Requires network access and writes model assets."
     )]
     async fn models_install(&self) -> CallToolResult {
-        self.execute(vec!["models".into(), "install".into()]).await
+        self.execute(Operation::ModelsInstall).await
     }
 }
 
@@ -330,12 +319,12 @@ enum WatchEvent {
 }
 
 pub(crate) async fn run(
-    arguments: Vec<OsString>,
+    paths: Paths,
     watch: bool,
     debounce_ms: u64,
 ) -> Result<(), crate::AppError> {
     let server = Mash {
-        arguments: Arc::new(arguments),
+        paths: Arc::new(paths),
         gate: Arc::new(tokio::sync::Mutex::new(())),
         model_work: Arc::new(tokio::sync::Semaphore::new(1)),
     };
@@ -347,20 +336,21 @@ pub(crate) async fn run(
     let (stop, shutdown) = tokio::sync::watch::channel(false);
     let watcher = watch.then(|| {
         tokio::spawn(async move {
-            let mut args = background.arguments.as_ref().clone();
-            args.push("index".into());
-            let result = crate::watch::run(args, debounce_ms, shutdown, move || {
+            let request = Request {
+                paths: background.paths.as_ref().clone(),
+                operation: Operation::Index(IndexRequest::default()),
+            };
+            let result = crate::watch::run(request, debounce_ms, shutdown, move || {
                 let server = background.clone();
                 async move {
-                    let result =
-                        tokio::spawn(
-                            async move { server.perform_response(vec!["index".into()]).await },
-                        )
-                        .await
-                        .map_err(|_| crate::AppError::internal("index worker failed"))?;
-                    let retry = result
-                        .as_ref()
-                        .map_or(true, crate::cli::Response::needs_retry);
+                    let result = tokio::spawn(async move {
+                        server
+                            .perform_response(Operation::Index(IndexRequest::default()))
+                            .await
+                    })
+                    .await
+                    .map_err(|_| crate::AppError::internal("index worker failed"))?;
+                    let retry = result.as_ref().map_or(true, core::Response::needs_retry);
                     crate::write_json(
                         &mut std::io::stderr(),
                         &WatchIndex {
@@ -394,6 +384,42 @@ mod tests {
     use super::*;
     use rmcp::model::CallToolRequestParams;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn typed_search_requests_validate_before_touching_models_or_storage() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+        let database = dir.path().join("missing.sqlite3");
+        let models = dir.path().join("missing-models");
+        let server = Mash {
+            paths: Arc::new(Paths {
+                config: Some(config),
+                db: Some(database.clone()),
+                models_dir: Some(models.clone()),
+            }),
+            gate: Arc::new(tokio::sync::Mutex::new(())),
+            model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+        };
+        let invalid_filter = crate::search_filter::Filter::Project(vec![String::new()]);
+        for (local, shared, filter) in [(true, true, None), (true, false, Some(invalid_filter))] {
+            let result = server
+                .search(Parameters(Search {
+                    query: "--models-dir=untrusted".into(),
+                    limit: None,
+                    provider: Some(Provider::Codex),
+                    days: None,
+                    filter,
+                    local,
+                    shared,
+                }))
+                .await;
+            assert_eq!(result.is_error, Some(true));
+            assert_eq!(result.structured_content.unwrap()["error"]["kind"], "usage");
+        }
+        assert!(!database.exists());
+        assert!(!models.exists());
+    }
 
     fn install_test_marker(models: &std::path::Path) {
         std::fs::create_dir(models).unwrap();
@@ -449,15 +475,11 @@ mod tests {
         std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
         install_test_marker(&models);
         let server = Mash {
-            arguments: Arc::new(vec![
-                "mash".into(),
-                "--config".into(),
-                config.into_os_string(),
-                "--db".into(),
-                database.clone().into_os_string(),
-                "--models-dir".into(),
-                models.clone().into_os_string(),
-            ]),
+            paths: Arc::new(Paths {
+                config: Some(config),
+                db: Some(database.clone()),
+                models_dir: Some(models.clone()),
+            }),
             gate: Arc::new(tokio::sync::Mutex::new(())),
             model_work: Arc::new(tokio::sync::Semaphore::new(1)),
         };
@@ -569,15 +591,11 @@ mod tests {
         )
         .expect("config");
         let server = Mash {
-            arguments: Arc::new(vec![
-                "mash".into(),
-                "--config".into(),
-                config.into_os_string(),
-                "--db".into(),
-                dir.path().join("missing.sqlite3").into_os_string(),
-                "--models-dir".into(),
-                dir.path().join("models").into_os_string(),
-            ]),
+            paths: Arc::new(Paths {
+                config: Some(config),
+                db: Some(dir.path().join("missing.sqlite3")),
+                models_dir: Some(dir.path().join("models")),
+            }),
             gate: Arc::new(tokio::sync::Mutex::new(())),
             model_work: Arc::new(tokio::sync::Semaphore::new(1)),
         };

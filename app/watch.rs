@@ -1,5 +1,5 @@
+use crate::core::Request;
 use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -122,7 +122,7 @@ impl Dirty {
 // The native watcher only signals work. All indexing stays in the existing async
 // pipeline, with at most one pass active and a bounded notification queue.
 pub(crate) async fn run<F, Fut>(
-    arguments: Vec<OsString>,
+    request: Request,
     debounce_ms: u64,
     shutdown: watch::Receiver<bool>,
     refresh: F,
@@ -131,11 +131,11 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<bool, AppError>>,
 {
-    run_with_intervals(arguments, debounce_ms, shutdown, refresh, RETRY, RECONCILE).await
+    run_with_intervals(request, debounce_ms, shutdown, refresh, RETRY, RECONCILE).await
 }
 
 async fn run_with_intervals<F, Fut>(
-    arguments: Vec<OsString>,
+    request: Request,
     debounce_ms: u64,
     mut shutdown: watch::Receiver<bool>,
     mut refresh: F,
@@ -148,10 +148,10 @@ where
 {
     let debounce = Duration::from_millis(debounce_ms);
     let (sender, mut receiver) = mpsc::channel(1);
-    let args = arguments.clone();
+    let initial_request = request.clone();
     let tx = sender.clone();
     let mut watcher =
-        crate::blocking(move || attach(crate::cli::watch_targets(&args)?, tx)).await?;
+        crate::blocking(move || attach(crate::core::watch_targets(&initial_request)?, tx)).await?;
     let mut dirty = Dirty::default();
     let mut due = Instant::now(); // Attach before the initial scan to avoid a startup gap.
     loop {
@@ -166,9 +166,9 @@ where
             }
             () = tokio::time::sleep_until(deadline) => {
                 dirty = Dirty::default();
-                let args = arguments.clone();
+                let request = request.clone();
                 let tx = sender.clone();
-                let replacement = crate::blocking(move || attach(crate::cli::watch_targets(&args)?, tx)).await;
+                let replacement = crate::blocking(move || attach(crate::core::watch_targets(&request)?, tx)).await;
                 let retry = match replacement {
                     Ok(replacement) => {
                         let previous = std::mem::replace(&mut watcher, replacement);
@@ -209,18 +209,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config.toml");
         std::fs::write(&config, "version = 1\n[providers]\n").unwrap();
-        let arguments = vec![
-            "mash".into(),
-            "--config".into(),
-            config.into_os_string(),
-            "--models-dir".into(),
-            dir.path().join("models").into_os_string(),
-            "index".into(),
-        ];
+        let request = Request {
+            paths: crate::core::Paths {
+                config: Some(config),
+                db: None,
+                models_dir: Some(dir.path().join("models")),
+            },
+            operation: crate::core::Operation::Index(crate::core::IndexRequest::default()),
+        };
         let (stop, shutdown) = watch::channel(false);
         let mut passes = 0;
         let task = run_with_intervals(
-            arguments,
+            request,
             50,
             shutdown,
             || {
@@ -260,18 +260,18 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        let arguments = vec![
-            "mash".into(),
-            "--config".into(),
-            config.into_os_string(),
-            "--models-dir".into(),
-            dir.path().join("models").into_os_string(),
-            "index".into(),
-        ];
+        let request = Request {
+            paths: crate::core::Paths {
+                config: Some(config),
+                db: None,
+                models_dir: Some(dir.path().join("models")),
+            },
+            operation: crate::core::Operation::Index(crate::core::IndexRequest::default()),
+        };
         let (stop, shutdown) = watch::channel(false);
         let mut passes = 0;
         let task = run_with_intervals(
-            arguments,
+            request,
             50,
             shutdown,
             || {

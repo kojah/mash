@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod core;
 mod ingestion;
 mod mcp;
 mod progress;

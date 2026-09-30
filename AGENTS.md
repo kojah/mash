@@ -14,7 +14,9 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
   node group. Support local-only, shared-only without SQLite, and both indexing,
   with independent provider allowlists. Keep local operations offline-capable.
   Only the HTTP service accesses PostgreSQL or Redis. Never restore SSH query fan-out.
-- Use the official Rust MCP SDK (rmcp) for the stdio server and share CLI operations.
+- Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
+  Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;
+  MCP must not construct CLI arguments or call CLI handlers.
 - Keep concrete local FastEmbed and remote HTTP embedding options with exact
   cosine search, RRF, and bounded local reranking. Support Voyage and the
   OpenAI-compatible embeddings API without provider traits or registries.

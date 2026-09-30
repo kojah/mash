@@ -4,34 +4,24 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize, clap::Args)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct Arguments {
-    #[arg(long)]
-    provider: Vec<Provider>,
-    #[arg(long)]
-    days: Option<u32>,
-    #[arg(long)]
-    node: Vec<String>,
-    #[arg(long)]
-    role: Vec<crate::role::Role>,
-    #[arg(long)]
-    conversation: Vec<String>,
+pub(crate) struct Selection {
+    pub(crate) provider: Vec<Provider>,
+    pub(crate) days: Option<u32>,
+    pub(crate) node: Vec<String>,
+    pub(crate) role: Vec<crate::role::Role>,
+    pub(crate) conversation: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
-    #[arg(long)]
-    project: Vec<String>,
+    pub(crate) project: Vec<String>,
     /// Exact Git origin URL; repeat for alternatives.
-    #[arg(long)]
-    repository: Vec<String>,
-    /// Inclusive date or RFC3339 timestamp.
-    #[arg(long)]
-    after: Option<String>,
-    /// Exclusive date or RFC3339 timestamp.
-    #[arg(long)]
-    before: Option<String>,
-    /// JSON Boolean expression using all/any/not and metadata predicates.
-    #[arg(long)]
-    filter: Option<String>,
+    pub(crate) repository: Vec<String>,
+    /// Inclusive Unix timestamp in seconds.
+    pub(crate) after: Option<i64>,
+    /// Exclusive Unix timestamp in seconds.
+    pub(crate) before: Option<i64>,
+    /// Boolean expression using all/any/not and metadata predicates.
+    pub(crate) filter: Option<Filter>,
 }
 
 #[derive(Clone)]
@@ -40,7 +30,7 @@ pub(crate) struct Scope {
     pub(crate) node: String,
 }
 
-impl Arguments {
+impl Selection {
     pub(crate) fn resolve(self, node: &str) -> Result<Scope, AppError> {
         let mut all = Vec::new();
         if !self.provider.is_empty() {
@@ -70,19 +60,13 @@ impl Arguments {
             ));
         }
         if let Some(after) = self.after {
-            all.push(Filter::After(timestamp(&after)?));
+            all.push(Filter::After(after));
         }
         if let Some(before) = self.before {
-            all.push(Filter::Before(timestamp(&before)?));
+            all.push(Filter::Before(before));
         }
         if let Some(filter) = self.filter {
-            if filter.len() > 65536 {
-                return Err(AppError::usage("search filter exceeds 64 KiB"));
-            }
-            all.push(
-                serde_json::from_str(&filter)
-                    .map_err(|_| AppError::usage("invalid structured search filter"))?,
-            );
+            all.push(filter);
         }
         let filter = Filter::All(all);
         filter.validate()?;

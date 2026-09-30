@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::AppError;
-use crate::cli::{Cli, SearchResponse};
+use crate::core::{Request, SearchResponse};
 
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_REQUEST: usize = 1024 * 1024;
@@ -148,13 +148,13 @@ async fn read_frame(stream: &mut UnixStream, limit: usize) -> std::io::Result<Ve
 }
 
 pub(crate) async fn search(
-    cli: &Cli,
+    request: &Request,
     profile: &[u8],
     environment: &[String],
 ) -> Option<Result<SearchResponse, AppError>> {
     let owner = uid().ok()?;
     let path = socket_path(profile, environment, owner).ok()?;
-    let request = serde_json::to_vec(cli).ok()?;
+    let request = serde_json::to_vec(request).ok()?;
     // Retry once if an idle worker exited just as the client connected. Searches
     // are read-only; an interrupted connection can safely be retried.
     for _ in 0..2 {
@@ -215,8 +215,8 @@ async fn serve(path: &Path, idle: Duration) -> Result<(), AppError> {
         else {
             continue;
         };
-        let result = match serde_json::from_slice::<Cli>(&bytes) {
-            Ok(cli) => crate::cli::worker_search(cli).await,
+        let result = match serde_json::from_slice::<Request>(&bytes) {
+            Ok(request) => crate::core::worker_search(request).await,
             Err(_) => Err(AppError::usage("invalid search worker request")),
         };
         let code = result.as_ref().err().map_or(0, |error| error.code);
@@ -261,7 +261,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
-        let request = serde_json::json!({"config":null,"db":null,"models_dir":null,"command":{"Forget":{"id":"test"}}});
+        let request = serde_json::json!({"paths":{"config":null,"db":null,"models_dir":null},"operation":{"Forget":{"id":"test"}}});
         write_frame(
             &mut stream,
             &serde_json::to_vec(&request).unwrap(),

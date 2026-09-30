@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remote_cli_index_needs_no_local_models_and_rebuilds_changed_spaces() {
+    async fn remote_core_index_needs_no_local_models_and_rebuilds_changed_spaces() {
         let (remote, mock, task) = mock().await;
         let temp = tempfile::tempdir().unwrap();
         let history = temp.path().join("history");
@@ -401,17 +401,15 @@ mod tests {
             embeddings = (toml::Value::try_from(&remote).unwrap())
         };
         std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
-        let args = vec![
-            "mash".into(),
-            "--config".into(),
-            config.as_os_str().to_owned(),
-            "--db".into(),
-            db.as_os_str().to_owned(),
-            "--models-dir".into(),
-            models.as_os_str().to_owned(),
-            "index".into(),
-        ];
-        crate::cli::run_async(args.clone()).await.unwrap();
+        let request = crate::core::Request {
+            paths: crate::core::Paths {
+                config: Some(config.clone()),
+                db: Some(db.clone()),
+                models_dir: Some(models.clone()),
+            },
+            operation: crate::core::Operation::Index(crate::core::IndexRequest::default()),
+        };
+        crate::core::execute(request.clone()).await.unwrap();
         assert!(!models.exists());
         let generation = crate::semantic::model_space("voyage-4", 1024);
         let storage = crate::storage::Storage::open_existing(&db).unwrap();
@@ -419,16 +417,16 @@ mod tests {
         assert!(storage.semantic_index_is_ready(&generation).unwrap());
         drop(storage);
         assert_eq!(mock.requests.lock().unwrap().len(), 1);
-        crate::cli::run_async(args.clone()).await.unwrap();
+        crate::core::execute(request.clone()).await.unwrap();
         assert_eq!(mock.requests.lock().unwrap().len(), 1);
         document["embeddings"]["model"] = toml::Value::String("voyage-4-large".into());
         std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
-        crate::cli::run_async(args.clone()).await.unwrap();
+        crate::core::execute(request.clone()).await.unwrap();
         assert_eq!(mock.requests.lock().unwrap().len(), 2);
         document["embeddings"]["model"] = toml::Value::String("voyage-4-lite".into());
         std::fs::write(&config, toml::to_string(&document).unwrap()).unwrap();
         mock.failure.store(429, Ordering::Relaxed);
-        let error = crate::cli::run_async(args).await.unwrap_err();
+        let error = crate::core::execute(request).await.unwrap_err();
         assert_eq!(error.error.kind, crate::ErrorKind::RemoteInference);
         assert!(
             !crate::storage::Storage::open_existing(&db)

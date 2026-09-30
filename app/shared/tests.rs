@@ -109,7 +109,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         api_url: format!("http://{address}"),
         token_env: "HOME".into(),
     };
-    let filters = crate::search_filter::Arguments::default()
+    let filters = crate::search_filter::Selection::default()
         .resolve(&config.node_id)
         .unwrap();
     let unlock = async {
