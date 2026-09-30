@@ -40,7 +40,9 @@ impl Targets {
                                     name == wal_name
                                 }))
                             || (path.starts_with(root)
-                                && (path.extension().is_some_and(|ext| ext == "jsonl")
+                                && (path
+                                    .extension()
+                                    .is_some_and(|ext| ext == "jsonl" || ext == "pb")
                                     || path.file_name().is_some_and(|name| {
                                         name == ".aider.chat.history.md"
                                             || name == ".project_root"
@@ -271,6 +273,7 @@ mod tests {
         assert!(directory.relevant(&change(root.join("store.db"))));
         assert!(directory.relevant(&change(root.join("store.db-wal"))));
         assert!(directory.relevant(&change(root.join("state.vscdb"))));
+        assert!(directory.relevant(&change(root.join("cascade/session.pb"))));
         assert!(directory.relevant(&change(root.join("state.vscdb-wal"))));
         assert!(ide.relevant(&change(root.join("state.vscdb-wal"))));
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));

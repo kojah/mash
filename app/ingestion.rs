@@ -22,6 +22,7 @@ mod source;
 mod sqlite_source;
 #[cfg(test)]
 mod tests;
+mod windsurf;
 
 #[cfg(test)]
 use discovery::source_stamp;
@@ -54,6 +55,7 @@ impl Provider {
             Self::GeminiCli => |source| gemini::parse(&source.identity.path),
             Self::Cline => cline::parse_source,
             Self::Cursor => |source| cursor::parse(&source.identity),
+            Self::Windsurf => |source| windsurf::parse(&source.identity.path),
         }
     }
 }

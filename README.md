@@ -296,13 +296,33 @@ fixture provenance and remaining captured-session validation gates.
 The [Cursor ingestion contract](docs/cursor-ingestion-contract.md)
 records first-party fixture provenance and remaining real-session validation gates.
 
+Windsurf (including the current Devin Desktop Cascade format) is opt-in through
+`[providers.windsurf]`. Configure its native `~/.codeium/windsurf/cascade`
+directory or explicit `<trajectory-id>.pb` files. Mash reads the encrypted
+protobuf files directly; the editor and its language server need not be running.
+Archive markers and temporary files are not separate conversations. Saved step
+positions distinguish repeated requests and preserve prefix IDs across snapshot
+rewinds. User queries and assistant responses enter search; thinking, modified
+response context, copied steps and system/model-generated user prompts do not.
+Native workspace and Git-root file URIs supply project/repository filters.
+
+Each encrypted snapshot is limited to 8 MiB, decoded protobuf fields to 65,536,
+and normalized retained history to 32 MiB. Authentication failures, malformed
+payloads, mismatched identities and oversized input fail indexing and preserve
+the previous revision. Background trajectories and unknown provenance receive
+no search projection; nested subtrajectories and tool-step payloads are not
+currently reconstructed. The [native contract](docs/windsurf-ingestion-contract.md)
+records first-party reader/writer fixture evidence and remaining actual UI-session,
+subtrajectory and rewind validation gates. These are parser limits, not aggregate
+process RSS guarantees.
+
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 27 and shared PostgreSQL
-schema 13 preserve existing messages and vectors. Update the shared service before
-publishing Pi, Copilot, Gemini, Cline or Cursor histories from upgraded nodes.
+keep their existing ordinal neighbourhoods. SQLite schema 28 and shared PostgreSQL
+schema 14 preserve existing messages and vectors. Update the shared service before
+publishing Pi, Copilot, Gemini, Cline, Cursor or Windsurf histories from upgraded nodes.
 
 ## Configuration
 

@@ -3,6 +3,8 @@ use serde_json::{Value, json};
 
 mod context;
 mod cursor;
+mod native;
+mod windsurf;
 
 const FIRST: &str = "test-api-token-first-32-bytes-long";
 const SECOND: &str = "test-api-token-second-32-bytes-long";

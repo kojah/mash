@@ -28,6 +28,7 @@ pub(crate) enum Provider {
     GeminiCli,
     Cline,
     Cursor,
+    Windsurf,
 }
 
 /// Enum keys keep configuration and routing exhaustive without duplicating a
@@ -47,6 +48,7 @@ impl Provider {
         Self::GeminiCli,
         Self::Cline,
         Self::Cursor,
+        Self::Windsurf,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -62,6 +64,7 @@ impl Provider {
             Self::GeminiCli => "gemini-cli",
             Self::Cline => "cline",
             Self::Cursor => "cursor",
+            Self::Windsurf => "windsurf",
         }
     }
 
@@ -79,6 +82,7 @@ impl Provider {
             Self::GeminiCli => 9,
             Self::Cline => 10,
             Self::Cursor => 11,
+            Self::Windsurf => 12,
         }
     }
 
@@ -95,6 +99,7 @@ impl Provider {
             Self::GeminiCli => "m",
             Self::Cline => "n",
             Self::Cursor => "u",
+            Self::Windsurf => "w",
         }
     }
 }
@@ -120,6 +125,7 @@ impl std::str::FromStr for Provider {
             "gemini-cli" => Ok(Self::GeminiCli),
             "cline" => Ok(Self::Cline),
             "cursor" => Ok(Self::Cursor),
+            "windsurf" => Ok(Self::Windsurf),
             _ => Err(crate::AppError::usage("unsupported provider")),
         }
     }

@@ -14,7 +14,8 @@ fn version_twenty_three_provider_migration_preserves_context_vectors_and_readine
                 .replace(", 'copilot'", "")
                 .replace(", 'gemini-cli'", "")
                 .replace(", 'cline'", "")
-                .replace(", 'cursor'", ""),
+                .replace(", 'cursor'", "")
+                .replace(", 'windsurf'", ""),
         )
         .unwrap();
     connection.execute_batch(

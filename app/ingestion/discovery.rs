@@ -236,7 +236,8 @@ pub(super) fn discover_history_files(
         | Provider::Aider
         | Provider::Pi
         | Provider::Copilot
-        | Provider::GeminiCli => {
+        | Provider::GeminiCli
+        | Provider::Windsurf => {
             return Ok(discovery);
         }
         Provider::Cline => unreachable!("Cline discovery handled above"),
@@ -281,6 +282,7 @@ fn discover_physical_sources(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     discover_files(roots, authoritative, |path, explicit| match provider {
+        Provider::Windsurf => path.extension().is_some_and(|e| e == "pb"),
         Provider::Cursor => {
             path.file_name()
                 .is_some_and(|n| n == "store.db" || n == "state.vscdb")

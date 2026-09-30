@@ -1666,6 +1666,7 @@ dependencies = [
  "prost",
  "redis",
  "reqwest",
+ "ring",
  "rmcp",
  "rusqlite",
  "rustls",

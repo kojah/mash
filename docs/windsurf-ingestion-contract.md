@@ -1,9 +1,9 @@
 # Windsurf / Devin Desktop native Cascade evidence
 
-Status: native persistence, protobuf serialization, and first-party runtime
-reader/writer interoperability verified against synthetic histories. The
-Windsurf adapter is not implemented yet. This evidence does not establish
-actual UI-session ingestion, resume/rewind behavior, or production support.
+Status: bounded typed native ingestion and provider routing are implemented,
+using verified first-party reader/writer fixtures. This evidence does not
+establish actual UI-session ingestion, native resume/rewind behavior, complete
+tool/subtrajectory reconstruction, or current production deployment.
 
 ## Pinned first-party package
 
@@ -101,6 +101,17 @@ the native Go saver, and the fixture is **not** a recorded UI conversation.
 It supplies a wire-schema probe; it does not yet define expected search results.
 Step identities across rewinds, UI visibility, workspace metadata, and all
 local/shared ingestion paths remain validation gates tracked in Beads.
+
+The adapter reads saved user-query and planner-response fields, retaining
+thinking/modified-response/user-response context separately from search prose.
+Root trajectory type/source, copied-step metadata and step source determine
+provenance. Unknown values remain in the typed protobuf boundary and receive no
+search projection. Native step position establishes message identity; normalized
+ordinals remain contiguous after omitting non-dialogue tool steps. Workspace
+and Git-root file URIs are accepted only when they resolve to one unique path.
+The reader authenticates before decoding and preflights known nested messages
+before prost allocates repeated containers. No provider process or network call
+is part of ingestion.
 
 ## First-party runtime interoperability
 

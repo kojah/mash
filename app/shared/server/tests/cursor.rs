@@ -1,8 +1,6 @@
 //! Native IDE direct ingestion through the authenticated shared API and both stores.
 use super::*;
-use crate::shared::protocol::{
-    Batch, Candidates, ConversationRecord, Event, MessageRecord, Search, Start, View,
-};
+use crate::shared::protocol::{Candidates, Search, View};
 use crate::{
     ingestion::{DirectScan, IndexOptions, direct_scans},
     provider::Provider,
@@ -48,56 +46,7 @@ fn native_publication() -> (Vec<Value>, Vec<String>) {
         .conversation
         .unwrap();
     scan.verify().unwrap();
-    let ids = conversation.messages.iter().map(|m| m.id.clone()).collect();
-    let record = ConversationRecord {
-        id: conversation.id.clone(),
-        provider: conversation.provider,
-        title: conversation.title,
-        project: conversation.project,
-        repository: conversation.repository,
-        created_at: conversation.created_at,
-        updated_at: conversation.updated_at,
-    };
-    let mut vector = vec![0.0; 384];
-    vector[0] = 127.0;
-    let messages = conversation
-        .messages
-        .into_iter()
-        .map(|m| {
-            let projection = m.search_projection.unwrap();
-            let visible = !projection.is_empty();
-            MessageRecord {
-                id: m.id,
-                conversation_id: conversation.id.clone(),
-                ordinal: m.ordinal,
-                context: m.context,
-                role: m.role,
-                content: m.content,
-                projection,
-                created_at: m.created_at,
-                generation: visible.then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
-                vector: visible.then(|| vector.clone()),
-            }
-        })
-        .collect();
-    let events = [
-        Event::Start(Start {
-            instance: "native-cursor-ide".into(),
-            revision: Some(1),
-            base_revision: None,
-            snapshot: true,
-            forgets: Vec::new(),
-        }),
-        Event::Batch(Batch::Conversations {
-            records: vec![record],
-        }),
-        Event::Batch(Batch::Messages { records: messages }),
-        Event::Finish,
-    ]
-    .into_iter()
-    .map(|event| serde_json::to_value(event).unwrap())
-    .collect();
-    (events, ids)
+    super::native::publication(conversation)
 }
 
 async fn contract(service: Service) {
