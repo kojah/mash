@@ -69,18 +69,7 @@ impl Storage {
                 )
                 .map_err(AppError::database);
         }
-        self.connection
-            .query_row(
-                "SELECT NOT EXISTS (
-                    SELECT 1
-                      FROM messages
-                     WHERE COALESCE(search_projection, content) <> ''
-                     LIMIT 1
-                 )",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(AppError::database)
+        Ok(false)
     }
 
     pub(crate) fn semantic_generation_is_published(

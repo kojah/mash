@@ -128,7 +128,7 @@ fn flag(arguments: &mut Vec<OsString>, name: &str, value: Option<impl ToString>)
 impl Mash {
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index. Requires explicitly installed models."
+        description = "Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         let mut args = vec!["search".into()];
@@ -298,6 +298,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "exercise a complete SDK session including explicit index readiness"
+    )]
     async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         let dir = tempfile::tempdir().expect("temp");
         let config = dir.path().join("config.toml");
@@ -381,6 +385,35 @@ mod tests {
             body["error"]["kind"], "model",
             "query cannot inject CLI flags"
         );
+        // Valid installation metadata with unusable inference assets proves
+        // search checks the missing index before trying to load a model.
+        let models = dir.path().join("models");
+        std::fs::create_dir(&models).unwrap();
+        std::fs::write(models.join("dummy-model"), [0]).unwrap();
+        std::fs::write(
+            models.join("installed.json"),
+            serde_json::to_vec(&json!({
+                "schema":1,"embedding_model":"AllMiniLML6V2Q",
+                "reranker_model":"jinaai/jina-reranker-v1-turbo-en","embedding_dimensions":384,
+                "coreml_embedding":cfg!(all(target_os = "macos", target_arch = "aarch64")),
+                "files":[{"path":"dummy-model","size":1}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let missing = client
+            .call_tool(
+                CallToolRequestParams::new("search")
+                    .with_arguments(json!({"query":"needle"}).as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.is_error, Some(true));
+        assert_eq!(
+            missing.structured_content.as_ref().unwrap()["error"]["recommended_action"],
+            "index"
+        );
+        assert!(!dir.path().join("missing.sqlite3").exists());
         let args = json!({"query":"q", "unexpected":true})
             .as_object()
             .expect("object")

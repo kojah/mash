@@ -7,6 +7,39 @@ use super::{Counts, Message, SearchHit, StatusSnapshot, Storage, cutoff_timestam
 use crate::AppError;
 
 impl Storage {
+    pub(crate) fn open_search(path: &Path, generation: &str) -> Result<Self, AppError> {
+        if !path.is_file() {
+            return Err(AppError::missing_database(path));
+        }
+        let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(AppError::database)?;
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(AppError::database)?;
+        if version > SCHEMA_VERSION {
+            return Err(AppError::schema(
+                "index schema is newer than this version of mash",
+            ));
+        }
+        if version < SCHEMA_VERSION {
+            return Err(AppError::search_not_ready(
+                "index requires an explicit rebuild; run `mash index`",
+            ));
+        }
+        let storage = Self {
+            connection,
+            writer_active: false,
+            defer_search_updates: false,
+            transaction_base_messages: 0,
+        };
+        if storage.derived_search_is_dirty()? || !storage.semantic_index_is_ready(generation)? {
+            return Err(AppError::search_not_ready(
+                "initial indexing has not completed or the index needs updating; run `mash index`",
+            ));
+        }
+        Ok(storage)
+    }
+
     pub(crate) fn open_existing(path: &Path) -> Result<Self, AppError> {
         if !path.is_file() {
             return Err(AppError::missing_database(path));
@@ -53,14 +86,6 @@ impl Storage {
             derived_clean: !storage.derived_search_is_dirty()?,
             exact_semantic_coverage: storage.semantic_index_is_ready(generation)?,
         })
-    }
-
-    pub(crate) fn has_messages(&self) -> Result<bool, AppError> {
-        self.connection
-            .query_row("SELECT EXISTS(SELECT 1 FROM messages LIMIT 1)", [], |row| {
-                row.get(0)
-            })
-            .map_err(AppError::database)
     }
 
     pub(crate) fn counts(&self) -> Result<Counts, AppError> {

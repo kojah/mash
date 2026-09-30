@@ -499,6 +499,7 @@ async fn forget_routes(
     configuration: &ResolvedConfig,
     id: String,
 ) -> Result<Response, AppError> {
+    let _progress = crate::progress::Session;
     let db = database.to_path_buf();
     let local_id = id.clone();
     let mut response = crate::blocking(move || forget(&db, local_id)).await?;
@@ -524,6 +525,7 @@ async fn index_routes(
 ) -> Result<Response, AppError> {
     let started = Instant::now();
     let mut local_options = options.clone();
+    let _progress = crate::progress::Session;
     let mut shared_options = options.clone();
     config::IndexFilter::apply(configuration.local_filter.as_ref(), &mut local_options);
     config::IndexFilter::apply(configuration.shared_filter.as_ref(), &mut shared_options);
@@ -542,6 +544,10 @@ async fn index_routes(
             result.shared = Some(shared::publish(database, config).await);
         }
         result.total_milliseconds = elapsed_milliseconds(started);
+        crate::progress::emit(&serde_json::json!({"event":"index-progress",
+            "phase":if result.shared.as_ref().is_some_and(shared::Publication::is_pending) { "shared-pending" } else { "complete" },
+            "elapsed_milliseconds":result.total_milliseconds,
+            "eta_seconds":0,"eta_scope":"phase"}));
     }
     Ok(response)
 }
@@ -592,7 +598,7 @@ fn index(
     let search_started = Instant::now();
     if storage.derived_search_is_dirty()? {
         emit_index_phase("search-rebuild", &summary);
-        storage.rebuild_derived_search_state()?;
+        crate::progress::during("search-rebuild", || storage.rebuild_derived_search_state())?;
     }
     let search_refresh_milliseconds = elapsed_milliseconds(search_started);
     emit_index_phase("semantic-embeddings", &summary);
@@ -606,9 +612,10 @@ fn index(
     let embeddings = if !already_published && storage.has_pending_embeddings()? {
         storage.commit_and_continue_writer()?;
         let model_started = Instant::now();
-        let mut embedding_pool = models.load_indexer()?.ok_or_else(|| {
-            AppError::model("semantic models are not installed; run `mash models install`")
-        })?;
+        let mut embedding_pool =
+            crate::progress::during("model-loading", || models.load_indexer())?.ok_or_else(
+                || AppError::model("semantic models are not installed; run `mash models install`"),
+            )?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
         semantic::rebuild_embeddings(
             &mut storage,
@@ -622,13 +629,15 @@ fn index(
     let embedding_milliseconds = elapsed_milliseconds(embedding_started);
     let counts = storage.counts()?;
     if !already_published {
-        storage.mark_semantic_index_ready(&generation)?;
+        crate::progress::during("semantic-finalize", || {
+            storage.mark_semantic_index_ready(&generation)
+        })?;
     }
     storage.commit_writer()?;
     if full {
-        storage.truncate_wal()?;
+        crate::progress::during("database-checkpoint", || storage.truncate_wal())?;
     }
-    emit_index_phase("complete", &summary);
+    emit_index_phase("local-complete", &summary);
     Ok(Response::Index(IndexResponse {
         indexed_conversations: counts.conversations,
         indexed_messages: counts.messages,
@@ -674,24 +683,27 @@ fn emit_index_phase(phase: &'static str, summary: &ingestion::IndexSummary) {
         "changed_messages": summary.changed_messages,
         "committed_batches": summary.committed_batches,
     });
-    let stderr = std::io::stderr();
-    let mut stderr = stderr.lock();
-    if serde_json::to_writer(&mut stderr, &event).is_ok() {
-        let _ = writeln!(stderr);
-    }
+    crate::progress::emit(&event);
 }
 
 fn emit_embedding_progress(progress: semantic::EmbeddingProgress) {
-    let stderr = std::io::stderr();
-    let mut stderr = stderr.lock();
-    let _ = write_embedding_progress(&mut stderr, &progress);
+    crate::progress::emit(&embedding_progress_event(&progress));
 }
 
+#[cfg(test)]
 fn write_embedding_progress(
     writer: &mut dyn Write,
     progress: &semantic::EmbeddingProgress,
 ) -> Result<(), AppError> {
-    let event = serde_json::json!({
+    let event = embedding_progress_event(progress);
+    serde_json::to_writer(&mut *writer, &event)
+        .map_err(|error| AppError::internal(format!("failed to serialize progress: {error}")))?;
+    writeln!(writer)
+        .map_err(|error| AppError::internal(format!("failed to write progress: {error}")))
+}
+
+fn embedding_progress_event(progress: &semantic::EmbeddingProgress) -> serde_json::Value {
+    serde_json::json!({
         "event": "index-progress",
         "phase": "semantic-embeddings",
         "stored_vectors": progress.stored_vectors,
@@ -700,11 +712,9 @@ fn write_embedding_progress(
         "reused_vectors": progress.reused_vectors,
         "elapsed_milliseconds": progress.elapsed_milliseconds,
         "stored_vectors_per_second": progress.stored_vectors_per_second,
-    });
-    serde_json::to_writer(&mut *writer, &event)
-        .map_err(|error| AppError::internal(format!("failed to serialize progress: {error}")))?;
-    writeln!(writer)
-        .map_err(|error| AppError::internal(format!("failed to write progress: {error}")))
+        "eta_seconds": progress.eta_seconds,
+        "eta_scope": "phase",
+    })
 }
 
 fn local_search(
@@ -717,15 +727,7 @@ fn local_search(
 ) -> Result<SearchResponse, AppError> {
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_installed()?;
-    let storage = Storage::open_existing(database_path)?;
-    if storage.derived_search_is_dirty()?
-        || !storage.has_messages()?
-        || !storage.semantic_index_is_ready(&models.generation())?
-    {
-        return Err(AppError::search_not_ready(
-            "semantic index is incomplete; run `mash index`",
-        ));
-    }
+    let storage = Storage::open_search(database_path, &models.generation())?;
     let mut backend = models.load()?.ok_or_else(|| {
         AppError::model("semantic models are not installed; run `mash models install`")
     })?;
@@ -994,6 +996,7 @@ mod tests {
             reused_vectors: 8,
             elapsed_milliseconds: 1_000,
             stored_vectors_per_second: 32.0,
+            eta_seconds: Some(3),
         };
         let second = semantic::EmbeddingProgress {
             stored_vectors: 64,
@@ -1002,6 +1005,7 @@ mod tests {
             reused_vectors: 16,
             elapsed_milliseconds: 2_000,
             stored_vectors_per_second: 32.0,
+            eta_seconds: Some(2),
         };
         let mut output = Vec::new();
 
@@ -1027,6 +1031,7 @@ mod tests {
         assert_eq!(value["reused_vectors"], 16);
         assert_eq!(value["elapsed_milliseconds"], 2_000);
         assert_eq!(value["stored_vectors_per_second"], 32.0);
+        assert_eq!(value["eta_seconds"], 2);
     }
 
     fn test_configuration(

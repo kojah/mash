@@ -1,6 +1,60 @@
 use super::*;
 
 #[test]
+fn empty_index_requires_an_explicit_completed_generation_and_search_is_read_only() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("empty.sqlite3");
+    let mut writer = Storage::open_writer(&path).unwrap();
+    writer.commit_writer().unwrap();
+    drop(writer);
+    assert_eq!(
+        Storage::open_search(&path, "generation")
+            .err()
+            .unwrap()
+            .code,
+        8
+    );
+    let mut writer = Storage::open_writer(&path).unwrap();
+    writer.rebuild_derived_search_state().unwrap();
+    writer.mark_semantic_index_ready("generation").unwrap();
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let reader = Storage::open_search(&path, "generation").unwrap();
+    assert!(
+        reader
+            .connection
+            .execute("DELETE FROM derived_state", [])
+            .is_err()
+    );
+    assert!(Storage::open_search(&path, "another-generation").is_err());
+}
+
+#[test]
+fn search_does_not_create_or_migrate_an_index() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing.sqlite3");
+    assert_eq!(
+        Storage::open_search(&missing, "generation")
+            .err()
+            .unwrap()
+            .code,
+        3
+    );
+    assert!(!missing.exists());
+    let old = directory.path().join("old.sqlite3");
+    Connection::open(&old)
+        .unwrap()
+        .execute_batch("PRAGMA user_version = 1")
+        .unwrap();
+    let before = std::fs::read(&old).unwrap();
+    assert_eq!(
+        Storage::open_search(&old, "generation").err().unwrap().code,
+        8
+    );
+    assert_eq!(before, std::fs::read(old).unwrap());
+}
+
+#[test]
 fn semantic_readiness_changes_atomically_with_canonical_messages() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");

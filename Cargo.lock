@@ -1631,6 +1631,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "hf-hub",
+ "indicatif",
  "notify",
  "ort",
  "postgres",

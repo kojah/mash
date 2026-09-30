@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, sync_channel};
@@ -99,6 +99,8 @@ struct ParsedSource {
 struct IndexProgress {
     started: Instant,
     last_event: Instant,
+    phase_started: Instant,
+    estimate: crate::progress::Estimate,
 }
 
 #[derive(Serialize)]
@@ -114,6 +116,8 @@ struct ProgressEvent<'a> {
     elapsed_milliseconds: u64,
     messages_per_second: u64,
     bytes_per_second: u64,
+    eta_seconds: Option<u64>,
+    eta_scope: &'static str,
 }
 
 struct ExtractedMessage {
@@ -159,12 +163,20 @@ fn index_at(
     let claude_discovery = options
         .claude_code
         .as_ref()
-        .map(|roots| discover_jsonl_files(roots, options.roots_are_authoritative))
+        .map(|roots| {
+            crate::progress::during("source-discovery", || {
+                discover_jsonl_files(roots, options.roots_are_authoritative)
+            })
+        })
         .transpose()?;
     let codex_discovery = options
         .codex
         .as_ref()
-        .map(|roots| discover_jsonl_files(roots, options.roots_are_authoritative))
+        .map(|roots| {
+            crate::progress::during("source-discovery", || {
+                discover_jsonl_files(roots, options.roots_are_authoritative)
+            })
+        })
         .transpose()?;
 
     if let (Some(roots), Some(discovery)) = (&options.claude_code, claude_discovery) {
@@ -256,6 +268,8 @@ fn index_provider_inner(
             .cmp(&left.size_bytes)
             .then_with(|| left.source_path.cmp(&right.source_path))
     });
+    progress.phase_started = Instant::now();
+    progress.estimate = crate::progress::Estimate::starting_at(summary.processed_bytes);
     progress.emit(summary, "discovered", true);
 
     let worker_count = parser_worker_count(pending.len());
@@ -483,6 +497,8 @@ impl IndexProgress {
         Self {
             started: now,
             last_event: now,
+            phase_started: now,
+            estimate: crate::progress::Estimate::new(),
         }
     }
 
@@ -514,11 +530,15 @@ impl IndexProgress {
                 .saturating_mul(1_000)
                 .checked_div(elapsed_milliseconds)
                 .unwrap_or_default(),
+            eta_seconds: self.estimate.observe(
+                summary.processed_bytes,
+                summary.discovered_bytes,
+                crate::progress::milliseconds(self.phase_started),
+            ),
+            eta_scope: "provider-ingestion",
         };
-        let stderr = std::io::stderr();
-        let mut stderr = stderr.lock();
-        if serde_json::to_writer(&mut stderr, &event).is_ok() {
-            let _ = writeln!(stderr);
+        if let Ok(event) = serde_json::to_value(event) {
+            crate::progress::emit(&event);
         }
     }
 }

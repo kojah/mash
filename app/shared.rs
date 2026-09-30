@@ -165,16 +165,51 @@ async fn upload(
     config: &SharedConfig,
     file: &tempfile::NamedTempFile,
 ) -> Result<protocol::Indexed, AppError> {
+    use futures_util::StreamExt;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    };
+    let total_bytes = file.as_file().metadata().map_err(AppError::io)?.len();
     let file = file
         .reopen()
         .map_err(|_| AppError::internal("open index upload"))?;
-    let stream = tokio_util::io::ReaderStream::new(tokio::fs::File::from_std(file));
-    response(
+    let sent = Arc::new(AtomicU64::new(0));
+    let stream_sent = sent.clone();
+    let stream =
+        tokio_util::io::ReaderStream::new(tokio::fs::File::from_std(file)).inspect(move |chunk| {
+            if let Ok(chunk) = chunk {
+                stream_sent.fetch_add(
+                    u64::try_from(chunk.len()).unwrap_or(u64::MAX),
+                    Ordering::Relaxed,
+                );
+            }
+        });
+    let request = response(
         request(config, reqwest::Method::POST, "index")?
             .header(reqwest::header::CONTENT_TYPE, "application/x-ndjson")
             .body(reqwest::Body::wrap_stream(stream)),
-    )
-    .await
+    );
+    tokio::pin!(request);
+    let started = std::time::Instant::now();
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut estimate = crate::progress::Estimate::new();
+    loop {
+        tokio::select! {
+            result = &mut request => return result,
+            _ = interval.tick() => {
+                let uploaded_bytes = sent.load(Ordering::Relaxed);
+                let elapsed = crate::progress::milliseconds(started);
+                let committing = uploaded_bytes >= total_bytes;
+                let eta = if committing { None } else { estimate.observe(uploaded_bytes, total_bytes, elapsed) };
+                crate::progress::emit(&serde_json::json!({"event":"index-progress",
+                    "phase":if committing {"shared-commit"} else {"shared-upload"},
+                    "uploaded_bytes":uploaded_bytes,"total_bytes":total_bytes,
+                    "elapsed_milliseconds":elapsed,"eta_seconds":eta,"eta_scope":"phase"}));
+            }
+        }
+    }
 }
 pub(crate) fn status(
     path: &Path,
@@ -323,38 +358,40 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
     // only the outgoing data, have restrictive permissions, and are deleted on drop.
     let db = path.to_path_buf();
     let (file, revision) = crate::blocking(move || {
-        let mut file = tempfile::NamedTempFile::new()
-            .map_err(|_| AppError::internal("create index upload"))?;
-        let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
-        let revision = Storage::open_existing(&db)?.with_publication_snapshot(|snapshot| {
-            write_event(
-                &mut writer,
-                &Event::Start(Start {
-                    instance: snapshot.instance.clone(),
-                    revision: Some(snapshot.revision),
-                    base_revision: None,
-                    snapshot: true,
-                    forgets: Vec::new(),
-                }),
-            )?;
-            for kind in ["tombstones", "conversations", "messages"] {
-                snapshot.visit(kind, |records| {
-                    write_event(
-                        &mut writer,
-                        &Event::Batch {
-                            kind: kind.to_owned(),
-                            records: records.to_vec(),
-                        },
-                    )
-                })?;
-            }
-            write_event(&mut writer, &Event::Finish)
-        })?;
-        writer
-            .flush()
-            .map_err(|_| AppError::internal("flush index upload"))?;
-        drop(writer);
-        Ok((file, revision))
+        crate::progress::during("shared-snapshot", || {
+            let mut file = tempfile::NamedTempFile::new()
+                .map_err(|_| AppError::internal("create index upload"))?;
+            let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
+            let revision = Storage::open_existing(&db)?.with_publication_snapshot(|snapshot| {
+                write_event(
+                    &mut writer,
+                    &Event::Start(Start {
+                        instance: snapshot.instance.clone(),
+                        revision: Some(snapshot.revision),
+                        base_revision: None,
+                        snapshot: true,
+                        forgets: Vec::new(),
+                    }),
+                )?;
+                for kind in ["tombstones", "conversations", "messages"] {
+                    snapshot.visit(kind, |records| {
+                        write_event(
+                            &mut writer,
+                            &Event::Batch {
+                                kind: kind.to_owned(),
+                                records: records.to_vec(),
+                            },
+                        )
+                    })?;
+                }
+                write_event(&mut writer, &Event::Finish)
+            })?;
+            writer
+                .flush()
+                .map_err(|_| AppError::internal("flush index upload"))?;
+            drop(writer);
+            Ok((file, revision))
+        })
     })
     .await?;
     upload(config, &file).await?;
@@ -390,30 +427,72 @@ pub(crate) async fn search(
     filters: &crate::search_filter::Scope,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
     filters.filter.validate()?;
-    let local_filters = filters.clone();
     if query.trim().is_empty() {
         return Err(AppError::usage("search query must not be empty"));
     }
+    let prepared = prepare_search(local_database, models_dir, embeddings, query).await?;
+    search_prepared(config, local_database, query, limit, filters, prepared).await
+}
+
+struct PreparedSearch {
+    backend: semantic::LoadedBackend,
+    vector: Vec<f64>,
+    local_generation: String,
+    generation: String,
+}
+
+async fn prepare_search(
+    local_database: Option<&Path>,
+    models_dir: &Path,
+    embeddings: Option<&semantic::remote::Configuration>,
+    query: &str,
+) -> Result<PreparedSearch, AppError> {
     let root = models_dir.to_path_buf();
-    let local_database = local_database.map(Path::to_path_buf);
-    let exclude_self = local_database.is_some();
-    let local_query = query.to_owned();
     let text = query.to_owned();
     let embeddings = embeddings.cloned();
+    let readiness_database = local_database.map(Path::to_path_buf);
     let generation = embeddings.as_ref().map_or_else(
         || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
         |c| semantic::model_space(&c.model, c.dimensions),
     );
-    let (mut backend, vector, local_generation) = crate::blocking(move || {
+    crate::blocking(move || {
         let models = Models::new(root).with_remote(embeddings);
         models.require_installed()?;
+        if let Some(database) = readiness_database {
+            Storage::open_search(&database, &models.generation())?;
+        }
         let mut backend = models
             .load()?
             .ok_or_else(|| AppError::model("run `mash models install`"))?;
         let vector = semantic::shared_query_vector(&mut backend, &text)?;
-        Ok((backend, vector, models.generation()))
+        Ok(PreparedSearch {
+            backend,
+            vector,
+            local_generation: models.generation(),
+            generation,
+        })
     })
-    .await?;
+    .await
+}
+
+async fn search_prepared(
+    config: &SharedConfig,
+    local_database: Option<&Path>,
+    query: &str,
+    limit: usize,
+    filters: &crate::search_filter::Scope,
+    prepared: PreparedSearch,
+) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
+    let PreparedSearch {
+        mut backend,
+        vector,
+        local_generation,
+        generation,
+    } = prepared;
+    let local_filters = filters.clone();
+    let local_database = local_database.map(Path::to_path_buf);
+    let exclude_self = local_database.is_some();
+    let local_query = query.to_owned();
     let local_vector = vector.clone();
     let local = crate::blocking(move || {
         retrieve_local_candidates(
@@ -496,12 +575,7 @@ fn retrieve_local_candidates(
     let Some(database) = database else {
         return Ok((Vec::new(), Vec::new()));
     };
-    let storage = Storage::open_existing(database)?;
-    if storage.derived_search_is_dirty()? || !storage.semantic_index_is_ready(generation)? {
-        return Err(AppError::search_not_ready(
-            "local semantic index is incomplete; run mash index",
-        ));
-    }
+    let storage = Storage::open_search(database, generation)?;
     semantic::local_candidates(
         &storage,
         generation,

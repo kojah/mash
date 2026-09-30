@@ -503,6 +503,54 @@ fn search_with_missing_embeddings_recommends_index_without_loading_models() {
 }
 
 #[test]
+fn merged_search_requires_explicit_indexing_before_inference_or_http() {
+    let directory = tempfile::tempdir().unwrap();
+    let models = directory.path().join("models");
+    create_valid_model_marker(&models); // Marker is valid; inference assets are intentionally unusable.
+    let config = directory.path().join("config.toml");
+    std::fs::write(
+        &config,
+        r#"
+version = 1
+providers = {}
+[shared]
+group_id = "test"
+node_id = "test"
+api_url = "http://127.0.0.1:9"
+token_env = "MASH_TEST_UNSET_INDEX_READINESS_TOKEN"
+"#,
+    )
+    .unwrap();
+    let database = directory.path().join("local.sqlite3");
+    for exists in [false, true] {
+        if exists {
+            seed_readiness_database(&database, None);
+        }
+        let before = std::fs::read(&database).ok();
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                models.to_str().unwrap(),
+                "search",
+                "--no-worker",
+                "needle",
+            ])
+            .output()
+            .unwrap();
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(output.status.code(), Some(if exists { 8 } else { 3 }));
+        assert_eq!(error["error"]["recommended_action"], "index");
+        assert_eq!(output.stdout, Vec::<u8>::new());
+        assert_eq!(std::fs::read(&database).ok(), before);
+    }
+}
+
+#[test]
 fn invalid_installed_assets_fail_without_lexical_results() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");
@@ -643,6 +691,13 @@ fn status_uses_model_then_database_then_embedding_readiness() {
 
     let context_only_database = directory.path().join("context-only.sqlite3");
     seed_readiness_database(&context_only_database, Some(""));
+    Connection::open(&context_only_database)
+        .unwrap()
+        .execute(
+            "UPDATE derived_state SET semantic_ready_generation = ?1 WHERE singleton = 1",
+            [&generation],
+        )
+        .expect("explicitly completed context-only index");
     let context_only = run_json(&[
         "--db",
         context_only_database.to_str().unwrap(),
@@ -804,6 +859,20 @@ fn real_models_index_and_run_hybrid_search() {
     assert_eq!(indexed["realized_mode"], "hybrid");
     assert_eq!(indexed["indexed_messages"], 2);
     assert_eq!(indexed["searchable_messages"], 2);
+    let progress = output
+        .stderr
+        .split(|&byte| byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice::<Value>(line).expect("index progress JSON"))
+        .collect::<Vec<_>>();
+    assert_eq!(progress.last().unwrap()["phase"], "complete");
+    assert!(
+        progress
+            .iter()
+            .any(|event| event["phase"] == "semantic-embeddings"
+                && event["eta_seconds"] == 0
+                && event["stored_vectors"] == 2)
+    );
     for timing in [
         "model_load_milliseconds",
         "storage_setup_milliseconds",

@@ -68,6 +68,7 @@ pub(crate) async fn index(
         embedding_milliseconds: 0,
     };
     let ingestion_started = Instant::now();
+    crate::progress::phase("shared-ingestion", 0);
     let mut pool = None;
     for scan in &scans {
         ingest_scan(
@@ -245,12 +246,12 @@ async fn embed_texts(
         let load_started = Instant::now();
         let mut loaded = match existing {
             Some(pool) => pool,
-            None => Models::new(root)
-                .with_remote(remote)
-                .load_indexer()?
-                .ok_or_else(|| {
-                    AppError::model("semantic models are not installed; run `mash models install`")
-                })?,
+            None => crate::progress::during("model-loading", || {
+                Models::new(root).with_remote(remote).load_indexer()
+            })?
+            .ok_or_else(|| {
+                AppError::model("semantic models are not installed; run `mash models install`")
+            })?,
         };
         let load_ms = if loading { elapsed(load_started) } else { 0 };
         let references = input.iter().map(String::as_str).collect::<Vec<_>>();
@@ -273,6 +274,20 @@ async fn replace_conversation(
     pool: &mut Option<EmbeddingPool>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
+    let total_vectors = conversation
+        .messages
+        .iter()
+        .filter(|message| {
+            !message
+                .search_projection
+                .as_deref()
+                .unwrap_or(&message.content)
+                .is_empty()
+        })
+        .count() as u64;
+    let started = Instant::now();
+    let initial_vectors = result.embeddings.stored_vectors;
+    let mut estimate = crate::progress::Estimate::new();
     write_event(
         file,
         &Event::Batch {
@@ -324,6 +339,13 @@ async fn replace_conversation(
                 records,
             },
         )?;
+        let stored_vectors = result.embeddings.stored_vectors - initial_vectors;
+        let elapsed_ms = elapsed(started);
+        crate::progress::emit(&serde_json::json!({"event":"index-progress",
+            "phase":"shared-embeddings","stored_vectors":stored_vectors,"total_vectors":total_vectors,
+            "elapsed_milliseconds":elapsed_ms,
+            "eta_seconds":estimate.observe(stored_vectors,total_vectors,elapsed_ms),
+            "eta_scope":"conversation"}));
     }
     Ok(())
 }

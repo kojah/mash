@@ -221,6 +221,7 @@ pub(crate) struct EmbeddingProgress {
     pub(crate) reused_vectors: u64,
     pub(crate) elapsed_milliseconds: u64,
     pub(crate) stored_vectors_per_second: f64,
+    pub(crate) eta_seconds: Option<u64>,
 }
 
 struct QuantizedVector {
@@ -836,7 +837,9 @@ pub(crate) fn rebuild_embeddings(
     })?;
     let started = Instant::now();
     let mut last_progress = started;
+    let mut estimate = crate::progress::Estimate::new();
     let mut summary = EmbeddingSummary::default();
+    on_progress(embedding_progress(&summary, total_vectors, started));
     let mut rows_since_checkpoint = 0_u64;
     let wave_size = pool.wave_size();
     let batch_size = pool.batch_size();
@@ -883,7 +886,13 @@ pub(crate) fn rebuild_embeddings(
             if now.duration_since(last_progress) >= EMBEDDING_PROGRESS_INTERVAL
                 || summary.stored_vectors == total_vectors
             {
-                on_progress(embedding_progress(&summary, total_vectors, started));
+                let mut progress = embedding_progress(&summary, total_vectors, started);
+                progress.eta_seconds = estimate.observe(
+                    summary.stored_vectors,
+                    total_vectors,
+                    progress.elapsed_milliseconds,
+                );
+                on_progress(progress);
                 last_progress = now;
             }
         }
@@ -916,6 +925,7 @@ fn embedding_progress(
             .saturating_sub(summary.model_inferences),
         elapsed_milliseconds: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
         stored_vectors_per_second,
+        eta_seconds: None,
     }
 }
 

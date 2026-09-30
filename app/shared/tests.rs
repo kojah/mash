@@ -83,6 +83,11 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("local.sqlite3");
     seed_ready(&path, &generation);
+    // Readiness is checked before inference/HTTP; hold the lock only for the
+    // subsequent candidate retrieval stage whose concurrency is under test.
+    let prepared = prepare_search(Some(&path), &models_dir, None, "hello")
+        .await
+        .unwrap();
     let lock = rusqlite::Connection::open(&path).unwrap();
     lock.execute_batch("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE")
         .unwrap();
@@ -112,15 +117,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         request.expect("shared request must start before SQLite is unlocked")
     };
     let (result, request) = tokio::join!(
-        search(
-            &config,
-            Some(&path),
-            &models_dir,
-            None,
-            "hello",
-            10,
-            &filters
-        ),
+        search_prepared(&config, Some(&path), "hello", 10, &filters, prepared,),
         unlock,
     );
     let request = request.unwrap();

@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod ingestion;
 mod mcp;
+mod progress;
 mod search_filter;
 mod semantic;
 mod shared;

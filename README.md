@@ -52,6 +52,25 @@ mash models install
 mash index
 ```
 
+Initial indexing is explicit. CLI and MCP search never ingest history, build an
+index, or migrate its schema. A missing or incomplete local index returns a typed
+error recommending `mash index`, before loading inference models or contacting
+the shared search service. An explicitly completed empty index is valid.
+
+`mash index` reports live progress on stderr, including file/vector counts,
+elapsed time, and an estimated remaining time for the current phase. Estimates
+use recent throughput and adjust as the workload changes; they are approximate,
+especially when message lengths vary. Ingestion estimates cover the current
+provider; independently routed shared embeddings estimate the current conversation.
+Model loading, search rebuilding, snapshot preparation, and server
+commit show activity with an unknown ETA until work can be measured. Shared
+uploads report bytes and an upload ETA; completion is reported only after the
+server acknowledges publication (or `shared-pending` if publication fails).
+Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
+newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
+The final command response stays JSON on stdout. Watching remains opt-in with
+`index --watch` or `mcp --watch`.
+
 No other command downloads models. Indexing fingerprints sources and messages,
 skips unchanged input, updates FTS incrementally for small changes, embeds only
 new or changed searchable messages, and excludes raw tool output from FTS and
