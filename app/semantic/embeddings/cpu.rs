@@ -5,6 +5,7 @@ const LONG_WORKERS: usize = 2;
 const SHORT_SEQUENCE_TOKENS: usize = 128;
 const TOKENIZER_PREFLIGHT_BYTES: usize = 4096;
 
+#[tracing::instrument(name = "classify_embedding_batch", skip_all, fields(inputs = batch.len()))]
 fn is_short_batch(model: &TextEmbedding, batch: &[EmbeddingGroup]) -> Result<bool, AppError> {
     // Avoid creating overflow encodings twice for a very large message. A
     // conservative classification changes scheduling, never model input.
@@ -48,22 +49,31 @@ pub(crate) fn embed_wave(
             .iter_mut()
             .zip(jobs)
             .map(|(worker, jobs)| {
+                let context = crate::observability::ThreadContext::capture();
                 scope.spawn(move || {
-                    jobs.into_iter()
-                        .map(|(index, batch)| {
-                            let texts =
-                                batch.iter().map(|g| g.content.as_str()).collect::<Vec<_>>();
-                            let vectors = worker.embed(texts, None).map_err(|error| {
-                                AppError::model(format!("embedding inference failed: {error}"))
-                            })?;
-                            if vectors.len() != batch.len() {
-                                return Err(AppError::model(
-                                    "embedding model returned an unexpected result count",
-                                ));
-                            }
-                            Ok((index, vectors))
-                        })
-                        .collect::<Result<Vec<_>, AppError>>()
+                    context.run(|| {
+                        jobs.into_iter()
+                            .map(|(index, batch)| {
+                                let _trace = tracing::info_span!(
+                                    "cpu_embedding_batch",
+                                    batch_index = index,
+                                    inputs = batch.len()
+                                )
+                                .entered();
+                                let texts =
+                                    batch.iter().map(|g| g.content.as_str()).collect::<Vec<_>>();
+                                let vectors = worker.embed(texts, None).map_err(|error| {
+                                    AppError::model(format!("embedding inference failed: {error}"))
+                                })?;
+                                if vectors.len() != batch.len() {
+                                    return Err(AppError::model(
+                                        "embedding model returned an unexpected result count",
+                                    ));
+                                }
+                                Ok((index, vectors))
+                            })
+                            .collect::<Result<Vec<_>, AppError>>()
+                    })
                 })
             })
             .collect::<Vec<_>>()

@@ -110,6 +110,7 @@ impl EmbeddingPool {
         })
     }
 
+    #[tracing::instrument(name = "embedding_wave", skip_all, fields(inputs = groups.len()))]
     pub(super) fn embed_wave(
         &mut self,
         groups: &[EmbeddingGroup],

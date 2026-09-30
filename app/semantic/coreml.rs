@@ -51,6 +51,7 @@ impl CoreMlEmbeddingPool {
         })
     }
 
+    #[tracing::instrument(name = "coreml_embedding_batch", skip_all, fields(inputs = groups.len(), sequence_length = tracing::field::Empty))]
     pub(super) fn embed(&mut self, groups: &[EmbeddingGroup]) -> Result<Vec<Vec<f32>>, AppError> {
         if groups.is_empty() {
             return Ok(Vec::new());
@@ -82,6 +83,7 @@ impl CoreMlEmbeddingPool {
                 .max(first_length)
         };
         let sequence = coreml_sequence_bucket(length);
+        tracing::Span::current().record("sequence_length", sequence);
         let embedding = match self.sessions.entry(sequence) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
@@ -113,6 +115,7 @@ pub(super) fn coreml_sequence_bucket(tokens: usize) -> usize {
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[tracing::instrument(name = "load_coreml_shape", skip_all, fields(sequence_length))]
 pub(super) fn load_coreml_embedding(
     root: &Path,
     sequence_length: usize,

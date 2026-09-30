@@ -199,6 +199,7 @@ pub(super) fn source_layout(
         .collect()
 }
 
+#[tracing::instrument(name = "discover_sources", skip_all, fields(provider = provider.as_str(), authoritative))]
 pub(super) fn discover_history_files(
     provider: Provider,
     roots: &[PathBuf],

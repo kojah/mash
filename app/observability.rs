@@ -36,5 +36,25 @@ pub(crate) fn request_id() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Capture both parts of tracing state before moving work to an OS thread.
+/// A span alone does not propagate a task-local subscriber.
+pub(crate) struct ThreadContext {
+    dispatcher: tracing::Dispatch,
+    parent: tracing::Span,
+}
+
+impl ThreadContext {
+    pub(crate) fn capture() -> Self {
+        Self {
+            dispatcher: tracing::dispatcher::get_default(Clone::clone),
+            parent: tracing::Span::current(),
+        }
+    }
+
+    pub(crate) fn run<T>(&self, work: impl FnOnce() -> T) -> T {
+        tracing::dispatcher::with_default(&self.dispatcher, || self.parent.in_scope(work))
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -19,6 +19,7 @@ pub(crate) struct EmbeddingPlan {
 }
 
 impl EmbeddingPlan {
+    #[tracing::instrument(name = "plan_embeddings", skip_all, fields(pending_vectors = tracing::field::Empty))]
     pub(crate) fn new(storage: &Storage) -> Result<Self, AppError> {
         let directory = tempfile::Builder::new()
             .prefix("mash-embedding-plan-")
@@ -48,6 +49,7 @@ impl EmbeddingPlan {
             )
             .map_err(AppError::database)?;
         let total_vectors = Self::populate(&mut connection, storage)?;
+        tracing::Span::current().record("pending_vectors", total_vectors);
         Ok(Self {
             connection,
             _directory: directory,
@@ -124,6 +126,7 @@ impl EmbeddingPlan {
         Ok(total)
     }
 
+    #[tracing::instrument(name = "read_embedding_wave", skip_all, fields(limit))]
     pub(crate) fn next_wave(&mut self, limit: usize) -> Result<Vec<PlannedText>, AppError> {
         let limit =
             i64::try_from(limit).map_err(|_| AppError::internal("embedding wave is too large"))?;

@@ -175,6 +175,7 @@ impl Storage {
             .map_err(AppError::database)
     }
 
+    #[tracing::instrument(name = "write_embeddings", skip_all, fields(vectors = embeddings.len()))]
     pub(crate) fn replace_embeddings(
         &mut self,
         generation: &str,

@@ -179,6 +179,7 @@ impl Storage {
         Ok(storage)
     }
 
+    #[tracing::instrument(name = "commit_writer", skip_all)]
     pub(crate) fn commit_writer(&mut self) -> Result<(), AppError> {
         if self.writer_active {
             let threshold = self.measured_fts_bulk_threshold()?;
@@ -198,6 +199,7 @@ impl Storage {
             .map_err(AppError::database)
     }
 
+    #[tracing::instrument(name = "checkpoint_writer", skip_all)]
     pub(crate) fn checkpoint_writer(&mut self) -> Result<(), AppError> {
         self.commit_and_restart_writer("PRAGMA wal_checkpoint(PASSIVE); BEGIN IMMEDIATE")
     }

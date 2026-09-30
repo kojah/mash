@@ -214,6 +214,7 @@ fn index_at(
     Ok(summary)
 }
 
+#[tracing::instrument(name = "ingest_provider", skip_all, fields(provider = scan.provider.as_str(), authoritative = scan.authoritative))]
 fn index_provider(
     storage: &mut Storage,
     scan: ProviderScan<'_>,
@@ -308,48 +309,48 @@ fn index_provider_pipeline(
             let sender = sender.clone();
             let pending = &pending;
             let next_source = &next_source;
-            let parent_trace = tracing::Span::current();
-            let dispatcher = tracing::dispatcher::get_default(Clone::clone);
+            let context = crate::observability::ThreadContext::capture();
             scope.spawn(move || {
-                let _dispatcher = tracing::dispatcher::set_default(&dispatcher);
-                let _parent = parent_trace.enter();
-                loop {
-                    let index = next_source.fetch_add(1, Ordering::Relaxed);
-                    let Some(source) = pending.get(index) else {
-                        break;
-                    };
-                    let reservation = admission.reserve(source.estimated_bytes);
-                    let mut stamp = source.stamp.clone();
-                    let (parsed, reservation) = match reservation {
-                        Ok(reservation) => (
-                            parse_source_with_retries(&source.history, &mut stamp, parse),
-                            Some(reservation),
-                        ),
-                        Err(error) => (Err(error), None),
-                    };
-                    let parsed = parsed.map_err(|error| {
-                        if authoritative {
-                            configured_source_error(&source.history.identity.path, &error)
-                        } else {
-                            error
+                context.run(|| {
+                    loop {
+                        let index = next_source.fetch_add(1, Ordering::Relaxed);
+                        let Some(source) = pending.get(index) else {
+                            break;
+                        };
+                        let reservation = admission.reserve(source.estimated_bytes);
+                        let mut stamp = source.stamp.clone();
+                        let (parsed, reservation) = match reservation {
+                            Ok(reservation) => (
+                                parse_source_with_retries(&source.history, &mut stamp, parse),
+                                Some(reservation),
+                            ),
+                            Err(error) => (Err(error), None),
+                        };
+                        let parsed = parsed.map_err(|error| {
+                            if authoritative {
+                                configured_source_error(&source.history.identity.path, &error)
+                            } else {
+                                error
+                            }
+                        });
+                        let source = SourceFile {
+                            history: source.history.clone(),
+                            stamp,
+                            estimated_bytes: source.estimated_bytes,
+                        };
+                        if tracing::info_span!("queue_parsed_source").in_scope(|| {
+                            sender
+                                .send(ParsedSource {
+                                    source,
+                                    parsed,
+                                    _reservation: reservation,
+                                })
+                                .is_err()
+                        }) {
+                            break;
                         }
-                    });
-                    let source = SourceFile {
-                        history: source.history.clone(),
-                        stamp,
-                        estimated_bytes: source.estimated_bytes,
-                    };
-                    if sender
-                        .send(ParsedSource {
-                            source,
-                            parsed,
-                            _reservation: reservation,
-                        })
-                        .is_err()
-                    {
-                        break;
                     }
-                }
+                });
             });
         }
         drop(sender);
@@ -429,6 +430,7 @@ fn record_first_error(complete: &mut bool, first_error: &mut Option<AppError>, e
     }
 }
 
+#[tracing::instrument(name = "checkpoint_ingestion", skip_all, fields(files = *batch_files, bytes = *batch_bytes))]
 fn checkpoint_provider_batch(
     storage: &mut Storage,
     summary: &mut IndexSummary,
@@ -444,6 +446,7 @@ fn checkpoint_provider_batch(
     Ok(())
 }
 
+#[tracing::instrument(name = "prepare_sources", skip_all, fields(provider = provider.as_str(), pending_sources = tracing::field::Empty))]
 fn prepare_sources(
     storage: &Storage,
     provider: Provider,
@@ -489,6 +492,7 @@ fn prepare_sources(
             });
         }
     }
+    tracing::Span::current().record("pending_sources", pending.len());
     Ok((pending, observed_paths, complete))
 }
 
@@ -505,7 +509,7 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
     ))
 }
 
-#[tracing::instrument(name = "parse_source", skip_all)]
+#[tracing::instrument(name = "parse_source", skip_all, fields(attempts = tracing::field::Empty))]
 fn parse_source_with_retries(
     source: &HistorySource,
     stamp: &mut SourceStamp,
@@ -515,6 +519,7 @@ fn parse_source_with_retries(
     // minutes. Capture a fresh stamp for each attempt, then require the whole
     // parse to be stable. Never retry malformed input or other parser errors.
     for attempt in 0..3 {
+        tracing::Span::current().record("attempts", attempt + 1);
         if attempt > 0 {
             std::thread::sleep(Duration::from_millis(50));
         }

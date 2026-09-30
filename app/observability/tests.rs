@@ -127,3 +127,83 @@ fn parser_threads_inherit_request_context_without_recording_source_content() {
     }
     assert_eq!(stages.len(), 2);
 }
+
+#[tokio::test]
+#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+async fn real_model_index_traces_planning_inference_and_storage_under_one_request() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("path-canary.jsonl");
+    std::fs::write(&source, r#"{"type":"user","sessionId":"parent","uuid":"u1","message":{"role":"user","content":"history-canary about indexing search models"}}"#).unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(
+        &config,
+        toml::to_string(&toml::toml! {
+            version=1
+            providers={claude-code={roots=[(source.to_str().unwrap())]}}
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let bytes = Arc::new(Mutex::new(Vec::new()));
+    let capture = Capture(bytes.clone());
+    let subscriber = subscriber(move || capture.clone());
+    let response = crate::core::execute(crate::core::Request {
+        paths: crate::core::Paths {
+            config: Some(config),
+            db: Some(directory.path().join("index.sqlite3")),
+            models_dir: Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into()),
+        },
+        operation: crate::core::Operation::Index(crate::core::IndexRequest {
+            all_history: true,
+            ..Default::default()
+        }),
+    })
+    .with_subscriber(subscriber)
+    .await
+    .unwrap();
+    assert!(matches!(response, crate::core::Response::Index(_)));
+    let storage =
+        crate::storage::Storage::open_existing(&directory.path().join("index.sqlite3")).unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 1);
+    let models =
+        crate::semantic::Models::new(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into());
+    assert_eq!(storage.embedding_count(&models.generation()).unwrap(), 1);
+    let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+    assert!(!output.contains("path-canary"));
+    assert!(!output.contains("history-canary"));
+    let mut stages = std::collections::BTreeSet::new();
+    for line in output.lines() {
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        if let Some(name) = event["span"]["name"].as_str() {
+            stages.insert(name.to_owned());
+            if matches!(
+                name,
+                "cpu_embedding_batch" | "coreml_embedding_batch" | "write_embeddings"
+            ) {
+                assert_eq!(event["spans"][0]["name"], "request");
+                assert!(event["spans"][0]["request_id"].is_u64());
+            }
+        }
+    }
+    for stage in [
+        "discover_sources",
+        "prepare_sources",
+        "parser_admission",
+        "parse_source",
+        "queue_parsed_source",
+        "apply_source",
+        "plan_embeddings",
+        "read_embedding_wave",
+        "embedding_wave",
+        "write_embeddings",
+        "commit_writer",
+    ] {
+        assert!(stages.contains(stage), "missing stage {stage}");
+    }
+    let inference = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "coreml_embedding_batch"
+    } else {
+        "cpu_embedding_batch"
+    };
+    assert!(stages.contains(inference));
+}

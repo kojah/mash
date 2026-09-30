@@ -37,6 +37,7 @@ impl Admission {
         }
     }
 
+    #[tracing::instrument(name = "parser_admission", skip_all, fields(source_bytes, budget_bytes = self.limit, reservation_bytes = tracing::field::Empty, waited = tracing::field::Empty, wait_ms = tracing::field::Empty))]
     pub(super) fn reserve(&self, source_bytes: u64) -> Result<Reservation<'_>, AppError> {
         // Normalized text, projections, owned IDs and vector capacity can exceed
         // source bytes. This is conservative admission accounting, not an RSS cap.
@@ -72,6 +73,11 @@ impl Admission {
                 .saturating_add(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
         }
         self.changed.notify_all();
+        drop(state);
+        let trace = tracing::Span::current();
+        trace.record("reservation_bytes", bytes);
+        trace.record("waited", waited);
+        trace.record("wait_ms", crate::progress::milliseconds(started));
         Ok(Reservation {
             admission: self,
             bytes,

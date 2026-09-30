@@ -164,6 +164,14 @@ stdout. Only mash's own trace targets are enabled; dependency logs are excluded.
 Trace fields omit query/history text, paths, filters, credentials, and vectors.
 Existing indexing progress events can also appear on stderr.
 
+Index traces separate discovery and checkpoint filtering, parser admission waits,
+parsing retries, queue sends, application, embedding planning and wave reads,
+CPU/Core ML inference batches, vector writes, and commits. Admission events
+include the estimated reservation, budget, elapsed wait, and whether capacity
+forced a wait. Inference events report batch counts and Core ML sequence shape;
+they never include the texts or vectors. Request context follows parser and CPU
+inference threads through the same propagation helper.
+
 For example, `MASH_TRACE=1 mash search cbioportal --local --no-worker 2>trace.jsonl`
 exposes model loading, embedding, lexical retrieval, vector loading/scoring and
 reranking. Use `MASH_TRACE=1 mash mcp` for repeated requests or

@@ -31,15 +31,10 @@ async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
 ) -> Result<T, AppError> {
     let sink = progress::current_sink();
-    let span = tracing::Span::current();
-    let dispatcher = tracing::dispatcher::get_default(Clone::clone);
-    tokio::task::spawn_blocking(move || {
-        tracing::dispatcher::with_default(&dispatcher, || {
-            span.in_scope(|| progress::on_blocking_thread(sink, work))
-        })
-    })
-    .await
-    .map_err(|_| AppError::internal("blocking worker failed"))?
+    let context = observability::ThreadContext::capture();
+    tokio::task::spawn_blocking(move || context.run(|| progress::on_blocking_thread(sink, work)))
+        .await
+        .map_err(|_| AppError::internal("blocking worker failed"))?
 }
 
 /// Runs mash with the process arguments, writing JSON or serving stdio MCP.
