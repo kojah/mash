@@ -203,6 +203,7 @@ async fn upload_batch(
                 valid_id(&r.id)?;
                 valid_id(&r.conversation_id)?;
                 if r.ordinal < 0
+                    || !r.context.valid(r.ordinal)
                     || r.vector
                         .as_ref()
                         .is_some_and(|v| !valid_vector(v, dimensions))
@@ -211,7 +212,7 @@ async fn upload_batch(
                     return Err(AppError::usage("invalid message embedding or ordinal"));
                 }
             }
-            "INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector) SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,generation,vector::public.vector FROM jsonb_to_recordset($2::text::jsonb) r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,generation text,vector real[]) WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id)"
+            "INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector,context_parent) SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,generation,vector::public.vector,CASE context->>'kind' WHEN 'root' THEN -1 WHEN 'parent' THEN (context->>'ordinal')::bigint END FROM jsonb_to_recordset($2::text::jsonb) r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,generation text,vector real[],context jsonb) WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id)"
         }
     };
     let json = batch
@@ -355,6 +356,14 @@ pub(super) async fn index(
     if !finished {
         return Err(AppError::usage("incomplete index stream"));
     }
+    if pg::broken_context()
+        .bind(&tx, &node)
+        .one()
+        .await
+        .map_err(pg_error)?
+    {
+        return Err(AppError::usage("missing message context parent"));
+    }
     if !duplicate {
         tx.execute(
             "UPDATE nodes SET revision=$2 WHERE node_id=$1",
@@ -435,7 +444,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 8 {
+        if version != 9 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }

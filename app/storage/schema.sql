@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (
         provider IN (
-            'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw'
+            'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi'
         )
     ),
     source_path TEXT NOT NULL,
@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS messages (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     search_projection TEXT,
+    context_parent INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal)),
     created_at INTEGER,
     fingerprint TEXT NOT NULL DEFAULT '',
     UNIQUE (conversation_id, ordinal)

@@ -16,6 +16,7 @@ fn conversation(content: &str) -> Conversation {
         messages: vec![crate::ingestion::NormalizedMessage {
             id: "message-1".to_owned(),
             ordinal: 0,
+            context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
             content: content.to_owned(),
             search_projection: None,
@@ -33,6 +34,7 @@ fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversation {
             |(ordinal, (id, content))| crate::ingestion::NormalizedMessage {
                 id: (*id).to_owned(),
                 ordinal: i64::try_from(ordinal).expect("test ordinal"),
+                context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
                 content: (*content).to_owned(),
                 search_projection: None,

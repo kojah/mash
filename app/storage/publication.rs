@@ -31,7 +31,7 @@ impl Snapshot<'_> {
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector
+                COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector, m.context_parent
                 FROM messages m LEFT JOIN message_embeddings e ON e.message_id = m.id ORDER BY m.id"
             }
             BatchKind::Tombstones => {
@@ -133,6 +133,9 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
         id: row.get::<_, String>(0).map_err(AppError::database)?,
         conversation_id: row.get::<_, String>(1).map_err(AppError::database)?,
         ordinal: row.get::<_, i64>(2).map_err(AppError::database)?,
+        context: crate::message_context::MessageContext::from_parent(
+            row.get("context_parent").map_err(AppError::database)?,
+        )?,
         role: row
             .get::<_, crate::role::Role>(3)
             .map_err(AppError::database)?,

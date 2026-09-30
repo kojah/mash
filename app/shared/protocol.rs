@@ -97,6 +97,11 @@ pub(crate) struct MessageRecord {
     pub id: String,
     pub conversation_id: String,
     pub ordinal: i64,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::message_context::MessageContext::is_linear"
+    )]
+    pub context: crate::message_context::MessageContext,
     pub role: crate::role::Role,
     pub content: String,
     pub projection: String,

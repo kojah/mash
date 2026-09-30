@@ -41,6 +41,7 @@ impl Turn {
                 ],
             ),
             ordinal,
+            context: crate::message_context::MessageContext::Linear,
             role,
             content,
             search_projection,

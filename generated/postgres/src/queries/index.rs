@@ -1157,7 +1157,7 @@ impl<'c, 'a, 's, C: GenericClient, T1: crate::StringSql, T2: crate::StringSql>
 pub struct ViewStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn view() -> ViewStmt {
     ViewStmt(
-        "SELECT m.id,m.ordinal,m.role,m.content,m.projection,m.created_at FROM messages m JOIN messages anchor ON anchor.node_id=m.node_id AND anchor.conversation_id=m.conversation_id WHERE anchor.node_id=$1 AND anchor.id=$2 AND m.ordinal BETWEEN anchor.ordinal-$3 AND anchor.ordinal+$3 ORDER BY m.ordinal",
+        "WITH RECURSIVE anchor AS (SELECT * FROM messages WHERE node_id=$1 AND id=$2), ancestors(ordinal,depth) AS ( SELECT ordinal,0::bigint FROM anchor WHERE context_parent IS NOT NULL UNION ALL SELECT m.context_parent,a.depth+1 FROM messages m JOIN ancestors a ON m.ordinal=a.ordinal JOIN anchor ON m.node_id=anchor.node_id AND m.conversation_id=anchor.conversation_id WHERE m.context_parent>=0 AND a.depth<$3 ), descendants(ordinal,depth) AS ( SELECT ordinal,0::bigint FROM anchor WHERE context_parent IS NOT NULL UNION ALL SELECT (SELECT MIN(m.ordinal) FROM messages m WHERE m.node_id=anchor.node_id AND m.conversation_id=anchor.conversation_id AND m.context_parent=d.ordinal),d.depth+1 FROM descendants d CROSS JOIN anchor WHERE d.depth<$3 AND EXISTS(SELECT 1 FROM messages m WHERE m.node_id=anchor.node_id AND m.conversation_id=anchor.conversation_id AND m.context_parent=d.ordinal) ) SELECT m.id,m.ordinal,m.role,m.content,m.projection,m.created_at FROM messages m JOIN anchor ON m.node_id=anchor.node_id AND m.conversation_id=anchor.conversation_id WHERE anchor.context_parent IS NULL AND m.ordinal BETWEEN anchor.ordinal-$3 AND anchor.ordinal+$3 UNION ALL SELECT m.id,m.ordinal,m.role,m.content,m.projection,m.created_at FROM messages m JOIN anchor ON m.node_id=anchor.node_id AND m.conversation_id=anchor.conversation_id WHERE m.ordinal IN (SELECT ordinal FROM ancestors UNION SELECT ordinal FROM descendants) ORDER BY ordinal",
         None,
     )
 }
@@ -1346,6 +1346,36 @@ impl TombstonesStmt {
                     })
                 },
             mapper: |it| Tombstones::from(it),
+        }
+    }
+}
+pub struct BrokenContextStmt(&'static str, Option<tokio_postgres::Statement>);
+pub fn broken_context() -> BrokenContextStmt {
+    BrokenContextStmt(
+        "SELECT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=$1 AND m.context_parent>=0 AND NOT EXISTS(SELECT 1 FROM messages p WHERE p.node_id=m.node_id AND p.conversation_id=m.conversation_id AND p.ordinal=m.context_parent)) AS broken",
+        None,
+    )
+}
+impl BrokenContextStmt {
+    pub async fn prepare<'a, C: GenericClient>(
+        mut self,
+        client: &'a C,
+    ) -> Result<Self, tokio_postgres::Error> {
+        self.1 = Some(client.prepare(self.0).await?);
+        Ok(self)
+    }
+    pub fn bind<'c, 'a, 's, C: GenericClient, T1: crate::StringSql>(
+        &'s self,
+        client: &'c C,
+        node: &'a T1,
+    ) -> BoolQuery<'c, 'a, 's, C, bool, 1> {
+        BoolQuery {
+            client,
+            params: [node],
+            query: self.0,
+            cached: self.1.as_ref(),
+            extractor: |row| Ok(row.try_get(0)?),
+            mapper: |it| it,
         }
     }
 }

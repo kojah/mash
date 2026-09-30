@@ -23,6 +23,7 @@ pub(crate) enum Provider {
     Hermes,
     Opencode,
     Openclaw,
+    Pi,
 }
 
 /// Enum keys keep configuration and routing exhaustive without duplicating a
@@ -37,6 +38,7 @@ impl Provider {
         Self::Hermes,
         Self::Opencode,
         Self::Openclaw,
+        Self::Pi,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -47,6 +49,7 @@ impl Provider {
             Self::Hermes => "hermes",
             Self::Opencode => "opencode",
             Self::Openclaw => "openclaw",
+            Self::Pi => "pi",
         }
     }
 
@@ -59,6 +62,7 @@ impl Provider {
             Self::Hermes => 4,
             Self::Opencode => 5,
             Self::Openclaw => 6,
+            Self::Pi => 7,
         }
     }
 
@@ -70,6 +74,7 @@ impl Provider {
             Self::Hermes => "h",
             Self::Opencode => "o",
             Self::Openclaw => "l",
+            Self::Pi => "p",
         }
     }
 }
@@ -90,6 +95,7 @@ impl std::str::FromStr for Provider {
             "hermes" => Ok(Self::Hermes),
             "opencode" => Ok(Self::Opencode),
             "openclaw" => Ok(Self::Openclaw),
+            "pi" => Ok(Self::Pi),
             _ => Err(crate::AppError::usage("unsupported provider")),
         }
     }

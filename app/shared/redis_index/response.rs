@@ -89,7 +89,11 @@ fn returned_fields(value: &Value) -> Result<ReturnedFields<'_>, AppError> {
 
 fn message(fields: &ReturnedFields<'_>) -> Result<MessageRecord, AppError> {
     let message: MessageRecord = decode(fields.record.ok_or_else(invalid)?)?;
-    if message.id.is_empty() || message.conversation_id.is_empty() || message.ordinal < 0 {
+    if message.id.is_empty()
+        || message.conversation_id.is_empty()
+        || message.ordinal < 0
+        || !message.context.valid(message.ordinal)
+    {
         return Err(invalid());
     }
     Ok(message)

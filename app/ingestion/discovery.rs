@@ -164,7 +164,9 @@ pub(super) fn discover_history_files(
         Provider::Hermes => super::hermes::discover,
         Provider::Opencode => super::opencode::discover,
         Provider::Openclaw => super::openclaw::discover,
-        Provider::ClaudeCode | Provider::Codex | Provider::Aider => return Ok(discovery),
+        Provider::ClaudeCode | Provider::Codex | Provider::Aider | Provider::Pi => {
+            return Ok(discovery);
+        }
     };
     discovery.sources = discovery
         .sources
@@ -215,7 +217,7 @@ fn discover_physical_sources(
                     .is_some_and(|name| name == ".aider.chat.history.md")
             }
         }
-        Provider::ClaudeCode | Provider::Codex => is_jsonl(path),
+        Provider::ClaudeCode | Provider::Codex | Provider::Pi => is_jsonl(path),
         Provider::Hermes => {
             path.file_name().is_some_and(|name| name == "state.db")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))

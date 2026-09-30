@@ -10,6 +10,7 @@ pub(super) const CONVERSATION: &str = "conversation";
 pub(super) const PROVIDER: &str = "provider";
 pub(super) const PROVIDER_TAG: &str = "provider_tag";
 pub(super) const ORDINAL: &str = "ordinal";
+pub(super) const CONTEXT_PARENT: &str = "context_parent";
 pub(super) const CREATED_AT: &str = "created_at";
 pub(super) const SEARCHABLE: &str = "searchable";
 pub(super) const PROJECTION: &str = "projection";

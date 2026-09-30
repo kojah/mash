@@ -343,6 +343,7 @@ async fn replace_conversation(
                 id: message.id.clone(),
                 conversation_id: conversation.id.clone(),
                 ordinal: message.ordinal,
+                context: message.context,
                 role: message.role.clone(),
                 content: message.content.clone(),
                 projection: projection.to_owned(),

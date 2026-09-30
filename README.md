@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -179,6 +179,25 @@ invalid archives/navigation fail indexing instead of replacing history with an
 empty result. The native compression columns and cold-archive format follow the
 [upstream schema](https://github.com/openclaw/openclaw/blob/main/src/state/openclaw-agent-schema.sql)
 and [archive codec](https://github.com/openclaw/openclaw/blob/main/src/config/sessions/session-cold-storage-codec.ts).
+
+Pi is opt-in through `[providers.pi]`, with
+`roots = ["/absolute/path/to/.pi/agent/sessions"]` or explicit `.jsonl` session
+files. The adapter reads native v3 sessions and indexes every branch in one
+thread, storing each message once. Metadata entries preserve parent relationships
+without becoming searchable. Tools, reasoning, compaction/branch summaries and
+visible custom messages remain context only; hidden custom messages are omitted.
+Context edits affect Pi's model input and do not delete original searchable history.
+Logged `cwd` supplies project metadata; no repository metadata is inferred.
+Older session versions fail explicitly; open them in Pi to run its own migration.
+The format follows Pi's [session manager](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/session-manager.ts).
+
+For tree histories, `view --context N` includes up to N actual ancestors and
+up to N messages along the first saved continuation from the match. It never
+adds sibling replies because their file ordinals happen to be nearby. Contextual
+reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
+keep their existing ordinal neighbourhoods. SQLite schema 23 and shared PostgreSQL
+schema 9 preserve existing messages and vectors. Update the shared service before
+publishing Pi histories from upgraded nodes.
 
 ## Configuration
 

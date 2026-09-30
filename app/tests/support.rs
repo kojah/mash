@@ -29,58 +29,28 @@ pub(super) fn error_kind(output: &std::process::Output) -> Value {
 }
 
 pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&str>) {
+    // Initialize through the real command so fixtures cannot drift from the
+    // production schema or pretend an older schema is search-ready.
+    let setup = tempfile::tempdir().expect("readiness setup");
+    let config = setup.path().join("config.toml");
+    let models = setup.path().join("models");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    create_valid_model_marker(&models);
+    run_json(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        path.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+        "index",
+    ]);
     let connection = Connection::open(path).expect("readiness database");
-    connection
-        .execute_batch(
-            "CREATE TABLE conversations (
-                id TEXT PRIMARY KEY, provider TEXT NOT NULL, source_path TEXT NOT NULL,
-                source_key TEXT NOT NULL, source_session TEXT,
-                title TEXT, created_at INTEGER, updated_at INTEGER, project TEXT, repository TEXT,
-                source_fingerprint TEXT NOT NULL DEFAULT '', UNIQUE(provider, source_key)
-             );
-             CREATE TABLE messages (
-                id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
-                ordinal INTEGER NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
-                search_projection TEXT, created_at INTEGER,
-                fingerprint TEXT NOT NULL DEFAULT '', UNIQUE(conversation_id, ordinal)
-             );
-             CREATE TABLE message_embeddings (
-                message_id TEXT PRIMARY KEY, generation TEXT NOT NULL,
-                dimensions INTEGER NOT NULL, norm REAL NOT NULL, vector BLOB NOT NULL
-             );
-             CREATE TABLE pending_embeddings (
-                message_id TEXT PRIMARY KEY
-             ) WITHOUT ROWID;
-             CREATE VIRTUAL TABLE message_fts USING fts5(
-                content, message_id UNINDEXED, conversation_id UNINDEXED,
-                tokenize = 'unicode61'
-             );
-             CREATE TABLE tombstones (
-                provider TEXT NOT NULL, conversation_id TEXT NOT NULL,
-                forgotten_at INTEGER NOT NULL, PRIMARY KEY(provider, conversation_id)
-             );
-             CREATE TABLE source_checkpoints (
-                provider TEXT NOT NULL, source_path TEXT NOT NULL, source_key TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
-                fingerprint TEXT NOT NULL DEFAULT '',
-                PRIMARY KEY(provider, source_key)
-             );
-             CREATE TABLE semantic_chunks (
-                chunk_id INTEGER PRIMARY KEY, generation TEXT NOT NULL,
-                dimensions INTEGER NOT NULL, vector_count INTEGER NOT NULL,
-                message_rowids BLOB NOT NULL, norms BLOB NOT NULL,
-                providers BLOB NOT NULL, created_ats BLOB NOT NULL, vectors BLOB NOT NULL
-             );
-             CREATE TABLE derived_state (
-                singleton INTEGER PRIMARY KEY, search_dirty INTEGER NOT NULL,
-                semantic_ready_generation TEXT
-             );
-             INSERT INTO derived_state VALUES (1, 0, NULL);
-             INSERT INTO conversations(id, provider, source_path, source_key)
-                VALUES ('session', 'codex', '/tmp/session.jsonl', 'file:/tmp/session.jsonl');
-             PRAGMA user_version = 22;",
-        )
-        .expect("readiness schema");
+    connection.execute_batch(
+        "UPDATE derived_state SET search_dirty=0,semantic_ready_generation=NULL WHERE singleton=1;
+         INSERT INTO conversations(id,provider,source_path,source_key)
+         VALUES ('session','codex','/tmp/session.jsonl','file:/tmp/session.jsonl');"
+    ).expect("readiness history");
     connection
         .execute(
             "INSERT INTO messages(

@@ -229,6 +229,7 @@ fn normalize(
         id: super::parsers::stable_id("message", &[Provider::Opencode.as_str(), &source.key(), id]),
         ordinal: i64::try_from(messages.len())
             .map_err(|_| AppError::internal("too many OpenCode messages"))?,
+        context: crate::message_context::MessageContext::Linear,
         search_projection: Some(
             crate::search_text::project(&role, &content.prose.join("\n")).into_owned(),
         ),

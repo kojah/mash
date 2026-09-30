@@ -231,6 +231,7 @@ fn purge_requires_a_complete_provider_scan() {
             messages: vec![NormalizedMessage {
                 id: "old-message".to_owned(),
                 ordinal: 0,
+                context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
                 content: "preserve until complete".to_owned(),
                 search_projection: None,

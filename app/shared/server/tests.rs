@@ -1,6 +1,8 @@
 use super::*;
 use serde_json::{Value, json};
 
+mod context;
+
 const FIRST: &str = "test-api-token-first-32-bytes-long";
 const SECOND: &str = "test-api-token-second-32-bytes-long";
 const OTHER: &str = "test-api-token-other-32-bytes-long";
@@ -26,6 +28,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
             id: format!("{provider}-message"),
             conversation_id: provider.as_str().into(),
             ordinal: 0,
+            context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
             content: "providerneedle canonical history".into(),
             projection: "providerneedle canonical history".into(),

@@ -246,6 +246,7 @@ pub(super) fn plan(
                             valid_id(&m.id)?;
                             valid_id(&m.conversation_id)?;
                             if m.ordinal < 0
+                                || !m.context.valid(m.ordinal)
                                 || m.vector
                                     .as_ref()
                                     .is_some_and(|v| !protocol::valid_vector(v, dimensions))
@@ -334,6 +335,11 @@ pub(super) fn plan(
         .any(|m| !ordinals.insert((&m.conversation_id, m.ordinal)))
     {
         return Err(AppError::usage("duplicate message ordinal"));
+    }
+    if plan.loaded.data.messages.values().any(|m| {
+        matches!(m.context, crate::message_context::MessageContext::Parent { ordinal } if !ordinals.contains(&(&m.conversation_id, ordinal)))
+    }) {
+        return Err(AppError::usage("missing message context parent"));
     }
     Ok(plan)
 }

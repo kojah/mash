@@ -3,6 +3,7 @@ mod config;
 mod core;
 mod ingestion;
 mod mcp;
+mod message_context;
 mod progress;
 mod provider;
 mod role;

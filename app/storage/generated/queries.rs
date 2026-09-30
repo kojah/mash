@@ -248,12 +248,14 @@ impl<'a> SearchDocumentBuilder<'a, (&'a str,)> {
 pub struct AnchorRow {
     pub conversation_id: String,
     pub ordinal: i64,
+    pub context_parent: Option<i64>,
 }
 impl AnchorRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             conversation_id: row.get(0)?,
             ordinal: row.get(1)?,
+            context_parent: row.get(2)?,
         })
     }
 }
@@ -261,7 +263,8 @@ pub struct Anchor<'a> {
     id: &'a str,
 }
 impl<'a> Anchor<'a> {
-    pub const QUERY: &'static str = r"SELECT conversation_id,ordinal FROM messages WHERE id=?1";
+    pub const QUERY: &'static str =
+        r"SELECT conversation_id,ordinal,context_parent FROM messages WHERE id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -424,6 +427,198 @@ impl<'a> ViewMessagesBuilder<'a, (&'a str, i64, i64)> {
             conversation_id,
             first_ordinal,
             last_ordinal,
+        }
+    }
+}
+pub struct ContextMessageRow {
+    pub id: String,
+    pub ordinal: i64,
+    pub role: String,
+    pub content: String,
+    pub projection: String,
+    pub created_at: Option<i64>,
+    pub context_parent: Option<i64>,
+}
+impl ContextMessageRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            ordinal: row.get(1)?,
+            role: row.get(2)?,
+            content: row.get(3)?,
+            projection: row.get(4)?,
+            created_at: row.get(5)?,
+            context_parent: row.get(6)?,
+        })
+    }
+}
+pub struct ContextMessage<'a> {
+    conversation_id: &'a str,
+    ordinal: i64,
+}
+impl<'a> ContextMessage<'a> {
+    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent FROM messages
+WHERE conversation_id=?1 AND ordinal=?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ContextMessage<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ContextMessageRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ContextMessageRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ContextMessageRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ContextMessageRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id, self.ordinal)
+    }
+}
+impl<'a> ContextMessage<'a> {
+    pub const fn builder() -> ContextMessageBuilder<'a, ((), ())> {
+        ContextMessageBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ContextMessageBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Ordinal> ContextMessageBuilder<'a, ((), Ordinal)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ContextMessageBuilder<'a, (&'a str, Ordinal)> {
+        let ((), ordinal) = self.fields;
+        let _phantom = self._phantom;
+        ContextMessageBuilder {
+            fields: (conversation_id, ordinal),
+            _phantom,
+        }
+    }
+}
+impl<'a, ConversationId> ContextMessageBuilder<'a, (ConversationId, ())> {
+    pub fn ordinal(self, ordinal: i64) -> ContextMessageBuilder<'a, (ConversationId, i64)> {
+        let (conversation_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ContextMessageBuilder {
+            fields: (conversation_id, ordinal),
+            _phantom,
+        }
+    }
+}
+impl<'a> ContextMessageBuilder<'a, (&'a str, i64)> {
+    pub fn build(self) -> ContextMessage<'a> {
+        let (conversation_id, ordinal) = self.fields;
+        ContextMessage {
+            conversation_id,
+            ordinal,
+        }
+    }
+}
+pub struct FirstChildRow {
+    pub ordinal: i64,
+}
+impl FirstChildRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            ordinal: row.get(0)?,
+        })
+    }
+}
+pub struct FirstChild<'a> {
+    conversation_id: &'a str,
+    parent: Option<i64>,
+}
+impl<'a> FirstChild<'a> {
+    pub const QUERY: &'static str = r"SELECT ordinal FROM messages WHERE conversation_id=?1 AND context_parent=?2 ORDER BY ordinal LIMIT 1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> FirstChild<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<FirstChildRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), FirstChildRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<FirstChildRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), FirstChildRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id, self.parent)
+    }
+}
+impl<'a> FirstChild<'a> {
+    pub const fn builder() -> FirstChildBuilder<'a, ((), ())> {
+        FirstChildBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct FirstChildBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Parent> FirstChildBuilder<'a, ((), Parent)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> FirstChildBuilder<'a, (&'a str, Parent)> {
+        let ((), parent) = self.fields;
+        let _phantom = self._phantom;
+        FirstChildBuilder {
+            fields: (conversation_id, parent),
+            _phantom,
+        }
+    }
+}
+impl<'a, ConversationId> FirstChildBuilder<'a, (ConversationId, ())> {
+    pub fn parent(
+        self,
+        parent: Option<i64>,
+    ) -> FirstChildBuilder<'a, (ConversationId, Option<i64>)> {
+        let (conversation_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        FirstChildBuilder {
+            fields: (conversation_id, parent),
+            _phantom,
+        }
+    }
+}
+impl<'a> FirstChildBuilder<'a, (&'a str, Option<i64>)> {
+    pub fn build(self) -> FirstChild<'a> {
+        let (conversation_id, parent) = self.fields;
+        FirstChild {
+            conversation_id,
+            parent,
         }
     }
 }

@@ -325,8 +325,8 @@ impl Storage {
             .prepare_cached(
                 "INSERT INTO messages(
                     id, conversation_id, ordinal, role, content, search_projection,
-                    created_at, fingerprint
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    created_at, fingerprint, context_parent
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                  ON CONFLICT(id) DO UPDATE SET
                     conversation_id = excluded.conversation_id,
                     ordinal = excluded.ordinal,
@@ -334,7 +334,8 @@ impl Storage {
                     content = excluded.content,
                     search_projection = excluded.search_projection,
                     created_at = excluded.created_at,
-                    fingerprint = excluded.fingerprint",
+                    fingerprint = excluded.fingerprint,
+                    context_parent = excluded.context_parent",
             )
             .map_err(AppError::database)?;
         let mut stage_fts = self
@@ -394,6 +395,7 @@ impl Storage {
                     message.search_projection,
                     message.created_at,
                     fingerprint,
+                    message.context.parent(),
                 ])
                 .map_err(AppError::database)?;
             if !self.defer_search_updates {
@@ -726,6 +728,10 @@ fn message_fingerprint(message: &crate::ingestion::NormalizedMessage) -> String 
     let mut hasher = blake3::Hasher::new();
     update_hash(&mut hasher, &message.id);
     update_hash(&mut hasher, &message.ordinal.to_string());
+    if let Some(parent) = message.context.parent() {
+        update_hash(&mut hasher, "tree-context");
+        update_hash(&mut hasher, &parent.to_string());
+    }
     update_hash(&mut hasher, message.role.as_str());
     update_hash(&mut hasher, &message.content);
     match &message.search_projection {

@@ -260,6 +260,7 @@ fn messages(
             ),
             ordinal: i64::try_from(messages.len())
                 .map_err(|_| AppError::internal("too many OpenClaw messages"))?,
+            context: crate::message_context::MessageContext::Linear,
             role,
             content,
             search_projection,

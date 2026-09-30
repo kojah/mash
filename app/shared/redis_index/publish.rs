@@ -174,6 +174,8 @@ impl Store {
                 .arg(conversation.provider.redis_tag())
                 .arg(fields::ORDINAL)
                 .arg(message.ordinal)
+                .arg(fields::CONTEXT_PARENT)
+                .arg(message.context.parent().unwrap_or(-2))
                 .arg(fields::CREATED_AT)
                 .arg(message.created_at.unwrap_or(i64::MIN))
                 .arg(fields::SEARCHABLE)

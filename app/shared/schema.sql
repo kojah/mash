@@ -100,3 +100,15 @@ DO $$ BEGIN
         UPDATE version SET version=8 WHERE singleton;
     END IF;
 END $$;
+
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 8 THEN
+        ALTER TABLE conversations DROP CONSTRAINT conversations_provider_check;
+        ALTER TABLE conversations ADD CONSTRAINT conversations_provider_check
+            CHECK (provider IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi'));
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS context_parent BIGINT CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal));
+        CREATE INDEX IF NOT EXISTS messages_context_parent ON messages(node_id,conversation_id,context_parent,ordinal) WHERE context_parent IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS messages_tree_context ON messages(node_id,conversation_id,ordinal,context_parent) WHERE context_parent>=0;
+        UPDATE version SET version=9 WHERE singleton;
+    END IF;
+END $$;

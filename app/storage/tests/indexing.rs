@@ -599,6 +599,7 @@ fn benchmark_fts_refresh_crossover() {
             .map(|index| crate::ingestion::NormalizedMessage {
                 id: format!("message-{index:05}"),
                 ordinal: i64::from(index),
+                context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
                 content: format!("representative searchable text number {index}"),
                 search_projection: None,

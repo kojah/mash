@@ -424,6 +424,7 @@ fn seed(path: &Path) -> Storage {
                 NormalizedMessage {
                     id: "searchable".to_owned(),
                     ordinal: 0,
+                    context: crate::message_context::MessageContext::Linear,
                     role: crate::role::Role::User,
                     content: "hello shared history".to_owned(),
                     search_projection: None,
@@ -432,6 +433,7 @@ fn seed(path: &Path) -> Storage {
                 NormalizedMessage {
                     id: "context".to_owned(),
                     ordinal: 1,
+                    context: crate::message_context::MessageContext::Linear,
                     role: crate::role::Role::Tool,
                     content: "hello raw tool output".to_owned(),
                     search_projection: Some(String::new()),
@@ -511,6 +513,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         conversation.messages.push(NormalizedMessage {
             id: format!("message-{i:02}"),
             ordinal: i,
+            context: crate::message_context::MessageContext::Linear,
             role: if i == 60 { "assistant" } else { "user" }.into(),
             content: "hello filter".into(),
             search_projection: None,

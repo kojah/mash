@@ -225,6 +225,9 @@ impl Storage {
             return Ok(Vec::new());
         };
         let context = i64::from(context);
+        if anchor.context_parent.is_some() {
+            return self.view_branch(&anchor, context, representation);
+        }
         let rows = sql::ViewMessages::builder()
             .conversation_id(&anchor.conversation_id)
             .first_ordinal(anchor.ordinal.saturating_sub(context))
@@ -232,6 +235,65 @@ impl Storage {
             .build()
             .query_many(&self.connection)
             .map_err(AppError::database)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| Message {
+                id: row.id,
+                ordinal: row.ordinal,
+                role: row.role.into(),
+                content: match representation {
+                    super::MessageContent::Canonical => row.content,
+                    super::MessageContent::SearchProjection => row.projection,
+                },
+                created_at: row.created_at,
+            })
+            .collect())
+    }
+
+    fn view_branch(
+        &self,
+        anchor: &sql::AnchorRow,
+        context: i64,
+        representation: super::MessageContent,
+    ) -> Result<Vec<Message>, AppError> {
+        let read = |ordinal| {
+            sql::ContextMessage::builder()
+                .conversation_id(&anchor.conversation_id)
+                .ordinal(ordinal)
+                .build()
+                .query_opt(&self.connection)
+                .map_err(AppError::database)
+        };
+        let mut rows = Vec::new();
+        let mut ordinal = anchor.ordinal;
+        for _ in 0..=context {
+            let Some(row) = read(ordinal)? else { break };
+            let parent = row.context_parent;
+            rows.push(row);
+            let Some(parent) = parent.filter(|n| *n >= 0 && *n < ordinal) else {
+                break;
+            };
+            ordinal = parent;
+        }
+        ordinal = anchor.ordinal;
+        for _ in 0..context {
+            let Some(child) = sql::FirstChild::builder()
+                .conversation_id(&anchor.conversation_id)
+                .parent(Some(ordinal))
+                .build()
+                .query_opt(&self.connection)
+                .map_err(AppError::database)?
+            else {
+                break;
+            };
+            if child.ordinal <= ordinal {
+                return Err(AppError::database_data("invalid message context parent"));
+            }
+            ordinal = child.ordinal;
+            let Some(row) = read(ordinal)? else { break };
+            rows.push(row);
+        }
+        rows.sort_by_key(|row| row.ordinal);
         Ok(rows
             .into_iter()
             .map(|row| Message {

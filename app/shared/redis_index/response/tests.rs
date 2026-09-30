@@ -9,6 +9,7 @@ fn message_record() -> MessageRecord {
         id: "message".into(),
         conversation_id: "chat".into(),
         ordinal: 2,
+        context: crate::message_context::MessageContext::Linear,
         role: Role::User,
         content: "request\nprivate tool payload".into(),
         projection: "request".into(),

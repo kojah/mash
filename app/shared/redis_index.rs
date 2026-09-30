@@ -97,6 +97,7 @@ async fn extend_metadata_schema(
         (fields::PROJECT_TAG, "TAG"),
         (fields::REPOSITORY_TAG, "TAG"),
         (fields::DATED, "NUMERIC"),
+        (fields::CONTEXT_PARENT, "NUMERIC"),
     ] {
         if !fields.contains(field) {
             let result = redis::cmd("FT.ALTER")

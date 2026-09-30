@@ -13,8 +13,15 @@ FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE m.storage_i
 SELECT COALESCE(search_projection,content) AS content FROM messages WHERE id=?1;
 
 -- name: Anchor :one
-SELECT conversation_id,ordinal FROM messages WHERE id=?1;
+SELECT conversation_id,ordinal,context_parent FROM messages WHERE id=?1;
 
 -- name: ViewMessages :many
 SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM messages
 WHERE conversation_id=sqlc.arg(conversation_id) AND ordinal>=sqlc.arg(first_ordinal) AND ordinal<=sqlc.arg(last_ordinal) ORDER BY ordinal;
+
+-- name: ContextMessage :one
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent FROM messages
+WHERE conversation_id=sqlc.arg(conversation_id) AND ordinal=sqlc.arg(ordinal);
+
+-- name: FirstChild :one
+SELECT ordinal FROM messages WHERE conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;

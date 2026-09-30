@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 22;
+pub(super) const SCHEMA_VERSION: i64 = 23;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -39,13 +39,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         "source_fingerprint",
         "TEXT NOT NULL DEFAULT ''",
     )?;
-    add_column_if_missing(
-        &transaction,
-        "messages",
-        "fingerprint",
-        "TEXT NOT NULL DEFAULT ''",
-    )?;
-    add_column_if_missing(&transaction, "messages", "search_projection", "TEXT")?;
+    prepare_message_columns(&transaction)?;
     add_column_if_missing(
         &transaction,
         "message_embeddings",
@@ -68,6 +62,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
     add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
     migrate_source_identities(&transaction)?;
+    transaction.execute_batch("CREATE INDEX IF NOT EXISTS messages_context_parent ON messages(conversation_id, context_parent, ordinal) WHERE context_parent IS NOT NULL").map_err(AppError::database)?;
     if version < 18 {
         transaction
             .execute("DELETE FROM source_checkpoints", [])
@@ -105,6 +100,23 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     connection
         .pragma_update(None, "foreign_keys", true)
         .map_err(AppError::database)
+}
+
+fn prepare_message_columns(connection: &Connection) -> Result<(), AppError> {
+    add_column_if_missing(
+        connection,
+        "messages",
+        "fingerprint",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(connection, "messages", "search_projection", "TEXT")?;
+    add_column_if_missing(
+        connection,
+        "messages",
+        "context_parent",
+        "INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal))",
+    )?;
+    Ok(())
 }
 
 fn install_publication_triggers(connection: &Connection) -> Result<(), AppError> {
@@ -194,7 +206,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
             "CREATE TABLE conversations_next (
                 id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL CHECK (provider IN (
-                    'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw'
+                    'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi'
                 )),
                 source_path TEXT NOT NULL,
                 title TEXT, created_at INTEGER, updated_at INTEGER,
@@ -208,6 +220,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
                 conversation_id TEXT NOT NULL REFERENCES conversations_next(id) ON DELETE CASCADE,
                 ordinal INTEGER NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
                 search_projection TEXT, created_at INTEGER,
+                context_parent INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal)),
                 fingerprint TEXT NOT NULL DEFAULT '',
                 UNIQUE(conversation_id, ordinal)
              );
@@ -222,7 +235,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
                 FROM conversations;
              INSERT INTO messages_next
                 SELECT rowid, id, conversation_id, ordinal, role, content, search_projection,
-                       created_at, fingerprint
+                       created_at, context_parent, fingerprint
                 FROM messages;
              INSERT INTO message_embeddings_next(
                 message_id, generation, dimensions, norm, vector
@@ -304,33 +317,33 @@ fn purge_unsupported_providers(connection: &Connection) -> Result<(), AppError> 
             "DELETE FROM message_fts
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi')
               );
              DELETE FROM message_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi')
               );
              DELETE FROM pending_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi')
               );
              DELETE FROM messages
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi')
               );
              DELETE FROM conversations
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi');
              DELETE FROM source_checkpoints
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi');
              DELETE FROM tombstones
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw');",
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi');",
         )
         .map_err(AppError::database)
 }

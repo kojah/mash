@@ -36,6 +36,7 @@ fn test_conversation(
         messages: vec![NormalizedMessage {
             id: format!("{id}-message"),
             ordinal: 0,
+            context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
             content: content.to_owned(),
             search_projection: None,

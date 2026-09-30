@@ -1,0 +1,206 @@
+//! The same branch contract must hold through both shared HTTP backends.
+use super::*;
+use crate::{
+    message_context::MessageContext,
+    shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start, View},
+    storage::{Message, MessageContent},
+};
+
+fn snapshot(revision: i64) -> Vec<Value> {
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
+    let messages = [
+        (0, MessageContext::Root, "root request", "root request"),
+        (
+            1,
+            MessageContext::Parent { ordinal: 0 },
+            "left reply",
+            "left reply",
+        ),
+        (
+            2,
+            MessageContext::Parent { ordinal: 1 },
+            "left detail",
+            "left detail",
+        ),
+        (
+            3,
+            MessageContext::Root,
+            "independent root",
+            "independent root",
+        ),
+        (
+            5,
+            MessageContext::Parent { ordinal: 0 },
+            "right request\nprivate tool marker",
+            "right request",
+        ),
+        (
+            6,
+            MessageContext::Parent { ordinal: 5 },
+            "right reply",
+            "right reply",
+        ),
+        (
+            8,
+            MessageContext::Parent { ordinal: 6 },
+            "private output",
+            "",
+        ),
+    ]
+    .into_iter()
+    .map(|(ordinal, context, content, projection)| MessageRecord {
+        id: format!("message-{ordinal}"),
+        conversation_id: "branch".into(),
+        ordinal,
+        context,
+        role: if projection.is_empty() {
+            crate::role::Role::Tool
+        } else {
+            crate::role::Role::User
+        },
+        content: content.into(),
+        projection: projection.into(),
+        created_at: None,
+        generation: (!projection.is_empty())
+            .then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
+        vector: (!projection.is_empty()).then(|| vector.clone()),
+    })
+    .collect();
+    [
+        Event::Start(Start {
+            instance: "branch-test".into(),
+            revision: Some(revision),
+            base_revision: None,
+            snapshot: true,
+            forgets: Vec::new(),
+        }),
+        Event::Batch(Batch::Conversations {
+            records: vec![ConversationRecord {
+                id: "branch".into(),
+                provider: crate::provider::Provider::Pi,
+                title: None,
+                project: None,
+                repository: None,
+                created_at: None,
+                updated_at: None,
+            }],
+        }),
+        Event::Batch(Batch::Messages { records: messages }),
+        Event::Finish,
+    ]
+    .into_iter()
+    .map(|event| serde_json::to_value(event).unwrap())
+    .collect()
+}
+
+async fn view(
+    service: &Service,
+    ordinal: i64,
+    context: u32,
+    representation: MessageContent,
+) -> Vec<Message> {
+    service
+        .request("view", FIRST)
+        .json(&View {
+            node_id: "first".into(),
+            id: format!("message-{ordinal}"),
+            context,
+            content: representation,
+        })
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+async fn contract(service: Service) {
+    let response = service.upload(FIRST, &snapshot(1)).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "{}",
+        response.text().await.unwrap()
+    );
+    for content in [MessageContent::Canonical, MessageContent::SearchProjection] {
+        assert_eq!(
+            view(&service, 5, 1, content)
+                .await
+                .iter()
+                .map(|m| m.ordinal)
+                .collect::<Vec<_>>(),
+            [0, 5, 6]
+        );
+        assert_eq!(
+            view(&service, 0, 2, content)
+                .await
+                .iter()
+                .map(|m| m.ordinal)
+                .collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+        assert_eq!(
+            view(&service, 3, 3, content)
+                .await
+                .iter()
+                .map(|m| m.ordinal)
+                .collect::<Vec<_>>(),
+            [3]
+        );
+    }
+    assert!(
+        view(&service, 5, 0, MessageContent::Canonical).await[0]
+            .content
+            .contains("private tool marker")
+    );
+    assert_eq!(
+        view(&service, 5, 0, MessageContent::SearchProjection).await[0].content,
+        "right request"
+    );
+    assert_eq!(
+        view(&service, 5, 2, MessageContent::Canonical)
+            .await
+            .iter()
+            .map(|m| m.ordinal)
+            .collect::<Vec<_>>(),
+        [0, 5, 6, 8]
+    );
+    let before = service.get("freshness", FIRST).await;
+    for parent in [-1, 4, 5, 7] {
+        let mut invalid = snapshot(2);
+        invalid[2]["records"][4]["context"] = json!(MessageContext::Parent { ordinal: parent });
+        let response = service.upload(FIRST, &invalid).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{}",
+            response.text().await.unwrap()
+        );
+        assert_eq!(service.get("freshness", FIRST).await, before);
+        assert_eq!(
+            view(&service, 5, 1, MessageContent::Canonical)
+                .await
+                .iter()
+                .map(|m| m.ordinal)
+                .collect::<Vec<_>>(),
+            [0, 5, 6]
+        );
+    }
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
+async fn postgres_context_preserves_branches_and_rejects_broken_publications() {
+    contract(Service::new_backend(true, false).await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_context_preserves_branches_and_rejects_broken_publications() {
+    contract(Service::new_backend(false, true).await).await;
+}

@@ -154,6 +154,7 @@ fn parse_jsonl(
                 &[provider.as_str(), &path.to_string_lossy(), &message_key],
             ),
             ordinal,
+            context: crate::message_context::MessageContext::Linear,
             role: extracted.role,
             content: extracted.content,
             search_projection: extracted.search_projection,

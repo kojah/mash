@@ -12,6 +12,7 @@ mod json;
 mod openclaw;
 mod opencode;
 mod parsers;
+mod pi;
 mod records;
 mod source;
 mod sqlite_source;
@@ -44,6 +45,7 @@ impl Provider {
             Self::Hermes => hermes::parse,
             Self::Opencode => opencode::parse,
             Self::Openclaw => openclaw::parse,
+            Self::Pi => |source| pi::parse(&source.path),
         }
     }
 }
@@ -86,6 +88,7 @@ pub(crate) struct Conversation {
 pub(crate) struct NormalizedMessage {
     pub(crate) id: String,
     pub(crate) ordinal: i64,
+    pub(crate) context: crate::message_context::MessageContext,
     pub(crate) role: crate::role::Role,
     pub(crate) content: String,
     /// `None` searches canonical content, an empty string makes the message
