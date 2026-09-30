@@ -1,6 +1,8 @@
 use super::*;
 use crate::message_context::MessageContext;
 
+mod lifecycle;
+
 fn transcript(path: &Path, rows: &[(&str, Option<&str>, &str)]) {
     let records = rows
         .iter()

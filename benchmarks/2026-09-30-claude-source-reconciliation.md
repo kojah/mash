@@ -57,6 +57,18 @@ planning. The comparison includes other intervening changes.
 
 ## Remaining gates
 
+Follow-up lifecycle checks use schema-32 and schema-33 databases with genuine
+legacy path-based message IDs and no provenance tables. They verify replay,
+survivor retention after deleting the old owner, and preservation of unrelated
+Codex vectors. A physical rename retains native identities, context and vectors.
+A late parser failure after an applied contribution rolls back source snapshots
+and checkpoints; deleting a contribution afterward cannot resurrect that data.
+The ingestion/storage scope passed 202 tests in 13.483 seconds. All nine focused
+Claude reconciliation checks passed again after organizing lifecycle tests into
+a separate module, and passed with process affinity restricted to one CPU.
+These checks use synthetic fixtures and do not replace native Mac or captured
+real-copy validation.
+
 The broader Beads preservation gate stays open pending the remaining migration,
 move, failure-injection, native Mac, and real captured-copy validation. Giant
 conversation memory bounds, human relevance, exact-commit fleet deployment,
