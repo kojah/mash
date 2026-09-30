@@ -67,6 +67,12 @@ create compatibility copies or versioned replacement files.
 
 ## Verification
 
+Keep project logs, downloads, research captures and other durable work artifacts
+under `/home/james/scratch/mash-artifacts`, outside Git. Do not use `/tmp/mash*`
+for these artifacts. Earlier temporary artifacts were moved to
+`/home/james/scratch/mash-artifacts/tmp-migration-2026-09-30`.
+Use the persistent target and test temporary directories below for validation.
+
 Use the persistent Xenia target and temp directories:
 
 ```bash
