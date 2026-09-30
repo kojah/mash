@@ -3,8 +3,147 @@ use super::*;
 use rusqlite::params;
 
 #[test]
+fn identity_only_migration_preserves_readiness_vectors_and_unrelated_checkpoints() {
+    for ready in [true, false] {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("index.sqlite3");
+        let mut storage = Storage::open_writer(&path).unwrap();
+        storage
+            .replace_conversation(&conversation("preserved needle"))
+            .unwrap();
+        storage.rebuild_derived_search_state().unwrap();
+        storage
+            .replace_embeddings(
+                "fixture",
+                &[EmbeddingWrite {
+                    message_id: "message-1",
+                    vector: &[127, 0],
+                    norm: 127.0,
+                }],
+            )
+            .unwrap();
+        storage.mark_semantic_index_ready("fixture").unwrap();
+        if !ready {
+            storage.mark_derived_search_dirty().unwrap();
+            storage.mark_semantic_index_incomplete().unwrap();
+        }
+        let source = crate::ingestion::SourceIdentity::file("/fixture/source.jsonl");
+        let stamp = crate::ingestion::SourceStamp::file(10, 20);
+        for provider in [
+            crate::provider::Provider::ClaudeCode,
+            crate::provider::Provider::Codex,
+        ] {
+            storage
+                .record_source_checkpoint(provider, &source, &stamp)
+                .unwrap();
+        }
+        storage.commit_writer().unwrap();
+        let publication: (String, i64) = storage
+            .connection
+            .query_row(
+                "SELECT instance,revision FROM shared_publication",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        storage
+            .connection
+            .pragma_update(None, "user_version", 32)
+            .unwrap();
+        drop(storage);
+        let storage = Storage::open(&path).unwrap();
+        assert_eq!(storage.semantic_index_is_ready("fixture").unwrap(), ready);
+        assert_eq!(storage.derived_search_is_dirty().unwrap(), !ready);
+        assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
+        super::super::test_support::assert_quantized_embedding(
+            &storage,
+            "message-1",
+            &[127, 0],
+            127.0,
+        );
+        assert_eq!(
+            storage.search("needle", 5, None, None).unwrap()[0].id,
+            "message-1"
+        );
+        assert!(
+            !storage
+                .source_checkpoint_matches(crate::provider::Provider::ClaudeCode, &source, &stamp)
+                .unwrap()
+        );
+        assert!(
+            storage
+                .source_checkpoint_matches(crate::provider::Provider::Codex, &source, &stamp)
+                .unwrap()
+        );
+        let after: (String, i64) = storage
+            .connection
+            .query_row(
+                "SELECT instance,revision FROM shared_publication",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(publication, after);
+        assert_eq!(
+            storage
+                .connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            SCHEMA_VERSION
+        );
+    }
+}
+
+#[test]
+fn identity_migration_failure_keeps_version_and_checkpoints_for_retry() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    let mut storage = Storage::open_writer(&path).unwrap();
+    let source = crate::ingestion::SourceIdentity::file("/fixture/source.jsonl");
+    let stamp = crate::ingestion::SourceStamp::file(10, 20);
+    storage
+        .record_source_checkpoint(crate::provider::Provider::ClaudeCode, &source, &stamp)
+        .unwrap();
+    storage.commit_writer().unwrap();
+    storage
+        .connection
+        .execute_batch(
+            "PRAGMA user_version=32;
+         CREATE TRIGGER reject_checkpoint_delete BEFORE DELETE ON source_checkpoints
+         BEGIN SELECT RAISE(ABORT, 'migration failure'); END;",
+        )
+        .unwrap();
+    drop(storage);
+    assert!(Storage::open(&path).is_err());
+    let connection = Connection::open(&path).unwrap();
+    assert_eq!(
+        connection
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+            .unwrap(),
+        32
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT COUNT(*) FROM source_checkpoints", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    connection
+        .execute_batch("DROP TRIGGER reject_checkpoint_delete")
+        .unwrap();
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    assert!(
+        !storage
+            .source_checkpoint_matches(crate::provider::Provider::ClaudeCode, &source, &stamp)
+            .unwrap()
+    );
+}
+
+#[test]
 fn schema_migrations_preserve_context_vectors_and_require_projection_refresh() {
-    for version in [23, 28, 29, 30, 31, 32] {
+    for version in [23, 28, 29, 30, 31] {
         provider_schema_migration(version);
     }
 }

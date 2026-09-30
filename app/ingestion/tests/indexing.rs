@@ -1,6 +1,66 @@
 use super::*;
 
 #[test]
+fn identity_migration_reparses_checkpointed_claude_parent_and_agent() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let parent = directory.path().join("parent.jsonl");
+    let agent = directory.path().join("agent.jsonl");
+    write_claude_session(&parent, "session", "parent sentinel");
+    fs::write(&agent, r#"{"type":"user","sessionId":"session","agentId":"alpha","uuid":"agent-message","message":{"role":"user","content":"agent sentinel"}}"#).unwrap();
+    let mut legacy = parse_claude(&agent).unwrap().conversation.unwrap();
+    legacy.id = "session".into();
+    let mut storage = Storage::open_writer(&database).unwrap();
+    storage.replace_conversation(&legacy).unwrap();
+    storage.rebuild_derived_search_state().unwrap();
+    storage
+        .replace_embeddings(
+            "fixture",
+            &[crate::storage::EmbeddingWrite {
+                message_id: &legacy.messages[0].id,
+                vector: &[127],
+                norm: 127.0,
+            }],
+        )
+        .unwrap();
+    storage.mark_semantic_index_ready("fixture").unwrap();
+    for path in [&parent, &agent] {
+        storage
+            .record_source_checkpoint(
+                Provider::ClaudeCode,
+                &SourceIdentity::file(path),
+                &source_stamp(path).unwrap(),
+            )
+            .unwrap();
+    }
+    storage.commit_writer().unwrap();
+    drop(storage);
+    rusqlite::Connection::open(&database)
+        .unwrap()
+        .pragma_update(None, "user_version", 32)
+        .unwrap();
+    let mut storage = Storage::open_writer(&database).unwrap();
+    assert!(storage.semantic_index_is_ready("fixture").unwrap());
+    let options = IndexOptions {
+        providers: [(Provider::ClaudeCode, vec![directory.path().to_path_buf()])].into(),
+        roots_are_authoritative: true,
+        since_days: None,
+    };
+    let summary = index(&mut storage, &options).unwrap();
+    assert_eq!(summary.checkpoint_skipped_sources, 0);
+    assert_eq!(storage.counts().unwrap().conversations, 2);
+    assert_eq!(storage.counts().unwrap().messages, 2);
+    assert!(!storage.semantic_index_is_ready("fixture").unwrap());
+    for path in [&parent, &agent] {
+        let message = &parse_claude(path).unwrap().conversation.unwrap().messages[0];
+        assert_eq!(
+            storage.view(&message.id, 0).unwrap()[0].content,
+            message.content
+        );
+    }
+}
+
+#[test]
 fn claude_parent_and_agents_keep_independent_histories_and_checkpoints() {
     for reverse in [false, true] {
         let directory = tempfile::tempdir().unwrap();

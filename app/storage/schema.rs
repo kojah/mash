@@ -23,6 +23,24 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
+    if version == 32 {
+        // Schema 33 changes Claude's logical agent identity, not stored text,
+        // projections, model space or layout. Reparse those sources on explicit
+        // indexing; their actual changes stage derived updates normally.
+        let transaction = connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        transaction
+            .execute(
+                "DELETE FROM source_checkpoints WHERE provider = ?1",
+                [crate::provider::Provider::ClaudeCode],
+            )
+            .map_err(AppError::database)?;
+        transaction
+            .pragma_update(None, "user_version", SCHEMA_VERSION)
+            .map_err(AppError::database)?;
+        return transaction.commit().map_err(AppError::database);
+    }
 
     connection
         .pragma_update(None, "foreign_keys", false)

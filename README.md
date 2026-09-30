@@ -154,8 +154,10 @@ Without a configuration file, mash indexes these built-in roots when present:
 Claude subagent transcripts share their parent's native session ID. mash uses
 the session and native `agentId` together to index each subagent as an independent
 thread, so it cannot replace the parent's history. An explicit `mash index`
-upgrades older indexes and reprocesses source checkpoints to repair this identity
-collision; search never performs the upgrade or indexing itself.
+upgrades older indexes and reprocesses Claude source checkpoints to repair this
+identity collision; search never performs the upgrade or indexing itself.
+The schema 32-to-33 upgrade preserves existing vectors and search readiness;
+reprocessing changed Claude transcripts updates their derived data normally.
 
 For pipeline diagnostics, set `MASH_TRACE=1`. mash writes JSON trace events to
 stderr, including process/request IDs, request elapsed milliseconds, nested stage spans, span busy/idle timing,
