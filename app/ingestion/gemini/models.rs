@@ -88,12 +88,50 @@ struct ToolCall {
     result: Option<Content>,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
 enum Content {
     Text(String),
     Parts(Vec<Content>),
     Part(Box<Part>),
+}
+
+impl<'de> Deserialize<'de> for Content {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = Content;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("native Gemini text, parts, or a part object")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Content, E> {
+                Ok(Content::Text(text.into()))
+            }
+
+            fn visit_string<E: serde::de::Error>(self, text: String) -> Result<Content, E> {
+                Ok(Content::Text(text))
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Content, A::Error> {
+                let mut parts = Vec::new();
+                while let Some(part) = seq.next_element()? {
+                    parts.push(part);
+                }
+                Ok(Content::Parts(parts))
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, map: A) -> Result<Content, A::Error> {
+                Part::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                    .map(|part| Content::Part(Box::new(part)))
+            }
+        }
+        // Direct dispatch avoids untagged buffering/copying of an entire nested
+        // part tree at every level. Record structural limits are checked first.
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 #[derive(Deserialize)]
@@ -225,7 +263,7 @@ impl Part {
 }
 
 impl Message {
-    pub(super) fn normalized(&self, kind: SessionKind) -> (Role, Text) {
+    pub(super) fn normalized(&self) -> (Role, Text) {
         let role = match self.kind {
             MessageKind::User => Role::User,
             MessageKind::Gemini => Role::Assistant,
@@ -256,17 +294,17 @@ impl Message {
                 output.context(&result_text.canonical);
             }
         }
-        if !matches!(kind, SessionKind::Main)
-            || (role == Role::User && output.projection.trim_start().starts_with(['/', '?']))
-        {
-            output.projection.clear();
-        } else {
-            let clean = crate::search_text::without_context_blocks(
-                &output.projection,
-                &["session_context", "hook_context", "state_snapshot"],
-            );
-            output.projection = crate::search_text::project(&role, &clean).into_owned();
-        }
         (role, output)
     }
+}
+
+pub(super) fn projection(role: &Role, text: &str) -> String {
+    if *role == Role::User && text.trim_start().starts_with(['/', '?']) {
+        return String::new();
+    }
+    let clean = crate::search_text::without_context_blocks(
+        text,
+        &["session_context", "hook_context", "state_snapshot"],
+    );
+    crate::search_text::project(role, &clean).into_owned()
 }

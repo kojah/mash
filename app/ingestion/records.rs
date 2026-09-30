@@ -2,6 +2,9 @@
 use crate::AppError;
 use std::io::{BufRead, Read};
 
+mod json;
+pub(super) use json::decode;
+
 pub(super) struct Lines<R> {
     reader: R,
     finished: bool,

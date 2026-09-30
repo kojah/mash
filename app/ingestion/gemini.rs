@@ -13,6 +13,9 @@ mod models;
 #[cfg(test)]
 mod tests;
 
+const MAX_REPLAY_BYTES: usize = 32 * 1024 * 1024;
+const MAX_MESSAGES: usize = 65_536;
+
 #[derive(Clone, Copy)]
 enum Origin {
     Recorded,
@@ -32,8 +35,9 @@ struct Replay {
     updated_at: Option<i64>,
     summary: Option<String>,
     kind: SessionKind,
-    messages: Vec<Message>,
+    messages: Vec<NormalizedMessage>,
     positions: HashMap<String, Position>,
+    retained_bytes: usize,
 }
 
 fn timestamp(value: &str) -> Result<i64, AppError> {
@@ -73,7 +77,35 @@ impl Replay {
         if message.id.trim().is_empty() {
             return Err(AppError::configuration("empty Gemini message identity"));
         }
-        timestamp(&message.timestamp)?;
+        let created_at = timestamp(&message.timestamp)?;
+        // Retain prose instead of tool/SDK containers. Expensive search filtering
+        // runs only on final saved versions, after all updates and rewinds.
+        let (role, text) = message.normalized();
+        let message = NormalizedMessage {
+            id: message.id,
+            ordinal: 0,
+            context: MessageContext::Linear,
+            role,
+            content: text.canonical,
+            search_projection: Some(text.projection),
+            created_at: Some(created_at),
+        };
+        let previous_bytes = self
+            .positions
+            .get(&message.id)
+            .map_or(0, |p| retained_bytes(&self.messages[p.index]));
+        let retained = self
+            .retained_bytes
+            .saturating_sub(previous_bytes)
+            .saturating_add(retained_bytes(&message));
+        if retained > MAX_REPLAY_BYTES
+            || (self.messages.len() == MAX_MESSAGES && !self.positions.contains_key(&message.id))
+        {
+            return Err(AppError::configuration(
+                "Gemini history exceeds the retained replay limit",
+            ));
+        }
+        self.retained_bytes = retained;
         if let Some(position) = self.positions.get_mut(&message.id) {
             position.origin = origin;
             self.messages[position.index] = message;
@@ -112,6 +144,7 @@ impl Replay {
         if let Some(messages) = update.messages {
             let previous = std::mem::take(&mut self.positions);
             self.messages.clear();
+            self.retained_bytes = 0;
             for message in messages {
                 // Checkpoints sync model input, including synthetic summaries
                 // and acknowledgements. Existing recorded turns keep provenance.
@@ -141,6 +174,8 @@ impl Replay {
                     })?;
                 for removed in self.messages.drain(position..) {
                     self.positions.remove(&removed.id);
+                    self.retained_bytes =
+                        self.retained_bytes.saturating_sub(retained_bytes(&removed));
                 }
             }
             Record::Header(header) => {
@@ -151,6 +186,24 @@ impl Replay {
         }
         self.validate()
     }
+}
+
+fn retained_bytes(message: &NormalizedMessage) -> usize {
+    // Include both owned ID copies, normalized strings and conservative slack
+    // for geometric Vec/HashMap capacity and replay bookkeeping. This is an
+    // accounting limit rather than an allocator/RSS measurement.
+    message
+        .id
+        .capacity()
+        .saturating_mul(2)
+        .saturating_add(message.content.capacity())
+        .saturating_add(
+            message
+                .search_projection
+                .as_ref()
+                .map_or(0, String::capacity),
+        )
+        .saturating_add(2 * std::mem::size_of::<NormalizedMessage>() + 128)
 }
 
 fn json(path: &Path) -> Result<Header, AppError> {
@@ -165,8 +218,7 @@ fn json(path: &Path) -> Result<Header, AppError> {
             "Gemini JSON session exceeds the 8 MiB document limit",
         ));
     }
-    serde_json::from_slice(&bytes)
-        .map_err(|_| AppError::configuration("invalid Gemini JSON session"))
+    records::decode(&bytes)
 }
 
 fn replay(path: &Path) -> Result<Replay, AppError> {
@@ -181,16 +233,15 @@ fn replay(path: &Path) -> Result<Replay, AppError> {
             Ok(line) => !line.trim().is_empty(),
             Err(_) => true,
         });
-    let header: Header = serde_json::from_str(
-        &lines
+    let header: Header = records::decode(
+        lines
             .next()
-            .ok_or_else(|| AppError::configuration("Gemini session header is missing"))??,
-    )
-    .map_err(|_| AppError::configuration("invalid Gemini session header"))?;
+            .ok_or_else(|| AppError::configuration("Gemini session header is missing"))??
+            .as_bytes(),
+    )?;
     let mut state = Replay::start(header)?;
     for line in lines {
-        let record = serde_json::from_str(&line?)
-            .map_err(|_| AppError::configuration("invalid Gemini session record"))?;
+        let record = records::decode(line?.as_bytes())?;
         state.record(record)?;
     }
     Ok(state)
@@ -235,36 +286,29 @@ fn project(path: &Path, hash: &str) -> Result<String, AppError> {
 }
 
 pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
-    let state = replay(path)?;
-    let mut messages = Vec::new();
-    for message in state.messages {
-        let created_at = timestamp(&message.timestamp)?;
-        let (role, mut text) = message.normalized(state.kind);
-        if state
-            .positions
-            .get(&message.id)
-            .is_some_and(|p| matches!(p.origin, Origin::ModelContext))
+    let mut state = replay(path)?;
+    state
+        .messages
+        .retain(|message| !message.content.trim().is_empty());
+    for (ordinal, message) in state.messages.iter_mut().enumerate() {
+        if !matches!(state.kind, SessionKind::Main)
+            || state
+                .positions
+                .get(&message.id)
+                .is_some_and(|p| matches!(p.origin, Origin::ModelContext))
         {
-            text.projection.clear();
+            message.search_projection = Some(String::new());
+        } else if let Some(projection) = &mut message.search_projection {
+            *projection = models::projection(&message.role, projection);
         }
-        if text.canonical.trim().is_empty() {
-            continue;
-        }
-        let ordinal = i64::try_from(messages.len())
-            .map_err(|_| AppError::internal("too many Gemini messages"))?;
-        messages.push(NormalizedMessage {
-            id: super::parsers::stable_id(
-                "message",
-                &[Provider::GeminiCli.as_str(), &state.session, &message.id],
-            ),
-            ordinal,
-            context: MessageContext::Linear,
-            role,
-            content: text.canonical,
-            search_projection: Some(text.projection),
-            created_at: Some(created_at),
-        });
+        message.ordinal =
+            i64::try_from(ordinal).map_err(|_| AppError::internal("too many Gemini messages"))?;
+        message.id = super::parsers::stable_id(
+            "message",
+            &[Provider::GeminiCli.as_str(), &state.session, &message.id],
+        );
     }
+    let messages = state.messages;
     let created_at = state
         .created_at
         .or_else(|| messages.iter().filter_map(|m| m.created_at).min());

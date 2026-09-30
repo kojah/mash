@@ -232,7 +232,12 @@ changes and removal trigger a refresh without changing the history's age horizon
 Repository metadata is not inferred. A JSONL sibling takes precedence over its
 old JSON file when both are discovered, avoiding duplicate migrated sessions.
 Reads are limited to 8 MiB per JSONL record or complete native JSON document,
-and 8 KiB per project marker; oversized input is reported without truncation.
+and 8 KiB per project marker. A structural check caps JSON records at 65,536
+nodes before typed decoding. Replay retains normalized text with a 32 MiB
+accounting budget and at most 65,536 message IDs; replacements, checkpoints and
+rewinds release that budget. These are parser bounds rather than process RSS
+limits. Oversized input is reported without truncation and preserves the previous
+indexed revision.
 The format follows the official [recording schema](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingTypes.ts),
 [recording service](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingService.ts)
 and [project registry](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/config/projectRegistry.ts).

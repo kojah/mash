@@ -1,4 +1,5 @@
 use super::*;
+mod memory;
 use crate::{
     ingestion::{IndexOptions, direct_scans, index},
     provider::Provider,
