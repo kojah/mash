@@ -270,6 +270,9 @@ is authoritative. Ambiguous multiple histories of the same kind are rejected.
 See the source-linked [Cline contract](docs/cline-ingestion-contract.md) for
 verified schemas and remaining validation gates.
 
+The [Cursor ingestion contract](docs/cursor-ingestion-contract.md) records
+first-party native-store evidence and generated fixtures for the pending adapter.
+
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
