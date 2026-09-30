@@ -183,6 +183,63 @@ fn codex_parser_keeps_messages_and_tool_calls() {
 }
 
 #[test]
+fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
+    // Output of unmodified codex-cli 0.159.2 migrate-rollouts on synthetic history.
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.write_all(include_bytes!(
+        "../../../docs/fixtures/codex-native-migration-0.159.2.jsonl"
+    ))
+    .unwrap();
+    let parsed = parse_codex(file.path()).unwrap();
+    assert_eq!(parsed.malformed_records, 0);
+    let conversation = parsed.conversation.unwrap();
+    assert_eq!(conversation.id, "11111111-1111-4111-8111-111111111111");
+    assert_eq!(conversation.project.as_deref(), Some("/synthetic/mash"));
+    assert_eq!(
+        conversation.title.as_deref(),
+        Some("find cbioportal conversations")
+    );
+    assert_eq!(conversation.messages.len(), 4);
+    for (index, message) in conversation.messages.iter().enumerate() {
+        let ordinal = i64::try_from(index).unwrap();
+        assert_eq!(message.ordinal, ordinal);
+        assert_eq!(
+            message.role,
+            if index % 2 == 0 {
+                crate::role::Role::User
+            } else {
+                crate::role::Role::Assistant
+            }
+        );
+        assert_eq!(
+            message.created_at,
+            Some(1_790_762_401_000 + 2_000 * ordinal)
+        );
+    }
+    let messages = &conversation.messages;
+    assert_eq!(messages[0].content, "find cbioportal conversations");
+    assert_eq!(messages[0].content, messages[2].content);
+    assert_ne!(messages[0].id, messages[2].id);
+    assert_eq!(messages[1].content, "Here is answer 0.");
+    assert_eq!(messages[3].content, "Here is answer 1.");
+    assert_eq!(
+        messages[1].id,
+        stable_id(
+            "message",
+            &["codex", &file.path().to_string_lossy(), "answer-0"]
+        )
+    );
+    // Rereading must retain identity even though mirrored lifecycle IDs differ.
+    let reread = parse_codex(file.path()).unwrap().conversation.unwrap();
+    assert!(
+        messages
+            .iter()
+            .map(|m| &m.id)
+            .eq(reread.messages.iter().map(|m| &m.id))
+    );
+}
+
+#[test]
 fn codex_parser_keeps_the_rollout_session_identity() {
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(
