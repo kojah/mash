@@ -12,12 +12,33 @@ pub(super) struct Discovery {
     pub(super) complete: bool,
 }
 
+/// Provider-specific physical dependencies belong beside source discovery.
+pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for (&provider, paths) in &options.providers {
+        for path in paths {
+            if provider == Provider::Openclaw {
+                if path.extension().is_some_and(|ext| ext == "sqlite") {
+                    roots.push(super::openclaw::cold_directory(path));
+                } else if path.file_name().is_some_and(|name| name == "agent") {
+                    roots.push(super::openclaw::cold_directory(
+                        &path.join("openclaw-agent.sqlite"),
+                    ));
+                }
+            }
+            roots.push(path.clone());
+        }
+    }
+    roots
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SourceStamp {
     pub(crate) size_bytes: i64,
     pub(crate) modified_ns: i64,
     pub(crate) fingerprint: String,
     pub(crate) activity_ns: Option<i64>,
+    dependencies: Vec<PathBuf>,
 }
 
 impl SourceStamp {
@@ -27,11 +48,13 @@ impl SourceStamp {
             modified_ns,
             fingerprint: String::new(),
             activity_ns: None,
+            dependencies: Vec::new(),
         }
     }
 
     pub(crate) fn verify(&self, source: &SourceIdentity) -> Result<(), AppError> {
-        let current = source_stamp_for(source)?;
+        let mut current = source_stamp_for(source)?;
+        current.include_dependencies(&self.dependencies)?;
         if current.size_bytes != self.size_bytes
             || current.modified_ns != self.modified_ns
             || current.fingerprint != self.fingerprint
@@ -40,6 +63,27 @@ impl SourceStamp {
                 "history changed while indexing; retry index",
             ));
         }
+        Ok(())
+    }
+
+    pub(super) fn include_dependencies(&mut self, paths: &[PathBuf]) -> Result<(), AppError> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        let mut hash = blake3::Hasher::new();
+        hash.update(self.fingerprint.as_bytes());
+        for path in paths {
+            let stamp = source_stamp(path)?;
+            let name = path.as_os_str().as_encoded_bytes();
+            hash.update(&(name.len() as u64).to_le_bytes());
+            hash.update(name);
+            hash.update(&stamp.size_bytes.to_le_bytes());
+            hash.update(&stamp.modified_ns.to_le_bytes());
+            self.size_bytes = self.size_bytes.saturating_add(stamp.size_bytes);
+            self.modified_ns = self.modified_ns.max(stamp.modified_ns);
+        }
+        self.fingerprint = hash.finalize().to_hex().to_string();
+        self.dependencies = paths.to_vec();
         Ok(())
     }
 }
@@ -88,6 +132,7 @@ pub(crate) fn source_stamp_for(source: &SourceIdentity) -> Result<SourceStamp, A
             .max(wal.as_ref().map_or(0, |s| s.modified_ns)),
         fingerprint: hash.finalize().to_hex().to_string(),
         activity_ns: None,
+        dependencies: Vec::new(),
     })
 }
 
@@ -118,6 +163,7 @@ pub(super) fn discover_history_files(
     let sessions = match provider {
         Provider::Hermes => super::hermes::discover,
         Provider::Opencode => super::opencode::discover,
+        Provider::Openclaw => super::openclaw::discover,
         Provider::ClaudeCode | Provider::Codex | Provider::Aider => return Ok(discovery),
     };
     discovery.sources = discovery
@@ -177,6 +223,11 @@ fn discover_physical_sources(
         Provider::Opencode => {
             path.file_name().is_some_and(|name| name == "opencode.db")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))
+        }
+        Provider::Openclaw => {
+            path.file_name()
+                .is_some_and(|name| name == "openclaw-agent.sqlite")
+                || (explicit && path.extension().is_some_and(|e| e == "sqlite"))
         }
     })
 }

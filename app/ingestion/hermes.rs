@@ -47,6 +47,7 @@ pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
                 },
                 activity_ns: Some(activity_ns),
                 estimated_bytes: Some(estimated_bytes),
+                dependencies: Vec::new(),
             })
         })
         .collect()

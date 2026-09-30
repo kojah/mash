@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -155,6 +155,23 @@ Operational events and unknown part types are omitted. Session activity controls
 the history horizon. The adapter follows the upstream
 [database schema](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/sql.ts)
 and [message schema](https://github.com/anomalyco/opencode/blob/dev/packages/schema/src/session-message.ts).
+
+OpenClaw is opt-in through `[providers.openclaw]`, with `roots` pointing to
+per-agent `openclaw-agent.sqlite` databases (normally
+`~/.openclaw/agents/<agentId>/agent/openclaw-agent.sqlite`) or a directory
+containing them. Each native session window becomes a thread. The adapter reads
+plain and Zstandard-compressed events and verifies cold archives stored in SQLite
+or the adjacent `sessions/cold` directory, without restoring or changing the
+upstream database. Current branch ancestry and the latest reset window control
+visible history; compaction retains earlier visible messages. Explicitly retained
+reset messages stay visible. Prose is searchable; tools, reasoning, summaries and
+visible extension messages remain context only. Hidden extension messages are
+omitted. Logged `cwd` supplies the project filter; repository metadata is absent.
+WAL and cold-file changes invalidate checkpoints and trigger watchers. Missing or
+invalid archives/navigation fail indexing instead of replacing history with an
+empty result. The native compression columns and cold-archive format follow the
+[upstream schema](https://github.com/openclaw/openclaw/blob/main/src/state/openclaw-agent-schema.sql)
+and [archive codec](https://github.com/openclaw/openclaw/blob/main/src/config/sessions/session-cold-storage-codec.ts).
 
 ## Configuration
 

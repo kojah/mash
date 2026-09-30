@@ -9,6 +9,7 @@ mod aider;
 mod discovery;
 mod hermes;
 mod json;
+mod openclaw;
 mod opencode;
 mod parsers;
 mod source;
@@ -18,11 +19,11 @@ mod tests;
 
 #[cfg(test)]
 use discovery::source_stamp;
-pub(crate) use discovery::validate_output_path;
 pub(crate) use discovery::{DirectScan, SourceStamp, direct_scans, source_stamp_for};
 use discovery::{
     Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
 };
+pub(crate) use discovery::{validate_output_path, watch_roots};
 pub(crate) use source::{HistorySource, SourceIdentity};
 
 use crate::AppError;
@@ -40,6 +41,7 @@ impl Provider {
             Self::Aider => |source| aider::parse(&source.path),
             Self::Hermes => hermes::parse,
             Self::Opencode => opencode::parse,
+            Self::Openclaw => openclaw::parse,
         }
     }
 }

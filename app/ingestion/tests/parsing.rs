@@ -19,7 +19,8 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
                 }
                 crate::provider::Provider::Aider
                 | crate::provider::Provider::Hermes
-                | crate::provider::Provider::Opencode => {
+                | crate::provider::Provider::Opencode
+                | crate::provider::Provider::Openclaw => {
                     unreachable!("this fixture covers the JSONL providers")
                 }
             };
@@ -30,7 +31,8 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
             crate::provider::Provider::ClaudeCode => parse_claude(file.path()),
             crate::provider::Provider::Aider
             | crate::provider::Provider::Hermes
-            | crate::provider::Provider::Opencode => {
+            | crate::provider::Provider::Opencode
+            | crate::provider::Provider::Openclaw => {
                 unreachable!("this fixture covers the JSONL providers")
             }
         }

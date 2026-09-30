@@ -646,7 +646,7 @@ pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, 
         if enabled {
             let mut selected = options.clone();
             config::IndexFilter::apply(filter.as_ref(), &mut selected);
-            roots.extend(selected.providers.into_values().flatten());
+            roots.extend(ingestion::watch_roots(&selected));
         }
     }
     roots.sort();

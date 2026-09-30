@@ -30,8 +30,9 @@ impl Targets {
                     .any(|file| file == path || file.starts_with(path))
                     || self.roots.iter().any(|root| {
                         root.starts_with(path)
-                            || (root.extension().is_some_and(|extension| extension == "db")
-                                && root.parent() == path.parent()
+                            || (root.extension().is_some_and(|extension| {
+                                matches!(extension.to_str(), Some("db" | "sqlite"))
+                            }) && root.parent() == path.parent()
                                 && path.file_name().is_some_and(|name| {
                                     let mut wal_name =
                                         root.file_name().unwrap_or_default().to_os_string();
@@ -46,6 +47,11 @@ impl Targets {
                                             || name == "state.db-wal"
                                             || name == "opencode.db"
                                             || name == "opencode.db-wal"
+                                            || name == "openclaw-agent.sqlite"
+                                            || name == "openclaw-agent.sqlite-wal"
+                                            || name
+                                                .to_str()
+                                                .is_some_and(|name| name.ends_with(".jsonl.zst"))
                                     })
                                     || matches!(
                                         event.kind,
@@ -241,6 +247,14 @@ mod tests {
         assert!(directory.relevant(&change(root.join(".aider.chat.history.md"))));
         assert!(directory.relevant(&change(root.join("state.db-wal"))));
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));
+        assert!(directory.relevant(&change(root.join("openclaw-agent.sqlite-wal"))));
+        assert!(directory.relevant(&change(root.join("cold/archive.jsonl.zst"))));
+        let openclaw = Targets {
+            roots: vec![root.join("openclaw-agent.sqlite")],
+            files: Vec::new(),
+        };
+        assert!(openclaw.relevant(&change(root.join("openclaw-agent.sqlite-wal"))));
+        assert!(!openclaw.relevant(&change(root.join("other.sqlite-wal"))));
         assert!(database.relevant(&change(root.join("state.db-wal"))));
         assert!(custom.relevant(&change(root.join("custom.db-wal"))));
         assert!(!custom.relevant(&change(root.join("other.db-wal"))));

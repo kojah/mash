@@ -13,6 +13,7 @@ pub(crate) struct HistorySource {
     pub(crate) identity: SourceIdentity,
     pub(crate) activity_ns: Option<i64>,
     pub(crate) estimated_bytes: Option<u64>,
+    pub(crate) dependencies: Vec<PathBuf>,
 }
 
 impl HistorySource {
@@ -21,11 +22,13 @@ impl HistorySource {
             identity: SourceIdentity::file(path),
             activity_ns: None,
             estimated_bytes: None,
+            dependencies: Vec::new(),
         }
     }
 
     pub(crate) fn stamp(&self) -> Result<super::SourceStamp, crate::AppError> {
         let mut stamp = super::source_stamp_for(&self.identity)?;
+        stamp.include_dependencies(&self.dependencies)?;
         stamp.activity_ns = self.activity_ns;
         Ok(stamp)
     }
