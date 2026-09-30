@@ -15,8 +15,6 @@ use fastembed::{
     InitOptionsUserDefined, QuantizationMode, TextEmbedding, UserDefinedEmbeddingModel,
 };
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-use hf_hub::api::sync::ApiBuilder;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use ort::ep;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use std::collections::HashMap;
@@ -153,19 +151,4 @@ pub(super) fn load_coreml_embedding(
     padding.strategy = tokenizers::PaddingStrategy::Fixed(sequence_length);
     embedding.tokenizer.with_padding(Some(padding));
     Ok(embedding)
-}
-
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-pub(super) fn download_coreml_embedding(root: &Path) -> Result<(), AppError> {
-    let api = ApiBuilder::new()
-        .with_cache_dir(root.to_path_buf())
-        .with_progress(false)
-        .build()
-        .map_err(|error| {
-            AppError::model(format!("failed to initialize model download: {error}"))
-        })?;
-    api.model("Xenova/all-MiniLM-L6-v2".to_owned())
-        .get(COREML_MODEL_FILE)
-        .map(|_| ())
-        .map_err(|error| AppError::model(format!("failed to download Core ML model: {error}")))
 }

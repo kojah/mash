@@ -2,14 +2,14 @@
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use super::EmbeddingPool;
 use super::assets::{self, InstallMarker, inventory};
+use super::downloads;
 use super::generations::StagedAssets;
 use super::{
     AppError, Backend, EMBEDDING_MODEL, InstallSummary, Models, RERANKER_MODEL,
-    coreml_embedding_enabled, embedding_model_description,
+    coreml_embedding_enabled, embedding_model_description, load_reranker,
 };
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use crate::semantic::embeddings::EmbeddingGroup;
-use fastembed::{RerankInitOptions, TextRerank};
 use std::fs;
 use std::path::Path;
 
@@ -43,12 +43,8 @@ impl Models {
         let staged = StagedAssets::new(&self.root)?;
         let asset_root = staged.root();
         if let Some(config) = &self.remote {
-            let mut reranker = TextRerank::try_new(
-                RerankInitOptions::new(RERANKER_MODEL)
-                    .with_cache_dir(asset_root.to_path_buf())
-                    .with_show_download_progress(false),
-            )
-            .map_err(|_| AppError::model("failed to install reranking model"))?;
+            downloads::reranker(asset_root)?;
+            let mut reranker = load_reranker(asset_root)?;
             reranker
                 .rerank("installation check", ["installation check"], false, None)
                 .map_err(|_| AppError::model("reranking model installation check failed"))?;

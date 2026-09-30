@@ -763,6 +763,9 @@ retired generations once no reader holds them. The original flat cache is
 retained so readers started before the first generation install can finish.
 Reinstallation needs disk space for a second copy of the assets. This staging
 also isolates mutable SDK revision references from the active cache.
+Model downloads always use mash's selected model directory, even when `HF_HOME`
+is set for another application. Set `--models-dir` to change mash's model location;
+`HF_ENDPOINT` remains available for a Hugging Face mirror.
 On Unix, installers flush the asset files and directories before activation,
 then flush the marker's directory entry after activation. If that final flush
 fails, the retryable error states that the installation is active but its

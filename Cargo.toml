@@ -48,6 +48,7 @@ chrono = { version = "0.4.44", default-features = false, features = ["std"] }
 clap = { version = "4.6.1", features = ["derive"] }
 directories = "6.0.0"
 fastembed = { version = "6.0.1", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
+hf-hub = { version = "0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "modern_sqlite", "blob"] }
 zstd = { version = "0.14", default-features = false }
 sha2 = "0.11"
@@ -61,7 +62,6 @@ walkdir = "2.5.0"
 whatlang = "0.18.0"
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
-hf-hub = { version = "0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"] }
 tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
 

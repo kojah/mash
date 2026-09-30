@@ -1,6 +1,4 @@
 //! Explicit model installation, asset validation, and cached search backends.
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-use super::coreml::download_coreml_embedding;
 use super::embeddings::{EmbeddingPool, EmbeddingPoolBackend};
 use super::remote;
 use super::{
@@ -9,8 +7,8 @@ use super::{
 };
 use crate::AppError;
 use fastembed::{
-    InitOptionsUserDefined, RerankInitOptions, RerankInitOptionsUserDefined, TextEmbedding,
-    TextInitOptions, TextRerank, UserDefinedEmbeddingModel, UserDefinedRerankingModel,
+    InitOptionsUserDefined, RerankInitOptionsUserDefined, TextEmbedding, TextRerank,
+    UserDefinedEmbeddingModel, UserDefinedRerankingModel,
 };
 use serde::Serialize;
 use std::fs;
@@ -19,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
 mod assets;
+mod downloads;
 mod generations;
 mod install;
 use assets::InstallMarker;
@@ -225,26 +224,8 @@ fn load_reranker(root: &Path) -> Result<TextRerank, AppError> {
 
 impl Backend {
     fn download_and_load(root: &Path) -> Result<Self, AppError> {
-        let embedding = TextEmbedding::try_new(
-            TextInitOptions::new(EMBEDDING_MODEL)
-                .with_cache_dir(root.to_path_buf())
-                .with_show_download_progress(false),
-        )
-        .map_err(|error| AppError::model(format!("failed to load embedding model: {error}")))?;
-        let reranker = TextRerank::try_new(
-            RerankInitOptions::new(RERANKER_MODEL)
-                .with_cache_dir(root.to_path_buf())
-                .with_show_download_progress(false),
-        )
-        .map_err(|error| AppError::model(format!("failed to load reranking model: {error}")))?;
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        download_coreml_embedding(root)?;
-        Ok(Self {
-            embedding: Some(embedding),
-            remote: None,
-            reranker,
-            assets_lease: None,
-        })
+        downloads::local(root)?;
+        Self::load_local(root)
     }
 
     pub(super) fn load_local(root: &Path) -> Result<Self, AppError> {
@@ -371,5 +352,7 @@ const fn embedding_model_description() -> &'static str {
     }
 }
 
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;

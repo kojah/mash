@@ -184,18 +184,7 @@ fn staging_copies_symlink_targets_without_mutating_the_original_cache() {
 #[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 fn real_sdk_install_and_failed_model_load_preserve_working_generations() {
-    let source = std::env::var_os("MASH_TEST_MODELS_DIR")
-        .map(PathBuf::from)
-        .unwrap();
-    let selected = select(&source, false).unwrap();
-    let root = tempfile::tempdir().unwrap();
-    let initial = StagedAssets::new(root.path()).unwrap();
-    for file in &selected.marker.files {
-        let target = initial.root().join(&file.path);
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        fs::copy(selected.root.join(&file.path), target).unwrap();
-    }
-    initial.publish(root.path(), selected.marker).unwrap();
+    let root = super::super::test_support::copied_models();
     let models = super::super::Models::new(root.path().to_path_buf());
     // Run the real explicit installation and SDK smoke validation using the
     // isolated, fully populated cache. The supplied model directory is read-only.
@@ -235,6 +224,43 @@ fn real_sdk_install_and_failed_model_load_preserve_working_generations() {
     assert!(models.is_installed());
     assert!(active.root.is_dir()); // still leased by an in-flight search
     assert_eq!(working.embed(&["working installation"]).unwrap(), expected);
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+fn lazy_coreml_reader_loads_new_shapes_from_a_retired_generation() {
+    use crate::semantic::embeddings::EmbeddingGroup;
+    let started = std::time::Instant::now();
+    let root = super::super::test_support::copied_models();
+    eprintln!("Copied model fixture: {:?}", started.elapsed());
+    let models = super::super::Models::new(root.path().to_path_buf());
+    models.install().unwrap();
+    eprintln!("Installed first generation: {:?}", started.elapsed());
+    let mut pool = models.load_indexer().unwrap().unwrap();
+    eprintln!("Loaded reader: {:?}", started.elapsed());
+    let retired = select(root.path(), false).unwrap().root;
+    models.install().unwrap();
+    eprintln!("Installed replacement: {:?}", started.elapsed());
+    assert!(retired.is_dir());
+    // The pool starts with only its 64-token session. This >256-token input
+    // must load the 512-token Core ML session using the retired asset directory.
+    let groups = [EmbeddingGroup {
+        content: "retained model assets ".repeat(120),
+        message_ids: vec!["retired-reader".to_owned()],
+    }];
+    let vectors = pool.embed_wave(&groups).unwrap();
+    eprintln!(
+        "Loaded retired generation's 512-token session: {:?}",
+        started.elapsed()
+    );
+    assert_eq!(vectors.len(), 1);
+    assert_eq!(vectors[0].len(), 384);
+    assert!(vectors[0].iter().all(|value| value.is_finite()));
+    drop(pool);
+    cleanup(root.path()).unwrap();
+    assert!(!retired.exists());
+    assert!(select(root.path(), false).is_ok());
 }
 
 // The child is a real process so kill/release behavior is covered without
