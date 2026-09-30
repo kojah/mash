@@ -5,7 +5,12 @@ use crate::shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, S
 pub(super) fn publication(
     conversation: crate::ingestion::Conversation,
 ) -> (Vec<Value>, Vec<String>) {
-    let ids = conversation.messages.iter().map(|m| m.id.clone()).collect();
+    let ids = conversation
+        .messages
+        .inline()
+        .iter()
+        .map(|m| m.id.clone())
+        .collect();
     let record = ConversationRecord {
         id: conversation.id.clone(),
         provider: conversation.provider,
@@ -19,6 +24,8 @@ pub(super) fn publication(
     vector[0] = 127.0;
     let messages = conversation
         .messages
+        .inline()
+        .to_vec()
         .into_iter()
         .map(|m| {
             let projection = m.search_projection.unwrap();

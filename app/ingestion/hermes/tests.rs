@@ -44,15 +44,29 @@ fn native_display_history_is_read_only_and_excludes_compaction_copies_and_hidden
     let before = source_stamp_for(source).unwrap();
     let parsed = parse(source).unwrap().conversation.unwrap();
     assert_eq!(parsed.messages.len(), 4);
-    assert_eq!(parsed.messages[0].created_at, Some(1_790_726_400_250));
+    assert_eq!(
+        parsed.messages.inline()[0].created_at,
+        Some(1_790_726_400_250)
+    );
     assert_eq!(parsed.project.as_deref(), Some("/work/cbioportal"));
     assert_eq!(parsed.repository.as_deref(), Some("/work/repository"));
-    assert!(parsed.messages[2].content.contains("toolargumentmarker"));
-    assert_eq!(parsed.messages[2].search_projection.as_deref(), Some(""));
-    assert_eq!(parsed.messages[3].search_projection.as_deref(), Some(""));
+    assert!(
+        parsed.messages.inline()[2]
+            .content
+            .contains("toolargumentmarker")
+    );
+    assert_eq!(
+        parsed.messages.inline()[2].search_projection.as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        parsed.messages.inline()[3].search_projection.as_deref(),
+        Some("")
+    );
     assert!(
         parsed
             .messages
+            .inline()
             .iter()
             .all(|m| !m.content.contains("hidden") && !m.content.contains("rewound"))
     );
@@ -64,11 +78,17 @@ fn native_display_history_is_read_only_and_excludes_compaction_copies_and_hidden
             .is_err()
     );
     // A later compaction representative retains the same normalized identity.
-    let id = parsed.messages[0].id.clone();
+    let id = parsed.messages.inline()[0].id.clone();
     upstream.execute_batch("UPDATE messages SET active=0,compacted=1 WHERE id=4;
         INSERT INTO messages(id,session_id,role,content,timestamp,display_order) VALUES(9,'alpha','user','Fix the cBioPortal importer',1790726400.25,1);").unwrap();
     assert_eq!(
-        parse(source).unwrap().conversation.unwrap().messages[0].id,
+        parse(source)
+            .unwrap()
+            .conversation
+            .unwrap()
+            .messages
+            .inline()[0]
+            .id,
         id
     );
 }
@@ -212,7 +232,10 @@ fn compaction_without_a_backfilled_display_index_does_not_duplicate_evidence() {
     let sources = discover(&path).unwrap();
     let parsed = parse(&sources[0].identity).unwrap().conversation.unwrap();
     assert_eq!(parsed.messages.len(), 2);
-    assert_eq!(parsed.messages[0].content, "Fix the cBioPortal importer");
+    assert_eq!(
+        parsed.messages.inline()[0].content,
+        "Fix the cBioPortal importer"
+    );
 }
 
 #[test]

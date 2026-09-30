@@ -135,31 +135,33 @@ fn native_tree_keeps_unique_branches_and_context_without_model_only_edits() {
     assert_eq!(parsed.title.as_deref(), Some("Importer alternatives"));
     assert_eq!(parsed.project.as_deref(), Some("/work/cbioportal"));
     assert!(parsed.repository.is_none());
-    assert_eq!(parsed.messages[0].context, MessageContext::Root);
+    assert_eq!(parsed.messages.inline()[0].context, MessageContext::Root);
     assert_eq!(
-        parsed.messages[1].context,
+        parsed.messages.inline()[1].context,
         MessageContext::Parent { ordinal: 0 }
     );
     assert_eq!(
-        parsed.messages[5].context,
+        parsed.messages.inline()[5].context,
         MessageContext::Parent { ordinal: 0 }
     );
     assert_eq!(
-        parsed.messages[7].context,
+        parsed.messages.inline()[7].context,
         MessageContext::Parent { ordinal: 6 }
     );
     assert_eq!(
-        parsed.messages[9].context,
+        parsed.messages.inline()[9].context,
         MessageContext::Parent { ordinal: 8 }
     );
     let canonical = parsed
         .messages
+        .inline()
         .iter()
         .map(|m| m.content.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     let searchable = parsed
         .messages
+        .inline()
         .iter()
         .map(|m| m.search_projection.as_deref().unwrap())
         .collect::<Vec<_>>()
@@ -180,8 +182,18 @@ fn native_tree_keeps_unique_branches_and_context_without_model_only_edits() {
     }
     let repeated = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(
-        parsed.messages.iter().map(|m| &m.id).collect::<Vec<_>>(),
-        repeated.messages.iter().map(|m| &m.id).collect::<Vec<_>>()
+        parsed
+            .messages
+            .inline()
+            .iter()
+            .map(|m| &m.id)
+            .collect::<Vec<_>>(),
+        repeated
+            .messages
+            .inline()
+            .iter()
+            .map(|m| &m.id)
+            .collect::<Vec<_>>()
     );
     assert_eq!(std::fs::read(file.path()).unwrap(), before);
     stamp.verify(&source).unwrap();
@@ -208,6 +220,7 @@ fn local_view_and_reranking_follow_branch_edges_instead_of_adjacent_siblings() {
                 for record in records {
                     let native = parsed
                         .messages
+                        .inline()
                         .iter()
                         .find(|message| message.id == record.id)
                         .unwrap();

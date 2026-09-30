@@ -53,11 +53,14 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
         .unwrap()
         .conversation
         .unwrap();
-        assert_eq!(parsed.messages[0].content, context);
-        assert_eq!(parsed.messages[0].search_projection.as_deref(), Some(""));
-        assert_eq!(parsed.messages[1].content, mixed);
+        assert_eq!(parsed.messages.inline()[0].content, context);
         assert_eq!(
-            parsed.messages[1].search_projection.as_deref(),
+            parsed.messages.inline()[0].search_projection.as_deref(),
+            Some("")
+        );
+        assert_eq!(parsed.messages.inline()[1].content, mixed);
+        assert_eq!(
+            parsed.messages.inline()[1].search_projection.as_deref(),
             Some("fix cBioPortal importer")
         );
         assert_eq!(parsed.title.as_deref(), Some("fix cBioPortal importer"));
@@ -136,7 +139,7 @@ fn claude_parser_skips_malformed_lines_and_keeps_messages() {
     assert_eq!(parsed.malformed_records, 1);
     assert_eq!(conversation.id, "s1");
     assert_eq!(conversation.messages.len(), 2);
-    assert_eq!(conversation.messages[1].content, "world");
+    assert_eq!(conversation.messages.inline()[1].content, "world");
 }
 
 #[test]
@@ -148,15 +151,15 @@ fn claude_parser_separates_tool_results_from_searchable_text() {
     let parsed = parse_claude(file.path()).expect("parse Claude history");
     let messages = parsed.conversation.expect("conversation").messages;
     assert_eq!(
-        messages[0].content,
+        messages.inline()[0].content,
         "keep this request\nprivate tool payload"
     );
     assert_eq!(
-        messages[0].search_projection.as_deref(),
+        messages.inline()[0].search_projection.as_deref(),
         Some("keep this request")
     );
-    assert_eq!(messages[1].content, "only tool payload");
-    assert_eq!(messages[1].search_projection.as_deref(), Some(""));
+    assert_eq!(messages.inline()[1].content, "only tool payload");
+    assert_eq!(messages.inline()[1].search_projection.as_deref(), Some(""));
 
     let mut object_file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(object_file, r#"{{"type":"user","sessionId":"s2","uuid":"object","message":{{"role":"user","content":{{"type":"tool_result","content":"object tool payload"}}}}}}"#).expect("object tool-result line");
@@ -165,6 +168,7 @@ fn claude_parser_separates_tool_results_from_searchable_text() {
         .conversation
         .expect("object conversation")
         .messages
+        .inline_mut()
         .remove(0);
     assert_eq!(object.content, "object tool payload");
     assert_eq!(object.search_projection.as_deref(), Some(""));
@@ -181,14 +185,29 @@ fn claude_keeps_reasoning_and_tool_arguments_only_in_canonical_context() {
         "{\"type\":\"assistant\",\"sessionId\":\"tools\",\"uuid\":\"call\",\"message\":{\"role\":\"assistant\",\"content\":{\"type\":\"tool_use\",\"name\":\"shell\",\"input\":\"privatecommandmarker\"}}}\n",
     )).unwrap();
     let parsed = parse_claude(file.path()).unwrap().conversation.unwrap();
-    assert!(parsed.messages[0].content.contains("internal reasoning"));
-    assert!(parsed.messages[0].content.contains("privatecommandmarker"));
+    assert!(
+        parsed.messages.inline()[0]
+            .content
+            .contains("internal reasoning")
+    );
+    assert!(
+        parsed.messages.inline()[0]
+            .content
+            .contains("privatecommandmarker")
+    );
     assert_eq!(
-        parsed.messages[0].search_projection.as_deref(),
+        parsed.messages.inline()[0].search_projection.as_deref(),
         Some("I fixed the importer")
     );
-    assert!(parsed.messages[1].content.contains("privatecommandmarker"));
-    assert_eq!(parsed.messages[1].search_projection.as_deref(), Some(""));
+    assert!(
+        parsed.messages.inline()[1]
+            .content
+            .contains("privatecommandmarker")
+    );
+    assert_eq!(
+        parsed.messages.inline()[1].search_projection.as_deref(),
+        Some("")
+    );
 }
 
 #[test]
@@ -202,9 +221,15 @@ fn codex_parser_keeps_messages_and_tool_calls() {
     let conversation = parsed.conversation.expect("conversation");
     assert_eq!(conversation.id, "c1");
     assert_eq!(conversation.messages.len(), 2);
-    assert!(conversation.messages[1].content.contains("Tool search"));
+    assert!(
+        conversation.messages.inline()[1]
+            .content
+            .contains("Tool search")
+    );
     assert_eq!(
-        conversation.messages[1].search_projection.as_deref(),
+        conversation.messages.inline()[1]
+            .search_projection
+            .as_deref(),
         Some("")
     );
 }
@@ -227,7 +252,7 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
         Some("find cbioportal conversations")
     );
     assert_eq!(conversation.messages.len(), 4);
-    for (index, message) in conversation.messages.iter().enumerate() {
+    for (index, message) in conversation.messages.inline().iter().enumerate() {
         let ordinal = i64::try_from(index).unwrap();
         assert_eq!(message.ordinal, ordinal);
         assert_eq!(
@@ -244,13 +269,16 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
         );
     }
     let messages = &conversation.messages;
-    assert_eq!(messages[0].content, "find cbioportal conversations");
-    assert_eq!(messages[0].content, messages[2].content);
-    assert_ne!(messages[0].id, messages[2].id);
-    assert_eq!(messages[1].content, "Here is answer 0.");
-    assert_eq!(messages[3].content, "Here is answer 1.");
     assert_eq!(
-        messages[1].id,
+        messages.inline()[0].content,
+        "find cbioportal conversations"
+    );
+    assert_eq!(messages.inline()[0].content, messages.inline()[2].content);
+    assert_ne!(messages.inline()[0].id, messages.inline()[2].id);
+    assert_eq!(messages.inline()[1].content, "Here is answer 0.");
+    assert_eq!(messages.inline()[3].content, "Here is answer 1.");
+    assert_eq!(
+        messages.inline()[1].id,
         stable_id(
             "message",
             &["codex", &file.path().to_string_lossy(), "answer-0"]
@@ -260,9 +288,10 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
     let reread = parse_codex(file.path()).unwrap().conversation.unwrap();
     assert!(
         messages
+            .inline()
             .iter()
             .map(|m| &m.id)
-            .eq(reread.messages.iter().map(|m| &m.id))
+            .eq(reread.messages.inline().iter().map(|m| &m.id))
     );
 }
 
@@ -279,18 +308,33 @@ fn codex_native_completed_only_dialogue_is_recovered() {
     assert_eq!(conversation.id, "22222222-2222-4222-8222-222222222222");
     assert_eq!(conversation.messages.len(), 4);
     assert_eq!(
-        conversation.messages[0].content,
+        conversation.messages.inline()[0].content,
         "find cbioportal conversations"
     );
     assert_eq!(
-        conversation.messages[2].content,
-        conversation.messages[0].content
+        conversation.messages.inline()[2].content,
+        conversation.messages.inline()[0].content
     );
-    assert_ne!(conversation.messages[0].id, conversation.messages[2].id);
-    assert_eq!(conversation.messages[1].content, "Here is answer 0.");
-    assert_eq!(conversation.messages[3].content, "Here is answer 1.");
-    assert_eq!(conversation.messages[0].created_at, Some(1_790_762_402_000));
-    assert_eq!(conversation.messages[1].role, crate::role::Role::Assistant);
+    assert_ne!(
+        conversation.messages.inline()[0].id,
+        conversation.messages.inline()[2].id
+    );
+    assert_eq!(
+        conversation.messages.inline()[1].content,
+        "Here is answer 0."
+    );
+    assert_eq!(
+        conversation.messages.inline()[3].content,
+        "Here is answer 1."
+    );
+    assert_eq!(
+        conversation.messages.inline()[0].created_at,
+        Some(1_790_762_402_000)
+    );
+    assert_eq!(
+        conversation.messages.inline()[1].role,
+        crate::role::Role::Assistant
+    );
 }
 
 #[test]
@@ -331,15 +375,21 @@ fn codex_partial_mirrors_keep_unmatched_dialogue_in_both_orders() {
         let conversation = parse_codex(file.path()).unwrap().conversation.unwrap();
         assert_eq!(conversation.messages.len(), 4, "reverse={reverse}");
         assert_eq!(
-            conversation.messages[0].content,
+            conversation.messages.inline()[0].content,
             "find cbioportal conversations"
         );
-        assert_eq!(conversation.messages[1].content, "Here is answer 0.");
         assert_eq!(
-            conversation.messages[2].content,
+            conversation.messages.inline()[1].content,
+            "Here is answer 0."
+        );
+        assert_eq!(
+            conversation.messages.inline()[2].content,
             "find cbioportal conversations"
         );
-        assert_eq!(conversation.messages[3].content, "Here is answer 1.");
+        assert_eq!(
+            conversation.messages.inline()[3].content,
+            "Here is answer 1."
+        );
     }
 }
 
@@ -366,10 +416,13 @@ fn codex_turn_boundaries_do_not_merge_separate_identical_requests() {
     let conversation = parse_codex(file.path()).unwrap().conversation.unwrap();
     assert_eq!(conversation.messages.len(), 2);
     assert_eq!(
-        conversation.messages[0].content,
-        conversation.messages[1].content
+        conversation.messages.inline()[0].content,
+        conversation.messages.inline()[1].content
     );
-    assert_ne!(conversation.messages[0].id, conversation.messages[1].id);
+    assert_ne!(
+        conversation.messages.inline()[0].id,
+        conversation.messages.inline()[1].id
+    );
 }
 
 #[test]
@@ -412,7 +465,7 @@ fn codex_parser_ignores_mirrored_event_messages() {
     let parsed = parse_codex(file.path()).expect("parse Codex history");
     let conversation = parsed.conversation.expect("conversation");
     assert_eq!(conversation.messages.len(), 1);
-    assert_eq!(conversation.messages[0].content, "mirrored turn");
+    assert_eq!(conversation.messages.inline()[0].content, "mirrored turn");
 }
 
 #[test]
@@ -435,17 +488,27 @@ fn codex_parser_keeps_custom_tool_calls() {
     assert_eq!(conversation.id, "c2");
     assert_eq!(conversation.messages.len(), 2);
     assert_eq!(
-        conversation.messages[0].content,
+        conversation.messages.inline()[0].content,
         "Tool imagegen: draw a diagram"
     );
-    assert_eq!(conversation.messages[1].role, crate::role::Role::Tool);
     assert_eq!(
-        conversation.messages[0].search_projection.as_deref(),
+        conversation.messages.inline()[1].role,
+        crate::role::Role::Tool
+    );
+    assert_eq!(
+        conversation.messages.inline()[0]
+            .search_projection
+            .as_deref(),
         Some("")
     );
-    assert_eq!(conversation.messages[1].content, "created diagram.png");
     assert_eq!(
-        conversation.messages[1].search_projection.as_deref(),
+        conversation.messages.inline()[1].content,
+        "created diagram.png"
+    );
+    assert_eq!(
+        conversation.messages.inline()[1]
+            .search_projection
+            .as_deref(),
         Some("")
     );
 }

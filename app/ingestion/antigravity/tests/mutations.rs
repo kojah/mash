@@ -62,6 +62,12 @@ fn wal_writes_change_stamps_and_rewind_keeps_surviving_message_ids() {
     assert_ne!(old, crate::ingestion::source_stamp_for(&identity).unwrap());
     let after = conversation(&path);
     assert_eq!(after.messages.len(), 2);
-    assert_eq!(before.messages[0].id, after.messages[0].id);
-    assert_eq!(before.messages[1].id, after.messages[1].id);
+    assert_eq!(
+        before.messages.inline()[0].id,
+        after.messages.inline()[0].id
+    );
+    assert_eq!(
+        before.messages.inline()[1].id,
+        after.messages.inline()[1].id
+    );
 }

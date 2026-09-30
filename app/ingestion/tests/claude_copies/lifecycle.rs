@@ -18,7 +18,12 @@ fn claude_schema_upgrade_replays_real_legacy_ids_and_preserves_unrelated_vectors
         );
         let mut legacy = parse_claude(&b).unwrap().conversation.unwrap();
         legacy.claude_lineage = None;
-        for (message, uuid) in legacy.messages.iter_mut().zip(["common", "tail"]) {
+        for (message, uuid) in legacy
+            .messages
+            .inline_mut()
+            .iter_mut()
+            .zip(["common", "tail"])
+        {
             message.id = stable_id("message", &["claude-code", &b.to_string_lossy(), uuid]);
             message.context = MessageContext::Linear;
         }
@@ -34,8 +39,9 @@ fn claude_schema_upgrade_replays_real_legacy_ids_and_preserves_unrelated_vectors
         storage.replace_conversation(&unrelated).unwrap();
         let writes = legacy
             .messages
+            .inline()
             .iter()
-            .chain(&unrelated.messages)
+            .chain(unrelated.messages.inline())
             .map(|message| crate::storage::EmbeddingWrite {
                 message_id: &message.id,
                 vector: &[127],
@@ -72,7 +78,7 @@ fn claude_schema_upgrade_replays_real_legacy_ids_and_preserves_unrelated_vectors
         storage.commit_writer().unwrap();
         assert_eq!(storage.counts().unwrap().messages, 3);
         assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
-        for message in &legacy.messages {
+        for message in legacy.messages.inline() {
             assert!(storage.view(&message.id, 0).unwrap().is_empty());
         }
         drop(storage);
@@ -115,6 +121,7 @@ fn claude_renaming_a_contribution_preserves_native_ids_context_and_vectors() {
     index(&mut storage, &options(&root)).unwrap();
     let writes = parsed
         .messages
+        .inline()
         .iter()
         .map(|message| crate::storage::EmbeddingWrite {
             message_id: &message.id,
@@ -135,10 +142,10 @@ fn claude_renaming_a_contribution_preserves_native_ids_context_and_vectors() {
         storage.commit_writer().unwrap();
         assert_eq!(storage.counts().unwrap().messages, 2);
         assert_eq!(storage.embedding_count("fixture").unwrap(), 2);
-        let context = storage.view(&parsed.messages[1].id, 1).unwrap();
+        let context = storage.view(&parsed.messages.inline()[1].id, 1).unwrap();
         assert_eq!(context.len(), 2);
-        assert_eq!(context[0].id, parsed.messages[0].id);
-        assert_eq!(context[1].id, parsed.messages[1].id);
+        assert_eq!(context[0].id, parsed.messages.inline()[0].id);
+        assert_eq!(context[1].id, parsed.messages.inline()[1].id);
     }
     fs::remove_file(&moved).unwrap();
     let mut storage = Storage::open_writer(&database).unwrap();
@@ -146,7 +153,12 @@ fn claude_renaming_a_contribution_preserves_native_ids_context_and_vectors() {
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 1);
     assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
-    assert!(storage.view(&parsed.messages[1].id, 0).unwrap().is_empty());
+    assert!(
+        storage
+            .view(&parsed.messages.inline()[1].id, 0)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

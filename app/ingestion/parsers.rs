@@ -57,7 +57,7 @@ fn parse_jsonl(
     mut extract: impl FnMut(&Record) -> Option<ExtractedMessage>,
 ) -> Result<ParsedFile, AppError> {
     let mut malformed_records = 0;
-    let mut messages = Vec::new();
+    let mut messages = super::messages::Builder::default();
     let mut session_id = None;
     let mut project = None;
     let mut repository = None;
@@ -109,9 +109,9 @@ fn parse_jsonl(
             content: extracted.content,
             search_projection: extracted.search_projection,
             created_at: extracted.created_at,
-        });
+        })?;
     }
-    if messages.is_empty() {
+    if messages.len() == 0 {
         return Ok(ParsedFile {
             conversation: None,
             malformed_records,
@@ -120,6 +120,10 @@ fn parse_jsonl(
     let id = session_id
         .unwrap_or_else(|| stable_id("session", &[provider.as_str(), &path.to_string_lossy()]));
     let id = claude_identity.thread_id(&id);
+    let mut messages = messages.finish()?;
+    if messages.is_empty() {
+        return Err(AppError::internal("parser lost normalized messages"));
+    }
     let claude_lineage = if provider == Provider::ClaudeCode {
         let (normalized, lineage) = claude_identity.normalize(&id, messages)?;
         messages = normalized;
@@ -127,15 +131,7 @@ fn parse_jsonl(
     } else {
         None
     };
-    let created_at = messages
-        .iter()
-        .filter_map(|message| message.created_at)
-        .min();
-    let updated_at = messages
-        .iter()
-        .filter_map(|message| message.created_at)
-        .max();
-    let title = conversation_title(&messages);
+    let summary = messages.summary()?;
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id,
@@ -144,27 +140,13 @@ fn parse_jsonl(
             source: super::SourceIdentity::file(path),
             repository: repository.or_else(|| project.as_deref().and_then(repository_origin)),
             project,
-            title,
-            created_at,
-            updated_at,
+            title: summary.title,
+            created_at: summary.created_at,
+            updated_at: summary.updated_at,
             messages,
         }),
         malformed_records,
     })
-}
-
-fn conversation_title(messages: &[NormalizedMessage]) -> Option<String> {
-    messages
-        .iter()
-        .filter(|message| message.role == crate::role::Role::User)
-        .find_map(|message| {
-            crate::search_text::title(
-                message
-                    .search_projection
-                    .as_deref()
-                    .unwrap_or(&message.content),
-            )
-        })
 }
 
 fn capture_session(

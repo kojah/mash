@@ -220,7 +220,7 @@ impl Storage {
 
         let repaired_messages = self.repair_claude_source_identity(conversation)?;
 
-        let source_fingerprint = conversation_fingerprint(conversation);
+        let source_fingerprint = conversation_fingerprint(conversation)?;
         let existing_source_fingerprint: Option<String> = self
             .connection
             .query_row(
@@ -410,8 +410,9 @@ impl Storage {
         let removed = self.remove_missing_messages(conversation, existing_messages)?;
         self.park_moved_ordinals(conversation, existing_messages)?;
 
-        for message in &conversation.messages {
-            let fingerprint = message_fingerprint(message);
+        for message in conversation.messages.rows()? {
+            let message = message?;
+            let fingerprint = message_fingerprint(&message);
             if existing_messages
                 .get(&message.id)
                 .map(|state| &state.fingerprint)
@@ -442,12 +443,12 @@ impl Storage {
                 if existing_messages
                     .get(&message.id)
                     .map(|state| state.search_text_hash)
-                    != Some(blake3::hash(message_search_text(message).as_bytes()))
+                    != Some(blake3::hash(message_search_text(&message).as_bytes()))
                 {
                     delete_embedding
                         .execute([&message.id])
                         .map_err(AppError::database)?;
-                    if message_search_text(message).is_empty() {
+                    if message_search_text(&message).is_empty() {
                         unqueue_embedding
                             .execute([&message.id])
                             .map_err(AppError::database)?;
@@ -471,9 +472,9 @@ impl Storage {
     ) -> Result<u64, AppError> {
         let incoming = conversation
             .messages
-            .iter()
-            .map(|message| message.id.as_str())
-            .collect::<BTreeSet<_>>();
+            .rows()?
+            .map(|message| message.map(|message| message.id.clone()))
+            .collect::<Result<BTreeSet<_>, AppError>>()?;
         let mut delete = self
             .connection
             .prepare_cached("DELETE FROM messages WHERE id = ?1")
@@ -762,14 +763,17 @@ impl Storage {
         let mut ordinal = existing
             .values()
             .map(|state| state.ordinal)
-            .chain(conversation.messages.iter().map(|message| message.ordinal))
             .max()
             .unwrap_or(-1);
+        for message in conversation.messages.rows()? {
+            ordinal = ordinal.max(message?.ordinal);
+        }
         let mut statement = self
             .connection
             .prepare_cached(sql::ParkMessageOrdinal::QUERY)
             .map_err(AppError::database)?;
-        for message in &conversation.messages {
+        for message in conversation.messages.rows()? {
+            let message = message?;
             if existing
                 .get(&message.id)
                 .is_some_and(|state| state.ordinal != message.ordinal)
@@ -840,7 +844,7 @@ pub(super) fn source_is_in_reconciliation_scope(
     }
     cutoff_modified_ns.is_none_or(|cutoff| modified_ns.is_some_and(|value| value >= cutoff))
 }
-fn conversation_fingerprint(conversation: &Conversation) -> String {
+fn conversation_fingerprint(conversation: &Conversation) -> Result<String, AppError> {
     let mut hasher = blake3::Hasher::new();
     update_hash(&mut hasher, conversation.provider.as_str());
     update_hash(&mut hasher, &conversation.id);
@@ -865,10 +869,11 @@ fn conversation_fingerprint(conversation: &Conversation) -> String {
         &mut hasher,
         &conversation.updated_at.unwrap_or_default().to_string(),
     );
-    for message in &conversation.messages {
-        update_hash(&mut hasher, &message_fingerprint(message));
+    for message in conversation.messages.rows()? {
+        let message = message?;
+        update_hash(&mut hasher, &message_fingerprint(&message));
     }
-    hasher.finalize().to_hex().to_string()
+    Ok(hasher.finalize().to_hex().to_string())
 }
 
 fn message_fingerprint(message: &crate::ingestion::NormalizedMessage) -> String {

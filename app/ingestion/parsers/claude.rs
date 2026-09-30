@@ -1,9 +1,9 @@
 //! Translate native UUID ancestry, including non-message intermediate events.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::NormalizedMessage;
 use super::super::claude::{Lineage, reconcile};
 use super::super::json::ParentLink;
+use super::super::messages::Messages;
 use super::stable_id;
 use crate::AppError;
 
@@ -53,18 +53,18 @@ impl Identity {
     pub(super) fn normalize(
         self,
         thread: &str,
-        messages: Vec<NormalizedMessage>,
-    ) -> Result<(Vec<NormalizedMessage>, Lineage), AppError> {
+        messages: Messages,
+    ) -> Result<(Messages, Lineage), AppError> {
         normalize(thread, messages, self.keys, &self.parents)
     }
 }
 
 pub(super) fn normalize(
     thread: &str,
-    messages: Vec<NormalizedMessage>,
+    messages: Messages,
     keys: Vec<Option<String>>,
     parents: &BTreeMap<String, ParentLink>,
-) -> Result<(Vec<NormalizedMessage>, Lineage), AppError> {
+) -> Result<(Messages, Lineage), AppError> {
     if messages.len() != keys.len() {
         return Err(AppError::internal(
             "Claude message identities are incomplete",
@@ -76,7 +76,8 @@ pub(super) fn normalize(
         .map(|key| (key.clone(), stable_id("claude-message", &[thread, key])))
         .collect::<BTreeMap<_, _>>();
     let mut previous = None;
-    let contributions = messages.into_iter().zip(keys).map(|(mut message, key)| {
+    let contributions = messages.into_rows()?.zip(keys).map(|(message, key)| {
+        let mut message = message?;
         let parent = if let Some(key) = key {
             message.id.clone_from(&identities[&key]);
             match parents.get(&key).unwrap_or(&ParentLink::Missing) {

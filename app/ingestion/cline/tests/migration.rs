@@ -42,11 +42,16 @@ fn native_resume_composes_the_ui_prefix_once_for_catalogs_and_direct_artifacts()
         let native_ui = parsed(&ui);
         assert_eq!(conversation.messages.len(), native_ui.messages.len() + 3);
         assert_eq!(conversation.created_at, Some(1));
-        for (merged, old) in conversation.messages.iter().zip(&native_ui.messages) {
+        for (merged, old) in conversation
+            .messages
+            .inline()
+            .iter()
+            .zip(native_ui.messages.inline())
+        {
             assert_eq!(merged.id, old.id);
             assert_eq!(merged.content, old.content);
         }
-        let suffix = &conversation.messages[native_ui.messages.len()..];
+        let suffix = &conversation.messages.inline()[native_ui.messages.len()..];
         assert_ne!(
             suffix[0].id, suffix[2].id,
             "identical repeated requests remain distinct"
@@ -55,6 +60,7 @@ fn native_resume_composes_the_ui_prefix_once_for_catalogs_and_direct_artifacts()
         assert!(
             conversation
                 .messages
+                .inline()
                 .iter()
                 .all(|m| !m.content.contains("privateimported")
                     && !m.content.contains(super::super::migration::RESUME_WARNING))
@@ -68,6 +74,7 @@ fn native_resume_composes_the_ui_prefix_once_for_catalogs_and_direct_artifacts()
         assert!(crate::ingestion::watch_roots(&options(dir.path())).contains(&ui));
         let ids = conversation
             .messages
+            .inline()
             .iter()
             .map(|m| m.id.clone())
             .collect::<Vec<_>>();
@@ -85,6 +92,7 @@ fn native_resume_composes_the_ui_prefix_once_for_catalogs_and_direct_artifacts()
         assert_eq!(
             load(&scan(dir.path()))
                 .messages
+                .inline()
                 .iter()
                 .map(|m| m.id.clone())
                 .collect::<Vec<_>>(),
@@ -99,6 +107,7 @@ fn native_resume_composes_the_ui_prefix_once_for_catalogs_and_direct_artifacts()
         assert_eq!(
             load(&scan(dir.path()))
                 .messages
+                .inline()
                 .iter()
                 .map(|m| m.id.clone())
                 .collect::<Vec<_>>(),
@@ -132,11 +141,13 @@ fn absent_or_hidden_resume_markers_use_sdk_history_without_a_guessed_union() {
     assert_eq!(
         conversation
             .messages
+            .inline()
             .iter()
             .map(|m| m.id.clone())
             .collect::<Vec<_>>(),
         parsed(&artifact)
             .messages
+            .inline()
             .iter()
             .map(|m| m.id.clone())
             .collect::<Vec<_>>()
@@ -146,7 +157,9 @@ fn absent_or_hidden_resume_markers_use_sdk_history_without_a_guessed_union() {
     let conversation = load(&scan(dir.path()));
     assert_eq!(conversation.messages.len(), 7);
     assert_eq!(
-        conversation.messages[0].search_projection.as_deref(),
+        conversation.messages.inline()[0]
+            .search_projection
+            .as_deref(),
         Some("")
     );
 }

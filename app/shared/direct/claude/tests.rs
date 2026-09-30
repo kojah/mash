@@ -62,6 +62,8 @@ impl Fixture {
                     .claude_thread("thread", &plan.selected)?
                     .unwrap()
                     .messages
+                    .inline()
+                    .to_vec()
                     .into_iter()
                     .map(|message| message.content)
                     .collect();

@@ -19,8 +19,8 @@ fn disk_plan_preserves_byte_order_projections_duplicates_and_empty_plans() {
         ("projected", "canonical text"),
         ("hidden", "context only"),
     ]);
-    conversation.messages[6].search_projection = Some("visible projection".into());
-    conversation.messages[7].search_projection = Some(String::new());
+    conversation.messages.inline_mut()[6].search_projection = Some("visible projection".into());
+    conversation.messages.inline_mut()[7].search_projection = Some(String::new());
     storage.replace_conversation(&conversation).unwrap();
     let mut expected = BTreeMap::<(usize, String), Vec<String>>::new();
     for message in storage.messages_needing_embeddings().unwrap() {

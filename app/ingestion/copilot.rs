@@ -429,7 +429,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             title,
             created_at: Some(created_at),
             updated_at: Some(updated_at),
-            messages,
+            messages: super::messages::Messages::stage(messages)?,
         }),
         malformed_records: 0,
     })

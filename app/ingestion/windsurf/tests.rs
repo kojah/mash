@@ -66,25 +66,49 @@ fn native_go_written_fixture_keeps_repeated_requests_and_separates_thinking() {
     assert_eq!(
         parsed
             .messages
+            .inline()
             .iter()
             .filter(|m| !m.search_projection.as_deref().unwrap().is_empty())
             .count(),
         5
     );
-    assert_ne!(parsed.messages[0].id, parsed.messages[2].id);
-    assert_eq!(parsed.messages[0].content, parsed.messages[2].content);
-    assert!(parsed.messages[1].content.contains("Internal reasoning"));
+    assert_ne!(
+        parsed.messages.inline()[0].id,
+        parsed.messages.inline()[2].id
+    );
+    assert_eq!(
+        parsed.messages.inline()[0].content,
+        parsed.messages.inline()[2].content
+    );
     assert!(
-        !parsed.messages[1]
+        parsed.messages.inline()[1]
+            .content
+            .contains("Internal reasoning")
+    );
+    assert!(
+        !parsed.messages.inline()[1]
             .search_projection
             .as_deref()
             .unwrap()
             .contains("Internal reasoning")
     );
-    assert!(parsed.messages[5].content.contains("Reasoning without"));
-    assert_eq!(parsed.messages[5].search_projection.as_deref(), Some(""));
+    assert!(
+        parsed.messages.inline()[5]
+            .content
+            .contains("Reasoning without")
+    );
+    assert_eq!(
+        parsed.messages.inline()[5].search_projection.as_deref(),
+        Some("")
+    );
     // The pinned native transcript includes this cleared step too.
-    assert_ne!(parsed.messages[4].search_projection.as_deref().unwrap(), "");
+    assert_ne!(
+        parsed.messages.inline()[4]
+            .search_projection
+            .as_deref()
+            .unwrap(),
+        ""
+    );
     assert_eq!(parsed.created_at, Some(1_790_762_400_000));
     assert_eq!(parsed.updated_at, Some(1_790_762_406_000));
 }
@@ -100,10 +124,16 @@ fn native_snapshot_rewind_removes_suffix_without_changing_prefix_identities() {
     save(&path, &root);
     let after = conversation(&path);
     assert_eq!(after.messages.len(), 2);
-    assert_eq!(before.messages[0].id, after.messages[0].id);
-    assert_eq!(before.messages[1].id, after.messages[1].id);
     assert_eq!(
-        after.messages[0].search_projection.as_deref(),
+        before.messages.inline()[0].id,
+        after.messages.inline()[0].id
+    );
+    assert_eq!(
+        before.messages.inline()[1].id,
+        after.messages.inline()[1].id
+    );
+    assert_eq!(
+        after.messages.inline()[0].search_projection.as_deref(),
         Some("Edited request")
     );
 }
@@ -122,7 +152,9 @@ fn system_model_copied_unknown_and_background_prompts_are_context_only() {
         root.steps[0].metadata.as_mut().unwrap().source = origin;
         save(&path, &root);
         assert_eq!(
-            conversation(&path).messages[0].search_projection.as_deref(),
+            conversation(&path).messages.inline()[0]
+                .search_projection
+                .as_deref(),
             Some("")
         );
     }
@@ -130,7 +162,9 @@ fn system_model_copied_unknown_and_background_prompts_are_context_only() {
     root.steps[0].metadata.as_mut().unwrap().copied = Some(proto::CopiedStep {});
     save(&path, &root);
     assert_eq!(
-        conversation(&path).messages[0].search_projection.as_deref(),
+        conversation(&path).messages.inline()[0]
+            .search_projection
+            .as_deref(),
         Some("")
     );
     for (kind, source) in [(5, 1), (4, 4), (999, 1), (4, 999)] {
@@ -141,6 +175,7 @@ fn system_model_copied_unknown_and_background_prompts_are_context_only() {
         assert!(
             conversation(&path)
                 .messages
+                .inline()
                 .iter()
                 .all(|m| m.search_projection.as_deref() == Some(""))
         );

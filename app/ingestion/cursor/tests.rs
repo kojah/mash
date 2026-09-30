@@ -99,6 +99,7 @@ fn set_metadata(connection: &Connection, meta: &models::Metadata) {
 fn searchable(conversation: &Conversation) -> Vec<&NormalizedMessage> {
     conversation
         .messages
+        .inline()
         .iter()
         .filter(|m| !m.search_projection.as_deref().unwrap_or("").is_empty())
         .collect()
@@ -128,7 +129,7 @@ fn first_party_native_fixture_hydrates_archives_and_only_visible_prose() {
             .all(|m| !m.search_projection.as_deref().unwrap().contains("private-"))
     );
     assert!(
-        conversation.messages[5]
+        conversation.messages.inline()[5]
             .content
             .contains("private-reasoning-context")
     );
@@ -150,11 +151,13 @@ fn first_party_native_fixture_hydrates_archives_and_only_visible_prose() {
     assert_eq!(
         parsed(&path)
             .messages
+            .inline()
             .iter()
             .map(|m| &m.id)
             .collect::<Vec<_>>(),
         conversation
             .messages
+            .inline()
             .iter()
             .map(|m| &m.id)
             .collect::<Vec<_>>()
@@ -188,13 +191,14 @@ fn repeated_requests_keep_distinct_stable_ids_through_archive_moves_and_rewinds(
     let repeated = parsed(&path);
     let requests = repeated
         .messages
+        .inline()
         .iter()
         .filter(|m| m.content == "Fix the cBioPortal importer.")
         .collect::<Vec<_>>();
     assert_eq!(requests.len(), 3);
     assert_ne!(requests[0].id, requests[1].id);
     assert_ne!(requests[1].id, requests[2].id);
-    assert_eq!(requests[0].id, old.messages[4].id);
+    assert_eq!(requests[0].id, old.messages.inline()[4].id);
     let ids = searchable(&repeated)
         .into_iter()
         .map(|m| m.id.clone())
@@ -263,7 +267,9 @@ fn simulated_users_and_subagent_sessions_stay_context_only() {
     checkpoint(&connection, &root);
     let conversation = parsed(&path);
     assert_eq!(
-        conversation.messages[4].search_projection.as_deref(),
+        conversation.messages.inline()[4]
+            .search_projection
+            .as_deref(),
         Some("")
     );
     let mut meta = metadata(&connection);
@@ -274,6 +280,6 @@ fn simulated_users_and_subagent_sessions_stay_context_only() {
         type_name: "worker".into(),
     });
     set_metadata(&connection, &meta);
-    assert!(searchable(&parsed(&path)).is_empty());
+    assert_eq!(searchable(&parsed(&path)), Vec::<&NormalizedMessage>::new());
     assert_eq!(parsed(&path).messages.len(), 6);
 }

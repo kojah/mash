@@ -297,7 +297,7 @@ fn parse_native(source: &SourceIdentity, legacy_ui: Option<&Path>) -> Result<Par
             updated_at: session
                 .updated_at
                 .or_else(|| messages.iter().filter_map(|m| m.created_at).max()),
-            messages,
+            messages: super::messages::Messages::stage(messages)?,
         }),
         malformed_records: 0,
     })

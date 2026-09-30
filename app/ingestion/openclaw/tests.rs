@@ -59,18 +59,26 @@ fn native_hot_and_compressed_events_preserve_prose_and_canonical_context() {
     assert_eq!(conversation.messages.len(), 3);
     assert_eq!(conversation.project.as_deref(), Some("/work/cbioportal"));
     assert_eq!(conversation.title.as_deref(), Some("Mutation importer"));
-    assert!(conversation.messages[1].content.contains("reasoningmarker"));
     assert!(
-        conversation.messages[1]
+        conversation.messages.inline()[1]
+            .content
+            .contains("reasoningmarker")
+    );
+    assert!(
+        conversation.messages.inline()[1]
             .content
             .contains("toolargumentmarker")
     );
     assert_eq!(
-        conversation.messages[1].search_projection.as_deref(),
+        conversation.messages.inline()[1]
+            .search_projection
+            .as_deref(),
         Some("Repair mutation parsing")
     );
     assert_eq!(
-        conversation.messages[2].search_projection.as_deref(),
+        conversation.messages.inline()[2]
+            .search_projection
+            .as_deref(),
         Some("")
     );
     stamp.verify(source).unwrap();
@@ -108,6 +116,7 @@ fn branches_side_appends_and_reset_windows_select_visible_history() {
     assert!(
         conversation
             .messages
+            .inline()
             .iter()
             .all(|m| !m.content.contains("discardedmarker"))
     );
@@ -131,14 +140,17 @@ fn branches_side_appends_and_reset_windows_select_visible_history() {
     assert!(
         conversation
             .messages
+            .inline()
             .iter()
             .all(|m| !m.content.contains("Fix the cBioPortal"))
     );
     assert_eq!(
-        conversation.messages[2].search_projection.as_deref(),
+        conversation.messages.inline()[2]
+            .search_projection
+            .as_deref(),
         Some("")
     );
-    assert_eq!(conversation.messages[3].content, "new request");
+    assert_eq!(conversation.messages.inline()[3].content, "new request");
 }
 
 fn archive_bytes(connection: &Connection) -> (Vec<u8>, usize, i64) {
@@ -226,8 +238,14 @@ fn verified_cold_archives_read_from_sqlite_or_files_without_restoring_sources() 
         let before = sources[0].stamp().unwrap();
         let actual = parse(&sources[0].identity).unwrap().conversation.unwrap();
         assert_eq!(actual.messages.len(), expected.messages.len());
-        assert_eq!(actual.messages[0].id, expected.messages[0].id);
-        assert_eq!(actual.messages[1].content, expected.messages[1].content);
+        assert_eq!(
+            actual.messages.inline()[0].id,
+            expected.messages.inline()[0].id
+        );
+        assert_eq!(
+            actual.messages.inline()[1].content,
+            expected.messages.inline()[1].content
+        );
         assert_eq!(
             upstream
                 .query_row("SELECT count(*) FROM transcript_events", [], |row| row

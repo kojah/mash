@@ -18,6 +18,7 @@ mod discovery;
 mod gemini;
 mod hermes;
 mod json;
+pub(crate) mod messages;
 mod native;
 mod openclaw;
 mod opencode;
@@ -103,10 +104,11 @@ pub(crate) struct Conversation {
     pub(crate) title: Option<String>,
     pub(crate) created_at: Option<i64>,
     pub(crate) updated_at: Option<i64>,
-    pub(crate) messages: Vec<NormalizedMessage>,
+    pub(crate) messages: messages::Messages,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct NormalizedMessage {
     pub(crate) id: String,
     pub(crate) ordinal: i64,

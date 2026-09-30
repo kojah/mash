@@ -111,7 +111,10 @@ fn real_parser_and_index_preserve_history_across_large_lifecycle_envelopes() {
         .conversation
         .unwrap();
     assert_eq!(parsed.messages.len(), 1);
-    assert_eq!(parsed.messages[0].content, "cbioportal canonical history");
+    assert_eq!(
+        parsed.messages.inline()[0].content,
+        "cbioportal canonical history"
+    );
     let mut storage = Storage::open_writer(&database).unwrap();
     index(&mut storage, &options).unwrap();
     storage.commit_writer().unwrap();

@@ -2,6 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::NormalizedMessage;
+use super::messages::{Builder, Messages};
 use crate::AppError;
 use crate::message_context::MessageContext;
 
@@ -12,41 +13,69 @@ pub(crate) type Lineage = BTreeMap<String, Option<String>>;
 /// them. Timestamp and identity break ties; source arrival order never does.
 pub(crate) fn reconcile(
     contributions: impl IntoIterator<Item = Result<(NormalizedMessage, Option<String>), AppError>>,
-) -> Result<(Vec<NormalizedMessage>, Lineage), AppError> {
-    let mut nodes = BTreeMap::<String, (NormalizedMessage, Option<String>)>::new();
+) -> Result<(Messages, Lineage), AppError> {
+    struct Node {
+        position: usize,
+        created_at: Option<i64>,
+        parent: Option<String>,
+    }
+    let mut payloads = Builder::default();
+    let mut nodes = BTreeMap::<String, Node>::new();
     for contribution in contributions {
         let (message, parent) = contribution?;
-        if let Some((previous, previous_parent)) = nodes.get(&message.id) {
+        if let Some(node) = nodes.get(&message.id) {
+            let previous = payloads
+                .get(node.position)?
+                .ok_or_else(|| AppError::internal("Claude reconciliation lost a payload"))?;
             if previous.role != message.role
                 || previous.content != message.content
                 || previous.search_projection != message.search_projection
                 || previous.created_at != message.created_at
-                || previous_parent != &parent
+                || node.parent != parent
             {
                 return Err(AppError::configuration(
                     "Claude native message identity has conflicting content or ancestry",
                 ));
             }
         } else {
-            nodes.insert(message.id.clone(), (message, parent));
+            let id = message.id.clone();
+            let created_at = message.created_at;
+            let position = payloads.push(message)?;
+            nodes.insert(
+                id,
+                Node {
+                    position,
+                    created_at,
+                    parent,
+                },
+            );
         }
     }
     let mut children = BTreeMap::<String, Vec<String>>::new();
     let mut ready = BTreeSet::new();
-    for (id, (message, parent)) in &nodes {
-        if let Some(parent) = parent.as_ref().filter(|parent| nodes.contains_key(*parent)) {
+    for (id, node) in &nodes {
+        if let Some(parent) = node
+            .parent
+            .as_ref()
+            .filter(|parent| nodes.contains_key(*parent))
+        {
             children.entry(parent.clone()).or_default().push(id.clone());
         } else {
-            ready.insert((message.created_at, id.clone()));
+            ready.insert((node.created_at, id.clone()));
         }
     }
     let mut positions = BTreeMap::new();
     let mut lineage = Lineage::new();
-    let mut messages = Vec::with_capacity(nodes.len());
+    let mut messages = Builder::default();
     while let Some((_, id)) = ready.pop_first() {
-        let (mut message, parent) = nodes.remove(&id).ok_or_else(|| {
+        let node = nodes.remove(&id).ok_or_else(|| {
             AppError::internal("Claude reconciliation selected an unknown message")
         })?;
+        let mut message = payloads
+            .get(node.position)?
+            .ok_or_else(|| AppError::internal("Claude reconciliation lost a payload"))?
+            .into_owned();
+        let parent = node.parent;
         message.ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("Claude conversation contains too many messages"))?;
         message.context = parent
@@ -57,12 +86,12 @@ pub(crate) fn reconcile(
             });
         positions.insert(id.clone(), message.ordinal);
         lineage.insert(id.clone(), parent);
-        messages.push(message);
+        messages.push(message)?;
         for child in children.remove(&id).unwrap_or_default() {
-            let (message, _) = nodes
+            let node = nodes
                 .get(&child)
                 .ok_or_else(|| AppError::internal("Claude reconciliation lost a child message"))?;
-            ready.insert((message.created_at, child));
+            ready.insert((node.created_at, child));
         }
     }
     if !nodes.is_empty() {
@@ -70,5 +99,5 @@ pub(crate) fn reconcile(
             "Claude message ancestry contains a cycle",
         ));
     }
-    Ok((messages, lineage))
+    Ok((messages.finish()?, lineage))
 }

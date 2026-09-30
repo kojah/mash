@@ -111,12 +111,14 @@ fn native_updates_keep_one_message_and_only_displayed_prose_is_searchable() {
     assert!(conversation.repository.is_none());
     let canonical = conversation
         .messages
+        .inline()
         .iter()
         .map(|m| m.content.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     let projection = conversation
         .messages
+        .inline()
         .iter()
         .map(|m| m.search_projection.as_deref().unwrap())
         .collect::<Vec<_>>()
@@ -147,10 +149,16 @@ fn native_updates_keep_one_message_and_only_displayed_prose_is_searchable() {
     assert_eq!(
         conversation
             .messages
+            .inline()
             .iter()
             .map(|m| &m.id)
             .collect::<Vec<_>>(),
-        repeated.messages.iter().map(|m| &m.id).collect::<Vec<_>>()
+        repeated
+            .messages
+            .inline()
+            .iter()
+            .map(|m| &m.id)
+            .collect::<Vec<_>>()
     );
     assert_eq!(std::fs::read(&path).unwrap(), original);
 }
@@ -172,7 +180,7 @@ fn checkpoints_and_inclusive_rewinds_follow_the_upstream_loaded_history() {
     );
     let parsed = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(parsed.messages.len(), 2);
-    assert_eq!(parsed.messages[1].content, "Replacement answer");
+    assert_eq!(parsed.messages.inline()[1].content, "Replacement answer");
     write(
         file.path(),
         &[
@@ -184,9 +192,12 @@ fn checkpoints_and_inclusive_rewinds_follow_the_upstream_loaded_history() {
     );
     let checkpoint = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(checkpoint.messages.len(), 1);
-    assert_eq!(checkpoint.messages[0].content, "Second saved answer");
     assert_eq!(
-        checkpoint.messages[0].search_projection.as_deref(),
+        checkpoint.messages.inline()[0].content,
+        "Second saved answer"
+    );
+    assert_eq!(
+        checkpoint.messages.inline()[0].search_projection.as_deref(),
         Some("Second saved answer")
     );
     let h = message(
@@ -196,7 +207,10 @@ fn checkpoints_and_inclusive_rewinds_follow_the_upstream_loaded_history() {
     );
     write(file.path(), &[header(), json!({"$set":{"messages":[h]}})]);
     let compact = parse(file.path()).unwrap().conversation.unwrap();
-    assert_eq!(compact.messages[0].search_projection.as_deref(), Some(""));
+    assert_eq!(
+        compact.messages.inline()[0].search_projection.as_deref(),
+        Some("")
+    );
     write(
         file.path(),
         &[
@@ -243,10 +257,16 @@ fn model_only_checkpoint_turns_do_not_become_human_requests_or_retrievable_answe
     );
     let state = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(state.messages.len(), 3);
-    assert_eq!(state.messages[0].search_projection.as_deref(), Some(""));
-    assert_eq!(state.messages[1].search_projection.as_deref(), Some(""));
     assert_eq!(
-        state.messages[2].search_projection.as_deref(),
+        state.messages.inline()[0].search_projection.as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        state.messages.inline()[1].search_projection.as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        state.messages.inline()[2].search_projection.as_deref(),
         Some("Actual cBioPortal importer request")
     );
     // A subsequent direct message is recorded evidence, even with a reused ID.
@@ -265,7 +285,12 @@ fn model_only_checkpoint_turns_do_not_become_human_requests_or_retrievable_answe
     )
     .unwrap();
     assert_eq!(
-        parse(file.path()).unwrap().conversation.unwrap().messages[0]
+        parse(file.path())
+            .unwrap()
+            .conversation
+            .unwrap()
+            .messages
+            .inline()[0]
             .search_projection
             .as_deref(),
         Some("New directly recorded user request")
@@ -274,7 +299,12 @@ fn model_only_checkpoint_turns_do_not_become_human_requests_or_retrievable_answe
     snapshot["messages"] = json!([summary]);
     write(file.path(), &[snapshot]);
     assert_eq!(
-        parse(file.path()).unwrap().conversation.unwrap().messages[0]
+        parse(file.path())
+            .unwrap()
+            .conversation
+            .unwrap()
+            .messages
+            .inline()[0]
             .search_projection
             .as_deref(),
         Some("Plain synthetic summary with no reliable XML tags."),
@@ -312,7 +342,10 @@ fn native_json_and_jsonl_migration_have_the_same_identity_and_do_not_duplicate_s
     );
     let new = parse(&path).unwrap().conversation.unwrap();
     assert_eq!(new.id, old_parsed.id);
-    assert_eq!(new.messages[0].id, old_parsed.messages[0].id);
+    assert_eq!(
+        new.messages.inline()[0].id,
+        old_parsed.messages.inline()[0].id
+    );
     std::fs::write(dir.path().join("settings.json"), "unrelated configuration").unwrap();
     let scan = direct_scans(&options(dir.path())).unwrap();
     assert_eq!(scan[0].sources.len(), 1);
@@ -380,6 +413,7 @@ fn subagents_commands_and_unknown_message_roles_remain_context_only() {
             .conversation
             .unwrap()
             .messages
+            .inline()
             .iter()
             .all(|m| m.search_projection.as_deref() == Some(""))
     );
@@ -391,8 +425,11 @@ fn subagents_commands_and_unknown_message_roles_remain_context_only() {
         ],
     );
     let parsed = parse(file.path()).unwrap().conversation.unwrap();
-    assert_eq!(parsed.messages[0].role, crate::role::Role::System);
-    assert_eq!(parsed.messages[0].search_projection.as_deref(), Some(""));
+    assert_eq!(parsed.messages.inline()[0].role, crate::role::Role::System);
+    assert_eq!(
+        parsed.messages.inline()[0].search_projection.as_deref(),
+        Some("")
+    );
 }
 
 #[test]

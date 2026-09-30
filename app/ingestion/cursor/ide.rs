@@ -157,7 +157,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             title,
             created_at,
             updated_at,
-            messages,
+            messages: super::super::messages::Messages::stage(messages)?,
         }),
         malformed_records: 0,
     })

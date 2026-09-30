@@ -16,9 +16,10 @@ struct Measurement {
     elapsed_milliseconds: u64,
 }
 
-fn digest(messages: &[NormalizedMessage], lineage: &claude::Lineage) -> String {
+fn digest(messages: &crate::ingestion::messages::Messages, lineage: &claude::Lineage) -> String {
     let mut hasher = blake3::Hasher::new();
-    for message in messages {
+    for message in messages.rows().unwrap() {
+        let message = message.unwrap();
         // Include every canonical field and ancestry, not only retained counts.
         let record = serde_json::to_vec(&(
             &message.id,

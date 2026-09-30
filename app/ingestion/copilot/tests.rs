@@ -131,12 +131,14 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     assert_eq!(conversation.messages.len(), 10);
     let canonical = conversation
         .messages
+        .inline()
         .iter()
         .map(|m| m.content.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     let projection = conversation
         .messages
+        .inline()
         .iter()
         .map(|m| m.search_projection.as_deref().unwrap())
         .collect::<Vec<_>>()
@@ -160,14 +162,20 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     }
     assert!(projection.contains("cBioPortal"));
     assert!(projection.contains("Validate mutation metadata"));
-    assert_eq!(conversation.messages[5].context, MessageContext::Root);
     assert_eq!(
-        conversation.messages[6].context,
+        conversation.messages.inline()[5].context,
+        MessageContext::Root
+    );
+    assert_eq!(
+        conversation.messages.inline()[6].context,
         MessageContext::Parent { ordinal: 5 }
     );
-    assert_eq!(conversation.messages[7].context, MessageContext::Root);
     assert_eq!(
-        conversation.messages[8].context,
+        conversation.messages.inline()[7].context,
+        MessageContext::Root
+    );
+    assert_eq!(
+        conversation.messages.inline()[8].context,
         MessageContext::Parent { ordinal: 4 }
     );
     assert_eq!(std::fs::read(file.path()).unwrap(), original);
@@ -175,17 +183,26 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
     assert_eq!(
         conversation
             .messages
+            .inline()
             .iter()
             .map(|m| &m.id)
             .collect::<Vec<_>>(),
-        repeated.messages.iter().map(|m| &m.id).collect::<Vec<_>>()
+        repeated
+            .messages
+            .inline()
+            .iter()
+            .map(|m| &m.id)
+            .collect::<Vec<_>>()
     );
     let mut fork = fixture();
     fork[0] = header("forked-session");
     write(file.path(), &fork);
     let forked = parse(file.path()).unwrap().conversation.unwrap();
     assert_ne!(conversation.id, forked.id);
-    assert_ne!(conversation.messages[0].id, forked.messages[0].id);
+    assert_ne!(
+        conversation.messages.inline()[0].id,
+        forked.messages.inline()[0].id
+    );
 }
 
 #[test]
@@ -233,6 +250,7 @@ fn local_routing_and_views_exclude_subagents_and_reconcile_native_rewinds() {
                 for record in records {
                     let native = conversation
                         .messages
+                        .inline()
                         .iter()
                         .find(|m| m.id == record.id)
                         .unwrap();
@@ -349,11 +367,11 @@ fn clear_starts_a_new_context_chain_and_bad_native_envelopes_fail_closed() {
     write(file.path(), &valid);
     let parsed = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(
-        parsed.messages.last().unwrap().context,
+        parsed.messages.inline().last().unwrap().context,
         MessageContext::Root
     );
     assert_eq!(
-        parsed.messages[0].search_projection.as_deref(),
+        parsed.messages.inline()[0].search_projection.as_deref(),
         Some("Fix the cBioPortal importer")
     );
     write(file.path(), &[header("empty-session")]);
@@ -419,10 +437,13 @@ fn settled_workspace_and_complete_chunks_ignore_preliminary_and_ephemeral_events
     assert_eq!(parsed.project.as_deref(), Some("/settled"));
     assert_eq!(parsed.repository.as_deref(), Some("team/settled"));
     assert_eq!(parsed.messages.len(), 3);
-    assert_eq!(parsed.messages[1].content, "First complete chunk.");
-    assert_eq!(parsed.messages[2].content, "Second complete chunk.");
+    assert_eq!(parsed.messages.inline()[1].content, "First complete chunk.");
     assert_eq!(
-        parsed.messages[2].context,
+        parsed.messages.inline()[2].content,
+        "Second complete chunk."
+    );
+    assert_eq!(
+        parsed.messages.inline()[2].context,
         MessageContext::Parent { ordinal: 1 }
     );
 }

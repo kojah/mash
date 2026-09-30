@@ -43,7 +43,8 @@ fn test_conversation(
             content: content.to_owned(),
             search_projection: None,
             created_at: None,
-        }],
+        }]
+        .into(),
     }
 }
 

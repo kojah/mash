@@ -17,7 +17,7 @@ fn identity_migration_reparses_checkpointed_claude_parent_and_agent() {
         .replace_embeddings(
             "fixture",
             &[crate::storage::EmbeddingWrite {
-                message_id: &legacy.messages[0].id,
+                message_id: &legacy.messages.inline()[0].id,
                 vector: &[127],
                 norm: 127.0,
             }],
@@ -52,7 +52,8 @@ fn identity_migration_reparses_checkpointed_claude_parent_and_agent() {
     assert_eq!(storage.counts().unwrap().messages, 2);
     assert!(!storage.semantic_index_is_ready("fixture").unwrap());
     for path in [&parent, &agent] {
-        let message = &parse_claude(path).unwrap().conversation.unwrap().messages[0];
+        let parsed = parse_claude(path).unwrap().conversation.unwrap();
+        let message = &parsed.messages.inline()[0];
         assert_eq!(
             storage.view(&message.id, 0).unwrap()[0].content,
             message.content
@@ -95,7 +96,7 @@ fn claude_parent_and_agents_keep_independent_histories_and_checkpoints() {
         assert_eq!(storage.counts().unwrap().conversations, 3);
         assert_eq!(storage.counts().unwrap().messages, 3);
         for conversation in &conversations {
-            let message = &conversation.messages[0];
+            let message = &conversation.messages.inline()[0];
             assert_eq!(
                 storage.view(&message.id, 0).unwrap()[0].content,
                 message.content
@@ -499,7 +500,7 @@ fn stable_retry_refreshes_discovery_and_recovers_a_single_append() {
     let source = HistorySource::file(&path);
     let parsed = parse_source_with_retries(&source, &mut stamp, append_once).unwrap();
     assert_eq!(
-        parsed.conversation.unwrap().messages[0].content,
+        parsed.conversation.unwrap().messages.inline()[0].content,
         "current content after discovery"
     );
     stamp.verify(&source.identity).unwrap();
@@ -547,7 +548,7 @@ fn stable_retry_reads_atomic_replacement_instead_of_retired_content() {
     let mut stamp = source.stamp().unwrap();
     let parsed = parse_source_with_retries(&source, &mut stamp, replace_once).unwrap();
     assert_eq!(
-        parsed.conversation.unwrap().messages[0].content,
+        parsed.conversation.unwrap().messages.inline()[0].content,
         "replacement dialogue"
     );
     stamp.verify(&source.identity).unwrap();
@@ -633,7 +634,8 @@ fn purge_requires_a_complete_provider_scan() {
                 content: "preserve until complete".to_owned(),
                 search_projection: None,
                 created_at: None,
-            }],
+            }]
+            .into(),
         })
         .expect("seed source");
     writer.commit_writer().expect("commit seed");

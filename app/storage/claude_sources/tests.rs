@@ -28,8 +28,8 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     let connection = fixture();
     let all = claude_thread(&connection, "thread", None).unwrap().unwrap();
     assert_eq!(all.messages.len(), 3);
-    assert_eq!(all.messages[0].id, "root");
-    for message in &all.messages[1..] {
+    assert_eq!(all.messages.inline()[0].id, "root");
+    for message in &all.messages.inline()[1..] {
         assert_eq!(
             message.context,
             crate::message_context::MessageContext::Parent { ordinal: 0 }
@@ -38,10 +38,13 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     assert_eq!(all.created_at, Some(10));
     assert_eq!(all.updated_at, Some(30));
     assert_eq!(
-        all.messages[1].search_projection.as_deref(),
+        all.messages.inline()[1].search_projection.as_deref(),
         Some("left projection")
     );
-    assert_eq!(all.messages[2].search_projection.as_deref(), Some(""));
+    assert_eq!(
+        all.messages.inline()[2].search_projection.as_deref(),
+        Some("")
+    );
     let selected = BTreeSet::from(["b".to_owned()]);
     let selected = claude_thread(&connection, "thread", Some(&selected))
         .unwrap()
@@ -49,6 +52,7 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     assert_eq!(
         selected
             .messages
+            .inline()
             .iter()
             .map(|message| message.id.as_str())
             .collect::<Vec<_>>(),
@@ -135,8 +139,8 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
         )
         .unwrap();
     source.source = SourceIdentity::file(directory.path().join("b.jsonl"));
-    source.messages[1].id = "branch".to_owned();
-    source.messages[1].content = "new branch text".to_owned();
+    source.messages.inline_mut()[1].id = "branch".to_owned();
+    source.messages.inline_mut()[1].content = "new branch text".to_owned();
     source.claude_lineage = Some(claude::Lineage::from([
         ("root".to_owned(), None),
         ("branch".to_owned(), Some("root".to_owned())),

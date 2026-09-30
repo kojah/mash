@@ -475,7 +475,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             repository: metadata.repository,
             created_at: Some(metadata.created_at),
             updated_at: Some(metadata.updated_at),
-            messages,
+            messages: super::messages::Messages::stage(messages)?,
         }),
         malformed_records: 0,
     })

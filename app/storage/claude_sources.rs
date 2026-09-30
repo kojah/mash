@@ -79,14 +79,7 @@ pub(super) fn claude_thread(
             ))
         }),
     )?;
-    let created_at = messages
-        .iter()
-        .filter_map(|message| message.created_at)
-        .min();
-    let updated_at = messages
-        .iter()
-        .filter_map(|message| message.created_at)
-        .max();
+    let summary = messages.summary()?;
     Ok(Some(Conversation {
         id: id.to_owned(),
         provider: Provider::ClaudeCode,
@@ -95,8 +88,8 @@ pub(super) fn claude_thread(
         title: metadata.title,
         project: metadata.project,
         repository: metadata.repository,
-        created_at,
-        updated_at,
+        created_at: summary.created_at,
+        updated_at: summary.updated_at,
         messages,
     }))
 }
@@ -164,7 +157,8 @@ impl Storage {
                 .connection
                 .prepare_cached(sql::InsertClaudeSourceMessage::QUERY)
                 .map_err(AppError::database)?;
-            for message in &source.messages {
+            for message in source.messages.rows()? {
+                let message = message?;
                 let parent = lineage.get(&message.id).ok_or_else(|| {
                     AppError::internal("Claude contribution has incomplete ancestry")
                 })?;

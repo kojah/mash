@@ -25,6 +25,8 @@ fn projections(path: &Path) -> Vec<String> {
         .conversation
         .unwrap()
         .messages
+        .inline()
+        .to_vec()
         .into_iter()
         .filter_map(|m| m.search_projection.filter(|p| !p.is_empty()))
         .collect()
@@ -37,7 +39,7 @@ fn first_party_recording_capture_recovers_dialogue_without_cancelled_or_rewound_
     let result = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(result.messages.len(), 8);
     assert_eq!(
-        result.messages[0].content,
+        result.messages.inline()[0].content,
         "How should the cBioPortal mutation importer validate metadata?"
     );
     assert_eq!(
@@ -55,8 +57,14 @@ fn first_party_recording_capture_recovers_dialogue_without_cancelled_or_rewound_
     let before = tempfile::NamedTempFile::new().unwrap();
     write(before.path(), &original);
     let earlier = parse(before.path()).unwrap().conversation.unwrap();
-    assert_eq!(result.messages[0].id, earlier.messages[0].id);
-    assert_eq!(result.messages[1].id, earlier.messages[1].id);
+    assert_eq!(
+        result.messages.inline()[0].id,
+        earlier.messages.inline()[0].id
+    );
+    assert_eq!(
+        result.messages.inline()[1].id,
+        earlier.messages.inline()[1].id
+    );
 }
 
 #[test]

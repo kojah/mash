@@ -71,23 +71,23 @@ fn native_ui_snapshot_preserves_visible_roles_and_replaces_stale_copies() {
     let conversation = parsed(&path);
     assert_eq!(std::fs::read(&path).unwrap(), before);
     assert_eq!(conversation.messages.len(), 8);
-    assert_eq!(conversation.messages[0].role, Role::User);
+    assert_eq!(conversation.messages.inline()[0].role, Role::User);
     assert_eq!(
-        conversation.messages[1].content,
+        conversation.messages.inline()[1].content,
         "Validate mutation metadata."
     );
     assert_eq!(
-        conversation.messages[2].content,
+        conversation.messages.inline()[2].content,
         "Should we include structural variants?"
     );
-    assert_eq!(conversation.messages[2].role, Role::Assistant);
-    assert_eq!(conversation.messages[3].role, Role::User);
+    assert_eq!(conversation.messages.inline()[2].role, Role::Assistant);
+    assert_eq!(conversation.messages.inline()[3].role, Role::User);
     assert_eq!(
-        conversation.messages[7].content,
+        conversation.messages.inline()[7].content,
         "Test the importer before deploying."
     );
     assert!(
-        conversation.messages[4..7]
+        conversation.messages.inline()[4..7]
             .iter()
             .all(|m| m.search_projection.as_deref() == Some(""))
     );
@@ -97,6 +97,7 @@ fn native_ui_snapshot_preserves_visible_roles_and_replaces_stale_copies() {
     );
     let ids = conversation
         .messages
+        .inline()
         .iter()
         .map(|m| m.id.clone())
         .collect::<Vec<_>>();
@@ -104,6 +105,7 @@ fn native_ui_snapshot_preserves_visible_roles_and_replaces_stale_copies() {
     assert_eq!(
         parsed(&path)
             .messages
+            .inline()
             .iter()
             .map(|m| m.id.clone())
             .collect::<Vec<_>>(),
@@ -118,54 +120,64 @@ fn sdk_projection_retains_real_repeated_turns_and_excludes_injected_content() {
     write(&path, &sdk_fixture());
     let conversation = parsed(&path);
     assert_eq!(
-        conversation.messages[0].search_projection.as_deref(),
+        conversation.messages.inline()[0]
+            .search_projection
+            .as_deref(),
         Some("Fix the cBioPortal importer")
     );
     assert_eq!(
-        conversation.messages[1].search_projection.as_deref(),
+        conversation.messages.inline()[1]
+            .search_projection
+            .as_deref(),
         Some("Validate mutation metadata.")
     );
     assert!(
-        conversation.messages[1]
+        conversation.messages.inline()[1]
             .content
             .contains("privatethoughtmarker")
     );
     assert!(
-        conversation.messages[1]
+        conversation.messages.inline()[1]
             .content
             .contains("privateargumentmarker")
     );
     assert_eq!(
-        conversation.messages[2].search_projection.as_deref(),
+        conversation.messages.inline()[2]
+            .search_projection
+            .as_deref(),
         Some("Also check structural variants.")
     );
     assert!(
-        conversation.messages[2]
+        conversation.messages.inline()[2]
             .content
             .contains("privateresultmarker")
     );
     assert!(
-        !conversation.messages[2]
+        !conversation.messages.inline()[2]
             .content
             .contains("privatefilebodymarker")
     );
     assert!(
-        !conversation.messages[2]
+        !conversation.messages.inline()[2]
             .content
             .contains("privatebinarymarker")
     );
-    assert_ne!(conversation.messages[3].id, conversation.messages[4].id);
+    assert_ne!(
+        conversation.messages.inline()[3].id,
+        conversation.messages.inline()[4].id
+    );
     assert_eq!(
-        conversation.messages[3].search_projection,
-        conversation.messages[4].search_projection
+        conversation.messages.inline()[3].search_projection,
+        conversation.messages.inline()[4].search_projection
     );
     assert!(
-        conversation.messages[5..]
+        conversation.messages.inline()[5..]
             .iter()
             .all(|m| m.search_projection.as_deref() == Some(""))
     );
     let ids = conversation
         .messages
+        .inline()
         .iter()
         .map(|m| m.id.clone())
         .collect::<Vec<_>>();
@@ -183,6 +195,7 @@ fn sdk_projection_retains_real_repeated_turns_and_excludes_injected_content() {
     assert_eq!(
         parsed(&path)
             .messages
+            .inline()
             .iter()
             .map(|m| m.id.clone())
             .collect::<Vec<_>>(),
@@ -194,6 +207,7 @@ fn sdk_projection_retains_real_repeated_turns_and_excludes_injected_content() {
         assert!(
             parsed(&path)
                 .messages
+                .inline()
                 .iter()
                 .all(|m| m.search_projection.as_deref() == Some(""))
         );
@@ -257,30 +271,40 @@ fn sdk_native_question_replies_and_completion_summaries_are_visible_prose() {
     write(&path, &fixture);
     let conversation = parsed(&path);
     assert_eq!(
-        conversation.messages[0].search_projection.as_deref(),
+        conversation.messages.inline()[0]
+            .search_projection
+            .as_deref(),
         Some("Should structural variants be imported?")
     );
     assert_eq!(
-        conversation.messages[1].search_projection.as_deref(),
+        conversation.messages.inline()[1]
+            .search_projection
+            .as_deref(),
         Some("Yes, include structural variants.")
     );
     assert_eq!(
-        conversation.messages[2].search_projection.as_deref(),
+        conversation.messages.inline()[2]
+            .search_projection
+            .as_deref(),
         Some("The cBioPortal importer now validates mutation metadata.")
     );
     assert_eq!(
-        conversation.messages[3].search_projection.as_deref(),
+        conversation.messages.inline()[3]
+            .search_projection
+            .as_deref(),
         Some("The import is complete.")
     );
     assert!(
-        conversation.messages[4..]
+        conversation.messages.inline()[4..]
             .iter()
             .all(|m| m.search_projection.as_deref() == Some(""))
     );
     fixture["messages"][1]["content"][0]["is_error"] = json!(true);
     write(&path, &fixture);
     assert_eq!(
-        parsed(&path).messages[1].search_projection.as_deref(),
+        parsed(&path).messages.inline()[1]
+            .search_projection
+            .as_deref(),
         Some("")
     );
 }

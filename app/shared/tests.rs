@@ -440,7 +440,8 @@ fn seed(path: &Path) -> Storage {
                     search_projection: Some(String::new()),
                     created_at: Some(2),
                 },
-            ],
+            ]
+            .into(),
         })
         .expect("conversation");
     storage
@@ -509,10 +510,10 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         title: None,
         created_at: None,
         updated_at: None,
-        messages: Vec::new(),
+        messages: Vec::new().into(),
     };
     for i in 0..61 {
-        conversation.messages.push(NormalizedMessage {
+        conversation.messages.inline_mut().push(NormalizedMessage {
             id: format!("message-{i:02}"),
             ordinal: i,
             context: crate::message_context::MessageContext::Linear,
@@ -525,6 +526,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     storage.replace_conversation(&conversation).unwrap();
     let embeddings = conversation
         .messages
+        .inline()
         .iter()
         .map(|m| EmbeddingWrite {
             message_id: &m.id,

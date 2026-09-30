@@ -166,7 +166,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             repository: None,
             created_at: None,
             updated_at: None,
-            messages,
+            messages: super::messages::Messages::stage(messages)?,
         }),
         malformed_records,
     })
@@ -327,6 +327,7 @@ mod tests {
         let conversation = parse(file.path()).unwrap().conversation.unwrap();
         let users = conversation
             .messages
+            .inline()
             .iter()
             .filter(|m| m.role == Role::User)
             .collect::<Vec<_>>();
@@ -342,6 +343,7 @@ mod tests {
         assert!(
             conversation
                 .messages
+                .inline()
                 .iter()
                 .any(|m| m.role == Role::Assistant
                     && m.content.contains("#### example heading\n> quoted example"))
@@ -349,6 +351,7 @@ mod tests {
         assert!(
             conversation
                 .messages
+                .inline()
                 .iter()
                 .filter(|m| matches!(m.role, Role::Tool | Role::System))
                 .all(|m| m.search_projection.as_deref() == Some(""))
@@ -356,7 +359,10 @@ mod tests {
         assert!(conversation.created_at.is_none());
         let repeated = parse(file.path()).unwrap().conversation.unwrap();
         assert_eq!(conversation.id, repeated.id);
-        assert_eq!(conversation.messages[3].id, repeated.messages[3].id);
+        assert_eq!(
+            conversation.messages.inline()[3].id,
+            repeated.messages.inline()[3].id
+        );
     }
 
     #[test]
@@ -417,7 +423,21 @@ mod tests {
         let result = parse(file.path()).unwrap();
         assert_eq!(result.malformed_records, 1);
         let messages = result.conversation.unwrap().messages;
-        assert_eq!(messages.iter().filter(|m| m.role == Role::User).count(), 1);
-        assert!(messages.last().unwrap().content.contains("2020-01-01"));
+        assert_eq!(
+            messages
+                .inline()
+                .iter()
+                .filter(|m| m.role == Role::User)
+                .count(),
+            1
+        );
+        assert!(
+            messages
+                .inline()
+                .last()
+                .unwrap()
+                .content
+                .contains("2020-01-01")
+        );
     }
 }

@@ -55,8 +55,8 @@ fn claude_copies_preserve_branches_deduplicate_and_remove_only_source_contributi
                 .map(|path| parse_claude(path).unwrap().conversation.unwrap())
                 .collect::<Vec<_>>();
             let common = stable_id("claude-message", &["copied-thread", "common"]);
-            assert_eq!(parsed[0].messages[0].id, common);
-            assert_eq!(parsed[1].messages[0].id, common);
+            assert_eq!(parsed[0].messages.inline()[0].id, common);
+            assert_eq!(parsed[1].messages.inline()[0].id, common);
             let database = directory.path().join("index.sqlite3");
             let mut storage = Storage::open_writer(&database).unwrap();
             for index in if reverse { [1, 0] } else { [0, 1] } {
@@ -275,7 +275,7 @@ fn claude_native_ancestry_resolves_intermediate_events_and_rejects_cycles() {
         .unwrap();
     let parsed = parse_claude(&path).unwrap().conversation.unwrap();
     assert_eq!(
-        parsed.messages[1].context,
+        parsed.messages.inline()[1].context,
         MessageContext::Parent { ordinal: 0 }
     );
     transcript(
@@ -301,7 +301,13 @@ fn claude_ancestry_can_be_supplied_by_another_source_and_survives_missing_ancest
     storage.replace_conversation(&child).unwrap();
     storage.replace_conversation(&root).unwrap();
     storage.commit_writer().unwrap();
-    assert_eq!(storage.view(&child.messages[0].id, 1).unwrap().len(), 2);
+    assert_eq!(
+        storage
+            .view(&child.messages.inline()[0].id, 1)
+            .unwrap()
+            .len(),
+        2
+    );
     drop(storage);
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     assert!(
@@ -310,7 +316,7 @@ fn claude_ancestry_can_be_supplied_by_another_source_and_survives_missing_ancest
             .unwrap()
     );
     storage.commit_writer().unwrap();
-    let messages = storage.view(&child.messages[0].id, 1).unwrap();
+    let messages = storage.view(&child.messages.inline()[0].id, 1).unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].content, "child sentinel");
 }

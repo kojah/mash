@@ -94,15 +94,27 @@ fn native_dialogue_keeps_identities_and_separates_scope_and_reasoning() {
     let path = write(directory.path());
     let parsed = conversation(&path);
     assert_eq!(parsed.messages.len(), 9);
-    assert_eq!(parsed.messages[0].content, parsed.messages[1].content);
-    assert_ne!(parsed.messages[0].id, parsed.messages[1].id);
-    assert!(
-        parsed
-            .messages
-            .iter()
-            .all(|m| !m.search_projection.as_deref().unwrap().is_empty())
+    assert_eq!(
+        parsed.messages.inline()[0].content,
+        parsed.messages.inline()[1].content
     );
-    for message in parsed.messages.iter().filter(|m| m.role == Role::Assistant) {
+    assert_ne!(
+        parsed.messages.inline()[0].id,
+        parsed.messages.inline()[1].id
+    );
+    assert!(
+        parsed.messages.inline().iter().all(|m| !m
+            .search_projection
+            .as_deref()
+            .unwrap()
+            .is_empty())
+    );
+    for message in parsed
+        .messages
+        .inline()
+        .iter()
+        .filter(|m| m.role == Role::Assistant)
+    {
         assert!(message.content.contains("Synthetic reasoning"));
         assert!(
             !message
@@ -113,7 +125,7 @@ fn native_dialogue_keeps_identities_and_separates_scope_and_reasoning() {
         );
         assert_eq!(message.created_at, None);
     }
-    let scoped = parsed.messages.last().unwrap();
+    let scoped = parsed.messages.inline().last().unwrap();
     assert!(scoped.content.contains("synthetic_scope_only_marker"));
     assert!(
         !scoped
@@ -138,6 +150,7 @@ fn native_fork_copies_remain_canonical_but_not_searchable() {
     assert!(
         parsed
             .messages
+            .inline()
             .iter()
             .all(|m| m.search_projection.as_deref() == Some(""))
     );
@@ -158,7 +171,9 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
         step.metadata.as_mut().unwrap().source = source;
         replace_step(&path, 0, &step);
         assert_eq!(
-            conversation(&path).messages[0].search_projection.as_deref(),
+            conversation(&path).messages.inline()[0]
+                .search_projection
+                .as_deref(),
             Some("")
         );
     }
@@ -167,7 +182,9 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
         step.status = status;
         replace_step(&path, 0, &step);
         assert_eq!(
-            conversation(&path).messages[0].search_projection.as_deref(),
+            conversation(&path).messages.inline()[0]
+                .search_projection
+                .as_deref(),
             Some("")
         );
     }
@@ -195,6 +212,7 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
     assert!(
         conversation(&path)
             .messages
+            .inline()
             .iter()
             .all(|m| m.search_projection.as_deref() == Some(""))
     );

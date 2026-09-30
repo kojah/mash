@@ -8,7 +8,7 @@ fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_p
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     let mut value = conversation("canonical context and visible sentinel");
-    value.messages[0].search_projection = Some("visible sentinel".into());
+    value.messages.inline_mut()[0].search_projection = Some("visible sentinel".into());
     storage.replace_conversation(&value).unwrap();
     storage
         .replace_embeddings(
@@ -20,8 +20,8 @@ fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_p
             }],
         )
         .unwrap();
-    value.messages[0].content = "changed canonical context".into();
-    value.messages[0].created_at = Some(123);
+    value.messages.inline_mut()[0].content = "changed canonical context".into();
+    value.messages.inline_mut()[0].created_at = Some(123);
     storage.replace_conversation(&value).unwrap();
     assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
     assert!(storage.messages_needing_embeddings().unwrap().is_empty());
@@ -29,14 +29,14 @@ fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_p
         storage.view("message-1", 0).unwrap()[0].content,
         "changed canonical context"
     );
-    value.messages[0].search_projection = Some("different visible evidence".into());
+    value.messages.inline_mut()[0].search_projection = Some("different visible evidence".into());
     storage.replace_conversation(&value).unwrap();
     assert_eq!(storage.embedding_count("fixture").unwrap(), 0);
     assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
-    value.messages[0].search_projection = Some(String::new());
+    value.messages.inline_mut()[0].search_projection = Some(String::new());
     storage.replace_conversation(&value).unwrap();
     assert!(storage.messages_needing_embeddings().unwrap().is_empty());
-    value.messages[0].search_projection = None;
+    value.messages.inline_mut()[0].search_projection = None;
     storage.replace_conversation(&value).unwrap();
     assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
 }
@@ -62,7 +62,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
         };
         let mut value = conversation(&format!("{session} searchable evidence"));
         value.id = session.into();
-        value.messages[0].id = format!("{session}-message");
+        value.messages.inline_mut()[0].id = format!("{session}-message");
         value.source = source.clone();
         storage.replace_conversation(&value).unwrap();
         storage
@@ -474,8 +474,8 @@ fn search_projection_controls_fts_embeddings_and_rerank_text_not_view() {
         ("mixed", "visible request\nprivate mixed payload"),
         ("ordinary", "ordinary searchable text"),
     ]);
-    corpus.messages[0].search_projection = Some(String::new());
-    corpus.messages[1].search_projection = Some("visible request".to_owned());
+    corpus.messages.inline_mut()[0].search_projection = Some(String::new());
+    corpus.messages.inline_mut()[1].search_projection = Some("visible request".to_owned());
 
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
@@ -819,7 +819,7 @@ fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal
         .expect("initial insert");
 
     let mut replacement = conversation("second");
-    replacement.messages[0].id = "message-2".to_owned();
+    replacement.messages.inline_mut()[0].id = "message-2".to_owned();
     let change = storage
         .replace_conversation(&replacement)
         .expect("replace message identity");
@@ -840,19 +840,22 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     fn history(insert: bool) -> crate::ingestion::Conversation {
         let mut value = conversation("original request");
         let shift = i64::from(insert);
-        value.messages[0].context = crate::message_context::MessageContext::Root;
-        value.messages[0].ordinal = shift;
-        value.messages.push(crate::ingestion::NormalizedMessage {
-            id: "reply".into(),
-            ordinal: shift + 1,
-            content: "original reply".into(),
-            role: crate::role::Role::Assistant,
-            context: crate::message_context::MessageContext::Parent { ordinal: shift },
-            search_projection: None,
-            created_at: None,
-        });
+        value.messages.inline_mut()[0].context = crate::message_context::MessageContext::Root;
+        value.messages.inline_mut()[0].ordinal = shift;
+        value
+            .messages
+            .inline_mut()
+            .push(crate::ingestion::NormalizedMessage {
+                id: "reply".into(),
+                ordinal: shift + 1,
+                content: "original reply".into(),
+                role: crate::role::Role::Assistant,
+                context: crate::message_context::MessageContext::Parent { ordinal: shift },
+                search_projection: None,
+                created_at: None,
+            });
         if insert {
-            value.messages.insert(
+            value.messages.inline_mut().insert(
                 0,
                 crate::ingestion::NormalizedMessage {
                     id: "inserted".into(),
@@ -896,7 +899,8 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     storage.begin_provider_scan().unwrap();
     let mut invalid = history(true);
-    invalid.messages[2].context = crate::message_context::MessageContext::Parent { ordinal: 9 };
+    invalid.messages.inline_mut()[2].context =
+        crate::message_context::MessageContext::Parent { ordinal: 9 };
     assert!(storage.replace_conversation(&invalid).is_err());
     storage.rollback_provider_scan().unwrap();
     storage.commit_writer().unwrap();

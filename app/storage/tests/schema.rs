@@ -345,7 +345,7 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
         .replace_embeddings(
             "fixture-generation",
             &[EmbeddingWrite {
-                message_id: &conversation.messages[0].id,
+                message_id: &conversation.messages.inline()[0].id,
                 vector: &[127, 0],
                 norm: 127.0,
             }],
@@ -393,7 +393,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
         .replace_embeddings(
             "fixture",
             &[EmbeddingWrite {
-                message_id: &conversation.messages[0].id,
+                message_id: &conversation.messages.inline()[0].id,
                 vector: &[127, 0],
                 norm: 127.0,
             }],
@@ -425,7 +425,10 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
             .unwrap()
     );
     assert_eq!(
-        storage.view(&conversation.messages[0].id, 0).unwrap()[0].content,
+        storage
+            .view(&conversation.messages.inline()[0].id, 0)
+            .unwrap()[0]
+            .content,
         "preserved request"
     );
     assert!(Storage::open_search(&path, "fixture").is_err());
@@ -478,7 +481,7 @@ fn provider_schema_upgrade_preserves_metadata_and_requires_explicit_refresh() {
         (value.project.unwrap(), value.repository.unwrap())
     );
     assert_eq!(
-        storage.view(&value.messages[0].id, 0).unwrap()[0].content,
+        storage.view(&value.messages.inline()[0].id, 0).unwrap()[0].content,
         "keep this history"
     );
     assert!(Storage::open_search(&path, "fixture").is_err());

@@ -51,18 +51,32 @@ fn native_layouts_preserve_prose_metadata_and_context_without_duplicate_mirrors(
     assert_eq!(parsed.messages.len(), 4);
     assert_eq!(parsed.project.as_deref(), Some("/work/cbioportal"));
     assert_eq!(parsed.repository.as_deref(), Some("/work/repository"));
-    assert!(parsed.messages[1].content.contains("toolmarker"));
-    assert!(parsed.messages[1].content.contains("reasoningmarker"));
+    assert!(parsed.messages.inline()[1].content.contains("toolmarker"));
+    assert!(
+        parsed.messages.inline()[1]
+            .content
+            .contains("reasoningmarker")
+    );
     assert_eq!(
-        parsed.messages[1].search_projection.as_deref(),
+        parsed.messages.inline()[1].search_projection.as_deref(),
         Some("Repair mutation parsing")
     );
-    assert_eq!(parsed.messages[2].search_projection.as_deref(), Some(""));
-    assert_eq!(parsed.messages[3].search_projection.as_deref(), Some(""));
-    let legacy = parse(&sources[1].identity).unwrap().conversation.unwrap();
-    assert!(legacy.messages[0].content.contains("syntheticmarker"));
     assert_eq!(
-        legacy.messages[0].search_projection.as_deref(),
+        parsed.messages.inline()[2].search_projection.as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        parsed.messages.inline()[3].search_projection.as_deref(),
+        Some("")
+    );
+    let legacy = parse(&sources[1].identity).unwrap().conversation.unwrap();
+    assert!(
+        legacy.messages.inline()[0]
+            .content
+            .contains("syntheticmarker")
+    );
+    assert_eq!(
+        legacy.messages.inline()[0].search_projection.as_deref(),
         Some("independent native history")
     );
     assert_eq!(source_stamp_for(&sources[0].identity).unwrap(), before);
@@ -199,6 +213,7 @@ fn session_horizon_and_attachments_do_not_promote_operational_text() {
         .conversation
         .unwrap()
         .messages
+        .inline_mut()
         .remove(0);
     assert!(message.content.contains("attachmentmarker"));
     assert_eq!(

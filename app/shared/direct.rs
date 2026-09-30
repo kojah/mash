@@ -13,6 +13,8 @@ use std::path::Path;
 use std::time::Instant;
 const DIRECT_INSTANCE: &str = "shared-only:v1";
 mod claude;
+#[cfg(test)]
+mod tests;
 pub(crate) struct IndexResult {
     pub(crate) counts: Counts,
     pub(crate) summary: IndexSummary,
@@ -303,17 +305,7 @@ async fn replace_conversation(
     pool: &mut Option<EmbeddingPool>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
-    let total_vectors = conversation
-        .messages
-        .iter()
-        .filter(|message| {
-            !message
-                .search_projection
-                .as_deref()
-                .unwrap_or(&message.content)
-                .is_empty()
-        })
-        .count() as u64;
+    let total_vectors = conversation.messages.summary()?.searchable;
     let started = Instant::now();
     let initial_vectors = result.embeddings.stored_vectors;
     let mut estimate = crate::progress::Estimate::new();
@@ -331,7 +323,15 @@ async fn replace_conversation(
             }],
         }),
     )?;
-    for batch in conversation.messages.chunks(32) {
+    let mut messages = conversation.messages.rows()?;
+    loop {
+        let batch = messages
+            .by_ref()
+            .take(32)
+            .collect::<Result<Vec<_>, AppError>>()?;
+        if batch.is_empty() {
+            break;
+        }
         let texts = batch
             .iter()
             .map(|m| m.search_projection.as_deref().unwrap_or(&m.content))
@@ -341,8 +341,10 @@ async fn replace_conversation(
             .await?
             .into_iter();
         result.embeddings.model_inferences += texts.len() as u64;
+        drop(texts);
         let mut records = Vec::new();
         for message in batch {
+            let message = message.into_owned();
             let projection = message
                 .search_projection
                 .as_deref()
@@ -363,14 +365,17 @@ async fn replace_conversation(
                 )
             });
             let has_vector = vector.is_some();
+            let projection = message
+                .search_projection
+                .unwrap_or_else(|| message.content.clone());
             records.push(MessageRecord {
-                id: message.id.clone(),
+                id: message.id,
                 conversation_id: conversation.id.clone(),
                 ordinal: message.ordinal,
                 context: message.context,
-                role: message.role.clone(),
-                content: message.content.clone(),
-                projection: projection.to_owned(),
+                role: message.role,
+                content: message.content,
+                projection,
                 created_at: message.created_at,
                 generation,
                 vector,

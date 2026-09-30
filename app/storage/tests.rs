@@ -22,7 +22,8 @@ fn conversation(content: &str) -> Conversation {
             content: content.to_owned(),
             search_projection: None,
             created_at: Some(i64::MAX / 2),
-        }],
+        }]
+        .into(),
     }
 }
 
@@ -51,3 +52,4 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
 mod indexing;
 mod schema;
 mod semantic;
+mod staging;

@@ -81,6 +81,7 @@ fn options(path: &Path) -> IndexOptions {
 fn searchable(conversation: &Conversation) -> Vec<&NormalizedMessage> {
     conversation
         .messages
+        .inline()
         .iter()
         .filter(|m| {
             !m.search_projection
@@ -108,20 +109,27 @@ fn native_root_owns_order_metadata_and_distinct_repeated_requests() {
     assert_eq!(conversation.created_at, Some(1_790_762_400_000));
     assert_eq!(conversation.updated_at, Some(1_790_762_400_001));
     assert_eq!(
-        conversation.messages[0].content,
-        conversation.messages[4].content
+        conversation.messages.inline()[0].content,
+        conversation.messages.inline()[4].content
     );
-    assert_ne!(conversation.messages[0].id, conversation.messages[4].id);
-    assert_eq!(conversation.messages[0].created_at, Some(1_790_762_400_000));
-    assert_eq!(conversation.messages[1].created_at, None);
+    assert_ne!(
+        conversation.messages.inline()[0].id,
+        conversation.messages.inline()[4].id
+    );
+    assert_eq!(
+        conversation.messages.inline()[0].created_at,
+        Some(1_790_762_400_000)
+    );
+    assert_eq!(conversation.messages.inline()[1].created_at, None);
     assert!(
-        conversation.messages[1]
+        conversation.messages.inline()[1]
             .content
             .contains("private-ide-reasoning")
     );
     assert!(
         conversation
             .messages
+            .inline()
             .iter()
             .all(|m| !m.content.contains("unsent-draft")
                 && !m.content.contains("ide-summary")
@@ -139,14 +147,23 @@ fn native_root_owns_order_metadata_and_distinct_repeated_requests() {
     bubble.text = "Updated cBioPortal importer request".into();
     write(&connection, &bubble_key("request-1"), &bubble);
     let edited = parsed(&path);
-    assert_eq!(edited.messages[0].id, conversation.messages[0].id);
-    assert_ne!(edited.messages[0].content, conversation.messages[0].content);
+    assert_eq!(
+        edited.messages.inline()[0].id,
+        conversation.messages.inline()[0].id
+    );
+    assert_ne!(
+        edited.messages.inline()[0].content,
+        conversation.messages.inline()[0].content
+    );
     let mut root: Root = read(&connection, root_key());
     root.full_conversation_headers_only.truncate(2);
     write(&connection, root_key(), &root);
     let rewind = parsed(&path);
     assert_eq!(rewind.messages.len(), 2);
-    assert_eq!(rewind.messages[1].id, conversation.messages[1].id);
+    assert_eq!(
+        rewind.messages.inline()[1].id,
+        conversation.messages.inline()[1].id
+    );
     assert_eq!(
         connection
             .query_row(
@@ -233,7 +250,9 @@ fn synthetic_operational_and_unknown_bubbles_remain_context_only() {
         let conversation = parsed(&path);
         assert_eq!(searchable(&conversation).len(), 3);
         assert_eq!(
-            conversation.messages[0].search_projection.as_deref(),
+            conversation.messages.inline()[0]
+                .search_projection
+                .as_deref(),
             Some("")
         );
     }
@@ -248,7 +267,7 @@ fn synthetic_operational_and_unknown_bubbles_remain_context_only() {
         parent_composer_id: "parent".into(),
     });
     write(&connection, root_key(), &root);
-    assert!(searchable(&parsed(&path)).is_empty());
+    assert_eq!(searchable(&parsed(&path)), Vec::<&NormalizedMessage>::new());
     assert_eq!(parsed(&path).messages.len(), 6);
 }
 
@@ -270,7 +289,7 @@ fn wal_changes_refresh_sources_without_mixing_snapshot_revisions() {
     write(&connection, &key, &bubble);
     let old: Bubble = snapshot.json(&key).unwrap();
     assert_ne!(old.text, bubble.text);
-    assert_eq!(parsed(&path).messages[0].content, bubble.text);
+    assert_eq!(parsed(&path).messages.inline()[0].content, bubble.text);
     assert_ne!(stamp.fingerprint, source.stamp().unwrap().fingerprint);
     assert!(path.with_file_name("state.vscdb-wal").exists());
 }

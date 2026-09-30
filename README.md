@@ -146,6 +146,15 @@ peak reservations and wait time for diagnosing parser backpressure. This is an
 estimate rather than a process-memory ceiling; a single large history may need
 more memory.
 
+Normalized message payloads spill to private temporary files above a 16 MiB
+inline budget. JSONL parsing and Claude reconciliation feed this staging
+incrementally; local storage and shared uploads read it in bounded batches.
+Scratch files use `TMPDIR` and are removed when their owner finishes or fails.
+Checksums detect corrupt staging before publication. Metadata still grows with
+message count, and some native adapters buffer their input before normalization.
+See the [large-history staging measurement](benchmarks/2026-10-01-normalized-message-staging.md)
+for the measured memory and disk-I/O tradeoff.
+
 Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`
