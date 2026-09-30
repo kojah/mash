@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 33;
+pub(super) const SCHEMA_VERSION: i64 = 34;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -23,23 +23,8 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if version == 32 {
-        // Schema 33 changes Claude's logical agent identity, not stored text,
-        // projections, model space or layout. Reparse those sources on explicit
-        // indexing; their actual changes stage derived updates normally.
-        let transaction = connection
-            .unchecked_transaction()
-            .map_err(AppError::database)?;
-        transaction
-            .execute(
-                "DELETE FROM source_checkpoints WHERE provider = ?1",
-                [crate::provider::Provider::ClaudeCode],
-            )
-            .map_err(AppError::database)?;
-        transaction
-            .pragma_update(None, "user_version", SCHEMA_VERSION)
-            .map_err(AppError::database)?;
-        return transaction.commit().map_err(AppError::database);
+    if matches!(version, 32 | 33) {
+        return migrate_claude_identity(connection);
     }
 
     connection
@@ -114,6 +99,26 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     connection
         .pragma_update(None, "foreign_keys", true)
         .map_err(AppError::database)
+}
+
+fn migrate_claude_identity(connection: &Connection) -> Result<(), AppError> {
+    // Claude provenance requires explicit replay, not rebuilding unrelated text.
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(AppError::database)?;
+    transaction
+        .execute_batch(SCHEMA)
+        .map_err(AppError::database)?;
+    transaction
+        .execute(
+            "DELETE FROM source_checkpoints WHERE provider = ?1",
+            [crate::provider::Provider::ClaudeCode],
+        )
+        .map_err(AppError::database)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(AppError::database)?;
+    transaction.commit().map_err(AppError::database)
 }
 
 fn prepare_message_columns(connection: &Connection) -> Result<(), AppError> {

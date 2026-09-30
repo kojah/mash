@@ -15,6 +15,7 @@ const FTS_BULK_REBUILD_PERCENT: u64 = 90;
 struct MessageState {
     fingerprint: String,
     ordinal: i64,
+    search_text: String,
 }
 
 impl Storage {
@@ -186,6 +187,16 @@ impl Storage {
         &mut self,
         conversation: &Conversation,
     ) -> Result<ConversationChange, AppError> {
+        if conversation.provider == Provider::ClaudeCode && conversation.claude_lineage.is_some() {
+            return self.replace_claude_source(conversation);
+        }
+        self.replace_canonical_conversation(conversation)
+    }
+
+    pub(super) fn replace_canonical_conversation(
+        &mut self,
+        conversation: &Conversation,
+    ) -> Result<ConversationChange, AppError> {
         self.require_writer()?;
         let tombstoned = self
             .connection
@@ -275,7 +286,7 @@ impl Storage {
         })
     }
 
-    fn repair_claude_source_identity(
+    pub(super) fn repair_claude_source_identity(
         &mut self,
         conversation: &Conversation,
     ) -> Result<u64, AppError> {
@@ -425,17 +436,23 @@ impl Storage {
                 stage_fts
                     .execute([&message.id])
                     .map_err(AppError::database)?;
-                delete_embedding
-                    .execute([&message.id])
-                    .map_err(AppError::database)?;
-                if message_search_text(message).is_empty() {
-                    unqueue_embedding
+                if existing_messages
+                    .get(&message.id)
+                    .map(|state| state.search_text.as_str())
+                    != Some(message_search_text(message))
+                {
+                    delete_embedding
                         .execute([&message.id])
                         .map_err(AppError::database)?;
-                } else {
-                    queue_embedding
-                        .execute([&message.id])
-                        .map_err(AppError::database)?;
+                    if message_search_text(message).is_empty() {
+                        unqueue_embedding
+                            .execute([&message.id])
+                            .map_err(AppError::database)?;
+                    } else {
+                        queue_embedding
+                            .execute([&message.id])
+                            .map_err(AppError::database)?;
+                    }
                 }
                 self.stage_semantic_message(&message.id, None)?;
             }
@@ -525,6 +542,11 @@ impl Storage {
         cutoff_modified_ns: Option<i64>,
     ) -> Result<u64, AppError> {
         self.require_writer()?;
+        let mut removed = if provider == Provider::ClaudeCode {
+            self.purge_claude_sources(observed_keys, authoritative_roots, cutoff_modified_ns)?
+        } else {
+            0
+        };
         let mut statement = self
             .connection
             .prepare(
@@ -551,7 +573,6 @@ impl Storage {
             .collect::<Result<Vec<_>, _>>()
             .map_err(AppError::database)?;
         drop(statement);
-        let mut removed = 0_u64;
         for (id, source_path, source_key, modified_ns) in existing {
             if observed_keys.contains(&source_key)
                 || !source_is_in_reconciliation_scope(
@@ -622,6 +643,11 @@ impl Storage {
         source: &crate::ingestion::SourceIdentity,
     ) -> Result<bool, AppError> {
         self.require_writer()?;
+        if provider == Provider::ClaudeCode
+            && let Some(removed) = self.remove_claude_source(&source.key())?
+        {
+            return Ok(removed);
+        }
         let id: Option<String> = self
             .connection
             .query_row(
@@ -634,16 +660,20 @@ impl Storage {
         let Some(id) = id else {
             return Ok(false);
         };
+        self.remove_canonical_conversation(&id)
+    }
+
+    pub(super) fn remove_canonical_conversation(&mut self, id: &str) -> Result<bool, AppError> {
         if !self.defer_search_updates {
-            self.stage_conversation_fts(&id)?;
-            self.stage_semantic_conversation(&id)?;
+            self.stage_conversation_fts(id)?;
+            self.stage_semantic_conversation(id)?;
             self.mark_semantic_index_incomplete()?;
         }
         if self.defer_search_updates {
             self.mark_derived_search_dirty()?;
         }
         self.connection
-            .execute("DELETE FROM conversations WHERE id = ?1", [&id])
+            .execute("DELETE FROM conversations WHERE id = ?1", [id])
             .map_err(AppError::database)?;
         Ok(true)
     }
@@ -705,6 +735,11 @@ impl Storage {
             .map_err(AppError::database)?;
         let removed = transaction
             .execute("DELETE FROM conversations WHERE id = ?1", [id])
+            .map_err(AppError::database)?;
+        sql::DeleteClaudeThreadSources::builder()
+            .conversation_id(id)
+            .build()
+            .execute(&transaction)
             .map_err(AppError::database)?;
         for chunk_id in semantic_chunk_ids {
             rebuild_semantic_chunk(&transaction, chunk_id, semantic_generation.as_deref())?;
@@ -769,6 +804,7 @@ impl Storage {
                     MessageState {
                         fingerprint: row.fingerprint,
                         ordinal: row.ordinal,
+                        search_text: row.search_text,
                     },
                 )
             })
@@ -776,7 +812,7 @@ impl Storage {
     }
 }
 
-fn source_is_in_reconciliation_scope(
+pub(super) fn source_is_in_reconciliation_scope(
     source_path: &str,
     modified_ns: Option<i64>,
     authoritative_roots: &[std::path::PathBuf],

@@ -618,6 +618,7 @@ fn purge_requires_a_complete_provider_scan() {
         .replace_conversation(&Conversation {
             id: "old-session".to_owned(),
             provider: Provider::ClaudeCode,
+            claude_lineage: None,
             source: SourceIdentity::file(missing_source),
             project: None,
             repository: None,
@@ -984,10 +985,7 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
         writer.counts().expect("all-history counts").conversations,
         2
     );
-    let old_message_id = stable_id(
-        "message",
-        &["claude-code", &old_path.to_string_lossy(), "old-session-m1"],
-    );
+    let old_message_id = stable_id("claude-message", &["old-session", "old-session-m1"]);
     writer
         .replace_embeddings(
             "old-generation",

@@ -19,6 +19,19 @@ pub(crate) struct DirectOwner {
 }
 
 impl Snapshot<'_> {
+    pub(crate) fn claude_sources(
+        &self,
+    ) -> Result<Vec<super::claude_sources::ClaudeSourceRef>, AppError> {
+        super::claude_sources::claude_references(self.connection)
+    }
+
+    pub(crate) fn claude_thread(
+        &self,
+        id: &str,
+        sources: &std::collections::BTreeSet<String>,
+    ) -> Result<Option<crate::ingestion::Conversation>, AppError> {
+        super::claude_sources::claude_thread(self.connection, id, Some(sources))
+    }
     /// Bound each network batch without materializing the complete local history.
     pub(crate) fn visit(
         &self,

@@ -84,6 +84,7 @@ pub struct ConversationMessageStateRow {
     pub id: String,
     pub fingerprint: String,
     pub ordinal: i64,
+    pub search_text: String,
 }
 impl ConversationMessageStateRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -91,6 +92,7 @@ impl ConversationMessageStateRow {
             id: row.get(0)?,
             fingerprint: row.get(1)?,
             ordinal: row.get(2)?,
+            search_text: row.get(3)?,
         })
     }
 }
@@ -98,8 +100,7 @@ pub struct ConversationMessageState<'a> {
     conversation_id: &'a str,
 }
 impl<'a> ConversationMessageState<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT id,fingerprint,ordinal FROM messages WHERE conversation_id=?1";
+    pub const QUERY: &'static str = r"SELECT id,fingerprint,ordinal,COALESCE(search_projection,content) AS search_text FROM messages WHERE conversation_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -152,6 +153,1312 @@ impl<'a> ConversationMessageStateBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ConversationMessageState<'a> {
         let (conversation_id,) = self.fields;
         ConversationMessageState { conversation_id }
+    }
+}
+pub struct ClaudeSourceThreadRow {
+    pub conversation_id: String,
+}
+impl ClaudeSourceThreadRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            conversation_id: row.get(0)?,
+        })
+    }
+}
+pub struct ClaudeSourceThread<'a> {
+    source_key: &'a str,
+}
+impl<'a> ClaudeSourceThread<'a> {
+    pub const QUERY: &'static str =
+        r"SELECT conversation_id FROM claude_sources WHERE source_key=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ClaudeSourceThread<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<ClaudeSourceThreadRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ClaudeSourceThreadRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ClaudeSourceThreadRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ClaudeSourceThreadRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_key,)
+    }
+}
+impl<'a> ClaudeSourceThread<'a> {
+    pub const fn builder() -> ClaudeSourceThreadBuilder<'a, ((),)> {
+        ClaudeSourceThreadBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ClaudeSourceThreadBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ClaudeSourceThreadBuilder<'a, ((),)> {
+    pub fn source_key(self, source_key: &'a str) -> ClaudeSourceThreadBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ClaudeSourceThreadBuilder {
+            fields: (source_key,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ClaudeSourceThreadBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ClaudeSourceThread<'a> {
+        let (source_key,) = self.fields;
+        ClaudeSourceThread { source_key }
+    }
+}
+pub struct ClaudeSourceMetadataRow {
+    pub source_key: String,
+    pub source_path: String,
+    pub title: Option<String>,
+    pub project: Option<String>,
+    pub repository: Option<String>,
+}
+impl ClaudeSourceMetadataRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_key: row.get(0)?,
+            source_path: row.get(1)?,
+            title: row.get(2)?,
+            project: row.get(3)?,
+            repository: row.get(4)?,
+        })
+    }
+}
+pub struct ClaudeSourceMetadata<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> ClaudeSourceMetadata<'a> {
+    pub const QUERY: &'static str = r"SELECT source_key,source_path,title,project,repository FROM claude_sources
+WHERE conversation_id=?1 ORDER BY source_key";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ClaudeSourceMetadata<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ClaudeSourceMetadataRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ClaudeSourceMetadataRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> ClaudeSourceMetadata<'a> {
+    pub const fn builder() -> ClaudeSourceMetadataBuilder<'a, ((),)> {
+        ClaudeSourceMetadataBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ClaudeSourceMetadataBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ClaudeSourceMetadataBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ClaudeSourceMetadataBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ClaudeSourceMetadataBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ClaudeSourceMetadataBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ClaudeSourceMetadata<'a> {
+        let (conversation_id,) = self.fields;
+        ClaudeSourceMetadata { conversation_id }
+    }
+}
+pub struct ClaudeSourceReferencesRow {
+    pub source_key: String,
+    pub source_path: String,
+    pub conversation_id: String,
+}
+impl ClaudeSourceReferencesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_key: row.get(0)?,
+            source_path: row.get(1)?,
+            conversation_id: row.get(2)?,
+        })
+    }
+}
+pub struct ClaudeSourceReferences;
+impl ClaudeSourceReferences {
+    pub const QUERY: &'static str =
+        r"SELECT source_key,source_path,conversation_id FROM claude_sources ORDER BY source_key";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ClaudeSourceReferences {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ClaudeSourceReferencesRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ClaudeSourceReferencesRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ClaudeSourceReferences {
+    pub const fn builder() -> ClaudeSourceReferencesBuilder<'static, ()> {
+        ClaudeSourceReferencesBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ClaudeSourceReferencesBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ClaudeSourceReferencesBuilder<'a, ()> {
+    pub fn build(self) -> ClaudeSourceReferences {
+        let () = self.fields;
+        ClaudeSourceReferences {}
+    }
+}
+pub struct ClaudeContributionMessagesRow {
+    pub source_key: String,
+    pub message_id: String,
+    pub parent_id: Option<String>,
+    pub role: String,
+    pub content: String,
+    pub projection: Option<String>,
+    pub created_at: Option<i64>,
+}
+impl ClaudeContributionMessagesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_key: row.get(0)?,
+            message_id: row.get(1)?,
+            parent_id: row.get(2)?,
+            role: row.get(3)?,
+            content: row.get(4)?,
+            projection: row.get(5)?,
+            created_at: row.get(6)?,
+        })
+    }
+}
+pub struct ClaudeContributionMessages<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> ClaudeContributionMessages<'a> {
+    pub const QUERY: &'static str = r"SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at
+FROM claude_source_messages m JOIN claude_sources s USING(source_key)
+WHERE s.conversation_id=?1 ORDER BY m.message_id,m.source_key";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ClaudeContributionMessages<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ClaudeContributionMessagesRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ClaudeContributionMessagesRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> ClaudeContributionMessages<'a> {
+    pub const fn builder() -> ClaudeContributionMessagesBuilder<'a, ((),)> {
+        ClaudeContributionMessagesBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ClaudeContributionMessagesBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ClaudeContributionMessagesBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ClaudeContributionMessagesBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ClaudeContributionMessagesBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ClaudeContributionMessagesBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ClaudeContributionMessages<'a> {
+        let (conversation_id,) = self.fields;
+        ClaudeContributionMessages { conversation_id }
+    }
+}
+pub struct ClaudeSourceScopeRow {
+    pub source_key: String,
+    pub source_path: String,
+    pub modified_ns: Option<i64>,
+}
+impl ClaudeSourceScopeRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_key: row.get(0)?,
+            source_path: row.get(1)?,
+            modified_ns: row.get(2)?,
+        })
+    }
+}
+pub struct ClaudeSourceScope;
+impl ClaudeSourceScope {
+    pub const QUERY: &'static str = r"SELECT s.source_key,s.source_path,c.modified_ns FROM claude_sources s
+LEFT JOIN source_checkpoints c ON c.provider='claude-code' AND c.source_key=s.source_key";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ClaudeSourceScope {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ClaudeSourceScopeRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ClaudeSourceScopeRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ClaudeSourceScope {
+    pub const fn builder() -> ClaudeSourceScopeBuilder<'static, ()> {
+        ClaudeSourceScopeBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ClaudeSourceScopeBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ClaudeSourceScopeBuilder<'a, ()> {
+    pub fn build(self) -> ClaudeSourceScope {
+        let () = self.fields;
+        ClaudeSourceScope {}
+    }
+}
+pub struct UpsertClaudeSourceRow {}
+impl UpsertClaudeSourceRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct UpsertClaudeSource<'a> {
+    source_key: &'a str,
+    source_path: &'a str,
+    conversation_id: &'a str,
+    title: Option<&'a str>,
+    project: Option<&'a str>,
+    repository: Option<&'a str>,
+}
+impl<'a> UpsertClaudeSource<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO claude_sources(source_key,source_path,conversation_id,title,project,repository)
+VALUES(?1,?2,?3,?4,?5,?6)
+ON CONFLICT(source_key) DO UPDATE SET source_path=excluded.source_path,
+conversation_id=excluded.conversation_id,title=excluded.title,project=excluded.project,repository=excluded.repository";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> UpsertClaudeSource<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.source_key,
+            self.source_path,
+            self.conversation_id,
+            self.title,
+            self.project,
+            self.repository,
+        )
+    }
+}
+impl<'a> UpsertClaudeSource<'a> {
+    pub const fn builder() -> UpsertClaudeSourceBuilder<'a, ((), (), (), (), (), ())> {
+        UpsertClaudeSourceBuilder {
+            fields: ((), (), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct UpsertClaudeSourceBuilder<'a, Fields = ((), (), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, SourcePath, ConversationId, Title, Project, Repository>
+    UpsertClaudeSourceBuilder<'a, ((), SourcePath, ConversationId, Title, Project, Repository)>
+{
+    pub fn source_key(
+        self,
+        source_key: &'a str,
+    ) -> UpsertClaudeSourceBuilder<
+        'a,
+        (
+            &'a str,
+            SourcePath,
+            ConversationId,
+            Title,
+            Project,
+            Repository,
+        ),
+    > {
+        let ((), source_path, conversation_id, title, project, repository) = self.fields;
+        let _phantom = self._phantom;
+        UpsertClaudeSourceBuilder {
+            fields: (
+                source_key,
+                source_path,
+                conversation_id,
+                title,
+                project,
+                repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, ConversationId, Title, Project, Repository>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, (), ConversationId, Title, Project, Repository)>
+{
+    pub fn source_path(
+        self,
+        source_path: &'a str,
+    ) -> UpsertClaudeSourceBuilder<
+        'a,
+        (
+            SourceKey,
+            &'a str,
+            ConversationId,
+            Title,
+            Project,
+            Repository,
+        ),
+    > {
+        let (source_key, (), conversation_id, title, project, repository) = self.fields;
+        let _phantom = self._phantom;
+        UpsertClaudeSourceBuilder {
+            fields: (
+                source_key,
+                source_path,
+                conversation_id,
+                title,
+                project,
+                repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, SourcePath, Title, Project, Repository>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, (), Title, Project, Repository)>
+{
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, &'a str, Title, Project, Repository)>
+    {
+        let (source_key, source_path, (), title, project, repository) = self.fields;
+        let _phantom = self._phantom;
+        UpsertClaudeSourceBuilder {
+            fields: (
+                source_key,
+                source_path,
+                conversation_id,
+                title,
+                project,
+                repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, SourcePath, ConversationId, Project, Repository>
+    UpsertClaudeSourceBuilder<
+        'a,
+        (
+            SourceKey,
+            SourcePath,
+            ConversationId,
+            (),
+            Project,
+            Repository,
+        ),
+    >
+{
+    pub fn title(
+        self,
+        title: Option<&'a str>,
+    ) -> UpsertClaudeSourceBuilder<
+        'a,
+        (
+            SourceKey,
+            SourcePath,
+            ConversationId,
+            Option<&'a str>,
+            Project,
+            Repository,
+        ),
+    > {
+        let (source_key, source_path, conversation_id, (), project, repository) = self.fields;
+        let _phantom = self._phantom;
+        UpsertClaudeSourceBuilder {
+            fields: (
+                source_key,
+                source_path,
+                conversation_id,
+                title,
+                project,
+                repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, SourcePath, ConversationId, Title, Repository>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, ConversationId, Title, (), Repository)>
+{
+    pub fn project(
+        self,
+        project: Option<&'a str>,
+    ) -> UpsertClaudeSourceBuilder<
+        'a,
+        (
+            SourceKey,
+            SourcePath,
+            ConversationId,
+            Title,
+            Option<&'a str>,
+            Repository,
+        ),
+    > {
+        let (source_key, source_path, conversation_id, title, (), repository) = self.fields;
+        let _phantom = self._phantom;
+        UpsertClaudeSourceBuilder {
+            fields: (
+                source_key,
+                source_path,
+                conversation_id,
+                title,
+                project,
+                repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, SourcePath, ConversationId, Title, Project>
+    UpsertClaudeSourceBuilder<'a, (SourceKey, SourcePath, ConversationId, Title, Project, ())>
+{
+    pub fn repository(
+        self,
+        repository: Option<&'a str>,
+    ) -> UpsertClaudeSourceBuilder<
+        'a,
+        (
+            SourceKey,
+            SourcePath,
+            ConversationId,
+            Title,
+            Project,
+            Option<&'a str>,
+        ),
+    > {
+        let (source_key, source_path, conversation_id, title, project, ()) = self.fields;
+        let _phantom = self._phantom;
+        UpsertClaudeSourceBuilder {
+            fields: (
+                source_key,
+                source_path,
+                conversation_id,
+                title,
+                project,
+                repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a>
+    UpsertClaudeSourceBuilder<
+        'a,
+        (
+            &'a str,
+            &'a str,
+            &'a str,
+            Option<&'a str>,
+            Option<&'a str>,
+            Option<&'a str>,
+        ),
+    >
+{
+    pub fn build(self) -> UpsertClaudeSource<'a> {
+        let (source_key, source_path, conversation_id, title, project, repository) = self.fields;
+        UpsertClaudeSource {
+            source_key,
+            source_path,
+            conversation_id,
+            title,
+            project,
+            repository,
+        }
+    }
+}
+pub struct DeleteClaudeSourceMessagesRow {}
+impl DeleteClaudeSourceMessagesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct DeleteClaudeSourceMessages<'a> {
+    source_key: &'a str,
+}
+impl<'a> DeleteClaudeSourceMessages<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM claude_source_messages WHERE source_key=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> DeleteClaudeSourceMessages<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_key,)
+    }
+}
+impl<'a> DeleteClaudeSourceMessages<'a> {
+    pub const fn builder() -> DeleteClaudeSourceMessagesBuilder<'a, ((),)> {
+        DeleteClaudeSourceMessagesBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct DeleteClaudeSourceMessagesBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> DeleteClaudeSourceMessagesBuilder<'a, ((),)> {
+    pub fn source_key(
+        self,
+        source_key: &'a str,
+    ) -> DeleteClaudeSourceMessagesBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        DeleteClaudeSourceMessagesBuilder {
+            fields: (source_key,),
+            _phantom,
+        }
+    }
+}
+impl<'a> DeleteClaudeSourceMessagesBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteClaudeSourceMessages<'a> {
+        let (source_key,) = self.fields;
+        DeleteClaudeSourceMessages { source_key }
+    }
+}
+pub struct InsertClaudeSourceMessageRow {}
+impl InsertClaudeSourceMessageRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct InsertClaudeSourceMessage<'a> {
+    source_key: &'a str,
+    message_id: &'a str,
+    parent_id: Option<&'a str>,
+    role: &'a str,
+    content: &'a str,
+    projection: Option<&'a str>,
+    created_at: Option<i64>,
+}
+impl<'a> InsertClaudeSourceMessage<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at)
+VALUES(?1,?2,?3,?4,?5,?6,?7)";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> InsertClaudeSourceMessage<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.source_key,
+            self.message_id,
+            self.parent_id,
+            self.role,
+            self.content,
+            self.projection,
+            self.created_at,
+        )
+    }
+}
+impl<'a> InsertClaudeSourceMessage<'a> {
+    pub const fn builder() -> InsertClaudeSourceMessageBuilder<'a, ((), (), (), (), (), (), ())> {
+        InsertClaudeSourceMessageBuilder {
+            fields: ((), (), (), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct InsertClaudeSourceMessageBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            (),
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    >
+{
+    pub fn source_key(
+        self,
+        source_key: &'a str,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            &'a str,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    > {
+        let ((), message_id, parent_id, role, content, projection, created_at) = self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key, message_id, parent_id, role, content, projection, created_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            (),
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    >
+{
+    pub fn message_id(
+        self,
+        message_id: &'a str,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            &'a str,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    > {
+        let (source_key, (), parent_id, role, content, projection, created_at) = self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key, message_id, parent_id, role, content, projection, created_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            (),
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    >
+{
+    pub fn parent_id(
+        self,
+        parent_id: Option<&'a str>,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            Option<&'a str>,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    > {
+        let (source_key, message_id, (), role, content, projection, created_at) = self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key, message_id, parent_id, role, content, projection, created_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            (),
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    >
+{
+    pub fn role(
+        self,
+        role: &'a str,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            &'a str,
+            Content,
+            Projection,
+            CreatedAt,
+        ),
+    > {
+        let (source_key, message_id, parent_id, (), content, projection, created_at) = self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key, message_id, parent_id, role, content, projection, created_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            (),
+            Projection,
+            CreatedAt,
+        ),
+    >
+{
+    pub fn content(
+        self,
+        content: &'a str,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            &'a str,
+            Projection,
+            CreatedAt,
+        ),
+    > {
+        let (source_key, message_id, parent_id, role, (), projection, created_at) = self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key, message_id, parent_id, role, content, projection, created_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (SourceKey, MessageId, ParentId, Role, Content, (), CreatedAt),
+    >
+{
+    pub fn projection(
+        self,
+        projection: Option<&'a str>,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Option<&'a str>,
+            CreatedAt,
+        ),
+    > {
+        let (source_key, message_id, parent_id, role, content, (), created_at) = self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key, message_id, parent_id, role, content, projection, created_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            (),
+        ),
+    >
+{
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            Option<i64>,
+        ),
+    > {
+        let (source_key, message_id, parent_id, role, content, projection, ()) = self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key, message_id, parent_id, role, content, projection, created_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            &'a str,
+            &'a str,
+            Option<&'a str>,
+            &'a str,
+            &'a str,
+            Option<&'a str>,
+            Option<i64>,
+        ),
+    >
+{
+    pub fn build(self) -> InsertClaudeSourceMessage<'a> {
+        let (source_key, message_id, parent_id, role, content, projection, created_at) =
+            self.fields;
+        InsertClaudeSourceMessage {
+            source_key,
+            message_id,
+            parent_id,
+            role,
+            content,
+            projection,
+            created_at,
+        }
+    }
+}
+pub struct DeleteClaudeSourceRow {}
+impl DeleteClaudeSourceRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct DeleteClaudeSource<'a> {
+    source_key: &'a str,
+}
+impl<'a> DeleteClaudeSource<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM claude_sources WHERE source_key=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> DeleteClaudeSource<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_key,)
+    }
+}
+impl<'a> DeleteClaudeSource<'a> {
+    pub const fn builder() -> DeleteClaudeSourceBuilder<'a, ((),)> {
+        DeleteClaudeSourceBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct DeleteClaudeSourceBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> DeleteClaudeSourceBuilder<'a, ((),)> {
+    pub fn source_key(self, source_key: &'a str) -> DeleteClaudeSourceBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        DeleteClaudeSourceBuilder {
+            fields: (source_key,),
+            _phantom,
+        }
+    }
+}
+impl<'a> DeleteClaudeSourceBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteClaudeSource<'a> {
+        let (source_key,) = self.fields;
+        DeleteClaudeSource { source_key }
+    }
+}
+pub struct DeleteClaudeThreadSourcesRow {}
+impl DeleteClaudeThreadSourcesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct DeleteClaudeThreadSources<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> DeleteClaudeThreadSources<'a> {
+    pub const QUERY: &'static str = r"DELETE FROM claude_sources WHERE conversation_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> DeleteClaudeThreadSources<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> DeleteClaudeThreadSources<'a> {
+    pub const fn builder() -> DeleteClaudeThreadSourcesBuilder<'a, ((),)> {
+        DeleteClaudeThreadSourcesBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct DeleteClaudeThreadSourcesBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> DeleteClaudeThreadSourcesBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> DeleteClaudeThreadSourcesBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        DeleteClaudeThreadSourcesBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> DeleteClaudeThreadSourcesBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteClaudeThreadSources<'a> {
+        let (conversation_id,) = self.fields;
+        DeleteClaudeThreadSources { conversation_id }
+    }
+}
+pub struct ClaudeTombstoneRow {
+    pub conversation_id: String,
+}
+impl ClaudeTombstoneRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            conversation_id: row.get(0)?,
+        })
+    }
+}
+pub struct ClaudeTombstone<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> ClaudeTombstone<'a> {
+    pub const QUERY: &'static str = r"SELECT conversation_id FROM tombstones WHERE provider='claude-code' AND conversation_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ClaudeTombstone<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ClaudeTombstoneRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ClaudeTombstoneRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ClaudeTombstoneRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ClaudeTombstoneRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> ClaudeTombstone<'a> {
+    pub const fn builder() -> ClaudeTombstoneBuilder<'a, ((),)> {
+        ClaudeTombstoneBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ClaudeTombstoneBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ClaudeTombstoneBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ClaudeTombstoneBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ClaudeTombstoneBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ClaudeTombstoneBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ClaudeTombstone<'a> {
+        let (conversation_id,) = self.fields;
+        ClaudeTombstone { conversation_id }
+    }
+}
+pub struct CanonicalThreadMessageCountRow {
+    pub messages: i64,
+}
+impl CanonicalThreadMessageCountRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            messages: row.get(0)?,
+        })
+    }
+}
+pub struct CanonicalThreadMessageCount<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> CanonicalThreadMessageCount<'a> {
+    pub const QUERY: &'static str =
+        r"SELECT count(*) AS messages FROM messages WHERE conversation_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> CanonicalThreadMessageCount<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<CanonicalThreadMessageCountRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), CanonicalThreadMessageCountRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<CanonicalThreadMessageCountRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), CanonicalThreadMessageCountRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> CanonicalThreadMessageCount<'a> {
+    pub const fn builder() -> CanonicalThreadMessageCountBuilder<'a, ((),)> {
+        CanonicalThreadMessageCountBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct CanonicalThreadMessageCountBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> CanonicalThreadMessageCountBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> CanonicalThreadMessageCountBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        CanonicalThreadMessageCountBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> CanonicalThreadMessageCountBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> CanonicalThreadMessageCount<'a> {
+        let (conversation_id,) = self.fields;
+        CanonicalThreadMessageCount { conversation_id }
     }
 }
 pub struct ParkMessageOrdinalRow {}

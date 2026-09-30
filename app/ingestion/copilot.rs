@@ -422,6 +422,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 &[Provider::Copilot.as_str(), &start.session_id],
             ),
             provider: Provider::Copilot,
+            claude_lineage: None,
             source: SourceIdentity::file(path),
             project,
             repository,

@@ -156,8 +156,23 @@ the session and native `agentId` together to index each subagent as an independe
 thread, so it cannot replace the parent's history. An explicit `mash index`
 upgrades older indexes and reprocesses Claude source checkpoints to repair this
 identity collision; search never performs the upgrade or indexing itself.
-The schema 32-to-33 upgrade preserves existing vectors and search readiness;
+The schema 32/33-to-34 upgrade preserves existing vectors and search readiness;
 reprocessing changed Claude transcripts updates their derived data normally.
+
+Claude message UUIDs are scoped to their native session and agent, independent
+of the transcript's physical path. SQLite retains each physical source's
+contribution and derives one logical thread from their union. Matching copies
+are deduplicated; divergent branches retain their own causal context. Rewinding,
+emptying, or deleting one copy removes only that copy's contribution. Conflicting
+payloads or ancestry for the same native UUID fail transactionally. Records
+without a UUID retain path-based fallback identity.
+
+Normal and independently routed shared publication use this same reconciliation.
+The first upgrade of older routed Claude checkpoints requires an explicit
+`mash index --all-history` when a bounded history horizon would prevent replaying
+retained contributions. Changing old path-based message IDs can require
+re-embedding Claude messages; unrelated providers' vectors remain intact.
+Source snapshots increase SQLite storage, especially with many physical copies.
 
 For pipeline diagnostics, set `MASH_TRACE=1`. mash writes JSON trace events to
 stderr, including process/request IDs, request elapsed milliseconds, nested stage spans, span busy/idle timing,

@@ -77,6 +77,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         conversation: Some(Conversation {
             id: parsers::stable_id("session", &[Provider::Antigravity.as_str(), &root.cascade]),
             provider: Provider::Antigravity,
+            claude_lineage: None,
             source: source.clone(),
             project: location(metadata.workspaces.iter().map(|w| w.project.as_str())),
             repository: location(metadata.workspaces.iter().map(|w| w.repository.as_str())),

@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+mod claude;
 mod codex;
 
 struct ExtractedMessage {
@@ -58,9 +59,9 @@ fn parse_jsonl(
     let mut malformed_records = 0;
     let mut messages = Vec::new();
     let mut session_id = None;
-    let mut agent_id: Option<String> = None;
     let mut project = None;
     let mut repository = None;
+    let mut claude_identity = claude::Identity::default();
     for line in lines {
         let line = line?;
         if line.trim().is_empty() {
@@ -73,7 +74,9 @@ fn parse_jsonl(
             continue;
         };
         capture_metadata(&raw, &mut project, &mut repository);
-        capture_agent_identity(provider, &raw, &mut agent_id)?;
+        if provider == Provider::ClaudeCode {
+            claude_identity.observe(&raw)?;
+        }
         if provider == Provider::Codex && session_id.is_none() && raw.kind == Kind::SessionMeta {
             session_id = raw
                 .payload
@@ -87,19 +90,13 @@ fn parse_jsonl(
         if extracted.content.trim().is_empty() {
             continue;
         }
-        let projection = extracted
-            .search_projection
-            .as_deref()
-            .unwrap_or(&extracted.content);
-        let clean = crate::search_text::project(&extracted.role, projection);
-        if clean.as_ref() != projection {
-            extracted.search_projection = Some(clean.into_owned());
-        }
-        if session_id.is_none() {
-            session_id = extracted.session_id;
-        }
+        clean_projection(&mut extracted);
+        capture_session(provider, &mut session_id, extracted.session_id.take())?;
         let ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("conversation contains too many messages"))?;
+        if provider == Provider::ClaudeCode {
+            claude_identity.keys.push(extracted.source_id.clone());
+        }
         let message_key = extracted.source_id.unwrap_or_else(|| ordinal.to_string());
         messages.push(NormalizedMessage {
             id: stable_id(
@@ -122,10 +119,14 @@ fn parse_jsonl(
     }
     let id = session_id
         .unwrap_or_else(|| stable_id("session", &[provider.as_str(), &path.to_string_lossy()]));
-    let id = agent_id.map_or_else(
-        || id.clone(),
-        |agent| stable_id("claude-agent", &[&id, &agent]),
-    );
+    let id = claude_identity.thread_id(&id);
+    let claude_lineage = if provider == Provider::ClaudeCode {
+        let (normalized, lineage) = claude_identity.normalize(&id, messages)?;
+        messages = normalized;
+        Some(lineage)
+    } else {
+        None
+    };
     let created_at = messages
         .iter()
         .filter_map(|message| message.created_at)
@@ -139,6 +140,7 @@ fn parse_jsonl(
         conversation: Some(Conversation {
             id,
             provider,
+            claude_lineage,
             source: super::SourceIdentity::file(path),
             repository: repository.or_else(|| project.as_deref().and_then(repository_origin)),
             project,
@@ -165,24 +167,36 @@ fn conversation_title(messages: &[NormalizedMessage]) -> Option<String> {
         })
 }
 
-// Subagents inherit their parent's sessionId, but have independent histories.
-// Use native agent identity rather than parser completion order or source size.
-fn capture_agent_identity(
+fn capture_session(
     provider: Provider,
-    raw: &Record,
-    agent_id: &mut Option<String>,
+    session: &mut Option<String>,
+    next: Option<String>,
 ) -> Result<(), AppError> {
     if provider == Provider::ClaudeCode
-        && let Some(id) = raw.agent_id.as_ref().filter(|id| !id.is_empty())
+        && session
+            .as_ref()
+            .zip(next.as_ref())
+            .is_some_and(|(a, b)| a != b)
     {
-        if agent_id.as_ref().is_some_and(|previous| previous != id) {
-            return Err(AppError::configuration(
-                "Claude transcript contains multiple agent identities",
-            ));
-        }
-        *agent_id = Some(id.clone());
+        return Err(AppError::configuration(
+            "Claude transcript contains multiple session identities",
+        ));
+    }
+    if session.is_none() {
+        *session = next;
     }
     Ok(())
+}
+
+fn clean_projection(message: &mut ExtractedMessage) {
+    let projection = message
+        .search_projection
+        .as_deref()
+        .unwrap_or(&message.content);
+    let clean = crate::search_text::project(&message.role, projection);
+    if clean.as_ref() != projection {
+        message.search_projection = Some(clean.into_owned());
+    }
 }
 
 pub(super) fn capture_metadata(

@@ -157,6 +157,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 &[Provider::Aider.as_str(), &path.to_string_lossy()],
             ),
             provider: Provider::Aider,
+            claude_lineage: None,
             source: super::SourceIdentity::file(path),
             title,
             // The native timestamp has no offset, and a custom history path may

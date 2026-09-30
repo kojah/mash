@@ -349,6 +349,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 &[Provider::GeminiCli.as_str(), &state.session],
             ),
             provider: Provider::GeminiCli,
+            claude_lineage: None,
             source: SourceIdentity::file(path),
             project: Some(project(path, &state.project)?),
             repository: None,

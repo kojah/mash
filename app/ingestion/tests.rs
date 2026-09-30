@@ -5,6 +5,7 @@ use super::parsers::{capture_metadata, parse_claude, parse_codex, stable_id};
 use super::*;
 use std::time::UNIX_EPOCH;
 
+mod claude_copies;
 mod indexing;
 mod parsing;
 
@@ -27,6 +28,7 @@ fn test_conversation(
     Conversation {
         id: id.to_owned(),
         provider,
+        claude_lineage: None,
         source: SourceIdentity::file(source_path),
         project: None,
         repository: None,

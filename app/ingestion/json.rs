@@ -83,10 +83,25 @@ pub(super) struct Record {
     pub session_id: Option<String>,
     #[serde(rename = "agentId")]
     pub agent_id: Option<String>,
+    #[serde(rename = "parentUuid", default, deserialize_with = "parent_link")]
+    pub parent: ParentLink,
     pub message: Option<Payload>,
     pub payload: Option<Payload>,
     #[serde(flatten)]
     pub metadata: Metadata,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) enum ParentLink {
+    #[default]
+    Missing,
+    Root,
+    Parent(String),
+}
+
+fn parent_link<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ParentLink, D::Error> {
+    Option::<String>::deserialize(deserializer)
+        .map(|parent| parent.map_or(ParentLink::Root, ParentLink::Parent))
 }
 
 #[derive(Default, Deserialize)]

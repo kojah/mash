@@ -52,6 +52,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         conversation: Some(Conversation {
             id: parsers::stable_id("session", &[Provider::Windsurf.as_str(), session]),
             provider: Provider::Windsurf,
+            claude_lineage: None,
             source: SourceIdentity::file(path),
             project: location(workspaces.iter().map(|w| w.project.as_str())),
             repository: location(workspaces.iter().map(|w| w.repository.as_str())),

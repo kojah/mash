@@ -10,6 +10,7 @@ mod aider;
 mod antigravity;
 #[cfg(test)]
 mod benchmarks;
+pub(crate) mod claude;
 mod cline;
 mod copilot;
 mod cursor;
@@ -96,6 +97,7 @@ pub(crate) struct Conversation {
     pub(crate) id: String,
     pub(crate) provider: Provider,
     pub(crate) source: SourceIdentity,
+    pub(crate) claude_lineage: Option<claude::Lineage>,
     pub(crate) project: Option<String>,
     pub(crate) repository: Option<String>,
     pub(crate) title: Option<String>,
@@ -104,6 +106,7 @@ pub(crate) struct Conversation {
     pub(crate) messages: Vec<NormalizedMessage>,
 }
 
+#[derive(Clone)]
 pub(crate) struct NormalizedMessage {
     pub(crate) id: String,
     pub(crate) ordinal: i64,

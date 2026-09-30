@@ -84,6 +84,25 @@ CREATE TABLE IF NOT EXISTS source_checkpoints (
     fingerprint TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (provider, source_key)
 );
+CREATE TABLE IF NOT EXISTS claude_sources (
+    source_key TEXT PRIMARY KEY,
+    source_path TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    title TEXT,
+    project TEXT,
+    repository TEXT
+);
+CREATE INDEX IF NOT EXISTS claude_sources_conversation ON claude_sources(conversation_id, source_key);
+CREATE TABLE IF NOT EXISTS claude_source_messages (
+    source_key TEXT NOT NULL REFERENCES claude_sources(source_key) ON DELETE CASCADE,
+    message_id TEXT NOT NULL,
+    parent_id TEXT,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    projection TEXT,
+    created_at INTEGER,
+    PRIMARY KEY(source_key, message_id)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS derived_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     search_dirty INTEGER NOT NULL CHECK (search_dirty IN (0, 1)),

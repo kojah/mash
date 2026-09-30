@@ -8,6 +8,7 @@ struct Fixture {
     codex: std::path::PathBuf,
     group: String,
     server: Option<shared_server::Server>,
+    redis: bool,
 }
 
 impl Fixture {
@@ -52,6 +53,7 @@ impl Fixture {
             codex,
             group,
             server,
+            redis,
         }
     }
 
@@ -123,6 +125,28 @@ impl Fixture {
     }
 
     fn cleanup(&self) {
+        if self.redis {
+            let client =
+                redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
+            let mut connection = client.get_connection().unwrap();
+            let prefix = format!("mash:r:{}:", blake3::hash(self.group.as_bytes()).to_hex());
+            redis::cmd("FT.DROPINDEX")
+                .arg(format!("{prefix}index"))
+                .arg("DD")
+                .query::<()>(&mut connection)
+                .unwrap();
+            let keys: Vec<String> = redis::cmd("KEYS")
+                .arg(format!("{prefix}*"))
+                .query(&mut connection)
+                .unwrap();
+            if !keys.is_empty() {
+                redis::cmd("DEL")
+                    .arg(keys)
+                    .query::<usize>(&mut connection)
+                    .unwrap();
+            }
+            return;
+        }
         self.client()
             .batch_execute(&format!(
                 "DROP SCHEMA mash_g_{} CASCADE",
@@ -130,6 +154,123 @@ impl Fixture {
             ))
             .unwrap();
     }
+}
+
+#[test]
+#[ignore = "requires disposable PostgreSQL and explicitly installed MASH_TEST_MODELS_DIR"]
+fn claude_copy_reconciliation_postgres_snapshot() {
+    claude_copy_reconciliation(false, false);
+}
+
+#[test]
+#[ignore = "requires disposable PostgreSQL and explicitly installed MASH_TEST_MODELS_DIR"]
+fn claude_copy_reconciliation_postgres_routed() {
+    claude_copy_reconciliation(false, true);
+}
+
+#[test]
+#[ignore = "requires disposable Redis Search and explicitly installed MASH_TEST_MODELS_DIR"]
+fn claude_copy_reconciliation_redis_snapshot() {
+    claude_copy_reconciliation(true, false);
+}
+
+#[test]
+#[ignore = "requires disposable Redis Search and explicitly installed MASH_TEST_MODELS_DIR"]
+fn claude_copy_reconciliation_redis_routed() {
+    claude_copy_reconciliation(true, true);
+}
+
+fn claude_copy_reconciliation(redis: bool, routed: bool) {
+    let mut fixture = Fixture::with_backend(redis);
+    fixture.models = std::env::var("MASH_TEST_MODELS_DIR").unwrap().into();
+    let root = fixture.directory.path().join("claude");
+    let a = root.join("session.jsonl");
+    let b = root.join("copy.jsonl");
+    let write = |path: &Path, branch: Option<&str>| {
+        let mut rows = vec![
+            serde_json::json!({"type":"user","sessionId":"claude-session","uuid":"common","parentUuid":null,"message":{"role":"user","content":"common sentinel"}}),
+        ];
+        if let Some(branch) = branch {
+            rows.push(serde_json::json!({"type":"user","sessionId":"claude-session","uuid":branch,"parentUuid":"common","message":{"role":"user","content":format!("{branch} sentinel")}}));
+        }
+        std::fs::write(
+            path,
+            rows.into_iter()
+                .map(|row| row.to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+    };
+    write(&a, None);
+    write(&b, None);
+    let index_config = if routed {
+        toml::toml! {destination = "both" shared = {providers = ["claude-code"]}}
+    } else {
+        toml::toml! {destination = "both"}
+    };
+    std::fs::write(&fixture.config, toml::to_string(&toml::toml! {
+                version = 1
+                providers = {claude-code = {roots = [(root.to_str().unwrap())]}}
+                index = (index_config)
+                shared = {group_id = (fixture.group.as_str()),node_id = "split",api_url = (fixture.server.as_ref().unwrap().url.as_str()),token_env = "MASH_TEST_ROUTING_TOKEN"}
+            }).unwrap()).unwrap();
+    let check = |messages: u64| {
+        let indexed = fixture.json(&["index", "--all-history"], true);
+        assert_eq!(indexed["shared"]["state"], "published", "{indexed}");
+        assert_eq!(indexed["indexed_messages"], messages);
+        let status = fixture.json(&["status", "--shared"], true);
+        let node = status["shared_index"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["node_id"] == "split")
+            .unwrap();
+        assert_eq!(node["messages"], messages);
+        let connection = rusqlite::Connection::open(&fixture.database).unwrap();
+        let rows = connection
+            .prepare("SELECT id,content FROM messages ORDER BY ordinal")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for (id, content) in rows {
+            let remote = fixture.json(&["view", &id, "--shared", "split", "--context", "0"], true);
+            assert_eq!(remote["messages"][0]["content"], content);
+        }
+    };
+    check(1);
+    check(1);
+    write(&b, Some("right"));
+    check(2);
+    write(&a, Some("left"));
+    check(3);
+    write(&b, None);
+    check(2);
+    write(&b, Some("right"));
+    check(3);
+    std::fs::remove_file(&a).unwrap();
+    check(2);
+    check(2);
+    write(&a, None);
+    check(2);
+    std::fs::remove_file(&b).unwrap();
+    check(1);
+    check(1);
+    std::fs::write(&a, "").unwrap();
+    check(0);
+    write(&a, None);
+    check(1);
+    assert!(
+        fixture.json(&["forget", "claude-session"], true)["forgotten"]
+            .as_bool()
+            .unwrap()
+    );
+    check(0);
+    fixture.cleanup();
 }
 
 #[test]

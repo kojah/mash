@@ -269,6 +269,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         conversation: Some(Conversation {
             id: super::parsers::stable_id("session", &[Provider::Pi.as_str(), &header.id]),
             provider: Provider::Pi,
+            claude_lineage: None,
             source: SourceIdentity::file(path),
             project: header.cwd.filter(|s| !s.is_empty()),
             repository: None,

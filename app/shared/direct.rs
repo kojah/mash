@@ -12,6 +12,7 @@ use crate::storage::publication::DirectOwner;
 use std::path::Path;
 use std::time::Instant;
 const DIRECT_INSTANCE: &str = "shared-only:v1";
+mod claude;
 pub(crate) struct IndexResult {
     pub(crate) counts: Counts,
     pub(crate) summary: IndexSummary,
@@ -27,6 +28,7 @@ fn elapsed(started: Instant) -> u64 {
 
 pub(crate) async fn index(
     config: &SharedConfig,
+    database: &Path,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     options: &IndexOptions,
@@ -74,6 +76,25 @@ pub(crate) async fn index(
     crate::progress::phase(crate::progress::Phase::SharedIngestion, 0);
     let mut pool = None;
     for scan in &scans {
+        if scan.provider == crate::provider::Provider::ClaudeCode {
+            let owner = owner.ok_or_else(|| {
+                AppError::internal("routed Claude indexing requires a local owner")
+            })?;
+            claude::ingest(
+                file.as_file_mut(),
+                &state,
+                owner,
+                database,
+                scan,
+                full,
+                models_dir,
+                embeddings,
+                &mut pool,
+                &mut result,
+            )
+            .await?;
+            continue;
+        }
         ingest_scan(
             file.as_file_mut(),
             &state,

@@ -210,6 +210,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 &[Provider::Hermes.as_str(), &source.key()],
             ),
             provider: Provider::Hermes,
+            claude_lineage: None,
             source: source.clone(),
             project: session.project,
             repository: session.repository,

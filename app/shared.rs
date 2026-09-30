@@ -343,6 +343,7 @@ pub(crate) async fn publish_routed(
         let target = routed_target(configuration)?;
         direct::index(
             config,
+            path,
             models_dir,
             configuration.embeddings.as_ref(),
             options,

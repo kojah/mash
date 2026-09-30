@@ -227,6 +227,7 @@ fn parse_agent(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 &[Provider::Cursor.as_str(), &metadata.agent_id],
             ),
             provider: Provider::Cursor,
+            claude_lineage: None,
             source: source.clone(),
             project,
             repository,
