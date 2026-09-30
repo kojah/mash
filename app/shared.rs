@@ -636,7 +636,7 @@ fn rerank_combined(
         })
         .collect::<Result<Vec<_>, _>>()?;
     if count > 0 {
-        for result in backend.rerank(query, &documents)? {
+        for result in backend.rerank_search(query, &documents)? {
             if let Some(hit) = fused[..count].get_mut(result.index) {
                 hit.rerank_score = Some(result.score);
             }

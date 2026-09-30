@@ -166,6 +166,14 @@ pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit
     rounds.into_iter().flatten().collect()
 }
 
+/// Lexical evidence remains eligible even outside the model budget. Semantic-only
+/// candidates must have been evaluated by the reranker before becoming excerpts.
+/// An unscored nearest neighbour is not evidence. Raw logits are not calibrated:
+/// negative scores can still describe useful matches, so do not threshold them.
+fn qualifies_as_evidence(hit: &SearchHit) -> bool {
+    hit.lexical_score.is_some() || hit.rerank_score.is_some_and(f32::is_finite)
+}
+
 pub(crate) fn collect(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
@@ -177,9 +185,14 @@ pub(crate) fn collect(
     }
     let mut threads = Vec::<ThreadHit>::new();
     let mut groups = HashMap::new();
-    for (rank, hit) in deduplicate(hits, unit).into_iter().enumerate() {
+    for (rank, hit) in deduplicate(hits, unit)
+        .into_iter()
+        .filter(qualifies_as_evidence)
+        .enumerate()
+    {
+        let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
         let key = (hit.provider, hit.conversation_id.clone());
-        let index = *groups.entry(key.clone()).or_insert_with(|| {
+        let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
             threads.push(ThreadHit {
                 conversation_id: hit.conversation_id.clone(),
                 provider: hit.provider,
@@ -195,17 +208,27 @@ pub(crate) fn collect(
                 score: 0.0,
                 matches: Vec::new(),
             });
-            threads.len() - 1
+            (threads.len() - 1, rank)
         });
         let thread = &mut threads[index];
         if thread.matches.len() == 3 {
             continue;
         }
-        // Reciprocal rank preserves the existing reranker/fusion ordering without
-        // interpreting uncalibrated logits as probabilities. Corroboration is capped.
-        let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
-        let weight = [1.0, 0.1, 0.05][thread.matches.len()];
-        thread.score += weight / (60.0 + rank + 1.0);
+        // The best evidence dominates: corroboration can consume only half the
+        // gap to the next rank, so extra excerpts cannot beat a stronger match.
+        if thread.matches.is_empty() {
+            thread.score = 1.0 / (61.0 + rank);
+        } else {
+            let best = thread.score;
+            let base = 1.0 / (61.0 + best_rank);
+            let budget = (base - 1.0 / (62.0 + best_rank)) * 0.5;
+            let weight = if thread.matches.len() == 1 {
+                2.0 / 3.0
+            } else {
+                1.0 / 3.0
+            };
+            thread.score = best + budget * weight;
+        }
         thread.matches.push(ThreadMatch {
             message_id: hit.id,
             node_id: hit.node_id,
@@ -229,9 +252,25 @@ pub(crate) fn collect(
 
 /// Prefer a window around lexical evidence; semantic-only matches use the start.
 fn excerpt(content: &str, query: &str) -> String {
+    evidence_window(content, query, 800)
+}
+
+/// Keep the query evidence visible to the 512-token reranker on long messages.
+/// Short messages are passed through unchanged; the bounded window also limits
+/// inference cost. Canonical message contents and view anchors remain intact.
+pub(crate) fn rerank_document<'a>(content: &'a str, query: &str) -> std::borrow::Cow<'a, str> {
+    if content.chars().take(2401).count() <= 2400 {
+        std::borrow::Cow::Borrowed(content)
+    } else {
+        std::borrow::Cow::Owned(evidence_window(content, query, 2400))
+    }
+}
+
+fn evidence_window(content: &str, query: &str, length: usize) -> String {
     let offset = query
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.len() >= 3 && word.is_ascii())
+        .filter(|word| !is_query_stop_word(word))
         .filter_map(|word| {
             content
                 .as_bytes()
@@ -247,11 +286,22 @@ fn excerpt(content: &str, query: &str) -> String {
     if start > 0 {
         snippet.push('…');
     }
-    snippet.extend(characters.by_ref().take(800));
+    snippet.extend(characters.by_ref().take(length));
     if characters.next().is_some() {
         snippet.push('…');
     }
     snippet
+}
+
+fn is_query_stop_word(word: &str) -> bool {
+    const WORDS: &[&str] = &[
+        "about", "and", "are", "can", "could", "did", "does", "for", "from", "how", "into", "our",
+        "that", "the", "their", "there", "these", "this", "was", "were", "what", "when", "where",
+        "which", "with", "would", "you", "your",
+    ];
+    WORDS
+        .iter()
+        .any(|candidate| word.eq_ignore_ascii_case(candidate))
 }
 
 #[cfg(test)]

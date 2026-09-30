@@ -433,8 +433,15 @@ Thread retrieval considers up to 200 lexical and 200 semantic candidates per
 index. Before reranking, it keeps at most three distinct messages per conversation
 and considers one from each conversation before second and third matches.
 At most 30 messages are reranked. Threads are grouped before applying `limit`;
-their score is reciprocal rank of the best message plus contributions of 10%
-and 5% from the next two. Scores express relative relevance, not probabilities.
+their score is reciprocal rank of the best qualifying message plus a bounded
+bonus for up to two additional qualifying excerpts. The bonus is smaller than
+the gap to the next message rank, so weaker matches cannot push a thread above
+one with stronger primary evidence. Scores express relative relevance, not probabilities.
+Lexical matches remain eligible outside the reranking budget. Semantic-only
+matches qualify only after being evaluated by the reranker; unreranked neighbours
+do not fill out thread results. Raw model logits are not calibrated probabilities,
+so a negative score alone does not disqualify a semantic paraphrase. A query may
+return fewer threads than requested. Message mode retains its exploratory candidate results.
 Recency does not change ranking; use date filters to restrict history.
 Copies with the same provider and conversation ID are grouped across nodes;
 identical role and whitespace-normalized message content earns no additional credit.
@@ -453,6 +460,10 @@ their thread IDs and matching message references remain usable.
 
 Reranking evaluates documents individually so a long message does not pad every
 short candidate to the tokenizer's maximum length. Candidate budgets stay unchanged.
+For messages longer than 2,400 characters, reranking uses a bounded window around
+the first query term (or the start for semantic-only matches), keeping late lexical
+evidence visible instead of always truncating the message's opening. `view` still
+returns the canonical message.
 Search projections exclude system/developer/tool messages, dedicated skill bodies,
 and known injected instruction/context blocks. Ordinary Markdown examples remain
 searchable. `view` retains canonical provider history. Existing candidates are

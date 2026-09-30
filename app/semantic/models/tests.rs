@@ -3,6 +3,59 @@ use crate::semantic::shared_query_vector;
 
 #[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+fn query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence() {
+    let source = std::env::var_os("MASH_TEST_MODELS_DIR")
+        .map(PathBuf::from)
+        .expect("explicit model directory");
+    let mut backend = Models::new(source).load().unwrap().unwrap();
+    for (query, relevant) in [
+        (
+            "cbioportal",
+            "Are the cbioportal-related skills transferred?",
+        ),
+        (
+            "postgres redis performance",
+            "Why is Redis search faster than PostgreSQL?",
+        ),
+        (
+            "initial indexing progress",
+            "The initial index should be explicit and display a progress monitor with remaining ETA.",
+        ),
+    ] {
+        let documents = [
+            relevant,
+            "hello!",
+            "sounds good keep going",
+            "I planted carrots in my garden.",
+        ];
+        let scores = backend.rerank_search(query, &documents).unwrap();
+        let relevant = scores
+            .iter()
+            .find(|result| result.index == 0)
+            .unwrap()
+            .score;
+        assert!(
+            scores
+                .iter()
+                .filter(|result| result.index != 0)
+                .all(|result| result.score < relevant),
+            "query {query}: {scores:?}"
+        );
+    }
+    let long = format!(
+        "{}cBioPortal importer",
+        "unrelated introduction ".repeat(500)
+    );
+    let original = backend.rerank("cbioportal", &[long.as_str()]).unwrap()[0].score;
+    let focused = backend
+        .rerank_search("cbioportal", &[long.as_str()])
+        .unwrap()[0]
+        .score;
+    assert!(focused > original, "original {original}, focused {focused}");
+}
+
+#[test]
+#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 fn small_rerank_batches_preserve_scores_and_document_indices() {
     let source = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(PathBuf::from)

@@ -51,7 +51,7 @@ pub(crate) fn hybrid_search_filtered(
         .collect::<Vec<_>>();
     let documents = storage.search_documents(&rerank_ids)?;
     let document_refs = documents.iter().map(String::as_str).collect::<Vec<_>>();
-    let reranked = backend.rerank(query, &document_refs)?;
+    let reranked = backend.rerank_search(query, &document_refs)?;
     for result in reranked {
         if let Some(hit) = fused.get_mut(result.index) {
             hit.rerank_score = Some(result.score);

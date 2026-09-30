@@ -419,6 +419,24 @@ impl Backend {
             .rerank(query, documents, false, Some(1))
             .map_err(|error| AppError::model(format!("reranking inference failed: {error}")))
     }
+
+    /// Focus long candidates on query evidence before the tokenizer truncates
+    /// them. Keep the model's raw logits: they are not calibrated probabilities.
+    pub(crate) fn rerank_search(
+        &mut self,
+        query: &str,
+        documents: &[&str],
+    ) -> Result<Vec<fastembed::RerankResult>, AppError> {
+        if documents.is_empty() {
+            return Ok(Vec::new());
+        }
+        let windows = documents
+            .iter()
+            .map(|document| crate::search_results::rerank_document(document, query))
+            .collect::<Vec<_>>();
+        let refs = windows.iter().map(AsRef::as_ref).collect::<Vec<_>>();
+        self.rerank(query, &refs)
+    }
 }
 
 pub(super) fn load_local_embedding(

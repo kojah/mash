@@ -13,7 +13,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
             title: Some(thread.into()),
             ..Default::default()
         },
-        lexical_score: None,
+        lexical_score: Some(1.0),
         semantic_score: None,
         fusion_score: 0.03,
         rerank_score: None,
@@ -29,7 +29,7 @@ fn threads(hits: Vec<SearchHit>, limit: usize) -> Vec<ThreadHit> {
 }
 
 #[test]
-fn corroboration_is_discounted_and_capped_before_the_thread_limit() {
+fn strongest_evidence_dominates_corroboration_and_excerpts_are_capped() {
     let hits = vec![
         hit("single", "best"),
         hit("multiple", "second"),
@@ -37,18 +37,103 @@ fn corroboration_is_discounted_and_capped_before_the_thread_limit() {
         hit("multiple", "fourth"),
         hit("multiple", "fifth"),
     ];
-    let results = threads(hits, 1);
-    assert_eq!(results[0].conversation_id, "multiple");
+    let results = threads(hits, 2);
+    assert_eq!(results[0].conversation_id, "single");
+    assert_eq!(results[1].conversation_id, "multiple");
     assert_eq!(
-        results[0]
+        results[1]
             .matches
             .iter()
             .map(|m| m.message_id.as_str())
             .collect::<Vec<_>>(),
         ["second", "third", "fourth"]
     );
-    assert!((results[0].score - (1.0 / 62.0 + 0.1 / 63.0 + 0.05 / 64.0)).abs() < 0.000_001);
-    assert_eq!(results[0].metadata.title.as_deref(), Some("multiple"));
+    assert!((results[1].score - (1.0 / 62.0 + (1.0 / 62.0 - 1.0 / 63.0) * 0.5)).abs() < 0.000_001);
+    assert_eq!(results[1].metadata.title.as_deref(), Some("multiple"));
+}
+
+#[test]
+fn retrieval_neighbours_are_not_automatically_thread_evidence() {
+    let mut relevant = hit("skills", "skills-transfer");
+    relevant.content = "Are the cbioportal-related skills transferred?".into();
+    relevant.rerank_score = Some(0.89);
+    let mut greeting = hit("skills", "greeting");
+    greeting.content = "hello!".into();
+    greeting.lexical_score = None;
+    let mut filler = hit("skills", "filler");
+    filler.content = "sounds good keep going".into();
+    filler.lexical_score = None;
+    let mut unrelated = hit("irrelevant", "nearest-neighbour");
+    unrelated.lexical_score = None;
+    unrelated.semantic_score = Some(0.8);
+    let results = threads(vec![relevant, greeting, filler, unrelated], 5);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].matches.len(), 1);
+    assert_eq!(results[0].matches[0].message_id, "skills-transfer");
+    assert_eq!(results[0].score, 1.0 / 61.0);
+}
+
+#[test]
+fn semantic_paraphrases_and_lexical_tail_survive_without_forcing_a_full_page() {
+    let mut paraphrase = hit("semantic", "meaningful-follow-up");
+    paraphrase.lexical_score = None;
+    paraphrase.rerank_score = Some(0.3);
+    paraphrase.content = "What are the comments you'd make?".into();
+    let mut lexical = hit("lexical", "outside-reranking-budget");
+    lexical.rerank_score = Some(-1.0);
+    let mut unknown = hit("noise", "unscored");
+    unknown.lexical_score = None;
+    let results = threads(vec![paraphrase, lexical, unknown], 20);
+    assert_eq!(results.len(), 2);
+    assert_eq!(
+        results[0].matches[0].snippet,
+        "What are the comments you'd make?"
+    );
+    for score in [None, Some(f32::NAN), Some(f32::INFINITY)] {
+        let mut unknown = hit("noise", "unscored");
+        unknown.lexical_score = None;
+        unknown.rerank_score = score;
+        assert!(threads(vec![unknown], 20).is_empty());
+    }
+    // A negative uncalibrated logit is not grounds to drop a semantic paraphrase.
+    let mut paraphrase = hit("semantic", "login-token");
+    paraphrase.lexical_score = None;
+    paraphrase.rerank_score = Some(-0.3);
+    assert_eq!(threads(vec![paraphrase], 20).len(), 1);
+    let mut unknown = hit("noise", "unscored");
+    unknown.lexical_score = None;
+    let Results::Messages(results) = collect(vec![unknown], SearchUnit::Messages, 20, "query")
+    else {
+        panic!("messages");
+    };
+    assert_eq!(results.len(), 1);
+}
+
+#[test]
+fn reranking_windows_reveal_late_evidence_without_changing_short_messages() {
+    let short = "what are your comments on this?";
+    assert!(matches!(
+        rerank_document(short, "cbioportal"),
+        std::borrow::Cow::Borrowed(_)
+    ));
+    let long = format!(
+        "{}cBioPortal importer {}",
+        "unrelated introduction ".repeat(500),
+        "🦀".repeat(3000)
+    );
+    let window = rerank_document(&long, "cbioportal importer");
+    assert!(window.contains("cBioPortal importer"));
+    assert!(window.chars().count() <= 2402);
+    assert!(window.starts_with('…'));
+    assert!(rerank_document(&long, "semantic paraphrase").starts_with("unrelated introduction"));
+    let natural_query = format!(
+        "{}cBioPortal importer",
+        "the introduction and context ".repeat(500)
+    );
+    assert!(
+        rerank_document(&natural_query, "what about the cBioPortal importer?")
+            .contains("cBioPortal importer")
+    );
 }
 
 #[test]
