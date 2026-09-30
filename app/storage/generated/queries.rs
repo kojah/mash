@@ -80,6 +80,173 @@ impl<'a> CountsBuilder<'a, ()> {
         Counts {}
     }
 }
+pub struct ConversationMessageStateRow {
+    pub id: String,
+    pub fingerprint: String,
+    pub ordinal: i64,
+}
+impl ConversationMessageStateRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            fingerprint: row.get(1)?,
+            ordinal: row.get(2)?,
+        })
+    }
+}
+pub struct ConversationMessageState<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> ConversationMessageState<'a> {
+    pub const QUERY: &'static str =
+        r"SELECT id,fingerprint,ordinal FROM messages WHERE conversation_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConversationMessageState<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConversationMessageStateRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConversationMessageStateRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> ConversationMessageState<'a> {
+    pub const fn builder() -> ConversationMessageStateBuilder<'a, ((),)> {
+        ConversationMessageStateBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConversationMessageStateBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConversationMessageStateBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ConversationMessageStateBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConversationMessageStateBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConversationMessageStateBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ConversationMessageState<'a> {
+        let (conversation_id,) = self.fields;
+        ConversationMessageState { conversation_id }
+    }
+}
+pub struct ParkMessageOrdinalRow {}
+impl ParkMessageOrdinalRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ParkMessageOrdinal<'a> {
+    ordinal: i64,
+    conversation_id: &'a str,
+    message_id: &'a str,
+}
+impl<'a> ParkMessageOrdinal<'a> {
+    pub const QUERY: &'static str = r"UPDATE messages SET ordinal=?1
+WHERE conversation_id=?2 AND id=?3";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ParkMessageOrdinal<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.ordinal, self.conversation_id, self.message_id)
+    }
+}
+impl<'a> ParkMessageOrdinal<'a> {
+    pub const fn builder() -> ParkMessageOrdinalBuilder<'a, ((), (), ())> {
+        ParkMessageOrdinalBuilder {
+            fields: ((), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ParkMessageOrdinalBuilder<'a, Fields = ((), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, ConversationId, MessageId> ParkMessageOrdinalBuilder<'a, ((), ConversationId, MessageId)> {
+    pub fn ordinal(
+        self,
+        ordinal: i64,
+    ) -> ParkMessageOrdinalBuilder<'a, (i64, ConversationId, MessageId)> {
+        let ((), conversation_id, message_id) = self.fields;
+        let _phantom = self._phantom;
+        ParkMessageOrdinalBuilder {
+            fields: (ordinal, conversation_id, message_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, Ordinal, MessageId> ParkMessageOrdinalBuilder<'a, (Ordinal, (), MessageId)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ParkMessageOrdinalBuilder<'a, (Ordinal, &'a str, MessageId)> {
+        let (ordinal, (), message_id) = self.fields;
+        let _phantom = self._phantom;
+        ParkMessageOrdinalBuilder {
+            fields: (ordinal, conversation_id, message_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, Ordinal, ConversationId> ParkMessageOrdinalBuilder<'a, (Ordinal, ConversationId, ())> {
+    pub fn message_id(
+        self,
+        message_id: &'a str,
+    ) -> ParkMessageOrdinalBuilder<'a, (Ordinal, ConversationId, &'a str)> {
+        let (ordinal, conversation_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ParkMessageOrdinalBuilder {
+            fields: (ordinal, conversation_id, message_id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ParkMessageOrdinalBuilder<'a, (i64, &'a str, &'a str)> {
+    pub fn build(self) -> ParkMessageOrdinal<'a> {
+        let (ordinal, conversation_id, message_id) = self.fields;
+        ParkMessageOrdinal {
+            ordinal,
+            conversation_id,
+            message_id,
+        }
+    }
+}
 pub struct SearchHitRow {
     pub id: String,
     pub conversation_id: String,

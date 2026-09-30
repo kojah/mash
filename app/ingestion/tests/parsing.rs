@@ -240,6 +240,112 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
 }
 
 #[test]
+fn codex_native_completed_only_dialogue_is_recovered() {
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.write_all(include_bytes!(
+        "../../../docs/fixtures/codex-native-lifecycle-only-0.159.2.jsonl"
+    ))
+    .unwrap();
+    let parsed = parse_codex(file.path()).unwrap();
+    assert_eq!(parsed.malformed_records, 0);
+    let conversation = parsed.conversation.unwrap();
+    assert_eq!(conversation.id, "22222222-2222-4222-8222-222222222222");
+    assert_eq!(conversation.messages.len(), 4);
+    assert_eq!(
+        conversation.messages[0].content,
+        "find cbioportal conversations"
+    );
+    assert_eq!(
+        conversation.messages[2].content,
+        conversation.messages[0].content
+    );
+    assert_ne!(conversation.messages[0].id, conversation.messages[2].id);
+    assert_eq!(conversation.messages[1].content, "Here is answer 0.");
+    assert_eq!(conversation.messages[3].content, "Here is answer 1.");
+    assert_eq!(conversation.messages[0].created_at, Some(1_790_762_402_000));
+    assert_eq!(conversation.messages[1].role, crate::role::Role::Assistant);
+}
+
+#[test]
+fn codex_completed_dialogue_does_not_promote_transient_or_unknown_items() {
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.write_all(include_bytes!(
+        "../../../docs/fixtures/codex-native-lifecycle-only-0.159.2.jsonl"
+    ))
+    .unwrap();
+    for line in [
+        r#"{"type":"event_msg","payload":{"type":"item_started","turn_id":"transient","item":{"type":"AgentMessage","id":"started","content":[{"type":"Text","text":"unfinished answer"}]}}}"#,
+        r#"{"type":"event_msg","payload":{"type":"agent_message_content_delta","item_id":"started","delta":"streaming fragment"}}"#,
+        r#"{"type":"event_msg","payload":{"type":"item_completed","turn_id":"unknown","item":{"type":"FutureItem","id":"future","content":[{"type":"Text","text":"opaque future data"}]}}}"#,
+        r#"{"type":"event_msg","payload":{"type":"item_completed","turn_id":"empty","item":{"type":"UserMessage","id":"image-only","content":[{"type":"local_image","path":"/synthetic/image.png"}]}}}"#,
+    ] {
+        writeln!(file, "{line}").unwrap();
+    }
+    let parsed = parse_codex(file.path()).unwrap();
+    assert_eq!(parsed.malformed_records, 0);
+    assert_eq!(parsed.conversation.unwrap().messages.len(), 4);
+}
+
+#[test]
+fn codex_partial_mirrors_keep_unmatched_dialogue_in_both_orders() {
+    // Remove different raw records from the actual migrated fixture, then swap
+    // remaining adjacent response/completed pairs to exercise reverse arrival.
+    let fixture = include_str!("../../../docs/fixtures/codex-native-migration-0.159.2.jsonl");
+    for reverse in [false, true] {
+        let mut lines = fixture.lines().collect::<Vec<_>>();
+        lines.remove(10); // second assistant raw response
+        lines.remove(1); // first user raw response
+        if reverse {
+            lines.swap(3, 4); // first assistant completed/raw
+            // second user's raw is before the next task boundary; leave it there.
+        }
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(file, "{}", lines.join("\n")).unwrap();
+        let conversation = parse_codex(file.path()).unwrap().conversation.unwrap();
+        assert_eq!(conversation.messages.len(), 4, "reverse={reverse}");
+        assert_eq!(
+            conversation.messages[0].content,
+            "find cbioportal conversations"
+        );
+        assert_eq!(conversation.messages[1].content, "Here is answer 0.");
+        assert_eq!(
+            conversation.messages[2].content,
+            "find cbioportal conversations"
+        );
+        assert_eq!(conversation.messages[3].content, "Here is answer 1.");
+    }
+}
+
+#[test]
+fn codex_turn_boundaries_do_not_merge_separate_identical_requests() {
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"{{"type":"event_msg","payload":{{"type":"task_started","turn_id":"old"}}}}"#
+    )
+    .unwrap();
+    writeln!(file, r#"{{"type":"response_item","payload":{{"type":"message","id":"raw-old","role":"user","content":[{{"type":"input_text","text":"same request"}}]}}}}"#).unwrap();
+    writeln!(
+        file,
+        r#"{{"type":"event_msg","payload":{{"type":"task_complete","turn_id":"old"}}}}"#
+    )
+    .unwrap();
+    writeln!(
+        file,
+        r#"{{"type":"event_msg","payload":{{"type":"task_started","turn_id":"new"}}}}"#
+    )
+    .unwrap();
+    writeln!(file, r#"{{"type":"event_msg","payload":{{"type":"item_completed","turn_id":"new","item":{{"type":"UserMessage","id":"completed-new","content":[{{"type":"text","text":"same request"}}]}}}}}}"#).unwrap();
+    let conversation = parse_codex(file.path()).unwrap().conversation.unwrap();
+    assert_eq!(conversation.messages.len(), 2);
+    assert_eq!(
+        conversation.messages[0].content,
+        conversation.messages[1].content
+    );
+    assert_ne!(conversation.messages[0].id, conversation.messages[1].id);
+}
+
+#[test]
 fn codex_parser_keeps_the_rollout_session_identity() {
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(

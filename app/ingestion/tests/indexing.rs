@@ -1,5 +1,93 @@
 use super::*;
 
+#[tokio::test]
+#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
+    use crate::core::{IndexRequest, Operation, Paths, Request, Response};
+    use crate::search_results::{Results, SearchUnit};
+    for fixture in [
+        include_str!("../../../docs/fixtures/codex-native-lifecycle-only-0.159.2.jsonl"),
+        include_str!("../../../docs/fixtures/codex-native-migration-0.159.2.jsonl"),
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        let history = directory.path().join("session.jsonl");
+        fs::write(&history, fixture).unwrap();
+        let config = directory.path().join("config.toml");
+        fs::write(
+            &config,
+            toml::to_string(&toml::toml! {
+                version=1
+                providers={codex={roots=[(history.to_str().unwrap())]}}
+                index={all_history=true}
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let paths = Paths {
+            config: Some(config),
+            db: Some(directory.path().join("index.sqlite3")),
+            models_dir: Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into()),
+        };
+        crate::core::execute(Request {
+            paths: paths.clone(),
+            operation: Operation::Index(IndexRequest::default()),
+        })
+        .await
+        .unwrap();
+        for unit in [SearchUnit::Messages, SearchUnit::Threads] {
+            let Response::Search(response) = crate::core::execute(Request {
+                paths: paths.clone(),
+                operation: Operation::Search {
+                    query: "cbioportal conversations".into(),
+                    limit: 5,
+                    unit,
+                    filters: Box::new(crate::search_filter::Selection {
+                        provider: vec![Provider::Codex],
+                        project: vec!["/synthetic/mash".into()],
+                        role: vec![crate::role::Role::User],
+                        ..Default::default()
+                    }),
+                    shared: false,
+                    local: true,
+                },
+            })
+            .await
+            .unwrap() else {
+                panic!("search response")
+            };
+            let id = match response.results {
+                Results::Messages(messages) => {
+                    assert_eq!(messages.len(), 2);
+                    assert_ne!(messages[0].id, messages[1].id);
+                    messages[0].id.clone()
+                }
+                Results::Threads(threads) => {
+                    assert_eq!(threads.len(), 1);
+                    assert_eq!(threads[0].provider, Provider::Codex);
+                    assert_eq!(
+                        threads[0].metadata.project.as_deref(),
+                        Some("/synthetic/mash")
+                    );
+                    threads[0].matches[0].message_id.clone()
+                }
+            };
+            let Response::View(view) = crate::core::execute(Request {
+                paths: paths.clone(),
+                operation: Operation::View {
+                    id,
+                    context: 4,
+                    shared: None,
+                },
+            })
+            .await
+            .unwrap() else {
+                panic!("view response")
+            };
+            assert_eq!(view.messages.len(), 4);
+        }
+    }
+}
+
 #[test]
 fn oversized_jsonl_rolls_back_messages_and_checkpoint_then_recovers() {
     for provider in [Provider::ClaudeCode, Provider::Codex] {

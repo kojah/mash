@@ -18,24 +18,38 @@ Repeated text therefore cannot establish message identity. The parser regression
 checks four messages, distinct identities for the repeated requests, original
 response timestamps, session/project identity, and stable rereads.
 
-## Remaining contract gap
+## Dialogue reconciliation
 
-The current adapter reads raw `response_item` records and ignores event mirrors.
-It passes this mixed migration fixture, but does not yet ingest dialogue present
-only in completed turn items. This fixture does not prove lifecycle-only support.
-Beads `mash-c0d.7.3` tracks that gap and reconciliation of partially mirrored
-histories. Reconciliation must preserve separate repeated turns, avoid treating
-streaming or started items as final answers, retain unmatched dialogue, and keep
-canonical context available. Do not use global content deduplication or assume
-raw and completed IDs coincide.
+The adapter reads raw response records and completed user/assistant turn items.
+It pairs the nearest unconsumed dialogue candidate only when the representations,
+role, exact canonical content hash and turn affinity agree. Each pair is consumed
+once. Same-representation repeated requests remain separate; marked turn endings
+retire unmatched candidates from that turn. A queued raw user request emitted
+before the previous turn ends follows the next start marker, as in the native
+fixture. Tools remain canonical context and do not replace a dialogue candidate.
+The first representation supplies the retained ID and timestamp.
+
+This is deliberately conservative: changed content and ambiguous interleavings
+can retain both records. It does not use content-wide deduplication, infer missing
+text, merge similar requests, or treat started items/deltas as completed answers.
+Legacy event mirrors remain omitted. Completed-only IDs include turn and item
+identity; thread metadata remains authoritative for conversation identity.
 
 `fixtures/codex-native-lifecycle-only-0.159.2.jsonl` is a second successful
 native migration, in a fresh isolated home, of the same synthetic legacy events
 without their raw response records. It contains four completed dialogue items
 and no response records. This is an actual emitted format, not a guessed shape;
-the current adapter cannot yet recover its messages. Keep this fixture for the
-lifecycle implementation's conformance checks; do not count it as passing
-retrieval coverage.
+parser conformance checks recover all four messages, preserving the two repeated
+requests. Model-backed core checks explicitly index both native fixtures and
+exercise message/thread searches with provider, role and project filters and
+canonical context views. These fixtures do not establish every native UI flow or
+aggregate ingestion memory use.
+
+SQLite schema 32 and source fingerprint `search-text-v6` require an explicit
+`mash index` refresh. Existing canonical messages and embeddings survive the
+migration, but readiness/checkpoints are invalidated so lifecycle-only sources
+are reingested. Shared source fingerprints also change. Search never performs
+that refresh automatically.
 
 The existing bounded reader permits streaming large completed `FileChange` and
 `CommandExecution` envelopes without retaining their tool payloads. Dialogue and

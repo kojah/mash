@@ -358,9 +358,17 @@ For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 31 and shared PostgreSQL
+keep their existing ordinal neighbourhoods. SQLite schema 32 and shared PostgreSQL
 schema 15 preserve existing messages and vectors. Update the shared service before
 publishing Pi, Copilot, Gemini, Cline, Cursor, Windsurf or Antigravity histories from upgraded nodes.
+
+Codex histories include raw response records and completed `UserMessage` /
+`AgentMessage` turn items. Nearby raw/completed counterparts are paired once;
+unmatched dialogue and separate repeated requests are retained. Started items,
+streaming deltas and legacy event mirrors are omitted. See the
+[native Codex contract](docs/codex-ingestion-contract.md) for migration fixtures
+and reconciliation limits. Existing nodes require an explicit `mash index`
+refresh for schema 32 / `search-text-v6`; search does not migrate or ingest.
 
 ## Configuration
 

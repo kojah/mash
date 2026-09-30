@@ -17,7 +17,8 @@ mod semantic_chunks;
 
 #[cfg(test)]
 use schema::SCHEMA_VERSION;
-#[allow(dead_code, clippy::all, clippy::pedantic)]
+// sqlc-gen-rust emits an unused row parameter for :exec result models.
+#[allow(dead_code, unused_variables, clippy::all, clippy::pedantic)]
 #[path = "storage/generated/queries.rs"]
 mod generated;
 use schema::initialize;

@@ -9,6 +9,10 @@ pub(super) enum Kind {
     Assistant,
     Text,
     ResponseItem,
+    EventMsg,
+    ItemCompleted,
+    TaskStarted,
+    TaskComplete,
     SessionMeta,
     Message,
     FunctionCall,
@@ -31,7 +35,15 @@ impl Kind {
     const fn is_context(self) -> bool {
         matches!(
             self,
-            Self::ToolUse | Self::ToolCall | Self::ToolResult | Self::Thinking | Self::Unknown
+            Self::ToolUse
+                | Self::ToolCall
+                | Self::ToolResult
+                | Self::Thinking
+                | Self::EventMsg
+                | Self::ItemCompleted
+                | Self::TaskStarted
+                | Self::TaskComplete
+                | Self::Unknown
         )
     }
     pub(super) const fn as_str(self) -> &'static str {
@@ -40,6 +52,10 @@ impl Kind {
             Self::Assistant => "assistant",
             Self::Text => "text",
             Self::ResponseItem => "response_item",
+            Self::EventMsg => "event_msg",
+            Self::ItemCompleted => "item_completed",
+            Self::TaskStarted => "task_started",
+            Self::TaskComplete => "task_complete",
             Self::SessionMeta => "session_meta",
             Self::Message => "message",
             Self::FunctionCall => "function_call",
@@ -89,6 +105,9 @@ pub(super) struct Payload {
     pub id: Option<String>,
     pub session_id: Option<String>,
     pub call_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub thread_id: Option<String>,
+    pub item: Option<CompletedItem>,
     pub role: Option<crate::role::Role>,
     pub name: Option<String>,
     pub content: Option<Content>,
@@ -100,6 +119,40 @@ pub(super) struct Payload {
     pub output: Option<Value>,
     #[serde(flatten)]
     pub metadata: Metadata,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub(super) enum CompletedItem {
+    UserMessage {
+        id: String,
+        content: Vec<UserText>,
+    },
+    AgentMessage {
+        id: String,
+        content: Vec<AgentText>,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub(super) enum UserText {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub(super) enum AgentText {
+    Text {
+        text: String,
+    },
+    #[serde(other)]
+    Other,
 }
 
 #[derive(Deserialize)]

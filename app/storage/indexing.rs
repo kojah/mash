@@ -4,12 +4,18 @@ use std::path::Path;
 
 use rusqlite::{OptionalExtension, params};
 
+use super::generated as sql;
 use super::semantic_chunks::{SEMANTIC_CHUNK_ROWS, rebuild_semantic_chunk};
 use super::{ConversationChange, FtsRefreshStrategy, Storage};
 use crate::AppError;
 use crate::ingestion::Conversation;
 
 const FTS_BULK_REBUILD_PERCENT: u64 = 90;
+
+struct MessageState {
+    fingerprint: String,
+    ordinal: i64,
+}
 
 impl Storage {
     pub(crate) fn begin_provider_scan(&self) -> Result<(), AppError> {
@@ -219,7 +225,7 @@ impl Storage {
             self.mark_semantic_index_incomplete()?;
         }
 
-        let existing_messages = self.message_fingerprints(&conversation.id)?;
+        let existing_messages = self.message_states(&conversation.id)?;
         self.connection
             .execute(
                 "INSERT INTO conversations(
@@ -317,7 +323,7 @@ impl Storage {
     fn reconcile_messages(
         &mut self,
         conversation: &Conversation,
-        existing_messages: &BTreeMap<String, String>,
+        existing_messages: &BTreeMap<String, MessageState>,
     ) -> Result<(Vec<String>, u64), AppError> {
         let mut changed = Vec::new();
         let mut upsert_message = self
@@ -354,32 +360,16 @@ impl Storage {
             .connection
             .prepare_cached("DELETE FROM pending_embeddings WHERE message_id = ?1")
             .map_err(AppError::database)?;
-        let mut delete_message = self
-            .connection
-            .prepare_cached("DELETE FROM messages WHERE id = ?1")
-            .map_err(AppError::database)?;
-
-        let incoming_ids = conversation
-            .messages
-            .iter()
-            .map(|message| message.id.as_str())
-            .collect::<BTreeSet<_>>();
-        let removed: Vec<String> = existing_messages
-            .keys()
-            .filter(|id| !incoming_ids.contains(id.as_str()))
-            .cloned()
-            .collect();
-        for id in &removed {
-            if !self.defer_search_updates {
-                stage_fts.execute([id]).map_err(AppError::database)?;
-                self.stage_semantic_message(id, None)?;
-            }
-            delete_message.execute([id]).map_err(AppError::database)?;
-        }
+        let removed = self.remove_missing_messages(conversation, existing_messages)?;
+        self.park_moved_ordinals(conversation, existing_messages)?;
 
         for message in &conversation.messages {
             let fingerprint = message_fingerprint(message);
-            if existing_messages.get(&message.id) == Some(&fingerprint) {
+            if existing_messages
+                .get(&message.id)
+                .map(|state| &state.fingerprint)
+                == Some(&fingerprint)
+            {
                 continue;
             }
             if !self.defer_search_updates {
@@ -418,9 +408,37 @@ impl Storage {
             }
             changed.push(message.id.clone());
         }
-        let removed = u64::try_from(removed.len())
-            .map_err(|_| AppError::internal("too many removed messages"))?;
         Ok((changed, removed))
+    }
+
+    fn remove_missing_messages(
+        &self,
+        conversation: &Conversation,
+        existing: &BTreeMap<String, MessageState>,
+    ) -> Result<u64, AppError> {
+        let incoming = conversation
+            .messages
+            .iter()
+            .map(|message| message.id.as_str())
+            .collect::<BTreeSet<_>>();
+        let mut delete = self
+            .connection
+            .prepare_cached("DELETE FROM messages WHERE id = ?1")
+            .map_err(AppError::database)?;
+        let mut stage = self
+            .connection
+            .prepare_cached("INSERT OR IGNORE INTO pending_fts_messages(message_id) VALUES (?1)")
+            .map_err(AppError::database)?;
+        let mut removed = 0_u64;
+        for id in existing.keys().filter(|id| !incoming.contains(id.as_str())) {
+            if !self.defer_search_updates {
+                stage.execute([id]).map_err(AppError::database)?;
+                self.stage_semantic_message(id, None)?;
+            }
+            delete.execute([id]).map_err(AppError::database)?;
+            removed += 1;
+        }
+        Ok(removed)
     }
 
     pub(crate) fn rebuild_derived_search_state(&mut self) -> Result<(), AppError> {
@@ -662,19 +680,66 @@ impl Storage {
         Ok(removed > 0)
     }
 
-    fn message_fingerprints(
+    fn park_moved_ordinals(
         &self,
-        conversation_id: &str,
-    ) -> Result<BTreeMap<String, String>, AppError> {
+        conversation: &Conversation,
+        existing: &BTreeMap<String, MessageState>,
+    ) -> Result<(), AppError> {
+        // Free occupied destination slots before inserting/updating stable IDs.
+        // Positive temporary ordinals preserve the parent < ordinal CHECK for
+        // tree histories. The writer transaction hides staging from readers.
+        let mut ordinal = existing
+            .values()
+            .map(|state| state.ordinal)
+            .chain(conversation.messages.iter().map(|message| message.ordinal))
+            .max()
+            .unwrap_or(-1);
         let mut statement = self
             .connection
-            .prepare("SELECT id, fingerprint FROM messages WHERE conversation_id = ?1")
+            .prepare_cached(sql::ParkMessageOrdinal::QUERY)
             .map_err(AppError::database)?;
-        let rows = statement
-            .query_map([conversation_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        for message in &conversation.messages {
+            if existing
+                .get(&message.id)
+                .is_some_and(|state| state.ordinal != message.ordinal)
+            {
+                ordinal = ordinal
+                    .checked_add(1)
+                    .ok_or_else(|| AppError::database_data("message ordinal staging overflow"))?;
+                let query = sql::ParkMessageOrdinal::builder()
+                    .ordinal(ordinal)
+                    .conversation_id(&conversation.id)
+                    .message_id(&message.id)
+                    .build();
+                statement
+                    .execute(query.as_params())
+                    .map_err(AppError::database)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn message_states(
+        &self,
+        conversation_id: &str,
+    ) -> Result<BTreeMap<String, MessageState>, AppError> {
+        let rows = sql::ConversationMessageState::builder()
+            .conversation_id(conversation_id)
+            .build()
+            .query_many(&self.connection)
             .map_err(AppError::database)?;
-        rows.collect::<Result<BTreeMap<_, _>, _>>()
-            .map_err(AppError::database)
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                (
+                    row.id,
+                    MessageState {
+                        fingerprint: row.fingerprint,
+                        ordinal: row.ordinal,
+                    },
+                )
+            })
+            .collect())
     }
 }
 

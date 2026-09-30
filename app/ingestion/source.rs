@@ -78,8 +78,8 @@ impl SourceIdentity {
 
     pub(crate) fn publication_hash(&self) -> String {
         let identity = match self.session {
-            None => format!("search-text-v5:{}", self.path.to_string_lossy()),
-            Some(_) => format!("search-text-v5-session:{}", self.key()),
+            None => format!("search-text-v6:{}", self.path.to_string_lossy()),
+            Some(_) => format!("search-text-v6-session:{}", self.key()),
         };
         blake3::hash(identity.as_bytes()).to_hex().to_string()
     }

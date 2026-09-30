@@ -4,6 +4,13 @@ SELECT (SELECT count(*) FROM conversations) AS conversations,
 (SELECT count(*) FROM messages WHERE COALESCE(search_projection,content)<>'') AS searchable_messages,
 (SELECT count(*) FROM message_embeddings) AS embeddings;
 
+-- name: ConversationMessageState :many
+SELECT id,fingerprint,ordinal FROM messages WHERE conversation_id=sqlc.arg(conversation_id);
+
+-- name: ParkMessageOrdinal :exec
+UPDATE messages SET ordinal=sqlc.arg(ordinal)
+WHERE conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
+
 -- name: SearchHit :one
 SELECT m.id,m.conversation_id,c.provider,m.role,COALESCE(m.search_projection,m.content) AS content,
 m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at

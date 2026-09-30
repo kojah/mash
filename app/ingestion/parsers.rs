@@ -1,12 +1,14 @@
 //! Normalize Claude Code and Codex JSONL histories into canonical records.
-use super::json::{self, Kind, Record};
-use super::{Conversation, MAX_TOOL_OUTPUT_CHARS, NormalizedMessage, ParsedFile};
+use super::json::{Kind, Record};
+use super::{Conversation, NormalizedMessage, ParsedFile};
 use crate::AppError;
 use crate::provider::Provider;
 use chrono::DateTime;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+
+mod codex;
 
 struct ExtractedMessage {
     source_id: Option<String>,
@@ -43,63 +45,8 @@ pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
 pub(super) fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
     let file = File::open(path).map_err(AppError::io)?;
     let lines = super::records::codex::Lines::new(BufReader::new(file));
-    parse_jsonl(path, Provider::Codex, lines, |raw| {
-        if raw.kind == Kind::ResponseItem {
-            extract_codex_response_item(raw)
-        } else {
-            None
-        }
-    })
-}
-
-fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
-    let payload = raw.payload.as_ref()?;
-    let (role, content, search_projection) = match payload.kind {
-        Kind::Message => {
-            let (content, projection) = payload.content.as_ref()?.projected()?;
-            (
-                payload.role.clone().unwrap_or(crate::role::Role::Assistant),
-                content,
-                projection,
-            )
-        }
-        Kind::FunctionCall | Kind::CustomToolCall => {
-            let name = payload.name.as_deref().unwrap_or("unknown");
-            let arguments = payload
-                .arguments
-                .as_ref()
-                .or(payload.input.as_ref())
-                .map(json::stringify)
-                .unwrap_or_default();
-            (
-                crate::role::Role::Assistant,
-                format!("Tool {name}: {arguments}"),
-                Some(String::new()),
-            )
-        }
-        Kind::FunctionCallOutput | Kind::CustomToolCallOutput => {
-            let output = payload.output.as_ref().map(json::stringify)?;
-            (
-                crate::role::Role::Tool,
-                truncate_chars(&output, MAX_TOOL_OUTPUT_CHARS),
-                Some(String::new()),
-            )
-        }
-        _ => return None,
-    };
-    Some(ExtractedMessage {
-        source_id: payload.id.clone().or_else(|| {
-            payload
-                .call_id
-                .as_ref()
-                .map(|id| format!("{}:{id}", payload.kind.as_str()))
-        }),
-        role,
-        content,
-        search_projection,
-        created_at: parse_timestamp(raw.timestamp.as_deref()),
-        session_id: None,
-    })
+    let mut extractor = codex::Extractor::default();
+    parse_jsonl(path, Provider::Codex, lines, |raw| extractor.next(raw))
 }
 
 fn parse_jsonl(

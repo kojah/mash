@@ -798,6 +798,76 @@ fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal
 }
 
 #[test]
+fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context() {
+    fn history(insert: bool) -> crate::ingestion::Conversation {
+        let mut value = conversation("original request");
+        let shift = i64::from(insert);
+        value.messages[0].context = crate::message_context::MessageContext::Root;
+        value.messages[0].ordinal = shift;
+        value.messages.push(crate::ingestion::NormalizedMessage {
+            id: "reply".into(),
+            ordinal: shift + 1,
+            content: "original reply".into(),
+            role: crate::role::Role::Assistant,
+            context: crate::message_context::MessageContext::Parent { ordinal: shift },
+            search_projection: None,
+            created_at: None,
+        });
+        if insert {
+            value.messages.insert(
+                0,
+                crate::ingestion::NormalizedMessage {
+                    id: "inserted".into(),
+                    ordinal: 0,
+                    content: "recovered dialogue".into(),
+                    role: crate::role::Role::User,
+                    context: crate::message_context::MessageContext::Root,
+                    search_projection: None,
+                    created_at: None,
+                },
+            );
+        }
+        value
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let original = history(false);
+    storage.replace_conversation(&original).unwrap();
+    let shifted = history(true);
+    storage.replace_conversation(&shifted).unwrap();
+    storage.commit_writer().unwrap();
+    let viewed = storage.view("reply", 4).unwrap();
+    assert_eq!(
+        viewed.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+        ["message-1", "reply"]
+    );
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    // Removing the inserted item shifts the same IDs down into occupied slots.
+    storage.replace_conversation(&original).unwrap();
+    storage.commit_writer().unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 2);
+    assert!(
+        storage
+            .search("recovered", 5, None, None)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(storage.view("reply", 0).unwrap()[0].ordinal, 1);
+
+    // A later failure must not commit temporary ordinals or partial context.
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    storage.begin_provider_scan().unwrap();
+    let mut invalid = history(true);
+    invalid.messages[2].context = crate::message_context::MessageContext::Parent { ordinal: 9 };
+    assert!(storage.replace_conversation(&invalid).is_err());
+    storage.rollback_provider_scan().unwrap();
+    storage.commit_writer().unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 2);
+    assert_eq!(storage.view("message-1", 0).unwrap()[0].ordinal, 0);
+    assert_eq!(storage.view("reply", 0).unwrap()[0].ordinal, 1);
+}
+
+#[test]
 fn purging_a_conversation_removes_its_staged_fts_rows() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("mash.sqlite3");
