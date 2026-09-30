@@ -316,13 +316,33 @@ records first-party reader/writer fixture evidence and remaining actual UI-sessi
 subtrajectory and rewind validation gates. These are parser limits, not aggregate
 process RSS guarantees.
 
+Antigravity IDE 2.5.5 is opt-in through `[providers.antigravity]`. Configure
+`~/.gemini/antigravity-ide/conversations` or explicit `<cascade-id>.db` files.
+Mash opens a read-only SQLite snapshot, including committed WAL changes; no
+editor or language server is required. Repeated prompts have distinct native
+step IDs, and surviving IDs remain stable after a history suffix is removed.
+Displayed user prose and assistant responses enter search. Thinking, attached
+text-block bodies, system steps, subagent context and copied fork history do not.
+Supported reasoning and text-block attachments remain available in canonical
+message views. Other attachment types, tool-step bodies and subtrajectories are
+not currently reconstructed.
+
+Each native BLOB is limited to 8 MiB, each conversation to 64 MiB of reads,
+65,536 steps/decoded fields and 32 MiB of retained normalized history. Unknown
+step formats, SQL/protobuf disagreements, malformed timestamps and oversized
+input fail explicitly and preserve the previous index revision. Native workspace
+and Git-root URIs supply project/repository filters when unambiguous. The
+[Antigravity contract](docs/antigravity-ingestion-contract.md) records native
+writer/fork evidence and remaining real UI, successful rewind, CLI/Hub and
+cross-version validation gates. These limits do not establish aggregate RSS.
+
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 28 and shared PostgreSQL
-schema 14 preserve existing messages and vectors. Update the shared service before
-publishing Pi, Copilot, Gemini, Cline, Cursor or Windsurf histories from upgraded nodes.
+keep their existing ordinal neighbourhoods. SQLite schema 29 and shared PostgreSQL
+schema 15 preserve existing messages and vectors. Update the shared service before
+publishing Pi, Copilot, Gemini, Cline, Cursor, Windsurf or Antigravity histories from upgraded nodes.
 
 ## Configuration
 

@@ -231,6 +231,7 @@ pub(super) fn discover_history_files(
         Provider::Opencode => super::opencode::discover,
         Provider::Openclaw => super::openclaw::discover,
         Provider::Cursor => super::cursor::discover,
+        Provider::Antigravity => super::antigravity::discover,
         Provider::ClaudeCode
         | Provider::Codex
         | Provider::Aider
@@ -283,6 +284,7 @@ fn discover_physical_sources(
 ) -> Result<Discovery, AppError> {
     discover_files(roots, authoritative, |path, explicit| match provider {
         Provider::Windsurf => path.extension().is_some_and(|e| e == "pb"),
+        Provider::Antigravity => path.extension().is_some_and(|e| e == "db"),
         Provider::Cursor => {
             path.file_name()
                 .is_some_and(|n| n == "store.db" || n == "state.vscdb")

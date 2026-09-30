@@ -157,3 +157,12 @@ DO $$ BEGIN
         UPDATE version SET version=14 WHERE singleton;
     END IF;
 END $$;
+
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 14 THEN
+        ALTER TABLE conversations DROP CONSTRAINT conversations_provider_check;
+        ALTER TABLE conversations ADD CONSTRAINT conversations_provider_check
+            CHECK (provider IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity'));
+        UPDATE version SET version=15 WHERE singleton;
+    END IF;
+END $$;

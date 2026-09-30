@@ -40,43 +40,42 @@ impl Targets {
                                     name == wal_name
                                 }))
                             || (path.starts_with(root)
-                                && (path
-                                    .extension()
-                                    .is_some_and(|ext| ext == "jsonl" || ext == "pb")
-                                    || path.file_name().is_some_and(|name| {
-                                        name == ".aider.chat.history.md"
-                                            || name == ".project_root"
-                                            || name == "ui_messages.json"
-                                            || name == "taskHistory.json"
-                                            || name
-                                                .to_str()
-                                                .is_some_and(|n| n.ends_with(".messages.json"))
-                                            || name.to_str().is_some_and(|n| {
-                                                n.starts_with("session-")
-                                                    && path.extension().is_some_and(|e| {
-                                                        e.eq_ignore_ascii_case("json")
-                                                    })
-                                            })
-                                            || name == "state.db"
-                                            || name == "state.db-wal"
-                                            || name == "store.db"
-                                            || name == "store.db-wal"
-                                            || name == "state.vscdb"
-                                            || name == "state.vscdb-wal"
-                                            || name == "opencode.db"
-                                            || name == "opencode.db-wal"
-                                            || name == "openclaw-agent.sqlite"
-                                            || name == "openclaw-agent.sqlite-wal"
-                                            || name
-                                                .to_str()
-                                                .is_some_and(|name| name.ends_with(".jsonl.zst"))
-                                    })
-                                    || matches!(
-                                        event.kind,
-                                        EventKind::Create(notify::event::CreateKind::Folder)
-                                            | EventKind::Remove(notify::event::RemoveKind::Folder)
-                                            | EventKind::Modify(notify::event::ModifyKind::Name(_))
-                                    )))
+                                && (path.extension().is_some_and(|ext| {
+                                    ext == "jsonl" || ext == "pb" || ext == "db"
+                                }) || path.file_name().is_some_and(|name| {
+                                    name == ".aider.chat.history.md"
+                                        || name.to_str().is_some_and(|n| n.ends_with(".db-wal"))
+                                        || name == ".project_root"
+                                        || name == "ui_messages.json"
+                                        || name == "taskHistory.json"
+                                        || name
+                                            .to_str()
+                                            .is_some_and(|n| n.ends_with(".messages.json"))
+                                        || name.to_str().is_some_and(|n| {
+                                            n.starts_with("session-")
+                                                && path
+                                                    .extension()
+                                                    .is_some_and(|e| e.eq_ignore_ascii_case("json"))
+                                        })
+                                        || name == "state.db"
+                                        || name == "state.db-wal"
+                                        || name == "store.db"
+                                        || name == "store.db-wal"
+                                        || name == "state.vscdb"
+                                        || name == "state.vscdb-wal"
+                                        || name == "opencode.db"
+                                        || name == "opencode.db-wal"
+                                        || name == "openclaw-agent.sqlite"
+                                        || name == "openclaw-agent.sqlite-wal"
+                                        || name
+                                            .to_str()
+                                            .is_some_and(|name| name.ends_with(".jsonl.zst"))
+                                }) || matches!(
+                                    event.kind,
+                                    EventKind::Create(notify::event::CreateKind::Folder)
+                                        | EventKind::Remove(notify::event::RemoveKind::Folder)
+                                        | EventKind::Modify(notify::event::ModifyKind::Name(_))
+                                )))
                     })
             })
     }
@@ -274,6 +273,12 @@ mod tests {
         assert!(directory.relevant(&change(root.join("store.db-wal"))));
         assert!(directory.relevant(&change(root.join("state.vscdb"))));
         assert!(directory.relevant(&change(root.join("cascade/session.pb"))));
+        assert!(directory.relevant(&change(
+            root.join("conversations/50000000-0000-4000-8000-000000000001.db")
+        )));
+        assert!(directory.relevant(&change(
+            root.join("conversations/50000000-0000-4000-8000-000000000001.db-wal")
+        )));
         assert!(directory.relevant(&change(root.join("state.vscdb-wal"))));
         assert!(ide.relevant(&change(root.join("state.vscdb-wal"))));
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));

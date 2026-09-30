@@ -1,7 +1,7 @@
 # Native Antigravity ingestion evidence
 
 Status: native storage, user/assistant writes, restart retention, scoped-input
-serialization, and fork provenance verified; adapter not yet implemented.
+serialization, and fork provenance verified; bounded SQLite adapter implemented.
 Successful rewind, older formats, CLI/Hub storage, and captured real sessions
 remain validation gates.
 
@@ -131,12 +131,14 @@ versions used them. Do not alias the older format to Windsurf without evidence.
 2. Verify successful rewind/truncation, archive, and subtrajectory behavior.
    Restart retention and fork-prefix provenance are covered by the native probe;
    interactive resume and later mutation of copied histories still need capture.
-3. Implement a bounded read-only SQLite adapter with WAL-aware checkpoints,
-   stable conversation/message identities, strict schema/payload validation,
-   and rollback preserving prior search results after malformed updates.
-4. Wire the provider enum, independent index allowlists, discovery and watch
-   dependencies, SQLite/PG migrations, Redis tags, and typed HTTP publication.
-5. Test local lexical/semantic/thread retrieval with real installed models and
-   publication/search against both shared backends.
+3. Validate the implemented reader against captured real UI sessions, including
+   unsupported attachment/tool/subtrajectory payloads. Native fork fixture copies
+   remain canonical and receive no search projection. WAL checkpoint tracking,
+   malformed-update preservation, native identity stability and allocation limits
+   are covered by adapter tests; aggregate concurrency/RSS remains a separate gate.
+4. Verify deployment of provider configuration, discovery/watch routing, SQLite
+   schema 29, PostgreSQL schema 15, Redis tag and typed HTTP publication on all nodes.
+5. Maintain local lexical/semantic/thread retrieval checks with installed models
+   and publication/search contracts against both shared backends.
 6. Capture real IDE/CLI/Hub histories and verify supported version boundaries
    before claiming general Antigravity support or production deployment.

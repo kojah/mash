@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 28;
+pub(super) const SCHEMA_VERSION: i64 = 29;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -206,7 +206,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
             "CREATE TABLE conversations_next (
                 id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL CHECK (provider IN (
-                    'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf'
+                    'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity'
                 )),
                 source_path TEXT NOT NULL,
                 title TEXT, created_at INTEGER, updated_at INTEGER,
@@ -317,33 +317,33 @@ fn purge_unsupported_providers(connection: &Connection) -> Result<(), AppError> 
             "DELETE FROM message_fts
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
               );
              DELETE FROM message_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
               );
              DELETE FROM pending_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
               );
              DELETE FROM messages
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
               );
              DELETE FROM conversations
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity');
              DELETE FROM source_checkpoints
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity');
              DELETE FROM tombstones
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf');",
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity');",
         )
         .map_err(AppError::database)
 }

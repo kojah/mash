@@ -1,7 +1,8 @@
 //! Native encrypted Cascade snapshots; no hook exports or provider process needed.
+use super::native::{location, timestamp};
 use super::{Conversation, ParsedFile, SourceIdentity, parsers};
 use crate::{AppError, provider::Provider, role::Role, search_text};
-use std::{collections::BTreeSet, path::Path};
+use std::path::Path;
 
 mod history;
 mod proto;
@@ -11,34 +12,6 @@ mod tests;
 
 fn invalid(message: &str) -> AppError {
     AppError::configuration(format!("Windsurf: {message}"))
-}
-
-fn timestamp(value: Option<&proto::Timestamp>) -> Result<Option<i64>, AppError> {
-    value
-        .map(|t| {
-            if !(0..=253_402_300_799).contains(&t.seconds) || !(0..1_000_000_000).contains(&t.nanos)
-            {
-                return Err(invalid("invalid native timestamp"));
-            }
-            t.seconds
-                .checked_mul(1000)
-                .and_then(|v| v.checked_add(i64::from(t.nanos) / 1_000_000))
-                .ok_or_else(|| invalid("native timestamp out of range"))
-        })
-        .transpose()
-}
-
-fn location<'a>(uris: impl Iterator<Item = &'a str>) -> Option<String> {
-    let mut paths = BTreeSet::new();
-    for uri in uris.filter(|u| !u.is_empty()) {
-        let path = reqwest::Url::parse(uri).ok()?.to_file_path().ok()?;
-        paths.insert(path.to_str()?.to_owned());
-    }
-    if paths.len() == 1 {
-        paths.pop_first()
-    } else {
-        None
-    }
 }
 
 pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {

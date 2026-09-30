@@ -29,6 +29,7 @@ pub(crate) enum Provider {
     Cline,
     Cursor,
     Windsurf,
+    Antigravity,
 }
 
 /// Enum keys keep configuration and routing exhaustive without duplicating a
@@ -49,6 +50,7 @@ impl Provider {
         Self::Cline,
         Self::Cursor,
         Self::Windsurf,
+        Self::Antigravity,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -65,6 +67,7 @@ impl Provider {
             Self::Cline => "cline",
             Self::Cursor => "cursor",
             Self::Windsurf => "windsurf",
+            Self::Antigravity => "antigravity",
         }
     }
 
@@ -83,6 +86,7 @@ impl Provider {
             Self::Cline => 10,
             Self::Cursor => 11,
             Self::Windsurf => 12,
+            Self::Antigravity => 13,
         }
     }
 
@@ -100,6 +104,7 @@ impl Provider {
             Self::Cline => "n",
             Self::Cursor => "u",
             Self::Windsurf => "w",
+            Self::Antigravity => "t",
         }
     }
 }
@@ -126,6 +131,7 @@ impl std::str::FromStr for Provider {
             "cline" => Ok(Self::Cline),
             "cursor" => Ok(Self::Cursor),
             "windsurf" => Ok(Self::Windsurf),
+            "antigravity" => Ok(Self::Antigravity),
             _ => Err(crate::AppError::usage("unsupported provider")),
         }
     }

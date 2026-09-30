@@ -1,4 +1,5 @@
 //! Selected fields from the pinned first-party `CortexTrajectory` descriptors.
+pub(super) use super::super::native::{Timestamp, Workspace};
 use prost::Message;
 
 #[derive(Clone, Message)]
@@ -23,22 +24,6 @@ pub(super) struct TrajectoryMetadata {
     pub workspaces: Vec<Workspace>,
     #[prost(message, optional, tag = "2")]
     pub created_at: Option<Timestamp>,
-}
-
-#[derive(Clone, Message)]
-pub(super) struct Workspace {
-    #[prost(string, tag = "1")]
-    pub project: String,
-    #[prost(string, tag = "2")]
-    pub repository: String,
-}
-
-#[derive(Clone, Message)]
-pub(super) struct Timestamp {
-    #[prost(int64, tag = "1")]
-    pub seconds: i64,
-    #[prost(int32, tag = "2")]
-    pub nanos: i32,
 }
 
 #[derive(Clone, Message)]

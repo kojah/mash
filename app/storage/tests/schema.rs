@@ -3,21 +3,25 @@ use super::*;
 use rusqlite::params;
 
 #[test]
-fn version_twenty_three_provider_migration_preserves_context_vectors_and_readiness() {
+fn provider_schema_migrations_preserve_context_vectors_and_readiness() {
+    for version in [23, 28] {
+        provider_schema_migration(version);
+    }
+}
+
+fn provider_schema_migration(version: i64) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("old.sqlite3");
     let connection = Connection::open(&path).unwrap();
-    // Version 23 has the same message layout but excludes later providers.
-    connection
-        .execute_batch(
-            &include_str!("../schema.sql")
-                .replace(", 'copilot'", "")
-                .replace(", 'gemini-cli'", "")
-                .replace(", 'cline'", "")
-                .replace(", 'cursor'", "")
-                .replace(", 'windsurf'", ""),
-        )
-        .unwrap();
+    // Both native predecessors have the same message layout; provider checks
+    // differ. Verify old and immediately preceding schema migrations.
+    let mut schema = include_str!("../schema.sql").replace(", 'antigravity'", "");
+    if version == 23 {
+        for provider in ["copilot", "gemini-cli", "cline", "cursor", "windsurf"] {
+            schema = schema.replace(&format!(", '{provider}'"), "");
+        }
+    }
+    connection.execute_batch(&schema).unwrap();
     connection.execute_batch(
         "INSERT INTO conversations(id,provider,source_path,source_key) VALUES('session','pi','/tmp/pi.jsonl','file:/tmp/pi.jsonl');
          INSERT INTO messages(storage_id,id,conversation_id,ordinal,role,content,search_projection,context_parent)
@@ -29,10 +33,13 @@ fn version_twenty_three_provider_migration_preserves_context_vectors_and_readine
          INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns)
              VALUES('pi','/tmp/pi.jsonl','file:/tmp/pi.jsonl',100,200);
          UPDATE derived_state SET search_dirty=0,semantic_ready_generation='fixture';
-         PRAGMA user_version=23;"
+         "
     ).unwrap();
+    connection
+        .pragma_update(None, "user_version", version)
+        .unwrap();
     crate::storage::semantic_chunks::rebuild_all_semantic_chunks(&connection).unwrap();
-    assert!(connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','copilot','new','new')",[]).is_err());
+    assert!(connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','antigravity','new','new')",[]).is_err());
     drop(connection);
     let storage = Storage::open(&path).unwrap();
     assert_eq!(storage.embedding_count("fixture").unwrap(), 2);
@@ -69,7 +76,7 @@ fn version_twenty_three_provider_migration_preserves_context_vectors_and_readine
             )
             .unwrap()
     );
-    storage.connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','copilot','new','new')",[]).unwrap();
+    storage.connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','antigravity','new','new')",[]).unwrap();
 }
 
 #[test]

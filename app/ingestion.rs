@@ -6,6 +6,7 @@ use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime};
 
 mod aider;
+mod antigravity;
 mod cline;
 mod copilot;
 mod cursor;
@@ -13,6 +14,7 @@ mod discovery;
 mod gemini;
 mod hermes;
 mod json;
+mod native;
 mod openclaw;
 mod opencode;
 mod parsers;
@@ -23,6 +25,9 @@ mod sqlite_source;
 #[cfg(test)]
 mod tests;
 mod windsurf;
+
+#[cfg(test)]
+pub(crate) use antigravity::tests::write as write_antigravity_fixture;
 
 #[cfg(test)]
 use discovery::source_stamp;
@@ -56,6 +61,7 @@ impl Provider {
             Self::Cline => cline::parse_source,
             Self::Cursor => |source| cursor::parse(&source.identity),
             Self::Windsurf => |source| windsurf::parse(&source.identity.path),
+            Self::Antigravity => |source| antigravity::parse(&source.identity),
         }
     }
 }
