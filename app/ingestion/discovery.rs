@@ -164,7 +164,11 @@ pub(super) fn discover_history_files(
         Provider::Hermes => super::hermes::discover,
         Provider::Opencode => super::opencode::discover,
         Provider::Openclaw => super::openclaw::discover,
-        Provider::ClaudeCode | Provider::Codex | Provider::Aider | Provider::Pi => {
+        Provider::ClaudeCode
+        | Provider::Codex
+        | Provider::Aider
+        | Provider::Pi
+        | Provider::Copilot => {
             return Ok(discovery);
         }
     };
@@ -218,6 +222,10 @@ fn discover_physical_sources(
             }
         }
         Provider::ClaudeCode | Provider::Codex | Provider::Pi => is_jsonl(path),
+        Provider::Copilot => {
+            path.file_name().is_some_and(|name| name == "events.jsonl")
+                || (explicit && is_jsonl(path))
+        }
         Provider::Hermes => {
             path.file_name().is_some_and(|name| name == "state.db")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))

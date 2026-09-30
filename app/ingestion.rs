@@ -6,6 +6,7 @@ use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime};
 
 mod aider;
+mod copilot;
 mod discovery;
 mod hermes;
 mod json;
@@ -46,6 +47,7 @@ impl Provider {
             Self::Opencode => opencode::parse,
             Self::Openclaw => openclaw::parse,
             Self::Pi => |source| pi::parse(&source.path),
+            Self::Copilot => |source| copilot::parse(&source.path),
         }
     }
 }

@@ -3,6 +3,69 @@ use super::*;
 use rusqlite::params;
 
 #[test]
+fn version_twenty_three_provider_migration_preserves_context_vectors_and_readiness() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("old.sqlite3");
+    let connection = Connection::open(&path).unwrap();
+    // Version 23 differs from 24 only in the conversations provider constraint.
+    connection
+        .execute_batch(&include_str!("../schema.sql").replace(", 'copilot'", ""))
+        .unwrap();
+    connection.execute_batch(
+        "INSERT INTO conversations(id,provider,source_path,source_key) VALUES('session','pi','/tmp/pi.jsonl','file:/tmp/pi.jsonl');
+         INSERT INTO messages(storage_id,id,conversation_id,ordinal,role,content,search_projection,context_parent)
+             VALUES(42,'root','session',0,'user','original request','original request',-1),
+                   (43,'child','session',1,'assistant','branch reply','branch reply',0);
+         INSERT INTO message_fts(rowid,content,message_id,conversation_id)
+             VALUES(42,'original request','root','session'),(43,'branch reply','child','session');
+         INSERT INTO message_embeddings VALUES('root','fixture',2,127.0,x'7f00'),('child','fixture',2,127.0,x'7f00');
+         INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns)
+             VALUES('pi','/tmp/pi.jsonl','file:/tmp/pi.jsonl',100,200);
+         UPDATE derived_state SET search_dirty=0,semantic_ready_generation='fixture';
+         PRAGMA user_version=23;"
+    ).unwrap();
+    crate::storage::semantic_chunks::rebuild_all_semantic_chunks(&connection).unwrap();
+    assert!(connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','copilot','new','new')",[]).is_err());
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(storage.embedding_count("fixture").unwrap(), 2);
+    assert!(!storage.derived_search_is_dirty().unwrap());
+    assert!(storage.semantic_index_is_ready("fixture").unwrap());
+    assert_eq!(
+        storage.search("branch", 10, None, None).unwrap()[0].id,
+        "child"
+    );
+    assert_eq!(
+        storage
+            .view("child", 1)
+            .unwrap()
+            .iter()
+            .map(|m| m.id.as_str())
+            .collect::<Vec<_>>(),
+        ["root", "child"]
+    );
+    let rows: Vec<(i64, Option<i64>)> = storage
+        .connection
+        .prepare("SELECT storage_id,context_parent FROM messages ORDER BY ordinal")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(rows, [(42, Some(-1)), (43, Some(0))]);
+    assert!(
+        storage
+            .source_checkpoint_matches(
+                crate::provider::Provider::Pi,
+                &crate::ingestion::SourceIdentity::file("/tmp/pi.jsonl"),
+                &crate::ingestion::SourceStamp::file(100, 200)
+            )
+            .unwrap()
+    );
+    storage.connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','copilot','new','new')",[]).unwrap();
+}
+
+#[test]
 fn version_eighteen_source_migration_preserves_history_vectors_and_checkpoints() {
     use crate::ingestion::SourceIdentity;
     use crate::provider::Provider;
@@ -445,12 +508,12 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
     assert!(schema.contains("'claude-code'"));
     assert!(schema.contains("'codex'"));
     assert!(schema.contains("'opencode'"));
-    for provider in ["github-copilot", "pi"] {
+    for provider in ["github-copilot", "unknown-provider"] {
         let error = storage
             .connection
             .execute(
-                "INSERT INTO conversations(id, provider, source_path)
-                 VALUES (?1, ?2, ?3)",
+                "INSERT INTO conversations(id, provider, source_path, source_key)
+                 VALUES (?1, ?2, ?3, ?3)",
                 params![
                     format!("rejected-{provider}"),
                     provider,
@@ -459,6 +522,12 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
             )
             .expect_err("unsupported provider rejected");
         assert!(matches!(error, rusqlite::Error::SqliteFailure(_, _)));
+    }
+    for &provider in crate::provider::Provider::ALL {
+        storage.connection.execute(
+            "INSERT INTO conversations(id, provider, source_path, source_key) VALUES (?1, ?2, ?3, ?3)",
+            params![format!("accepted-{provider}"),provider,format!("file:/tmp/{provider}.history")],
+        ).expect("supported provider accepted after migration");
     }
     assert_eq!(
         storage

@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -191,13 +191,31 @@ Logged `cwd` supplies project metadata; no repository metadata is inferred.
 Older session versions fail explicitly; open them in Pi to run its own migration.
 The format follows Pi's [session manager](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/session-manager.ts).
 
+GitHub Copilot CLI is opt-in through `[providers.copilot]`, with
+`roots = ["/absolute/path/to/.copilot/session-state"]` or explicit `.jsonl`
+event files. Directory discovery accepts only native `events.jsonl` logs.
+The adapter reads the v1 event schema: displayed human requests and complete
+main-agent answers are searchable. Streaming deltas are omitted; augmented
+model prompts and binary attachments are not indexed. Tools, reasoning,
+injected prompts, autopilot continuations and subagent messages remain context
+only. Each agent has a separate context chain, so interleaved subagents cannot
+become neighbours of a main-agent search match. Clearing model context starts
+a new chain while preserving earlier history; native file rewinds remove the
+discarded messages on the next index run. Session IDs namespace message IDs,
+including when a session is forked. The first settled logged workspace supplies
+project and repository metadata; repository identifiers are kept as logged.
+Missing headers, unsupported versions and incomplete records fail explicitly,
+preserving the previous indexed snapshot until a complete refresh succeeds.
+The native format follows the official [Copilot event schema](https://github.com/github/copilot-sdk/blob/main/nodejs/src/generated/session-events.ts)
+and [VS Code history reader](https://github.com/microsoft/vscode-copilot-chat/blob/main/src/extension/chatSessions/copilotcli/common/copilotCLITools.ts).
+
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 23 and shared PostgreSQL
-schema 9 preserve existing messages and vectors. Update the shared service before
-publishing Pi histories from upgraded nodes.
+keep their existing ordinal neighbourhoods. SQLite schema 24 and shared PostgreSQL
+schema 10 preserve existing messages and vectors. Update the shared service before
+publishing Pi or Copilot histories from upgraded nodes.
 
 ## Configuration
 
