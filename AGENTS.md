@@ -99,6 +99,15 @@ iteration. Retain Clippy, formatting, and doctest validation. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
+For repeated unit-test edits, use the persistent target/temp directories above
+with `CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif --lib`, adding a focused
+`-E` expression when appropriate. Warm incremental builds substantially reduce
+small test-edit rebuild time on Xenia; the initial build is slower and uses more
+disk cache. Bypass the local wrapper for this path because its incremental build
+failed. This is an iteration workflow: retain full CLI/MCP, real-model and shared
+backend verification for changes affecting those paths, and the required final
+checks above. Do not treat a unit-only run as evidence for integration behavior.
+
 ## Git
 
 Work on and push `main`; it is the repository's sole development branch.

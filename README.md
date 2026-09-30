@@ -1074,6 +1074,24 @@ cargo clippy --all-targets -- -D warnings
 cargo test --doc
 ```
 
+For repeated unit-test edits, keep one target directory and enable incremental
+compilation explicitly:
+
+```bash
+env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif --lib
+# Add a Nextest expression to run the affected unit tests:
+env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif --lib -E 'test(claude_copies::)'
+```
+
+On Xenia, warm incremental rebuilds after a small test edit took 7.7–8.6 seconds,
+compared with approximately 32–35 seconds without incremental compilation.
+The first incremental build took 41.7 seconds and created additional disk cache.
+The empty `RUSTC_WRAPPER` bypasses a locally configured compiler wrapper; the
+installed wrapper failed on this incremental build. `--lib` selects unit tests
+and does not run CLI integration contracts. Keep the full suite, real-model and
+shared-backend checks as completion gates. See the
+[measured workflow](benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
+
 The installed August 2026 nightly can hit a [Clippy compiler crash](https://github.com/rust-lang/rust/issues/161495)
 when checking async code. On that toolchain, use
 `RUSTFLAGS=-Znext-solver=no cargo clippy --all-targets -- -D warnings`.
