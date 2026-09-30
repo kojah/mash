@@ -1,5 +1,6 @@
 //! Stage and atomically commit bounded shared-index publications.
 use super::canonical::{forget, plan};
+use super::fields;
 use super::{
     AppError, CANONICAL_CHUNK_BYTES, CanonicalManifest, Data, Forget, Forgotten, Head, Identity,
     Indexed, Plan, Provider, STAGE_TTL, Store, conflict, data_key, document_key, encode, prefix,
@@ -143,52 +144,52 @@ impl Store {
             keys.push(key.clone());
             pipe.cmd("HSET")
                 .arg(&key)
-                .arg("version")
+                .arg(fields::VERSION)
                 .arg(version)
-                .arg("node_id")
+                .arg(fields::NODE_ID)
                 .arg(&identity.node_id)
-                .arg("node_tag")
+                .arg(fields::NODE_TAG)
                 .arg(crate::search_filter::tag(&identity.node_id))
-                .arg("role_tag")
+                .arg(fields::ROLE_TAG)
                 .arg(crate::search_filter::tag(message.role.as_str()))
-                .arg("project_tag")
+                .arg(fields::PROJECT_TAG)
                 .arg(crate::search_filter::tag(
                     conversation.project.as_deref().unwrap_or_default(),
                 ))
-                .arg("repository_tag")
+                .arg(fields::REPOSITORY_TAG)
                 .arg(crate::search_filter::tag(
                     conversation.repository.as_deref().unwrap_or_default(),
                 ))
-                .arg("dated")
+                .arg(fields::DATED)
                 .arg(u8::from(message.created_at.is_some()))
-                .arg("conversation")
+                .arg(fields::CONVERSATION)
                 .arg(
                     blake3::hash(message.conversation_id.as_bytes())
                         .to_hex()
                         .to_string(),
                 )
-                .arg("provider")
+                .arg(fields::PROVIDER)
                 .arg(conversation.provider.as_str())
-                .arg("provider_tag")
+                .arg(fields::PROVIDER_TAG)
                 .arg(if conversation.provider == Provider::Codex {
                     "x"
                 } else {
                     "c"
                 })
-                .arg("ordinal")
+                .arg(fields::ORDINAL)
                 .arg(message.ordinal)
-                .arg("created_at")
+                .arg(fields::CREATED_AT)
                 .arg(message.created_at.unwrap_or(i64::MIN))
-                .arg("searchable")
+                .arg(fields::SEARCHABLE)
                 .arg(u8::from(!message.projection.is_empty()))
-                .arg("projection")
+                .arg(fields::PROJECTION)
                 .arg(&message.projection)
-                .arg("conversation_record")
+                .arg(fields::CONVERSATION_RECORD)
                 .arg(encode(conversation)?)
-                .arg("record")
+                .arg(fields::RECORD)
                 .arg(encode(message)?);
             if let Some(vector) = &message.vector {
-                pipe.arg("vector").arg(vector_bytes(vector));
+                pipe.arg(fields::VECTOR).arg(vector_bytes(vector));
             }
             pipe.ignore()
                 .cmd("EXPIRE")

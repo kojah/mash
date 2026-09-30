@@ -1,0 +1,19 @@
+//! Redis hash/search field names shared by schema setup, publication, and decoding.
+pub(super) const VERSION: &str = "version";
+pub(super) const NODE_ID: &str = "node_id";
+pub(super) const NODE_TAG: &str = "node_tag";
+pub(super) const ROLE_TAG: &str = "role_tag";
+pub(super) const PROJECT_TAG: &str = "project_tag";
+pub(super) const REPOSITORY_TAG: &str = "repository_tag";
+pub(super) const DATED: &str = "dated";
+pub(super) const CONVERSATION: &str = "conversation";
+pub(super) const PROVIDER: &str = "provider";
+pub(super) const PROVIDER_TAG: &str = "provider_tag";
+pub(super) const ORDINAL: &str = "ordinal";
+pub(super) const CREATED_AT: &str = "created_at";
+pub(super) const SEARCHABLE: &str = "searchable";
+pub(super) const PROJECTION: &str = "projection";
+pub(super) const CONVERSATION_RECORD: &str = "conversation_record";
+pub(super) const RECORD: &str = "record";
+pub(super) const VECTOR: &str = "vector";
+pub(super) const DISTANCE: &str = "distance";

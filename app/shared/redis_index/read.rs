@@ -1,10 +1,12 @@
 //! Read candidates, context, readiness, and node freshness.
+use super::fields;
 use super::{
-    AppError, Counts, Freshness, Head, Identity, Message, MessageRecord, NodeFreshness, NodeState,
-    Provider, Search, SearchHit, Store, decode, document_prefix, index_name, prefix, protocol,
-    redis_error, timestamp, valid_id, vector_bytes,
+    AppError, Counts, Freshness, Head, Identity, Message, NodeFreshness, NodeState, Provider,
+    Search, SearchHit, Store, decode, document_prefix, index_name, prefix, protocol, redis_error,
+    response, timestamp, valid_id, vector_bytes,
 };
 use std::collections::HashMap;
+use std::fmt::Write;
 impl Store {
     pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
         Ok(self
@@ -99,18 +101,28 @@ impl Store {
         let lexical = if words.is_empty() {
             String::new()
         } else {
-            format!("@projection:({}) @searchable:[1 1]", words.join(" "))
+            format!(
+                "@{}:({}) @{}:[1 1]",
+                fields::PROJECTION,
+                words.join(" "),
+                fields::SEARCHABLE
+            )
         };
         let mut filters = String::new();
         if let Some(provider) = input.provider {
-            filters.push_str(if provider == Provider::Codex {
-                " @provider_tag:{x}"
-            } else {
-                " @provider_tag:{c}"
-            });
+            write!(
+                &mut filters,
+                " @{}:{{{}}}",
+                fields::PROVIDER_TAG,
+                if provider == Provider::Codex {
+                    "x"
+                } else {
+                    "c"
+                }
+            )
+            .map_err(|_| AppError::internal("format search filter"))?;
         }
         if let Some(days) = input.days {
-            use std::fmt::Write;
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -119,7 +131,7 @@ impl Store {
                 .unwrap_or(i64::MAX)
                 .saturating_sub(i64::from(days) * 86400)
                 .saturating_mul(1000);
-            write!(&mut filters, " @created_at:[{cutoff} +inf]")
+            write!(&mut filters, " @{}:[{cutoff} +inf]", fields::CREATED_AT)
                 .map_err(|_| AppError::internal("format search filter"))?;
         }
         if let Some(filter) = &input.filter {
@@ -144,8 +156,8 @@ impl Store {
             .query_async(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;
-        let (lexical, mut documents) = hits(lexical, true)?;
-        let (semantic, other) = hits(semantic, false)?;
+        let (lexical, mut documents) = hits(&lexical, response::Ranking::Lexical)?;
+        let (semantic, other) = hits(&semantic, response::Ranking::Semantic)?;
         documents.extend(other);
         let documents = documents
             .into_iter()
@@ -182,114 +194,34 @@ impl Store {
             .query_async(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;
-        let redis::Value::Array(values) = value else {
-            return Err(AppError::shared("invalid Redis search response"));
-        };
-        if values.is_empty() {
-            return Err(AppError::shared("invalid Redis view response"));
-        }
-        let mut result = Vec::new();
-        for pair in values[1..].chunks(2) {
-            if pair.len() != 2 {
-                return Err(AppError::shared("invalid Redis view response"));
-            }
-            let fields: HashMap<String, String> = redis::from_redis_value(pair[1].clone())
-                .map_err(|_| AppError::shared("invalid Redis response"))?;
-            let message: MessageRecord = decode(
-                fields
-                    .get("record")
-                    .ok_or_else(|| AppError::shared("missing Redis view record"))?,
-            )?;
-            result.push(Message {
-                id: message.id,
-                ordinal: message.ordinal,
-                role: message.role,
-                content: message.content,
-                created_at: message.created_at,
-            });
-        }
-        result.sort_by_key(|m| m.ordinal);
-        Ok(result)
+        response::view(&value)
     }
 }
 type Documents = HashMap<(String, String), String>;
-fn hits(value: redis::Value, lexical: bool) -> Result<(Vec<SearchHit>, Documents), AppError> {
-    let redis::Value::Array(values) = value else {
-        return Err(AppError::shared("invalid Redis search response"));
-    };
-    if values.is_empty() {
-        return Err(AppError::shared("invalid Redis search response"));
-    }
-    let mut hits = Vec::new();
-    let mut documents = HashMap::new();
-    for row in values[1..].chunks(3) {
-        if row.len() != 3 {
-            return Err(AppError::shared("invalid Redis candidate response"));
-        }
-        let fields: HashMap<String, String> = redis::from_redis_value(row[2].clone())
-            .map_err(|_| AppError::shared("invalid Redis response"))?;
-        let message: MessageRecord = decode(
-            fields
-                .get("record")
-                .ok_or_else(|| AppError::shared("missing Redis candidate record"))?,
-        )?;
-        let node_id = fields
-            .get("node_id")
-            .ok_or_else(|| AppError::shared("missing Redis candidate owner"))?
-            .clone();
-        let provider = fields
-            .get("provider")
-            .ok_or_else(|| AppError::shared("missing Redis candidate provider"))?
-            .clone();
-        let score: f64 = redis::from_redis_value(row[1].clone())
-            .map_err(|_| AppError::shared("invalid Redis response"))?;
-        let distance = fields
-            .get("distance")
-            .map(|v| v.parse::<f32>())
-            .transpose()
-            .map_err(|_| AppError::shared("invalid Redis vector distance"))?;
-        documents.insert(
-            (node_id.clone(), message.id.clone()),
-            message.projection.clone(),
-        );
-        hits.push(SearchHit {
-            node_id: Some(node_id),
-            id: message.id,
-            conversation_id: message.conversation_id,
-            provider: provider.parse()?,
-            role: message.role,
-            content: message.projection,
-            copies: Vec::new(),
-            created_at: message.created_at,
-            metadata: fields
-                .get("conversation_record")
-                .map(|raw| {
-                    let c: super::ConversationRecord = decode(raw)?;
-                    Ok::<_, AppError>(crate::search_results::ThreadMetadata {
-                        title: c.title,
-                        project: c.project,
-                        repository: c.repository,
-                        created_at: c.created_at,
-                        updated_at: c.updated_at,
-                    })
-                })
-                .transpose()?
-                .unwrap_or_default(),
-            lexical_score: lexical.then_some(-score),
-            semantic_score: distance.map(|d| 1.0 - d),
-            fusion_score: 0.0,
-            rerank_score: None,
-        });
-    }
+fn hits(
+    value: &redis::Value,
+    ranking: response::Ranking,
+) -> Result<(Vec<SearchHit>, Documents), AppError> {
+    let mut hits = response::candidates(value, ranking)?;
+    let documents = hits
+        .iter()
+        .map(|hit| {
+            (
+                (hit.node_id.clone().unwrap_or_default(), hit.id.clone()),
+                hit.content.clone(),
+            )
+        })
+        .collect();
     hits.sort_by(|a, b| {
-        if lexical {
-            a.lexical_score
-                .partial_cmp(&b.lexical_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        } else {
-            b.semantic_score
-                .partial_cmp(&a.semantic_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
+        match ranking {
+            response::Ranking::Lexical => a
+                .lexical_score
+                .unwrap_or_default()
+                .total_cmp(&b.lexical_score.unwrap_or_default()),
+            response::Ranking::Semantic => b
+                .semantic_score
+                .unwrap_or_default()
+                .total_cmp(&a.semantic_score.unwrap_or_default()),
         }
         .then_with(|| a.node_id.cmp(&b.node_id))
         .then_with(|| a.id.cmp(&b.id))

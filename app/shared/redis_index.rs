@@ -1,7 +1,9 @@
 //! Redis connection/schema setup and internal snapshot representation.
 mod canonical;
+mod fields;
 mod publish;
 mod read;
+mod response;
 
 use crate::provider::Provider;
 use std::collections::BTreeMap;
@@ -87,11 +89,11 @@ async fn extend_metadata_schema(
     let mut fields = std::collections::HashSet::new();
     schema_fields(&info, &mut fields);
     for (field, kind) in [
-        ("node_tag", "TAG"),
-        ("role_tag", "TAG"),
-        ("project_tag", "TAG"),
-        ("repository_tag", "TAG"),
-        ("dated", "NUMERIC"),
+        (fields::NODE_TAG, "TAG"),
+        (fields::ROLE_TAG, "TAG"),
+        (fields::PROJECT_TAG, "TAG"),
+        (fields::REPOSITORY_TAG, "TAG"),
+        (fields::DATED, "NUMERIC"),
     ] {
         if !fields.contains(field) {
             let result = redis::cmd("FT.ALTER")
@@ -264,23 +266,23 @@ impl Store {
                     .arg("STOPWORDS")
                     .arg(0)
                     .arg("SCHEMA")
-                    .arg("version")
+                    .arg(fields::VERSION)
                     .arg("TAG")
-                    .arg("conversation")
+                    .arg(fields::CONVERSATION)
                     .arg("TAG")
-                    .arg("provider_tag")
+                    .arg(fields::PROVIDER_TAG)
                     .arg("TAG")
-                    .arg("ordinal")
+                    .arg(fields::ORDINAL)
                     .arg("NUMERIC")
                     .arg("SORTABLE")
-                    .arg("created_at")
+                    .arg(fields::CREATED_AT)
                     .arg("NUMERIC")
-                    .arg("searchable")
+                    .arg(fields::SEARCHABLE)
                     .arg("NUMERIC")
-                    .arg("projection")
+                    .arg(fields::PROJECTION)
                     .arg("TEXT")
                     .arg("NOSTEM")
-                    .arg("vector")
+                    .arg(fields::VECTOR)
                     .arg("VECTOR")
                     .arg("FLAT")
                     .arg(6)
