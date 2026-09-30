@@ -183,6 +183,8 @@ impl Store {
                 .arg(u8::from(!message.projection.is_empty()))
                 .arg("projection")
                 .arg(&message.projection)
+                .arg("conversation_record")
+                .arg(encode(conversation)?)
                 .arg("record")
                 .arg(encode(message)?);
             if let Some(vector) = &message.vector {

@@ -140,6 +140,7 @@ impl Store {
             } else {
                 ""
             })
+            .arg(input.unit.candidate_limit())
             .query_async(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;
@@ -255,6 +256,21 @@ fn hits(value: redis::Value, lexical: bool) -> Result<(Vec<SearchHit>, Documents
             provider: provider.parse()?,
             role: message.role,
             content: message.content,
+            created_at: message.created_at,
+            metadata: fields
+                .get("conversation_record")
+                .map(|raw| {
+                    let c: super::ConversationRecord = decode(raw)?;
+                    Ok::<_, AppError>(crate::search_results::ThreadMetadata {
+                        title: c.title,
+                        project: c.project,
+                        repository: c.repository,
+                        created_at: c.created_at,
+                        updated_at: c.updated_at,
+                    })
+                })
+                .transpose()?
+                .unwrap_or_default(),
             lexical_score: lexical.then_some(-score),
             semantic_score: distance.map(|d| 1.0 - d),
             fusion_score: 0.0,

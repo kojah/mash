@@ -45,6 +45,7 @@ pub(crate) enum Operation {
     Search {
         query: String,
         limit: usize,
+        unit: crate::search_results::SearchUnit,
         filters: Box<crate::search_filter::Selection>,
         shared: bool,
         local: bool,
@@ -144,7 +145,8 @@ pub(crate) enum SearchMode {
 pub(crate) struct SearchResponse {
     pub(crate) query: String,
     pub(crate) realized_mode: SearchMode,
-    pub(crate) results: Vec<crate::storage::SearchHit>,
+    pub(crate) unit: crate::search_results::SearchUnit,
+    pub(crate) results: crate::search_results::Results,
     pub(crate) shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) shared_error: Option<String>,
@@ -193,6 +195,10 @@ pub(super) struct ModelsInstallResponse {
     recommended_action: crate::Action,
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "explicit dispatch of the small typed operation surface"
+)]
 async fn dispatch(
     command: Operation,
     configuration: &ResolvedConfig,
@@ -212,6 +218,7 @@ async fn dispatch(
         Operation::Search {
             query,
             limit,
+            unit,
             filters,
             shared: use_shared,
             local: use_local,
@@ -235,14 +242,15 @@ async fn dispatch(
                     models,
                     configuration.embeddings.as_ref(),
                     &query,
-                    limit,
+                    (limit, unit),
                     &filters,
                 )
                 .await?;
                 Ok(Response::Search(SearchResponse {
-                    query,
                     realized_mode: search_mode(shared_error.is_some(), use_shared),
-                    results,
+                    unit,
+                    results: crate::search_results::collect(results, unit, limit, &query),
+                    query,
                     shared: shared_error.is_none(),
                     shared_error,
                 }))
@@ -251,8 +259,15 @@ async fn dispatch(
                 let models = models.to_path_buf();
                 let embeddings = configuration.embeddings.clone();
                 crate::blocking(move || {
-                    local_search(&database, &models, embeddings, query, limit, &filters)
-                        .map(Response::Search)
+                    local_search(
+                        &database,
+                        &models,
+                        embeddings,
+                        query,
+                        (limit, unit),
+                        &filters,
+                    )
+                    .map(Response::Search)
                 })
                 .await
             }
@@ -533,7 +548,7 @@ fn local_search(
     models_dir: &Path,
     embeddings_config: Option<semantic::remote::Configuration>,
     query: String,
-    limit: usize,
+    options: (usize, crate::search_results::SearchUnit),
     filters: &crate::search_filter::Scope,
 ) -> Result<SearchResponse, AppError> {
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
@@ -547,14 +562,15 @@ fn local_search(
         &storage,
         &mut backend,
         &query,
-        limit,
+        options,
         (None, None),
         Some(filters),
     )?;
     Ok(SearchResponse {
-        query,
         realized_mode: SearchMode::Hybrid,
-        results,
+        unit: options.1,
+        results: crate::search_results::collect(results, options.1, options.0, &query),
+        query,
         shared: false,
         shared_error: None,
     })

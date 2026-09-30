@@ -1,6 +1,4 @@
 //! Hybrid candidates, reciprocal rank fusion, reranking, and exact vector scoring.
-use super::CANDIDATE_LIMIT;
-use super::RERANK_LIMIT;
 use super::RRF_K;
 use super::embeddings::embedding_generation;
 use super::models::Backend;
@@ -19,21 +17,23 @@ pub(crate) fn hybrid_search_filtered(
     storage: &Storage,
     backend: &mut Backend,
     query: &str,
-    limit: usize,
+    options: (usize, crate::search_results::SearchUnit),
     legacy: (Option<crate::provider::Provider>, Option<u32>),
     filters: Option<&crate::search_filter::Scope>,
 ) -> Result<Vec<SearchHit>, AppError> {
     let (provider, days) = legacy;
-    let lexical = storage.search_filtered(query, CANDIDATE_LIMIT, provider, days, filters)?;
+    let (limit, unit) = options;
+    let candidate_limit = unit.candidate_limit();
+    let lexical = storage.search_filtered(query, candidate_limit, provider, days, filters)?;
     let query_vector = backend
         .embed(&[query])?
         .pop()
         .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
     let query_vector = quantize_vector(&query_vector);
     let semantic = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
-    let ranked = rank_quantized(&query_vector, &semantic, CANDIDATE_LIMIT);
+    let ranked = rank_quantized(&query_vector, &semantic, candidate_limit);
     if ranked.is_empty() {
-        return Ok(lexical.into_iter().take(limit).collect());
+        return Ok(crate::search_results::diversify(lexical, unit));
     }
     let message_rowids = ranked
         .iter()
@@ -43,8 +43,8 @@ pub(crate) fn hybrid_search_filtered(
     for (hit, (_, score)) in semantic_hits.iter_mut().zip(&ranked) {
         hit.semantic_score = Some(*score);
     }
-    let mut fused = fuse(lexical, semantic_hits);
-    let rerank_count = fused.len().min(RERANK_LIMIT);
+    let mut fused = crate::search_results::diversify(fuse(lexical, semantic_hits), unit);
+    let rerank_count = fused.len().min(unit.rerank_limit());
     let rerank_ids = fused[..rerank_count]
         .iter()
         .map(|hit| hit.id.as_str())
@@ -65,7 +65,15 @@ pub(crate) fn hybrid_search_filtered(
             .then_with(|| right.fusion_score.total_cmp(&left.fusion_score))
             .then_with(|| left.id.cmp(&right.id))
     });
-    fused.truncate(limit);
+    if matches!(unit, crate::search_results::SearchUnit::Messages) {
+        fused.truncate(limit);
+    } else {
+        fused[rerank_count..].sort_by(|a, b| {
+            b.fusion_score
+                .total_cmp(&a.fusion_score)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+    }
     Ok(fused)
 }
 
@@ -110,14 +118,14 @@ pub(crate) fn local_candidates(
     generation: &str,
     query: &str,
     vector: &[f64],
-    provider: Option<crate::provider::Provider>,
-    days: Option<u32>,
+    selection: (Option<crate::provider::Provider>, Option<u32>, usize),
     filters: Option<&crate::search_filter::Scope>,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
-    let lexical = storage.search_filtered(query, CANDIDATE_LIMIT, provider, days, filters)?;
+    let (provider, days, candidate_limit) = selection;
+    let lexical = storage.search_filtered(query, candidate_limit, provider, days, filters)?;
     let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
     let chunks = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
-    let ranked = rank_quantized(&quantize_vector(&vector), &chunks, CANDIDATE_LIMIT);
+    let ranked = rank_quantized(&quantize_vector(&vector), &chunks, candidate_limit);
     let rowids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
     let mut semantic = storage.search_hits(&rowids)?;
     for (hit, (_, score)) in semantic.iter_mut().zip(ranked) {

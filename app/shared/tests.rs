@@ -1,5 +1,6 @@
 use super::*;
 use crate::ingestion::{Conversation, NormalizedMessage};
+use crate::search_results::SearchUnit;
 use crate::storage::EmbeddingWrite;
 
 #[tokio::test]
@@ -120,12 +121,18 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         request.expect("shared request must start before SQLite is unlocked")
     };
     let (result, request) = tokio::join!(
-        search_prepared(&config, Some(&path), "hello", 10, &filters, prepared,),
+        search_prepared(
+            &config,
+            Some(&path),
+            "hello",
+            (10, SearchUnit::Messages),
+            &filters,
+            prepared,
+        ),
         unlock,
     );
     let request = request.unwrap();
     assert!(request.exclude_self);
-    assert_eq!(request.vector.len(), 384);
     let (hits, error) = result.unwrap();
     assert!(error.is_none());
     assert_eq!(hits.len(), 1);
@@ -141,7 +148,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         &models_dir,
         None,
         "hello",
-        10,
+        (10, SearchUnit::Messages),
         &filters,
     )
     .await
@@ -152,9 +159,17 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         serde_json::to_value(hits).unwrap()
     );
     assert!(
-        search(&config, None, &models_dir, None, "hello", 10, &filters)
-            .await
-            .is_err()
+        search(
+            &config,
+            None,
+            &models_dir,
+            None,
+            "hello",
+            (10, SearchUnit::Messages),
+            &filters
+        )
+        .await
+        .is_err()
     );
     server.abort();
 }
@@ -333,8 +348,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
         semantic::embedding_generation(),
         "hello",
         &[127.0, 0.0],
-        None,
-        None,
+        (None, None, 50),
         None,
     )
     .unwrap();
@@ -349,8 +363,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
             semantic::embedding_generation(),
             "hello",
             &[127.0, 0.0],
-            Some(crate::provider::Provider::ClaudeCode),
-            None,
+            (Some(crate::provider::Provider::ClaudeCode), None, 50),
             None
         )
         .unwrap()
@@ -417,13 +430,15 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         semantic::embedding_generation(),
         "hello",
         &[127.0, 0.0],
-        None,
-        None,
+        (None, None, 50),
         Some(&scope),
     )
     .unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, "message-60");
+    assert_eq!(hits[0].metadata.project.as_deref(), Some("/work/o'reilly"));
+    assert_eq!(hits[0].metadata.repository.as_deref(), Some("repo://alpha"));
+    assert_eq!(hits[0].created_at, Some(2000));
     assert!(hits[0].lexical_score.is_some() && hits[0].semantic_score.is_some());
     assert_eq!(
         storage

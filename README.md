@@ -13,7 +13,7 @@ The service uses Redis Search by default, with PostgreSQL + pgvector as an alter
 
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex]... [--since-days N|--all-history]
-mash search <query> [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
+mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <conversation-id>
@@ -399,9 +399,38 @@ Default search queries SQLite and shared records belonging to other nodes. The
 shared service excludes the authenticated node before candidate limits and
 embedding-readiness checks. After computing one query embedding, local candidate
 retrieval and the shared HTTP request run concurrently. Both sources use independent
-lexical/semantic reciprocal-rank fusion, and a single reranking pass over the ten
-best combined candidates. Local hits have no `node_id`; shared hits include their
+lexical/semantic reciprocal-rank fusion, followed by bounded combined reranking.
+Local message hits have no `node_id`; shared hits include their
 publishing node for `view --shared NODE_ID`. Plain `view` always reads SQLite.
+
+Search defaults to `unit = "threads"` in CLI and MCP. Each thread result includes
+its conversation ID, provider, representative node, available title/project/repository
+and conversation timestamps, a ranking score, and up to three distinct matching
+excerpts in relevance order. Each excerpt has a `message_id`, its own `node_id`,
+role, timestamp, and relevance scores. Open an excerpt with `view MESSAGE_ID
+--context N`, supplying `--shared NODE_ID` for a shared excerpt. Timestamps are
+Unix milliseconds; unknown metadata is null. Search never returns an entire
+conversation automatically.
+
+Thread retrieval considers up to 200 lexical and 200 semantic candidates per
+index. Before reranking, it keeps at most three distinct messages per conversation
+and considers one from each conversation before second and third matches.
+At most 30 messages are reranked. Threads are grouped before applying `limit`;
+their score is reciprocal rank of the best message plus contributions of 10%
+and 5% from the next two. Scores express relative relevance, not probabilities.
+Recency does not change ranking; use date filters to restrict history.
+Copies with the same provider and conversation ID are grouped across nodes;
+identical message content earns no additional credit. Independent conversations
+with different IDs remain separate.
+
+Use `mash search QUERY --unit messages` or MCP `unit = "messages"` for full
+individual message results with the existing 50-candidate and ten-message
+reranking budgets. `limit` counts the selected unit, and filters apply equally
+to both modes before retrieval. Thread excerpts are bounded to 800 characters
+plus ellipses, with a window around a query term when present. Results describe
+the bounded candidate pool, not an exhaustive count of matches in each chat.
+Existing Redis snapshots lack newly stored conversation metadata until republished;
+their thread IDs and matching message references remain usable.
 
 Use `search --local` to avoid the shared API, or `search --shared` for the complete
 shared index, including this node. MCP search exposes equivalent `local` and
@@ -553,7 +582,7 @@ Example MCP client configuration:
 
 For shared operations, provide the configured node token environment variable to
 `mash mcp` through your MCP client's environment mechanism. `search` accepts a
-`shared` boolean; `view` accepts a `shared` publishing node ID. Search, view, and
+`shared` boolean and a `unit` of `threads` (default) or `messages`; `view` accepts a `shared` publishing node ID. Search, view, and
 status are annotated read-only. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;
 service-side PostgreSQL I/O uses `tokio-postgres` and async/await. SQLite, parsing, and local FastEmbed inference run on blocking

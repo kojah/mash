@@ -491,7 +491,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
     opposite[0] = -127.0;
     vec![
         json!({"type":"start","instance":"snapshot-instance","revision":revision,"base_revision":null,"snapshot":true,"forgets":[]}),
-        json!({"type":"batch","kind":"conversations","records":[{"id":"conversation","provider":"codex","title":null,"created_at":1,"updated_at":2}]}),
+        json!({"type":"batch","kind":"conversations","records":[{"id":"conversation","provider":"codex","title":"Shared history","project":"/work/mash","repository":"repo://mash","created_at":1,"updated_at":2}]}),
         json!({"type":"batch","kind":"messages","records":[
             {"id":"searchable","conversation_id":"conversation","ordinal":0,"role":"user","content":"hello shared history","projection":"hello shared history","created_at":1,"generation":crate::semantic::SHARED_EMBEDDING_GENERATION,"vector":vector},
             {"id":"opposite","conversation_id":"conversation","ordinal":1,"role":"user","content":"opposite direction","projection":"opposite direction","created_at":2,"generation":crate::semantic::SHARED_EMBEDDING_GENERATION,"vector":opposite},
@@ -607,6 +607,13 @@ async fn http_storage_contract(service: Service) {
     assert_eq!(candidates["semantic"][0]["id"], "searchable");
     assert_eq!(candidates["semantic"][0]["semantic_score"], 1.0);
     assert_eq!(candidates["semantic"][1]["semantic_score"], -1.0);
+    for kind in ["lexical", "semantic"] {
+        assert_eq!(candidates[kind][0]["metadata"]["title"], "Shared history");
+        assert_eq!(candidates[kind][0]["metadata"]["project"], "/work/mash");
+        assert_eq!(candidates[kind][0]["metadata"]["repository"], "repo://mash");
+        assert_eq!(candidates[kind][0]["metadata"]["updated_at"], 2);
+        assert_eq!(candidates[kind][0]["created_at"], 1);
+    }
     assert_eq!(
         service.upload(SECOND, &events).await.status(),
         StatusCode::OK

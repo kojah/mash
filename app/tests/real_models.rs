@@ -81,6 +81,8 @@ fn real_models_index_and_run_hybrid_search() {
         "--models-dir",
         model_arg,
         "search",
+        "--unit",
+        "messages",
         "authentication",
     ]);
     assert_eq!(found["realized_mode"], "hybrid");
@@ -96,6 +98,40 @@ fn real_models_index_and_run_hybrid_search() {
                 .is_some_and(|content| content.contains("authentication credentials"))
         })
     }));
+    assert_thread_search_and_view(&database, model_arg);
+}
+
+fn assert_thread_search_and_view(database: &std::path::Path, model_arg: &str) {
+    let threads = run_json(&[
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        model_arg,
+        "search",
+        "authentication",
+        "--limit",
+        "1",
+    ]);
+    assert_eq!(threads["unit"], "threads");
+    let results = threads["results"].as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["conversation_id"], "hybrid");
+    let matches = results[0]["matches"].as_array().unwrap();
+    assert_eq!(matches.len(), 2);
+    assert!(
+        matches[0]["rerank_score"].as_f64().unwrap()
+            >= matches[1]["rerank_score"].as_f64().unwrap()
+    );
+    let anchor = matches[0]["message_id"].as_str().unwrap();
+    let context = run_json(&[
+        "--db",
+        database.to_str().unwrap(),
+        "view",
+        anchor,
+        "--context",
+        "1",
+    ]);
+    assert_eq!(context["messages"].as_array().unwrap().len(), 2);
 }
 
 #[test]

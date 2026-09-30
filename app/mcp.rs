@@ -23,7 +23,11 @@ struct Mash {
 #[serde(deny_unknown_fields)]
 struct Search {
     query: String,
+    /// Maximum number of results in the selected unit.
     limit: Option<usize>,
+    /// Return threads (default) or individual messages. Thread matches reference view anchors.
+    #[serde(default)]
+    unit: crate::search_results::SearchUnit,
     provider: Option<Provider>,
     days: Option<u32>,
     /// Boolean metadata filter: all/any/not, node/provider/role/conversation/project/repository lists, after/before Unix timestamps.
@@ -209,12 +213,13 @@ fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResul
 impl Mash {
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."
+        description = "Search conversation threads by default; set unit=messages for individual messages. Thread matches are relevance-ordered excerpts with message_id anchors for view; timestamps are Unix milliseconds. Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute(Operation::Search {
             query: request.query,
             limit: request.limit.unwrap_or(20),
+            unit: request.unit,
             filters: Box::new(crate::search_filter::Selection {
                 provider: request.provider.into_iter().collect(),
                 days: request.days,

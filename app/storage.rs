@@ -58,6 +58,10 @@ pub(crate) struct SearchHit {
     pub(crate) provider: Provider,
     pub(crate) role: crate::role::Role,
     pub(crate) content: String,
+    #[serde(default)]
+    pub(crate) created_at: Option<i64>,
+    #[serde(default)]
+    pub(crate) metadata: crate::search_results::ThreadMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]

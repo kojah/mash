@@ -58,11 +58,14 @@ enum Command {
         #[arg(long)]
         all_history: bool,
     },
-    /// Search indexed messages.
+    /// Search indexed threads or messages.
     Search {
         query: String,
         #[arg(long, default_value_t = 20)]
         limit: usize,
+        /// Result granularity; limit counts threads or messages.
+        #[arg(long, value_enum, default_value = "threads")]
+        unit: crate::search_results::SearchUnit,
         #[command(flatten)]
         filters: Box<SearchArguments>,
         /// Query only the shared index (including this node).
@@ -218,6 +221,7 @@ impl Cli {
             Command::Search {
                 query,
                 limit,
+                unit,
                 filters,
                 shared,
                 local,
@@ -225,6 +229,7 @@ impl Cli {
             } => Operation::Search {
                 query,
                 limit,
+                unit,
                 filters: Box::new(filters.into_selection()?),
                 shared,
                 local,

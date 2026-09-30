@@ -13,7 +13,10 @@ use std::time::Instant;
 
 #[test]
 fn reranking_is_bounded_to_ten_documents() {
-    assert_eq!(RERANK_LIMIT, 10);
+    assert_eq!(
+        crate::search_results::SearchUnit::Messages.rerank_limit(),
+        10
+    );
 }
 
 #[test]
@@ -283,6 +286,8 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
             provider: crate::provider::Provider::Codex,
             role: crate::role::Role::User,
             content: id.to_owned(),
+            created_at: None,
+            metadata: crate::search_results::ThreadMetadata::default(),
             lexical_score: None,
             semantic_score: None,
             fusion_score: 0.0,

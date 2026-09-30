@@ -25,6 +25,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             .search(Parameters(Search {
                 query: "--models-dir=untrusted".into(),
                 limit: None,
+                unit: crate::search_results::SearchUnit::Threads,
                 provider: Some(Provider::Codex),
                 days: None,
                 filter,
@@ -174,6 +175,10 @@ async fn indexing_streams_correlated_progress_before_the_tool_result() {
 fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     let search = tools.iter().find(|tool| tool.name == "search").unwrap();
     assert!(search.input_schema["properties"].get("filter").is_some());
+    let unit = &search.input_schema["properties"]["unit"];
+    assert_eq!(unit["default"], "threads");
+    let schema = serde_json::to_string(&search.input_schema).unwrap();
+    assert!(schema.contains("\"threads\"") && schema.contains("\"messages\""));
 }
 
 #[tokio::test]

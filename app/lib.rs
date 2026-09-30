@@ -7,6 +7,7 @@ mod progress;
 mod provider;
 mod role;
 mod search_filter;
+mod search_results;
 mod semantic;
 mod shared;
 mod storage;

@@ -143,6 +143,8 @@ pub(super) struct Indexed {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Search {
+    #[serde(default)]
+    pub unit: crate::search_results::SearchUnit,
     pub query: String,
     #[serde(default = "default_generation")]
     pub generation: String,

@@ -534,6 +534,14 @@ fn hit(row: &Row, lexical: bool) -> Result<SearchHit, AppError> {
         provider: row.try_get(3).map_err(pg_error)?,
         role: row.try_get(4).map_err(pg_error)?,
         content: row.try_get(5).map_err(pg_error)?,
+        created_at: row.try_get(8).map_err(pg_error)?,
+        metadata: crate::search_results::ThreadMetadata {
+            title: row.try_get(9).map_err(pg_error)?,
+            project: row.try_get(10).map_err(pg_error)?,
+            repository: row.try_get(11).map_err(pg_error)?,
+            created_at: row.try_get(12).map_err(pg_error)?,
+            updated_at: row.try_get(13).map_err(pg_error)?,
+        },
         lexical_score: lexical.then_some(-score),
         semantic_score,
         fusion_score: 0.0,
@@ -552,10 +560,16 @@ async fn candidates(
     query: &str,
     vector: &[f64],
     identity: &Identity,
-    legacy: (Option<crate::provider::Provider>, Option<u32>, Option<&str>),
+    legacy: (
+        Option<crate::provider::Provider>,
+        Option<u32>,
+        Option<&str>,
+        crate::search_results::SearchUnit,
+    ),
     filter: Option<&crate::search_filter::Filter>,
 ) -> Result<Candidates, AppError> {
-    let (provider, days, exclude_node) = legacy;
+    let (provider, days, exclude_node, unit) = legacy;
+    let candidate_limit = unit.candidate_limit();
     let provider = provider.map(Provider::as_str);
     let predicate = filter.map_or_else(|| "TRUE".to_owned(), |f| f.sql(None));
     let cutoff = days.map(|days| {
@@ -578,13 +592,13 @@ async fn candidates(
         .query(
             &format!(
                 "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score
+                ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at,c.updated_at
          FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
            AND ($5::text IS NULL OR m.node_id<>$5)
            AND ({predicate})
-         ORDER BY score DESC,m.node_id,m.id LIMIT 50"
+         ORDER BY score DESC,m.node_id,m.id LIMIT {candidate_limit}"
             ),
             &[&query, &generation, &provider, &cutoff, &exclude_node],
         )
@@ -594,13 +608,13 @@ async fn candidates(
         .query(
             &format!(
                 "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                1.0 - (m.vector <=> $1::text::public.vector) AS score
+                1.0 - (m.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at,c.updated_at
          FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
            AND ($6::text IS NULL OR m.node_id<>$6)
            AND ({predicate})
-         ORDER BY score DESC,m.node_id,m.id LIMIT 50"
+         ORDER BY score DESC,m.node_id,m.id LIMIT {candidate_limit}"
             ),
             &[
                 &vector,
@@ -666,7 +680,7 @@ pub(super) async fn search(
         &input.query,
         &input.vector,
         identity,
-        (input.provider, input.days, exclude_node),
+        (input.provider, input.days, exclude_node, input.unit),
         input.filter.as_ref(),
     )
     .await?;

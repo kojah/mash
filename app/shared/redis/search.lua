@@ -15,12 +15,12 @@ local active = '@version:{' .. table.concat(versions, '|') .. '}'
 local lexical = {0}
 if ARGV[1] ~= '' then
     lexical = redis.call('FT.SEARCH', KEYS[2], '(' .. ARGV[1] .. ') ' .. active .. ARGV[2],
-        'WITHSCORES', 'VERBATIM', 'NOSTOPWORDS', 'RETURN', 4, 'record', 'node_id', 'provider', 'projection',
-        'LIMIT', 0, 50, 'TIMEOUT', 30000, 'DIALECT', 2)
+        'WITHSCORES', 'VERBATIM', 'NOSTOPWORDS', 'RETURN', 5, 'record', 'node_id', 'provider', 'projection', 'conversation_record',
+        'LIMIT', 0, tonumber(ARGV[6]), 'TIMEOUT', 30000, 'DIALECT', 2)
 end
-local query = '(' .. active .. ' @searchable:[1 1]' .. ARGV[2] .. ')=>[KNN 50 @vector $BLOB AS distance]'
+local query = '(' .. active .. ' @searchable:[1 1]' .. ARGV[2] .. ')=>[KNN ' .. ARGV[6] .. ' @vector $BLOB AS distance]'
 local semantic = redis.call('FT.SEARCH', KEYS[2], query, 'WITHSCORES',
-    'RETURN', 5, 'record', 'node_id', 'provider', 'projection', 'distance',
-    'SORTBY', 'distance', 'ASC', 'LIMIT', 0, 50, 'TIMEOUT', 30000,
+    'RETURN', 6, 'record', 'node_id', 'provider', 'projection', 'distance', 'conversation_record',
+    'SORTBY', 'distance', 'ASC', 'LIMIT', 0, tonumber(ARGV[6]), 'TIMEOUT', 30000,
     'PARAMS', 2, 'BLOB', ARGV[3], 'DIALECT', 2)
 return {lexical, semantic}

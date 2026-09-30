@@ -430,7 +430,7 @@ pub(crate) async fn search(
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
-    limit: usize,
+    options: (usize, crate::search_results::SearchUnit),
     filters: &crate::search_filter::Scope,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
     filters.filter.validate()?;
@@ -438,7 +438,7 @@ pub(crate) async fn search(
         return Err(AppError::usage("search query must not be empty"));
     }
     let prepared = prepare_search(local_database, models_dir, embeddings, query).await?;
-    search_prepared(config, local_database, query, limit, filters, prepared).await
+    search_prepared(config, local_database, query, options, filters, prepared).await
 }
 
 struct PreparedSearch {
@@ -486,7 +486,7 @@ async fn search_prepared(
     config: &SharedConfig,
     local_database: Option<&Path>,
     query: &str,
-    limit: usize,
+    options: (usize, crate::search_results::SearchUnit),
     filters: &crate::search_filter::Scope,
     prepared: PreparedSearch,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
@@ -496,6 +496,7 @@ async fn search_prepared(
         local_generation,
         generation,
     } = prepared;
+    let (limit, unit) = options;
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);
     let exclude_self = local_database.is_some();
@@ -508,6 +509,7 @@ async fn search_prepared(
             &local_query,
             &local_vector,
             &local_filters,
+            unit,
         )
     });
     let remote = async {
@@ -520,6 +522,7 @@ async fn search_prepared(
                 "search",
                 &protocol::Search {
                     query: query.to_owned(),
+                    unit,
                     vector,
                     generation,
                     provider: None,
@@ -566,7 +569,13 @@ async fn search_prepared(
                 .then_with(|| a.node_id.cmp(&b.node_id))
                 .then_with(|| a.id.cmp(&b.id))
         });
-        let fused = rerank_combined(&mut backend, &query, fused, &documents, limit)?;
+        let fused = rerank_combined(
+            &mut backend,
+            &query,
+            crate::search_results::diversify(fused, unit),
+            &documents,
+            (limit, unit),
+        )?;
         Ok((fused, shared_error))
     })
     .await
@@ -578,6 +587,7 @@ fn retrieve_local_candidates(
     query: &str,
     vector: &[f64],
     filters: &crate::search_filter::Scope,
+    unit: crate::search_results::SearchUnit,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
     let Some(database) = database else {
         return Ok((Vec::new(), Vec::new()));
@@ -588,8 +598,7 @@ fn retrieve_local_candidates(
         generation,
         query,
         vector,
-        None,
-        None,
+        (None, None, unit.candidate_limit()),
         Some(filters),
     )
 }
@@ -599,9 +608,10 @@ fn rerank_combined(
     query: &str,
     mut fused: Vec<SearchHit>,
     documents: &HashMap<(String, String), String>,
-    limit: usize,
+    options: (usize, crate::search_results::SearchUnit),
 ) -> Result<Vec<SearchHit>, AppError> {
-    let count = fused.len().min(10);
+    let (limit, unit) = options;
+    let count = fused.len().min(unit.rerank_limit());
     let documents = fused[..count]
         .iter()
         .map(|hit| {
@@ -626,7 +636,16 @@ fn rerank_combined(
                 .then_with(|| a.id.cmp(&b.id))
         });
     }
-    fused.truncate(limit.min(1000));
+    if matches!(unit, crate::search_results::SearchUnit::Messages) {
+        fused.truncate(limit.min(1000));
+    } else {
+        fused[count..].sort_by(|a, b| {
+            b.fusion_score
+                .total_cmp(&a.fusion_score)
+                .then_with(|| a.node_id.cmp(&b.node_id))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+    }
     Ok(fused)
 }
 

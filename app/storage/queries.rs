@@ -153,7 +153,7 @@ impl Storage {
             .connection
             .prepare(&format!(
                 "SELECT m.id, m.conversation_id, c.provider, m.role, m.content,
-                        bm25(message_fts) AS lexical_score
+                        bm25(message_fts) AS lexical_score, m.created_at, c.title, c.project, c.repository, c.created_at, c.updated_at
                    FROM message_fts
                    JOIN messages m ON m.id = message_fts.message_id
                    JOIN conversations c ON c.id = m.conversation_id
@@ -173,6 +173,14 @@ impl Storage {
                     provider: row.get(2)?,
                     role: row.get(3)?,
                     content: row.get(4)?,
+                    created_at: row.get(6)?,
+                    metadata: crate::search_results::ThreadMetadata {
+                        title: row.get(7)?,
+                        project: row.get(8)?,
+                        repository: row.get(9)?,
+                        created_at: row.get(10)?,
+                        updated_at: row.get(11)?,
+                    },
                     lexical_score: Some(row.get(5)?),
                     semantic_score: None,
                     fusion_score: 0.0,
@@ -189,7 +197,7 @@ impl Storage {
         let mut statement = self
             .connection
             .prepare_cached(
-                "SELECT m.id, m.conversation_id, c.provider, m.role, m.content
+                "SELECT m.id, m.conversation_id, c.provider, m.role, m.content, m.created_at, c.title, c.project, c.repository, c.created_at, c.updated_at
                    FROM messages m
                    JOIN conversations c ON c.id = m.conversation_id
                   WHERE m.rowid = ?1",
@@ -205,6 +213,14 @@ impl Storage {
                         provider: row.get(2)?,
                         role: row.get(3)?,
                         content: row.get(4)?,
+                        created_at: row.get(5)?,
+                        metadata: crate::search_results::ThreadMetadata {
+                            title: row.get(6)?,
+                            project: row.get(7)?,
+                            repository: row.get(8)?,
+                            created_at: row.get(9)?,
+                            updated_at: row.get(10)?,
+                        },
                         lexical_score: None,
                         semantic_score: None,
                         fusion_score: 0.0,
