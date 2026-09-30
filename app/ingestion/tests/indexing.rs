@@ -51,7 +51,7 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
         writer
             .source_checkpoint_matches(
                 Provider::ClaudeCode,
-                source.to_str().unwrap(),
+                &SourceIdentity::file(&source),
                 old_stamp.size_bytes,
                 old_stamp.modified_ns,
             )
@@ -90,8 +90,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
             Provider::ClaudeCode,
             ParsedSource {
                 source: SourceFile {
-                    source_path: source.to_string_lossy().into_owned(),
-                    path: source.clone(),
+                    identity: SourceIdentity::file(&source),
                     stamp,
                 },
                 parsed: Ok(parsed),
@@ -105,7 +104,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
             !writer
                 .source_checkpoint_matches(
                     Provider::ClaudeCode,
-                    source.to_str().unwrap(),
+                    &SourceIdentity::file(&source),
                     stamp.size_bytes,
                     stamp.modified_ns,
                 )
@@ -143,7 +142,7 @@ fn purge_requires_a_complete_provider_scan() {
         .replace_conversation(&Conversation {
             id: "old-session".to_owned(),
             provider: Provider::ClaudeCode,
-            source_path: missing_source,
+            source: SourceIdentity::file(missing_source),
             project: None,
             repository: None,
             title: None,
@@ -385,7 +384,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
     writer
         .record_source_checkpoint(
             crate::provider::Provider::ClaudeCode,
-            old_source.to_str().unwrap(),
+            &SourceIdentity::file(&old_source),
             10,
             20,
         )
@@ -439,7 +438,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
         writer
             .source_checkpoint_matches(
                 crate::provider::Provider::ClaudeCode,
-                old_source.to_str().unwrap(),
+                &SourceIdentity::file(&old_source),
                 10,
                 20
             )
@@ -544,7 +543,7 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
         writer
             .source_checkpoint_matches(
                 crate::provider::Provider::ClaudeCode,
-                old_path.to_str().unwrap(),
+                &SourceIdentity::file(&old_path),
                 old_stamp.size_bytes,
                 old_stamp.modified_ns,
             )
@@ -587,7 +586,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
     writer
         .record_source_checkpoint(
             crate::provider::Provider::ClaudeCode,
-            directory.path().join("claude.jsonl").to_str().unwrap(),
+            &SourceIdentity::file(directory.path().join("claude.jsonl")),
             10,
             20,
         )
@@ -630,7 +629,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
         writer
             .source_checkpoint_matches(
                 crate::provider::Provider::ClaudeCode,
-                directory.path().join("claude.jsonl").to_str().unwrap(),
+                &SourceIdentity::file(directory.path().join("claude.jsonl")),
                 10,
                 20,
             )

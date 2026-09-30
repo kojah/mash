@@ -18,13 +18,16 @@ CREATE TABLE IF NOT EXISTS conversations (
             'claude-code', 'codex', 'aider'
         )
     ),
-    source_path TEXT NOT NULL UNIQUE,
+    source_path TEXT NOT NULL,
+    source_key TEXT NOT NULL,
+    source_session TEXT,
     title TEXT,
     created_at INTEGER,
     updated_at INTEGER,
     source_fingerprint TEXT NOT NULL DEFAULT '',
     project TEXT,
-    repository TEXT
+    repository TEXT,
+    UNIQUE (provider, source_key)
 );
 CREATE TABLE IF NOT EXISTS messages (
     storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,9 +77,10 @@ CREATE TABLE IF NOT EXISTS tombstones (
 CREATE TABLE IF NOT EXISTS source_checkpoints (
     provider TEXT NOT NULL,
     source_path TEXT NOT NULL,
+    source_key TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
     modified_ns INTEGER NOT NULL,
-    PRIMARY KEY (provider, source_path)
+    PRIMARY KEY (provider, source_key)
 );
 CREATE TABLE IF NOT EXISTS derived_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),

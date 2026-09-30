@@ -121,10 +121,8 @@ async fn ingest_scan(
         .map(|s| (s.path_hash.as_str(), s))
         .collect();
     let mut observed = Vec::new();
-    for path in &scan.files {
-        let hash = blake3::hash(format!("search-text-v3:{}", path.to_string_lossy()).as_bytes())
-            .to_hex()
-            .to_string();
+    for source in &scan.sources {
+        let hash = source.publication_hash();
         observed.push(hash.clone());
         if observed.len() == 128 {
             write_event(
@@ -135,8 +133,8 @@ async fn ingest_scan(
                 },
             )?;
         }
-        let source = path.clone();
-        let stamp = crate::blocking(move || ingestion::source_stamp(&source)).await?;
+        let path = source.path.clone();
+        let stamp = crate::blocking(move || ingestion::source_stamp(&path)).await?;
         let size = stamp.size_bytes;
         let modified = stamp.modified_ns;
         if scan.cutoff.is_some_and(|c| modified < c) {
@@ -155,10 +153,10 @@ async fn ingest_scan(
             result.summary.checkpoint_skipped_sources += 1;
             continue;
         }
-        let source = path.clone();
+        let source = source.clone();
         let provider = scan.provider;
         let parsed =
-            crate::blocking(move || DirectScan::parse_path(provider, &source, stamp)).await?;
+            crate::blocking(move || DirectScan::parse_source(provider, &source, stamp)).await?;
         if parsed.malformed_records != 0 {
             return Err(AppError::shared(
                 "shared indexing encountered malformed history; upload was not committed",

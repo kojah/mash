@@ -3,6 +3,95 @@ use super::*;
 use std::collections::BTreeSet;
 
 #[test]
+fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
+    use crate::ingestion::SourceIdentity;
+    use crate::provider::Provider;
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("mash.sqlite3");
+    let physical = directory.path().join("history.db");
+    let mut storage = Storage::open_writer(&database).unwrap();
+    let mut sources = Vec::new();
+    for (session, path, modified) in [
+        ("keep", physical.clone(), 100),
+        ("deleted", physical.clone(), 100),
+        ("archived", physical.clone(), 1),
+        ("outside", PathBuf::from("/outside/history.db"), 100),
+    ] {
+        let source = SourceIdentity {
+            path,
+            session: Some(session.into()),
+        };
+        let mut value = conversation(&format!("{session} searchable evidence"));
+        value.id = session.into();
+        value.messages[0].id = format!("{session}-message");
+        value.source = source.clone();
+        storage.replace_conversation(&value).unwrap();
+        storage
+            .record_source_checkpoint(Provider::Codex, &source, 10, modified)
+            .unwrap();
+        sources.push(source);
+    }
+    storage.commit_writer().unwrap();
+    drop(storage);
+    let mut storage = Storage::open_writer(&database).unwrap();
+    assert_eq!(storage.counts().unwrap().conversations, 4);
+    let paths: Vec<(String, String)> = storage.connection.prepare(
+        "SELECT source_path, source_session FROM conversations WHERE id IN ('keep','deleted') ORDER BY id"
+    ).unwrap().query_map([], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
+        .collect::<Result<_, _>>().unwrap();
+    assert!(
+        paths
+            .iter()
+            .all(|(path, _)| path == &physical.to_string_lossy())
+    );
+    assert_ne!(paths[0].1, paths[1].1);
+    assert!(
+        storage
+            .source_checkpoint_matches(Provider::Codex, &sources[0], 10, 100)
+            .unwrap()
+    );
+    assert!(
+        !storage
+            .source_checkpoint_matches(Provider::ClaudeCode, &sources[0], 10, 100)
+            .unwrap()
+    );
+
+    let observed = [sources[0].key()].into();
+    assert_eq!(
+        storage
+            .purge_missing_sources(Provider::Codex, &observed, &[physical], Some(50))
+            .unwrap(),
+        1
+    );
+    storage.commit_writer().unwrap();
+    assert!(
+        storage
+            .search("deleted", 10, None, None)
+            .unwrap()
+            .is_empty()
+    );
+    for session in ["keep", "archived", "outside"] {
+        assert_eq!(storage.search(session, 10, None, None).unwrap().len(), 1);
+    }
+    assert!(
+        !storage
+            .source_checkpoint_matches(Provider::Codex, &sources[1], 10, 100)
+            .unwrap()
+    );
+    assert!(
+        storage
+            .source_checkpoint_matches(Provider::Codex, &sources[2], 10, 1)
+            .unwrap()
+    );
+    drop(storage);
+    let mut storage = Storage::open_writer(&database).unwrap();
+    assert!(storage.remove_source(Provider::Codex, &sources[0]).unwrap());
+    storage.commit_writer().unwrap();
+    assert_eq!(storage.counts().unwrap().conversations, 2);
+    assert_eq!(storage.search("archived", 10, None, None).unwrap().len(), 1);
+}
+
+#[test]
 fn literal_search_handles_urls_hyphens_questions_and_phrases() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("mash.sqlite3")).unwrap();
@@ -63,7 +152,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
     writer
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
-            "/tmp/session-1.jsonl",
+            &crate::ingestion::SourceIdentity::file("/tmp/session-1.jsonl"),
             100,
             200,
         )
@@ -86,7 +175,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
         storage
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
-                "/tmp/session-1.jsonl",
+                &crate::ingestion::SourceIdentity::file("/tmp/session-1.jsonl"),
                 100,
                 200
             )

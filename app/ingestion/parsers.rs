@@ -191,7 +191,7 @@ fn parse_jsonl(
         conversation: Some(Conversation {
             id,
             provider,
-            source_path: path.to_path_buf(),
+            source: super::SourceIdentity::file(path),
             repository: repository.or_else(|| project.as_deref().and_then(repository_origin)),
             project,
             title,

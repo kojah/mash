@@ -33,9 +33,10 @@ pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&st
     connection
         .execute_batch(
             "CREATE TABLE conversations (
-                id TEXT PRIMARY KEY, provider TEXT NOT NULL, source_path TEXT NOT NULL UNIQUE,
+                id TEXT PRIMARY KEY, provider TEXT NOT NULL, source_path TEXT NOT NULL,
+                source_key TEXT NOT NULL, source_session TEXT,
                 title TEXT, created_at INTEGER, updated_at INTEGER, project TEXT, repository TEXT,
-                source_fingerprint TEXT NOT NULL DEFAULT ''
+                source_fingerprint TEXT NOT NULL DEFAULT '', UNIQUE(provider, source_key)
              );
              CREATE TABLE messages (
                 id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
@@ -59,9 +60,9 @@ pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&st
                 forgotten_at INTEGER NOT NULL, PRIMARY KEY(provider, conversation_id)
              );
              CREATE TABLE source_checkpoints (
-                provider TEXT NOT NULL, source_path TEXT NOT NULL,
+                provider TEXT NOT NULL, source_path TEXT NOT NULL, source_key TEXT NOT NULL,
                 size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
-                PRIMARY KEY(provider, source_path)
+                PRIMARY KEY(provider, source_key)
              );
              CREATE TABLE semantic_chunks (
                 chunk_id INTEGER PRIMARY KEY, generation TEXT NOT NULL,
@@ -74,9 +75,9 @@ pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&st
                 semantic_ready_generation TEXT
              );
              INSERT INTO derived_state VALUES (1, 0, NULL);
-             INSERT INTO conversations(id, provider, source_path)
-                VALUES ('session', 'codex', '/tmp/session.jsonl');
-             PRAGMA user_version = 18;",
+             INSERT INTO conversations(id, provider, source_path, source_key)
+                VALUES ('session', 'codex', '/tmp/session.jsonl', 'file:/tmp/session.jsonl');
+             PRAGMA user_version = 19;",
         )
         .expect("readiness schema");
     connection

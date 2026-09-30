@@ -414,7 +414,7 @@ fn seed(path: &Path) -> Storage {
         .replace_conversation(&Conversation {
             id: "conversation".to_owned(),
             provider: crate::provider::Provider::Codex,
-            source_path: "/tmp/shared-fixture.jsonl".into(),
+            source: crate::ingestion::SourceIdentity::file("/tmp/shared-fixture.jsonl"),
             project: None,
             repository: None,
             title: Some("fixture".to_owned()),
@@ -499,7 +499,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     let mut conversation = Conversation {
         id: "conversation".into(),
         provider: crate::provider::Provider::Codex,
-        source_path: "/tmp/filters.jsonl".into(),
+        source: crate::ingestion::SourceIdentity::file("/tmp/filters.jsonl"),
         project: Some("/work/o'reilly".into()),
         repository: Some("repo://alpha".into()),
         title: None,

@@ -137,7 +137,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 &[Provider::Aider.as_str(), &path.to_string_lossy()],
             ),
             provider: Provider::Aider,
-            source_path: path.to_path_buf(),
+            source: super::SourceIdentity::file(path),
             title,
             // The native timestamp has no offset, and a custom history path may
             // be outside the repository. Do not invent either piece of metadata.
@@ -326,14 +326,17 @@ mod tests {
             since_days: None,
         };
         let scans = super::super::direct_scans(&options).unwrap();
-        assert_eq!(scans[0].files, std::slice::from_ref(&native));
+        assert_eq!(
+            scans[0].sources,
+            [super::super::SourceIdentity::file(&native)]
+        );
         let options = super::super::IndexOptions {
             providers: [(Provider::Aider, vec![custom.clone()])].into(),
             ..options
         };
         assert_eq!(
-            super::super::direct_scans(&options).unwrap()[0].files,
-            [custom]
+            super::super::direct_scans(&options).unwrap()[0].sources,
+            [super::super::SourceIdentity::file(custom)]
         );
         std::fs::remove_file(native).unwrap();
         assert!(scans[0].verify().is_err());

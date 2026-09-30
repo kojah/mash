@@ -3,6 +3,82 @@ use super::*;
 use rusqlite::params;
 
 #[test]
+fn version_eighteen_source_migration_preserves_history_vectors_and_checkpoints() {
+    use crate::ingestion::SourceIdentity;
+    use crate::provider::Provider;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("old.sqlite3");
+    let connection = Connection::open(&path).unwrap();
+    connection.execute_batch(
+        "CREATE TABLE conversations (
+            id TEXT PRIMARY KEY, provider TEXT NOT NULL CHECK(provider IN ('claude-code','codex','aider')),
+            source_path TEXT NOT NULL UNIQUE, title TEXT, created_at INTEGER, updated_at INTEGER,
+            source_fingerprint TEXT NOT NULL DEFAULT '', project TEXT, repository TEXT
+         );
+         CREATE TABLE source_checkpoints (
+            provider TEXT NOT NULL, source_path TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+            modified_ns INTEGER NOT NULL, PRIMARY KEY(provider, source_path)
+         );"
+    ).unwrap();
+    connection
+        .execute_batch(include_str!("../schema.sql"))
+        .unwrap();
+    connection.execute_batch(
+        "INSERT INTO conversations(id,provider,source_path,project,repository)
+            VALUES('existing','codex','/tmp/history.jsonl','/work/project','https://example.test/repo.git');
+         INSERT INTO messages(storage_id,id,conversation_id,ordinal,role,content)
+            VALUES(42,'message','existing',0,'user','durable evidence');
+         INSERT INTO message_embeddings VALUES('message','fixture',2,127.0,x'7f00');
+         INSERT INTO source_checkpoints VALUES('codex','/tmp/history.jsonl',100,200);
+         UPDATE derived_state SET search_dirty=0,semantic_ready_generation='fixture';
+         PRAGMA user_version=18;"
+    ).unwrap();
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 1);
+    assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
+    assert!(
+        storage
+            .source_checkpoint_matches(
+                Provider::Codex,
+                &SourceIdentity::file("/tmp/history.jsonl"),
+                100,
+                200
+            )
+            .unwrap()
+    );
+    let metadata: (i64, String, Option<String>, String, String) = storage.connection.query_row(
+        "SELECT m.storage_id,c.source_key,c.source_session,c.project,c.repository FROM messages m JOIN conversations c ON c.id=m.conversation_id",
+        [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))
+    ).unwrap();
+    assert_eq!(
+        metadata,
+        (
+            42,
+            "file:/tmp/history.jsonl".into(),
+            None,
+            "/work/project".into(),
+            "https://example.test/repo.git".into()
+        )
+    );
+    assert!(!storage.derived_search_is_dirty().unwrap());
+    assert_eq!(storage.search("durable", 10, None, None).unwrap().len(), 1);
+    drop(storage);
+    let storage = Storage::open(&path).unwrap();
+    assert!(
+        storage
+            .source_checkpoint_matches(
+                Provider::Codex,
+                &SourceIdentity::file("/tmp/history.jsonl"),
+                100,
+                200
+            )
+            .unwrap()
+    );
+    assert_eq!(storage.counts().unwrap().messages, 1);
+}
+
+#[test]
 fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("upgrade.sqlite3");
@@ -20,7 +96,12 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
         )
         .unwrap();
     storage
-        .record_source_checkpoint(crate::provider::Provider::Codex, "/tmp/old.jsonl", 10, 20)
+        .record_source_checkpoint(
+            crate::provider::Provider::Codex,
+            &crate::ingestion::SourceIdentity::file("/tmp/old.jsonl"),
+            10,
+            20,
+        )
         .unwrap();
     storage.commit_writer().unwrap();
     storage.connection.execute_batch("ALTER TABLE conversations DROP COLUMN project; ALTER TABLE conversations DROP COLUMN repository; PRAGMA user_version=14;").unwrap();
@@ -30,7 +111,12 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
     assert_eq!(storage.embedding_count("fixture-generation").unwrap(), 1);
     assert!(
         !storage
-            .source_checkpoint_matches(crate::provider::Provider::Codex, "/tmp/old.jsonl", 10, 20)
+            .source_checkpoint_matches(
+                crate::provider::Provider::Codex,
+                &crate::ingestion::SourceIdentity::file("/tmp/old.jsonl"),
+                10,
+                20
+            )
             .unwrap()
     );
     let metadata: (Option<String>, Option<String>) = storage
@@ -62,7 +148,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
     storage
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
-            "/tmp/source.jsonl",
+            &crate::ingestion::SourceIdentity::file("/tmp/source.jsonl"),
             10,
             20,
         )
@@ -80,7 +166,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
         !storage
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
-                "/tmp/source.jsonl",
+                &crate::ingestion::SourceIdentity::file("/tmp/source.jsonl"),
                 10,
                 20
             )

@@ -9,6 +9,7 @@ mod aider;
 mod discovery;
 mod json;
 mod parsers;
+mod source;
 #[cfg(test)]
 mod tests;
 
@@ -17,6 +18,7 @@ use discovery::{
     Discovery, SourceStamp, cutoff_modified_ns, discover_history_files,
     verify_authoritative_discovery,
 };
+pub(crate) use source::SourceIdentity;
 
 use crate::AppError;
 use crate::storage::Storage;
@@ -61,7 +63,7 @@ pub(crate) struct IndexSummary {
 pub(crate) struct Conversation {
     pub(crate) id: String,
     pub(crate) provider: Provider,
-    pub(crate) source_path: PathBuf,
+    pub(crate) source: SourceIdentity,
     pub(crate) project: Option<String>,
     pub(crate) repository: Option<String>,
     pub(crate) title: Option<String>,
@@ -96,8 +98,7 @@ struct ProviderScan<'a> {
 }
 
 struct SourceFile {
-    path: PathBuf,
-    source_path: String,
+    identity: SourceIdentity,
     stamp: SourceStamp,
 }
 
@@ -227,7 +228,8 @@ fn index_provider_inner(
             .stamp
             .size_bytes
             .cmp(&left.stamp.size_bytes)
-            .then_with(|| left.source_path.cmp(&right.source_path))
+            .then_with(|| left.identity.path.cmp(&right.identity.path))
+            .then_with(|| left.identity.session.cmp(&right.identity.session))
     });
     progress.phase_started = Instant::now();
     progress.estimate = crate::progress::Estimate::starting_at(summary.processed_bytes);
@@ -250,17 +252,16 @@ fn index_provider_inner(
                     let Some(source) = pending.get(index) else {
                         break;
                     };
-                    let parsed =
-                        parse_stable_source(&source.path, source.stamp, parse).map_err(|error| {
+                    let parsed = parse_stable_source(&source.identity.path, source.stamp, parse)
+                        .map_err(|error| {
                             if authoritative {
-                                configured_source_error(&source.path, &error)
+                                configured_source_error(&source.identity.path, &error)
                             } else {
                                 error
                             }
                         });
                     let source = SourceFile {
-                        path: source.path.clone(),
-                        source_path: source.source_path.clone(),
+                        identity: source.identity.clone(),
                         stamp: source.stamp,
                     };
                     if sender.send(ParsedSource { source, parsed }).is_err() {
@@ -310,11 +311,15 @@ fn index_provider_inner(
     if authoritative {
         verify_authoritative_discovery(provider, roots, &observed_paths)?;
     }
+    let observed_keys = observed_paths
+        .iter()
+        .map(|path| SourceIdentity::file(path).key())
+        .collect();
     summary.purged_conversations += reconcile_complete_sources(
         storage,
         complete,
         provider,
-        &observed_paths,
+        &observed_keys,
         roots,
         cutoff_modified_ns,
     )?;
@@ -325,14 +330,14 @@ fn reconcile_complete_sources(
     storage: &mut Storage,
     complete: bool,
     provider: Provider,
-    observed_paths: &BTreeSet<String>,
+    observed_keys: &BTreeSet<String>,
     roots: &[PathBuf],
     cutoff_modified_ns: Option<i64>,
 ) -> Result<u64, AppError> {
     if !complete {
         return Ok(0);
     }
-    storage.purge_missing_sources(provider, observed_paths, roots, cutoff_modified_ns)
+    storage.purge_missing_sources(provider, observed_keys, roots, cutoff_modified_ns)
 }
 
 fn record_first_error(complete: &mut bool, first_error: &mut Option<AppError>, error: AppError) {
@@ -369,8 +374,8 @@ fn prepare_sources(
     let mut pending = Vec::new();
     let mut observed_paths = BTreeSet::new();
     for path in discovery.files {
-        let source_path = path.to_string_lossy().into_owned();
-        observed_paths.insert(source_path.clone());
+        let identity = SourceIdentity::file(path.clone());
+        observed_paths.insert(path.to_string_lossy().into_owned());
         let stamp = source_stamp(&path).map_err(|error| {
             if authoritative {
                 configured_source_error(&path, &error)
@@ -386,7 +391,7 @@ fn prepare_sources(
         summary.discovered_bytes = summary.discovered_bytes.saturating_add(bytes);
         if storage.source_checkpoint_matches(
             provider,
-            &source_path,
+            &identity,
             stamp.size_bytes,
             stamp.modified_ns,
         )? {
@@ -395,11 +400,7 @@ fn prepare_sources(
             summary.processed_files += 1;
             summary.processed_bytes = summary.processed_bytes.saturating_add(bytes);
         } else {
-            pending.push(SourceFile {
-                path,
-                source_path,
-                stamp,
-            });
+            pending.push(SourceFile { identity, stamp });
         }
     }
     Ok((pending, observed_paths, complete))
@@ -433,19 +434,19 @@ fn apply_parsed_source(
     let parsed = result.parsed?;
     // A producer can wait in the bounded queue while another source is applied.
     // Reject a change during that wait before replacing content or checkpoints.
-    result.source.stamp.verify(&result.source.path)?;
+    result.source.stamp.verify(&result.source.identity.path)?;
     summary.malformed_records += parsed.malformed_records;
     if let Some(conversation) = parsed.conversation {
         apply_conversation(storage, &conversation, summary)?;
     } else if parsed.malformed_records == 0
-        && storage.remove_source(provider, &result.source.source_path)?
+        && storage.remove_source(provider, &result.source.identity)?
     {
         summary.purged_conversations += 1;
     }
     if parsed.malformed_records == 0 {
         storage.record_source_checkpoint(
             provider,
-            &result.source.source_path,
+            &result.source.identity,
             result.source.stamp.size_bytes,
             result.source.stamp.modified_ns,
         )?;

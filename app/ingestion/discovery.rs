@@ -1,5 +1,5 @@
 //! Discover histories, apply age horizons, and verify authoritative scans.
-use super::{IndexOptions, ParsedFile};
+use super::{IndexOptions, ParsedFile, SourceIdentity};
 use crate::AppError;
 use crate::provider::Provider;
 use std::collections::BTreeSet;
@@ -176,32 +176,32 @@ pub(super) fn cutoff_modified_ns(
     Ok(Some(nanoseconds))
 }
 
-// Shared-only ingestion reuses discovery and both concrete parsers, without SQLite.
+// Shared routing reuses discovery and concrete parsers without opening the local index.
 #[derive(Clone)]
 pub(crate) struct DirectScan {
     pub(crate) provider: Provider,
     roots: Vec<PathBuf>,
-    pub(crate) files: Vec<PathBuf>,
+    pub(crate) sources: Vec<SourceIdentity>,
     pub(crate) complete: bool,
     authoritative: bool,
     pub(crate) cutoff: Option<i64>,
 }
 
 impl DirectScan {
-    pub(crate) fn parse_path(
+    pub(crate) fn parse_source(
         provider: Provider,
-        path: &Path,
+        source: &SourceIdentity,
         stamp: SourceStamp,
     ) -> Result<ParsedFile, AppError> {
-        super::parse_stable_source(path, stamp, provider.parser())
+        super::parse_stable_source(&source.path, stamp, provider.parser())
     }
 
     pub(crate) fn verify(&self) -> Result<(), AppError> {
         if self.authoritative {
             let observed = self
-                .files
+                .sources
                 .iter()
-                .map(|p| p.to_string_lossy().into_owned())
+                .map(|source| source.path.to_string_lossy().into_owned())
                 .collect();
             verify_authoritative_discovery(self.provider, &self.roots, &observed)?;
         }
@@ -220,7 +220,11 @@ pub(crate) fn direct_scans(options: &IndexOptions) -> Result<Vec<DirectScan>, Ap
             Ok(DirectScan {
                 provider,
                 roots: roots.clone(),
-                files: discovery.files,
+                sources: discovery
+                    .files
+                    .into_iter()
+                    .map(SourceIdentity::file)
+                    .collect(),
                 complete: discovery.complete,
                 authoritative: options.roots_are_authoritative,
                 cutoff,

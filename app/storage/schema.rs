@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 18;
+pub(super) const SCHEMA_VERSION: i64 = 19;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -67,9 +67,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     purge_unsupported_providers(&transaction)?;
     add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
     add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
-    if version < 11 || !provider_schema_is_current(&transaction)? {
-        rebuild_provider_schema(&transaction)?;
-    }
+    migrate_source_identities(&transaction)?;
     if version < 18 {
         transaction
             .execute("DELETE FROM source_checkpoints", [])
@@ -172,24 +170,25 @@ fn backfill_semantic_readiness(connection: &Connection) -> Result<(), AppError> 
         .map_err(AppError::database)
 }
 
-fn provider_schema_is_current(connection: &Connection) -> Result<bool, AppError> {
-    let sql: String = connection
-        .query_row(
-            "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'conversations'",
+fn migrate_source_identities(connection: &Connection) -> Result<(), AppError> {
+    add_column_if_missing(
+        connection,
+        "conversations",
+        "source_key",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(connection, "conversations", "source_session", "TEXT")?;
+    connection
+        .execute(
+            "UPDATE conversations SET source_key = 'file:' || source_path WHERE source_key = ''",
             [],
-            |row| row.get(0),
         )
         .map_err(AppError::database)?;
-    Ok(sql.contains("'claude-code'")
-        && sql.contains("'codex'")
-        && sql.contains("'aider'")
-        && !sql.contains("'opencode'")
-        && !sql.contains("'github-copilot'")
-        && !sql.contains("'hermes'")
-        && !sql.contains("'pi'"))
+    rebuild_history_schema(connection)?;
+    migrate_source_checkpoints(connection)
 }
 
-fn rebuild_provider_schema(connection: &Connection) -> Result<(), AppError> {
+fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
     connection
         .execute_batch(
             "CREATE TABLE conversations_next (
@@ -197,9 +196,11 @@ fn rebuild_provider_schema(connection: &Connection) -> Result<(), AppError> {
                 provider TEXT NOT NULL CHECK (provider IN (
                     'claude-code', 'codex', 'aider'
                 )),
-                source_path TEXT NOT NULL UNIQUE,
+                source_path TEXT NOT NULL,
                 title TEXT, created_at INTEGER, updated_at INTEGER,
-                source_fingerprint TEXT NOT NULL DEFAULT '', project TEXT, repository TEXT
+                source_fingerprint TEXT NOT NULL DEFAULT '', project TEXT, repository TEXT,
+                source_key TEXT NOT NULL, source_session TEXT,
+                UNIQUE(provider, source_key)
              );
              CREATE TABLE messages_next (
                 storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -216,7 +217,8 @@ fn rebuild_provider_schema(connection: &Connection) -> Result<(), AppError> {
                 dimensions INTEGER NOT NULL, norm REAL NOT NULL, vector BLOB NOT NULL
              );
              INSERT INTO conversations_next
-                SELECT id, provider, source_path, title, created_at, updated_at, source_fingerprint, project, repository
+                SELECT id, provider, source_path, title, created_at, updated_at, source_fingerprint, project, repository,
+                       source_key, source_session
                 FROM conversations;
              INSERT INTO messages_next
                 SELECT rowid, id, conversation_id, ordinal, role, content, search_projection,
@@ -242,6 +244,28 @@ fn rebuild_provider_schema(connection: &Connection) -> Result<(), AppError> {
                  WHERE COALESCE(search_projection, content) <> '';",
         )
         .map_err(AppError::database)
+}
+
+fn migrate_source_checkpoints(connection: &Connection) -> Result<(), AppError> {
+    add_column_if_missing(
+        connection,
+        "source_checkpoints",
+        "source_key",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    connection.execute_batch(
+        "CREATE TABLE source_checkpoints_next (
+            provider TEXT NOT NULL, source_key TEXT NOT NULL, source_path TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
+            PRIMARY KEY(provider, source_key)
+         );
+         INSERT INTO source_checkpoints_next
+            SELECT provider, CASE WHEN source_key = '' THEN 'file:' || source_path ELSE source_key END,
+                   source_path, size_bytes, modified_ns
+              FROM source_checkpoints;
+         DROP TABLE source_checkpoints;
+         ALTER TABLE source_checkpoints_next RENAME TO source_checkpoints;"
+    ).map_err(AppError::database)
 }
 
 fn add_column_if_missing(

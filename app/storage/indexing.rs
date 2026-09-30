@@ -223,11 +223,14 @@ impl Storage {
         self.connection
             .execute(
                 "INSERT INTO conversations(
-                    id, provider, source_path, title, created_at, updated_at, source_fingerprint, project, repository
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                    id, provider, source_path, title, created_at, updated_at, source_fingerprint, project, repository,
+                    source_key, source_session
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                  ON CONFLICT(id) DO UPDATE SET
                     provider = excluded.provider,
                     source_path = excluded.source_path,
+                    source_key = excluded.source_key,
+                    source_session = excluded.source_session,
                     title = excluded.title,
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at,
@@ -236,13 +239,15 @@ impl Storage {
                 params![
                     conversation.id,
                     conversation.provider,
-                    conversation.source_path.to_string_lossy(),
+                    conversation.source.path.to_string_lossy(),
                     conversation.title,
                     conversation.created_at,
                     conversation.updated_at,
                     source_fingerprint,
                     conversation.project,
                     conversation.repository,
+                    conversation.source.key(),
+                    conversation.source.session,
                 ],
             )
             .map_err(AppError::database)?;
@@ -265,7 +270,7 @@ impl Storage {
     pub(crate) fn source_checkpoint_matches(
         &self,
         provider: Provider,
-        source_path: &str,
+        source: &crate::ingestion::SourceIdentity,
         size_bytes: i64,
         modified_ns: i64,
     ) -> Result<bool, AppError> {
@@ -273,9 +278,9 @@ impl Storage {
             .connection
             .query_row(
                 "SELECT 1 FROM source_checkpoints
-                  WHERE provider = ?1 AND source_path = ?2
+                  WHERE provider = ?1 AND source_key = ?2
                     AND size_bytes = ?3 AND modified_ns = ?4",
-                params![provider, source_path, size_bytes, modified_ns],
+                params![provider, source.key(), size_bytes, modified_ns],
                 |_| Ok(()),
             )
             .optional()
@@ -286,19 +291,20 @@ impl Storage {
     pub(crate) fn record_source_checkpoint(
         &mut self,
         provider: Provider,
-        source_path: &str,
+        source: &crate::ingestion::SourceIdentity,
         size_bytes: i64,
         modified_ns: i64,
     ) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection
             .execute(
-                "INSERT INTO source_checkpoints(provider, source_path, size_bytes, modified_ns)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(provider, source_path) DO UPDATE SET
+                "INSERT INTO source_checkpoints(provider, source_key, size_bytes, modified_ns, source_path)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(provider, source_key) DO UPDATE SET
                     size_bytes = excluded.size_bytes,
-                    modified_ns = excluded.modified_ns",
-                params![provider, source_path, size_bytes, modified_ns],
+                    modified_ns = excluded.modified_ns,
+                    source_path = excluded.source_path",
+                params![provider, source.key(), size_bytes, modified_ns, source.path.to_string_lossy()],
             )
             .map_err(AppError::database)?;
         Ok(())
@@ -457,7 +463,7 @@ impl Storage {
     pub(crate) fn purge_missing_sources(
         &mut self,
         provider: Provider,
-        observed_paths: &BTreeSet<String>,
+        observed_keys: &BTreeSet<String>,
         authoritative_roots: &[std::path::PathBuf],
         cutoff_modified_ns: Option<i64>,
     ) -> Result<u64, AppError> {
@@ -465,12 +471,12 @@ impl Storage {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT conversations.id, conversations.source_path,
+                "SELECT conversations.id, conversations.source_path, conversations.source_key,
                         source_checkpoints.modified_ns
                    FROM conversations
                    LEFT JOIN source_checkpoints
                      ON source_checkpoints.provider = conversations.provider
-                    AND source_checkpoints.source_path = conversations.source_path
+                    AND source_checkpoints.source_key = conversations.source_key
                   WHERE conversations.provider = ?1",
             )
             .map_err(AppError::database)?;
@@ -479,7 +485,8 @@ impl Storage {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
                 ))
             })
             .map_err(AppError::database)?;
@@ -488,8 +495,8 @@ impl Storage {
             .map_err(AppError::database)?;
         drop(statement);
         let mut removed = 0_u64;
-        for (id, source_path, modified_ns) in existing {
-            if observed_paths.contains(&source_path)
+        for (id, source_path, source_key, modified_ns) in existing {
+            if observed_keys.contains(&source_key)
                 || !source_is_in_reconciliation_scope(
                     &source_path,
                     modified_ns,
@@ -515,20 +522,24 @@ impl Storage {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT source_path, modified_ns
+                "SELECT source_path, source_key, modified_ns
                    FROM source_checkpoints WHERE provider = ?1",
             )
             .map_err(AppError::database)?;
         let checkpoint_paths = statement
             .query_map([provider], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
             })
             .map_err(AppError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(AppError::database)?;
         drop(statement);
-        for (source_path, modified_ns) in checkpoint_paths {
-            if !observed_paths.contains(&source_path)
+        for (source_path, source_key, modified_ns) in checkpoint_paths {
+            if !observed_keys.contains(&source_key)
                 && source_is_in_reconciliation_scope(
                     &source_path,
                     Some(modified_ns),
@@ -539,8 +550,8 @@ impl Storage {
                 self.connection
                     .execute(
                         "DELETE FROM source_checkpoints
-                          WHERE provider = ?1 AND source_path = ?2",
-                        params![provider, source_path],
+                          WHERE provider = ?1 AND source_key = ?2",
+                        params![provider, source_key],
                     )
                     .map_err(AppError::database)?;
             }
@@ -551,14 +562,14 @@ impl Storage {
     pub(crate) fn remove_source(
         &mut self,
         provider: Provider,
-        source_path: &str,
+        source: &crate::ingestion::SourceIdentity,
     ) -> Result<bool, AppError> {
         self.require_writer()?;
         let id: Option<String> = self
             .connection
             .query_row(
-                "SELECT id FROM conversations WHERE provider = ?1 AND source_path = ?2",
-                params![provider, source_path],
+                "SELECT id FROM conversations WHERE provider = ?1 AND source_key = ?2",
+                params![provider, source.key()],
                 |row| row.get(0),
             )
             .optional()
@@ -680,6 +691,7 @@ fn conversation_fingerprint(conversation: &Conversation) -> String {
     let mut hasher = blake3::Hasher::new();
     update_hash(&mut hasher, conversation.provider.as_str());
     update_hash(&mut hasher, &conversation.id);
+    update_hash(&mut hasher, &conversation.source.key());
     update_hash(
         &mut hasher,
         conversation.project.as_deref().unwrap_or_default(),

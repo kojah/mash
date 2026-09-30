@@ -27,7 +27,7 @@ fn test_conversation(
     Conversation {
         id: id.to_owned(),
         provider,
-        source_path,
+        source: SourceIdentity::file(source_path),
         project: None,
         repository: None,
         title: None,
