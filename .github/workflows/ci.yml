@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -83,11 +85,11 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo nextest run --profile ci
       - name: Verify shared PostgreSQL publication
-        run: cargo nextest run --profile ci --run-ignored only postgres_publication
+        run: cargo nextest run --profile ci --run-ignored only -E 'test(postgres)'
         env:
           MASH_TEST_PG_URL: postgresql://postgres:mash-test@localhost:5432/mash_test?sslmode=disable
       - name: Verify shared Redis publication
-        run: cargo nextest run --profile ci --run-ignored only redis_publication
+        run: cargo nextest run --profile ci --run-ignored only -E 'test(redis)'
         env:
           MASH_TEST_REDIS_URL: redis://localhost:6379/
       - run: cargo test --doc

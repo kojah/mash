@@ -936,14 +936,33 @@ services and create/remove isolated test-group schemas:
 
 ```bash
 MASH_TEST_PG_URL='postgresql://USER:PASSWORD@localhost/DATABASE?sslmode=disable' \
-  cargo nextest run --run-ignored only postgres_publication
+  cargo nextest run --run-ignored only -E 'test(postgres)'
 
 MASH_TEST_REDIS_URL='redis://localhost:6379/' \
-  cargo nextest run --run-ignored only redis_publication
+  cargo nextest run --run-ignored only -E 'test(redis)'
 ```
 
 The real-model integration test is ignored by default and requires
 `MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
+
+For an instrumented coverage report, install
+[cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/releases/tag/v0.9.1)
+and the toolchain's `llvm-tools-preview` component. Set all three test variables
+above to installed models and disposable services, then run:
+
+```bash
+rustup component add llvm-tools-preview
+make coverage
+```
+
+This runs every test except the three manual benchmarks, including the installed
+model and both shared-backend contracts. It writes LLVM JSON coverage to
+`target/llvm-cov/coverage.json`; set `COVERAGE_OUTPUT` to choose another location.
+Generated SQL bindings and separate test files are excluded from the report.
+Tests embedded in production source files still contribute to those files'
+coverage, so assess uncovered behavior as well as the aggregate percentage.
+Coverage needs LLVM instrumentation; regular development continues to use
+Cranelift. On the affected nightly, use `RUSTFLAGS=-Znext-solver=no make coverage`.
 
 
 ## Automatic deployment
