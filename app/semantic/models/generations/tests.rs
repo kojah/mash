@@ -121,6 +121,8 @@ fn publication_io_failure_preserves_the_previous_marker_and_assets() {
     assert!(!path.exists());
 }
 
+mod durability;
+
 #[test]
 fn invalid_generation_paths_cannot_escape_the_model_directory() {
     let root = tempfile::tempdir().unwrap();

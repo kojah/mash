@@ -763,6 +763,12 @@ retired generations once no reader holds them. The original flat cache is
 retained so readers started before the first generation install can finish.
 Reinstallation needs disk space for a second copy of the assets. This staging
 also isolates mutable SDK revision references from the active cache.
+On Unix, installers flush the asset files and directories before activation,
+then flush the marker's directory entry after activation. If that final flush
+fails, the retryable error states that the installation is active but its
+durability is unconfirmed. Both generations are retained; retry `models install`.
+Activation errors also retain prepared assets until a later confirmed cleanup.
+Other platforms retain atomic activation without these Unix flush barriers.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and

@@ -251,8 +251,10 @@ pub(super) fn inventory(root: &Path) -> Result<Vec<InstalledFile>, AppError> {
     Ok(files)
 }
 
-pub(super) fn write_marker(root: &Path, marker: &InstallMarker) -> Result<(), AppError> {
-    let path = root.join(MARKER_NAME);
+pub(super) fn prepare_marker(
+    root: &Path,
+    marker: &InstallMarker,
+) -> Result<tempfile::NamedTempFile, AppError> {
     validate_marker(marker, !marker.embedding_available)?;
     let bytes = serde_json::to_vec_pretty(marker).map_err(|error| {
         AppError::internal(format!("failed to serialize model marker: {error}"))
@@ -270,8 +272,13 @@ pub(super) fn write_marker(root: &Path, marker: &InstallMarker) -> Result<(), Ap
         .map_err(AppError::io)?;
     temporary.write_all(&bytes).map_err(AppError::io)?;
     temporary.as_file().sync_all().map_err(AppError::io)?;
-    temporary
-        .persist(path)
+    Ok(temporary)
+}
+
+#[cfg(test)]
+pub(super) fn write_marker(root: &Path, marker: &InstallMarker) -> Result<(), AppError> {
+    prepare_marker(root, marker)?
+        .persist(root.join(MARKER_NAME))
         .map_err(|error| AppError::io(error.error))?;
     Ok(())
 }

@@ -3,6 +3,8 @@ use super::assets::{self, InstallMarker};
 use crate::AppError;
 use std::fs;
 use std::path::{Path, PathBuf};
+mod durability;
+use durability::{sync_directory, sync_generation};
 
 pub(super) const PREFIX: &str = ".mash-assets-";
 pub(super) const LEASE_NAME: &str = ".mash-use.lock";
@@ -96,6 +98,15 @@ impl StagedAssets {
     }
 
     pub(super) fn publish(self, root: &Path, mut marker: InstallMarker) -> Result<(), AppError> {
+        self.publish_with_directory_sync(root, &mut marker, sync_directory)
+    }
+
+    fn publish_with_directory_sync(
+        self,
+        root: &Path,
+        marker: &mut InstallMarker,
+        mut sync: impl FnMut(&Path) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
         marker.asset_directory = Some(
             self.root()
                 .file_name()
@@ -103,14 +114,47 @@ impl StagedAssets {
                 .ok_or_else(|| AppError::model("invalid staged asset directory"))?
                 .to_owned(),
         );
+        sync_generation(self.root(), &mut sync)?;
+        // Flush the generation's entry and any newly created model-path
+        // ancestors before a durable marker can point at it.
+        for directory in root.ancestors() {
+            let directory = if directory.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                directory
+            };
+            sync(directory)?;
+        }
+        let prepared = assets::prepare_marker(root, marker)?;
         // Keep before publication: an unwind/kill after the atomic marker rename
         // must not delete the assets it selected. An interrupted earlier publish
         // leaves an orphan that the next explicit installation can collect.
-        let directory = self.directory.keep();
-        if let Err(error) = assets::write_marker(root, &marker) {
-            let _ = fs::remove_dir_all(directory);
-            return Err(error);
-        }
+        let _ = self.directory.keep();
+        // An activation error can be ambiguous (for example after a filesystem
+        // server processed a rename but its acknowledgment failed). Retain the
+        // generation and let the next confirmed cleanup determine ownership.
+        prepared
+            .persist(root.join(super::MARKER_NAME))
+            .map_err(|error| {
+                let mut error = AppError::io(error.error);
+                error.error.message = format!(
+                    "could not confirm model activation; staged assets retained for recovery: {}",
+                    error.error.message,
+                );
+                error.error.recommended_action = Some(crate::Action::ModelsInstall);
+                error
+            })?;
+        // The rename already happened. An error here must preserve the newly
+        // selected assets AND previous generations; deleting either could make
+        // the currently visible or previously durable marker unusable.
+        sync(root).map_err(|mut error| {
+            error.error.message = format!(
+                "model installation is active, but its directory flush failed; durability is unconfirmed: {}",
+                error.error.message,
+            );
+            error.error.recommended_action = Some(crate::Action::ModelsInstall);
+            error
+        })?;
         // Cleanup failure cannot turn a successfully activated model into a
         // reported failed installation. Retry it at the next explicit install.
         let _ = cleanup(root);
@@ -120,6 +164,9 @@ impl StagedAssets {
 
 fn cleanup(root: &Path) -> Result<(), AppError> {
     // Called only while the explicit installer holds its directory lock.
+    // Confirm the visible marker's directory entry before retiring anything:
+    // a previous activation may have succeeded but failed its final flush.
+    sync_directory(root)?;
     // Do not retire anything if an existing marker cannot be interpreted.
     let active = if root.join(super::MARKER_NAME).exists() {
         match assets::read_marker(root, true) {
