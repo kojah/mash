@@ -3,6 +3,57 @@ use crate::ingestion::{Conversation, NormalizedMessage};
 use crate::storage::EmbeddingWrite;
 
 #[tokio::test]
+async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
+    use axum::extract::State;
+    use axum::{Json, Router};
+    use tokio::sync::mpsc;
+
+    async fn capture(
+        State(sender): State<mpsc::Sender<Vec<serde_json::Value>>>,
+        body: axum::body::Bytes,
+    ) -> Json<serde_json::Value> {
+        let events = std::str::from_utf8(&body)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        sender.send(events).await.unwrap();
+        Json(serde_json::json!({
+            "counts": {"conversations": 1, "messages": 2, "searchable_messages": 1, "embeddings": 1},
+            "revision": 1, "removed_messages": 0, "purged_conversations": 0
+        }))
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("local.sqlite3");
+    drop(seed(&path));
+    let (sender, mut received) = mpsc::channel(1);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, Router::new().fallback(capture).with_state(sender))
+            .await
+            .unwrap();
+    });
+    let config = SharedConfig {
+        group_id: "test".into(),
+        node_id: "local-node".into(),
+        api_url: format!("http://{address}"),
+        token_env: "HOME".into(),
+    };
+    assert_eq!(publish(&path, &config).await.state, "published");
+    let events = received.recv().await.unwrap();
+    assert_eq!(events.first().unwrap()["type"], "start");
+    assert_eq!(events.last().unwrap()["type"], "finish");
+    let messages = events
+        .iter()
+        .find(|event| event["kind"] == "messages")
+        .unwrap();
+    assert_eq!(messages["records"].as_array().unwrap().len(), 2);
+    assert!(!Storage::publication_is_pending(&path, &target(&config)).unwrap());
+    server.abort();
+}
+
+#[tokio::test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked() {
     use axum::extract::State;

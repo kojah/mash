@@ -37,8 +37,6 @@ const EMBEDDING_THREADS_PER_WORKER: usize = 2;
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 const EMBEDDING_WAVE_SIZE: usize = EMBEDDING_BATCH_SIZE * EMBEDDING_WORKERS;
 const COREML_BATCH_SIZE: usize = 32;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-const COREML_SESSION_BATCH_SIZE: usize = COREML_BATCH_SIZE + 1;
 const COREML_SEQUENCE_LENGTH: usize = 512;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const COREML_MODEL_FILE: &str = "onnx/model.onnx";
@@ -120,7 +118,86 @@ enum EmbeddingPoolBackend {
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     Cpu(Vec<TextEmbedding>),
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    CoreMl(TextEmbedding),
+    CoreMl(Box<CoreMlEmbeddingPool>),
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+struct CoreMlEmbeddingPool {
+    root: PathBuf,
+    tokenizer: tokenizers::Tokenizer,
+    sessions: HashMap<usize, TextEmbedding>,
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+impl CoreMlEmbeddingPool {
+    fn load(root: &Path) -> Result<Self, AppError> {
+        let embedding = load_coreml_embedding(root, 64)?;
+        let mut tokenizer = embedding.tokenizer.clone();
+        tokenizer.with_padding(None);
+        Ok(Self {
+            root: root.to_path_buf(),
+            tokenizer,
+            sessions: HashMap::from([(64, embedding)]),
+        })
+    }
+
+    fn embed(&mut self, groups: &[EmbeddingGroup]) -> Result<Vec<Vec<f32>>, AppError> {
+        if groups.is_empty() {
+            return Ok(Vec::new());
+        }
+        if groups.len() > COREML_BATCH_SIZE {
+            return Err(AppError::internal("Core ML embedding wave is too large"));
+        }
+        let mut texts = groups
+            .iter()
+            .map(|g| g.content.as_str())
+            .collect::<Vec<_>>();
+        let first_length = self
+            .tokenizer
+            .encode(texts[0], true)
+            .map_err(|error| AppError::model(format!("Core ML tokenization failed: {error}")))?
+            .len();
+        // Once one input needs the largest shape, no other token counts can
+        // change the choice. Avoid a second tokenization of the whole long batch.
+        let length = if first_length > 256 {
+            first_length
+        } else {
+            self.tokenizer
+                .encode_batch(texts[1..].to_vec(), true)
+                .map_err(|error| AppError::model(format!("Core ML tokenization failed: {error}")))?
+                .iter()
+                .map(tokenizers::Encoding::len)
+                .max()
+                .unwrap_or(0)
+                .max(first_length)
+        };
+        let sequence = coreml_sequence_bucket(length);
+        let embedding = match self.sessions.entry(sequence) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(load_coreml_embedding(&self.root, sequence)?)
+            }
+        };
+        texts.resize(COREML_BATCH_SIZE, "");
+        let mut vectors = embedding.embed(texts, None).map_err(|error| {
+            AppError::model(format!("Core ML embedding inference failed: {error}"))
+        })?;
+        if vectors.len() != COREML_BATCH_SIZE {
+            return Err(AppError::model(
+                "Core ML embedding model returned an unexpected result count",
+            ));
+        }
+        vectors.truncate(groups.len());
+        Ok(vectors)
+    }
+}
+
+#[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
+fn coreml_sequence_bucket(tokens: usize) -> usize {
+    [64, 128, 256, COREML_SEQUENCE_LENGTH]
+        .into_iter()
+        .find(|&length| length >= tokens)
+        .unwrap_or(COREML_SEQUENCE_LENGTH)
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -514,7 +591,7 @@ impl EmbeddingPool {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     fn load_local(root: &Path) -> Result<Self, AppError> {
         Ok(Self {
-            backend: EmbeddingPoolBackend::CoreMl(load_coreml_embedding(root)?),
+            backend: EmbeddingPoolBackend::CoreMl(Box::new(CoreMlEmbeddingPool::load(root)?)),
         })
     }
 
@@ -537,7 +614,7 @@ impl EmbeddingPool {
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
             EmbeddingPoolBackend::Cpu(workers) => embed_cpu_wave(workers, groups),
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-            EmbeddingPoolBackend::CoreMl(embedding) => embed_coreml_wave(embedding, groups),
+            EmbeddingPoolBackend::CoreMl(embedding) => embedding.embed(groups),
         }
     }
 
@@ -595,33 +672,6 @@ fn embed_cpu_wave(
     Ok(results.into_iter().flatten().collect())
 }
 
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn embed_coreml_wave(
-    embedding: &mut TextEmbedding,
-    groups: &[EmbeddingGroup],
-) -> Result<Vec<Vec<f32>>, AppError> {
-    if groups.len() > COREML_BATCH_SIZE {
-        return Err(AppError::internal("Core ML embedding wave is too large"));
-    }
-    let real_count = groups.len();
-    let mut texts = groups
-        .iter()
-        .map(|group| group.content.clone())
-        .collect::<Vec<_>>();
-    texts.push("hello ".repeat(COREML_SEQUENCE_LENGTH + 1));
-    texts.resize(COREML_SESSION_BATCH_SIZE, String::new());
-    let mut vectors = embedding
-        .embed(texts, None)
-        .map_err(|error| AppError::model(format!("Core ML embedding inference failed: {error}")))?;
-    if vectors.len() != COREML_SESSION_BATCH_SIZE {
-        return Err(AppError::model(
-            "Core ML embedding model returned an unexpected result count",
-        ));
-    }
-    vectors.truncate(real_count);
-    Ok(vectors)
-}
-
 fn load_local_embedding(
     root: &Path,
     intra_threads: Option<usize>,
@@ -646,7 +696,7 @@ fn load_local_embedding(
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn load_coreml_embedding(root: &Path) -> Result<TextEmbedding, AppError> {
+fn load_coreml_embedding(root: &Path, sequence_length: usize) -> Result<TextEmbedding, AppError> {
     let embedding_snapshot = snapshot(root, EMBEDDING_REPOSITORY)?;
     let embedding_info = TextEmbedding::get_model_info(&EMBEDDING_MODEL)
         .map_err(|error| AppError::model(format!("unknown embedding model: {error}")))?;
@@ -660,7 +710,9 @@ fn load_coreml_embedding(root: &Path) -> Result<TextEmbedding, AppError> {
         .output_key
         .clone_from(&embedding_info.output_key);
 
-    let cache_dir = root.join(COREML_CACHE_DIRECTORY);
+    let cache_dir = root.join(COREML_CACHE_DIRECTORY).join(format!(
+        "batch-{COREML_BATCH_SIZE}-sequence-{sequence_length}"
+    ));
     fs::create_dir_all(&cache_dir).map_err(AppError::io)?;
     let provider = ep::CoreML::default()
         .with_model_format(ep::coreml::ModelFormat::MLProgram)
@@ -672,11 +724,24 @@ fn load_coreml_embedding(root: &Path) -> Result<TextEmbedding, AppError> {
     let options = InitOptionsUserDefined::default()
         .with_execution_providers(vec![provider])
         .with_disable_cpu_fallback(true)
-        .with_dimension_override("batch_size", 33)
-        .with_dimension_override("sequence_length", 512);
-    TextEmbedding::try_new_from_user_defined(embedding_model, options).map_err(|error| {
-        AppError::model(format!("failed to load Core ML embedding model: {error}"))
-    })
+        .with_dimension_override("batch_size", 32)
+        .with_dimension_override(
+            "sequence_length",
+            i64::try_from(sequence_length)
+                .map_err(|_| AppError::internal("Core ML sequence length exceeds i64"))?,
+        );
+    let mut embedding = TextEmbedding::try_new_from_user_defined(embedding_model, options)
+        .map_err(|error| {
+            AppError::model(format!("failed to load Core ML embedding model: {error}"))
+        })?;
+    let mut padding = embedding
+        .tokenizer
+        .get_padding()
+        .cloned()
+        .ok_or_else(|| AppError::model("Core ML tokenizer is missing padding configuration"))?;
+    padding.strategy = tokenizers::PaddingStrategy::Fixed(sequence_length);
+    embedding.tokenizer.with_padding(Some(padding));
+    Ok(embedding)
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -1313,6 +1378,99 @@ mod tests {
         fs::remove_file(root.join(MARKER_NAME)).unwrap();
         assert!(models.load().unwrap().is_none());
         LOCAL_BACKEND.lock().unwrap().take();
+    }
+
+    #[test]
+    fn coreml_sequence_buckets_preserve_token_boundaries_and_maximum_length() {
+        for (tokens, expected) in [
+            (0, 64),
+            (63, 64),
+            (64, 64),
+            (65, 128),
+            (128, 128),
+            (129, 256),
+            (256, 256),
+            (257, 512),
+            (512, 512),
+            (600, 512),
+        ] {
+            assert_eq!(coreml_sequence_bucket(tokens), expected);
+        }
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    #[ignore = "requires MASH_TEST_MODELS_DIR and Apple Silicon Core ML"]
+    fn coreml_bucketed_batches_preserve_vectors_and_measure_throughput() {
+        let root = std::env::var_os("MASH_TEST_MODELS_DIR")
+            .map(PathBuf::from)
+            .expect("explicit model directory");
+        let mut pool = CoreMlEmbeddingPool::load(&root).unwrap();
+        let mut reference = load_coreml_embedding(&root, COREML_SEQUENCE_LENGTH).unwrap();
+        for words in [8, 80, 180, 400] {
+            let groups = (0..COREML_BATCH_SIZE)
+                .map(|i| EmbeddingGroup {
+                    content: format!(
+                        "{} {i} punctuation, unicode café 日本語",
+                        "hello ".repeat(words)
+                    ),
+                    message_ids: Vec::new(),
+                })
+                .collect::<Vec<_>>();
+            let texts = groups
+                .iter()
+                .map(|g| g.content.as_str())
+                .collect::<Vec<_>>();
+            let expected = reference.embed(texts.clone(), None).unwrap();
+            let actual = pool.embed(&groups).unwrap();
+            let mut min_cosine = 1_f32;
+            for (expected, actual) in expected.iter().zip(&actual) {
+                let expected = quantize_vector(expected);
+                let actual = quantize_vector(actual);
+                let cosine = quantized_cosine(&expected, &actual.values, actual.norm);
+                min_cosine = min_cosine.min(cosine);
+                assert!(cosine >= 0.999, "{words} words: cosine {cosine}");
+            }
+            for _ in 0..2 {
+                reference.embed(texts.clone(), None).unwrap();
+                pool.embed(&groups).unwrap();
+            }
+            let start = Instant::now();
+            for _ in 0..10 {
+                reference.embed(texts.clone(), None).unwrap();
+            }
+            let reference_ms = start.elapsed().as_secs_f64() * 1000.0;
+            let start = Instant::now();
+            for _ in 0..10 {
+                pool.embed(&groups).unwrap();
+            }
+            let bucket_ms = start.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "words": words, "texts": 320, "fixed_512_ms": reference_ms,
+                    "bucketed_ms": bucket_ms, "speedup": reference_ms / bucket_ms,
+                    "min_quantized_cosine": min_cosine,
+                })
+            );
+        }
+        // Partial and empty waves preserve cardinality. Selection uses actual
+        // tokens (including Unicode and special tokens), not character counts.
+        assert_eq!(pool.embed(&[]).unwrap(), Vec::<Vec<f32>>::new());
+        for content in ["brief status".to_owned(), "hello ".repeat(600)] {
+            let groups = [EmbeddingGroup {
+                content,
+                message_ids: Vec::new(),
+            }];
+            let expected = reference
+                .embed(vec![groups[0].content.as_str(); COREML_BATCH_SIZE], None)
+                .unwrap();
+            let actual = pool.embed(&groups).unwrap();
+            assert_eq!(actual.len(), 1);
+            let expected = quantize_vector(&expected[0]);
+            let actual = quantize_vector(&actual[0]);
+            assert!(quantized_cosine(&expected, &actual.values, actual.norm) >= 0.999);
+        }
     }
 
     #[test]

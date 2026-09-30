@@ -54,6 +54,7 @@ walkdir = "2.5.0"
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 hf-hub = { version = "0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"] }
+tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
 
 [dev-dependencies]
 postgres = "0.19.14"

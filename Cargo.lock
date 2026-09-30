@@ -1643,6 +1643,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokenizers",
  "tokio",
  "tokio-postgres",
  "tokio-postgres-rustls",

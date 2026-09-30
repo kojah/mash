@@ -155,7 +155,7 @@ async fn post<T: serde::de::DeserializeOwned>(
 ) -> Result<T, AppError> {
     response(request(config, reqwest::Method::POST, route)?.json(body)).await
 }
-fn write_event(file: &mut std::fs::File, event: &Event) -> Result<(), AppError> {
+fn write_event(file: &mut impl Write, event: &Event) -> Result<(), AppError> {
     serde_json::to_writer(&mut *file, event)
         .map_err(|_| AppError::internal("serialize index upload"))?;
     file.write_all(b"\n")
@@ -325,9 +325,10 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
     let (file, revision) = crate::blocking(move || {
         let mut file = tempfile::NamedTempFile::new()
             .map_err(|_| AppError::internal("create index upload"))?;
+        let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
         let revision = Storage::open_existing(&db)?.with_publication_snapshot(|snapshot| {
             write_event(
-                file.as_file_mut(),
+                &mut writer,
                 &Event::Start(Start {
                     instance: snapshot.instance.clone(),
                     revision: Some(snapshot.revision),
@@ -339,7 +340,7 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
             for kind in ["tombstones", "conversations", "messages"] {
                 snapshot.visit(kind, |records| {
                     write_event(
-                        file.as_file_mut(),
+                        &mut writer,
                         &Event::Batch {
                             kind: kind.to_owned(),
                             records: records.to_vec(),
@@ -347,8 +348,12 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
                     )
                 })?;
             }
-            write_event(file.as_file_mut(), &Event::Finish)
+            write_event(&mut writer, &Event::Finish)
         })?;
+        writer
+            .flush()
+            .map_err(|_| AppError::internal("flush index upload"))?;
+        drop(writer);
         Ok((file, revision))
     })
     .await?;

@@ -60,7 +60,10 @@ state. The default source horizon is 90 days; `--since-days N` overrides it and
 `--all-history` removes it for one run.
 
 On Apple Silicon, indexing runs the FP32 embedding model through Core ML and
-quantizes only the resulting vectors for storage. Other targets use the
+quantizes only the resulting vectors for storage. Batches select a 64-, 128-,
+256-, or 512-token session using the model's tokenizer, retaining the 512-token
+limit for long messages. Each shape compiles on first use and is cached on disk;
+at most four sessions are retained during indexing. Other targets use the
 quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
 `mash models install` once to install the FP32 asset and compile its Core ML
 cache.
