@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+pub(crate) mod embedding_plan;
 mod indexing;
 pub(crate) mod publication;
 mod queries;
@@ -104,6 +105,7 @@ impl MessageContent {
     }
 }
 
+#[cfg(test)]
 pub(crate) struct SearchableMessage {
     pub(crate) id: String,
     pub(crate) content: String,
@@ -256,5 +258,7 @@ fn cutoff_timestamp(days: Option<u32>) -> Result<Option<i64>, AppError> {
         .map_err(|_| AppError::internal("timestamp exceeds SQLite range"))
 }
 
+#[cfg(test)]
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;

@@ -1,11 +1,11 @@
 use rusqlite::{OptionalExtension, params};
 
+#[cfg(test)]
+use super::SearchableMessage;
 use super::semantic_chunks::{
     MISSING_CREATED_AT, SEMANTIC_CHUNK_ROWS, decode_f32_blob, decode_i64_blob, provider_code,
 };
-use super::{
-    EmbeddingWrite, SearchableMessage, SemanticChunk, SemanticChunks, Storage, cutoff_timestamp,
-};
+use super::{EmbeddingWrite, SemanticChunk, SemanticChunks, Storage, cutoff_timestamp};
 use crate::AppError;
 
 impl Storage {
@@ -142,6 +142,7 @@ impl Storage {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn messages_needing_embeddings(&self) -> Result<Vec<SearchableMessage>, AppError> {
         let mut statement = self
             .connection

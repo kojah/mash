@@ -76,6 +76,8 @@ fn real_models_index_and_run_hybrid_search() {
     }
 
     let found = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
         "--db",
         database.to_str().unwrap(),
         "--models-dir",
@@ -98,11 +100,13 @@ fn real_models_index_and_run_hybrid_search() {
                 .is_some_and(|content| content.contains("authentication credentials"))
         })
     }));
-    assert_thread_search_and_view(&database, model_arg);
+    assert_thread_search_and_view(&config, &database, model_arg);
 }
 
-fn assert_thread_search_and_view(database: &std::path::Path, model_arg: &str) {
+fn assert_thread_search_and_view(config: &Path, database: &Path, model_arg: &str) {
     let threads = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
         "--db",
         database.to_str().unwrap(),
         "--models-dir",
@@ -124,6 +128,8 @@ fn assert_thread_search_and_view(database: &std::path::Path, model_arg: &str) {
     );
     let anchor = matches[0]["message_id"].as_str().unwrap();
     let context = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
         "--db",
         database.to_str().unwrap(),
         "view",

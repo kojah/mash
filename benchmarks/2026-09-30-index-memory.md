@@ -46,9 +46,59 @@ The model, token limit, thread count, batch membership, quantization and embeddi
 generation are unchanged. Native Apple Silicon indexing continues to use Core ML.
 The search worker does not use this indexing scheduler.
 
-Pending-message planning and canonical conversation parsing still need aggregate
-memory bounds, tracked in Beads `mash-c0d.7` and `mash-c0d.7.4`. This change does
-not impose a global RSS ceiling.
+Pending-message planning now uses a private temporary SQLite file. It retains
+one inference wave of text and at most 1,024 duplicate message IDs per write.
+Text deduplication, global byte-length/binary-text order, quantization batches and
+checkpoint boundaries are preserved. A digest match verifies complete ordered
+texts and message IDs, including duplicates. Planning failure leaves pending
+work and existing vectors intact. Temporary files are removed on normal exit.
+
+An optimized, separate-process diagnostic compared the former in-memory plan
+with the disk plan; no models were loaded during these measurements:
+
+| Frozen workload | In-memory plan | Disk plan |
+| --- | --- | --- |
+| 8,192 synthetic unique messages, 596,451,328 text bytes: peak RSS | 586.85 MiB | 37.86 MiB |
+| Same synthetic workload: plan and ordered digest time | 1.325 s | 3.380 s |
+| Real corpus, 3,240 messages / 2,802 unique texts: peak RSS | 27.93 MiB | 33.29 MiB |
+| Same real sample: plan and ordered digest time | 43 ms | 209 ms |
+
+Both workloads produced identical complete ordered digests. These are single
+controlled samples, not fleet throughput or a global memory ceiling. The disk
+plan trades temporary disk writes and fixed SQLite overhead for memory that no
+longer scales with all pending text. Canonical conversation parsing and parser
+queue retention still need aggregate bounds, tracked in `mash-c0d.7.4`.
+
+A production CLI replay of the real sample stored all 3,240 vectors with 2,802
+model inferences and 438 duplicate reuses. It finished in 66.75 seconds, with
+1,506,176 KiB peak RSS during inference, retained all 188,028 canonical messages,
+left no pending embeddings, and passed SQLite integrity checks. A separate
+in-memory-plan inference replay of the identical frozen pending set checked
+every stored vector byte and norm for exact equality; all passed. An older,
+independently prepared snapshot had 16 different vectors and therefore was not
+used as the same-input compatibility baseline.
+
+To repeat this planning-only diagnostic, use a schema-current frozen snapshot
+with a nonempty pending set. It is opened read-only and need not be search-ready:
+
+```bash
+MASH_TEST_SEARCH_DB=/path/to/frozen/index.sqlite3 \
+MASH_BENCH_PLAN_POLICY=memory \
+MASH_BENCH_PLAN_REFERENCE=/path/to/ordered-digest.txt \
+  cargo test-clif --release --run-ignored only \
+  -E 'test(benchmark_embedding_plan_memory)' --success-output immediate
+```
+
+Run `memory` first, then `disk` with the same reference. For peak RSS, compile
+first and invoke the selected test binary directly under `/usr/bin/time -v`;
+including Cargo would also measure compiler and runner memory.
+
+The existing `benchmark_embedding_worker_budget` diagnostic also accepts
+`MASH_BENCH_STORED_DB=/path/to/completed/replay.sqlite3` to compare its in-memory
+plan's quantized vectors and norms with a completed CLI replay. Use the frozen
+pending snapshot as `MASH_TEST_SEARCH_DB` and `MASH_BENCH_EMBED_POLICY=bounded`.
+Its manual-test timeout is 180 seconds to accommodate thousands of long inputs;
+ordinary correctness tests retain their existing timeout.
 
 ## Repeating the diagnostic
 

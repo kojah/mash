@@ -16,6 +16,7 @@ use crate::AppError;
 use crate::storage::{EmbeddingWrite, Storage};
 #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 use fastembed::TextEmbedding;
+#[cfg(test)]
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -171,15 +172,13 @@ pub(crate) fn rebuild_embeddings(
     generation: &str,
     mut on_progress: impl FnMut(EmbeddingProgress),
 ) -> Result<EmbeddingSummary, AppError> {
-    let groups = plan_embedding_groups(storage.messages_needing_embeddings()?);
-    if groups.is_empty() {
+    let mut plan = crate::progress::during(crate::progress::Phase::SemanticEmbeddings, || {
+        crate::storage::embedding_plan::EmbeddingPlan::new(storage)
+    })?;
+    let total_vectors = plan.total_vectors;
+    if total_vectors == 0 {
         return Ok(EmbeddingSummary::default());
     }
-    let total_vectors = groups.iter().try_fold(0_u64, |total, group| {
-        total
-            .checked_add(count_embeddings(group.message_ids.len())?)
-            .ok_or_else(|| AppError::internal("too many embeddings"))
-    })?;
     let started = Instant::now();
     let mut last_progress = started;
     let mut estimate = crate::progress::Estimate::new();
@@ -188,57 +187,75 @@ pub(crate) fn rebuild_embeddings(
     let mut rows_since_checkpoint = 0_u64;
     let wave_size = pool.wave_size();
     let batch_size = pool.batch_size();
-    for wave in groups.chunks(wave_size) {
-        let wave_vectors = pool.embed_wave(wave)?;
+    loop {
+        let texts = plan.next_wave(wave_size)?;
+        if texts.is_empty() {
+            break;
+        }
+        let group_ids = texts.iter().map(|text| text.group_id).collect::<Vec<_>>();
+        let wave = texts
+            .into_iter()
+            .map(|text| EmbeddingGroup {
+                content: text.content,
+                message_ids: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        let wave_vectors = pool.embed_wave(&wave)?;
         if wave.len() != wave_vectors.len() {
             return Err(AppError::model(
                 "embedding model returned an unexpected result count",
             ));
         }
-        for (batch, batch_vectors) in wave.chunks(batch_size).zip(wave_vectors.chunks(batch_size)) {
-            let quantized = batch_vectors
-                .iter()
-                .map(|vector| quantize_vector(vector))
-                .collect::<Vec<_>>();
-            let mut rows = Vec::new();
-            for (group, vector) in batch.iter().zip(&quantized) {
-                for message_id in &group.message_ids {
-                    rows.push(EmbeddingWrite {
+        for (index, (group, vector)) in group_ids.into_iter().zip(wave_vectors).enumerate() {
+            let vector = quantize_vector(&vector);
+            summary.model_inferences = summary
+                .model_inferences
+                .checked_add(1)
+                .ok_or_else(|| AppError::internal("too many model inferences"))?;
+            let mut after: Option<String> = None;
+            loop {
+                let ids = plan.message_ids(group, after.as_deref())?;
+                if ids.is_empty() {
+                    break;
+                }
+                let rows = ids
+                    .iter()
+                    .map(|message_id| EmbeddingWrite {
                         message_id,
                         vector: &vector.values,
                         norm: vector.norm,
-                    });
+                    })
+                    .collect::<Vec<_>>();
+                storage.replace_embeddings(generation, &rows)?;
+                let batch_rows = count_embeddings(rows.len())?;
+                summary.stored_vectors = summary
+                    .stored_vectors
+                    .checked_add(batch_rows)
+                    .ok_or_else(|| AppError::internal("too many embeddings"))?;
+                rows_since_checkpoint = rows_since_checkpoint
+                    .checked_add(batch_rows)
+                    .ok_or_else(|| AppError::internal("too many embeddings"))?;
+                let now = Instant::now();
+                if now.duration_since(last_progress) >= EMBEDDING_PROGRESS_INTERVAL
+                    || summary.stored_vectors == total_vectors
+                {
+                    let mut progress = embedding_progress(&summary, total_vectors, started);
+                    progress.eta_seconds = estimate.observe(
+                        summary.stored_vectors,
+                        total_vectors,
+                        progress.elapsed_milliseconds,
+                    );
+                    on_progress(progress);
+                    last_progress = now;
                 }
+                after = ids.last().cloned();
             }
-            storage.replace_embeddings(generation, &rows)?;
-            let batch_rows = count_embeddings(rows.len())?;
-            summary.stored_vectors = summary
-                .stored_vectors
-                .checked_add(batch_rows)
-                .ok_or_else(|| AppError::internal("too many embeddings"))?;
-            summary.model_inferences = summary
-                .model_inferences
-                .checked_add(count_embeddings(batch.len())?)
-                .ok_or_else(|| AppError::internal("too many model inferences"))?;
-            rows_since_checkpoint = rows_since_checkpoint
-                .checked_add(batch_rows)
-                .ok_or_else(|| AppError::internal("too many embeddings"))?;
-            if rows_since_checkpoint >= EMBEDDING_CHECKPOINT_ROWS {
+            // Preserve the original quantization-batch checkpoint boundary.
+            if ((index + 1) % batch_size == 0 || index + 1 == wave.len())
+                && rows_since_checkpoint >= EMBEDDING_CHECKPOINT_ROWS
+            {
                 storage.checkpoint_writer()?;
                 rows_since_checkpoint = 0;
-            }
-            let now = Instant::now();
-            if now.duration_since(last_progress) >= EMBEDDING_PROGRESS_INTERVAL
-                || summary.stored_vectors == total_vectors
-            {
-                let mut progress = embedding_progress(&summary, total_vectors, started);
-                progress.eta_seconds = estimate.observe(
-                    summary.stored_vectors,
-                    total_vectors,
-                    progress.elapsed_milliseconds,
-                );
-                on_progress(progress);
-                last_progress = now;
             }
         }
     }
@@ -274,6 +291,7 @@ fn embedding_progress(
     }
 }
 
+#[cfg(test)]
 pub(super) fn plan_embedding_groups(
     messages: Vec<crate::storage::SearchableMessage>,
 ) -> Vec<EmbeddingGroup> {

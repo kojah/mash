@@ -25,7 +25,7 @@ fn conversation(content: &str) -> Conversation {
     }
 }
 
-fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversation {
+pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversation {
     let mut value = conversation("");
     value.messages = messages
         .iter()

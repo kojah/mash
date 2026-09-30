@@ -134,6 +134,11 @@ it only after successful model construction. Loaded sessions retain their old
 cache until they finish; retired caches are cleaned up when no reader uses them.
 Indexing reports model-loading progress while waiting or compiling.
 
+Embedding planning uses a temporary SQLite file to deduplicate and sort pending
+texts, loading one inference wave at a time. Duplicate message IDs are written
+in bounded pages. Large rebuilds therefore avoid retaining all pending texts in
+memory; the model workspaces and parsed conversations have separate memory costs.
+
 Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`
