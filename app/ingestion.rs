@@ -289,7 +289,8 @@ fn index_provider_inner(
                     let Some(source) = pending.get(index) else {
                         break;
                     };
-                    let parsed = parse_stable_source(&source.history, &source.stamp, parse)
+                    let mut stamp = source.stamp.clone();
+                    let parsed = parse_source_with_retries(&source.history, &mut stamp, parse)
                         .map_err(|error| {
                             if authoritative {
                                 configured_source_error(&source.history.identity.path, &error)
@@ -299,7 +300,7 @@ fn index_provider_inner(
                         });
                     let source = SourceFile {
                         history: source.history.clone(),
-                        stamp: source.stamp.clone(),
+                        stamp,
                         estimated_bytes: source.estimated_bytes,
                     };
                     if sender.send(ParsedSource { source, parsed }).is_err() {
@@ -445,11 +446,37 @@ fn prepare_sources(
 }
 
 fn configured_source_error(path: &Path, error: &AppError) -> AppError {
+    if error.error.kind == crate::ErrorKind::SourceChanged {
+        let mut changed = AppError::source_changed();
+        changed.error.message = format!("{}: {}", path.display(), error.error.message);
+        return changed;
+    }
     AppError::configuration(format!(
         "configured provider source could not be indexed: {}: {}",
         path.display(),
         error.error.message
     ))
+}
+
+fn parse_source_with_retries(
+    source: &HistorySource,
+    stamp: &mut SourceStamp,
+    parse: fn(&HistorySource) -> Result<ParsedFile, AppError>,
+) -> Result<ParsedFile, AppError> {
+    // Discovery can precede a source's turn in the bounded parser queue by
+    // minutes. Capture a fresh stamp for each attempt, then require the whole
+    // parse to be stable. Never retry malformed input or other parser errors.
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        *stamp = source.stamp()?;
+        match parse_stable_source(source, stamp, parse) {
+            Err(error) if error.error.kind == crate::ErrorKind::SourceChanged => {}
+            result => return result,
+        }
+    }
+    Err(AppError::source_changed())
 }
 
 fn parse_stable_source(
@@ -458,9 +485,9 @@ fn parse_stable_source(
     parse: fn(&HistorySource) -> Result<ParsedFile, AppError>,
 ) -> Result<ParsedFile, AppError> {
     stamp.verify(&source.identity)?;
-    let parsed = parse(source)?;
+    let parsed = parse(source);
     stamp.verify(&source.identity)?;
-    Ok(parsed)
+    parsed
 }
 
 fn apply_parsed_source(

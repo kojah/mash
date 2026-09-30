@@ -84,9 +84,7 @@ impl SourceStamp {
             || current.modified_ns != self.modified_ns
             || current.fingerprint != self.fingerprint
         {
-            return Err(AppError::configuration(
-                "history changed while indexing; retry index",
-            ));
+            return Err(AppError::source_changed());
         }
         Ok(())
     }
@@ -448,6 +446,16 @@ pub(crate) struct DirectScan {
 }
 
 impl DirectScan {
+    pub(crate) fn parse_source_with_retries(
+        provider: Provider,
+        source: &HistorySource,
+        mut stamp: SourceStamp,
+    ) -> Result<(ParsedFile, SourceStamp), AppError> {
+        let parsed = super::parse_source_with_retries(source, &mut stamp, provider.parser())?;
+        Ok((parsed, stamp))
+    }
+
+    #[cfg(test)]
     pub(crate) fn parse_source(
         provider: Provider,
         source: &HistorySource,

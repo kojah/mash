@@ -872,6 +872,14 @@ Failed indexing and pending PostgreSQL publication retry after 30 seconds withou
 requiring another file change. A reconciliation pass every five minutes recovers
 missed events. No models are downloaded automatically; every node retains SQLite.
 
+Each source read captures a fresh stamp and retries detected changes up to three
+times, with 50 ms between attempts. Local and shared-only ingestion both use this
+stable-read check. Stable malformed input fails without retries. If a source keeps
+changing, indexing returns a retryable `source-changed` error recommending `index`;
+an incomplete scan cannot authorize removal of missing histories. Local queued
+results are checked again before writing, so a change after parsing can still
+require another indexing pass.
+
 Watch mode writes one JSON result per completed pass to stdout (newline-delimited
 JSON); progress and typed errors go to stderr. Ctrl-C finishes the active pass
 and exits. For MCP, use `mash mcp --watch` with optional `--debounce-ms`; watching

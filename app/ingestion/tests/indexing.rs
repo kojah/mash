@@ -201,7 +201,12 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
         &mut IndexProgress::new(),
     )
     .expect_err("mutation must reject the scan");
-    assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
+    assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
+    assert!(error.error.retryable);
+    assert!(matches!(
+        error.error.recommended_action,
+        Some(crate::Action::Index)
+    ));
     assert!(error.error.message.contains("history changed"));
     writer.commit_writer().unwrap();
     assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
@@ -295,6 +300,81 @@ fn a_changed_discovered_stamp_is_rejected_before_parsing() {
         .err()
         .expect("discovery stamp is stale");
     assert!(error.error.message.contains("history changed"));
+}
+
+#[test]
+fn stable_retry_refreshes_discovery_and_recovers_a_single_append() {
+    fn append_once(source: &HistorySource) -> Result<ParsedFile, AppError> {
+        let marker = source.identity.path.with_extension("appended");
+        if !marker.exists() {
+            fs::write(marker, b"done").map_err(AppError::io)?;
+            return parse_then_append(source);
+        }
+        parse_claude(&source.identity.path)
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.jsonl");
+    write_claude_session(&path, "session", "old content");
+    let mut stamp = source_stamp(&path).unwrap();
+    write_claude_session(&path, "session", "current content after discovery");
+    let source = HistorySource::file(&path);
+    let parsed = parse_source_with_retries(&source, &mut stamp, append_once).unwrap();
+    assert_eq!(
+        parsed.conversation.unwrap().messages[0].content,
+        "current content after discovery"
+    );
+    stamp.verify(&source.identity).unwrap();
+    assert_eq!(stamp, source.stamp().unwrap());
+}
+
+#[test]
+fn unstable_source_retries_are_bounded_and_actionable() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.jsonl");
+    write_claude_session(&path, "session", "content");
+    let initial_size = fs::metadata(&path).unwrap().len();
+    let source = HistorySource::file(&path);
+    let mut stamp = source.stamp().unwrap();
+    let error = parse_source_with_retries(&source, &mut stamp, parse_then_append)
+        .err()
+        .unwrap();
+    assert_eq!(fs::metadata(&path).unwrap().len(), initial_size + 3);
+    assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
+    assert!(error.error.retryable);
+    assert!(matches!(
+        error.error.recommended_action,
+        Some(crate::Action::Index)
+    ));
+}
+
+#[test]
+fn retries_distinguish_mutation_during_parse_errors_from_stable_bad_input() {
+    fn interrupted_once(source: &HistorySource) -> Result<ParsedFile, AppError> {
+        let marker = source.identity.path.with_extension("interrupted");
+        if !marker.exists() {
+            fs::write(marker, b"done").map_err(AppError::io)?;
+            parse_then_append(source)?;
+            return Err(AppError::configuration("transient partial record"));
+        }
+        parse_claude(&source.identity.path)
+    }
+    fn invalid(source: &HistorySource) -> Result<ParsedFile, AppError> {
+        let marker = source.identity.path.with_extension("invalid");
+        assert!(!marker.exists(), "stable invalid input must not be retried");
+        fs::write(marker, b"done").map_err(AppError::io)?;
+        Err(AppError::configuration("invalid history"))
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.jsonl");
+    write_claude_session(&path, "session", "content");
+    let source = HistorySource::file(&path);
+    let mut stamp = source.stamp().unwrap();
+    parse_source_with_retries(&source, &mut stamp, interrupted_once).unwrap();
+    let error = parse_source_with_retries(&source, &mut stamp, invalid)
+        .err()
+        .unwrap();
+    assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
+    assert!(!error.error.retryable);
 }
 
 #[test]

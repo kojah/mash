@@ -163,9 +163,12 @@ async fn ingest_scan(
         let source = source.clone();
         let expected_stamp = stamp.clone();
         let provider = scan.provider;
-        let parsed =
-            crate::blocking(move || DirectScan::parse_source(provider, &source, &expected_stamp))
-                .await?;
+        let (parsed, stamp) = crate::blocking(move || {
+            DirectScan::parse_source_with_retries(provider, &source, expected_stamp)
+        })
+        .await?;
+        let size = stamp.size_bytes;
+        let modified = stamp.activity_ns.unwrap_or(stamp.modified_ns);
         if parsed.malformed_records != 0 {
             return Err(AppError::shared(
                 "shared indexing encountered malformed history; upload was not committed",

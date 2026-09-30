@@ -118,6 +118,7 @@ enum ErrorKind {
     SchemaIncompatible,
     RemoteInference,
     Conflict,
+    SourceChanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -129,6 +130,16 @@ enum Action {
 }
 
 impl AppError {
+    fn source_changed() -> Self {
+        Self::with_action(
+            9,
+            ErrorKind::SourceChanged,
+            "history changed while indexing; retry index after the source settles",
+            true,
+            Action::Index,
+        )
+    }
+
     fn shared(message: impl Into<String>) -> Self {
         Self::new(11, ErrorKind::SharedIndex, message, true)
     }
