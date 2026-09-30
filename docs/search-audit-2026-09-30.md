@@ -55,7 +55,10 @@ Thread selection first ranks at most 20 grouped documents, retaining up to six
 candidate messages per thread. Individual evidence is then reranked for five to
 ten promising threads (up to 60 messages); message mode evaluates ten candidates.
 Each evidence document includes at most two nearest searchable messages with fixed character
-budgets. Shared context calls have bounded concurrency. Canonical `view` output
+budgets. Shared context calls have bounded concurrency and a one-second aggregate
+deadline; completed context survives stalled requests. Interactive HTTP reads
+have a two-second timeout, separate from the streaming publication budget.
+Canonical `view` output
 is unchanged; the internal
 HTTP view request can select searchable projections. Context errors preserve
 local fallback and surface through shared-search status.
@@ -78,7 +81,7 @@ Missing upstream metadata remains missing rather than being guessed.
 
 ## Regression validation
 
-180 tests passed with real local models and disposable Redis Search and
+182 tests passed with real local models and disposable Redis Search and
 PostgreSQL/pgvector services; two performance benchmarks were intentionally
 excluded. Tests cover literal FTS queries, reference precision/recall, abstention,
 unsupported scripts, projection exclusions, migration readiness, projected

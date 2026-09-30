@@ -4,6 +4,119 @@ use crate::search_results::SearchUnit;
 use crate::storage::EmbeddingWrite;
 
 #[tokio::test]
+async fn context_deadline_preserves_completed_evidence_without_waiting_for_every_wave() {
+    use axum::{Json, Router};
+    use std::time::Instant;
+
+    async fn view(Json(request): Json<protocol::View>) -> Json<Vec<Message>> {
+        if request.id != "fast" {
+            std::future::pending::<()>().await;
+        }
+        Json(vec![
+            Message {
+                id: request.id,
+                ordinal: 0,
+                role: crate::role::Role::User,
+                content: "cache the model".into(),
+                created_at: None,
+            },
+            Message {
+                id: "nearby".into(),
+                ordinal: 1,
+                role: crate::role::Role::Assistant,
+                content: "keep the worker warm".into(),
+                created_at: None,
+            },
+        ])
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let config = SharedConfig {
+        group_id: "test".into(),
+        node_id: "local".into(),
+        api_url: format!("http://{}", listener.local_addr().unwrap()),
+        token_env: "HOME".into(),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route("/v1/view", axum::routing::post(view)),
+        )
+        .await
+        .unwrap();
+    });
+    let hits = (0..24)
+        .map(|index| SearchHit {
+            id: if index == 0 {
+                "fast".into()
+            } else {
+                format!("slow-{index}")
+            },
+            conversation_id: "thread".into(),
+            provider: crate::provider::Provider::Codex,
+            role: crate::role::Role::User,
+            content: "cache the model".into(),
+            copies: Vec::new(),
+            created_at: None,
+            metadata: crate::search_results::ThreadMetadata::default(),
+            lexical_score: Some(1.0),
+            semantic_score: None,
+            fusion_score: 1.0,
+            rerank_score: None,
+            node_id: Some("remote".into()),
+        })
+        .collect::<Vec<_>>();
+    let started = Instant::now();
+    let (documents, error) = context_documents(&config, None, "test".into(), "cache", &hits)
+        .await
+        .unwrap();
+    server.abort();
+    assert!(started.elapsed() < CONTEXT_DEADLINE + Duration::from_secs(1));
+    assert!(error.unwrap().contains("deadline"));
+    assert_eq!(documents.len(), 1);
+    assert!(documents[&("remote".into(), "fast".into())].contains("keep the worker warm"));
+}
+
+#[tokio::test]
+async fn interactive_request_timeout_does_not_inherit_the_upload_budget() {
+    use axum::{Json, Router};
+    async fn stalled() -> Json<protocol::Candidates> {
+        std::future::pending().await
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let config = SharedConfig {
+        group_id: "test".into(),
+        node_id: "local".into(),
+        api_url: format!("http://{}", listener.local_addr().unwrap()),
+        token_env: "HOME".into(),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route("/v1/search", axum::routing::post(stalled)),
+        )
+        .await
+        .unwrap();
+    });
+    let started = std::time::Instant::now();
+    let query = protocol::Search {
+        unit: SearchUnit::Threads,
+        query: "cache".into(),
+        generation: "test".into(),
+        vector: Vec::new(),
+        provider: None,
+        days: None,
+        exclude_self: true,
+        filter: None,
+    };
+    let error = post::<protocol::Candidates>(&config, Endpoint::Search, &query)
+        .await
+        .unwrap_err();
+    server.abort();
+    assert!(started.elapsed() < Endpoint::Search.timeout() + Duration::from_secs(1));
+    assert!(error.error.message.contains("timed out"));
+}
+
+#[tokio::test]
 async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
     use axum::extract::State;
     use axum::{Json, Router};
@@ -245,11 +358,13 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
     };
     let first_token = std::env::var(&config.token_env).unwrap();
     assert_eq!(
-        get::<serde_json::Value>(&config, "status").await.unwrap()["ok"],
+        get::<serde_json::Value>(&config, Endpoint::Freshness)
+            .await
+            .unwrap()["ok"],
         true
     );
     assert_eq!(
-        post::<serde_json::Value>(&config, "search", &serde_json::json!({}))
+        post::<serde_json::Value>(&config, Endpoint::Search, &serde_json::json!({}))
             .await
             .unwrap()["ok"],
         true
@@ -263,7 +378,7 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
     config.token_env = "USER".into();
     let second_token = std::env::var(&config.token_env).unwrap();
     assert_eq!(
-        get::<serde_json::Value>(&config, "freshness")
+        get::<serde_json::Value>(&config, Endpoint::Freshness)
             .await
             .unwrap()["ok"],
         true

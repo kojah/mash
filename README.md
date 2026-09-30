@@ -425,6 +425,11 @@ retrieval and the shared HTTP request run concurrently. Both sources use indepen
 lexical/semantic reciprocal-rank fusion, followed by bounded combined reranking.
 Local message hits have no `node_id`; shared hits include their
 publishing node for `view --shared NODE_ID`. Plain `view` always reads SQLite.
+Interactive shared reads have a two-second HTTP deadline. Fetching nearby shared
+context has a one-second total budget, preserving completed responses and using
+available message evidence for the rest. Transport failures appear in shared
+search status; combined search retains local results. Streaming publication has
+a separate ten-minute budget.
 
 Search defaults to `unit = "threads"` in CLI and MCP. Each thread result includes
 its conversation ID, provider, representative node, available title/project/repository

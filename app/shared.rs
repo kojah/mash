@@ -63,8 +63,42 @@ struct NodeFreshness {
 }
 
 pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppError> {
-    get(config, "freshness").await
+    get(config, Endpoint::Freshness).await
 }
+
+#[derive(Clone, Copy)]
+enum Endpoint {
+    Freshness,
+    State,
+    Search,
+    View,
+    Index,
+    Forget,
+}
+
+impl Endpoint {
+    const fn route(self) -> &'static str {
+        match self {
+            Self::Freshness => "freshness",
+            Self::State => "state",
+            Self::Search => "search",
+            Self::View => "view",
+            Self::Index => "index",
+            Self::Forget => "forget",
+        }
+    }
+
+    const fn timeout(self) -> Duration {
+        match self {
+            // Publication can include a large streaming snapshot. Interactive
+            // reads must fail promptly so local results remain responsive.
+            Self::Index | Self::Forget | Self::State => Duration::from_secs(600),
+            _ => Duration::from_secs(2),
+        }
+    }
+}
+
+const CONTEXT_DEADLINE: Duration = Duration::from_secs(1);
 fn target(config: &SharedConfig) -> String {
     blake3::hash(
         format!(
@@ -92,7 +126,7 @@ static HTTP_CLIENT: LazyLock<Result<reqwest::Client, reqwest::Error>> = LazyLock
 fn request(
     config: &SharedConfig,
     method: reqwest::Method,
-    route: &str,
+    endpoint: Endpoint,
 ) -> Result<reqwest::RequestBuilder, AppError> {
     let token = std::env::var(&config.token_env).map_err(|_| {
         AppError::shared(format!("set {} to this node's API token", config.token_env))
@@ -118,15 +152,24 @@ fn request(
     Ok(client
         .request(
             method,
-            format!("{}/v1/{route}", config.api_url.trim_end_matches('/')),
+            format!(
+                "{}/v1/{}",
+                config.api_url.trim_end_matches('/'),
+                endpoint.route()
+            ),
         )
-        .headers(headers))
+        .headers(headers)
+        .timeout(endpoint.timeout()))
 }
 async fn response<T: serde::de::DeserializeOwned>(
     request: reqwest::RequestBuilder,
 ) -> Result<T, AppError> {
-    let response = request.send().await.map_err(|_| {
-        AppError::shared("shared index HTTP request failed; check the API address and network")
+    let response = request.send().await.map_err(|error| {
+        AppError::shared(if error.is_timeout() {
+            "shared index HTTP request timed out"
+        } else {
+            "shared index HTTP request failed; check the API address and network"
+        })
     })?;
     if !response.status().is_success() {
         let status = response.status();
@@ -151,16 +194,16 @@ async fn response<T: serde::de::DeserializeOwned>(
 }
 async fn get<T: serde::de::DeserializeOwned>(
     config: &SharedConfig,
-    route: &str,
+    endpoint: Endpoint,
 ) -> Result<T, AppError> {
-    response(request(config, reqwest::Method::GET, route)?).await
+    response(request(config, reqwest::Method::GET, endpoint)?).await
 }
 async fn post<T: serde::de::DeserializeOwned>(
     config: &SharedConfig,
-    route: &str,
+    endpoint: Endpoint,
     body: &impl Serialize,
 ) -> Result<T, AppError> {
-    response(request(config, reqwest::Method::POST, route)?.json(body)).await
+    response(request(config, reqwest::Method::POST, endpoint)?.json(body)).await
 }
 fn write_event(file: &mut impl Write, event: &Event) -> Result<(), AppError> {
     serde_json::to_writer(&mut *file, event)
@@ -193,7 +236,7 @@ async fn upload(
             }
         });
     let request = response(
-        request(config, reqwest::Method::POST, "index")?
+        request(config, reqwest::Method::POST, Endpoint::Index)?
             .header(reqwest::header::CONTENT_TYPE, "application/x-ndjson")
             .body(reqwest::Body::wrap_stream(stream)),
     );
@@ -415,7 +458,7 @@ pub(crate) async fn view(
 ) -> Result<Vec<Message>, AppError> {
     post(
         config,
-        "view",
+        Endpoint::View,
         &protocol::View {
             node_id: node.to_owned(),
             id: id.to_owned(),
@@ -520,7 +563,7 @@ async fn search_prepared(
         Ok::<_, AppError>(
             post::<protocol::Candidates>(
                 config,
-                "search",
+                Endpoint::Search,
                 &protocol::Search {
                     query: query.to_owned(),
                     unit,
@@ -652,29 +695,44 @@ async fn context_documents(
         .iter()
         .filter_map(|hit| hit.node_id.clone().map(|node| (node, hit.id.clone())))
         .collect::<Vec<_>>();
-    let remote = stream::iter(anchors)
-        .map(|(node, id)| {
-            let config = config.clone();
-            async move {
-                let result = post::<Vec<Message>>(
-                    &config,
-                    "view",
-                    &protocol::View {
-                        node_id: node.clone(),
-                        id: id.clone(),
-                        context: 2,
-                        content: crate::storage::MessageContent::SearchProjection,
-                    },
-                )
-                .await;
-                ((node, id), result)
+    let remote = async {
+        let mut pending = stream::iter(anchors)
+            .map(|(node, id)| {
+                let config = config.clone();
+                async move {
+                    let result = post::<Vec<Message>>(
+                        &config,
+                        Endpoint::View,
+                        &protocol::View {
+                            node_id: node.clone(),
+                            id: id.clone(),
+                            context: 2,
+                            content: crate::storage::MessageContent::SearchProjection,
+                        },
+                    )
+                    .await;
+                    ((node, id), result)
+                }
+            })
+            .buffer_unordered(8);
+        let deadline = tokio::time::sleep(CONTEXT_DEADLINE);
+        tokio::pin!(deadline);
+        let mut completed = Vec::new();
+        loop {
+            tokio::select! {
+                result = pending.next() => match result {
+                    Some(result) => completed.push(result),
+                    None => return (completed, false),
+                },
+                () = &mut deadline => return (completed, true),
             }
-        })
-        .buffer_unordered(8)
-        .collect::<Vec<_>>();
-    let (contexts, remote) = tokio::join!(local, remote);
+        }
+    };
+    let (contexts, (remote, timed_out)) = tokio::join!(local, remote);
     let mut contexts = contexts?;
-    let mut error = None;
+    let mut error = timed_out.then(|| {
+        "shared context deadline exceeded; ranking uses available message evidence".to_owned()
+    });
     for (key, result) in remote {
         match result {
             Ok(messages) => {

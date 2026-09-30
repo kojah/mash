@@ -2,7 +2,7 @@ use super::protocol::{
     Batch, Checkpoint, ConversationRecord, Event, Forget, Forgotten, MessageRecord, NodeState,
     Start,
 };
-use super::{get, post, upload, write_event};
+use super::{Endpoint, get, post, upload, write_event};
 use crate::AppError;
 use crate::config::SharedConfig;
 use crate::ingestion::{self, Conversation, DirectScan, IndexOptions, IndexSummary};
@@ -41,7 +41,7 @@ pub(crate) async fn index(
         ingestion::direct_scans(&input)
     })
     .await?;
-    let state: NodeState = get(config, "state").await?;
+    let state: NodeState = get(config, Endpoint::State).await?;
     let instance = owner.map_or(DIRECT_INSTANCE, |o| o.instance.as_str());
     if state.instance.as_deref().is_some_and(|i| i != instance) {
         return Err(AppError::shared(
@@ -373,7 +373,7 @@ pub(crate) async fn flush_forgets(
 ) -> Result<bool, AppError> {
     let result: Forgotten = post(
         config,
-        "forget",
+        Endpoint::Forget,
         &Forget {
             instance: owner.instance.clone(),
             revision: Some(owner.revision),
