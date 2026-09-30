@@ -1,26 +1,12 @@
 //! Native Hermes state.db histories. Sources are read-only; no upstream repairs run.
+use super::sqlite_source::{MAX_RECORD_BYTES, open};
 use super::{Conversation, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity};
 use crate::{AppError, provider::Provider, role::Role};
-use rusqlite::{Connection, OpenFlags, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
-use std::time::Duration;
 
 #[cfg(test)]
 mod tests;
-
-const MAX_MESSAGE_BYTES: i64 = 8 * 1024 * 1024;
-
-fn open(path: &Path) -> Result<Connection, AppError> {
-    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(AppError::database)?;
-    connection
-        .busy_timeout(Duration::from_secs(5))
-        .map_err(AppError::database)?;
-    connection
-        .execute_batch("PRAGMA query_only=ON; BEGIN;")
-        .map_err(AppError::database)?;
-    Ok(connection)
-}
 
 pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
     let connection = open(path)?;
@@ -140,7 +126,7 @@ fn read_messages(
             if row
                 .get::<_, Option<i64>>(column)
                 .map_err(AppError::database)?
-                .is_some_and(|n| n > MAX_MESSAGE_BYTES)
+                .is_some_and(|n| n > MAX_RECORD_BYTES)
             {
                 return Err(AppError::configuration(
                     "Hermes message exceeds the 8 MiB ingestion limit",

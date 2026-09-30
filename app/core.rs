@@ -893,7 +893,8 @@ mod tests {
             assert!(resolve_index_options(&configuration, &[], invalid, false).is_err());
         }
         assert!(resolve_index_options(&configuration, &[], Some(1), true).is_err());
-        assert!("opencode".parse::<Provider>().is_err());
+        assert_eq!("opencode".parse::<Provider>().unwrap(), Provider::Opencode);
+        assert!("unsupported-provider".parse::<Provider>().is_err());
         assert!(
             resolve_index_options(
                 &test_configuration(false, true, Some(90)),

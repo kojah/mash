@@ -147,7 +147,7 @@ fn public_index_flags_validate_before_models_database_or_scanning() {
     let database = directory.path().join("mash.sqlite3");
     let models = directory.path().join("models");
     for arguments in [
-        vec!["--provider", "opencode"],
+        vec!["--provider", "unsupported-provider"],
         vec!["--provider", "claude-code"],
         vec!["--since-days", "0"],
         vec!["--since-days", "30", "--all-history"],

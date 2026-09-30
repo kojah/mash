@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -143,6 +143,18 @@ trigger watchers; the history horizon uses each session's activity time.
 The adapter requires the native display-history columns in the
 [upstream schema](https://github.com/NousResearch/hermes-agent/blob/main/hermes_state_common.py)
 and follows its [display projection](https://github.com/NousResearch/hermes-agent/blob/main/hermes_state_messages.py).
+
+OpenCode is opt-in through `[providers.opencode]`, with `roots` pointing to
+`opencode.db` (normally `~/.local/share/opencode/opencode.db`) or its containing
+directory. It reads sessions and project metadata from native SQLite snapshots,
+including WAL changes. Each session becomes one thread. Sessions with
+`session_message` records use that history; other sessions use the native
+`message`/`part` tables. User and assistant text is searchable; reasoning, tools,
+files, shell output, compaction and synthetic/ignored text remain context only.
+Operational events and unknown part types are omitted. Session activity controls
+the history horizon. The adapter follows the upstream
+[database schema](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/sql.ts)
+and [message schema](https://github.com/anomalyco/opencode/blob/dev/packages/schema/src/session-message.ts).
 
 ## Configuration
 

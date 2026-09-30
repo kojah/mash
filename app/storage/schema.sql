@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (
         provider IN (
-            'claude-code', 'codex', 'aider', 'hermes'
+            'claude-code', 'codex', 'aider', 'hermes', 'opencode'
         )
     ),
     source_path TEXT NOT NULL,

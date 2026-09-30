@@ -21,6 +21,7 @@ pub(crate) enum Provider {
     Codex,
     Aider,
     Hermes,
+    Opencode,
 }
 
 /// Enum keys keep configuration and routing exhaustive without duplicating a
@@ -28,7 +29,13 @@ pub(crate) enum Provider {
 pub(crate) type ProviderRoots = std::collections::BTreeMap<Provider, Vec<std::path::PathBuf>>;
 
 impl Provider {
-    pub(crate) const ALL: &[Self] = &[Self::ClaudeCode, Self::Codex, Self::Aider, Self::Hermes];
+    pub(crate) const ALL: &[Self] = &[
+        Self::ClaudeCode,
+        Self::Codex,
+        Self::Aider,
+        Self::Hermes,
+        Self::Opencode,
+    ];
 
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
@@ -36,6 +43,7 @@ impl Provider {
             Self::Codex => "codex",
             Self::Aider => "aider",
             Self::Hermes => "hermes",
+            Self::Opencode => "opencode",
         }
     }
 
@@ -46,6 +54,7 @@ impl Provider {
             Self::Codex => 2,
             Self::Aider => 3,
             Self::Hermes => 4,
+            Self::Opencode => 5,
         }
     }
 
@@ -55,6 +64,7 @@ impl Provider {
             Self::Codex => "x",
             Self::Aider => "a",
             Self::Hermes => "h",
+            Self::Opencode => "o",
         }
     }
 }
@@ -73,6 +83,7 @@ impl std::str::FromStr for Provider {
             "codex" => Ok(Self::Codex),
             "aider" => Ok(Self::Aider),
             "hermes" => Ok(Self::Hermes),
+            "opencode" => Ok(Self::Opencode),
             _ => Err(crate::AppError::usage("unsupported provider")),
         }
     }

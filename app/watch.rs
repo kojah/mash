@@ -44,6 +44,8 @@ impl Targets {
                                         name == ".aider.chat.history.md"
                                             || name == "state.db"
                                             || name == "state.db-wal"
+                                            || name == "opencode.db"
+                                            || name == "opencode.db-wal"
                                     })
                                     || matches!(
                                         event.kind,
@@ -238,6 +240,7 @@ mod tests {
         };
         assert!(directory.relevant(&change(root.join(".aider.chat.history.md"))));
         assert!(directory.relevant(&change(root.join("state.db-wal"))));
+        assert!(directory.relevant(&change(root.join("opencode.db-wal"))));
         assert!(database.relevant(&change(root.join("state.db-wal"))));
         assert!(custom.relevant(&change(root.join("custom.db-wal"))));
         assert!(!custom.relevant(&change(root.join("other.db-wal"))));

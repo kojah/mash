@@ -115,16 +115,19 @@ pub(super) fn discover_history_files(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     let mut discovery = discover_physical_sources(provider, roots, authoritative)?;
-    if provider == Provider::Hermes {
-        discovery.sources = discovery
-            .sources
-            .into_iter()
-            .map(|source| super::hermes::discover(&source.identity.path))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-    }
+    let sessions = match provider {
+        Provider::Hermes => super::hermes::discover,
+        Provider::Opencode => super::opencode::discover,
+        Provider::ClaudeCode | Provider::Codex | Provider::Aider => return Ok(discovery),
+    };
+    discovery.sources = discovery
+        .sources
+        .into_iter()
+        .map(|source| sessions(&source.identity.path))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
     Ok(discovery)
 }
 
@@ -169,6 +172,10 @@ fn discover_physical_sources(
         Provider::ClaudeCode | Provider::Codex => is_jsonl(path),
         Provider::Hermes => {
             path.file_name().is_some_and(|name| name == "state.db")
+                || (explicit && path.extension().is_some_and(|e| e == "db"))
+        }
+        Provider::Opencode => {
+            path.file_name().is_some_and(|name| name == "opencode.db")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))
         }
     })

@@ -286,7 +286,7 @@ fn version_eight_provider_fixture() -> String {
             "INSERT INTO tombstones(provider, conversation_id, forgotten_at)
                 VALUES ('codex', 'forgotten-codex', 25);
              INSERT INTO conversations(id, provider, source_path, source_fingerprint)
-                VALUES ('unsupported-session', 'opencode', '/tmp/opencode.jsonl', 'source');
+                VALUES ('unsupported-session', 'github-copilot', '/tmp/opencode.jsonl', 'source');
              INSERT INTO messages(
                 id, conversation_id, ordinal, role, content, search_projection, fingerprint
              ) VALUES (
@@ -298,9 +298,9 @@ fn version_eight_provider_fixture() -> String {
              INSERT INTO message_embeddings(message_id, generation, dimensions, norm, vector)
                 VALUES ('unsupported-message', 'generation', 1, 1.0, X'7F');
              INSERT INTO source_checkpoints(provider, source_path, size_bytes, modified_ns)
-                VALUES ('opencode', '/tmp/opencode.jsonl', 10, 20);
+                VALUES ('github-copilot', '/tmp/opencode.jsonl', 10, 20);
              INSERT INTO tombstones(provider, conversation_id, forgotten_at)
-                VALUES ('opencode', 'forgotten-opencode', 30);
+                VALUES ('github-copilot', 'forgotten-opencode', 30);
              PRAGMA user_version = 8;",
         )
 }
@@ -383,7 +383,7 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
 
     let storage = Storage::open(&path).expect("migrate database");
     for table in ["conversations", "source_checkpoints", "tombstones"] {
-        let query = format!("SELECT count(*) FROM {table} WHERE provider = 'opencode'");
+        let query = format!("SELECT count(*) FROM {table} WHERE provider = 'github-copilot'");
         assert_eq!(
             storage
                 .connection
@@ -444,8 +444,8 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
         .expect("provider schema");
     assert!(schema.contains("'claude-code'"));
     assert!(schema.contains("'codex'"));
-    assert!(!schema.contains("'opencode'"));
-    for provider in ["opencode", "github-copilot", "pi"] {
+    assert!(schema.contains("'opencode'"));
+    for provider in ["github-copilot", "pi"] {
         let error = storage
             .connection
             .execute(

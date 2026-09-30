@@ -9,8 +9,10 @@ mod aider;
 mod discovery;
 mod hermes;
 mod json;
+mod opencode;
 mod parsers;
 mod source;
+mod sqlite_source;
 #[cfg(test)]
 mod tests;
 
@@ -37,6 +39,7 @@ impl Provider {
             Self::Codex => |source| parsers::parse_codex(&source.path),
             Self::Aider => |source| aider::parse(&source.path),
             Self::Hermes => hermes::parse,
+            Self::Opencode => opencode::parse,
         }
     }
 }
