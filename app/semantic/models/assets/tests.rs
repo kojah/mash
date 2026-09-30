@@ -23,6 +23,104 @@ fn store_fixture(root: &Path, marker: &InstallMarker) {
 }
 
 #[test]
+fn remote_install_preserves_valid_local_readiness_without_claiming_missing_embeddings() {
+    #[derive(Debug, PartialEq, Eq)]
+    enum State {
+        Complete,
+        MissingMarker,
+        MissingAsset,
+        RemoteOnly,
+    }
+    for state in [
+        State::Complete,
+        State::MissingMarker,
+        State::MissingAsset,
+        State::RemoteOnly,
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let mut previous = fixture_marker(root.path());
+        let repository = root.path().join(RERANKER_REPOSITORY);
+        fs::create_dir(&repository).unwrap();
+        fs::write(repository.join("reranker"), b"fixture").unwrap();
+        if state == State::RemoteOnly {
+            previous.embedding_available = false;
+            previous.embedding_dimensions = 1024;
+            previous.files = inventory(root.path()).unwrap();
+        }
+        if state != State::MissingMarker {
+            write_marker(root.path(), &previous).unwrap();
+        }
+        if state == State::MissingAsset {
+            fs::remove_file(root.path().join("asset")).unwrap();
+        }
+        let marker =
+            remote_install_marker(root.path(), 1024, inventory(root.path()).unwrap()).unwrap();
+        assert_eq!(
+            marker.embedding_available,
+            state == State::Complete,
+            "{state:?}"
+        );
+        assert_eq!(
+            marker.embedding_dimensions,
+            if state == State::Complete { 384 } else { 1024 }
+        );
+        write_marker(root.path(), &marker).unwrap();
+        let local = Models::new(root.path().to_path_buf());
+        let remote =
+            Models::new(root.path().to_path_buf()).with_remote(Some(remote::Configuration {
+                url: "http://127.0.0.1:9/embeddings".to_owned(),
+                model: "remote-fixture".to_owned(),
+                dimensions: 1024,
+                api: remote::Api::OpenaiCompatible,
+                token_env: None,
+                request_dimensions: false,
+            }));
+        assert_eq!(local.is_installed(), state == State::Complete, "{state:?}");
+        assert!(remote.is_installed(), "{state:?}");
+        assert_ne!(local.generation(), remote.generation());
+    }
+}
+
+#[test]
+fn invalid_remote_inventory_leaves_the_existing_marker_unchanged() {
+    let root = tempfile::tempdir().unwrap();
+    let marker = fixture_marker(root.path());
+    write_marker(root.path(), &marker).unwrap();
+    let before = fs::read(root.path().join(MARKER_NAME)).unwrap();
+    assert!(remote_install_marker(root.path(), 1024, vec![]).is_err());
+    assert_eq!(fs::read(root.path().join(MARKER_NAME)).unwrap(), before);
+    assert!(Models::new(root.path().to_path_buf()).is_installed());
+}
+
+#[test]
+#[cfg(unix)]
+fn failed_marker_staging_preserves_the_previous_installation() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let marker = fixture_marker(root.path());
+    write_marker(root.path(), &marker).unwrap();
+    let before = fs::read(root.path().join(MARKER_NAME)).unwrap();
+    let original = fs::metadata(root.path()).unwrap().permissions();
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o500)).unwrap();
+    // Privileged runners may bypass filesystem permissions entirely.
+    let enforced = fs::write(root.path().join("probe"), b"probe").is_err();
+    let result = write_marker(root.path(), &marker);
+    fs::set_permissions(root.path(), original).unwrap();
+    if enforced {
+        assert!(result.is_err());
+    }
+    assert_eq!(fs::read(root.path().join(MARKER_NAME)).unwrap(), before);
+    assert!(Models::new(root.path().to_path_buf()).is_installed());
+    assert!(!fs::read_dir(root.path()).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(MARKER_TEMP_PREFIX)
+    }));
+}
+
+#[test]
 fn model_metadata_is_bounded_before_loading_assets() {
     let root = tempfile::tempdir().unwrap();
     let models = Models::new(root.path().to_path_buf());

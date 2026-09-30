@@ -108,6 +108,29 @@ fn default_embedding_available() -> bool {
     true
 }
 
+pub(super) fn remote_install_marker(
+    root: &Path,
+    dimensions: usize,
+    files: Vec<InstalledFile>,
+) -> Result<InstallMarker, AppError> {
+    let local = read_valid_marker(root, false).ok();
+    let marker = InstallMarker {
+        schema: 1,
+        embedding_model: EMBEDDING_MODEL.to_string(),
+        reranker_model: RERANKER_MODEL.to_string(),
+        // A complete local installation also supports remote inference. Keep
+        // its local metadata so returning to local does not require a reinstall.
+        embedding_dimensions: local
+            .as_ref()
+            .map_or(dimensions, |m| m.embedding_dimensions),
+        coreml_embedding: coreml_embedding_enabled(),
+        embedding_available: local.is_some(),
+        files,
+    };
+    validate_marker(&marker, true)?;
+    Ok(marker)
+}
+
 pub(super) fn read_valid_marker(root: &Path, remote: bool) -> Result<InstallMarker, AppError> {
     let bytes = read_metadata(&root.join(MARKER_NAME), MAX_MARKER_BYTES)?;
     let marker: InstallMarker = serde_json::from_slice(&bytes)

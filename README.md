@@ -791,6 +791,9 @@ SQLite pipelines remain on blocking workers while remote requests run on Tokio.
 Remote indexing needs no local model assets. Reranking remains local; run
 `mash models install` with remote embeddings configured to install only the
 reranker before searching. No models are downloaded by indexing or searching.
+If a valid local embedding installation already exists, installing for remote
+embeddings preserves it. Switching back to local inference does not require
+reinstalling those assets; the changed embedding space still requires indexing.
 
 For shared indexing, configure the service's embedding space as well:
 

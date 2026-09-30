@@ -1,3 +1,4 @@
+use super::assets::write_marker;
 use super::*;
 use crate::semantic::shared_query_vector;
 
