@@ -399,51 +399,48 @@ pub(crate) async fn search(
         || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
         |c| semantic::model_space(&c.model, c.dimensions),
     );
-    let (mut backend, vector, local_hits, local_documents) = crate::blocking(move || {
+    let (mut backend, vector, local_generation) = crate::blocking(move || {
         let models = Models::new(root).with_remote(embeddings);
         models.require_installed()?;
         let mut backend = models
             .load()?
             .ok_or_else(|| AppError::model("run `mash models install`"))?;
         let vector = semantic::shared_query_vector(&mut backend, &text)?;
-        let (hits, documents) = if let Some(database) = local_database {
-            let storage = Storage::open_existing(&database)?;
-            if storage.derived_search_is_dirty()?
-                || !storage.semantic_index_is_ready(&models.generation())?
-            {
-                return Err(AppError::search_not_ready(
-                    "local semantic index is incomplete; run mash index",
-                ));
-            }
-            semantic::local_candidates(
-                &storage,
-                &models.generation(),
-                &local_query,
-                &vector,
-                None,
-                None,
-                Some(&local_filters),
-            )?
-        } else {
-            (Vec::new(), Vec::new())
-        };
-        Ok((backend, vector, hits, documents))
+        Ok((backend, vector, models.generation()))
     })
     .await?;
-    let candidates = post::<protocol::Candidates>(
-        config,
-        "search",
-        &protocol::Search {
-            query: query.to_owned(),
-            vector,
-            generation,
-            provider: None,
-            days: None,
-            filter: Some(filters.filter.clone()),
-            exclude_self,
-        },
-    )
-    .await;
+    let local_vector = vector.clone();
+    let local = crate::blocking(move || {
+        retrieve_local_candidates(
+            local_database.as_deref(),
+            &local_generation,
+            &local_query,
+            &local_vector,
+            &local_filters,
+        )
+    });
+    let remote = async {
+        // Keep transport errors as values until local retrieval finishes so
+        // merged searches can still fall back to local results. A local error
+        // cancels the HTTP request rather than waiting for its timeout.
+        Ok::<_, AppError>(
+            post::<protocol::Candidates>(
+                config,
+                "search",
+                &protocol::Search {
+                    query: query.to_owned(),
+                    vector,
+                    generation,
+                    provider: None,
+                    days: None,
+                    filter: Some(filters.filter.clone()),
+                    exclude_self,
+                },
+            )
+            .await,
+        )
+    };
+    let ((local_hits, local_documents), candidates) = tokio::try_join!(local, remote)?;
     let (candidates, shared_error) = match candidates {
         Ok(candidates) => (candidates, None),
         Err(error) if exclude_self => (
@@ -482,6 +479,33 @@ pub(crate) async fn search(
         Ok((fused, shared_error))
     })
     .await
+}
+
+fn retrieve_local_candidates(
+    database: Option<&Path>,
+    generation: &str,
+    query: &str,
+    vector: &[f64],
+    filters: &crate::search_filter::Scope,
+) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
+    let Some(database) = database else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    let storage = Storage::open_existing(database)?;
+    if storage.derived_search_is_dirty()? || !storage.semantic_index_is_ready(generation)? {
+        return Err(AppError::search_not_ready(
+            "local semantic index is incomplete; run mash index",
+        ));
+    }
+    semantic::local_candidates(
+        &storage,
+        generation,
+        query,
+        vector,
+        None,
+        None,
+        Some(filters),
+    )
 }
 
 fn rerank_combined(

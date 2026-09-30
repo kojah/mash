@@ -375,7 +375,8 @@ can leave index status pending until `index` catches up other changes.
 
 Default search queries SQLite and shared records belonging to other nodes. The
 shared service excludes the authenticated node before candidate limits and
-embedding-readiness checks. Both sources use one query embedding, independent
+embedding-readiness checks. After computing one query embedding, local candidate
+retrieval and the shared HTTP request run concurrently. Both sources use independent
 lexical/semantic reciprocal-rank fusion, and a single reranking pass over the ten
 best combined candidates. Local hits have no `node_id`; shared hits include their
 publishing node for `view --shared NODE_ID`. Plain `view` always reads SQLite.

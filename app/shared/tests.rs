@@ -3,6 +3,130 @@ use crate::ingestion::{Conversation, NormalizedMessage};
 use crate::storage::EmbeddingWrite;
 
 #[tokio::test]
+#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked() {
+    use axum::extract::State;
+    use axum::{Json, Router};
+    use tokio::sync::mpsc;
+
+    async fn capture(
+        State(sender): State<mpsc::Sender<protocol::Search>>,
+        Json(request): Json<protocol::Search>,
+    ) -> Json<protocol::Candidates> {
+        sender.send(request).await.unwrap();
+        Json(protocol::Candidates {
+            lexical: Vec::new(),
+            semantic: Vec::new(),
+            documents: Vec::new(),
+        })
+    }
+
+    let models_dir = std::env::var_os("MASH_TEST_MODELS_DIR")
+        .map(std::path::PathBuf::from)
+        .expect("explicit model directory");
+    let models = Models::new(models_dir.clone());
+    let generation = models.generation();
+    // Warm inference before applying the database lock: the test measures
+    // retrieval ordering, independently of model startup time.
+    drop(crate::blocking(move || models.load()).await.unwrap());
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("local.sqlite3");
+    seed_ready(&path, &generation);
+    let lock = rusqlite::Connection::open(&path).unwrap();
+    lock.execute_batch("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE")
+        .unwrap();
+
+    let (sender, mut received) = mpsc::channel(1);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, Router::new().fallback(capture).with_state(sender))
+            .await
+            .unwrap();
+    });
+    let mut config = SharedConfig {
+        group_id: "test".into(),
+        node_id: "local-node".into(),
+        api_url: format!("http://{address}"),
+        token_env: "HOME".into(),
+    };
+    let filters = crate::search_filter::Arguments::default()
+        .resolve(&config.node_id)
+        .unwrap();
+    let unlock = async {
+        let request = tokio::time::timeout(Duration::from_secs(3), received.recv()).await;
+        // Always release the lock, including on failure, so a regression cannot
+        // leave a blocking worker hung after the assertion.
+        lock.execute_batch("ROLLBACK").unwrap();
+        request.expect("shared request must start before SQLite is unlocked")
+    };
+    let (result, request) = tokio::join!(
+        search(
+            &config,
+            Some(&path),
+            &models_dir,
+            None,
+            "hello",
+            10,
+            &filters
+        ),
+        unlock,
+    );
+    let request = request.unwrap();
+    assert!(request.exclude_self);
+    assert_eq!(request.vector.len(), 384);
+    let (hits, error) = result.unwrap();
+    assert!(error.is_none());
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, "searchable");
+    assert!(hits[0].rerank_score.is_some());
+
+    // Failure remains a local fallback for merged searches, and an error for
+    // explicitly shared searches.
+    config.token_env = "MASH_TEST_UNCONFIGURED_TOKEN_71B9".into();
+    let (fallback, error) = search(
+        &config,
+        Some(&path),
+        &models_dir,
+        None,
+        "hello",
+        10,
+        &filters,
+    )
+    .await
+    .unwrap();
+    assert!(error.is_some());
+    assert_eq!(
+        serde_json::to_value(fallback).unwrap(),
+        serde_json::to_value(hits).unwrap()
+    );
+    assert!(
+        search(&config, None, &models_dir, None, "hello", 10, &filters)
+            .await
+            .is_err()
+    );
+    server.abort();
+}
+
+fn seed_ready(path: &Path, generation: &str) {
+    drop(seed(path));
+    let mut storage = Storage::open_writer(path).unwrap();
+    storage.rebuild_derived_search_state().unwrap();
+    storage
+        .replace_embeddings(
+            generation,
+            &[EmbeddingWrite {
+                message_id: "searchable",
+                vector: &[127; 384],
+                norm: 127.0 * 384_f32.sqrt(),
+            }],
+        )
+        .unwrap();
+    storage.mark_semantic_index_ready(generation).unwrap();
+    storage.commit_writer().unwrap();
+}
+
+#[tokio::test]
 async fn http_pool_reuses_connections_without_caching_node_credentials() {
     use axum::extract::{ConnectInfo, State};
     use axum::http::{HeaderMap, Method};
