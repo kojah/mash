@@ -17,6 +17,9 @@ mod semantic_chunks;
 
 #[cfg(test)]
 use schema::SCHEMA_VERSION;
+#[allow(dead_code, clippy::all, clippy::pedantic)]
+#[path = "storage/generated/queries.rs"]
+mod generated;
 use schema::initialize;
 #[cfg(test)]
 use semantic_chunks::validate_quantized_vector;

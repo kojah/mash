@@ -8,6 +8,7 @@ use crate::AppError;
 use crate::provider::Provider;
 use crate::storage::{Counts, Message, SearchHit};
 use deadpool_postgres::{Pool, Transaction};
+use mash_postgres::queries::index as pg;
 use std::collections::HashMap;
 use tokio::io::AsyncBufReadExt;
 use tokio_postgres::Row;
@@ -38,15 +39,9 @@ async fn lock_node(
     )
     .await
     .map_err(pg_error)?;
-    let row = tx
-        .query_one(
-            "SELECT instance,revision FROM nodes WHERE node_id=$1 FOR UPDATE",
-            &[&node],
-        )
-        .await
-        .map_err(pg_error)?;
-    let instance: String = row.try_get(0).map_err(pg_error)?;
-    let accepted: i64 = row.try_get(1).map_err(pg_error)?;
+    let row = pg::node().bind(tx, &node).one().await.map_err(pg_error)?;
+    let instance = row.instance;
+    let accepted = row.revision;
     if instance != start.instance {
         return Err(conflict(
             "node_id belongs to another database or indexing mode; choose a new node_id",
@@ -90,7 +85,7 @@ async fn forget_in_transaction(
         .await
         .map_err(pg_error)?;
     if let Some(row) = &deleted {
-        let provider: Provider = row.try_get(0).map_err(pg_error)?;
+        let provider: Provider = row.try_get("provider").map_err(pg_error)?;
         tx.execute(
             "INSERT INTO tombstones VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
             &[&node, &provider.as_str(), &id],
@@ -120,15 +115,9 @@ pub(super) async fn forget(
     )
     .await
     .map_err(pg_error)?;
-    let row = tx
-        .query_one(
-            "SELECT instance,revision FROM nodes WHERE node_id=$1 FOR UPDATE",
-            &[&node],
-        )
-        .await
-        .map_err(pg_error)?;
-    let instance: String = row.try_get(0).map_err(pg_error)?;
-    let accepted: i64 = row.try_get(1).map_err(pg_error)?;
+    let row = pg::node().bind(&tx, &node).one().await.map_err(pg_error)?;
+    let instance = row.instance;
+    let accepted = row.revision;
     if instance != input.instance || input.revision.is_some_and(|r| r <= accepted) {
         return Err(conflict("node identity or revision conflict"));
     }
@@ -160,7 +149,7 @@ async fn remove(tx: &Transaction<'_>, node: &str, id: &str) -> Result<(u64, u64)
         )
         .await
         .map_err(pg_error)?
-        .try_get(0)
+        .try_get("count")
         .map_err(pg_error)?;
     let conversations = tx
         .execute(
@@ -332,7 +321,10 @@ pub(super) async fn index(
                 let observed = seen.get(&provider).cloned().unwrap_or_default();
                 let missing=tx.query("DELETE FROM direct_sources WHERE node_id=$1 AND provider=$2 AND NOT(path_hash=ANY($3)) AND ($4::bigint IS NULL OR modified_ns>=$4) RETURNING conversation_id", &[&node,&provider.as_str(),&observed,&cutoff]).await.map_err(pg_error)?;
                 for r in missing {
-                    if let Some(id) = r.try_get::<_, Option<String>>(0).map_err(pg_error)? {
+                    if let Some(id) = r
+                        .try_get::<_, Option<String>>("conversation_id")
+                        .map_err(pg_error)?
+                    {
                         let referenced=tx.query_opt("SELECT 1 FROM direct_sources WHERE node_id=$1 AND conversation_id=$2", &[&node,&id]).await.map_err(pg_error)?.is_some();
                         if !referenced {
                             let (m, c) = remove(&tx, node, &id).await?;
@@ -438,12 +430,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
         tx.batch_execute(include_str!("schema.sql"))
             .await
             .map_err(pg_error)?;
-        let version: i32 = tx
-            .query_one("SELECT version FROM version WHERE singleton", &[])
-            .await
-            .map_err(pg_error)?
-            .try_get(0)
-            .map_err(pg_error)?;
+        let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
         if version != 4 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
@@ -453,31 +440,22 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
 pub(super) async fn freshness(pool: &Pool, config: &Identity) -> Result<Freshness, AppError> {
     let mut connection = connection(pool).await?;
     let client = transaction(&mut connection, config).await?;
-    let rows = client
-        .query(
-            "SELECT n.node_id,n.revision,
-         to_char(s.last_synced_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
-         to_char(s.last_updated_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'),
-         (SELECT count(*) FROM conversations c WHERE c.node_id=n.node_id),
-         (SELECT count(*) FROM messages m WHERE m.node_id=n.node_id)
-         FROM nodes n LEFT JOIN node_sync s USING(node_id) ORDER BY n.node_id",
-            &[],
-        )
+    let rows = pg::freshness()
+        .bind(&client)
+        .all()
         .await
         .map_err(pg_error)?;
     let nodes = rows
         .into_iter()
-        .map(|row| {
-            Ok(NodeFreshness {
-                node_id: row.try_get(0).map_err(pg_error)?,
-                revision: row.try_get(1).map_err(pg_error)?,
-                last_synced_at: row.try_get(2).map_err(pg_error)?,
-                last_updated_at: row.try_get(3).map_err(pg_error)?,
-                conversations: row.try_get(4).map_err(pg_error)?,
-                messages: row.try_get(5).map_err(pg_error)?,
-            })
+        .map(|row| NodeFreshness {
+            node_id: row.node_id,
+            revision: row.revision,
+            last_synced_at: row.last_synced_at,
+            last_updated_at: row.last_updated_at,
+            conversations: row.conversations,
+            messages: row.messages,
         })
-        .collect::<Result<_, AppError>>()?;
+        .collect();
     Ok(Freshness {
         group_id: config.group_id.clone(),
         nodes,
@@ -513,35 +491,42 @@ pub(super) async fn view(
 ) -> Result<Vec<Message>, AppError> {
     let mut connection = connection(pool).await?;
     let client = transaction(&mut connection, config).await?;
-    client.query("SELECT m.id,m.ordinal,m.role,m.content,m.created_at FROM messages m
-         JOIN messages anchor ON anchor.node_id = m.node_id AND anchor.conversation_id = m.conversation_id
-         WHERE anchor.node_id = $1 AND anchor.id = $2
-           AND m.ordinal BETWEEN anchor.ordinal - $3 AND anchor.ordinal + $3 ORDER BY m.ordinal", &[&node,&id,&i64::from(context)]).await.map_err(pg_error)?.iter().map(|row| Ok(Message {
-        id: row.try_get(0).map_err(pg_error)?, ordinal: row.try_get(1).map_err(pg_error)?,
-        role: row.try_get(2).map_err(pg_error)?, content: row.try_get(3).map_err(pg_error)?,
-        created_at: row.try_get(4).map_err(pg_error)?,
-    })).collect()
+    let rows = pg::view()
+        .bind(&client, &node, &id, &i64::from(context))
+        .all()
+        .await
+        .map_err(pg_error)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| Message {
+            id: row.id,
+            ordinal: row.ordinal,
+            role: row.role.into(),
+            content: row.content,
+            created_at: row.created_at,
+        })
+        .collect())
 }
 
-fn hit(row: &Row, lexical: bool) -> Result<SearchHit, AppError> {
-    let score: f64 = row.try_get(7).map_err(pg_error)?;
+fn hit(row: pg::Search, lexical: bool) -> Result<SearchHit, AppError> {
+    let score = row.score;
     #[allow(clippy::cast_possible_truncation)]
     let semantic_score = (!lexical).then_some(score as f32);
     Ok(SearchHit {
-        node_id: Some(row.try_get(0).map_err(pg_error)?),
-        id: row.try_get(1).map_err(pg_error)?,
-        conversation_id: row.try_get(2).map_err(pg_error)?,
-        provider: row.try_get(3).map_err(pg_error)?,
-        role: row.try_get(4).map_err(pg_error)?,
-        content: row.try_get(6).map_err(pg_error)?,
+        node_id: Some(row.node_id),
+        id: row.id,
+        conversation_id: row.conversation_id,
+        provider: row.provider.parse()?,
+        role: row.role.into(),
+        content: row.projection,
         copies: Vec::new(),
-        created_at: row.try_get(8).map_err(pg_error)?,
+        created_at: row.created_at,
         metadata: crate::search_results::ThreadMetadata {
-            title: row.try_get(9).map_err(pg_error)?,
-            project: row.try_get(10).map_err(pg_error)?,
-            repository: row.try_get(11).map_err(pg_error)?,
-            created_at: row.try_get(12).map_err(pg_error)?,
-            updated_at: row.try_get(13).map_err(pg_error)?,
+            title: row.title,
+            project: row.project,
+            repository: row.repository,
+            created_at: row.conversation_created_at,
+            updated_at: row.conversation_updated_at,
         },
         lexical_score: lexical.then_some(-score),
         semantic_score,
@@ -554,6 +539,92 @@ struct Candidates {
     lexical: Vec<SearchHit>,
     semantic: Vec<SearchHit>,
     documents: HashMap<(String, String), String>,
+}
+
+// Expressive filters have a runtime SQL predicate. The projection matches the
+// generated search model, with named decoding for this dynamic-query boundary.
+fn filtered_search_row(row: &Row) -> Result<pg::Search, AppError> {
+    Ok(pg::Search {
+        node_id: row.try_get("node_id").map_err(pg_error)?,
+        id: row.try_get("id").map_err(pg_error)?,
+        conversation_id: row.try_get("conversation_id").map_err(pg_error)?,
+        provider: row.try_get("provider").map_err(pg_error)?,
+        role: row.try_get("role").map_err(pg_error)?,
+        projection: row.try_get("projection").map_err(pg_error)?,
+        score: row.try_get("score").map_err(pg_error)?,
+        created_at: row.try_get("created_at").map_err(pg_error)?,
+        title: row.try_get("title").map_err(pg_error)?,
+        project: row.try_get("project").map_err(pg_error)?,
+        repository: row.try_get("repository").map_err(pg_error)?,
+        conversation_created_at: row.try_get("conversation_created_at").map_err(pg_error)?,
+        conversation_updated_at: row.try_get("conversation_updated_at").map_err(pg_error)?,
+    })
+}
+
+async fn filtered_candidates(
+    client: &Transaction<'_>,
+    params: pg::SearchParams<&str, &str, &str, &str>,
+    vector: &str,
+    dimensions: i32,
+    predicate: &str,
+) -> Result<(Vec<pg::Search>, Vec<pg::Search>), AppError> {
+    let pg::SearchParams {
+        query,
+        generation,
+        provider,
+        cutoff,
+        exclude_node,
+        limit: candidate_limit,
+    } = params;
+    let lexical = client
+        .query(
+            &format!(
+                "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
+                ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
+         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
+         WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
+           AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
+           AND ($5::text IS NULL OR m.node_id<>$5)
+           AND ({predicate})
+         ORDER BY score DESC,m.node_id,m.id LIMIT {candidate_limit}"
+            ),
+            &[&query, &generation, &provider, &cutoff, &exclude_node],
+        )
+        .await
+        .map_err(pg_error)?;
+    let semantic = client
+        .query(
+            &format!(
+                "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
+                1.0 - (m.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
+         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
+         WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
+           AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
+           AND ($6::text IS NULL OR m.node_id<>$6)
+           AND ({predicate})
+         ORDER BY score DESC,m.node_id,m.id LIMIT {candidate_limit}"
+            ),
+            &[
+                &vector,
+                &generation,
+                &provider,
+                &cutoff,
+                &dimensions,
+                &exclude_node,
+            ],
+        )
+        .await
+        .map_err(pg_error)?;
+    Ok((
+        lexical
+            .iter()
+            .map(filtered_search_row)
+            .collect::<Result<Vec<_>, _>>()?,
+        semantic
+            .iter()
+            .map(filtered_search_row)
+            .collect::<Result<Vec<_>, _>>()?,
+    ))
 }
 
 async fn candidates(
@@ -589,62 +660,71 @@ async fn candidates(
         i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?;
     let vector =
         serde_json::to_string(vector).map_err(|_| AppError::usage("invalid query vector"))?;
-    let lexical = client
-        .query(
-            &format!(
-                "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at,c.updated_at
-         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
-         WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
-           AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
-           AND ($5::text IS NULL OR m.node_id<>$5)
-           AND ({predicate})
-         ORDER BY score DESC,m.node_id,m.id LIMIT {candidate_limit}"
-            ),
-            &[&query, &generation, &provider, &cutoff, &exclude_node],
-        )
-        .await
-        .map_err(pg_error)?;
-    let semantic = client
-        .query(
-            &format!(
-                "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                1.0 - (m.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at,c.updated_at
-         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
-         WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
-           AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
-           AND ($6::text IS NULL OR m.node_id<>$6)
-           AND ({predicate})
-         ORDER BY score DESC,m.node_id,m.id LIMIT {candidate_limit}"
-            ),
-            &[
-                &vector,
-                &generation,
+    let (lexical, semantic) = if filter.is_none() {
+        let limit = i64::try_from(candidate_limit).map_err(|_| AppError::usage("invalid limit"))?;
+        let lexical = pg::search()
+            .bind(
+                client,
+                &query,
+                generation,
                 &provider,
                 &cutoff,
-                &dimensions,
                 &exclude_node,
-            ],
+                &limit,
+            )
+            .all()
+            .await
+            .map_err(pg_error)?;
+        let semantic = pg::semantic()
+            .bind(
+                client,
+                &vector,
+                generation,
+                &dimensions,
+                &provider,
+                &cutoff,
+                &exclude_node,
+                &limit,
+            )
+            .all()
+            .await
+            .map_err(pg_error)?;
+        (lexical, semantic)
+    } else {
+        filtered_candidates(
+            client,
+            pg::SearchParams {
+                query,
+                generation,
+                provider,
+                cutoff,
+                exclude_node,
+                limit: i64::try_from(candidate_limit)
+                    .map_err(|_| AppError::usage("invalid limit"))?,
+            },
+            &vector,
+            dimensions,
+            &predicate,
         )
-        .await
-        .map_err(pg_error)?;
-    let mut documents = HashMap::new();
-    for row in lexical.iter().chain(&semantic) {
-        documents.insert(
+        .await?
+    };
+    let documents = lexical
+        .iter()
+        .chain(&semantic)
+        .map(|row| {
             (
-                row.try_get(0).map_err(pg_error)?,
-                row.try_get(1).map_err(pg_error)?,
-            ),
-            row.try_get(6).map_err(pg_error)?,
-        );
-    }
+                (row.node_id.clone(), row.id.clone()),
+                row.projection.clone(),
+            )
+        })
+        .collect();
     Ok(Candidates {
         lexical: lexical
-            .iter()
+            .into_iter()
             .map(|r| hit(r, true))
             .collect::<Result<_, _>>()?,
         semantic: semantic
-            .iter()
+            .into_iter()
             .map(|r| hit(r, false))
             .collect::<Result<_, _>>()?,
         documents,
@@ -670,7 +750,17 @@ pub(super) async fn search(
     let mut connection = connection(pool).await?;
     let mut tx = transaction(&mut connection, identity).await?;
     let exclude_node = input.exclude_self.then_some(identity.node_id.as_str());
-    let incompatible: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM messages WHERE projection <> '' AND ($3::text IS NULL OR node_id<>$3) AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2))", &[&identity.generation, &i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?, &exclude_node]).await.map_err(pg_error)?.try_get(0).map_err(pg_error)?;
+    let incompatible = pg::incompatible()
+        .bind(
+            &tx,
+            &exclude_node,
+            &identity.generation,
+            &i32::try_from(identity.dimensions)
+                .map_err(|_| AppError::usage("invalid dimensions"))?,
+        )
+        .one()
+        .await
+        .map_err(pg_error)?;
     if incompatible {
         return Err(AppError::shared(
             "shared embeddings are incomplete or incompatible; run mash index on publishing nodes",
@@ -705,12 +795,22 @@ pub(super) async fn counts(
     node: &str,
     identity: &Identity,
 ) -> Result<Counts, AppError> {
-    let row = tx.query_one("SELECT (SELECT count(*) FROM conversations WHERE node_id=$1), count(*), count(*) FILTER(WHERE projection<>''), count(*) FILTER(WHERE projection<>'' AND generation=$2 AND vector_dims(vector)=$3) FROM messages WHERE node_id=$1", &[&node,&identity.generation,&i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?]).await.map_err(pg_error)?;
+    let row = pg::counts()
+        .bind(
+            tx,
+            &node,
+            &identity.generation,
+            &i32::try_from(identity.dimensions)
+                .map_err(|_| AppError::usage("invalid dimensions"))?,
+        )
+        .one()
+        .await
+        .map_err(pg_error)?;
     Ok(Counts {
-        conversations: row.try_get::<_, i64>(0).map_err(pg_error)?.cast_unsigned(),
-        messages: row.try_get::<_, i64>(1).map_err(pg_error)?.cast_unsigned(),
-        searchable_messages: row.try_get::<_, i64>(2).map_err(pg_error)?.cast_unsigned(),
-        embeddings: row.try_get::<_, i64>(3).map_err(pg_error)?.cast_unsigned(),
+        conversations: row.conversations.cast_unsigned(),
+        messages: row.messages.cast_unsigned(),
+        searchable_messages: row.searchable_messages.cast_unsigned(),
+        embeddings: row.embeddings.cast_unsigned(),
     })
 }
 pub(super) async fn status(pool: &Pool, identity: &Identity) -> Result<Counts, AppError> {
@@ -721,37 +821,48 @@ pub(super) async fn status(pool: &Pool, identity: &Identity) -> Result<Counts, A
 pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState, AppError> {
     let mut connection = connection(pool).await?;
     let tx = transaction(&mut connection, identity).await?;
-    let node = tx
-        .query_opt(
-            "SELECT instance,revision FROM nodes WHERE node_id=$1",
-            &[&&identity.node_id],
-        )
+    let node = pg::node_state()
+        .bind(&tx, &identity.node_id)
+        .opt()
         .await
         .map_err(pg_error)?;
     let (instance, revision) = if let Some(row) = node {
-        (
-            Some(row.try_get(0).map_err(pg_error)?),
-            row.try_get(1).map_err(pg_error)?,
-        )
+        (Some(row.instance), row.revision)
     } else {
         (None, 0)
     };
     let mut sources = Vec::new();
-    for r in tx.query("SELECT provider,path_hash,size_bytes,modified_ns,conversation_id, NOT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $2 OR vector IS NULL OR vector_dims(vector)<>$3)) FROM direct_sources s WHERE node_id=$1", &[&&identity.node_id,&identity.generation,&i32::try_from(identity.dimensions).map_err(|_| AppError::usage("invalid dimensions"))?]).await.map_err(pg_error)? {
-        sources.push(Checkpoint {provider:r.try_get(0).map_err(pg_error)?, path_hash:r.try_get(1).map_err(pg_error)?,size_bytes:r.try_get(2).map_err(pg_error)?,modified_ns:r.try_get(3).map_err(pg_error)?,conversation_id:r.try_get(4).map_err(pg_error)?,ready:r.try_get(5).map_err(pg_error)?});
+    for r in pg::sources()
+        .bind(
+            &tx,
+            &identity.generation,
+            &i32::try_from(identity.dimensions)
+                .map_err(|_| AppError::usage("invalid dimensions"))?,
+            &identity.node_id,
+        )
+        .all()
+        .await
+        .map_err(pg_error)?
+    {
+        sources.push(Checkpoint {
+            provider: r.provider.parse()?,
+            path_hash: r.path_hash,
+            size_bytes: r.size_bytes,
+            modified_ns: r.modified_ns,
+            conversation_id: r.conversation_id,
+            ready: r.ready,
+        });
     }
     let mut tombstones = Vec::new();
-    for r in tx
-        .query(
-            "SELECT provider,conversation_id FROM tombstones WHERE node_id=$1",
-            &[&&identity.node_id],
-        )
+    for r in pg::tombstones()
+        .bind(&tx, &identity.node_id)
+        .all()
         .await
         .map_err(pg_error)?
     {
         tombstones.push(Tombstone {
-            provider: r.try_get(0).map_err(pg_error)?,
-            conversation_id: r.try_get(1).map_err(pg_error)?,
+            provider: r.provider.parse()?,
+            conversation_id: r.conversation_id,
         });
     }
     tx.commit().await.map_err(pg_error)?;

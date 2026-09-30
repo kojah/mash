@@ -70,6 +70,16 @@ jobs:
           tool: nextest
           fallback: none
       - run: cargo fmt --check
+      - uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        with:
+          tool: sqlc@1.31.1
+          fallback: none
+      - name: Install PostgreSQL query generator
+        run: cargo install cornucopia --version 1.0.1 --locked
+      - name: Verify generated database queries
+        run: make check-generated
+        env:
+          MASH_CODEGEN_POSTGRES_URL: postgresql://postgres:mash-test@localhost:5432
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo nextest run --profile ci
       - name: Verify shared PostgreSQL publication

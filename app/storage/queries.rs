@@ -2,6 +2,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
+use super::generated as sql;
 use super::schema::SCHEMA_VERSION;
 use super::{Counts, Message, SearchHit, StatusSnapshot, Storage, cutoff_timestamp};
 use crate::AppError;
@@ -89,37 +90,17 @@ impl Storage {
     }
 
     pub(crate) fn counts(&self) -> Result<Counts, AppError> {
-        let conversations: i64 = self
-            .connection
-            .query_row("SELECT count(*) FROM conversations", [], |row| row.get(0))
-            .map_err(AppError::database)?;
-        let messages: i64 = self
-            .connection
-            .query_row("SELECT count(*) FROM messages", [], |row| row.get(0))
-            .map_err(AppError::database)?;
-        let embeddings: i64 = self
-            .connection
-            .query_row("SELECT count(*) FROM message_embeddings", [], |row| {
-                row.get(0)
-            })
-            .map_err(AppError::database)?;
-        let searchable_messages: i64 = self
-            .connection
-            .query_row(
-                "SELECT count(*) FROM messages
-                  WHERE COALESCE(search_projection, content) <> ''",
-                [],
-                |row| row.get(0),
-            )
+        let counts = sql::Counts
+            .query_one(&self.connection)
             .map_err(AppError::database)?;
         Ok(Counts {
-            conversations: u64::try_from(conversations)
+            conversations: u64::try_from(counts.conversations)
                 .map_err(|_| AppError::internal("negative conversation count"))?,
-            messages: u64::try_from(messages)
+            messages: u64::try_from(counts.messages)
                 .map_err(|_| AppError::internal("negative message count"))?,
-            searchable_messages: u64::try_from(searchable_messages)
+            searchable_messages: u64::try_from(counts.searchable_messages)
                 .map_err(|_| AppError::internal("negative searchable message count"))?,
-            embeddings: u64::try_from(embeddings)
+            embeddings: u64::try_from(counts.embeddings)
                 .map_err(|_| AppError::internal("negative embedding count"))?,
         })
     }
@@ -149,11 +130,16 @@ impl Storage {
         let limit = i64::try_from(limit.min(1_000)).unwrap_or(1_000);
         let cutoff = cutoff_timestamp(days)?;
         let predicate = filters.map_or_else(|| "TRUE".to_owned(), |f| f.filter.sql(Some(&f.node)));
+        // Reuse the generated projection verbatim so its decoder stays aligned
+        // when fields are added or reordered. sqlc cannot analyze FTS MATCH's
+        // table operand; only that ranking/filtering clause is handwritten.
+        let (projection, _) = sql::SearchHit::QUERY
+            .split_once("FROM messages m")
+            .ok_or_else(|| AppError::internal("invalid generated search projection"))?;
         let mut statement = self
             .connection
             .prepare(&format!(
-                "SELECT m.id, m.conversation_id, c.provider, m.role, COALESCE(m.search_projection, m.content),
-                        bm25(message_fts) AS lexical_score, m.created_at, c.title, c.project, c.repository, c.created_at, c.updated_at
+                "{projection}, bm25(message_fts) AS lexical_score
                    FROM message_fts
                    JOIN messages m ON m.id = message_fts.message_id
                    JOIN conversations c ON c.id = m.conversation_id
@@ -167,75 +153,36 @@ impl Storage {
             .map_err(AppError::database)?;
         let rows = statement
             .query_map(params![query, provider, cutoff, limit], |row| {
-                Ok(SearchHit {
-                    id: row.get(0)?,
-                    conversation_id: row.get(1)?,
-                    provider: row.get(2)?,
-                    role: row.get(3)?,
-                    content: row.get(4)?,
-                    copies: Vec::new(),
-                    created_at: row.get(6)?,
-                    metadata: crate::search_results::ThreadMetadata {
-                        title: row.get(7)?,
-                        project: row.get(8)?,
-                        repository: row.get(9)?,
-                        created_at: row.get(10)?,
-                        updated_at: row.get(11)?,
-                    },
-                    lexical_score: Some(row.get(5)?),
-                    semantic_score: None,
-                    fusion_score: 0.0,
-                    rerank_score: None,
-                    node_id: None,
-                })
+                Ok((
+                    sql::SearchHitRow::from_row(row)?,
+                    row.get::<_, f64>("lexical_score")?,
+                ))
             })
             .map_err(AppError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(AppError::database)
+        rows.map(|row| {
+            let (row, score) = row.map_err(AppError::database)?;
+            let mut hit = search_hit(row)?;
+            hit.lexical_score = Some(score);
+            Ok(hit)
+        })
+        .collect()
     }
 
     pub(crate) fn search_hits(&self, message_rowids: &[i64]) -> Result<Vec<SearchHit>, AppError> {
         let mut statement = self
             .connection
-            .prepare_cached(
-                "SELECT m.id, m.conversation_id, c.provider, m.role, COALESCE(m.search_projection, m.content), m.created_at, c.title, c.project, c.repository, c.created_at, c.updated_at
-                   FROM messages m
-                   JOIN conversations c ON c.id = m.conversation_id
-                  WHERE m.rowid = ?1",
-            )
+            .prepare_cached(sql::SearchHit::QUERY)
             .map_err(AppError::database)?;
         let mut hits = Vec::with_capacity(message_rowids.len());
         for message_rowid in message_rowids {
             let hit = statement
-                .query_row([message_rowid], |row| {
-                    Ok(SearchHit {
-                        id: row.get(0)?,
-                        conversation_id: row.get(1)?,
-                        provider: row.get(2)?,
-                        role: row.get(3)?,
-                        content: row.get(4)?,
-                        copies: Vec::new(),
-                        created_at: row.get(5)?,
-                        metadata: crate::search_results::ThreadMetadata {
-                            title: row.get(6)?,
-                            project: row.get(7)?,
-                            repository: row.get(8)?,
-                            created_at: row.get(9)?,
-                            updated_at: row.get(10)?,
-                        },
-                        lexical_score: None,
-                        semantic_score: None,
-                        fusion_score: 0.0,
-                        rerank_score: None,
-                        node_id: None,
-                    })
-                })
+                .query_row([message_rowid], sql::SearchHitRow::from_row)
                 .optional()
                 .map_err(AppError::database)?;
             let hit = hit.ok_or_else(|| {
                 AppError::database_data("semantic index references a missing message")
             })?;
-            hits.push(hit);
+            hits.push(search_hit(hit)?);
         }
         Ok(hits)
     }
@@ -243,67 +190,71 @@ impl Storage {
     pub(crate) fn search_documents(&self, message_ids: &[&str]) -> Result<Vec<String>, AppError> {
         let mut statement = self
             .connection
-            .prepare_cached(
-                "SELECT COALESCE(search_projection, content)
-                   FROM messages
-                  WHERE id = ?1",
-            )
+            .prepare_cached(sql::SearchDocument::QUERY)
             .map_err(AppError::database)?;
         message_ids
             .iter()
             .map(|message_id| {
                 statement
-                    .query_row([message_id], |row| row.get(0))
+                    .query_row([message_id], sql::SearchDocumentRow::from_row)
+                    .map(|row| row.content)
                     .map_err(AppError::database)
             })
             .collect()
     }
 
     pub(crate) fn view(&self, id: &str, context: u32) -> Result<Vec<Message>, AppError> {
-        let anchor: Option<(String, i64)> = self
-            .connection
-            .query_row(
-                "SELECT conversation_id, ordinal FROM messages WHERE id = ?1",
-                [id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
+        let anchor = sql::Anchor::builder()
+            .id(id)
+            .build()
+            .query_opt(&self.connection)
             .map_err(AppError::database)?;
-        let Some((conversation_id, ordinal)) = anchor else {
+        let Some(anchor) = anchor else {
             return Ok(Vec::new());
         };
         let context = i64::from(context);
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT id, ordinal, role, content, created_at
-                   FROM messages
-                  WHERE conversation_id = ?1
-                    AND ordinal BETWEEN ?2 AND ?3
-                  ORDER BY ordinal",
-            )
+        let rows = sql::ViewMessages::builder()
+            .conversation_id(&anchor.conversation_id)
+            .first_ordinal(anchor.ordinal.saturating_sub(context))
+            .last_ordinal(anchor.ordinal.saturating_add(context))
+            .build()
+            .query_many(&self.connection)
             .map_err(AppError::database)?;
-        let rows = statement
-            .query_map(
-                params![
-                    conversation_id,
-                    ordinal.saturating_sub(context),
-                    ordinal.saturating_add(context)
-                ],
-                |row| {
-                    Ok(Message {
-                        id: row.get(0)?,
-                        ordinal: row.get(1)?,
-                        role: row.get(2)?,
-                        content: row.get(3)?,
-                        created_at: row.get(4)?,
-                    })
-                },
-            )
-            .map_err(AppError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(AppError::database)
+        Ok(rows
+            .into_iter()
+            .map(|row| Message {
+                id: row.id,
+                ordinal: row.ordinal,
+                role: row.role.into(),
+                content: row.content,
+                created_at: row.created_at,
+            })
+            .collect())
     }
+}
+
+fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> {
+    Ok(SearchHit {
+        id: row.id,
+        conversation_id: row.conversation_id,
+        provider: row.provider.parse()?,
+        role: row.role.into(),
+        content: row.content,
+        copies: Vec::new(),
+        created_at: row.created_at,
+        metadata: crate::search_results::ThreadMetadata {
+            title: row.title,
+            project: row.project,
+            repository: row.repository,
+            created_at: row.conversation_created_at,
+            updated_at: row.conversation_updated_at,
+        },
+        lexical_score: None,
+        semantic_score: None,
+        fusion_score: 0.0,
+        rerank_score: None,
+        node_id: None,
+    })
 }
 
 fn readonly_table_count(connection: &Connection, table: &str) -> Result<u64, AppError> {

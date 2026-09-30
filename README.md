@@ -11,6 +11,23 @@ The service uses Redis Search by default, with PostgreSQL + pgvector as an alter
 
 ## Commands
 
+Database query models are generated with Cornucopia 1.0.1 for PostgreSQL and
+sqlc 1.31.1 / sqlc-gen-rust 0.1.12 for Rusqlite. Generated output is checked in;
+normal Cargo builds require neither generators nor a running database.
+To regenerate as part of a build, install these generator versions and run
+`make build CODEGEN=1` (add `CARGO_ARGS='--release --locked'` for release).
+`make generate-queries` regenerates without compiling; `make check-generated`
+checks for stale output. PostgreSQL validation uses a disposable pgvector Docker
+container, or a temporary database on `MASH_CODEGEN_POSTGRES_URL` (server URL
+without a database path). SQLite generation reads the same schema SQL used at
+runtime. CI checks regeneration against the committed output.
+
+Generated typed reads cover retrieval, viewing, status, and shared freshness/state.
+Runtime filter predicates and FTS ranking retain custom SQL; dynamic PostgreSQL
+rows use column names and the generated result model, while SQLite reuses the
+generated projection and decoder. Schema migrations and low-level vector/storage
+writes remain explicit driver operations.
+
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
