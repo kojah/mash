@@ -1020,17 +1020,35 @@ rustup component add llvm-tools-preview
 make coverage
 ```
 
-This runs every test except the three manual benchmarks, including the installed
+This runs every test except the manual benchmarks, including the installed
 model and both shared-backend contracts. It writes LLVM JSON coverage to
 `target/llvm-cov/coverage.json`; set `COVERAGE_OUTPUT` to choose another location.
 The coverage task cleans workspace coverage artifacts before execution so older
 binaries cannot contribute obsolete source mappings in a persistent target.
 Generated SQL bindings, separate test files, standalone test helpers and the
-test-only relevance evaluator are excluded from the report.
+test-only relevance evaluator and manual benchmark modules are excluded from the report.
 Tests embedded in production source files still contribute to those files'
 coverage, so assess uncovered behavior as well as the aggregate percentage.
 Coverage needs LLVM instrumentation; regular development continues to use
 Cranelift. On the affected nightly, use `RUSTFLAGS=-Znext-solver=no make coverage`.
+
+To compare inference thread counts and reranking batch sizes on your own corpus,
+use an explicitly refreshed, isolated index and installed models:
+
+```bash
+MASH_TEST_MODELS_DIR=/path/to/installed/models \
+MASH_TEST_SEARCH_DB=/path/to/refreshed/index.sqlite3 \
+  cargo test-clif --release --run-ignored all -j 1 \
+  -E 'test(benchmark_real_search)' --success-output immediate
+```
+
+These manual diagnostics open the index read-only, warm models, and emit JSON
+timings for seven queries in message and thread modes. They compare ordered
+message IDs and thread excerpt IDs against the default inference configuration;
+the batch comparison also checks scores. Ranking changes fail the diagnostic.
+Repeated settings help reveal timing noise. Measurements exclude CLI startup,
+worker transport and shared search, and do not establish relevance by themselves.
+Use these alongside end-to-end measurements before changing production defaults.
 
 
 ## Automatic deployment

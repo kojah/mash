@@ -208,6 +208,10 @@ impl Models {
 }
 
 fn load_reranker(root: &Path) -> Result<TextRerank, AppError> {
+    load_reranker_with_threads(root, None)
+}
+
+fn load_reranker_with_threads(root: &Path, threads: Option<usize>) -> Result<TextRerank, AppError> {
     let reranker_snapshot = snapshot(root, RERANKER_REPOSITORY)?;
     let reranker_info = TextRerank::get_model_info(&RERANKER_MODEL);
     let reranker_model = UserDefinedRerankingModel::new(
@@ -216,7 +220,9 @@ fn load_reranker(root: &Path) -> Result<TextRerank, AppError> {
     );
     let reranker = TextRerank::try_new_from_user_defined(
         reranker_model,
-        RerankInitOptionsUserDefined::default(),
+        threads.map_or_else(RerankInitOptionsUserDefined::default, |threads| {
+            RerankInitOptionsUserDefined::default().with_intra_threads(threads)
+        }),
     )
     .map_err(|error| AppError::model(format!("failed to load reranking model: {error}")))?;
     Ok(reranker)
@@ -264,6 +270,18 @@ impl Backend {
         query: S,
         documents: &[S],
     ) -> Result<Vec<fastembed::RerankResult>, AppError> {
+        self.rerank_batched(query, documents, 4)
+    }
+
+    fn rerank_batched<S: AsRef<str> + Send + Sync>(
+        &mut self,
+        query: S,
+        documents: &[S],
+        batch_size: usize,
+    ) -> Result<Vec<fastembed::RerankResult>, AppError> {
+        if batch_size == 0 {
+            return Err(AppError::internal("reranking batch size must be positive"));
+        }
         let mut order = (0..documents.len()).collect::<Vec<_>>();
         let bucket = |index: usize| documents[index].as_ref().len().next_power_of_two();
         order.sort_by_key(|&index| bucket(index));
@@ -271,14 +289,14 @@ impl Backend {
         // Small batches of similarly sized documents amortize inference calls
         // without making a long history message pad every short candidate.
         for group in order.chunk_by(|&a, &b| bucket(a) == bucket(b)) {
-            for indices in group.chunks(4) {
+            for indices in group.chunks(batch_size) {
                 let refs = indices
                     .iter()
                     .map(|&index| documents[index].as_ref())
                     .collect::<Vec<_>>();
                 let results = self
                     .reranker
-                    .rerank(query.as_ref(), &refs, false, Some(4))
+                    .rerank(query.as_ref(), &refs, false, Some(batch_size))
                     .map_err(|error| {
                         AppError::model(format!("reranking inference failed: {error}"))
                     })?;
@@ -352,6 +370,8 @@ const fn embedding_model_description() -> &'static str {
     }
 }
 
+#[cfg(test)]
+mod benchmarks;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

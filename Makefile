@@ -26,4 +26,4 @@ coverage:
 	# Persistent targets can retain old binaries and mix obsolete source mappings.
 	cargo llvm-cov clean --workspace
 	cargo llvm-cov nextest --no-report --run-ignored all -j 2 -E 'not test(benchmark)' $(CARGO_ARGS)
-	cargo llvm-cov report --json --ignore-filename-regex '/generated/|/tests(/|\.rs$$)|/test_support\.rs$$|/semantic/evaluation\.rs$$' --output-path "$(COVERAGE_OUTPUT)"
+	cargo llvm-cov report --json --ignore-filename-regex '/generated/|/tests(/|\.rs$$)|/test_support\.rs$$|/benchmarks\.rs$$|/semantic/evaluation\.rs$$' --output-path "$(COVERAGE_OUTPUT)"
