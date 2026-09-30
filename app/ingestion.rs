@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime};
 
+mod aider;
 mod discovery;
 mod json;
 mod parsers;
@@ -13,7 +14,7 @@ mod tests;
 
 pub(crate) use discovery::{DirectScan, direct_scans, source_stamp};
 use discovery::{
-    Discovery, cutoff_modified_ns, discover_jsonl_files, verify_authoritative_discovery,
+    Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
 };
 
 use crate::AppError;
@@ -28,6 +29,7 @@ impl Provider {
         match self {
             Self::ClaudeCode => parsers::parse_claude,
             Self::Codex => parsers::parse_codex,
+            Self::Aider => aider::parse,
         }
     }
 }
@@ -147,7 +149,7 @@ fn index_at(
         .iter()
         .map(|(&provider, roots)| {
             crate::progress::during(crate::progress::Phase::SourceDiscovery, || {
-                discover_jsonl_files(roots, options.roots_are_authoritative)
+                discover_history_files(provider, roots, options.roots_are_authoritative)
             })
             .map(|discovery| (provider, roots, discovery))
         })
@@ -305,7 +307,7 @@ fn index_provider_inner(
         }
     });
     if authoritative {
-        verify_authoritative_discovery(roots, &observed_paths)?;
+        verify_authoritative_discovery(provider, roots, &observed_paths)?;
     }
     summary.purged_conversations += reconcile_complete_sources(
         storage,

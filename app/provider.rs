@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) enum Provider {
     ClaudeCode,
     Codex,
+    Aider,
 }
 
 /// Enum keys keep configuration and routing exhaustive without duplicating a
@@ -26,10 +27,30 @@ pub(crate) enum Provider {
 pub(crate) type ProviderRoots = std::collections::BTreeMap<Provider, Vec<std::path::PathBuf>>;
 
 impl Provider {
+    pub(crate) const ALL: &[Self] = &[Self::ClaudeCode, Self::Codex, Self::Aider];
+
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
+            Self::Aider => "aider",
+        }
+    }
+
+    /// Stable storage identifiers; never renumber existing providers.
+    pub(crate) const fn storage_code(self) -> u8 {
+        match self {
+            Self::ClaudeCode => 1,
+            Self::Codex => 2,
+            Self::Aider => 3,
+        }
+    }
+
+    pub(crate) const fn redis_tag(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "c",
+            Self::Codex => "x",
+            Self::Aider => "a",
         }
     }
 }
@@ -46,6 +67,7 @@ impl std::str::FromStr for Provider {
         match value {
             "claude-code" => Ok(Self::ClaudeCode),
             "codex" => Ok(Self::Codex),
+            "aider" => Ok(Self::Aider),
             _ => Err(crate::AppError::usage("unsupported provider")),
         }
     }

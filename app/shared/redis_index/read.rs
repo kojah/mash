@@ -1,9 +1,9 @@
 //! Read candidates, context, readiness, and node freshness.
 use super::fields;
 use super::{
-    AppError, Counts, Freshness, Head, Identity, Message, NodeFreshness, NodeState, Provider,
-    Search, SearchHit, Store, decode, document_prefix, index_name, prefix, protocol, redis_error,
-    response, timestamp, valid_id, vector_bytes,
+    AppError, Counts, Freshness, Head, Identity, Message, NodeFreshness, NodeState, Search,
+    SearchHit, Store, decode, document_prefix, index_name, prefix, protocol, redis_error, response,
+    timestamp, valid_id, vector_bytes,
 };
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -115,11 +115,7 @@ impl Store {
                 &mut filters,
                 " @{}:{{{}}}",
                 fields::PROVIDER_TAG,
-                if provider == Provider::Codex {
-                    "x"
-                } else {
-                    "c"
-                }
+                provider.redis_tag()
             )
             .map_err(|_| AppError::internal("format search filter"))?;
         }

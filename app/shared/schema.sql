@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS tombstones (
 );
 CREATE TABLE IF NOT EXISTS conversations (
     node_id TEXT NOT NULL REFERENCES nodes(node_id),
-    id TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN ('claude-code', 'codex')),
+    id TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN ('claude-code', 'codex', 'aider')),
     title TEXT, created_at BIGINT, updated_at BIGINT,
     PRIMARY KEY(node_id, id)
 );
@@ -66,3 +66,12 @@ CREATE TABLE IF NOT EXISTS direct_sources (
     conversation_id TEXT,
     PRIMARY KEY(node_id, provider, path_hash)
 );
+-- New provider adapters do not require rebuilding the shared history tables.
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 4 THEN
+        ALTER TABLE conversations DROP CONSTRAINT conversations_provider_check;
+        ALTER TABLE conversations ADD CONSTRAINT conversations_provider_check
+            CHECK (provider IN ('claude-code', 'codex', 'aider'));
+        UPDATE version SET version=5 WHERE singleton;
+    END IF;
+END $$;

@@ -93,7 +93,11 @@ async fn forget_in_transaction(
         .await
         .map_err(pg_error)?;
     } else {
-        tx.execute("INSERT INTO tombstones SELECT $1,provider,$2 FROM (VALUES('claude-code'),('codex')) p(provider) ON CONFLICT DO NOTHING", &[&node,&id]).await.map_err(pg_error)?;
+        let providers = Provider::ALL
+            .iter()
+            .map(|provider| provider.as_str())
+            .collect::<Vec<_>>();
+        tx.execute("INSERT INTO tombstones SELECT $1,provider,$2 FROM unnest($3::text[]) p(provider) ON CONFLICT DO NOTHING", &[&node,&id,&providers]).await.map_err(pg_error)?;
     }
     Ok(deleted.is_some())
 }
@@ -431,7 +435,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 4 {
+        if version != 5 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }

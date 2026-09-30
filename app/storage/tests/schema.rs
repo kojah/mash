@@ -93,6 +93,59 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
     assert!(Storage::open_search(&path, "fixture").is_err());
 }
 
+#[test]
+fn provider_schema_upgrade_preserves_metadata_and_requires_explicit_refresh() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("old.sqlite3");
+    let mut storage = Storage::open_writer(&path).unwrap();
+    let mut value = conversation("keep this history");
+    value.project = Some("/work/importer".into());
+    value.repository = Some("https://example.test/importer.git".into());
+    storage.replace_conversation(&value).unwrap();
+    storage.commit_writer().unwrap();
+    // Recreate the previous provider CHECK while retaining the same metadata.
+    let schema: String = storage
+        .connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE name='conversations'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    storage
+        .connection
+        .execute_batch("PRAGMA writable_schema=ON")
+        .unwrap();
+    storage
+        .connection
+        .execute(
+            "UPDATE sqlite_schema SET sql=?1 WHERE name='conversations'",
+            [schema.replace(", 'aider'", "")],
+        )
+        .unwrap();
+    storage
+        .connection
+        .execute_batch("PRAGMA writable_schema=OFF; PRAGMA user_version=17")
+        .unwrap();
+    drop(storage);
+    let storage = Storage::open(&path).unwrap();
+    let metadata: (String, String) = storage
+        .connection
+        .query_row("SELECT project,repository FROM conversations", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(
+        metadata,
+        (value.project.unwrap(), value.repository.unwrap())
+    );
+    assert_eq!(
+        storage.view(&value.messages[0].id, 0).unwrap()[0].content,
+        "keep this history"
+    );
+    assert!(Storage::open_search(&path, "fixture").is_err());
+}
+
 const VERSION_SEVEN_SCHEMA_FIXTURE: &str = "CREATE TABLE conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (provider IN (

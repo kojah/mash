@@ -70,10 +70,10 @@ impl Data {
 }
 pub(super) fn forget(data: &mut Data, id: &str) -> Result<bool, AppError> {
     valid_id(id)?;
-    let providers = data.conversations.get(id).map_or_else(
-        || vec![Provider::ClaudeCode, Provider::Codex],
-        |c| vec![c.provider],
-    );
+    let providers = data
+        .conversations
+        .get(id)
+        .map_or_else(|| Provider::ALL.to_vec(), |c| vec![c.provider]);
     let (_, removed) = data.remove(id);
     for provider in providers {
         data.tombstones.insert(

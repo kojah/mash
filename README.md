@@ -6,7 +6,7 @@ Issue history lives on a separate Dolt Git remote in this GitHub repository;
 `bd dolt commit` and `bd dolt push` persist tracking updates. Configuration is
 versioned; database files and credentials remain local.
 
-mash (Multi-Agent Search History) searches Claude Code and Codex JSONL histories
+mash (Multi-Agent Search History) searches Claude Code, Codex, and Aider histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
 index locally, into a shared service over HTTP, or both, with independent provider allowlists.
 SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -96,10 +96,16 @@ The final command response stays JSON on stdout. Watching remains opt-in with
 
 No other command downloads models. Indexing fingerprints sources and messages,
 skips unchanged input, updates FTS incrementally for small changes, embeds only
-new or changed searchable messages, and excludes raw tool output from FTS and
+new or changed searchable messages, and excludes tool commands, raw tool output,
+reasoning blocks, and unknown roles from FTS and
 embeddings while preserving it for `view`. `--full` rebuilds derived search
 state. The default source horizon is 90 days; `--since-days N` overrides it and
 `--all-history` removes it for one run.
+
+Upgrading an existing index to schema 18 requires an explicit `mash index`.
+The migration retains canonical history and existing vectors, preserves recorded
+project/repository metadata, and invalidates source checkpoints and search
+readiness so projections are refreshed before searching.
 
 On Apple Silicon, indexing runs the FP32 embedding model through Core ML and
 quantizes only the resulting vectors for storage. Batches select a 64-, 128-,
@@ -114,6 +120,17 @@ Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`
 - Codex: `~/.codex/sessions`, `~/.local/share/codex/sessions`
+
+Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`
+or an explicit Markdown history file. Directory roots discover only
+`.aider.chat.history.md`; custom `--chat-history-file` paths can be configured
+directly. Aider's native format prefixes user lines with `####` and operational
+output with `>`; code fences are preserved. It does not record a timezone,
+per-message timestamps, or reliable repository metadata, so those fields remain
+unknown. Its unlabelled Markdown can also make assistant blockquotes ambiguous;
+outside code fences these remain context-only, consistent with operational output.
+Each history file is one thread, including appended Aider runs. See the
+[upstream history writer](https://github.com/Aider-AI/aider/blob/main/aider/io.py).
 
 ## Configuration
 

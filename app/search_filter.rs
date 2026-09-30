@@ -204,22 +204,14 @@ impl Filter {
                 if self.values().is_empty() {
                     return "(@searchable:[2 2])".to_owned();
                 }
-                let values = self
-                    .values()
-                    .iter()
-                    .map(|v| {
-                        if matches!(self, Self::Provider(_)) {
-                            if *v == "codex" {
-                                "x".to_owned()
-                            } else {
-                                "c".to_owned()
-                            }
-                        } else {
-                            tag(v)
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("|");
+                let values = match self {
+                    Self::Provider(providers) => providers
+                        .iter()
+                        .map(|provider| provider.redis_tag().to_owned())
+                        .collect::<Vec<_>>(),
+                    _ => self.values().iter().map(|value| tag(value)).collect(),
+                }
+                .join("|");
                 format!("(@{field}:{{{values}}})")
             }
         }

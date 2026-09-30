@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 17;
+pub(super) const SCHEMA_VERSION: i64 = 18;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -65,17 +65,17 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         "TEXT",
     )?;
     purge_unsupported_providers(&transaction)?;
+    add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
+    add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
     if version < 11 || !provider_schema_is_current(&transaction)? {
         rebuild_provider_schema(&transaction)?;
     }
-    add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
-    add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
-    if version < 17 {
+    if version < 18 {
         transaction
             .execute("DELETE FROM source_checkpoints", [])
             .map_err(AppError::database)?;
     }
-    if version == 16 {
+    if (16..18).contains(&version) {
         transaction.execute_batch(
             "UPDATE derived_state SET search_dirty = 1, semantic_ready_generation = NULL WHERE singleton = 1;"
         ).map_err(AppError::database)?;
@@ -182,6 +182,7 @@ fn provider_schema_is_current(connection: &Connection) -> Result<bool, AppError>
         .map_err(AppError::database)?;
     Ok(sql.contains("'claude-code'")
         && sql.contains("'codex'")
+        && sql.contains("'aider'")
         && !sql.contains("'opencode'")
         && !sql.contains("'github-copilot'")
         && !sql.contains("'hermes'")
@@ -194,11 +195,11 @@ fn rebuild_provider_schema(connection: &Connection) -> Result<(), AppError> {
             "CREATE TABLE conversations_next (
                 id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL CHECK (provider IN (
-                    'claude-code', 'codex'
+                    'claude-code', 'codex', 'aider'
                 )),
                 source_path TEXT NOT NULL UNIQUE,
                 title TEXT, created_at INTEGER, updated_at INTEGER,
-                source_fingerprint TEXT NOT NULL DEFAULT ''
+                source_fingerprint TEXT NOT NULL DEFAULT '', project TEXT, repository TEXT
              );
              CREATE TABLE messages_next (
                 storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,7 +216,7 @@ fn rebuild_provider_schema(connection: &Connection) -> Result<(), AppError> {
                 dimensions INTEGER NOT NULL, norm REAL NOT NULL, vector BLOB NOT NULL
              );
              INSERT INTO conversations_next
-                SELECT id, provider, source_path, title, created_at, updated_at, source_fingerprint
+                SELECT id, provider, source_path, title, created_at, updated_at, source_fingerprint, project, repository
                 FROM conversations;
              INSERT INTO messages_next
                 SELECT rowid, id, conversation_id, ordinal, role, content, search_projection,
@@ -273,33 +274,33 @@ fn purge_unsupported_providers(connection: &Connection) -> Result<(), AppError> 
             "DELETE FROM message_fts
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider')
               );
              DELETE FROM message_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider')
               );
              DELETE FROM pending_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider')
               );
              DELETE FROM messages
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider')
               );
              DELETE FROM conversations
-              WHERE provider NOT IN ('claude-code', 'codex');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider');
              DELETE FROM source_checkpoints
-              WHERE provider NOT IN ('claude-code', 'codex');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider');
              DELETE FROM tombstones
-              WHERE provider NOT IN ('claude-code', 'codex');",
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider');",
         )
         .map_err(AppError::database)
 }

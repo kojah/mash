@@ -294,7 +294,11 @@ impl Storage {
             }
             let providers: Vec<u8> = row.get(4).map_err(AppError::database)?;
             if providers.len() != vector_count
-                || providers.iter().any(|code| !matches!(code, 1 | 2))
+                || providers.iter().any(|code| {
+                    !crate::provider::Provider::ALL
+                        .iter()
+                        .any(|provider| provider.storage_code() == *code)
+                })
             {
                 return Err(AppError::database_data(
                     "semantic chunk contains invalid provider metadata",

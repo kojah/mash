@@ -7,6 +7,7 @@ use serde_json::Value;
 pub(super) enum Kind {
     User,
     Assistant,
+    Text,
     ResponseItem,
     SessionMeta,
     Message,
@@ -27,10 +28,17 @@ pub(super) enum Kind {
 }
 
 impl Kind {
+    const fn is_context(self) -> bool {
+        matches!(
+            self,
+            Self::ToolUse | Self::ToolCall | Self::ToolResult | Self::Thinking | Self::Unknown
+        )
+    }
     pub(super) const fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",
             Self::Assistant => "assistant",
+            Self::Text => "text",
             Self::ResponseItem => "response_item",
             Self::SessionMeta => "session_meta",
             Self::Message => "message",
@@ -128,16 +136,14 @@ impl Content {
         }
     }
 
-    pub fn claude(&self) -> Option<(String, Option<String>)> {
+    pub fn projected(&self) -> Option<(String, Option<String>)> {
         let content = self.flatten()?;
         match self {
-            Self::Block(block) if block.kind == Kind::ToolResult => {
-                Some((content, Some(String::new())))
-            }
-            Self::Blocks(blocks) if blocks.iter().any(|block| block.kind == Kind::ToolResult) => {
+            Self::Block(block) if block.kind.is_context() => Some((content, Some(String::new()))),
+            Self::Blocks(blocks) if blocks.iter().any(|block| block.kind.is_context()) => {
                 let projection = blocks
                     .iter()
-                    .filter(|block| block.kind != Kind::ToolResult)
+                    .filter(|block| !block.kind.is_context())
                     .filter_map(Block::flatten)
                     .collect::<Vec<_>>()
                     .join("\n");
@@ -193,6 +199,29 @@ fn opaque<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Option<Value>, D
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projections_include_known_prose_and_preserve_unknown_blocks_only_as_context() {
+        let content: Content = serde_json::from_str(
+            r#"[
+            {"type":"text","text":"spoken answer"},
+            {"type":"input_text","text":"request"},
+            {"type":"output_text","text":"response"},
+            {"type":"future_tool_kind","text":"opaque instructions"},
+            {"type":"thinking","thinking":"internal reasoning"},
+            {"type":"toolCall","name":"shell","arguments":"private command"}
+        ]"#,
+        )
+        .unwrap();
+        let (canonical, projection) = content.projected().unwrap();
+        assert!(canonical.contains("opaque instructions"));
+        assert!(canonical.contains("internal reasoning"));
+        assert!(canonical.contains("private command"));
+        assert_eq!(
+            projection.as_deref(),
+            Some("spoken answer\nrequest\nresponse")
+        );
+    }
 
     #[test]
     fn typed_history_accepts_evolving_fields_and_preserves_opaque_tool_data() {

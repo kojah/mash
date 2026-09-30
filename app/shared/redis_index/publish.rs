@@ -3,8 +3,8 @@ use super::canonical::{forget, plan};
 use super::fields;
 use super::{
     AppError, CANONICAL_CHUNK_BYTES, CanonicalManifest, Data, Forget, Forgotten, Head, Identity,
-    Indexed, Plan, Provider, STAGE_TTL, Store, conflict, data_key, document_key, encode, prefix,
-    redis_error, state_key, valid_id, vector_bytes,
+    Indexed, Plan, STAGE_TTL, Store, conflict, data_key, document_key, encode, prefix, redis_error,
+    state_key, valid_id, vector_bytes,
 };
 impl Store {
     pub(in crate::shared) async fn index(
@@ -171,11 +171,7 @@ impl Store {
                 .arg(fields::PROVIDER)
                 .arg(conversation.provider.as_str())
                 .arg(fields::PROVIDER_TAG)
-                .arg(if conversation.provider == Provider::Codex {
-                    "x"
-                } else {
-                    "c"
-                })
+                .arg(conversation.provider.redis_tag())
                 .arg(fields::ORDINAL)
                 .arg(message.ordinal)
                 .arg(fields::CREATED_AT)

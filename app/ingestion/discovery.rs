@@ -28,10 +28,11 @@ pub(crate) fn source_stamp(path: &Path) -> Result<(i64, i64), AppError> {
 }
 
 pub(super) fn verify_authoritative_discovery(
+    provider: Provider,
     roots: &[PathBuf],
     observed_paths: &BTreeSet<String>,
 ) -> Result<(), AppError> {
-    let final_paths = discover_jsonl_files(roots, true)?
+    let final_paths = discover_history_files(provider, roots, true)?
         .files
         .into_iter()
         .map(|path| path.to_string_lossy().into_owned())
@@ -44,17 +45,29 @@ pub(super) fn verify_authoritative_discovery(
     Ok(())
 }
 
-pub(super) fn discover_jsonl_files(
+pub(super) fn discover_history_files(
+    provider: Provider,
     roots: &[PathBuf],
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
-    discover_files(roots, authoritative, is_jsonl)
+    discover_files(roots, authoritative, |path, explicit| match provider {
+        Provider::Aider => {
+            if explicit {
+                path.extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+            } else {
+                path.file_name()
+                    .is_some_and(|name| name == ".aider.chat.history.md")
+            }
+        }
+        Provider::ClaudeCode | Provider::Codex => is_jsonl(path),
+    })
 }
 
 fn discover_files(
     roots: &[PathBuf],
     authoritative: bool,
-    accept: fn(&Path) -> bool,
+    accept: impl Fn(&Path, bool) -> bool,
 ) -> Result<Discovery, AppError> {
     let mut files = BTreeSet::new();
     let mut complete = true;
@@ -73,7 +86,7 @@ fn discover_files(
             }
         };
         if metadata.is_file() {
-            if accept(root) {
+            if accept(root, true) {
                 files.insert(root.clone());
             } else if authoritative {
                 return Err(AppError::configuration(format!(
@@ -110,7 +123,7 @@ fn discover_files(
                 }
             };
             let path = entry.path();
-            if entry.file_type().is_file() && accept(path) {
+            if entry.file_type().is_file() && accept(path, false) {
                 files.insert(path.to_path_buf());
             }
         }
@@ -166,7 +179,7 @@ impl DirectScan {
                 .iter()
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect();
-            verify_authoritative_discovery(&self.roots, &observed)?;
+            verify_authoritative_discovery(self.provider, &self.roots, &observed)?;
         }
         Ok(())
     }
@@ -178,7 +191,8 @@ pub(crate) fn direct_scans(options: &IndexOptions) -> Result<Vec<DirectScan>, Ap
         .providers
         .iter()
         .map(|(&provider, roots)| {
-            let discovery = discover_jsonl_files(roots, options.roots_are_authoritative)?;
+            let discovery =
+                discover_history_files(provider, roots, options.roots_are_authoritative)?;
             Ok(DirectScan {
                 provider,
                 roots: roots.clone(),

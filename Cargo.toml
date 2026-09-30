@@ -2,7 +2,7 @@
 name = "mash"
 version = "0.7.0"
 edition = "2024"
-description = "Multi-Agent Search History for Claude Code and Codex JSONL sessions"
+description = "Multi-Agent Search History for local agent conversations"
 license = "MIT"
 repository = "https://github.com/kojah/mash"
 default-run = "mash"

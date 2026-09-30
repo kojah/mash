@@ -258,10 +258,7 @@ pub(super) fn decode_f32_blob(
 }
 
 pub(super) const fn provider_code(provider: crate::provider::Provider) -> u8 {
-    match provider {
-        crate::provider::Provider::ClaudeCode => 1,
-        crate::provider::Provider::Codex => 2,
-    }
+    provider.storage_code()
 }
 
 pub(super) fn validate_quantized_vector(

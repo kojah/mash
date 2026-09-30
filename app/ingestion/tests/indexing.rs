@@ -194,8 +194,8 @@ fn configured_root_disappearing_after_discovery_rolls_back_without_purge() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let root = directory.path().join("configured");
     fs::create_dir(&root).expect("configured root");
-    let discovery =
-        discover_jsonl_files(std::slice::from_ref(&root), true).expect("initial empty discovery");
+    let discovery = discover_history_files(Provider::ClaudeCode, std::slice::from_ref(&root), true)
+        .expect("initial empty discovery");
     let database = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&database).expect("seed writer");
     writer
@@ -282,7 +282,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
     let failure = root.join("failure.jsonl");
     write_claude_session(&valid, "new-session", "uncommitted sentinel");
     fs::write(&failure, "placeholder\n").expect("failure fixture");
-    let discovery = discover_jsonl_files(std::slice::from_ref(&root), true)
+    let discovery = discover_history_files(Provider::ClaudeCode, std::slice::from_ref(&root), true)
         .expect("initial configured discovery");
     let mut writer = Storage::open_writer(&database).expect("configured writer");
     let mut summary = empty_summary();

@@ -1,5 +1,5 @@
 //! Normalize Claude Code and Codex JSONL histories into canonical records.
-use super::json::{self, Content, Kind, Record};
+use super::json::{self, Kind, Record};
 use super::{Conversation, MAX_TOOL_OUTPUT_CHARS, NormalizedMessage, ParsedFile};
 use crate::AppError;
 use crate::provider::Provider;
@@ -23,7 +23,7 @@ pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
             return None;
         }
         let message = raw.message.as_ref()?;
-        let (content, search_projection) = message.content.as_ref()?.claude()?;
+        let (content, search_projection) = message.content.as_ref()?.projected()?;
         Some(ExtractedMessage {
             source_id: raw.uuid.clone(),
             role: message
@@ -51,11 +51,14 @@ pub(super) fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
 fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
     let payload = raw.payload.as_ref()?;
     let (role, content, search_projection) = match payload.kind {
-        Kind::Message => (
-            payload.role.clone().unwrap_or(crate::role::Role::Assistant),
-            payload.content.as_ref().and_then(Content::flatten)?,
-            None,
-        ),
+        Kind::Message => {
+            let (content, projection) = payload.content.as_ref()?.projected()?;
+            (
+                payload.role.clone().unwrap_or(crate::role::Role::Assistant),
+                content,
+                projection,
+            )
+        }
         Kind::FunctionCall | Kind::CustomToolCall => {
             let name = payload.name.as_deref().unwrap_or("unknown");
             let arguments = payload
@@ -67,7 +70,7 @@ fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
             (
                 crate::role::Role::Assistant,
                 format!("Tool {name}: {arguments}"),
-                None,
+                Some(String::new()),
             )
         }
         Kind::FunctionCallOutput | Kind::CustomToolCallOutput => {

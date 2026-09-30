@@ -5,6 +5,163 @@ const FIRST: &str = "test-api-token-first-32-bytes-long";
 const SECOND: &str = "test-api-token-second-32-bytes-long";
 const OTHER: &str = "test-api-token-other-32-bytes-long";
 
+fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
+    use crate::provider::Provider;
+    use crate::shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start};
+    let conversations = Provider::ALL
+        .iter()
+        .map(|provider| ConversationRecord {
+            id: provider.as_str().into(),
+            provider: *provider,
+            title: None,
+            project: None,
+            repository: None,
+            created_at: None,
+            updated_at: None,
+        })
+        .collect();
+    let messages = Provider::ALL
+        .iter()
+        .map(|provider| MessageRecord {
+            id: format!("{provider}-message"),
+            conversation_id: provider.as_str().into(),
+            ordinal: 0,
+            role: crate::role::Role::User,
+            content: "providerneedle canonical history".into(),
+            projection: "providerneedle canonical history".into(),
+            created_at: None,
+            generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
+            vector: Some(vector.to_vec()),
+        })
+        .collect();
+    [
+        Event::Start(Start {
+            instance: "provider-contract".into(),
+            revision: Some(revision),
+            base_revision: None,
+            snapshot: true,
+            forgets: Vec::new(),
+        }),
+        Event::Batch(Batch::Conversations {
+            records: conversations,
+        }),
+        Event::Batch(Batch::Messages { records: messages }),
+        Event::Finish,
+    ]
+    .into_iter()
+    .map(|event| serde_json::to_value(event).unwrap())
+    .collect()
+}
+
+async fn provider_contract(service: Service) {
+    use crate::provider::Provider;
+    use crate::shared::protocol::{Candidates, Search, View};
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
+    assert_eq!(
+        service
+            .upload(FIRST, &provider_snapshot(&vector, 1))
+            .await
+            .status(),
+        StatusCode::OK
+    );
+    for &provider in Provider::ALL {
+        for direct in [true, false] {
+            let input = Search {
+                unit: crate::search_results::SearchUnit::Messages,
+                query: "providerneedle".into(),
+                generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
+                vector: vector.clone(),
+                provider: direct.then_some(provider),
+                days: None,
+                exclude_self: false,
+                filter: (!direct).then(|| crate::search_filter::Filter::Provider(vec![provider])),
+            };
+            let result: Candidates = service
+                .request("search", FIRST)
+                .json(&input)
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(result.lexical.len(), 1, "lexical {provider}");
+            assert_eq!(result.semantic.len(), 1, "semantic {provider}");
+            assert_eq!(result.lexical[0].provider, provider);
+            assert_eq!(result.semantic[0].provider, provider);
+        }
+        let input = View {
+            node_id: "first".into(),
+            id: format!("{provider}-message"),
+            context: 0,
+            content: crate::storage::MessageContent::Canonical,
+        };
+        let result: Vec<crate::storage::Message> = service
+            .request("view", FIRST)
+            .json(&input)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(result[0].content, "providerneedle canonical history");
+    }
+    verify_delayed_provider_publication_stays_forgotten(&service, &vector).await;
+    service.cleanup().await;
+}
+
+async fn verify_delayed_provider_publication_stays_forgotten(service: &Service, vector: &[f64]) {
+    use crate::shared::protocol::{Forget, Forgotten, Indexed};
+    let input = Forget {
+        instance: "provider-contract".into(),
+        revision: Some(1),
+        ids: crate::provider::Provider::ALL
+            .iter()
+            .map(|provider| provider.as_str().to_owned())
+            .collect(),
+    };
+    let forgotten: Forgotten = service
+        .request("forget", SECOND)
+        .json(&input)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(!forgotten.forgotten);
+    let indexed: Indexed = service
+        .upload(SECOND, &provider_snapshot(vector, 2))
+        .await
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(indexed.counts.messages, 0);
+    assert_eq!(indexed.counts.conversations, 0);
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
+async fn postgres_round_trips_every_supported_provider_with_filters() {
+    provider_contract(Service::new_backend(true, false).await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_round_trips_every_supported_provider_with_filters() {
+    provider_contract(Service::new_backend(false, true).await).await;
+}
+
 async fn remote_space_contract(service: Service) {
     let generation = crate::semantic::model_space("voyage-4", 1024);
     let mut events = snapshot(1);

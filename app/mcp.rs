@@ -258,7 +258,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly index Claude Code and Codex histories into local SQLite and optionally the shared index, applying provider allowlists. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
+        description = "Explicitly index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
     async fn index(
         &self,
@@ -307,7 +307,7 @@ impl rmcp::ServerHandler for Mash {
             .enable_tools()
             .build();
         info.server_info = rmcp::model::Implementation::new("mash", env!("CARGO_PKG_VERSION"));
-        info.instructions = Some("Search Claude Code and Codex history. Search/view/status are read-only. Index and forget write data; models_install explicitly downloads models. Provider allowlists and destinations are configured at startup. Search merges local results with other nodes in the shared group by default. Supply a shared result's node ID to view its message.".to_owned());
+        info.instructions = Some("Search configured agent histories. Search/view/status are read-only. Index and forget write data; models_install explicitly downloads models. Provider allowlists and destinations are configured at startup. Search merges local results with other nodes in the shared group by default. Supply a shared result's node ID to view its message.".to_owned());
         info
     }
 }

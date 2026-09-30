@@ -17,12 +17,18 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
                 crate::provider::Provider::ClaudeCode => {
                     serde_json::json!({"type":"user","sessionId":"chat","uuid":id,"message":{"role":"user","content":text}})
                 }
+                crate::provider::Provider::Aider => {
+                    unreachable!("this fixture covers the JSONL providers")
+                }
             };
             writeln!(file, "{value}").unwrap();
         }
         let parsed = match provider {
             crate::provider::Provider::Codex => parse_codex(file.path()),
             crate::provider::Provider::ClaudeCode => parse_claude(file.path()),
+            crate::provider::Provider::Aider => {
+                unreachable!("this fixture covers the JSONL providers")
+            }
         }
         .unwrap()
         .conversation
@@ -118,6 +124,27 @@ fn claude_parser_separates_tool_results_from_searchable_text() {
 }
 
 #[test]
+fn claude_keeps_reasoning_and_tool_arguments_only_in_canonical_context() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    fs::write(file.path(), concat!(
+        "{\"type\":\"assistant\",\"sessionId\":\"tools\",\"uuid\":\"mixed\",\"message\":{\"role\":\"assistant\",\"content\":[",
+        "{\"type\":\"text\",\"text\":\"I fixed the importer\"},",
+        "{\"type\":\"thinking\",\"thinking\":\"internal reasoning\"},",
+        "{\"type\":\"tool_use\",\"name\":\"shell\",\"input\":{\"command\":\"privatecommandmarker\"}}]}}\n",
+        "{\"type\":\"assistant\",\"sessionId\":\"tools\",\"uuid\":\"call\",\"message\":{\"role\":\"assistant\",\"content\":{\"type\":\"tool_use\",\"name\":\"shell\",\"input\":\"privatecommandmarker\"}}}\n",
+    )).unwrap();
+    let parsed = parse_claude(file.path()).unwrap().conversation.unwrap();
+    assert!(parsed.messages[0].content.contains("internal reasoning"));
+    assert!(parsed.messages[0].content.contains("privatecommandmarker"));
+    assert_eq!(
+        parsed.messages[0].search_projection.as_deref(),
+        Some("I fixed the importer")
+    );
+    assert!(parsed.messages[1].content.contains("privatecommandmarker"));
+    assert_eq!(parsed.messages[1].search_projection.as_deref(), Some(""));
+}
+
+#[test]
 fn codex_parser_keeps_messages_and_tool_calls() {
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(file, r#"{{"type":"session_meta","payload":{{"id":"c1"}}}}"#).expect("meta line");
@@ -129,6 +156,10 @@ fn codex_parser_keeps_messages_and_tool_calls() {
     assert_eq!(conversation.id, "c1");
     assert_eq!(conversation.messages.len(), 2);
     assert!(conversation.messages[1].content.contains("Tool search"));
+    assert_eq!(
+        conversation.messages[1].search_projection.as_deref(),
+        Some("")
+    );
 }
 
 #[test]
@@ -198,6 +229,10 @@ fn codex_parser_keeps_custom_tool_calls() {
         "Tool imagegen: draw a diagram"
     );
     assert_eq!(conversation.messages[1].role, crate::role::Role::Tool);
+    assert_eq!(
+        conversation.messages[0].search_projection.as_deref(),
+        Some("")
+    );
     assert_eq!(conversation.messages[1].content, "created diagram.png");
     assert_eq!(
         conversation.messages[1].search_projection.as_deref(),

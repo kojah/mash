@@ -16,7 +16,7 @@ const CONTEXT_TAGS: &[&str] = &[
 
 /// Remove known agent-injected context without matching ordinary mentions of it.
 pub(crate) fn project<'a>(role: &Role, text: &'a str) -> Cow<'a, str> {
-    if matches!(role, Role::System | Role::Developer | Role::Tool) {
+    if !matches!(role, Role::User | Role::Assistant) {
         return Cow::Borrowed("");
     }
     // Skill bodies have no reliable closing delimiter. These are dedicated
@@ -190,7 +190,12 @@ mod tests {
     #[test]
     fn context_roles_are_unsearchable_and_titles_use_real_text() {
         assert_eq!(title("# AGENTS.md instructions for /work"), None);
-        for role in [Role::System, Role::Developer, Role::Tool] {
+        for role in [
+            Role::System,
+            Role::Developer,
+            Role::Tool,
+            Role::Other("toolResult".into()),
+        ] {
             assert_eq!(project(&role, "cbioportal"), "");
         }
         assert_eq!(
