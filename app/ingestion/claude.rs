@@ -11,10 +11,11 @@ pub(crate) type Lineage = BTreeMap<String, Option<String>>;
 /// its parent. Missing ancestors remain roots until another contribution supplies
 /// them. Timestamp and identity break ties; source arrival order never does.
 pub(crate) fn reconcile(
-    contributions: impl IntoIterator<Item = (NormalizedMessage, Option<String>)>,
+    contributions: impl IntoIterator<Item = Result<(NormalizedMessage, Option<String>), AppError>>,
 ) -> Result<(Vec<NormalizedMessage>, Lineage), AppError> {
     let mut nodes = BTreeMap::<String, (NormalizedMessage, Option<String>)>::new();
-    for (message, parent) in contributions {
+    for contribution in contributions {
+        let (message, parent) = contribution?;
         if let Some((previous, previous_parent)) = nodes.get(&message.id) {
             if previous.role != message.role
                 || previous.content != message.content

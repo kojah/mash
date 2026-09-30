@@ -76,8 +76,7 @@ pub(super) fn normalize(
         .map(|key| (key.clone(), stable_id("claude-message", &[thread, key])))
         .collect::<BTreeMap<_, _>>();
     let mut previous = None;
-    let mut contributions = Vec::with_capacity(messages.len());
-    for (mut message, key) in messages.into_iter().zip(keys) {
+    let contributions = messages.into_iter().zip(keys).map(|(mut message, key)| {
         let parent = if let Some(key) = key {
             message.id.clone_from(&identities[&key]);
             match parents.get(&key).unwrap_or(&ParentLink::Missing) {
@@ -89,8 +88,8 @@ pub(super) fn normalize(
             previous.clone()
         };
         previous = Some(message.id.clone());
-        contributions.push((message, parent));
-    }
+        Ok((message, parent))
+    });
     reconcile(contributions)
 }
 

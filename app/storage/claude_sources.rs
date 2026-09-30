@@ -45,28 +45,39 @@ pub(super) fn claude_thread(
     let Some(metadata) = metadata else {
         return Ok(None);
     };
-    let rows = sql::ClaudeContributionMessages::builder()
+    let query = sql::ClaudeContributionMessages::builder()
         .conversation_id(id)
-        .build()
-        .query_many(connection)
+        .build();
+    let mut statement = query.prepare(connection).map_err(AppError::database)?;
+    // Reconciliation retains each distinct native message, but matching copies
+    // can be checked and dropped as they arrive. Do not collect every physical
+    // source's text before deduplication, especially for routed source subsets.
+    let rows = statement
+        .query_map(
+            query.as_params(),
+            sql::ClaudeContributionMessagesRow::from_row,
+        )
         .map_err(AppError::database)?;
     let (messages, lineage) = claude::reconcile(
-        rows.into_iter()
-            .filter(|row| sources.is_none_or(|keys| keys.contains(&row.source_key)))
-            .map(|row| {
-                (
-                    NormalizedMessage {
-                        id: row.message_id,
-                        ordinal: 0,
-                        context: crate::message_context::MessageContext::Root,
-                        role: row.role.into(),
-                        content: row.content,
-                        search_projection: row.projection,
-                        created_at: row.created_at,
-                    },
-                    row.parent_id,
-                )
-            }),
+        rows.filter(|row| match row {
+            Ok(row) => sources.is_none_or(|keys| keys.contains(&row.source_key)),
+            Err(_) => true,
+        })
+        .map(|row| {
+            let row = row.map_err(AppError::database)?;
+            Ok((
+                NormalizedMessage {
+                    id: row.message_id,
+                    ordinal: 0,
+                    context: crate::message_context::MessageContext::Root,
+                    role: row.role.into(),
+                    content: row.content,
+                    search_projection: row.projection,
+                    created_at: row.created_at,
+                },
+                row.parent_id,
+            ))
+        }),
     )?;
     let created_at = messages
         .iter()
@@ -89,6 +100,9 @@ pub(super) fn claude_thread(
         messages,
     }))
 }
+
+#[cfg(test)]
+mod tests;
 
 impl Storage {
     #[tracing::instrument(name = "reconcile_claude_source", skip_all)]
