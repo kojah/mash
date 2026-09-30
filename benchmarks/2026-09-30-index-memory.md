@@ -100,6 +100,56 @@ pending snapshot as `MASH_TEST_SEARCH_DB` and `MASH_BENCH_EMBED_POLICY=bounded`.
 Its manual-test timeout is 180 seconds to accommodate thousands of long inputs;
 ordinary correctness tests retain their existing timeout.
 
+## Parser admission and diagnostics
+
+Parser workers now reserve estimated retention before reading a source and keep
+that reservation through queued delivery and SQLite application. Admission uses
+four times the discovered source-byte estimate plus 1 MiB, within a 128 MiB
+reservation budget. Oversized sources occupy the whole budget and run alone;
+valid histories are not rejected or truncated. Waiting requests are admitted in
+ticket order so large sources cannot starve behind smaller ones.
+
+This controls coexistence of estimated source allocations, not process RSS or
+the size of a single canonical conversation. A live source may grow after
+discovery, and provider normalization may differ from the estimate. Large
+single-conversation staging remains tracked in `mash-c0d.7.4.3`.
+
+Structured indexing progress now includes `parser_admission` with the budget,
+estimated reserved bytes, active and waiting source counts, peak reservations,
+and accumulated admission wait time. Reservations include results waiting in
+the channel or being applied. These counters contain no history text or paths;
+they flow through the existing CLI stderr and MCP progress mechanisms. Complete
+request/stage tracing remains a separate task, `mash-c0d.9`.
+
+Separate-process synthetic diagnostics retained every expected message:
+
+| Workload / build | Unrestricted admission | 128 MiB admission |
+| --- | --- | --- |
+| Xenia, optimized: 8 files / 256 messages / 268,467,376 source bytes, peak RSS | 294.41 MiB | 66.79 MiB |
+| Same Xenia sample: parse and storage time | 1.449 s | 2.278 s |
+| Dev Mac, development build: 8 files / 64 messages / 67,116,800 bytes, peak RSS | 124.44 MiB | 75.63 MiB |
+| Same Mac sample: parse and storage time | 2.571 s | 2.432 s |
+
+These are single samples with different corpus sizes/builds, not comparable
+cross-machine throughput. The Xenia budget admitted one large source at a time,
+with seven requests waiting; its cumulative wait time was 6.799 seconds across
+those requests. The throughput cost should be assessed alongside memory use.
+
+An isolated real 90-day refresh scanned 778 sources / 2.345 GB and skipped 749
+unchanged checkpoints. Ingestion took 3.375 seconds and sampled ingestion RSS
+peaked at 114,548 KiB. Search rebuilding and full embedding work brought total
+time to 101.33 seconds; inference had a separate 1,808,312 KiB sampled peak.
+The refresh completed with no pending vectors and SQLite integrity `ok`, but it
+exposed a Claude session-ID collision between physical histories: one source
+replaced a longer indexed history with a shorter copy. That correctness defect
+is tracked in `mash-c0d.10`; this run is not proof of canonical-history preservation.
+
+The explicit `benchmark_parser_admission_retention` accepts
+`MASH_BENCH_PARSER_ROOT`, `MASH_BENCH_PARSER_MESSAGES`, and
+`MASH_BENCH_PARSER_POLICY=parallel|bounded`. Use an isolated synthetic root and
+the exact expected message count. Compile before timing the selected test
+binary with `/usr/bin/time`; no embedding models are loaded by this diagnostic.
+
 ## Repeating the diagnostic
 
 Use an isolated, schema-current SQLite snapshot with installed models and an

@@ -5,8 +5,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime};
 
+mod admission;
 mod aider;
 mod antigravity;
+#[cfg(test)]
+mod benchmarks;
 mod cline;
 mod copilot;
 mod cursor;
@@ -133,9 +136,11 @@ struct SourceFile {
     estimated_bytes: u64,
 }
 
-struct ParsedSource {
+struct ParsedSource<'a> {
     source: SourceFile,
     parsed: Result<ParsedFile, AppError>,
+    // Release admission only after normalized content is applied or discarded.
+    _reservation: Option<admission::Reservation<'a>>,
 }
 
 struct IndexProgress {
@@ -143,6 +148,7 @@ struct IndexProgress {
     last_event: Instant,
     phase_started: Instant,
     estimate: crate::progress::Estimate,
+    parser_admission: Option<crate::progress::ParserAdmission>,
 }
 
 pub(crate) fn index(
@@ -228,16 +234,34 @@ fn index_provider(
     }
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "keep the bounded parser producer/consumer transaction in one linear scope"
-)]
 fn index_provider_inner(
     storage: &mut Storage,
     scan: ProviderScan<'_>,
     discovery: Discovery,
     summary: &mut IndexSummary,
     progress: &mut IndexProgress,
+) -> Result<(), AppError> {
+    index_provider_pipeline(
+        storage,
+        scan,
+        discovery,
+        summary,
+        progress,
+        &admission::Admission::new(),
+    )
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "keep parser admission, producer/consumer and transaction boundaries in one scope"
+)]
+fn index_provider_pipeline(
+    storage: &mut Storage,
+    scan: ProviderScan<'_>,
+    discovery: Discovery,
+    summary: &mut IndexSummary,
+    progress: &mut IndexProgress,
+    admission: &admission::Admission,
 ) -> Result<(), AppError> {
     let ProviderScan {
         provider,
@@ -270,6 +294,7 @@ fn index_provider_inner(
     });
     progress.phase_started = Instant::now();
     progress.estimate = crate::progress::Estimate::starting_at(summary.processed_bytes);
+    progress.parser_admission = admission.snapshot();
     progress.emit(summary, crate::progress::Phase::Discovered, true);
 
     let worker_count = parser_worker_count(pending.len());
@@ -289,21 +314,35 @@ fn index_provider_inner(
                     let Some(source) = pending.get(index) else {
                         break;
                     };
+                    let reservation = admission.reserve(source.estimated_bytes);
                     let mut stamp = source.stamp.clone();
-                    let parsed = parse_source_with_retries(&source.history, &mut stamp, parse)
-                        .map_err(|error| {
-                            if authoritative {
-                                configured_source_error(&source.history.identity.path, &error)
-                            } else {
-                                error
-                            }
-                        });
+                    let (parsed, reservation) = match reservation {
+                        Ok(reservation) => (
+                            parse_source_with_retries(&source.history, &mut stamp, parse),
+                            Some(reservation),
+                        ),
+                        Err(error) => (Err(error), None),
+                    };
+                    let parsed = parsed.map_err(|error| {
+                        if authoritative {
+                            configured_source_error(&source.history.identity.path, &error)
+                        } else {
+                            error
+                        }
+                    });
                     let source = SourceFile {
                         history: source.history.clone(),
                         stamp,
                         estimated_bytes: source.estimated_bytes,
                     };
-                    if sender.send(ParsedSource { source, parsed }).is_err() {
+                    if sender
+                        .send(ParsedSource {
+                            source,
+                            parsed,
+                            _reservation: reservation,
+                        })
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -315,6 +354,7 @@ fn index_provider_inner(
             let result = match receiver.recv_timeout(Duration::from_secs(1)) {
                 Ok(result) => result,
                 Err(RecvTimeoutError::Timeout) => {
+                    progress.parser_admission = admission.snapshot();
                     progress.emit(summary, crate::progress::Phase::Indexing, true);
                     continue;
                 }
@@ -323,7 +363,9 @@ fn index_provider_inner(
             let source_bytes = result.source.estimated_bytes;
             summary.processed_files += 1;
             summary.processed_bytes = summary.processed_bytes.saturating_add(source_bytes);
-            match apply_parsed_source(storage, provider, result, summary) {
+            let applied = apply_parsed_source(storage, provider, result, summary);
+            progress.parser_admission = admission.snapshot();
+            match applied {
                 Ok(source_complete) => complete &= source_complete,
                 Err(error) => {
                     record_first_error(&mut complete, &mut first_error, error);
@@ -347,6 +389,7 @@ fn index_provider_inner(
             progress.emit(summary, crate::progress::Phase::Indexing, false);
         }
     });
+    progress.parser_admission = admission.snapshot();
     if authoritative {
         verify_authoritative_discovery(provider, roots, &observed_layout)?;
     }
@@ -497,7 +540,7 @@ fn parse_stable_source(
 fn apply_parsed_source(
     storage: &mut Storage,
     provider: Provider,
-    mut result: ParsedSource,
+    mut result: ParsedSource<'_>,
     summary: &mut IndexSummary,
 ) -> Result<bool, AppError> {
     let mut parsed = result.parsed?;
@@ -541,6 +584,7 @@ impl IndexProgress {
             last_event: now,
             phase_started: now,
             estimate: crate::progress::Estimate::new(),
+            parser_admission: None,
         }
     }
 
@@ -558,6 +602,7 @@ impl IndexProgress {
             crate::progress::milliseconds(self.phase_started),
         );
         let event = crate::progress::Event {
+            parser_admission: self.parser_admission.clone(),
             messages_per_second: Some(
                 summary
                     .changed_messages

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use indicatif::{ProgressBar, ProgressStyle};
 
 mod event;
-pub(crate) use event::{EtaScope, Event, Phase};
+pub(crate) use event::{EtaScope, Event, ParserAdmission, Phase};
 
 type Sink = tokio::sync::mpsc::Sender<Event>;
 

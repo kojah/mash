@@ -1,5 +1,36 @@
 use super::*;
 
+#[test]
+fn progress_exposes_parser_admission_without_history_content() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("session.jsonl");
+    write_claude_session(&source, "session", "private-history-canary");
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let options = IndexOptions {
+        providers: [(Provider::ClaudeCode, vec![source])].into(),
+        roots_are_authoritative: true,
+        since_days: None,
+    };
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
+    crate::progress::on_blocking_thread(Some(sender), || index(&mut storage, &options)).unwrap();
+    let mut completed = None;
+    while let Ok(event) = receiver.try_recv() {
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("private-history-canary"));
+        let _: crate::progress::Event = serde_json::from_str(&json).unwrap();
+        if event.phase == crate::progress::Phase::IngestionComplete {
+            completed = event.parser_admission;
+        }
+    }
+    let stats = completed.expect("completed provider admission statistics");
+    assert_eq!(stats.active_sources, 0);
+    assert_eq!(stats.waiting_sources, 0);
+    assert_eq!(stats.estimated_reserved_bytes, 0);
+    assert_eq!(stats.peak_active_sources, 1);
+    assert!(stats.peak_reserved_bytes > 0);
+    assert!(stats.peak_reserved_bytes <= stats.budget_bytes);
+}
+
 #[tokio::test]
 #[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
 async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
@@ -268,6 +299,7 @@ fn queued_results_refresh_changed_sources_and_reject_removed_sources_before_writ
                     estimated_bytes: u64::try_from(stamp.size_bytes).unwrap(),
                 },
                 parsed: Ok(parsed),
+                _reservation: None,
             },
             &mut empty_summary(),
         );

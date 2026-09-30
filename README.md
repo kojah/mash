@@ -139,6 +139,13 @@ texts, loading one inference wave at a time. Duplicate message IDs are written
 in bounded pages. Large rebuilds therefore avoid retaining all pending texts in
 memory; the model workspaces and parsed conversations have separate memory costs.
 
+Parser admission limits concurrent estimated retention to a 128 MiB reservation
+budget, keeping reservations through queued delivery and SQLite application.
+Large sources run alone. Structured indexing progress includes admission counts,
+peak reservations and wait time for diagnosing parser backpressure. This is an
+estimate rather than a process-memory ceiling; a single large history may need
+more memory.
+
 Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`

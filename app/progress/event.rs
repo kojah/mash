@@ -39,6 +39,21 @@ pub(crate) struct Event {
     pub uploaded_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parser_admission: Option<ParserAdmission>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ParserAdmission {
+    pub budget_bytes: u64,
+    pub estimated_reserved_bytes: u64,
+    pub active_sources: u64,
+    pub waiting_sources: u64,
+    pub peak_reserved_bytes: u64,
+    pub peak_active_sources: u64,
+    pub waited_sources: u64,
+    pub wait_milliseconds: u64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
