@@ -714,6 +714,33 @@ fn status_uses_model_then_database_then_embedding_readiness() {
 }
 
 #[test]
+fn explicit_empty_index_reports_ready_without_loading_models() {
+    let directory = tempfile::tempdir().unwrap();
+    let models = directory.path().join("models");
+    create_valid_model_marker(&models);
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let database = directory.path().join("empty.sqlite3");
+    let mut args = vec![
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+        "index",
+    ];
+    let indexed = run_json(&args);
+    assert_eq!(indexed["indexed_messages"], 0);
+    assert_eq!(indexed["model_load_milliseconds"], 0);
+    *args.last_mut().unwrap() = "status";
+    let status = run_json(&args);
+    assert_eq!(status["messages"], 0);
+    assert_eq!(status["ready"], true);
+    assert!(status["recommended_action"].is_null());
+}
+
+#[test]
 fn status_reads_an_older_database_without_migrating_it() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");

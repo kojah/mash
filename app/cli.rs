@@ -898,10 +898,8 @@ fn status(
     )?;
     let counts = snapshot.counts;
     let current_embeddings = snapshot.current_embeddings;
-    let hybrid_ready = models_installed
-        && snapshot.derived_clean
-        && counts.messages > 0
-        && snapshot.exact_semantic_coverage;
+    let hybrid_ready =
+        models_installed && snapshot.derived_clean && snapshot.exact_semantic_coverage;
     Ok(Response::Status(StatusResponse {
         ready: hybrid_ready,
         database_path: Some(database_path.to_path_buf()),
