@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::Duration;
 mod backend;
 pub(crate) mod direct;
@@ -70,7 +71,22 @@ fn target(config: &SharedConfig) -> String {
     .to_hex()
     .to_string()
 }
-fn client(config: &SharedConfig) -> Result<reqwest::Client, AppError> {
+// Keep the transport pool alive across MCP calls and watch refreshes. Identity
+// headers belong to each request so configuration/token changes cannot retain
+// another node's credentials in a cached client.
+static HTTP_CLIENT: LazyLock<Result<reqwest::Client, reqwest::Error>> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(600))
+        .build()
+});
+
+fn request(
+    config: &SharedConfig,
+    method: reqwest::Method,
+    route: &str,
+) -> Result<reqwest::RequestBuilder, AppError> {
     let token = std::env::var(&config.token_env).map_err(|_| {
         AppError::shared(format!("set {} to this node's API token", config.token_env))
     })?;
@@ -89,13 +105,15 @@ fn client(config: &SharedConfig) -> Result<reqwest::Client, AppError> {
                 .map_err(|_| AppError::shared("invalid API identity"))?,
         );
     }
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(600))
-        .build()
-        .map_err(|_| AppError::shared("could not configure HTTP client"))
+    let client = HTTP_CLIENT
+        .as_ref()
+        .map_err(|_| AppError::shared("could not configure HTTP client"))?;
+    Ok(client
+        .request(
+            method,
+            format!("{}/v1/{route}", config.api_url.trim_end_matches('/')),
+        )
+        .headers(headers))
 }
 async fn response<T: serde::de::DeserializeOwned>(
     request: reqwest::RequestBuilder,
@@ -128,26 +146,14 @@ async fn get<T: serde::de::DeserializeOwned>(
     config: &SharedConfig,
     route: &str,
 ) -> Result<T, AppError> {
-    response(client(config)?.get(format!(
-        "{}/v1/{route}",
-        config.api_url.trim_end_matches('/')
-    )))
-    .await
+    response(request(config, reqwest::Method::GET, route)?).await
 }
 async fn post<T: serde::de::DeserializeOwned>(
     config: &SharedConfig,
     route: &str,
     body: &impl Serialize,
 ) -> Result<T, AppError> {
-    response(
-        client(config)?
-            .post(format!(
-                "{}/v1/{route}",
-                config.api_url.trim_end_matches('/')
-            ))
-            .json(body),
-    )
-    .await
+    response(request(config, reqwest::Method::POST, route)?.json(body)).await
 }
 fn write_event(file: &mut std::fs::File, event: &Event) -> Result<(), AppError> {
     serde_json::to_writer(&mut *file, event)
@@ -164,8 +170,7 @@ async fn upload(
         .map_err(|_| AppError::internal("open index upload"))?;
     let stream = tokio_util::io::ReaderStream::new(tokio::fs::File::from_std(file));
     response(
-        client(config)?
-            .post(format!("{}/v1/index", config.api_url.trim_end_matches('/')))
+        request(config, reqwest::Method::POST, "index")?
             .header(reqwest::header::CONTENT_TYPE, "application/x-ndjson")
             .body(reqwest::Body::wrap_stream(stream)),
     )

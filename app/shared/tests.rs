@@ -2,6 +2,107 @@ use super::*;
 use crate::ingestion::{Conversation, NormalizedMessage};
 use crate::storage::EmbeddingWrite;
 
+#[tokio::test]
+async fn http_pool_reuses_connections_without_caching_node_credentials() {
+    use axum::extract::{ConnectInfo, State};
+    use axum::http::{HeaderMap, Method};
+    use axum::{Json, Router};
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct Received {
+        peer: SocketAddr,
+        method: Method,
+        headers: HeaderMap,
+    }
+    async fn capture(
+        State(received): State<Arc<Mutex<Vec<Received>>>>,
+        ConnectInfo(peer): ConnectInfo<SocketAddr>,
+        method: Method,
+        headers: HeaderMap,
+        _body: axum::body::Bytes,
+    ) -> Json<serde_json::Value> {
+        received.lock().unwrap().push(Received {
+            peer,
+            method,
+            headers,
+        });
+        Json(serde_json::json!({
+            "ok": true,
+            "counts": {"conversations": 0, "messages": 0, "searchable_messages": 0, "embeddings": 0},
+            "revision": 1, "removed_messages": 0, "purged_conversations": 0
+        }))
+    }
+    let received = Arc::new(Mutex::new(Vec::<Received>::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router = Router::new().fallback(capture).with_state(received.clone());
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    // Existing environment values avoid process-global mutation in parallel tests.
+    let mut config = SharedConfig {
+        group_id: "first-group".into(),
+        node_id: "first-node".into(),
+        api_url: format!("http://{address}/"),
+        token_env: "HOME".into(),
+    };
+    let first_token = std::env::var(&config.token_env).unwrap();
+    assert_eq!(
+        get::<serde_json::Value>(&config, "status").await.unwrap()["ok"],
+        true
+    );
+    assert_eq!(
+        post::<serde_json::Value>(&config, "search", &serde_json::json!({}))
+            .await
+            .unwrap()["ok"],
+        true
+    );
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.write_all(b"{}\n").unwrap();
+    assert_eq!(upload(&config, &file).await.unwrap().revision, 1);
+    // Change identities on the same pooled transport, including which token to read.
+    config.group_id = "second-group".into();
+    config.node_id = "second-node".into();
+    config.token_env = "USER".into();
+    let second_token = std::env::var(&config.token_env).unwrap();
+    assert_eq!(
+        get::<serde_json::Value>(&config, "freshness")
+            .await
+            .unwrap()["ok"],
+        true
+    );
+    let requests = received.lock().unwrap();
+    assert_eq!(requests.len(), 4);
+    assert!(requests.iter().all(|r| r.peer == requests[0].peer));
+    assert_eq!(requests[0].method, Method::GET);
+    assert_eq!(requests[1].method, Method::POST);
+    assert_eq!(requests[2].method, Method::POST);
+    assert_eq!(requests[2].headers["content-type"], "application/x-ndjson");
+    for request in &requests[..3] {
+        assert_eq!(
+            request.headers["authorization"],
+            format!("Bearer {first_token}")
+        );
+        assert_eq!(request.headers["x-mash-group"], "first-group");
+        assert_eq!(request.headers["x-mash-node"], "first-node");
+    }
+    assert_eq!(
+        requests[3].headers["authorization"],
+        format!("Bearer {second_token}")
+    );
+    assert_eq!(requests[3].headers["x-mash-group"], "second-group");
+    assert_eq!(requests[3].headers["x-mash-node"], "second-node");
+    drop(requests);
+    server.abort();
+}
+
 fn seed(path: &Path) -> Storage {
     let mut storage = Storage::open_writer(path).expect("writer");
     storage

@@ -2,9 +2,10 @@ pub(crate) mod remote;
 
 use std::collections::HashMap;
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use fastembed::QuantizationMode;
@@ -56,6 +57,58 @@ pub(crate) struct Backend {
     embedding: Option<TextEmbedding>,
     remote: Option<remote::Client>,
     reranker: TextRerank,
+}
+
+#[derive(PartialEq, Eq)]
+struct BackendCacheKey {
+    root: PathBuf,
+    marker_modified: Option<SystemTime>,
+    files: Vec<(String, u64, Option<SystemTime>)>,
+}
+
+struct CachedBackend {
+    key: BackendCacheKey,
+    backend: Backend,
+}
+
+// MCP already serializes model work. Retain at most one idle local backend;
+// in-flight searches own their backend without holding a lock across I/O.
+static LOCAL_BACKEND: Mutex<Option<CachedBackend>> = Mutex::new(None);
+
+pub(crate) struct LoadedBackend {
+    backend: Option<Backend>,
+    cache_key: Option<BackendCacheKey>,
+}
+
+impl Deref for LoadedBackend {
+    type Target = Backend;
+
+    fn deref(&self) -> &Backend {
+        self.backend
+            .as_ref()
+            .expect("loaded backend is present until drop")
+    }
+}
+
+impl DerefMut for LoadedBackend {
+    fn deref_mut(&mut self) -> &mut Backend {
+        self.backend
+            .as_mut()
+            .expect("loaded backend is present until drop")
+    }
+}
+
+impl Drop for LoadedBackend {
+    fn drop(&mut self) {
+        if let (Some(key), Some(backend)) = (self.cache_key.take(), self.backend.take()) {
+            let previous = LOCAL_BACKEND
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .replace(CachedBackend { key, backend });
+            // Model destruction can be expensive; do it after releasing the lock.
+            drop(previous);
+        }
+    }
 }
 
 pub(crate) struct EmbeddingPool {
@@ -253,19 +306,51 @@ impl Models {
         })
     }
 
-    pub(crate) fn load(&self) -> Result<Option<Backend>, AppError> {
+    pub(crate) fn load(&self) -> Result<Option<LoadedBackend>, AppError> {
         if !self.root.join(MARKER_NAME).is_file() {
             return Ok(None);
         }
-        self.read_valid_marker()?;
+        let marker = self.read_valid_marker()?;
         if let Some(config) = &self.remote {
-            Ok(Some(Backend {
-                embedding: None,
-                remote: Some(remote::Client::new(config.clone())?),
-                reranker: load_reranker(&self.root)?,
+            Ok(Some(LoadedBackend {
+                backend: Some(Backend {
+                    embedding: None,
+                    remote: Some(remote::Client::new(config.clone())?),
+                    reranker: load_reranker(&self.root)?,
+                }),
+                cache_key: None,
             }))
         } else {
-            Backend::load_local(&self.root).map(Some)
+            let key = BackendCacheKey {
+                root: self.root.clone(),
+                marker_modified: fs::metadata(self.root.join(MARKER_NAME))
+                    .map_err(AppError::io)?
+                    .modified()
+                    .ok(),
+                files: marker
+                    .files
+                    .into_iter()
+                    .map(|file| {
+                        let modified = fs::metadata(self.root.join(&file.path))
+                            .map_err(AppError::io)?
+                            .modified()
+                            .ok();
+                        Ok((file.path, file.size, modified))
+                    })
+                    .collect::<Result<_, AppError>>()?,
+            };
+            let cached = LOCAL_BACKEND
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            let backend = match cached {
+                Some(cached) if cached.key == key => cached.backend,
+                _ => Backend::load_local(&self.root)?,
+            };
+            Ok(Some(LoadedBackend {
+                backend: Some(backend),
+                cache_key: Some(key),
+            }))
         }
     }
 
@@ -1155,6 +1240,79 @@ mod tests {
 
         assert_eq!(contents(&forward), ["a", "b", "medium", "longest text"]);
         assert_eq!(contents(&forward), contents(&reverse));
+    }
+
+    #[test]
+    #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+    fn cached_local_models_preserve_results_and_validate_changed_assets() {
+        let source = std::env::var_os("MASH_TEST_MODELS_DIR")
+            .map(PathBuf::from)
+            .expect("explicit model directory");
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let marker = Models::new(source.clone()).read_valid_marker().unwrap();
+        for file in &marker.files {
+            let from = source.join(&file.path);
+            let to = root.join(&file.path);
+            fs::create_dir_all(to.parent().unwrap()).unwrap();
+            fs::hard_link(&from, &to)
+                .or_else(|_| fs::copy(&from, &to).map(|_| ()))
+                .unwrap();
+        }
+        write_marker(root, &marker).unwrap();
+        let models = Models::new(root.to_path_buf());
+        let query = "local search cache validation";
+        let mut first = models.load().unwrap().unwrap();
+        let expected_vector = shared_query_vector(&mut first, query).unwrap();
+        let expected_scores = first
+            .rerank(query, &["local search", "unrelated result"])
+            .unwrap();
+        drop(first);
+        assert_eq!(
+            LOCAL_BACKEND.lock().unwrap().as_ref().unwrap().key.root,
+            root
+        );
+        let mut reused = models.load().unwrap().unwrap();
+        assert!(LOCAL_BACKEND.lock().unwrap().is_none());
+        assert_eq!(
+            shared_query_vector(&mut reused, query).unwrap(),
+            expected_vector
+        );
+        let actual = reused
+            .rerank(query, &["local search", "unrelated result"])
+            .unwrap();
+        assert_eq!(actual.len(), expected_scores.len());
+        for (expected, actual) in expected_scores.iter().zip(actual) {
+            assert_eq!(expected.index, actual.index);
+            assert!((expected.score - actual.score).abs() < 1e-5);
+        }
+        drop(reused);
+        fs::File::open(root.join(MARKER_NAME))
+            .unwrap()
+            .set_modified(SystemTime::UNIX_EPOCH)
+            .unwrap();
+        let refreshed = models.load().unwrap().unwrap();
+        assert_eq!(
+            refreshed.cache_key.as_ref().unwrap().marker_modified,
+            Some(SystemTime::UNIX_EPOCH)
+        );
+        drop(refreshed);
+        // Remove only the fixture's link; the explicitly installed assets remain intact.
+        let asset = root.join(
+            &marker
+                .files
+                .iter()
+                .find(|file| file.size > 1024)
+                .unwrap()
+                .path,
+        );
+        fs::remove_file(&asset).unwrap();
+        assert!(models.load().is_err());
+        fs::write(&asset, b"incomplete replacement").unwrap();
+        assert!(models.load().is_err());
+        fs::remove_file(root.join(MARKER_NAME)).unwrap();
+        assert!(models.load().unwrap().is_none());
+        LOCAL_BACKEND.lock().unwrap().take();
     }
 
     #[test]
