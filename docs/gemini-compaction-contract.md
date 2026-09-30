@@ -46,3 +46,43 @@ the migration or ingestion. PostgreSQL/Redis wire and storage layouts are unchan
 Unmarked summaries and complete JSON snapshots lack reliable event provenance.
 They continue to follow resumed history; live UI/model compaction and alternate
 summary formats remain validation work in Beads `mash-c0d.2.1`.
+
+## Compressor and hot-restart execution
+
+`fixtures/gemini-pipeline-38700b4.jsonl` strengthens the recorder-only fixture
+above. At the same pinned commit, an isolated Node 24 harness executes the
+first-party `ChatCompressionService.compress`, `GeminiChat` hot-restart
+constructor and initialization, `AgentChatHistory`, recorder resume loader,
+message/checkpoint writer and inclusive rewind. The compressor itself chooses
+the split, emits the summary/acknowledgement turns and accepts or rejects the
+compression; the harness does not construct those checkpoint turns by hand.
+
+| Pinned source | SHA-256 |
+| --- | --- |
+| `chatCompressionService.ts` | `a278dae3a680fdb0d6072dbf821b496933a6f18d7899d43d6c5794690ca1c361` |
+| `geminiChat.ts` | `446b5cd55e91b4b79273d0c4a20bdac923ba6a6bf2cebc5016c74a49519e6717` |
+| `agentChatHistory.ts` | `ac2303b4ea280a0509893a9c6553728b51b1c04c37c2f0af6877538b6907bf0e` |
+| `chatRecordingService.ts` | `e8298c7e2ecee1282d2470459f3e4988ad6a3381c1bdbbcc119a61706a1fe282` |
+
+Two controlled model responses per compression replace the remote inference
+boundary. Token counting, initial environment-context construction, prompts,
+telemetry, hook infrastructure, tool-ID normalization, UUIDs and clock are
+controlled dependencies. The fixture has prose-only content, so it does not
+exercise tools, model-role scrubbing or environment injection. No live model
+request, UI interaction or fleet data was used.
+
+The harness asserts rejection of empty and inflated summaries, then performs
+two successful compressions through actual hot restarts. It also records and
+rolls back aborted dialogue and explicitly rewinds a later turn. The native
+loader retains only `pipeline-3`, `pipeline-4` and `final-user`. mash recovers
+four earlier genuine messages with their original identities; the resulting
+seven canonical messages contain exactly five searchable dialogue messages.
+Summary, acknowledgement, cancellation and rewind canaries remain unsearchable.
+
+Parser and SQLite indexing contracts cover the captured bytes directly, stable
+identities before/after compression, all five searchable turns and excluded
+payloads. The executed harness (`pipeline-probe.mjs`), pinned sources,
+native-loaded output and source hashes (`pipeline-evidence.json`) are retained
+under `/home/james/scratch/mash-artifacts/gemini-compaction-38700b4`.
+This closes the component-execution follow-up `mash-c0d.2.1.1`; the parent still
+requires live UI/model and alternate-summary validation.

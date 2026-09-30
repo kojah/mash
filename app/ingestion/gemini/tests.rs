@@ -1,6 +1,7 @@
 use super::*;
 mod compaction;
 mod memory;
+mod pipeline;
 use crate::{
     ingestion::{IndexOptions, direct_scans, index},
     provider::Provider,
