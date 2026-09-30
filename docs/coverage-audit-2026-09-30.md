@@ -5,10 +5,10 @@ disposable Redis 8.2 Search and PostgreSQL 17 with pgvector. Reproduce it with
 `make coverage` and the three test environment variables documented in the README.
 Regular development and targeted validation continue to use Cranelift.
 
-## Measurement
+## Historical initial measurement
 
-Baseline is commit `e30b536`. The updated measurement adds the three CLI server
-startup contracts in this change; it changes no production Rust code.
+The initial baseline was commit `e30b536`. The startup-contract measurement
+added three CLI server contracts without changing production Rust code.
 
 | Measure | Baseline | With startup contracts |
 | --- | ---: | ---: |
@@ -41,21 +41,51 @@ CI previously selected ignored backend tests by the narrower substrings
 `postgres_publication` and `redis_publication`. The broader backend expressions
 select 27 contracts, including 13 previously omitted native-provider, branch,
 filter, WAL and Redis-repair contracts. All 27 passed locally. CI now also triggers
-on pushes to `main`; deployment is still independent and must be gated on the
-exact validated commit in the tracked follow-up `mash-c0d.8.2`.
+on pushes to `main`. Deployment now depends on successful CI for the caller's
+commit and checks the current main SHA inside its serialized deployment lock.
+The GitHub account billing restriction still blocks success-path all-node
+verification in `mash-c0d.8.2`; a rejected CI job correctly skips deployment.
 
-## Remaining priorities
+## Clean current measurement
+
+The source state at `fc1bc7d` passes 338 tests under LLVM instrumentation;
+three manual benchmarks are excluded. Test execution took 49.187 seconds,
+excluding compilation and reporting. The clean report measures:
+
+| Measure | Current |
+| --- | ---: |
+| Handwritten source-file lines | 15,498 / 17,340 (89.38%) |
+| Regions | 22,149 / 25,704 (86.17%) |
+| Functions | 1,612 / 2,001 (80.56%) |
+
+An initial refresh in the persistent target mixed older workspace binaries:
+`core.rs` had coverage mappings through line 907 even though its current length
+was 137 lines. That mixed report is invalid as a current measurement. The
+coverage task now runs `cargo llvm-cov clean --workspace` first. The corrected
+run has no reported source mappings beyond current file lengths; `core.rs`
+ends at line 137 in the report. Standalone `test_support.rs` and the test-only
+relevance evaluator are now excluded too. Historical figures above use the
+earlier report scope and should not be used to claim a percentage improvement.
+
+Inline tests remain included, and branch/MC/DC coverage remains unmeasured.
+The corrected JSON report and execution log are retained outside Git at
+`/home/james/scratch/mash-artifacts/coverage-clean-20260930.{json,log}`.
+Gemini checkpoint recovery has 64/64 covered lines; language validation has
+65/65 including its inline tests. These counts support the executed regressions,
+with live provider capture and broader search quality still requiring evidence.
+
+## Current remaining priorities
 
 | Source | Uncovered lines | Line coverage |
 | --- | ---: | ---: |
-| `app/semantic/models.rs` | 173 | 59.86% |
+| `app/semantic/models.rs` | 125 | 61.54% |
 | `app/shared/server.rs` | 120 | 77.10% |
 | `app/shared/backend.rs` | 118 | 85.82% |
 | `app/shared/redis_index/canonical.rs` | 81 | 75.68% |
 | `app/shared.rs` | 79 | 88.98% |
 | `app/shared/direct.rs` | 75 | 80.16% |
-| `app/core.rs` | 65 | 89.95% |
 | `app/ingestion/openclaw.rs` | 54 | 77.02% |
+| `app/semantic/remote.rs` | 51 | 84.11% |
 
 Review exact uncovered paths before choosing tests. Prioritize safe model-install
 failure handling, backend lifecycle and recovery, canonical Redis validation,

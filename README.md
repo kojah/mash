@@ -987,7 +987,10 @@ make coverage
 This runs every test except the three manual benchmarks, including the installed
 model and both shared-backend contracts. It writes LLVM JSON coverage to
 `target/llvm-cov/coverage.json`; set `COVERAGE_OUTPUT` to choose another location.
-Generated SQL bindings and separate test files are excluded from the report.
+The coverage task cleans workspace coverage artifacts before execution so older
+binaries cannot contribute obsolete source mappings in a persistent target.
+Generated SQL bindings, separate test files, standalone test helpers and the
+test-only relevance evaluator are excluded from the report.
 Tests embedded in production source files still contribute to those files'
 coverage, so assess uncovered behavior as well as the aggregate percentage.
 Coverage needs LLVM instrumentation; regular development continues to use
