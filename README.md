@@ -847,6 +847,14 @@ The core owns indexing, search, view, status, forgetting, and model installation
 MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
 The cached search worker and watcher also use typed core requests.
 
+`app/core/models.rs` defines those serialized requests and responses.
+Operation handlers live in `app/core/indexing.rs`, `search.rs`, `inspection.rs`
+and `maintenance.rs`; each returns its concrete result type. The façade resolves
+configuration and paths, dispatches the request and wraps the result once.
+Indexing owns per-index provider routing, progress and watcher target selection;
+inspection owns read-only status and canonical views. Parsing, SQLite and local
+inference run on blocking workers, while shared HTTP operations remain asynchronous.
+
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
 and `models_install`. The server uses the same operations and typed JSON errors
