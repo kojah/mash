@@ -11,9 +11,9 @@
 *.sqlite-shm
 /.agents/
 /.claude/
-/.codex/
+/.codex/*
+!/.codex/config.toml
 /.gc/
-/.mcp.json
 /gc-plans/
 /worktrees/
 

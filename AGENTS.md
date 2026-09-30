@@ -33,6 +33,18 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 - Never download models outside the explicit `models install` command.
 - Unsafe Rust is forbidden.
 
+## Codebase discovery
+
+Codebase Memory MCP is configured for this project in `.codex/config.toml`
+and `.mcp.json`. Prefer its graph tools for structural code discovery:
+`search_graph`, `trace_path`, `get_code_snippet`, and `get_architecture`.
+At session start, confirm the `mash` project and current generation with
+`list_projects` or `index_status`. Use task-directed verification and check
+`check_index_coverage` for every evidence path before relying on graph results.
+Read the reported source ranges when coverage is partial, stale, or unknown.
+Use ordinary source searches for literals/configuration or when MCP is unavailable.
+Refresh the graph after material source changes with `index_repository`.
+
 ## Implementation style
 
 Prefer concrete functions and structs. External input returns typed JSON errors
