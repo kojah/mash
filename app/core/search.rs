@@ -16,6 +16,22 @@ pub(super) struct Input {
     pub(super) local: bool,
 }
 
+pub(super) fn resolve(
+    query: &str,
+    filters: crate::search_filter::Selection,
+    shared: bool,
+    local: bool,
+    node: &str,
+) -> Result<crate::search_filter::Scope, AppError> {
+    if shared && local {
+        return Err(AppError::usage(
+            "local and shared search are mutually exclusive",
+        ));
+    }
+    crate::search_query::validate(query)?;
+    filters.resolve(node)
+}
+
 pub(super) async fn run(
     configuration: &ResolvedConfig,
     database: &Path,
@@ -30,13 +46,11 @@ pub(super) async fn run(
         shared: use_shared,
         local: use_local,
     } = input;
-    if use_shared && use_local {
-        return Err(AppError::usage(
-            "local and shared search are mutually exclusive",
-        ));
-    }
-    crate::search_query::validate(&query)?;
-    let filters = filters.resolve(
+    let filters = resolve(
+        &query,
+        filters,
+        use_shared,
+        use_local,
         configuration
             .shared
             .as_ref()

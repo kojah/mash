@@ -1,6 +1,56 @@
 use super::*;
 
 #[test]
+fn cached_and_direct_cli_validation_match_with_installed_models_and_no_index() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let database = directory.path().join("missing.sqlite3");
+    let models = directory.path().join("models");
+    create_valid_model_marker(&models);
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    for arguments in [
+        vec!["search", "the and of", "--local"],
+        vec![
+            "search",
+            "wie konfiguriere ich den gemeinsamen Suchindex",
+            "--local",
+        ],
+        vec![
+            "search",
+            "cbioportal",
+            "--filter",
+            r#"{"project":[""]}"#,
+            "--local",
+        ],
+    ] {
+        let mut errors = Vec::new();
+        for direct in [false, true] {
+            let mut command = Command::cargo_bin("mash").unwrap();
+            command.args(base).args(&arguments);
+            if direct {
+                command.arg("--no-worker");
+            }
+            let output = command.output().unwrap();
+            assert_eq!(output.status.code(), Some(2));
+            assert_eq!(output.stdout, [] as [u8; 0]);
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"]["kind"], "usage");
+            errors.push(error);
+        }
+        assert_eq!(errors[0], errors[1]);
+        assert!(!database.exists());
+    }
+}
+
+#[test]
 fn unsupported_language_is_explained_before_model_or_index_access() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");

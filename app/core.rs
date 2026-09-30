@@ -24,10 +24,25 @@ pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
 }
 
 #[cfg(unix)]
-pub(crate) async fn worker_search(request: Request) -> Result<SearchResponse, AppError> {
-    if !matches!(request.operation, Operation::Search { .. }) {
+pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError> {
+    let Operation::Search {
+        query,
+        filters,
+        shared,
+        local,
+        ..
+    } = &request.operation
+    else {
         return Err(AppError::usage("search worker accepts only searches"));
-    }
+    };
+    // The node affects the resolved scope, but not syntax validation. Actual
+    // execution resolves again with the current configuration and time cutoff.
+    search::resolve(query, filters.as_ref().clone(), *shared, *local, "local").map(|_| ())
+}
+
+#[cfg(unix)]
+pub(crate) async fn worker_search(request: Request) -> Result<SearchResponse, AppError> {
+    validate_search_request(&request)?;
     match execute(request).await? {
         Response::Search(response) => Ok(response),
         _ => Err(AppError::internal("unexpected search worker response")),

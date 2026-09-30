@@ -152,6 +152,9 @@ pub(crate) async fn search(
     profile: &[u8],
     environment: &[String],
 ) -> Option<Result<SearchResponse, AppError>> {
+    if let Err(error) = crate::core::validate_search_request(request) {
+        return Some(Err(error));
+    }
     let owner = uid().ok()?;
     let path = socket_path(profile, environment, owner).ok()?;
     let request = serde_json::to_vec(request).ok()?;
@@ -241,6 +244,53 @@ pub(crate) fn run(path: &Path) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn invalid_searches_return_usage_without_connecting_or_starting_a_worker() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = directory.path().as_os_str().as_bytes();
+        let socket = socket_path(profile, &[], uid().unwrap()).unwrap();
+        assert!(!socket.exists());
+        for (query, local, shared, filter) in [
+            ("the and of", true, false, None),
+            (
+                "wie konfiguriere ich den gemeinsamen Suchindex",
+                true,
+                false,
+                None,
+            ),
+            ("cbioportal", true, true, None),
+            (
+                "cbioportal",
+                true,
+                false,
+                Some(crate::search_filter::Filter::Project(vec![String::new()])),
+            ),
+        ] {
+            let request = Request {
+                paths: crate::core::Paths {
+                    config: None,
+                    db: None,
+                    models_dir: None,
+                },
+                operation: crate::core::Operation::Search {
+                    query: query.into(),
+                    limit: 5,
+                    unit: crate::search_results::SearchUnit::Threads,
+                    filters: Box::new(crate::search_filter::Selection {
+                        filter,
+                        ..Default::default()
+                    }),
+                    local,
+                    shared,
+                },
+            };
+            let error = search(&request, profile, &[]).await.unwrap().unwrap_err();
+            assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+            assert_eq!(error.code, 2);
+            assert!(!socket.exists());
+        }
+    }
 
     #[tokio::test]
     async fn worker_rejects_mutations_and_exits_after_idle_without_leaving_socket() {

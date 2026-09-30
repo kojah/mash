@@ -320,11 +320,16 @@ async fn process_search(mut cli: Cli) -> Result<Response, AppError> {
     cli.db = Some(absolute(cli.db.unwrap_or_else(default_database_path)));
     let models_dir = absolute(cli.models_dir.unwrap_or_else(default_models_path));
     cli.models_dir = Some(models_dir.clone());
+    let request = cli.into_request()?;
+    core::validate_search_request(&request)?;
     let models = Models::new(models_dir).with_remote(configuration.embeddings.clone());
     if !models.is_installed() {
         // Preserve direct validation/error ordering without starting an idle
         // process for a missing or incomplete model installation.
-        return run_parsed(cli).await;
+        return core::execute(request)
+            .await
+            .map(Box::new)
+            .map(Response::Operation);
     }
     let mut environment = vec![
         "HOME".to_owned(),
@@ -348,10 +353,16 @@ async fn process_search(mut cli: Cli) -> Result<Response, AppError> {
     {
         environment.push(name.clone());
     }
-    let Ok(profile) = serde_json::to_vec(&(&cli.config, &cli.db, &cli.models_dir)) else {
-        return run_parsed(cli).await;
+    let Ok(profile) = serde_json::to_vec(&(
+        &request.paths.config,
+        &request.paths.db,
+        &request.paths.models_dir,
+    )) else {
+        return core::execute(request)
+            .await
+            .map(Box::new)
+            .map(Response::Operation);
     };
-    let request = cli.into_request()?;
     if let Some(result) = crate::worker::search(&request, &profile, &environment).await {
         return result
             .map(|response| Response::Operation(Box::new(core::Response::Search(response))));
