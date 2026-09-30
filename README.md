@@ -755,6 +755,14 @@ Only one installer can run against a model directory at a time. A second
 `models install` returns a retryable `model-busy` error (exit code 6); retry
 after the active installer finishes. The operating system releases the lock
 when the installer exits, so an interrupted process does not leave a stale lock.
+Installers copy available assets into a separate generation, run SDK checks
+there, then atomically select that generation. Failed or interrupted staging
+keeps the previous installation available. Searches and indexers retain a lease
+on their selected generation; an explicit installation collects abandoned and
+retired generations once no reader holds them. The original flat cache is
+retained so readers started before the first generation install can finish.
+Reinstallation needs disk space for a second copy of the assets. This staging
+also isolates mutable SDK revision references from the active cache.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and

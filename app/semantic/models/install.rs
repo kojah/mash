@@ -1,7 +1,8 @@
 //! Explicit model installation and smoke validation before marker publication.
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use super::EmbeddingPool;
-use super::assets::{self, InstallMarker, inventory, write_marker};
+use super::assets::{self, InstallMarker, inventory};
+use super::generations::StagedAssets;
 use super::{
     AppError, Backend, EMBEDDING_MODEL, InstallSummary, Models, RERANKER_MODEL,
     coreml_embedding_enabled, embedding_model_description,
@@ -39,17 +40,19 @@ impl Models {
         // Keep the lock through downloads, smoke checks, inventory and marker
         // publication. Never unlink it: another process may hold the same inode.
         let _lock = installation_lock(&self.root)?;
+        let staged = StagedAssets::new(&self.root)?;
+        let asset_root = staged.root();
         if let Some(config) = &self.remote {
             let mut reranker = TextRerank::try_new(
                 RerankInitOptions::new(RERANKER_MODEL)
-                    .with_cache_dir(self.root.clone())
+                    .with_cache_dir(asset_root.to_path_buf())
                     .with_show_download_progress(false),
             )
             .map_err(|_| AppError::model("failed to install reranking model"))?;
             reranker
                 .rerank("installation check", ["installation check"], false, None)
                 .map_err(|_| AppError::model("reranking model installation check failed"))?;
-            let files = inventory(&self.root)?;
+            let files = inventory(asset_root)?;
             let summary = InstallSummary {
                 embedding_model: "remote",
                 reranker_model: "jinaai/jina-reranker-v1-turbo-en",
@@ -57,10 +60,11 @@ impl Models {
                 files: files.len(),
             };
             let marker = assets::remote_install_marker(&self.root, config.dimensions, files)?;
-            write_marker(&self.root, &marker)?;
+            drop(reranker);
+            staged.publish(&self.root, marker)?;
             return Ok(summary);
         }
-        let mut backend = Backend::download_and_load(&self.root)?;
+        let mut backend = Backend::download_and_load(asset_root)?;
         let embeddings = backend.embed(&["semantic model installation check"])?;
         let embedding_dimensions = embeddings
             .first()
@@ -77,7 +81,7 @@ impl Models {
         }
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
-            let mut indexer = EmbeddingPool::load_local(&self.root)?;
+            let mut indexer = EmbeddingPool::load_local(asset_root)?;
             let smoke = [EmbeddingGroup {
                 content: "semantic Core ML installation check".to_owned(),
                 message_ids: vec!["smoke".to_owned()],
@@ -89,12 +93,13 @@ impl Models {
             }
         }
 
-        let files = inventory(&self.root)?;
+        let files = inventory(asset_root)?;
         if files.is_empty() {
             return Err(AppError::model("model installation produced no assets"));
         }
         let marker = InstallMarker {
             schema: 1,
+            asset_directory: None,
             embedding_model: EMBEDDING_MODEL.to_string(),
             reranker_model: RERANKER_MODEL.to_string(),
             embedding_dimensions,
@@ -102,13 +107,15 @@ impl Models {
             embedding_available: true,
             files,
         };
-        write_marker(&self.root, &marker)?;
-        Ok(InstallSummary {
+        let summary = InstallSummary {
             embedding_model: embedding_model_description(),
             reranker_model: "jinaai/jina-reranker-v1-turbo-en",
             embedding_dimensions,
             files: marker.files.len(),
-        })
+        };
+        drop(backend);
+        staged.publish(&self.root, marker)?;
+        Ok(summary)
     }
 }
 

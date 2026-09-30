@@ -6,6 +6,7 @@ fn fixture_marker(root: &Path) -> InstallMarker {
     fs::write(root.join("asset"), b"fixture").unwrap();
     InstallMarker {
         schema: 1,
+        asset_directory: None,
         embedding_model: EMBEDDING_MODEL.to_string(),
         reranker_model: RERANKER_MODEL.to_string(),
         embedding_dimensions: 384,

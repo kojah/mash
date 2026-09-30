@@ -25,6 +25,7 @@ static EMBEDDING_GENERATION: OnceLock<String> = OnceLock::new();
 
 pub(crate) struct EmbeddingPool {
     pub(super) backend: EmbeddingPoolBackend,
+    pub(super) assets_lease: Option<std::fs::File>,
 }
 
 pub(super) enum EmbeddingPoolBackend {
@@ -90,6 +91,7 @@ impl EmbeddingPool {
     pub(super) fn load_local(root: &Path) -> Result<Self, AppError> {
         Ok(Self {
             backend: EmbeddingPoolBackend::CoreMl(Box::new(CoreMlEmbeddingPool::load(root)?)),
+            assets_lease: None,
         })
     }
 
@@ -100,6 +102,7 @@ impl EmbeddingPool {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             backend: EmbeddingPoolBackend::Cpu(workers),
+            assets_lease: None,
         })
     }
 

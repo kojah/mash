@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
 mod assets;
+mod generations;
 mod install;
 use assets::InstallMarker;
 pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
@@ -32,6 +33,8 @@ pub(crate) struct Backend {
     embedding: Option<TextEmbedding>,
     remote: Option<remote::Client>,
     reranker: TextRerank,
+    // Retained with cached models and lazy Core ML sessions until their drop.
+    assets_lease: Option<fs::File>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -136,19 +139,22 @@ impl Models {
         if !self.root.join(MARKER_NAME).is_file() {
             return Ok(None);
         }
-        let marker = self.read_valid_marker()?;
+        let selected = generations::select(&self.root, self.remote.is_some())?;
+        let marker = selected.marker;
+        let asset_root = selected.root;
         if let Some(config) = &self.remote {
             Ok(Some(LoadedBackend {
                 backend: Some(Backend {
                     embedding: None,
                     remote: Some(remote::Client::new(config.clone())?),
-                    reranker: load_reranker(&self.root)?,
+                    reranker: load_reranker(&asset_root)?,
+                    assets_lease: selected.lease,
                 }),
                 cache_key: None,
             }))
         } else {
             let key = BackendCacheKey {
-                root: self.root.clone(),
+                root: asset_root.clone(),
                 marker_modified: fs::metadata(self.root.join(MARKER_NAME))
                     .map_err(AppError::io)?
                     .modified()
@@ -157,7 +163,7 @@ impl Models {
                     .files
                     .into_iter()
                     .map(|file| {
-                        let modified = fs::metadata(self.root.join(&file.path))
+                        let modified = fs::metadata(asset_root.join(&file.path))
                             .map_err(AppError::io)?
                             .modified()
                             .ok();
@@ -169,10 +175,11 @@ impl Models {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .take();
-            let backend = match cached {
+            let mut backend = match cached {
                 Some(cached) if cached.key == key => cached.backend,
-                _ => Backend::load_local(&self.root)?,
+                _ => Backend::load_local(&asset_root)?,
             };
+            backend.assets_lease = selected.lease;
             Ok(Some(LoadedBackend {
                 backend: Some(backend),
                 cache_key: Some(key),
@@ -184,13 +191,16 @@ impl Models {
         if let Some(config) = &self.remote {
             return Ok(Some(EmbeddingPool {
                 backend: EmbeddingPoolBackend::Remote(remote::Client::new(config.clone())?),
+                assets_lease: None,
             }));
         }
         if !self.root.join(MARKER_NAME).is_file() {
             return Ok(None);
         }
-        self.read_valid_marker()?;
-        EmbeddingPool::load_local(&self.root).map(Some)
+        let selected = generations::select(&self.root, false)?;
+        let mut pool = EmbeddingPool::load_local(&selected.root)?;
+        pool.assets_lease = selected.lease;
+        Ok(Some(pool))
     }
 
     fn read_valid_marker(&self) -> Result<InstallMarker, AppError> {
@@ -233,6 +243,7 @@ impl Backend {
             embedding: Some(embedding),
             remote: None,
             reranker,
+            assets_lease: None,
         })
     }
 
@@ -243,6 +254,7 @@ impl Backend {
             embedding: Some(embedding),
             remote: None,
             reranker,
+            assets_lease: None,
         })
     }
 

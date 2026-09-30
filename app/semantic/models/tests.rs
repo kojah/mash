@@ -89,15 +89,17 @@ fn cached_local_models_preserve_results_and_validate_changed_assets() {
         .expect("explicit model directory");
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    let marker = Models::new(source.clone()).read_valid_marker().unwrap();
+    let selected = generations::select(&source, false).unwrap();
+    let mut marker = selected.marker;
     for file in &marker.files {
-        let from = source.join(&file.path);
+        let from = selected.root.join(&file.path);
         let to = root.join(&file.path);
         fs::create_dir_all(to.parent().unwrap()).unwrap();
         fs::hard_link(&from, &to)
             .or_else(|_| fs::copy(&from, &to).map(|_| ()))
             .unwrap();
     }
+    marker.asset_directory = None;
     write_marker(root, &marker).unwrap();
     let models = Models::new(root.to_path_buf());
     let query = "local search cache validation";

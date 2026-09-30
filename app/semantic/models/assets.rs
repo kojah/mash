@@ -15,6 +15,8 @@ use walkdir::WalkDir;
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct InstallMarker {
     pub(super) schema: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) asset_directory: Option<String>,
     pub(super) embedding_model: String,
     pub(super) reranker_model: String,
     pub(super) embedding_dimensions: usize,
@@ -67,6 +69,17 @@ fn read_metadata(path: &Path, limit: usize) -> Result<Vec<u8>, AppError> {
 }
 
 fn validate_marker(marker: &InstallMarker, remote: bool) -> Result<(), AppError> {
+    if marker.asset_directory.as_ref().is_some_and(|name| {
+        !name.starts_with(super::generations::PREFIX)
+            || name.len() > 128
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+    }) {
+        return Err(AppError::model(
+            "model marker contains an invalid asset directory",
+        ));
+    }
     if (!remote && !marker.embedding_available)
         || marker.schema != 1
         || marker.embedding_model != EMBEDDING_MODEL.to_string()
@@ -117,6 +130,7 @@ pub(super) fn remote_install_marker(
     let local = read_valid_marker(root, false).ok();
     let marker = InstallMarker {
         schema: 1,
+        asset_directory: None,
         embedding_model: EMBEDDING_MODEL.to_string(),
         reranker_model: RERANKER_MODEL.to_string(),
         // A complete local installation also supports remote inference. Keep
@@ -133,10 +147,22 @@ pub(super) fn remote_install_marker(
 }
 
 pub(super) fn read_valid_marker(root: &Path, remote: bool) -> Result<InstallMarker, AppError> {
+    super::generations::select(root, remote).map(|selected| selected.marker)
+}
+
+pub(super) fn read_marker(root: &Path, remote: bool) -> Result<InstallMarker, AppError> {
     let bytes = read_metadata(&root.join(MARKER_NAME), MAX_MARKER_BYTES)?;
     let marker: InstallMarker = serde_json::from_slice(&bytes)
         .map_err(|error| AppError::model(format!("invalid model marker: {error}")))?;
     validate_marker(&marker, remote)?;
+    Ok(marker)
+}
+
+pub(super) fn validate_files(
+    root: &Path,
+    marker: &InstallMarker,
+    remote: bool,
+) -> Result<(), AppError> {
     for file in &marker.files {
         if remote && !Path::new(&file.path).starts_with(RERANKER_REPOSITORY) {
             continue;
@@ -149,7 +175,7 @@ pub(super) fn read_valid_marker(root: &Path, remote: bool) -> Result<InstallMark
             return Err(AppError::model("installed model assets are incomplete"));
         }
     }
-    Ok(marker)
+    Ok(())
 }
 
 pub(crate) fn snapshot(root: &Path, repository: &str) -> Result<PathBuf, AppError> {
@@ -192,6 +218,7 @@ pub(super) fn inventory(root: &Path) -> Result<Vec<InstalledFile>, AppError> {
         let entry = entry.map_err(|error| AppError::model(error.to_string()))?;
         if entry.path() == root.join(MARKER_NAME)
             || entry.path() == root.join(INSTALL_LOCK_NAME)
+            || entry.path() == root.join(super::generations::LEASE_NAME)
             || entry.path() == root.join("installed.json.tmp")
             || (entry.depth() == 1
                 && entry
