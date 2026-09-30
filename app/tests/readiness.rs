@@ -1,6 +1,48 @@
 use super::*;
 
 #[test]
+fn concurrent_models_install_returns_a_retryable_error_before_changing_assets() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let models = directory.path().join("models");
+    create_valid_model_marker(&models);
+    let marker = std::fs::read(models.join("installed.json")).unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(models.join(".mash-install.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "models",
+            "install",
+        ])
+        .timeout(std::time::Duration::from_secs(5))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(6));
+    assert_eq!(output.stdout, [] as [u8; 0]);
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "model-busy");
+    assert_eq!(error["error"]["retryable"], true);
+    assert_eq!(error["error"]["recommended_action"], "models install");
+    assert_eq!(
+        std::fs::read(models.join("installed.json")).unwrap(),
+        marker
+    );
+    assert_eq!(std::fs::read_dir(&models).unwrap().count(), 3); // marker, fixture asset, lock
+}
+
+#[test]
 fn status_reports_the_exact_resolved_local_configuration() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

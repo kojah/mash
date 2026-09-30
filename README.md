@@ -751,6 +751,10 @@ file to 16 MiB. Invalid paths, duplicate entries, wrong local dimensions and
 missing or truncated assets return a model error recommending `mash models install`.
 Hugging Face snapshot symlinks remain supported. Markers are published atomically
 after installation checks, using a unique staging file for each installer.
+Only one installer can run against a model directory at a time. A second
+`models install` returns a retryable `model-busy` error (exit code 6); retry
+after the active installer finishes. The operating system releases the lock
+when the installer exits, so an interrupted process does not leave a stale lock.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and

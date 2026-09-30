@@ -36,6 +36,7 @@ const MAX_MARKER_FILES: usize = 4096;
 const MAX_REVISION_BYTES: usize = 128;
 const MAX_TOKENIZER_BYTES: usize = 16 * 1024 * 1024;
 pub(super) const MARKER_TEMP_PREFIX: &str = ".mash-install-";
+pub(super) const INSTALL_LOCK_NAME: &str = ".mash-install.lock";
 
 // Metadata must be bounded before deserialization. Model weights themselves
 // are intentionally read separately and can be much larger.
@@ -190,6 +191,7 @@ pub(super) fn inventory(root: &Path) -> Result<Vec<InstalledFile>, AppError> {
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = entry.map_err(|error| AppError::model(error.to_string()))?;
         if entry.path() == root.join(MARKER_NAME)
+            || entry.path() == root.join(INSTALL_LOCK_NAME)
             || entry.path() == root.join("installed.json.tmp")
             || (entry.depth() == 1
                 && entry

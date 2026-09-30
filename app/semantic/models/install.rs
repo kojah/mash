@@ -10,12 +10,36 @@ use super::{
 use crate::semantic::embeddings::EmbeddingGroup;
 use fastembed::{RerankInitOptions, TextRerank};
 use std::fs;
+use std::path::Path;
+
+fn installation_lock(root: &Path) -> Result<fs::File, AppError> {
+    fs::create_dir_all(root).map_err(AppError::io)?;
+    let mut options = fs::OpenOptions::new();
+    options.create(true).truncate(false).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let lock = options
+        .open(root.join(assets::INSTALL_LOCK_NAME))
+        .map_err(AppError::io)?;
+    match lock.try_lock() {
+        Ok(()) => Ok(lock),
+        Err(fs::TryLockError::WouldBlock) => Err(AppError::model_busy()),
+        Err(fs::TryLockError::Error(error)) => Err(AppError::io(error)),
+    }
+}
 
 impl Models {
     pub(crate) fn install(&self) -> Result<InstallSummary, AppError> {
         if let Some(config) = &self.remote {
             config.validate()?;
-            fs::create_dir_all(&self.root).map_err(AppError::io)?;
+        }
+        // Keep the lock through downloads, smoke checks, inventory and marker
+        // publication. Never unlink it: another process may hold the same inode.
+        let _lock = installation_lock(&self.root)?;
+        if let Some(config) = &self.remote {
             let mut reranker = TextRerank::try_new(
                 RerankInitOptions::new(RERANKER_MODEL)
                     .with_cache_dir(self.root.clone())
@@ -36,7 +60,6 @@ impl Models {
             write_marker(&self.root, &marker)?;
             return Ok(summary);
         }
-        fs::create_dir_all(&self.root).map_err(AppError::io)?;
         let mut backend = Backend::download_and_load(&self.root)?;
         let embeddings = backend.embed(&["semantic model installation check"])?;
         let embedding_dimensions = embeddings
@@ -86,5 +109,41 @@ impl Models {
             embedding_dimensions,
             files: marker.files.len(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installers_are_exclusive_and_release_the_same_lock_on_drop() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join("asset"), b"asset").unwrap();
+        let first = installation_lock(directory.path()).unwrap();
+        let error = installation_lock(directory.path()).unwrap_err();
+        assert_eq!(error.error.kind, crate::ErrorKind::ModelBusy);
+        assert_eq!(error.code, 6);
+        assert!(error.error.retryable);
+        assert_eq!(
+            error.error.recommended_action,
+            Some(crate::Action::ModelsInstall)
+        );
+        assert_eq!(assets::inventory(directory.path()).unwrap().len(), 1);
+        drop(first);
+        let next = installation_lock(directory.path()).unwrap();
+        assert!(directory.path().join(assets::INSTALL_LOCK_NAME).is_file());
+        assert!(installation_lock(directory.path()).is_err());
+        drop(next);
+    }
+
+    #[test]
+    fn unwritable_model_location_fails_before_any_sdk_work() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let result = Models::new(file.path().to_path_buf()).install();
+        assert!(matches!(
+            result.unwrap_err().error.kind,
+            crate::ErrorKind::Io
+        ));
     }
 }

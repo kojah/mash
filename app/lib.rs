@@ -109,6 +109,7 @@ enum ErrorKind {
     Usage,
     DatabaseMissing,
     IndexBusy,
+    ModelBusy,
     Database,
     Io,
     Internal,
@@ -187,6 +188,16 @@ impl AppError {
 
     fn model(message: impl Into<String>) -> Self {
         Self::with_action(4, ErrorKind::Model, message, true, Action::ModelsInstall)
+    }
+
+    fn model_busy() -> Self {
+        Self::with_action(
+            6,
+            ErrorKind::ModelBusy,
+            "another model installer is active; retry after it finishes",
+            true,
+            Action::ModelsInstall,
+        )
     }
 
     fn search_not_ready(message: impl Into<String>) -> Self {
