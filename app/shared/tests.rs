@@ -348,7 +348,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
         semantic::embedding_generation(),
         "hello",
         &[127.0, 0.0],
-        (None, None, 50),
+        (None, None, SearchUnit::Messages),
         None,
     )
     .unwrap();
@@ -363,7 +363,11 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
             semantic::embedding_generation(),
             "hello",
             &[127.0, 0.0],
-            (Some(crate::provider::Provider::ClaudeCode), None, 50),
+            (
+                Some(crate::provider::Provider::ClaudeCode),
+                None,
+                SearchUnit::Messages
+            ),
             None
         )
         .unwrap()
@@ -430,7 +434,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         semantic::embedding_generation(),
         "hello",
         &[127.0, 0.0],
-        (None, None, 50),
+        (None, None, SearchUnit::Messages),
         Some(&scope),
     )
     .unwrap();

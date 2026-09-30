@@ -413,7 +413,10 @@ impl Backend {
         documents: &[S],
     ) -> Result<Vec<fastembed::RerankResult>, AppError> {
         self.reranker
-            .rerank(query, documents, false, None)
+            // A long injected or legitimate message otherwise pads every short
+            // message in the batch to 512 tokens. Preserve all candidates and
+            // original indexes while bounding padding to one document.
+            .rerank(query, documents, false, Some(1))
             .map_err(|error| AppError::model(format!("reranking inference failed: {error}")))
     }
 }

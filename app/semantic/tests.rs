@@ -286,6 +286,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
             provider: crate::provider::Provider::Codex,
             role: crate::role::Role::User,
             content: id.to_owned(),
+            copies: Vec::new(),
             created_at: None,
             metadata: crate::search_results::ThreadMetadata::default(),
             lexical_score: None,
@@ -298,7 +299,11 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
 
     let mut semantic_b = hit("b");
     semantic_b.semantic_score = Some(0.8);
-    let fused = fuse(vec![hit("a"), hit("b")], vec![hit("c"), semantic_b]);
+    let fused = fuse(
+        vec![hit("a"), hit("b")],
+        vec![hit("c"), semantic_b],
+        crate::search_results::SearchUnit::Messages,
+    );
     let ids: Vec<&str> = fused
         .iter()
         .map(|candidate| candidate.id.as_str())
@@ -307,4 +312,24 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
     assert!(fused[0].fusion_score > fused[1].fusion_score);
     assert_eq!(fused[0].semantic_score, Some(0.8));
     assert_eq!(fused[1].fusion_score, fused[2].fusion_score);
+    // Replica IDs differ across nodes, but identical thread evidence must fuse
+    // once and must not push the next independent candidate down the ranks.
+    let mut copy = hit("copy");
+    copy.content = "a".into();
+    copy.node_id = Some("replica".into());
+    let mut semantic_copy = hit("semantic-copy");
+    semantic_copy.content = "a".into();
+    semantic_copy.node_id = Some("other".into());
+    semantic_copy.semantic_score = Some(0.9);
+    let fused = fuse(
+        vec![hit("a"), copy, hit("b")],
+        vec![semantic_copy, hit("b")],
+        crate::search_results::SearchUnit::Threads,
+    );
+    assert_eq!(fused.len(), 2);
+    assert_eq!(fused[0].id, "a");
+    assert_eq!(fused[0].copies.len(), 2);
+    assert_eq!(fused[0].semantic_score, Some(0.9));
+    assert!((fused[0].fusion_score - 2.0 / 61.0).abs() < 1e-6);
+    assert!((fused[1].fusion_score - 2.0 / 62.0).abs() < 1e-6);
 }

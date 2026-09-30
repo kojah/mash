@@ -248,14 +248,18 @@ fn hits(value: redis::Value, lexical: bool) -> Result<(Vec<SearchHit>, Documents
             .map(|v| v.parse::<f32>())
             .transpose()
             .map_err(|_| AppError::shared("invalid Redis vector distance"))?;
-        documents.insert((node_id.clone(), message.id.clone()), message.projection);
+        documents.insert(
+            (node_id.clone(), message.id.clone()),
+            message.projection.clone(),
+        );
         hits.push(SearchHit {
             node_id: Some(node_id),
             id: message.id,
             conversation_id: message.conversation_id,
             provider: provider.parse()?,
             role: message.role,
-            content: message.content,
+            content: message.projection,
+            copies: Vec::new(),
             created_at: message.created_at,
             metadata: fields
                 .get("conversation_record")

@@ -420,7 +420,9 @@ their score is reciprocal rank of the best message plus contributions of 10%
 and 5% from the next two. Scores express relative relevance, not probabilities.
 Recency does not change ranking; use date filters to restrict history.
 Copies with the same provider and conversation ID are grouped across nodes;
-identical message content earns no additional credit. Independent conversations
+identical role and whitespace-normalized message content earns no additional credit.
+Replicas are collapsed before fusion and thread scoring; each excerpt's `copies`
+lists alternate message/node references for viewing the same evidence. Independent conversations
 with different IDs remain separate.
 
 Use `mash search QUERY --unit messages` or MCP `unit = "messages"` for full
@@ -431,6 +433,15 @@ plus ellipses, with a window around a query term when present. Results describe
 the bounded candidate pool, not an exhaustive count of matches in each chat.
 Existing Redis snapshots lack newly stored conversation metadata until republished;
 their thread IDs and matching message references remain usable.
+
+Reranking evaluates documents individually so a long message does not pad every
+short candidate to the tokenizer's maximum length. Candidate budgets stay unchanged.
+Search projections exclude system/developer/tool messages, dedicated skill bodies,
+and known injected instruction/context blocks. Ordinary Markdown examples remain
+searchable. `view` retains canonical provider history. Existing candidates are
+also filtered at query time; the next explicit `mash index` rescans source files
+to refresh stored projections and titles. Shared-only indexing similarly refreshes
+its source checkpoints once. Search never performs that refresh itself.
 
 Use `search --local` to avoid the shared API, or `search --shared` for the complete
 shared index, including this node. MCP search exposes equivalent `local` and

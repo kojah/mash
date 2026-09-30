@@ -62,6 +62,8 @@ pub(crate) struct SearchHit {
     pub(crate) created_at: Option<i64>,
     #[serde(default)]
     pub(crate) metadata: crate::search_results::ThreadMetadata,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) copies: Vec<crate::search_results::MessageReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]

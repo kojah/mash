@@ -3,7 +3,7 @@ use crate::provider::Provider;
 use crate::storage::SearchHit;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(
     Debug, Clone, Copy, Default, Deserialize, Serialize, clap::ValueEnum, rmcp::schemars::JsonSchema,
@@ -67,26 +67,96 @@ pub(crate) struct ThreadMatch {
     pub(crate) snippet: String,
     pub(crate) rerank_score: Option<f32>,
     pub(crate) fusion_score: f32,
+    /// Other indexed copies of this evidence, usable as view anchors.
+    pub(crate) copies: Vec<MessageReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub(crate) struct MessageReference {
+    pub(crate) message_id: String,
+    pub(crate) node_id: Option<String>,
+}
+
+pub(crate) type EvidenceKey = (Provider, String, crate::role::Role, blake3::Hash);
+
+pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
+    let text = hit.content.split_whitespace().collect::<Vec<_>>().join(" ");
+    (
+        hit.provider,
+        hit.conversation_id.clone(),
+        hit.role.clone(),
+        blake3::hash(text.as_bytes()),
+    )
+}
+
+/// Apply current exclusions even to snapshots published by older nodes.
+pub(crate) fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
+    hits.into_iter()
+        .filter_map(|mut hit| {
+            let clean = crate::search_text::project(&hit.role, &hit.content);
+            if clean.trim().is_empty() {
+                return None;
+            }
+            if let std::borrow::Cow::Owned(clean) = clean {
+                hit.content = clean;
+            }
+            hit.metadata.title = hit
+                .metadata
+                .title
+                .as_deref()
+                .and_then(crate::search_text::title);
+            Some(hit)
+        })
+        .collect()
+}
+
+pub(crate) fn merge_copies(existing: &mut SearchHit, other: SearchHit) {
+    let original = MessageReference {
+        message_id: existing.id.clone(),
+        node_id: existing.node_id.clone(),
+    };
+    for reference in std::iter::once(MessageReference {
+        message_id: other.id,
+        node_id: other.node_id,
+    })
+    .chain(other.copies)
+    {
+        if reference != original && !existing.copies.contains(&reference) {
+            existing.copies.push(reference);
+        }
+    }
+}
+
+pub(crate) fn deduplicate(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
+    let hits = eligible(hits);
+    if matches!(unit, SearchUnit::Messages) {
+        return hits;
+    }
+    let mut positions = HashMap::new();
+    let mut unique = Vec::<SearchHit>::new();
+    for hit in hits {
+        let key = evidence_key(&hit);
+        if let Some(&index) = positions.get(&key) {
+            merge_copies(&mut unique[index], hit);
+        } else {
+            positions.insert(key, unique.len());
+            unique.push(hit);
+        }
+    }
+    unique
 }
 
 /// Round-robin the best candidates from each conversation before bounded reranking.
 /// Identical content (including copies on other nodes) earns no additional evidence.
 pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
+    let hits = deduplicate(hits, unit);
     if matches!(unit, SearchUnit::Messages) {
         return hits;
     }
-    let mut seen = HashSet::new();
     let mut counts = HashMap::new();
     let mut rounds: [Vec<SearchHit>; 3] = Default::default();
     for hit in hits {
         let key = (hit.provider, hit.conversation_id.clone());
-        if !seen.insert((
-            key.clone(),
-            hit.role.as_str().to_owned(),
-            hit.content.split_whitespace().collect::<Vec<_>>().join(" "),
-        )) {
-            continue;
-        }
         let count = counts.entry(key).or_insert(0);
         if *count < 3 {
             rounds[*count].push(hit);
@@ -103,31 +173,32 @@ pub(crate) fn collect(
     query: &str,
 ) -> Results {
     if matches!(unit, SearchUnit::Messages) {
-        return Results::Messages(hits.into_iter().take(limit.min(1000)).collect());
+        return Results::Messages(eligible(hits).into_iter().take(limit.min(1000)).collect());
     }
     let mut threads = Vec::<ThreadHit>::new();
     let mut groups = HashMap::new();
-    let mut seen = HashSet::new();
-    for (rank, hit) in hits.into_iter().enumerate() {
+    for (rank, hit) in deduplicate(hits, unit).into_iter().enumerate() {
         let key = (hit.provider, hit.conversation_id.clone());
         let index = *groups.entry(key.clone()).or_insert_with(|| {
             threads.push(ThreadHit {
                 conversation_id: hit.conversation_id.clone(),
                 provider: hit.provider,
                 node_id: hit.node_id.clone(),
-                metadata: hit.metadata.clone(),
+                metadata: ThreadMetadata {
+                    title: hit
+                        .metadata
+                        .title
+                        .clone()
+                        .or_else(|| crate::search_text::title(&hit.content)),
+                    ..hit.metadata.clone()
+                },
                 score: 0.0,
                 matches: Vec::new(),
             });
             threads.len() - 1
         });
         let thread = &mut threads[index];
-        if !seen.insert((
-            key,
-            hit.role.as_str().to_owned(),
-            hit.content.split_whitespace().collect::<Vec<_>>().join(" "),
-        )) || thread.matches.len() == 3
-        {
+        if thread.matches.len() == 3 {
             continue;
         }
         // Reciprocal rank preserves the existing reranker/fusion ordering without
@@ -143,6 +214,7 @@ pub(crate) fn collect(
             snippet: excerpt(&hit.content, query),
             rerank_score: hit.rerank_score,
             fusion_score: hit.fusion_score,
+            copies: hit.copies,
         });
     }
     threads.sort_by(|a, b| {

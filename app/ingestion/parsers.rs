@@ -125,11 +125,19 @@ fn parse_jsonl(
                 .and_then(|payload| payload.id.as_ref().or(payload.session_id.as_ref()))
                 .cloned();
         }
-        let Some(extracted) = extract(&raw) else {
+        let Some(mut extracted) = extract(&raw) else {
             continue;
         };
         if extracted.content.trim().is_empty() {
             continue;
+        }
+        let projection = extracted
+            .search_projection
+            .as_deref()
+            .unwrap_or(&extracted.content);
+        let clean = crate::search_text::project(&extracted.role, projection);
+        if clean.as_ref() != projection {
+            extracted.search_projection = Some(clean.into_owned());
         }
         if session_id.is_none() {
             session_id = extracted.session_id;
@@ -167,8 +175,15 @@ fn parse_jsonl(
         .max();
     let title = messages
         .iter()
-        .find(|message| message.role == crate::role::Role::User)
-        .map(|message| truncate_chars(message.content.trim(), 120));
+        .filter(|message| message.role == crate::role::Role::User)
+        .find_map(|message| {
+            crate::search_text::title(
+                message
+                    .search_projection
+                    .as_deref()
+                    .unwrap_or(&message.content),
+            )
+        });
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id,

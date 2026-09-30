@@ -3,6 +3,32 @@ use crate::semantic::shared_query_vector;
 
 #[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
+fn small_rerank_batches_preserve_scores_and_document_indices() {
+    let source = std::env::var_os("MASH_TEST_MODELS_DIR")
+        .map(PathBuf::from)
+        .expect("explicit model directory");
+    let mut backend = Models::new(source).load().unwrap().unwrap();
+    let long = "unrelated gardening instructions ".repeat(1200);
+    let documents = [
+        "cBioPortal cancer genomics importer",
+        long.as_str(),
+        "please review the cBioPortal import bug",
+        "hello",
+    ];
+    let expected = backend
+        .reranker
+        .rerank("cbioportal importer", documents, false, None)
+        .unwrap();
+    let actual = backend.rerank("cbioportal importer", &documents).unwrap();
+    assert_eq!(actual.len(), expected.len());
+    for (expected, actual) in expected.iter().zip(actual) {
+        assert_eq!(actual.index, expected.index);
+        assert!((actual.score - expected.score).abs() < 1e-4);
+    }
+}
+
+#[test]
+#[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 fn cached_local_models_preserve_results_and_validate_changed_assets() {
     let source = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(PathBuf::from)

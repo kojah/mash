@@ -548,20 +548,34 @@ async fn search_prepared(
         Err(error) => return Err(error),
     };
     let protocol::Candidates {
-        lexical,
-        semantic,
+        mut lexical,
+        mut semantic,
         documents,
     } = candidates;
     let mut documents: HashMap<_, _> = documents
         .into_iter()
-        .map(|d| ((d.node_id, d.id), d.projection))
+        .map(|d| {
+            (
+                (d.node_id, d.id),
+                crate::search_text::project(&crate::role::Role::User, &d.projection).into_owned(),
+            )
+        })
         .collect();
     for (hit, projection) in local_hits.iter().zip(local_documents) {
         documents.insert((String::new(), hit.id.clone()), projection);
     }
+    // Older servers returned canonical history in hits. Always search and
+    // display their projection, which also omits embedded tool results.
+    for hit in lexical.iter_mut().chain(&mut semantic) {
+        if let Some(projection) =
+            documents.get(&(hit.node_id.clone().unwrap_or_default(), hit.id.clone()))
+        {
+            hit.content.clone_from(projection);
+        }
+    }
     let query = query.to_owned();
     crate::blocking(move || {
-        let mut fused = semantic::fuse(lexical, semantic);
+        let mut fused = semantic::fuse(lexical, semantic, unit);
         fused.extend(local_hits);
         fused.sort_by(|a, b| {
             b.fusion_score
@@ -598,7 +612,7 @@ fn retrieve_local_candidates(
         generation,
         query,
         vector,
-        (None, None, unit.candidate_limit()),
+        (None, None, unit),
         Some(filters),
     )
 }

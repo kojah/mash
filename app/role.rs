@@ -2,7 +2,7 @@ use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
 /// Preserve provider-defined roles while making the common roles explicit.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(from = "String", into = "String")]
 pub(crate) enum Role {
     User,

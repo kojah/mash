@@ -533,7 +533,8 @@ fn hit(row: &Row, lexical: bool) -> Result<SearchHit, AppError> {
         conversation_id: row.try_get(2).map_err(pg_error)?,
         provider: row.try_get(3).map_err(pg_error)?,
         role: row.try_get(4).map_err(pg_error)?,
-        content: row.try_get(5).map_err(pg_error)?,
+        content: row.try_get(6).map_err(pg_error)?,
+        copies: Vec::new(),
         created_at: row.try_get(8).map_err(pg_error)?,
         metadata: crate::search_results::ThreadMetadata {
             title: row.try_get(9).map_err(pg_error)?,

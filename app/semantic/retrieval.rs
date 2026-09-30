@@ -43,7 +43,7 @@ pub(crate) fn hybrid_search_filtered(
     for (hit, (_, score)) in semantic_hits.iter_mut().zip(&ranked) {
         hit.semantic_score = Some(*score);
     }
-    let mut fused = crate::search_results::diversify(fuse(lexical, semantic_hits), unit);
+    let mut fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit), unit);
     let rerank_count = fused.len().min(unit.rerank_limit());
     let rerank_ids = fused[..rerank_count]
         .iter()
@@ -118,10 +118,15 @@ pub(crate) fn local_candidates(
     generation: &str,
     query: &str,
     vector: &[f64],
-    selection: (Option<crate::provider::Provider>, Option<u32>, usize),
+    selection: (
+        Option<crate::provider::Provider>,
+        Option<u32>,
+        crate::search_results::SearchUnit,
+    ),
     filters: Option<&crate::search_filter::Scope>,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
-    let (provider, days, candidate_limit) = selection;
+    let (provider, days, unit) = selection;
+    let candidate_limit = unit.candidate_limit();
     let lexical = storage.search_filtered(query, candidate_limit, provider, days, filters)?;
     let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
     let chunks = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
@@ -131,25 +136,36 @@ pub(crate) fn local_candidates(
     for (hit, (_, score)) in semantic.iter_mut().zip(ranked) {
         hit.semantic_score = Some(score);
     }
-    let fused = fuse(lexical, semantic);
+    let fused = fuse(lexical, semantic, unit);
     let ids = fused.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>();
     let documents = storage.search_documents(&ids)?;
     Ok((fused, documents))
 }
 
-pub(crate) fn fuse(lexical: Vec<SearchHit>, semantic: Vec<SearchHit>) -> Vec<SearchHit> {
+pub(crate) fn fuse(
+    lexical: Vec<SearchHit>,
+    semantic: Vec<SearchHit>,
+    unit: crate::search_results::SearchUnit,
+) -> Vec<SearchHit> {
     let mut hits = HashMap::new();
-    let mut scores = HashMap::<String, f32>::new();
-    for (rank, hit) in lexical.into_iter().enumerate() {
-        let id = format!("{:?}:{}", hit.node_id, hit.id);
+    let mut scores = HashMap::<HitKey, f32>::new();
+    for (rank, hit) in crate::search_results::deduplicate(lexical, unit)
+        .into_iter()
+        .enumerate()
+    {
+        let id = hit_key(&hit, unit);
         scores.insert(id.clone(), reciprocal_rank(rank));
         hits.insert(id, hit);
     }
-    for (rank, hit) in semantic.into_iter().enumerate() {
-        let id = format!("{:?}:{}", hit.node_id, hit.id);
+    for (rank, hit) in crate::search_results::deduplicate(semantic, unit)
+        .into_iter()
+        .enumerate()
+    {
+        let id = hit_key(&hit, unit);
         *scores.entry(id.clone()).or_default() += reciprocal_rank(rank);
         if let Some(existing) = hits.get_mut(&id) {
             existing.semantic_score = hit.semantic_score;
+            crate::search_results::merge_copies(existing, hit);
         } else {
             hits.insert(id, hit);
         }
@@ -168,6 +184,23 @@ pub(crate) fn fuse(lexical: Vec<SearchHit>, semantic: Vec<SearchHit>) -> Vec<Sea
             .then_with(|| left.id.cmp(&right.id))
     });
     fused
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum HitKey {
+    Message(Option<String>, String),
+    Evidence(crate::search_results::EvidenceKey),
+}
+
+fn hit_key(hit: &SearchHit, unit: crate::search_results::SearchUnit) -> HitKey {
+    match unit {
+        crate::search_results::SearchUnit::Messages => {
+            HitKey::Message(hit.node_id.clone(), hit.id.clone())
+        }
+        crate::search_results::SearchUnit::Threads => {
+            HitKey::Evidence(crate::search_results::evidence_key(hit))
+        }
+    }
 }
 
 fn reciprocal_rank(zero_based_rank: usize) -> f32 {

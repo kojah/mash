@@ -42,6 +42,56 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
     assert_eq!(metadata, (None, None));
 }
 
+#[test]
+fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("upgrade.sqlite3");
+    let mut storage = Storage::open_writer(&path).unwrap();
+    let conversation = conversation("preserved request");
+    storage.replace_conversation(&conversation).unwrap();
+    storage
+        .replace_embeddings(
+            "fixture",
+            &[EmbeddingWrite {
+                message_id: &conversation.messages[0].id,
+                vector: &[127, 0],
+                norm: 127.0,
+            }],
+        )
+        .unwrap();
+    storage
+        .record_source_checkpoint(
+            crate::provider::Provider::Codex,
+            "/tmp/source.jsonl",
+            10,
+            20,
+        )
+        .unwrap();
+    storage.commit_writer().unwrap();
+    storage
+        .connection
+        .execute_batch("PRAGMA user_version=15")
+        .unwrap();
+    drop(storage);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 1);
+    assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
+    assert!(
+        !storage
+            .source_checkpoint_matches(
+                crate::provider::Provider::Codex,
+                "/tmp/source.jsonl",
+                10,
+                20
+            )
+            .unwrap()
+    );
+    assert_eq!(
+        storage.view(&conversation.messages[0].id, 0).unwrap()[0].content,
+        "preserved request"
+    );
+}
+
 const VERSION_SEVEN_SCHEMA_FIXTURE: &str = "CREATE TABLE conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (provider IN (

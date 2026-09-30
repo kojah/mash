@@ -76,7 +76,7 @@ pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&st
              INSERT INTO derived_state VALUES (1, 0, NULL);
              INSERT INTO conversations(id, provider, source_path)
                 VALUES ('session', 'codex', '/tmp/session.jsonl');
-             PRAGMA user_version = 15;",
+             PRAGMA user_version = 16;",
         )
         .expect("readiness schema");
     connection

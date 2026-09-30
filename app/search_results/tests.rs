@@ -7,6 +7,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
         provider: Provider::Codex,
         role: crate::role::Role::User,
         content: id.into(),
+        copies: Vec::new(),
         created_at: Some(123),
         metadata: ThreadMetadata {
             title: Some(thread.into()),
@@ -64,9 +65,57 @@ fn repeated_content_and_cross_node_copies_do_not_boost_a_thread() {
     assert_eq!(results[0].matches.len(), 2);
     assert_eq!(results[0].matches[0].node_id, None);
     assert_eq!(
+        results[0].matches[0].copies,
+        vec![MessageReference {
+            message_id: "remote".into(),
+            node_id: Some("remote-node".into())
+        }]
+    );
+    assert_eq!(
         results[0].matches[1].node_id.as_deref(),
         Some("remote-node")
     );
+}
+
+#[test]
+fn replicas_and_context_do_not_shift_other_threads_or_hide_real_requests() {
+    let first = hit("a", "first");
+    let second = hit("b", "second");
+    let baseline = threads(vec![hit("a", "first"), hit("b", "second")], 20);
+    let mut copy = hit("a", "first");
+    copy.id = "copy".into();
+    copy.node_id = Some("replica".into());
+    copy.content = "<system-reminder>noise</system-reminder>first".into();
+    let mut excluded = hit("context", "injection");
+    excluded.content = "Base directory for this skill: /skills/cbioportal\nnoise".into();
+    let actual = threads(vec![excluded, first, copy, second], 20);
+    assert_eq!(actual.len(), baseline.len());
+    for (actual, expected) in actual.iter().zip(baseline) {
+        assert_eq!(actual.conversation_id, expected.conversation_id);
+        assert_eq!(actual.score, expected.score);
+    }
+    assert_eq!(actual[0].matches[0].copies.len(), 1);
+    assert_eq!(actual[0].matches[0].snippet, "first");
+    // Independently asked identical questions remain distinct conversations.
+    let mut independent = hit("independent", "new-message");
+    independent.content = "first".into();
+    assert_eq!(threads(vec![hit("a", "first"), independent], 20).len(), 2);
+}
+
+#[test]
+fn message_results_apply_exclusions_without_changing_the_view_anchor() {
+    let mut mixed = hit("a", "request");
+    mixed.content = "<environment_context>noise</environment_context>actual question".into();
+    let mut system = hit("a", "system");
+    system.role = crate::role::Role::System;
+    let Results::Messages(results) =
+        collect(vec![system, mixed], SearchUnit::Messages, 20, "question")
+    else {
+        panic!("messages")
+    };
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, "request");
+    assert_eq!(results[0].content, "actual question");
 }
 
 #[test]

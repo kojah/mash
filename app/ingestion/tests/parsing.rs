@@ -1,6 +1,44 @@
 use super::*;
 
 #[test]
+fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
+    let context = "# AGENTS.md instructions\n<INSTRUCTIONS>cbioportal rules</INSTRUCTIONS><environment_context>cwd</environment_context>";
+    let mixed = "<system-reminder>skill text</system-reminder>fix cBioPortal importer";
+    for provider in [
+        crate::provider::Provider::Codex,
+        crate::provider::Provider::ClaudeCode,
+    ] {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        for (id, text) in [("context", context), ("request", mixed)] {
+            let value = match provider {
+                crate::provider::Provider::Codex => {
+                    serde_json::json!({"type":"response_item","payload":{"type":"message","id":id,"role":"user","content":[{"type":"input_text","text":text}]}})
+                }
+                crate::provider::Provider::ClaudeCode => {
+                    serde_json::json!({"type":"user","sessionId":"chat","uuid":id,"message":{"role":"user","content":text}})
+                }
+            };
+            writeln!(file, "{value}").unwrap();
+        }
+        let parsed = match provider {
+            crate::provider::Provider::Codex => parse_codex(file.path()),
+            crate::provider::Provider::ClaudeCode => parse_claude(file.path()),
+        }
+        .unwrap()
+        .conversation
+        .unwrap();
+        assert_eq!(parsed.messages[0].content, context);
+        assert_eq!(parsed.messages[0].search_projection.as_deref(), Some(""));
+        assert_eq!(parsed.messages[1].content, mixed);
+        assert_eq!(
+            parsed.messages[1].search_projection.as_deref(),
+            Some("fix cBioPortal importer")
+        );
+        assert_eq!(parsed.title.as_deref(), Some("fix cBioPortal importer"));
+    }
+}
+
+#[test]
 fn session_metadata_keeps_first_project_and_logged_repository() {
     let mut project = None;
     let mut repository = None;
