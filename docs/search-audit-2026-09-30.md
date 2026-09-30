@@ -112,3 +112,58 @@ The private explicit refresh took 501 seconds: ingestion 2.3 seconds, derived
 search refresh 4.2 seconds, and changed-record embedding 493 seconds. It retained
 102,666 searchable messages. Production node deployment and provider expansion
 are tracked separately in Beads.
+
+## Repeatable synthetic relevance matrix
+
+`docs/fixtures/search-relevance.toml` contains 17 synthetic threads, 20 native
+Claude messages and 16 explicit query judgments. The typed core ingests the
+fixture and searches every query in message and thread modes using explicitly
+installed real models. No private histories are included. Run it with:
+
+```bash
+MASH_TEST_MODELS_DIR=/path/to/explicitly/installed/models \
+  cargo test-clif --run-ignored only -E 'test(labeled_synthetic)' \
+  --success-output immediate
+```
+
+The fixture covers paraphrases, fourth-message thread evidence, multiple concepts,
+hyphenated identifiers, quoted phrases, exact PR/issue URLs and numbers, unrelated
+hard negatives, no-match queries, injected-context exclusion and conversation
+filters. Every positive query must have a relevant first result; explicitly
+forbidden results and nonempty abstention cases fail the test. Precision and
+recall are printed alongside each request's results and elapsed time.
+
+The first run exposed three defects: full reference URLs admitted other
+repositories, quoted phrases admitted separated words through semantic search,
+and `codex_internal_context` blocks remained searchable. URL constraints now
+retain the host, repository, reference kind and number; bare PR and issue queries
+also retain their distinct kinds. Quoted phrases require contiguous literal
+tokens, with case-insensitive matching. Codex context blocks are excluded while
+ordinary backtick-quoted examples remain searchable.
+
+After these corrections, all 32 searches passed. On this small local fixture:
+
+| Mode | Mean precision among up to 5 returned results | Recall@5 | MRR@5 |
+| --- | ---: | ---: | ---: |
+| Messages | 0.872 | 1.000 | 1.000 |
+| Threads | 0.859 | 1.000 | 1.000 |
+
+Metrics average the 13 positive query cases; the three abstention cases are
+checked separately. They use audit-authored synthetic labels, awaiting independent
+human review. Message relevance here is judged by conversation membership; this
+does not measure every excerpt's relevance. These are local fixture measurements,
+not production-corpus relevance or latency, and do not independently exercise the
+shared transports. Broader human labeling stays open in `mash-jh7`.
+
+SQLite schema 30 and source fingerprint `search-text-v4` require an explicit
+`mash index` refresh so cached source records lose injected context. The migration
+preserves canonical history and existing vectors while clearing old checkpoints
+and invalidating search readiness. Searches never perform this migration or
+ingestion themselves. Shared-only nodes also refresh their changed fingerprints;
+canonical content remains available through `view`.
+
+Final validation passed 326 tests with installed local models and disposable
+Redis/PostgreSQL services; three manual benchmarks were excluded. Formatting,
+Clippy with warnings denied and doctests passed. Migration tests also exercise
+legacy backfills: invalidation runs after those backfills so old embedding
+coverage cannot restore readiness for an outdated text projection.

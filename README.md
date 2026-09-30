@@ -340,7 +340,7 @@ For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 29 and shared PostgreSQL
+keep their existing ordinal neighbourhoods. SQLite schema 30 and shared PostgreSQL
 schema 15 preserve existing messages and vectors. Update the shared service before
 publishing Pi, Copilot, Gemini, Cline, Cursor, Windsurf or Antigravity histories from upgraded nodes.
 
@@ -670,11 +670,14 @@ Unix milliseconds; unknown metadata is null. Search never returns an entire
 conversation automatically.
 
 Local lexical search treats query text as literal words, including URLs, dotted
-names and hyphenated identifiers; double quotes group a lexical phrase. Punctuation
+names and hyphenated identifiers; double quotes require contiguous literal words
+in each returned message or excerpt. Punctuation
 does not become SQLite FTS syntax. Queries must contain a letter or number and
 fit within 16,384 bytes. Explicit PR/issue references require that exact reference
 in each returned excerpt/message, so `PR 180` cannot be replaced by `PR 183`
-or an incidental numeric value of 180. Use the metadata filters for Boolean scopes.
+or an incidental numeric value of 180. PR and issue references remain distinct;
+a complete reference URL also constrains its host and repository.
+Use the metadata filters for Boolean scopes.
 See [the search quality audit](docs/search-audit-2026-09-30.md) for measured failures
 and remaining relevance limitations.
 

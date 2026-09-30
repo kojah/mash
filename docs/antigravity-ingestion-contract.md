@@ -137,7 +137,7 @@ versions used them. Do not alias the older format to Windsurf without evidence.
    malformed-update preservation, native identity stability and allocation limits
    are covered by adapter tests; aggregate concurrency/RSS remains a separate gate.
 4. Verify deployment of provider configuration, discovery/watch routing, SQLite
-   schema 29, PostgreSQL schema 15, Redis tag and typed HTTP publication on all nodes.
+   schema 30, PostgreSQL schema 15, Redis tag and typed HTTP publication on all nodes.
 5. Maintain local lexical/semantic/thread retrieval checks with installed models
    and publication/search contracts against both shared backends.
 6. Capture real IDE/CLI/Hub histories and verify supported version boundaries

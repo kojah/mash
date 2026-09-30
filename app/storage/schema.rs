@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 29;
+pub(super) const SCHEMA_VERSION: i64 = 30;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -63,16 +63,6 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
     migrate_source_identities(&transaction)?;
     transaction.execute_batch("CREATE INDEX IF NOT EXISTS messages_context_parent ON messages(conversation_id, context_parent, ordinal) WHERE context_parent IS NOT NULL").map_err(AppError::database)?;
-    if version < 18 {
-        transaction
-            .execute("DELETE FROM source_checkpoints", [])
-            .map_err(AppError::database)?;
-    }
-    if (16..18).contains(&version) {
-        transaction.execute_batch(
-            "UPDATE derived_state SET search_dirty = 1, semantic_ready_generation = NULL WHERE singleton = 1;"
-        ).map_err(AppError::database)?;
-    }
     if version < 8 {
         transaction
             .execute_batch(
@@ -93,6 +83,12 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         backfill_pending_embeddings(&transaction)?;
     }
     install_publication_triggers(&transaction)?;
+    // Every earlier schema may retain the old projection. Invalidate after
+    // legacy backfills so no migration can accidentally restore readiness.
+    transaction.execute_batch(
+        "DELETE FROM source_checkpoints;
+         UPDATE derived_state SET search_dirty = 1, semantic_ready_generation = NULL WHERE singleton = 1;"
+    ).map_err(AppError::database)?;
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(AppError::database)?;

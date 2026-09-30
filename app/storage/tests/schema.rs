@@ -3,9 +3,37 @@ use super::*;
 use rusqlite::params;
 
 #[test]
-fn provider_schema_migrations_preserve_context_vectors_and_readiness() {
-    for version in [23, 28] {
+fn schema_migrations_preserve_context_vectors_and_require_projection_refresh() {
+    for version in [23, 28, 29] {
         provider_schema_migration(version);
+    }
+}
+
+#[test]
+fn legacy_readiness_backfills_do_not_override_projection_refresh() {
+    for version in [8, 9, 15] {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("legacy.sqlite3");
+        let storage = Storage::open(&path).unwrap();
+        storage.connection.execute_batch(
+            "INSERT INTO conversations(id,provider,source_path,source_key) VALUES('session','codex','history','file:history');
+             INSERT INTO messages(id,conversation_id,ordinal,role,content) VALUES('message','session',0,'user','durable history');
+             INSERT INTO message_embeddings VALUES('message','fixture',1,127.0,x'7f');
+             UPDATE derived_state SET search_dirty=0,semantic_ready_generation='fixture';"
+        ).unwrap();
+        storage
+            .connection
+            .pragma_update(None, "user_version", version)
+            .unwrap();
+        drop(storage);
+        let upgraded = Storage::open(&path).unwrap();
+        assert!(upgraded.derived_search_is_dirty().unwrap());
+        assert!(!upgraded.semantic_index_is_ready("fixture").unwrap());
+        assert_eq!(upgraded.embedding_count("fixture").unwrap(), 1);
+        assert_eq!(
+            upgraded.view("message", 0).unwrap()[0].content,
+            "durable history"
+        );
     }
 }
 
@@ -15,7 +43,10 @@ fn provider_schema_migration(version: i64) {
     let connection = Connection::open(&path).unwrap();
     // Both native predecessors have the same message layout; provider checks
     // differ. Verify old and immediately preceding schema migrations.
-    let mut schema = include_str!("../schema.sql").replace(", 'antigravity'", "");
+    let mut schema = include_str!("../schema.sql").to_owned();
+    if version < 29 {
+        schema = schema.replace(", 'antigravity'", "");
+    }
     if version == 23 {
         for provider in ["copilot", "gemini-cli", "cline", "cursor", "windsurf"] {
             schema = schema.replace(&format!(", '{provider}'"), "");
@@ -39,12 +70,14 @@ fn provider_schema_migration(version: i64) {
         .pragma_update(None, "user_version", version)
         .unwrap();
     crate::storage::semantic_chunks::rebuild_all_semantic_chunks(&connection).unwrap();
-    assert!(connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','antigravity','new','new')",[]).is_err());
+    if version < 29 {
+        assert!(connection.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('new','antigravity','new','new')",[]).is_err());
+    }
     drop(connection);
     let storage = Storage::open(&path).unwrap();
     assert_eq!(storage.embedding_count("fixture").unwrap(), 2);
-    assert!(!storage.derived_search_is_dirty().unwrap());
-    assert!(storage.semantic_index_is_ready("fixture").unwrap());
+    assert!(storage.derived_search_is_dirty().unwrap());
+    assert!(!storage.semantic_index_is_ready("fixture").unwrap());
     assert_eq!(
         storage.search("branch", 10, None, None).unwrap()[0].id,
         "child"
@@ -68,7 +101,7 @@ fn provider_schema_migration(version: i64) {
         .unwrap();
     assert_eq!(rows, [(42, Some(-1)), (43, Some(0))]);
     assert!(
-        storage
+        !storage
             .source_checkpoint_matches(
                 crate::provider::Provider::Pi,
                 &crate::ingestion::SourceIdentity::file("/tmp/pi.jsonl"),
@@ -80,7 +113,7 @@ fn provider_schema_migration(version: i64) {
 }
 
 #[test]
-fn version_eighteen_source_migration_preserves_history_vectors_and_checkpoints() {
+fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
     use crate::ingestion::SourceIdentity;
     use crate::provider::Provider;
     let directory = tempfile::tempdir().unwrap();
@@ -111,11 +144,11 @@ fn version_eighteen_source_migration_preserves_history_vectors_and_checkpoints()
          PRAGMA user_version=18;"
     ).unwrap();
     drop(connection);
-    let storage = Storage::open(&path).unwrap();
+    let mut storage = Storage::open_writer(&path).unwrap();
     assert_eq!(storage.counts().unwrap().messages, 1);
     assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
     assert!(
-        storage
+        !storage
             .source_checkpoint_matches(
                 Provider::Codex,
                 &SourceIdentity::file("/tmp/history.jsonl"),
@@ -137,8 +170,17 @@ fn version_eighteen_source_migration_preserves_history_vectors_and_checkpoints()
             "https://example.test/repo.git".into()
         )
     );
-    assert!(!storage.derived_search_is_dirty().unwrap());
+    assert!(storage.derived_search_is_dirty().unwrap());
+    assert!(!storage.semantic_index_is_ready("fixture").unwrap());
     assert_eq!(storage.search("durable", 10, None, None).unwrap().len(), 1);
+    storage
+        .record_source_checkpoint(
+            Provider::Codex,
+            &SourceIdentity::file("/tmp/history.jsonl"),
+            &crate::ingestion::SourceStamp::file(100, 200),
+        )
+        .unwrap();
+    storage.commit_writer().unwrap();
     drop(storage);
     let storage = Storage::open(&path).unwrap();
     assert!(
@@ -495,11 +537,8 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
     assert_eq!(storage.counts().expect("counts").conversations, 1);
     assert_eq!(storage.counts().expect("counts").messages, 1);
     assert_eq!(storage.counts().expect("counts").embeddings, 1);
-    assert!(
-        storage
-            .semantic_index_is_ready("old-generation")
-            .expect("backfilled semantic readiness")
-    );
+    assert!(storage.derived_search_is_dirty().unwrap());
+    assert!(!storage.semantic_index_is_ready("old-generation").unwrap());
     assert_eq!(
         storage
             .connection

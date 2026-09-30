@@ -56,11 +56,19 @@ fn terms(text: &str) -> impl Iterator<Item = &str> {
         .filter(|term| !term.is_empty())
 }
 
-/// Explicit PR/issue numbers are identifiers, not approximate semantic topics.
+/// Explicit references and quoted phrases are constraints, not approximate topics.
 pub(crate) fn matches_reference(content: &str, query: &str) -> bool {
     let requested = references(query);
     let actual = references(content);
     requested.iter().all(|number| actual.contains(number))
+        && matches_phrases(content, query)
+        && {
+            let scoped = scoped_references(query);
+            scoped.is_empty() || {
+                let available = scoped_references(content);
+                scoped.iter().all(|reference| available.contains(reference))
+            }
+        }
         && terms(query)
             .filter(|term| {
                 term.len() >= 3
@@ -76,26 +84,140 @@ pub(crate) fn matches_reference(content: &str, query: &str) -> bool {
             .all(|identifier| terms(content).any(|term| term.eq_ignore_ascii_case(identifier)))
 }
 
+fn matches_phrases(content: &str, query: &str) -> bool {
+    let phrases = query
+        .split('"')
+        .enumerate()
+        .filter(|(i, _)| i % 2 == 1)
+        .map(|(_, phrase)| terms(phrase).collect::<Vec<_>>())
+        .filter(|phrase| !phrase.is_empty())
+        .collect::<Vec<_>>();
+    if phrases.is_empty() {
+        return true;
+    }
+    let words = terms(content).collect::<Vec<_>>();
+    phrases.iter().all(|phrase| {
+        words.windows(phrase.len()).any(|window| {
+            window
+                .iter()
+                .zip(phrase)
+                .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+        })
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ReferenceKind {
+    Pull,
+    Issue,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Reference<'a> {
+    kind: ReferenceKind,
+    number: &'a str,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ScopedReference {
+    host: String,
+    port: Option<u16>,
+    repository: String,
+    kind: ReferenceKind,
+    number: String,
+}
+
+// Parse links locally; never fetch them. Number-only queries retain their broad
+// scope, while a complete reference URL also identifies a host/repository/kind.
+fn scoped_references(text: &str) -> Vec<ScopedReference> {
+    text.split(|c: char| {
+        c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '<' | '>' | '(' | ')' | '[' | ']')
+    })
+    .filter_map(|token| {
+        if !token.contains("://") {
+            return None;
+        }
+        let url = reqwest::Url::parse(token.trim_end_matches([',', '.', ';', '!', '?'])).ok()?;
+        if !matches!(url.scheme(), "http" | "https") {
+            return None;
+        }
+        let segments = url.path_segments()?.collect::<Vec<_>>();
+        let (index, kind) = segments.iter().enumerate().find_map(|(index, segment)| {
+            let number = *segments.get(index + 1)?;
+            if index == 0 || number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            match *segment {
+                "pull" => Some((index, ReferenceKind::Pull)),
+                "issues" | "issue" => Some((index, ReferenceKind::Issue)),
+                _ => None,
+            }
+        })?;
+        let number = *segments.get(index + 1)?;
+        let host = url.host_str()?.to_owned();
+        let repository = segments[..index].join("/");
+        Some(ScopedReference {
+            repository: if host == "github.com" {
+                repository.to_ascii_lowercase()
+            } else {
+                repository
+            },
+            host,
+            port: url.port(),
+            kind,
+            number: number.to_owned(),
+        })
+    })
+    .collect()
+}
+
 pub(crate) fn has_reference(query: &str) -> bool {
     !references(query).is_empty()
 }
 
-fn references(text: &str) -> Vec<&str> {
+fn references(text: &str) -> Vec<Reference<'_>> {
     let words = terms(text).collect::<Vec<_>>();
     words
         .windows(2)
-        .filter(|pair| {
-            ["pr", "pull", "issue", "issues"]
+        .filter_map(|pair| {
+            let kind = if ["pr", "pull"]
                 .iter()
                 .any(|word| pair[0].eq_ignore_ascii_case(word))
+            {
+                ReferenceKind::Pull
+            } else if ["issue", "issues"]
+                .iter()
+                .any(|word| pair[0].eq_ignore_ascii_case(word))
+            {
+                ReferenceKind::Issue
+            } else {
+                return None;
+            };
+            Some(Reference {
+                kind,
+                number: pair[1],
+            })
         })
-        .map(|pair| pair[1])
-        .filter(|number| number.bytes().all(|byte| byte.is_ascii_digit()))
+        .filter(|reference| reference.number.bytes().all(|byte| byte.is_ascii_digit()))
+        .chain(words.windows(3).filter_map(|triple| {
+            (triple[0].eq_ignore_ascii_case("pull")
+                && triple[1].eq_ignore_ascii_case("request")
+                && triple[2].bytes().all(|byte| byte.is_ascii_digit()))
+            .then_some(Reference {
+                kind: ReferenceKind::Pull,
+                number: triple[2],
+            })
+        }))
         .chain(words.iter().filter_map(|word| {
-            word.strip_prefix("PR")
-                .or_else(|| word.strip_prefix("pr"))
+            word.get(..2)
+                .filter(|prefix| prefix.eq_ignore_ascii_case("pr"))
+                .and_then(|_| word.get(2..))
                 .filter(|number| {
                     !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+                })
+                .map(|number| Reference {
+                    kind: ReferenceKind::Pull,
+                    number,
                 })
         }))
         .collect()
@@ -164,5 +286,69 @@ mod tests {
         assert!(matches_reference("review PR180", "PR 180"));
         assert!(!matches_reference("review PR183", "PR180"));
         assert!(matches_reference("three machines", "3 nodes"));
+        assert!(matches_reference("review Pr180", "pull request #180"));
+        assert!(!matches_reference("review issue 180", "PR 180"));
+        assert!(!matches_reference("review PR 180", "issue 180"));
+    }
+
+    #[test]
+    fn full_reference_urls_do_not_match_another_repository_or_reference_kind() {
+        let query = "https://github.com/org/mash/pull/180";
+        assert!(matches_reference(
+            "review https://github.com/org/mash/pull/180",
+            query
+        ));
+        for content in [
+            "review https://github.com/org/other/pull/180",
+            "review https://github.com/org/mash/issues/180",
+            "review https://git.example/org/mash/pull/180",
+            "review PR 180",
+        ] {
+            assert!(!matches_reference(content, query), "{content}");
+        }
+        assert!(matches_reference(
+            "See [the fix](https://GITHUB.com/Org/Mash/pull/180/files#diff) please.",
+            query
+        ));
+        assert!(matches_reference(
+            "review https://github.com/org/other/pull/180",
+            "PR 180"
+        ));
+        assert!(!matches_reference(
+            "https://git.example:8443/org/mash/pull/180",
+            "https://git.example/org/mash/pull/180"
+        ));
+    }
+
+    #[test]
+    fn quoted_phrases_require_contiguous_literal_words() {
+        assert!(matches_reference(
+            "Maintain one JOINT-index for the group",
+            "\"joint index\""
+        ));
+        assert!(!matches_reference(
+            "joint pain and body mass index",
+            "\"joint index\""
+        ));
+        assert!(!matches_reference(
+            "one joint index",
+            "\"joint index\" \"node group\""
+        ));
+        assert!(matches_reference(
+            "one joint index per node group",
+            "\"joint index\" \"node group\""
+        ));
+    }
+
+    #[test]
+    fn reference_routes_are_distinguished_from_repository_names() {
+        for repository in ["pull", "issues"] {
+            let query = format!("https://github.com/org/{repository}/pull/180");
+            assert!(matches_reference(&query, &query));
+            assert!(!matches_reference(
+                "https://github.com/org/other/pull/180",
+                &query
+            ));
+        }
     }
 }

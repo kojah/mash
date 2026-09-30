@@ -12,6 +12,7 @@ const CONTEXT_TAGS: &[&str] = &[
     "multi_agent_role",
     "multi_agent_mode",
     "in-app-browser-context",
+    "codex_internal_context",
 ];
 
 /// Remove known agent-injected context without matching ordinary mentions of it.
@@ -126,11 +127,17 @@ mod tests {
             "This session is being continued from a previous conversation that ran out of context.\nredis",
             "This conversation is a continuation of an earlier chat.\ncbioportal",
             "<in-app-browser-context>automatic state</in-app-browser-context>",
+            "<codex_internal_context source=\"goal\">automatic continuation</codex_internal_context>",
         ] {
             assert_eq!(project(&Role::User, text).trim(), "");
         }
         let ordinary = "Can we remove automatic approval-review transcripts from search?";
         assert_eq!(project(&Role::User, ordinary), ordinary);
+        let mixed = "<codex_internal_context source=\"goal\">automatic continuation</codex_internal_context>fix the importer";
+        assert_eq!(project(&Role::User, mixed), "fix the importer");
+        let example =
+            "Explain `<codex_internal_context source=\"goal\">example</codex_internal_context>`";
+        assert_eq!(project(&Role::User, example), example);
     }
 
     #[test]

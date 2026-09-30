@@ -2,6 +2,8 @@
 #[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
 mod coreml;
 mod embeddings;
+#[cfg(test)]
+mod evaluation;
 mod models;
 pub(crate) mod remote;
 mod retrieval;

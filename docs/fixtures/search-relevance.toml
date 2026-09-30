@@ -1,0 +1,114 @@
+# Synthetic regression labels authored during the search audit. No private history.
+# These are explicit relevance judgments, awaiting independent human review.
+version = 1
+
+[[documents]]
+id = "cache"
+messages = ["how can we improve search", "what other parts can we optimize", "please keep going", "Can the CLI cache the loaded embedding model in an idle worker so repeated searches avoid model loading?"]
+[[documents]]
+id = "parallel"
+messages = ["Run local SQLite retrieval and remote shared-index requests concurrently to reduce end-to-end search latency."]
+[[documents]]
+id = "ssh"
+messages = ["Remove SSH query fan-out. Nodes should upload histories to a shared index over an authenticated HTTP API."]
+[[documents]]
+id = "index"
+messages = ["Initial indexing must be explicit. Search should fail until indexing completes. Show indexing progress and a remaining ETA."]
+[[documents]]
+id = "tokens"
+messages = ["Repair authentication credentials by refreshing the login token."]
+[[documents]]
+id = "cbioportal"
+messages = ["Fix the cBioPortal study importer so cancer genomics studies can be filtered by cancer type."]
+[[documents]]
+id = "voyage"
+messages = ["Make the embedding model configurable so I can choose voyage-code-4 instead of voyage-4."]
+[[documents]]
+id = "joint"
+messages = ["Maintain one joint index for each node group. Each node also has a local search index."]
+[[documents]]
+id = "joint-pain"
+messages = ["The patient has joint pain. We calculated their body mass index."]
+[[documents]]
+id = "redis"
+messages = ["Redis Search is the default shared backend behind HTTP; PostgreSQL with pgvector remains an alternative."]
+[[documents]]
+id = "pr180"
+messages = ["Review the cBioPortal importer fix at https://github.com/org/mash/pull/180."]
+[[documents]]
+id = "other-pr180"
+messages = ["Review the cBioPortal importer fix at https://github.com/org/other/pull/180."]
+[[documents]]
+id = "issue180"
+messages = ["Review the cBioPortal importer bug at https://github.com/org/mash/issues/180."]
+[[documents]]
+id = "pr183"
+messages = ["Review the cBioPortal importer fix at https://github.com/org/mash/pull/183."]
+[[documents]]
+id = "number"
+messages = ["Set the indentation magnitude to 180 pixels."]
+[[documents]]
+id = "garden"
+messages = ["I planted carrots in my garden and watered the flowers."]
+[[documents]]
+id = "injected"
+messages = ["<codex_internal_context source=\"goal\">purple platypus quantum waffle</codex_internal_context>"]
+
+[[queries]]
+text = "keeping a model warm between CLI searches"
+relevant = ["cache"]
+forbidden = ["garden", "tokens"]
+[[queries]]
+text = "overlapping local and remote retrieval"
+relevant = ["parallel"]
+[[queries]]
+text = "search without SSH"
+relevant = ["ssh"]
+forbidden = ["garden"]
+[[queries]]
+text = "initial indexing progress"
+relevant = ["index"]
+[[queries]]
+text = "repair authentication credentials"
+relevant = ["tokens"]
+forbidden = ["garden"]
+[[queries]]
+text = "cbioportal cancer study filters"
+relevant = ["cbioportal"]
+[[queries]]
+text = "voyage-code-4"
+relevant = ["voyage"]
+forbidden = ["garden"]
+[[queries]]
+text = '"joint index"'
+relevant = ["joint"]
+forbidden = ["joint-pain"]
+[[queries]]
+text = "Redis PostgreSQL shared backend"
+relevant = ["redis"]
+[[queries]]
+text = "https://github.com/org/mash/pull/180"
+relevant = ["pr180"]
+forbidden = ["other-pr180", "issue180", "pr183", "number"]
+[[queries]]
+text = "https://github.com/org/mash/issues/180"
+relevant = ["issue180"]
+forbidden = ["pr180", "other-pr180", "pr183", "number"]
+[[queries]]
+text = "PR 180"
+relevant = ["pr180", "other-pr180"]
+forbidden = ["issue180", "pr183", "number"]
+[[queries]]
+text = "issue 180"
+relevant = ["issue180"]
+forbidden = ["pr180", "other-pr180", "pr183", "number"]
+[[queries]]
+text = "purple platypus quantum waffle"
+relevant = []
+[[queries]]
+text = "qzxv981723zznohistory"
+relevant = []
+[[queries]]
+text = "keeping a model warm between CLI searches"
+relevant = []
+filters = { conversation = ["garden"] }
