@@ -57,6 +57,8 @@ impl Targets {
                                             })
                                             || name == "state.db"
                                             || name == "state.db-wal"
+                                            || name == "store.db"
+                                            || name == "store.db-wal"
                                             || name == "opencode.db"
                                             || name == "opencode.db-wal"
                                             || name == "openclaw-agent.sqlite"
@@ -260,6 +262,8 @@ mod tests {
         assert!(directory.relevant(&change(root.join("session-native.json"))));
         assert!(directory.relevant(&change(root.join(".project_root"))));
         assert!(directory.relevant(&change(root.join("state.db-wal"))));
+        assert!(directory.relevant(&change(root.join("store.db"))));
+        assert!(directory.relevant(&change(root.join("store.db-wal"))));
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));
         assert!(directory.relevant(&change(root.join("openclaw-agent.sqlite-wal"))));
         assert!(directory.relevant(&change(root.join("cold/archive.jsonl.zst"))));

@@ -270,16 +270,30 @@ is authoritative. Ambiguous multiple histories of the same kind are rejected.
 See the source-linked [Cline contract](docs/cline-ingestion-contract.md) for
 verified schemas and remaining validation gates.
 
-The [Cursor ingestion contract](docs/cursor-ingestion-contract.md) records
-first-party native-store evidence and generated fixtures for the pending adapter.
+Cursor Agent is opt-in through `[providers.cursor]`. Configure its native `chats`
+directory or an explicit `store.db`. Its config root is `CURSOR_CONFIG_DIR`, then
+`$XDG_CONFIG_HOME/cursor`, then `~/.cursor`; chat databases are below
+`chats/<workspace-hash>/<session>/store.db`. The reader takes read-only WAL-aware
+snapshots and follows the latest root's reachable archives and current messages.
+Repeated requests retain distinct identities through archive moves and rewinds.
+Tools, reasoning, model summaries, simulated prompts and subagent histories stay
+context-only; current user messages require matching native turn evidence.
+Native workspace URIs and tracked repositories supply project/repository filters.
+
+Each blob is limited to 8 MiB, each protobuf to 65,536 fields, cumulative reads
+to 64 MiB and retained normalized history to 32 MiB. Missing, corrupt or oversized
+reachable history fails indexing and preserves the previous revision. These are
+parser limits rather than process RSS limits. Cursor IDE storage is not yet
+supported. The [Cursor ingestion contract](docs/cursor-ingestion-contract.md)
+records first-party fixture provenance and remaining real-session validation gates.
 
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 26 and shared PostgreSQL
-schema 12 preserve existing messages and vectors. Update the shared service before
-publishing Pi, Copilot, Gemini or Cline histories from upgraded nodes.
+keep their existing ordinal neighbourhoods. SQLite schema 27 and shared PostgreSQL
+schema 13 preserve existing messages and vectors. Update the shared service before
+publishing Pi, Copilot, Gemini, Cline or Cursor histories from upgraded nodes.
 
 ## Configuration
 

@@ -1,8 +1,9 @@
 # Cursor native ingestion contract
 
-Status: native Agent storage and serializer evidence captured; the Rust adapter
-and Cursor IDE format remain unfinished in `mash-c0d.1.9`. This contract is a
-prerequisite for provider implementation, not a claim of working Cursor support.
+Status: the native Agent reader and opt-in provider routing are implemented.
+Cursor IDE storage and captured real-session production validation remain
+unfinished in `mash-c0d.1.9`. The native fixture establishes compatibility with
+the pinned package, rather than coverage of every Cursor deployment.
 
 ## Evidence and fixture provenance
 
@@ -90,16 +91,25 @@ selects an agent or shell turn. Agent turns reference `UserMessage` and ordered
 optional external text references and optional timestamps. Neither summaries nor
 simulated user prompts should automatically become human search evidence.
 
-A Rust reader needs typed protobuf and JSON models at these distinct boundaries.
+The Rust reader uses typed protobuf and JSON models at these distinct boundaries.
 Tool-owned arguments/results may remain opaque. Search projects visible prose;
 canonical viewing retains useful tool/reasoning context. Message identity must
 survive repeated identical genuine requests, compaction and resumed checkpoints.
-Metadata timestamps must not be invented for archived messages lacking them.
+Metadata timestamps are not invented for archived messages lacking them.
+
+The reader verifies SHA-256 references and bounds blobs to 8 MiB before fetching,
+protobuf structure to 65,536 fields before decoding, cumulative reads to 64 MiB,
+and retained normalized history to 32 MiB. It accepts an initialized empty store
+but rejects native turns without reachable transcript history. Current user
+prose needs matching native turn evidence; native summary and subagent metadata
+suppress search prose. Archive messages use their saved roles and summary flags;
+their original turn provenance is a remaining captured-session validation gate.
+Malformed input preserves the last successfully indexed revision.
 
 ## Remaining production gates
 
-1. Implement the bounded native Agent reader and provenance-aware normalization;
-   verify root JSON/native-turn relationships using captured CLI sessions.
+1. Verify root JSON/native-turn relationships and archive provenance using
+   captured CLI sessions.
 2. Exercise real resume, compaction, repeated requests, rewinds, simulated turns,
    missing blobs, external text, subagents, and WAL-only changes. The current
    fixture exercises the native writer and hydration functions with synthetic
@@ -108,6 +118,6 @@ Metadata timestamps must not be invented for archived messages lacking them.
    identities without deriving a repository from arbitrary files the model read.
 4. Inspect first-party Cursor IDE storage and add native IDE fixtures. Do not
    declare IDE coverage based on Agent or transcript formats.
-5. Wire the provider through config, local indexing, watching, shared publication,
-   both shared backends, CLI/MCP filters and explicit readiness checks. Validate
-   real-model retrieval and production deployment before closing the parent task.
+5. Validate production deployment and real-session retrieval across local and
+   shared indexes before closing the parent task. Routing is wired through the
+   shared provider enum, including config, indexing, watching and search filters.

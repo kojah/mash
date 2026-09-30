@@ -8,6 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 mod aider;
 mod cline;
 mod copilot;
+mod cursor;
 mod discovery;
 mod gemini;
 mod hermes;
@@ -52,6 +53,7 @@ impl Provider {
             Self::Copilot => |source| copilot::parse(&source.identity.path),
             Self::GeminiCli => |source| gemini::parse(&source.identity.path),
             Self::Cline => cline::parse_source,
+            Self::Cursor => |source| cursor::parse(&source.identity),
         }
     }
 }

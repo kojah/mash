@@ -230,6 +230,7 @@ pub(super) fn discover_history_files(
         Provider::Hermes => super::hermes::discover,
         Provider::Opencode => super::opencode::discover,
         Provider::Openclaw => super::openclaw::discover,
+        Provider::Cursor => super::cursor::discover,
         Provider::ClaudeCode
         | Provider::Codex
         | Provider::Aider
@@ -280,6 +281,10 @@ fn discover_physical_sources(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     discover_files(roots, authoritative, |path, explicit| match provider {
+        Provider::Cursor => {
+            path.file_name().is_some_and(|n| n == "store.db")
+                || (explicit && path.extension().is_some_and(|e| e == "db"))
+        }
         Provider::Cline => {
             path.file_name().is_some_and(|n| {
                 n == "ui_messages.json"
