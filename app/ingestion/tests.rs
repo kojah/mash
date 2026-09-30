@@ -80,3 +80,13 @@ fn parse_with_late_failure(path: &Path) -> Result<ParsedFile, AppError> {
     }
     parse_claude(path)
 }
+
+fn parse_then_append(path: &Path) -> Result<ParsedFile, AppError> {
+    let parsed = parse_claude(path)?;
+    fs::OpenOptions::new()
+        .append(true)
+        .open(path)
+        .and_then(|mut file| file.write_all(b"\n"))
+        .map_err(AppError::io)?;
+    Ok(parsed)
+}

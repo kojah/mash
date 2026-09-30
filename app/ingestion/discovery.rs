@@ -12,7 +12,24 @@ pub(super) struct Discovery {
     pub(super) complete: bool,
 }
 
-pub(crate) fn source_stamp(path: &Path) -> Result<(i64, i64), AppError> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SourceStamp {
+    pub(crate) size_bytes: i64,
+    pub(crate) modified_ns: i64,
+}
+
+impl SourceStamp {
+    pub(crate) fn verify(self, path: &Path) -> Result<(), AppError> {
+        if source_stamp(path)? != self {
+            return Err(AppError::configuration(
+                "history changed while indexing; retry index",
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn source_stamp(path: &Path) -> Result<SourceStamp, AppError> {
     let metadata = path.metadata().map_err(AppError::io)?;
     let size_bytes = i64::try_from(metadata.len())
         .map_err(|_| AppError::internal("source file is too large"))?;
@@ -24,7 +41,10 @@ pub(crate) fn source_stamp(path: &Path) -> Result<(i64, i64), AppError> {
         .as_nanos();
     let modified_ns = i64::try_from(modified_ns)
         .map_err(|_| AppError::internal("source modification time is out of range"))?;
-    Ok((size_bytes, modified_ns))
+    Ok(SourceStamp {
+        size_bytes,
+        modified_ns,
+    })
 }
 
 pub(super) fn verify_authoritative_discovery(
@@ -168,8 +188,12 @@ pub(crate) struct DirectScan {
 }
 
 impl DirectScan {
-    pub(crate) fn parse_path(provider: Provider, path: &Path) -> Result<ParsedFile, AppError> {
-        provider.parser()(path)
+    pub(crate) fn parse_path(
+        provider: Provider,
+        path: &Path,
+        stamp: SourceStamp,
+    ) -> Result<ParsedFile, AppError> {
+        super::parse_stable_source(path, stamp, provider.parser())
     }
 
     pub(crate) fn verify(&self) -> Result<(), AppError> {

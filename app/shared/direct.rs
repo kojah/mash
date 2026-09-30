@@ -136,7 +136,9 @@ async fn ingest_scan(
             )?;
         }
         let source = path.clone();
-        let (size, modified) = crate::blocking(move || ingestion::source_stamp(&source)).await?;
+        let stamp = crate::blocking(move || ingestion::source_stamp(&source)).await?;
+        let size = stamp.size_bytes;
+        let modified = stamp.modified_ns;
         if scan.cutoff.is_some_and(|c| modified < c) {
             continue;
         }
@@ -155,16 +157,8 @@ async fn ingest_scan(
         }
         let source = path.clone();
         let provider = scan.provider;
-        let parsed = crate::blocking(move || {
-            let parsed = DirectScan::parse_path(provider, &source)?;
-            if ingestion::source_stamp(&source)? != (size, modified) {
-                return Err(AppError::shared(
-                    "history changed while indexing; retry index",
-                ));
-            }
-            Ok(parsed)
-        })
-        .await?;
+        let parsed =
+            crate::blocking(move || DirectScan::parse_path(provider, &source, stamp)).await?;
         if parsed.malformed_records != 0 {
             return Err(AppError::shared(
                 "shared indexing encountered malformed history; upload was not committed",

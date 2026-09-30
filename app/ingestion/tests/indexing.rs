@@ -1,6 +1,136 @@
 use super::*;
 
 #[test]
+fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let root = directory.path().join("claude");
+    fs::create_dir(&root).unwrap();
+    let source = root.join("session.jsonl");
+    let database = directory.path().join("mash.sqlite3");
+    write_claude_session(&source, "session", "durable sentinel");
+    let options = IndexOptions {
+        providers: [(Provider::ClaudeCode, vec![root.clone()])].into(),
+        roots_are_authoritative: true,
+        since_days: None,
+    };
+    let mut writer = Storage::open_writer(&database).unwrap();
+    index(&mut writer, &options).unwrap();
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let old_stamp = source_stamp(&source).unwrap();
+
+    write_claude_session(&source, "session", "uncommitted changed sentinel");
+    let discovery =
+        discover_history_files(Provider::ClaudeCode, std::slice::from_ref(&root), true).unwrap();
+    let mut writer = Storage::open_writer(&database).unwrap();
+    let error = index_provider(
+        &mut writer,
+        ProviderScan {
+            provider: Provider::ClaudeCode,
+            roots: std::slice::from_ref(&root),
+            cutoff_modified_ns: None,
+            parse: parse_then_append,
+            authoritative: true,
+        },
+        discovery,
+        &mut empty_summary(),
+        &mut IndexProgress::new(),
+    )
+    .expect_err("mutation must reject the scan");
+    assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
+    assert!(error.error.message.contains("history changed"));
+    writer.commit_writer().unwrap();
+    assert_eq!(writer.search("durable", 10, None, None).unwrap().len(), 1);
+    assert!(
+        writer
+            .search("uncommitted", 10, None, None)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        writer
+            .source_checkpoint_matches(
+                Provider::ClaudeCode,
+                source.to_str().unwrap(),
+                old_stamp.size_bytes,
+                old_stamp.modified_ns,
+            )
+            .unwrap()
+    );
+    drop(writer);
+
+    let mut writer = Storage::open_writer(&database).unwrap();
+    let retry = index(&mut writer, &options).expect("retry reads the complete new source");
+    assert_eq!(retry.checkpoint_skipped_sources, 0);
+    assert_eq!(retry.changed_messages, 1);
+    writer.commit_writer().unwrap();
+    assert_eq!(
+        writer.search("uncommitted", 10, None, None).unwrap().len(),
+        1
+    );
+    assert!(writer.search("durable", 10, None, None).unwrap().is_empty());
+}
+
+#[test]
+fn queued_results_reject_changed_or_removed_sources_before_writing() {
+    for remove in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("session.jsonl");
+        write_claude_session(&source, "session", "queued sentinel");
+        let stamp = source_stamp(&source).unwrap();
+        let parsed = parse_stable_source(&source, stamp, parse_claude).unwrap();
+        if remove {
+            fs::remove_file(&source).unwrap();
+        } else {
+            write_claude_session(&source, "session", "replacement has different length");
+        }
+        let mut writer = Storage::open_writer(&directory.path().join("mash.sqlite3")).unwrap();
+        apply_parsed_source(
+            &mut writer,
+            Provider::ClaudeCode,
+            ParsedSource {
+                source: SourceFile {
+                    source_path: source.to_string_lossy().into_owned(),
+                    path: source.clone(),
+                    stamp,
+                },
+                parsed: Ok(parsed),
+            },
+            &mut empty_summary(),
+        )
+        .expect_err("queued stale content must not be applied");
+        writer.commit_writer().unwrap();
+        assert_eq!(writer.counts().unwrap().messages, 0);
+        assert!(
+            !writer
+                .source_checkpoint_matches(
+                    Provider::ClaudeCode,
+                    source.to_str().unwrap(),
+                    stamp.size_bytes,
+                    stamp.modified_ns,
+                )
+                .unwrap()
+        );
+    }
+}
+
+#[test]
+fn a_changed_discovered_stamp_is_rejected_before_parsing() {
+    fn must_not_parse(_: &Path) -> Result<ParsedFile, AppError> {
+        panic!("changed source must be rejected before the parser runs")
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("session.jsonl");
+    write_claude_session(&source, "session", "initial");
+    let stamp = source_stamp(&source).unwrap();
+    write_claude_session(&source, "session", "changed after discovery");
+    let error = parse_stable_source(&source, stamp, must_not_parse)
+        .err()
+        .expect("discovery stamp is stale");
+    assert!(error.error.message.contains("history changed"));
+}
+
+#[test]
 fn purge_requires_a_complete_provider_scan() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let database = directory.path().join("mash.sqlite3");
@@ -394,7 +524,7 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
             }],
         )
         .expect("old embedding");
-    let (old_size_bytes, old_modified_ns) = source_stamp(&old_path).expect("old source stamp");
+    let old_stamp = source_stamp(&old_path).expect("old source stamp");
     writer.commit_writer().expect("commit all-history index");
     drop(writer);
 
@@ -415,8 +545,8 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
             .source_checkpoint_matches(
                 crate::provider::Provider::ClaudeCode,
                 old_path.to_str().unwrap(),
-                old_size_bytes,
-                old_modified_ns,
+                old_stamp.size_bytes,
+                old_stamp.modified_ns,
             )
             .expect("old checkpoint")
     );

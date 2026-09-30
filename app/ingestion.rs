@@ -14,7 +14,8 @@ mod tests;
 
 pub(crate) use discovery::{DirectScan, direct_scans, source_stamp};
 use discovery::{
-    Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
+    Discovery, SourceStamp, cutoff_modified_ns, discover_history_files,
+    verify_authoritative_discovery,
 };
 
 use crate::AppError;
@@ -97,8 +98,7 @@ struct ProviderScan<'a> {
 struct SourceFile {
     path: PathBuf,
     source_path: String,
-    size_bytes: i64,
-    modified_ns: i64,
+    stamp: SourceStamp,
 }
 
 struct ParsedSource {
@@ -224,8 +224,9 @@ fn index_provider_inner(
     )?;
     pending.sort_unstable_by(|left, right| {
         right
+            .stamp
             .size_bytes
-            .cmp(&left.size_bytes)
+            .cmp(&left.stamp.size_bytes)
             .then_with(|| left.source_path.cmp(&right.source_path))
     });
     progress.phase_started = Instant::now();
@@ -249,18 +250,18 @@ fn index_provider_inner(
                     let Some(source) = pending.get(index) else {
                         break;
                     };
-                    let parsed = parse(&source.path).map_err(|error| {
-                        if authoritative {
-                            configured_source_error(&source.path, &error)
-                        } else {
-                            error
-                        }
-                    });
+                    let parsed =
+                        parse_stable_source(&source.path, source.stamp, parse).map_err(|error| {
+                            if authoritative {
+                                configured_source_error(&source.path, &error)
+                            } else {
+                                error
+                            }
+                        });
                     let source = SourceFile {
                         path: source.path.clone(),
                         source_path: source.source_path.clone(),
-                        size_bytes: source.size_bytes,
-                        modified_ns: source.modified_ns,
+                        stamp: source.stamp,
                     };
                     if sender.send(ParsedSource { source, parsed }).is_err() {
                         break;
@@ -279,7 +280,7 @@ fn index_provider_inner(
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
             };
-            let source_bytes = u64::try_from(result.source.size_bytes).unwrap_or_default();
+            let source_bytes = u64::try_from(result.source.stamp.size_bytes).unwrap_or_default();
             summary.processed_files += 1;
             summary.processed_bytes = summary.processed_bytes.saturating_add(source_bytes);
             match apply_parsed_source(storage, provider, result, summary) {
@@ -370,20 +371,25 @@ fn prepare_sources(
     for path in discovery.files {
         let source_path = path.to_string_lossy().into_owned();
         observed_paths.insert(source_path.clone());
-        let (size_bytes, modified_ns) = source_stamp(&path).map_err(|error| {
+        let stamp = source_stamp(&path).map_err(|error| {
             if authoritative {
                 configured_source_error(&path, &error)
             } else {
                 error
             }
         })?;
-        if cutoff_modified_ns.is_some_and(|cutoff| modified_ns < cutoff) {
+        if cutoff_modified_ns.is_some_and(|cutoff| stamp.modified_ns < cutoff) {
             continue;
         }
         summary.scanned_files += 1;
-        let bytes = u64::try_from(size_bytes).unwrap_or_default();
+        let bytes = u64::try_from(stamp.size_bytes).unwrap_or_default();
         summary.discovered_bytes = summary.discovered_bytes.saturating_add(bytes);
-        if storage.source_checkpoint_matches(provider, &source_path, size_bytes, modified_ns)? {
+        if storage.source_checkpoint_matches(
+            provider,
+            &source_path,
+            stamp.size_bytes,
+            stamp.modified_ns,
+        )? {
             summary.unchanged_sources += 1;
             summary.checkpoint_skipped_sources += 1;
             summary.processed_files += 1;
@@ -392,8 +398,7 @@ fn prepare_sources(
             pending.push(SourceFile {
                 path,
                 source_path,
-                size_bytes,
-                modified_ns,
+                stamp,
             });
         }
     }
@@ -402,10 +407,21 @@ fn prepare_sources(
 
 fn configured_source_error(path: &Path, error: &AppError) -> AppError {
     AppError::configuration(format!(
-        "configured provider source became inaccessible: {}: {}",
+        "configured provider source could not be indexed: {}: {}",
         path.display(),
         error.error.message
     ))
+}
+
+fn parse_stable_source(
+    path: &Path,
+    stamp: SourceStamp,
+    parse: fn(&Path) -> Result<ParsedFile, AppError>,
+) -> Result<ParsedFile, AppError> {
+    stamp.verify(path)?;
+    let parsed = parse(path)?;
+    stamp.verify(path)?;
+    Ok(parsed)
 }
 
 fn apply_parsed_source(
@@ -415,6 +431,9 @@ fn apply_parsed_source(
     summary: &mut IndexSummary,
 ) -> Result<bool, AppError> {
     let parsed = result.parsed?;
+    // A producer can wait in the bounded queue while another source is applied.
+    // Reject a change during that wait before replacing content or checkpoints.
+    result.source.stamp.verify(&result.source.path)?;
     summary.malformed_records += parsed.malformed_records;
     if let Some(conversation) = parsed.conversation {
         apply_conversation(storage, &conversation, summary)?;
@@ -427,8 +446,8 @@ fn apply_parsed_source(
         storage.record_source_checkpoint(
             provider,
             &result.source.source_path,
-            result.source.size_bytes,
-            result.source.modified_ns,
+            result.source.stamp.size_bytes,
+            result.source.stamp.modified_ns,
         )?;
     }
     Ok(parsed.malformed_records == 0)
