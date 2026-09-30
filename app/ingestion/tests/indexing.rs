@@ -34,8 +34,7 @@ fn purge_requires_a_complete_provider_scan() {
 
     fs::write(claude_root.join("malformed.jsonl"), "not-json\n").expect("malformed source");
     let options = IndexOptions {
-        claude_code: Some(vec![claude_root.clone()]),
-        codex: None,
+        providers: [(Provider::ClaudeCode, vec![claude_root.clone()])].into(),
         roots_are_authoritative: true,
         since_days: None,
     };
@@ -83,8 +82,11 @@ fn authoritative_roots_index_only_the_two_concrete_formats() {
     let summary = index(
         &mut writer,
         &IndexOptions {
-            claude_code: Some(vec![claude]),
-            codex: Some(vec![codex]),
+            providers: [
+                (Provider::ClaudeCode, vec![claude]),
+                (Provider::Codex, vec![codex]),
+            ]
+            .into(),
             roots_are_authoritative: true,
             since_days: None,
         },
@@ -128,8 +130,14 @@ fn every_authoritative_root_is_preflighted_before_ingestion_writes() {
     fs::create_dir(&claude_root).expect("Claude root");
     write_claude_session(&claude_root.join("session.jsonl"), "session", "sentinel");
     let options = IndexOptions {
-        claude_code: Some(vec![claude_root]),
-        codex: Some(vec![directory.path().join("missing-codex")]),
+        providers: [
+            (Provider::ClaudeCode, vec![claude_root]),
+            (
+                Provider::Codex,
+                vec![directory.path().join("missing-codex")],
+            ),
+        ]
+        .into(),
         roots_are_authoritative: true,
         since_days: None,
     };
@@ -150,8 +158,7 @@ fn missing_builtin_root_is_nonfatal_but_never_authorizes_purge() {
     write_claude_session(&root.join("session.jsonl"), "session", "durable sentinel");
     let database = directory.path().join("mash.sqlite3");
     let options = IndexOptions {
-        claude_code: Some(vec![root.clone()]),
-        codex: None,
+        providers: [(Provider::ClaudeCode, vec![root.clone()])].into(),
         roots_are_authoritative: false,
         since_days: None,
     };
@@ -348,8 +355,7 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
     set_modified(&recent_path, boundary);
     let database = directory.path().join("mash.sqlite3");
     let bounded = IndexOptions {
-        claude_code: Some(vec![root.clone()]),
-        codex: None,
+        providers: [(Provider::ClaudeCode, vec![root.clone()])].into(),
         roots_are_authoritative: true,
         since_days: Some(90),
     };
@@ -480,8 +486,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
     let summary = index(
         &mut writer,
         &IndexOptions {
-            claude_code: None,
-            codex: Some(vec![root]),
+            providers: [(Provider::Codex, vec![root])].into(),
             roots_are_authoritative: true,
             since_days: None,
         },

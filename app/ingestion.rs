@@ -15,7 +15,6 @@ pub(crate) use discovery::{DirectScan, direct_scans, source_stamp};
 use discovery::{
     Discovery, cutoff_modified_ns, discover_jsonl_files, verify_authoritative_discovery,
 };
-use parsers::{parse_claude, parse_codex};
 
 use crate::AppError;
 use crate::storage::Storage;
@@ -24,10 +23,18 @@ const MAX_TOOL_OUTPUT_CHARS: usize = 128 * 1024;
 const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 
+impl Provider {
+    fn parser(self) -> fn(&Path) -> Result<ParsedFile, AppError> {
+        match self {
+            Self::ClaudeCode => parsers::parse_claude,
+            Self::Codex => parsers::parse_codex,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct IndexOptions {
-    pub(crate) claude_code: Option<Vec<PathBuf>>,
-    pub(crate) codex: Option<Vec<PathBuf>>,
+    pub(crate) providers: crate::provider::ProviderRoots,
     pub(crate) roots_are_authoritative: bool,
     pub(crate) since_days: Option<u32>,
 }
@@ -135,48 +142,24 @@ fn index_at(
 
     // Inspect every configured root before opening the ingestion pipeline. A
     // bad root must fail closed without committing another provider first.
-    let claude_discovery = options
-        .claude_code
-        .as_ref()
-        .map(|roots| {
+    let discoveries = options
+        .providers
+        .iter()
+        .map(|(&provider, roots)| {
             crate::progress::during(crate::progress::Phase::SourceDiscovery, || {
                 discover_jsonl_files(roots, options.roots_are_authoritative)
             })
+            .map(|discovery| (provider, roots, discovery))
         })
-        .transpose()?;
-    let codex_discovery = options
-        .codex
-        .as_ref()
-        .map(|roots| {
-            crate::progress::during(crate::progress::Phase::SourceDiscovery, || {
-                discover_jsonl_files(roots, options.roots_are_authoritative)
-            })
-        })
-        .transpose()?;
-
-    if let (Some(roots), Some(discovery)) = (&options.claude_code, claude_discovery) {
+        .collect::<Result<Vec<_>, _>>()?;
+    for (provider, roots, discovery) in discoveries {
         index_provider(
             storage,
             ProviderScan {
-                provider: Provider::ClaudeCode,
+                provider,
                 roots,
                 cutoff_modified_ns,
-                parse: parse_claude,
-                authoritative: options.roots_are_authoritative,
-            },
-            discovery,
-            &mut summary,
-            &mut progress,
-        )?;
-    }
-    if let (Some(roots), Some(discovery)) = (&options.codex, codex_discovery) {
-        index_provider(
-            storage,
-            ProviderScan {
-                provider: Provider::Codex,
-                roots,
-                cutoff_modified_ns,
-                parse: parse_codex,
+                parse: provider.parser(),
                 authoritative: options.roots_are_authoritative,
             },
             discovery,

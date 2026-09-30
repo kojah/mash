@@ -592,42 +592,24 @@ fn resolve_index_options(
         return Err(AppError::usage("--since-days must be between 1 and 36500"));
     }
 
-    let explicit = !requested_providers.is_empty();
-    let mut select_claude = !explicit && configuration.providers.claude_code.is_some();
-    let mut select_codex = !explicit && configuration.providers.codex.is_some();
-    for provider in requested_providers {
-        match provider {
-            Provider::ClaudeCode => select_claude = true,
-            Provider::Codex => select_codex = true,
-        }
-    }
-
-    let claude_code = if select_claude {
-        Some(
-            configuration
-                .providers
-                .claude_code
-                .clone()
-                .ok_or_else(|| AppError::usage("provider is not enabled: claude-code"))?,
-        )
+    let providers = if requested_providers.is_empty() {
+        configuration.providers.clone()
     } else {
-        None
-    };
-    let codex = if select_codex {
-        Some(
-            configuration
-                .providers
-                .codex
-                .clone()
-                .ok_or_else(|| AppError::usage("provider is not enabled: codex"))?,
-        )
-    } else {
-        None
+        requested_providers
+            .iter()
+            .map(|&provider| {
+                configuration
+                    .providers
+                    .get(&provider)
+                    .cloned()
+                    .map(|roots| (provider, roots))
+                    .ok_or_else(|| AppError::usage(format!("provider is not enabled: {provider}")))
+            })
+            .collect::<Result<_, _>>()?
     };
 
     Ok(ingestion::IndexOptions {
-        claude_code,
-        codex,
+        providers,
         roots_are_authoritative: configuration.loaded,
         since_days: if all_history {
             None
@@ -660,8 +642,7 @@ pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, 
         if enabled {
             let mut selected = options.clone();
             config::IndexFilter::apply(filter.as_ref(), &mut selected);
-            roots.extend(selected.claude_code.into_iter().flatten());
-            roots.extend(selected.codex.into_iter().flatten());
+            roots.extend(selected.providers.into_values().flatten());
         }
     }
     roots.sort();
@@ -869,10 +850,14 @@ mod tests {
             path: root.join("config.toml"),
             loaded: true,
             shared: None,
-            providers: crate::config::ResolvedProviders {
-                claude_code: claude_enabled.then(|| vec![root.join("claude")]),
-                codex: codex_enabled.then(|| vec![root.join("codex")]),
-            },
+            providers: [
+                (Provider::ClaudeCode, claude_enabled, "claude"),
+                (Provider::Codex, codex_enabled, "codex"),
+            ]
+            .into_iter()
+            .filter(|(_, enabled, _)| *enabled)
+            .map(|(provider, _, name)| (provider, vec![root.join(name)]))
+            .collect(),
             since_days,
             destination: config::IndexDestination::Local,
             local_filter: None,
@@ -890,15 +875,15 @@ mod tests {
             false,
         )
         .expect("selected options");
-        assert!(selected.claude_code.is_none());
-        assert_eq!(selected.codex.unwrap().len(), 1);
+        assert!(!selected.providers.contains_key(&Provider::ClaudeCode));
+        assert_eq!(selected.providers[&Provider::Codex].len(), 1);
         assert_eq!(selected.since_days, Some(30));
 
         let all =
             resolve_index_options(&configuration, &[], None, true).expect("all-history options");
         assert_eq!(all.since_days, None);
-        assert!(all.claude_code.is_some());
-        assert!(all.codex.is_some());
+        assert!(all.providers.contains_key(&Provider::ClaudeCode));
+        assert!(all.providers.contains_key(&Provider::Codex));
 
         for invalid in [Some(0), Some(36_501)] {
             assert!(resolve_index_options(&configuration, &[], invalid, false).is_err());

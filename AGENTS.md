@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-mash is a Rust CLI with JSON output and stdio MCP server for Claude Code and Codex JSONL histories.
+mash is a Rust CLI with JSON output and stdio MCP server for local agent histories.
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
 Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 `forget`, `models install`, `mcp`, and `serve`.
@@ -27,9 +27,13 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
   with `search --no-worker`. Do not install it as a system service.
 - Support opt-in debounced synchronization with `index --watch` and MCP startup
   `--watch`. Keep it within the running process; do not install a daemon.
-- Keep ingestion to the two concrete mash-owned JSONL parsers. Do not add
-  external application databases, event-log providers, provider traits,
-  registries, plugin systems, or compatibility layers.
+- Use concrete, enum-selected history adapters with typed input models. The
+  provider set includes Claude Code, Codex, Hermes Agent, OpenClaw, OpenCode,
+  Pi, GitHub Copilot, Cursor, Windsurf, Aider, Cline, Antigravity, and Gemini CLI.
+  Read upstream application databases without writing to them; respect their
+  WAL files and session identities. Keep provider settings in the enum-keyed
+  collection shared by configuration, routing, watching, and ingestion. Do not
+  add provider traits, registries, plugin systems, or guessed format aliases.
 - Never download models outside the explicit `models install` command.
 - Unsafe Rust is forbidden.
 

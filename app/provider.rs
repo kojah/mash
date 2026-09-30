@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     Deserialize,
     Serialize,
@@ -18,6 +20,10 @@ pub(crate) enum Provider {
     ClaudeCode,
     Codex,
 }
+
+/// Enum keys keep configuration and routing exhaustive without duplicating a
+/// field for every provider. The serialized keys remain provider names.
+pub(crate) type ProviderRoots = std::collections::BTreeMap<Provider, Vec<std::path::PathBuf>>;
 
 impl Provider {
     pub(crate) const fn as_str(self) -> &'static str {

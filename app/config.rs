@@ -1,5 +1,5 @@
-use crate::provider::Provider;
-use std::collections::HashSet;
+use crate::provider::{Provider, ProviderRoots};
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) loaded: bool,
     pub(crate) shared: Option<SharedConfig>,
     pub(crate) embeddings: Option<crate::semantic::remote::Configuration>,
-    pub(crate) providers: ResolvedProviders,
+    pub(crate) providers: ProviderRoots,
     pub(crate) since_days: Option<u32>,
     pub(crate) destination: IndexDestination,
     pub(crate) local_filter: Option<IndexFilter>,
@@ -35,12 +35,9 @@ pub(crate) struct IndexFilter {
 impl IndexFilter {
     pub(crate) fn apply(filter: Option<&Self>, options: &mut crate::ingestion::IndexOptions) {
         if let Some(filter) = filter {
-            if !filter.providers.contains(&Provider::ClaudeCode) {
-                options.claude_code = None;
-            }
-            if !filter.providers.contains(&Provider::Codex) {
-                options.codex = None;
-            }
+            options
+                .providers
+                .retain(|provider, _| filter.providers.contains(provider));
         }
     }
 }
@@ -61,12 +58,6 @@ pub(crate) struct SharedConfig {
     pub(crate) token_env: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ResolvedProviders {
-    pub(crate) claude_code: Option<Vec<PathBuf>>,
-    pub(crate) codex: Option<Vec<PathBuf>>,
-}
-
 #[derive(Debug, Serialize)]
 pub(crate) struct ConfigurationStatus {
     path: PathBuf,
@@ -74,16 +65,8 @@ pub(crate) struct ConfigurationStatus {
     shared: Option<SharedConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     embeddings: Option<Box<crate::semantic::remote::Configuration>>,
-    providers: ProviderStatusMap,
+    providers: BTreeMap<Provider, ProviderStatus>,
     index: IndexStatus,
-}
-
-#[derive(Debug, Serialize)]
-struct ProviderStatusMap {
-    #[serde(rename = "claude-code", skip_serializing_if = "Option::is_none")]
-    claude_code: Option<ProviderStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    codex: Option<ProviderStatus>,
 }
 
 #[derive(Debug, Serialize)]
@@ -108,18 +91,18 @@ impl ResolvedConfig {
             loaded: self.loaded,
             shared: self.shared.clone(),
             embeddings: self.embeddings.clone().map(Box::new),
-            providers: ProviderStatusMap {
-                claude_code: self
-                    .providers
-                    .claude_code
-                    .clone()
-                    .map(|roots| ProviderStatus { roots }),
-                codex: self
-                    .providers
-                    .codex
-                    .clone()
-                    .map(|roots| ProviderStatus { roots }),
-            },
+            providers: self
+                .providers
+                .iter()
+                .map(|(&provider, roots)| {
+                    (
+                        provider,
+                        ProviderStatus {
+                            roots: roots.clone(),
+                        },
+                    )
+                })
+                .collect(),
             index: IndexStatus {
                 since_days: self.since_days,
                 destination: self.destination,
@@ -132,7 +115,7 @@ impl ResolvedConfig {
 
 #[derive(Debug)]
 struct ParsedDocument {
-    providers: ResolvedProviders,
+    providers: ProviderRoots,
     since_days: Option<u32>,
     shared: Option<SharedConfig>,
     embeddings: Option<crate::semantic::remote::Configuration>,
@@ -152,13 +135,7 @@ struct RawDocument {
     embeddings: Option<crate::semantic::remote::Configuration>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawProviders {
-    #[serde(rename = "claude-code")]
-    claude_code: Option<RawProvider>,
-    codex: Option<RawProvider>,
-}
+type RawProviders = BTreeMap<Provider, RawProvider>;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -272,7 +249,7 @@ fn load_from_paths(
     })
 }
 
-fn built_in_providers() -> Result<ResolvedProviders, AppError> {
+fn built_in_providers() -> Result<ProviderRoots, AppError> {
     let directories = BaseDirs::new()
         .ok_or_else(|| AppError::configuration("platform home directory is unavailable"))?;
     let home = directories.home_dir();
@@ -281,16 +258,22 @@ fn built_in_providers() -> Result<ResolvedProviders, AppError> {
             "platform home directory is not absolute",
         ));
     }
-    Ok(ResolvedProviders {
-        claude_code: Some(vec![
-            home.join(".claude/projects"),
-            home.join(".config/claude/projects"),
-        ]),
-        codex: Some(vec![
-            home.join(".codex/sessions"),
-            home.join(".local/share/codex/sessions"),
-        ]),
-    })
+    Ok(ProviderRoots::from([
+        (
+            Provider::ClaudeCode,
+            vec![
+                home.join(".claude/projects"),
+                home.join(".config/claude/projects"),
+            ],
+        ),
+        (
+            Provider::Codex,
+            vec![
+                home.join(".codex/sessions"),
+                home.join(".local/share/codex/sessions"),
+            ],
+        ),
+    ]))
 }
 
 fn not_regular_file(path: &Path) -> AppError {
@@ -379,9 +362,7 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
                     "index provider filters must contain unique supported provider names",
                 ));
             }
-            if (*provider == Provider::ClaudeCode && raw.providers.claude_code.is_none())
-                || (*provider == Provider::Codex && raw.providers.codex.is_none())
-            {
+            if !raw.providers.contains_key(provider) {
                 return Err(AppError::configuration(
                     "index provider filter selects a disabled provider",
                 ));
@@ -390,10 +371,11 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     }
     validate_local_coverage(&raw, destination)?;
     Ok(ParsedDocument {
-        providers: ResolvedProviders {
-            claude_code: validate_roots(raw.providers.claude_code, "claude-code")?,
-            codex: validate_roots(raw.providers.codex, "codex")?,
-        },
+        providers: raw
+            .providers
+            .into_iter()
+            .map(|(provider, roots)| validate_roots(roots, provider).map(|roots| (provider, roots)))
+            .collect::<Result<_, _>>()?,
         since_days,
         shared: raw.shared,
         embeddings: raw.embeddings,
@@ -418,12 +400,9 @@ pub(crate) fn validate_identifier(value: &str, label: &str) -> Result<(), AppErr
 }
 
 fn validate_roots(
-    provider: Option<RawProvider>,
-    provider_name: &str,
-) -> Result<Option<Vec<PathBuf>>, AppError> {
-    let Some(provider) = provider else {
-        return Ok(None);
-    };
+    provider: RawProvider,
+    provider_name: Provider,
+) -> Result<Vec<PathBuf>, AppError> {
     if provider.roots.is_empty() {
         return Err(AppError::configuration(format!(
             "provider {provider_name} roots must not be empty"
@@ -444,7 +423,7 @@ fn validate_roots(
             )));
         }
     }
-    Ok(Some(provider.roots))
+    Ok(provider.roots)
 }
 
 fn validate_local_coverage(
@@ -454,18 +433,13 @@ fn validate_local_coverage(
     if destination == IndexDestination::Both
         && let Some(local) = &raw.index.local
     {
-        for provider in [Provider::ClaudeCode, Provider::Codex] {
-            let enabled = if provider == Provider::ClaudeCode {
-                raw.providers.claude_code.is_some()
-            } else {
-                raw.providers.codex.is_some()
-            };
+        for &provider in raw.providers.keys() {
             let forwarded = raw
                 .index
                 .shared
                 .as_ref()
                 .is_none_or(|shared| shared.providers.contains(&provider));
-            if enabled && forwarded && !local.providers.contains(&provider) {
+            if forwarded && !local.providers.contains(&provider) {
                 return Err(AppError::configuration(
                     "the local provider allowlist must include every provider forwarded to the shared index",
                 ));
@@ -541,21 +515,20 @@ token_env = 'VOYAGE_API_KEY'
             let parsed = parse_document(&toml::to_string(&document).unwrap().into_bytes()).unwrap();
             assert_eq!(parsed.destination, expected);
             let options = crate::ingestion::IndexOptions {
-                claude_code: parsed.providers.claude_code,
-                codex: parsed.providers.codex,
+                providers: parsed.providers,
                 since_days: None,
                 roots_are_authoritative: true,
             };
             let mut local = options.clone();
             IndexFilter::apply(parsed.local_filter.as_ref(), &mut local);
-            assert!(local.claude_code.is_some());
-            assert!(local.codex.is_some());
+            assert!(local.providers.contains_key(&Provider::ClaudeCode));
+            assert!(local.providers.contains_key(&Provider::Codex));
             let mut remote = options;
             IndexFilter::apply(parsed.shared_filter.as_ref(), &mut remote);
-            assert!(remote.claude_code.is_none());
-            assert!(remote.codex.is_some());
+            assert!(!remote.providers.contains_key(&Provider::ClaudeCode));
+            assert!(remote.providers.contains_key(&Provider::Codex));
             IndexFilter::apply(Some(&IndexFilter { providers: vec![] }), &mut remote);
-            assert!(remote.codex.is_none());
+            assert!(remote.providers.is_empty());
         }
         for index in [
             toml::toml! {
@@ -623,8 +596,8 @@ token_env = 'VOYAGE_API_KEY'
         assert_eq!(parsed.since_days, Some(90));
         assert!(parsed.shared.is_none());
         assert_eq!(
-            parsed.providers.codex,
-            Some(vec![PathBuf::from("/missing/codex")])
+            parsed.providers[&Provider::Codex],
+            vec![PathBuf::from("/missing/codex")]
         );
         let valid = r#""version" = 1
 "providers" = {}
@@ -728,7 +701,7 @@ token_env = 'VOYAGE_API_KEY'
         let absent = load_from_paths(Ok(missing.clone()), None).expect("optional default");
         assert!(!absent.loaded);
         assert!(absent.shared.is_none());
-        assert!(absent.providers.codex.is_some());
+        assert!(absent.providers.contains_key(&Provider::Codex));
         assert_configuration_error(
             &load_from_paths(Ok(missing.clone()), Some(missing)).expect_err("explicit missing"),
         );

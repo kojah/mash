@@ -1,5 +1,4 @@
 //! Discover histories, apply age horizons, and verify authoritative scans.
-use super::parsers::{parse_claude, parse_codex};
 use super::{IndexOptions, ParsedFile};
 use crate::AppError;
 use crate::provider::Provider;
@@ -157,10 +156,7 @@ pub(crate) struct DirectScan {
 
 impl DirectScan {
     pub(crate) fn parse_path(provider: Provider, path: &Path) -> Result<ParsedFile, AppError> {
-        match provider {
-            Provider::ClaudeCode => parse_claude(path),
-            Provider::Codex => parse_codex(path),
-        }
+        provider.parser()(path)
     }
 
     pub(crate) fn verify(&self) -> Result<(), AppError> {
@@ -178,24 +174,21 @@ impl DirectScan {
 
 pub(crate) fn direct_scans(options: &IndexOptions) -> Result<Vec<DirectScan>, AppError> {
     let cutoff = cutoff_modified_ns(SystemTime::now(), options.since_days)?;
-    [
-        (Provider::ClaudeCode, &options.claude_code),
-        (Provider::Codex, &options.codex),
-    ]
-    .into_iter()
-    .filter_map(|(provider, roots)| roots.as_ref().map(|roots| (provider, roots)))
-    .map(|(provider, roots)| {
-        let discovery = discover_jsonl_files(roots, options.roots_are_authoritative)?;
-        Ok(DirectScan {
-            provider,
-            roots: roots.clone(),
-            files: discovery.files,
-            complete: discovery.complete,
-            authoritative: options.roots_are_authoritative,
-            cutoff,
+    options
+        .providers
+        .iter()
+        .map(|(&provider, roots)| {
+            let discovery = discover_jsonl_files(roots, options.roots_are_authoritative)?;
+            Ok(DirectScan {
+                provider,
+                roots: roots.clone(),
+                files: discovery.files,
+                complete: discovery.complete,
+                authoritative: options.roots_are_authoritative,
+                cutoff,
+            })
         })
-    })
-    .collect()
+        .collect()
 }
 
 fn is_jsonl(path: &Path) -> bool {
