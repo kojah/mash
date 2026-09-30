@@ -151,6 +151,12 @@ Without a configuration file, mash indexes these built-in roots when present:
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`
 - Codex: `~/.codex/sessions`, `~/.local/share/codex/sessions`
 
+Claude subagent transcripts share their parent's native session ID. mash uses
+the session and native `agentId` together to index each subagent as an independent
+thread, so it cannot replace the parent's history. An explicit `mash index`
+upgrades older indexes and reprocesses source checkpoints to repair this identity
+collision; search never performs the upgrade or indexing itself.
+
 Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`
 or an explicit Markdown history file. Directory roots discover only
 `.aider.chat.history.md`; custom `--chat-history-file` paths can be configured

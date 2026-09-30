@@ -58,6 +58,7 @@ fn parse_jsonl(
     let mut malformed_records = 0;
     let mut messages = Vec::new();
     let mut session_id = None;
+    let mut agent_id: Option<String> = None;
     let mut project = None;
     let mut repository = None;
     for line in lines {
@@ -72,6 +73,7 @@ fn parse_jsonl(
             continue;
         };
         capture_metadata(&raw, &mut project, &mut repository);
+        capture_agent_identity(provider, &raw, &mut agent_id)?;
         if provider == Provider::Codex && session_id.is_none() && raw.kind == Kind::SessionMeta {
             session_id = raw
                 .payload
@@ -120,6 +122,10 @@ fn parse_jsonl(
     }
     let id = session_id
         .unwrap_or_else(|| stable_id("session", &[provider.as_str(), &path.to_string_lossy()]));
+    let id = agent_id.map_or_else(
+        || id.clone(),
+        |agent| stable_id("claude-agent", &[&id, &agent]),
+    );
     let created_at = messages
         .iter()
         .filter_map(|message| message.created_at)
@@ -128,17 +134,7 @@ fn parse_jsonl(
         .iter()
         .filter_map(|message| message.created_at)
         .max();
-    let title = messages
-        .iter()
-        .filter(|message| message.role == crate::role::Role::User)
-        .find_map(|message| {
-            crate::search_text::title(
-                message
-                    .search_projection
-                    .as_deref()
-                    .unwrap_or(&message.content),
-            )
-        });
+    let title = conversation_title(&messages);
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id,
@@ -153,6 +149,40 @@ fn parse_jsonl(
         }),
         malformed_records,
     })
+}
+
+fn conversation_title(messages: &[NormalizedMessage]) -> Option<String> {
+    messages
+        .iter()
+        .filter(|message| message.role == crate::role::Role::User)
+        .find_map(|message| {
+            crate::search_text::title(
+                message
+                    .search_projection
+                    .as_deref()
+                    .unwrap_or(&message.content),
+            )
+        })
+}
+
+// Subagents inherit their parent's sessionId, but have independent histories.
+// Use native agent identity rather than parser completion order or source size.
+fn capture_agent_identity(
+    provider: Provider,
+    raw: &Record,
+    agent_id: &mut Option<String>,
+) -> Result<(), AppError> {
+    if provider == Provider::ClaudeCode
+        && let Some(id) = raw.agent_id.as_ref().filter(|id| !id.is_empty())
+    {
+        if agent_id.as_ref().is_some_and(|previous| previous != id) {
+            return Err(AppError::configuration(
+                "Claude transcript contains multiple agent identities",
+            ));
+        }
+        *agent_id = Some(id.clone());
+    }
+    Ok(())
 }
 
 pub(super) fn capture_metadata(

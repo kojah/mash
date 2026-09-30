@@ -1,6 +1,66 @@
 use super::*;
 
 #[test]
+fn claude_parent_and_agents_keep_independent_histories_and_checkpoints() {
+    for reverse in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let parent_path = directory.path().join("parent.jsonl");
+        write_claude_session(&parent_path, "session", "parent sentinel");
+        let parent = parse_claude(&parent_path).unwrap().conversation.unwrap();
+        let mut agents = Vec::new();
+        for agent in ["alpha", "beta"] {
+            let path = directory.path().join(format!("agent-{agent}.jsonl"));
+            fs::write(&path, format!(
+                "{{\"type\":\"user\",\"sessionId\":\"session\",\"agentId\":\"{agent}\",\"isSidechain\":true,\"uuid\":\"{agent}-message\",\"message\":{{\"role\":\"user\",\"content\":\"{agent} sentinel\"}}}}\n"
+            )).unwrap();
+            agents.push(parse_claude(&path).unwrap().conversation.unwrap());
+        }
+        assert_ne!(parent.id, agents[0].id);
+        assert_ne!(agents[0].id, agents[1].id);
+        let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+        // Emulate the old parser: the agent occupied its parent's session ID.
+        let mut legacy = parse_claude(&agents[0].source.path)
+            .unwrap()
+            .conversation
+            .unwrap();
+        legacy.id = parent.id.clone();
+        storage.replace_conversation(&legacy).unwrap();
+        let mut conversations = vec![parent, agents.remove(0), agents.remove(0)];
+        if reverse {
+            conversations.reverse();
+        }
+        for conversation in &conversations {
+            storage.replace_conversation(conversation).unwrap();
+        }
+        assert_eq!(storage.counts().unwrap().conversations, 3);
+        assert_eq!(storage.counts().unwrap().messages, 3);
+        for conversation in &conversations {
+            let message = &conversation.messages[0];
+            assert_eq!(
+                storage.view(&message.id, 0).unwrap()[0].content,
+                message.content
+            );
+        }
+        let options = IndexOptions {
+            providers: [(Provider::ClaudeCode, vec![directory.path().to_path_buf()])].into(),
+            roots_are_authoritative: true,
+            since_days: None,
+        };
+        index(&mut storage, &options).unwrap();
+        let repeat = index(&mut storage, &options).unwrap();
+        assert_eq!(repeat.checkpoint_skipped_sources, 3);
+        assert_eq!(storage.counts().unwrap().messages, 3);
+        write_claude_session(&parent_path, "session", "parent edited sentinel");
+        index(&mut storage, &options).unwrap();
+        assert_eq!(storage.counts().unwrap().messages, 3);
+        fs::remove_file(directory.path().join("agent-alpha.jsonl")).unwrap();
+        index(&mut storage, &options).unwrap();
+        assert_eq!(storage.counts().unwrap().conversations, 2);
+        assert_eq!(storage.counts().unwrap().messages, 2);
+    }
+}
+
+#[test]
 fn progress_exposes_parser_admission_without_history_content() {
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("session.jsonl");

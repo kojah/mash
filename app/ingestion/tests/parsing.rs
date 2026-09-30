@@ -98,6 +98,33 @@ fn session_metadata_keeps_first_project_and_logged_repository() {
 }
 
 #[test]
+fn claude_agent_identity_uses_native_session_and_agent_not_file_location() {
+    let directory = tempfile::tempdir().unwrap();
+    let record = r#"{"type":"user","sessionId":"parent","agentId":"alpha","uuid":"u1","message":{"role":"user","content":"agent sentinel"}}"#;
+    let first = directory.path().join("agent-alpha.jsonl");
+    let copied = directory.path().join("moved.jsonl");
+    fs::write(&first, record).unwrap();
+    fs::write(&copied, record).unwrap();
+    let original = parse_claude(&first).unwrap().conversation.unwrap();
+    let moved = parse_claude(&copied).unwrap().conversation.unwrap();
+    assert_eq!(original.id, moved.id);
+    assert_ne!(original.id, "parent");
+    fs::write(
+        &first,
+        format!("{record}\n{}", record.replace("alpha", "beta")),
+    )
+    .unwrap();
+    assert!(
+        parse_claude(&first)
+            .err()
+            .unwrap()
+            .error
+            .message
+            .contains("multiple agent identities")
+    );
+}
+
+#[test]
 fn claude_parser_skips_malformed_lines_and_keeps_messages() {
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(file, "not-json").expect("malformed line");

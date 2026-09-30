@@ -81,6 +81,8 @@ pub(super) struct Record {
     pub timestamp: Option<String>,
     #[serde(rename = "sessionId")]
     pub session_id: Option<String>,
+    #[serde(rename = "agentId")]
+    pub agent_id: Option<String>,
     pub message: Option<Payload>,
     pub payload: Option<Payload>,
     #[serde(flatten)]

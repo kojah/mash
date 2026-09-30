@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 32;
+pub(super) const SCHEMA_VERSION: i64 = 33;
 
 const SCHEMA: &str = include_str!("schema.sql");
 

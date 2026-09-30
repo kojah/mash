@@ -140,9 +140,22 @@ unchanged checkpoints. Ingestion took 3.375 seconds and sampled ingestion RSS
 peaked at 114,548 KiB. Search rebuilding and full embedding work brought total
 time to 101.33 seconds; inference had a separate 1,808,312 KiB sampled peak.
 The refresh completed with no pending vectors and SQLite integrity `ok`, but it
-exposed a Claude session-ID collision between physical histories: one source
-replaced a longer indexed history with a shorter copy. That correctness defect
-is tracked in `mash-c0d.10`; this run is not proof of canonical-history preservation.
+exposed a Claude session-ID collision between physical histories. Investigation
+confirmed the shorter source was a subagent transcript: its records share the
+parent's session ID but carry a separate native `agentId`. The parser now uses
+both identifiers for subagent thread identity. Schema 33 invalidates checkpoints
+on explicit indexing; transactional source ownership repair supports either
+parent-first or agent-first application to an older index.
+
+A subsequent frozen replay of these two real files retained all 13,845 normalized
+messages across both threads in 1.824 seconds for parsing/storage, without model
+inference. The source files had continued to grow since the earlier snapshot;
+this replay uses independent private copies rather than live hard links. Tests
+also cover distinct agents, edits, deletion, checkpoint skips, migration from
+the old parent ID, and conflicting native agent IDs. This verifies the observed
+parent/subagent collision fix, not full-corpus preservation or reconciliation
+of duplicate copies of the same logical thread. That remaining reconciliation
+work is tracked in `mash-c0d.10.1`; the broader gate `mash-c0d.10` remains open.
 
 The explicit `benchmark_parser_admission_retention` accepts
 `MASH_BENCH_PARSER_ROOT`, `MASH_BENCH_PARSER_MESSAGES`, and

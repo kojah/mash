@@ -204,6 +204,8 @@ impl Storage {
             });
         }
 
+        let repaired_messages = self.repair_claude_source_identity(conversation)?;
+
         let source_fingerprint = conversation_fingerprint(conversation);
         let existing_source_fingerprint: Option<String> = self
             .connection
@@ -268,9 +270,40 @@ impl Storage {
         }
         Ok(ConversationChange {
             changed_message_ids,
-            removed_messages,
+            removed_messages: removed_messages + repaired_messages,
             ..ConversationChange::default()
         })
+    }
+
+    fn repair_claude_source_identity(
+        &mut self,
+        conversation: &Conversation,
+    ) -> Result<u64, AppError> {
+        if conversation.provider != Provider::ClaudeCode {
+            return Ok(0);
+        }
+        // The old parser could store a subagent under its parent's ID. Repair
+        // source ownership within the writer transaction, staging every derived
+        // index before deletion so an agent-first replay is also correct.
+        let displaced: Option<i64> = self
+            .connection
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM messages WHERE conversation_id = conversations.id)
+             FROM conversations WHERE provider = ?1 AND source_key = ?2 AND id != ?3",
+                params![
+                    conversation.provider,
+                    conversation.source.key(),
+                    conversation.id
+                ],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(AppError::database)?;
+        if displaced.is_some() {
+            self.remove_source(conversation.provider, &conversation.source)?;
+        }
+        u64::try_from(displaced.unwrap_or_default())
+            .map_err(|_| AppError::internal("invalid displaced message count"))
     }
 
     pub(crate) fn source_checkpoint_matches(
