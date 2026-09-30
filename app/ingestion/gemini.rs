@@ -3,12 +3,13 @@ use super::{Conversation, NormalizedMessage, ParsedFile, SourceIdentity, records
 use crate::{AppError, message_context::MessageContext, provider::Provider};
 use models::{Header, Message, Record, SessionKind, Update};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
     io::{BufReader, Read},
     path::{Path, PathBuf},
 };
 
+mod checkpoint;
 mod models;
 #[cfg(test)]
 mod tests;
@@ -36,6 +37,9 @@ struct Replay {
     summary: Option<String>,
     kind: SessionKind,
     messages: Vec<NormalizedMessage>,
+    archived: Vec<NormalizedMessage>,
+    archived_ids: HashSet<String>,
+    compression_root: Option<String>,
     positions: HashMap<String, Position>,
     retained_bytes: usize,
 }
@@ -77,6 +81,11 @@ impl Replay {
         if message.id.trim().is_empty() {
             return Err(AppError::configuration("empty Gemini message identity"));
         }
+        if self.archived_ids.contains(&message.id) {
+            return Err(AppError::configuration(
+                "Gemini message reuses a compacted history identity",
+            ));
+        }
         let created_at = timestamp(&message.timestamp)?;
         // Retain prose instead of tool/SDK containers. Expensive search filtering
         // runs only on final saved versions, after all updates and rewinds.
@@ -99,7 +108,8 @@ impl Replay {
             .saturating_sub(previous_bytes)
             .saturating_add(retained_bytes(&message));
         if retained > MAX_REPLAY_BYTES
-            || (self.messages.len() == MAX_MESSAGES && !self.positions.contains_key(&message.id))
+            || (self.messages.len() + self.archived.len() == MAX_MESSAGES
+                && !self.positions.contains_key(&message.id))
         {
             return Err(AppError::configuration(
                 "Gemini history exceeds the retained replay limit",
@@ -142,17 +152,7 @@ impl Replay {
             self.kind = value;
         }
         if let Some(messages) = update.messages {
-            let previous = std::mem::take(&mut self.positions);
-            self.messages.clear();
-            self.retained_bytes = 0;
-            for message in messages {
-                // Checkpoints sync model input, including synthetic summaries
-                // and acknowledgements. Existing recorded turns keep provenance.
-                let origin = previous
-                    .get(&message.id)
-                    .map_or(Origin::ModelContext, |p| p.origin);
-                self.message(message, origin)?;
-            }
+            self.checkpoint(messages)?;
         }
         Ok(())
     }
@@ -172,6 +172,18 @@ impl Replay {
                     .ok_or_else(|| {
                         AppError::configuration("Gemini rewind references a missing message")
                     })?;
+                if self.compression_root.as_ref().is_some_and(|root| {
+                    self.positions
+                        .get(root)
+                        .is_some_and(|p| p.index >= position)
+                }) {
+                    self.retained_bytes = self
+                        .retained_bytes
+                        .saturating_sub(self.archived.iter().map(retained_bytes).sum::<usize>());
+                    self.archived.clear();
+                    self.archived_ids.clear();
+                    self.compression_root = None;
+                }
                 for removed in self.messages.drain(position..) {
                     self.positions.remove(&removed.id);
                     self.retained_bytes =
@@ -287,6 +299,8 @@ fn project(path: &Path, hash: &str) -> Result<String, AppError> {
 
 pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let mut state = replay(path)?;
+    state.archived.append(&mut state.messages);
+    state.messages = state.archived;
     state
         .messages
         .retain(|message| !message.content.trim().is_empty());

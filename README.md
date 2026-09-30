@@ -215,8 +215,13 @@ session files. Configure its sandbox runtime directory instead when Gemini
 stores sessions there. The adapter replays native recording semantics: repeated
 message IDs replace previous versions in their original position, `$set.messages`
 replaces the saved history, and `$rewindTo` removes its target and everything
-after it. Context checkpoints can discard earlier turns; mash indexes the saved
-history that Gemini would resume. Broken rewind references and incomplete writes
+after it. A checkpoint introducing the native `<state_snapshot>` summary and
+its exact acknowledgement preserves earlier directly recorded dialogue for
+search. Synthetic summaries and newly copied context stay outside search.
+Other replacement checkpoints remain authoritative, including cancelled turns.
+Removing the compaction anchor clears its archived dialogue. Unmarked summaries
+cannot be distinguished safely from arbitrary context replacements, so those
+still follow Gemini's resumed history. Broken rewind references and incomplete writes
 fail explicitly and preserve the previous indexed snapshot.
 
 Search uses `displayContent` when present and keeps thoughts, tools, commands,
@@ -233,7 +238,8 @@ Repository metadata is not inferred. A JSONL sibling takes precedence over its
 old JSON file when both are discovered, avoiding duplicate migrated sessions.
 Reads are limited to 8 MiB per JSONL record or complete native JSON document,
 and 8 KiB per project marker. A structural check caps JSON records at 65,536
-nodes before typed decoding. Replay retains normalized text with a 32 MiB
+nodes before typed decoding. Replay retains normalized text, including recovered
+compacted dialogue, with a 32 MiB
 accounting budget and at most 65,536 message IDs; replacements, checkpoints and
 rewinds release that budget. These are parser bounds rather than process RSS
 limits. Oversized input is reported without truncation and preserves the previous
@@ -340,7 +346,7 @@ For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 30 and shared PostgreSQL
+keep their existing ordinal neighbourhoods. SQLite schema 31 and shared PostgreSQL
 schema 15 preserve existing messages and vectors. Update the shared service before
 publishing Pi, Copilot, Gemini, Cline, Cursor, Windsurf or Antigravity histories from upgraded nodes.
 

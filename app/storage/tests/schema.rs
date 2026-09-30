@@ -4,7 +4,7 @@ use rusqlite::params;
 
 #[test]
 fn schema_migrations_preserve_context_vectors_and_require_projection_refresh() {
-    for version in [23, 28, 29] {
+    for version in [23, 28, 29, 30] {
         provider_schema_migration(version);
     }
 }

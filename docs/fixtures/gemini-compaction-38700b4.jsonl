@@ -1,0 +1,25 @@
+{"sessionId":"gemini-compaction","projectHash":"c615c28b022166dec13519a84e87c1c2138dc70b5a9339784af5b1d021154681","startTime":"2026-09-30T10:00:00Z","lastUpdated":"2026-09-30T10:00:00Z","kind":"main"}
+{"id":"earlier-user","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"How should the cBioPortal mutation importer validate metadata?"}]}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"earlier-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Reject incompatible reference genomes before importing mutations."}],"thoughts":[],"tokens":null}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"aborted-user","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"abortedrequestmarker"}]}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"aborted-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"abortedanswermarker"}],"thoughts":[],"tokens":null}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"$set":{"messages":[{"id":"earlier-user","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"How should the cBioPortal mutation importer validate metadata?"}]},{"id":"earlier-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Reject incompatible reference genomes before importing mutations."}],"thoughts":[],"tokens":null}],"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"$set":{"messages":[{"id":"summary-1","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"<state_snapshot>syntheticsummarymarker</state_snapshot>"}]},{"id":"ack-1","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Got it. Thanks for the additional context!"}]},{"id":"copied-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Reject incompatible reference genomes before importing mutations."}]}],"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"later-user","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"Also validate structural variants and chromosome aliases."}]}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"later-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Normalize chromosome aliases before checking structural variants."}],"thoughts":[],"tokens":null}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"cancelled-after-compression","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"cancelledaftercompactionmarker"}]}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"$set":{"messages":[{"id":"summary-1","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"<state_snapshot>syntheticsummarymarker</state_snapshot>"}]},{"id":"ack-1","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Got it. Thanks for the additional context!"}]},{"id":"copied-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Reject incompatible reference genomes before importing mutations."}]},{"id":"later-user","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"Also validate structural variants and chromosome aliases."}]},{"id":"later-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"Normalize chromosome aliases before checking structural variants."}],"thoughts":[],"tokens":null}],"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"rewound-user","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"rewoundrequestmarker"}]}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"id":"rewound-answer","timestamp":"2026-09-30T10:00:00.000Z","type":"gemini","content":[{"text":"rewoundanswermarker"}],"thoughts":[],"tokens":null}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
+{"$rewindTo":"rewound-user"}
+{"id":"final-user","timestamp":"2026-09-30T10:00:00.000Z","type":"user","content":[{"text":"Keep the importer changes limited to validation."}]}
+{"$set":{"lastUpdated":"2026-09-30T10:00:00.000Z"}}
