@@ -1,0 +1,112 @@
+{
+  "provenance": {
+    "package": "Devin Linux x64 3.10.31",
+    "packageSha256": "b3ddf1098c11255354d60a0778d7033989eaed85a37bbd55df90167f42eb5346",
+    "kind": "Pinned first-party language-server native disk load, archive and rename/save against synthetic constructor input; filesystem/network isolated, no UI session"
+  },
+  "initialSummary": {
+    "summary": "New Cascade",
+    "stepCount": 6,
+    "lastModifiedTime": "2026-09-30T10:00:06Z",
+    "trajectoryId": "40000000-0000-4000-8000-000000000001",
+    "status": "CASCADE_RUN_STATUS_IDLE",
+    "createdTime": "2026-09-30T10:00:00Z",
+    "lastUserInputTime": "2026-09-30T10:00:03Z",
+    "renamedTitle": "cBioPortal study filtering",
+    "trajectoryType": "CORTEX_TRAJECTORY_TYPE_CASCADE"
+  },
+  "archivedSummary": {
+    "summary": "New Cascade",
+    "stepCount": 6,
+    "lastModifiedTime": "2026-09-30T10:00:06Z",
+    "trajectoryId": "40000000-0000-4000-8000-000000000001",
+    "status": "CASCADE_RUN_STATUS_IDLE",
+    "createdTime": "2026-09-30T10:00:00Z",
+    "lastUserInputTime": "2026-09-30T10:00:03Z",
+    "renamedTitle": "cBioPortal study filtering",
+    "trajectoryType": "CORTEX_TRAJECTORY_TYPE_CASCADE",
+    "isArchived": true
+  },
+  "archiveMarkerBytes": 0,
+  "nativeTranscript": {
+    "transcript": "=== MESSAGE 0 - User ===\nHow do I filter cBioPortal studies?\n\n=== MESSAGE 1 - Assistant ===\nFilter cBioPortal studies by cancer type.\n\n=== MESSAGE 2 - User ===\nHow do I filter cBioPortal studies?\n\n=== MESSAGE 3 - Assistant ===\nSelect a cancer type in the study selector.\n\n=== MESSAGE 4 - User ===\nCleared request must not be searchable.",
+    "numTotalSteps": 6
+  },
+  "nativeWrittenEnvelopeBase64": "xCNWmWWEURdlOwepY6CV5Tcwh9CdV6ztdWNB+HRktgFwF0I6zuhuVaP2phihknxBuanDc3i+FPDIyVq8nNWgyzj4utozRZ+SZSaPXltVVgU8GDbzz7NafgLbxSa+ir7j5O7OjsDpkPL9wHND68WXuXblISghAS3Re74Bc/YKiHDIbh8Jfa9vN5nzzLpYaKA3eJCUmJzbPTrxqcjTWD6s8pOJGjjL3fuaCMhyh3YtVCdUmjMECaLK3ejuFT/jQ5JZFl8p1kMIeDBvn8vugi1ADVlX3eHX/FQuw3gUiqYpPuypsufn4B41snB1LRAMVD/tMq4Jw/fhbzDnwaxpS+1W1HxcC5AAxlJ35fR1S3cvmcs076IMxAmGXklljLA6XdR1qWsO+V/QOsvnA0w7G9otW6gZ7bauWuUZe3B80KOtn7JQHyZLsJ527/peWhwdEPh5ABAPZjixqaSUILzcQcKN95iE60MZ6Tf5WHC4zXZzUZ+yw5FCdfHDnMu+Nin6scK4ISV9wWwmfKLU/KjvcQS5cLIXUimbwlOhdqScworqYlZeqHYGrokFZLQaqzqAS8Tds6T/8bApq6xS7mgRfpkpdg3JTvLlHBuPbyh5DOki1+vVqtD6GCAHc1C41Ir3KoEK2vlyxiRed/wEsKYmR2UnOf/Q1zHE6RT5befaVbGsEcaEQKXhfnGxvSFnp7T7r4v2i40j",
+  "nativeWrittenEnvelopeSha256": "cc20368ef7fe136694ca64b2607ae302858bfa4aedf10e3d966dac7d7e350494",
+  "nativeWrittenProtobufBase64": "CiQ0MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDESNggOIAMqCAoGCKG789UGmgElCiNIb3cgZG8gSSBmaWx0ZXIgY0Jpb1BvcnRhbCBzdHVkaWVzPxJiCA8gAyoICgYIorvz1QaiAVEKKUZpbHRlciBjQmlvUG9ydGFsIHN0dWRpZXMgYnkgY2FuY2VyIHR5cGUuGiRJbnRlcm5hbCByZWFzb25pbmcgYWJvdXQgY0Jpb1BvcnRhbC4SNggOIAMqCAoGCKO789UGmgElCiNIb3cgZG8gSSBmaWx0ZXIgY0Jpb1BvcnRhbCBzdHVkaWVzPxI+CA8gAyoICgYIpLvz1QaiAS0KK1NlbGVjdCBhIGNhbmNlciB0eXBlIGluIHRoZSBzdHVkeSBzZWxlY3Rvci4SOggOIAUqCAoGCKW789UGmgEpCidDbGVhcmVkIHJlcXVlc3QgbXVzdCBub3QgYmUgc2VhcmNoYWJsZS4SNggPIAMqCAoGCKa789UGogElGiNSZWFzb25pbmcgd2l0aG91dCB2aXNpYmxlIHJlc3BvbnNlLiAEMiQ0MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDI6CBIGCKC789UGQAFSE05hdGl2ZSB3cml0ZXIgcHJvYmU=",
+  "nativeWrittenProtobufSha256": "5baaac5784c9dcd8cee8dd597ca29dd83df0eef2dd4aa65bae499d126b3d1b46",
+  "nativeWrittenTrajectory": {
+    "trajectoryId": "40000000-0000-4000-8000-000000000001",
+    "steps": [
+      {
+        "type": "CORTEX_STEP_TYPE_USER_INPUT",
+        "status": "CORTEX_STEP_STATUS_DONE",
+        "metadata": {
+          "createdAt": "2026-09-30T10:00:01Z"
+        },
+        "userInput": {
+          "query": "How do I filter cBioPortal studies?"
+        }
+      },
+      {
+        "type": "CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+        "status": "CORTEX_STEP_STATUS_DONE",
+        "metadata": {
+          "createdAt": "2026-09-30T10:00:02Z"
+        },
+        "plannerResponse": {
+          "response": "Filter cBioPortal studies by cancer type.",
+          "thinking": "Internal reasoning about cBioPortal."
+        }
+      },
+      {
+        "type": "CORTEX_STEP_TYPE_USER_INPUT",
+        "status": "CORTEX_STEP_STATUS_DONE",
+        "metadata": {
+          "createdAt": "2026-09-30T10:00:03Z"
+        },
+        "userInput": {
+          "query": "How do I filter cBioPortal studies?"
+        }
+      },
+      {
+        "type": "CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+        "status": "CORTEX_STEP_STATUS_DONE",
+        "metadata": {
+          "createdAt": "2026-09-30T10:00:04Z"
+        },
+        "plannerResponse": {
+          "response": "Select a cancer type in the study selector."
+        }
+      },
+      {
+        "type": "CORTEX_STEP_TYPE_USER_INPUT",
+        "status": "CORTEX_STEP_STATUS_CLEARED",
+        "metadata": {
+          "createdAt": "2026-09-30T10:00:05Z"
+        },
+        "userInput": {
+          "query": "Cleared request must not be searchable."
+        }
+      },
+      {
+        "type": "CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+        "status": "CORTEX_STEP_STATUS_DONE",
+        "metadata": {
+          "createdAt": "2026-09-30T10:00:06Z"
+        },
+        "plannerResponse": {
+          "thinking": "Reasoning without visible response."
+        }
+      }
+    ],
+    "trajectoryType": "CORTEX_TRAJECTORY_TYPE_CASCADE",
+    "cascadeId": "40000000-0000-4000-8000-000000000002",
+    "metadata": {
+      "createdAt": "2026-09-30T10:00:00Z"
+    },
+    "source": "CORTEX_TRAJECTORY_SOURCE_CASCADE_CLIENT",
+    "renamedTitle": "Native writer probe"
+  }
+}

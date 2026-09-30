@@ -1,8 +1,9 @@
 # Windsurf / Devin Desktop native Cascade evidence
 
-Status: native persistence and protobuf serialization investigated. The Windsurf
-adapter is not implemented yet. This evidence does not establish actual-session
-ingestion, resume/rewind behavior, or production support.
+Status: native persistence, protobuf serialization, and first-party runtime
+reader/writer interoperability verified against synthetic histories. The
+Windsurf adapter is not implemented yet. This evidence does not establish
+actual UI-session ingestion, resume/rewind behavior, or production support.
 
 ## Pinned first-party package
 
@@ -20,6 +21,14 @@ and `extensions/windsurf/bin/language_server_linux_x64`. Its `product.json`
 names the application `devin-desktop`, with `.devin` as the data folder and
 `.windsurf` as the old data folder. Product user-data names alone do not prove
 the language server's Cascade persistence root.
+
+The bundled extension's `WindsurfExtensionMetadata.codeiumDirPathSegments`
+returns `.codeium/windsurf` for stable builds, with distinct insiders, next and
+airgap variants. Its language-server launcher passes those joined segments as
+`--codeium_dir`. The native CLI documents that flag separately from
+`--database_dir`, which the extension uses for its code-search database.
+An absolute `--codeium_dir` override was exercised by the native runtime probe;
+the server loaded its `cascade/<trajectory_id>.pb` file successfully.
 
 ## Native persistence boundary
 
@@ -41,8 +50,12 @@ Inspecting that table and targeted disassembly establishes this call path:
   path. The reader must not discover temporary files as independent sessions.
 - `ProtoSaver.Load` constructs AES/GCM before protobuf unmarshal when encryption
   is configured. It requests a `.pb` path; the path helper combines identity
-  and extension using `%s%s`. Archive naming/selection rules still need complete
-  verification.
+  and extension using `%s%s`.
+- `getSavedPaths` reads the directory, skips directories, and selects names
+  ending in `.pb`. `SetArchived` writes or removes a `.pb.archived` companion
+  marker. An archived history remains in its original `.pb` file; the marker is
+  not a second conversation. Both behaviors were checked against the native
+  runtime, which reports `isArchived: true` and keeps the conversation available.
 
 This is an internal format rather than a documented storage API. A reader needs
 authenticated decryption, bounded protobuf decoding, exact identity checks, and
@@ -86,9 +99,37 @@ Its encrypted envelope was reconstructed with Node AES-256-GCM from the observed
 native saver layout and roundtripped independently. It was **not** written by
 the native Go saver, and the fixture is **not** a recorded UI conversation.
 It supplies a wire-schema probe; it does not yet define expected search results.
-Actual native writer/reader interoperability, default/configured roots, archive
-selection, step identities across rewinds, UI visibility, workspace metadata,
-and all local/shared ingestion paths remain validation gates tracked in Beads.
+Step identities across rewinds, UI visibility, workspace metadata, and all
+local/shared ingestion paths remain validation gates tracked in Beads.
+
+## First-party runtime interoperability
+
+[The runtime fixture](fixtures/windsurf-native-runtime-3.10.31.json) records
+results from the pinned language-server executable, running against only
+synthetic histories. Filesystem and network namespaces isolated its home
+directory and network. No credentials, inference, real user histories, or
+installed background services were involved. The temporary server was stopped
+after the probe.
+
+`GetAllCascadeTrajectories` decrypted and loaded the constructor fixture,
+reporting its six steps and native trajectory identity. `ArchiveCascadeTrajectory`
+created a zero-byte marker and preserved the history. `RenameCascadeTrajectory`
+then exercised the native saver: its new encrypted `.pb` was captured,
+authenticated/decrypted independently, and decoded with the first-party
+protobuf constructor. The title changed to `Native writer probe`; all six
+step payloads remained semantically identical. The runtime fixture includes
+that native-written envelope, plaintext protobuf, hashes, and decoded record.
+The runtime capture uses a random nonce and is not byte-deterministic.
+
+The misleadingly named `GetCascadeTranscriptForTrajectoryId` request uses
+`cascade_id`, not `trajectory_id`; the exercised lookup accepted the stored
+trajectory identity. Its transcript included both identical user requests and
+visible assistant responses, excluded thinking-only prose, and **included**
+the `CLEARED` user-input step. The fixture's literal sentence "Cleared request
+must not be searchable" is synthetic test content, not an established provider
+visibility rule. Filtering all cleared statuses would contradict this native
+transcript evidence. UI rendering and provenance need their own verification;
+the transcript helper alone does not prove human origin for every step payload.
 
 The [official Cascade hook documentation](https://docs.devin.ai/desktop/cascade/hooks)
 also describes JSONL transcripts. That hook-generated representation is a
