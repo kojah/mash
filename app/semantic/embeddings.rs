@@ -21,6 +21,9 @@ use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+pub(super) mod cpu;
+
 static EMBEDDING_GENERATION: OnceLock<String> = OnceLock::new();
 
 pub(crate) struct EmbeddingPool {
@@ -116,7 +119,7 @@ impl EmbeddingPool {
                 false,
             ),
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-            EmbeddingPoolBackend::Cpu(workers) => embed_cpu_wave(workers, groups),
+            EmbeddingPoolBackend::Cpu(workers) => cpu::embed_wave(workers, groups),
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             EmbeddingPoolBackend::CoreMl(embedding) => embedding.embed(groups),
         }
@@ -141,39 +144,6 @@ impl EmbeddingPool {
             EmbeddingPoolBackend::CoreMl(_) => COREML_BATCH_SIZE,
         }
     }
-}
-
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-fn embed_cpu_wave(
-    workers: &mut [TextEmbedding],
-    groups: &[EmbeddingGroup],
-) -> Result<Vec<Vec<f32>>, AppError> {
-    let worker_batches = groups.chunks(EMBEDDING_BATCH_SIZE);
-    let results = std::thread::scope(|scope| {
-        workers
-            .iter_mut()
-            .zip(worker_batches)
-            .map(|(worker, batch)| {
-                scope.spawn(move || {
-                    let texts = batch
-                        .iter()
-                        .map(|group| group.content.as_str())
-                        .collect::<Vec<_>>();
-                    worker.embed(texts, None).map_err(|error| {
-                        AppError::model(format!("embedding inference failed: {error}"))
-                    })
-                })
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .map(|handle| {
-                handle
-                    .join()
-                    .map_err(|_| AppError::internal("embedding worker panicked"))?
-            })
-            .collect::<Result<Vec<_>, _>>()
-    })?;
-    Ok(results.into_iter().flatten().collect())
 }
 
 pub(crate) fn embedding_generation() -> &'static str {

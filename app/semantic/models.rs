@@ -339,6 +339,16 @@ pub(super) fn load_local_embedding(
     root: &Path,
     intra_threads: Option<usize>,
 ) -> Result<TextEmbedding, AppError> {
+    let options = intra_threads.map_or_else(InitOptionsUserDefined::default, |threads| {
+        InitOptionsUserDefined::default().with_intra_threads(threads)
+    });
+    load_local_embedding_with_options(root, options)
+}
+
+fn load_local_embedding_with_options(
+    root: &Path,
+    options: InitOptionsUserDefined,
+) -> Result<TextEmbedding, AppError> {
     let embedding_snapshot = snapshot(root, EMBEDDING_REPOSITORY)?;
     let embedding_info = TextEmbedding::get_model_info(&EMBEDDING_MODEL)
         .map_err(|error| AppError::model(format!("unknown embedding model: {error}")))?;
@@ -351,9 +361,6 @@ pub(super) fn load_local_embedding(
     embedding_model
         .output_key
         .clone_from(&embedding_info.output_key);
-    let options = intra_threads.map_or_else(InitOptionsUserDefined::default, |threads| {
-        InitOptionsUserDefined::default().with_intra_threads(threads)
-    });
     TextEmbedding::try_new_from_user_defined(embedding_model, options)
         .map_err(|error| AppError::model(format!("failed to load embedding model: {error}")))
 }

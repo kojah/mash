@@ -1068,6 +1068,13 @@ Repeated settings help reveal timing noise. Measurements exclude CLI startup,
 worker transport and shared search, and do not establish relevance by themselves.
 Use these alongside end-to-end measurements before changing production defaults.
 
+CPU indexing reserves two workers for long embedding batches and allows short
+batches to use all eight workers. It preserves the dynamically quantized model's
+batch membership and vector generation. See the
+[indexing memory measurements](benchmarks/2026-09-30-index-memory.md) for the
+memory/throughput tradeoff and the manual worker-budget diagnostic. This is an
+inference workspace limit, not a total indexing memory limit.
+
 
 ## Automatic deployment
 

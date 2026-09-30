@@ -4,6 +4,8 @@ use crate::search_results::{Results, SearchUnit};
 use crate::storage::Storage;
 use std::time::Instant;
 
+mod embedding;
+
 const QUERIES: [&str; 7] = [
     "cbioportal",
     "cornucopia",
