@@ -12,6 +12,11 @@ slow-timeout = { period = "30s", terminate-after = 2 }
 filter = 'test(=semantic::models::generations::tests::lazy_coreml_reader_loads_new_shapes_from_a_retired_generation)'
 slow-timeout = { period = "60s", terminate-after = 3 }
 
+[[profile.default.overrides]]
+# Explicit throughput diagnostics include repeated 512-token Core ML inference.
+filter = 'test(=semantic::tests::benchmark_coreml_bucketed_batches_preserve_vectors_and_measure_throughput)'
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 [profile.ci]
 fail-fast = false
 test-threads = "num-cpus"

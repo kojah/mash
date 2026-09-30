@@ -1,5 +1,7 @@
 //! Apple Silicon Core ML sessions with fixed batch and sequence shapes.
 #[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
+mod cache;
+#[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
 use super::COREML_SEQUENCE_LENGTH;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use super::{
@@ -26,14 +28,21 @@ use std::path::{Path, PathBuf};
 pub(super) struct CoreMlEmbeddingPool {
     root: PathBuf,
     tokenizer: tokenizers::Tokenizer,
-    sessions: HashMap<usize, TextEmbedding>,
+    sessions: HashMap<usize, CoreMlSession>,
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub(super) struct CoreMlSession {
+    // Drop the SDK session before releasing its cache namespace lease.
+    pub(super) model: TextEmbedding,
+    _cache_lease: fs::File,
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 impl CoreMlEmbeddingPool {
     pub(super) fn load(root: &Path) -> Result<Self, AppError> {
         let embedding = load_coreml_embedding(root, 64)?;
-        let mut tokenizer = embedding.tokenizer.clone();
+        let mut tokenizer = embedding.model.tokenizer.clone();
         tokenizer.with_padding(None);
         Ok(Self {
             root: root.to_path_buf(),
@@ -75,12 +84,14 @@ impl CoreMlEmbeddingPool {
         let sequence = coreml_sequence_bucket(length);
         let embedding = match self.sessions.entry(sequence) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(load_coreml_embedding(&self.root, sequence)?)
-            }
+            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
+                crate::progress::during(crate::progress::Phase::ModelLoading, || {
+                    load_coreml_embedding(&self.root, sequence)
+                })?,
+            ),
         };
         texts.resize(COREML_BATCH_SIZE, "");
-        let mut vectors = embedding.embed(texts, None).map_err(|error| {
+        let mut vectors = embedding.model.embed(texts, None).map_err(|error| {
             AppError::model(format!("Core ML embedding inference failed: {error}"))
         })?;
         if vectors.len() != COREML_BATCH_SIZE {
@@ -105,7 +116,25 @@ pub(super) fn coreml_sequence_bucket(tokens: usize) -> usize {
 pub(super) fn load_coreml_embedding(
     root: &Path,
     sequence_length: usize,
-) -> Result<TextEmbedding, AppError> {
+) -> Result<CoreMlSession, AppError> {
+    let cache_dir = root.join(COREML_CACHE_DIRECTORY).join(format!(
+        "batch-{COREML_BATCH_SIZE}-sequence-{sequence_length}"
+    ));
+    let (model, lease) = cache::load(&cache_dir, |directory| {
+        build_coreml_embedding(root, sequence_length, directory)
+    })?;
+    Ok(CoreMlSession {
+        model,
+        _cache_lease: lease,
+    })
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn build_coreml_embedding(
+    root: &Path,
+    sequence_length: usize,
+    cache_dir: &Path,
+) -> Result<TextEmbedding, cache::BuildError> {
     let embedding_snapshot = snapshot(root, EMBEDDING_REPOSITORY)?;
     let embedding_info = TextEmbedding::get_model_info(&EMBEDDING_MODEL)
         .map_err(|error| AppError::model(format!("unknown embedding model: {error}")))?;
@@ -119,10 +148,6 @@ pub(super) fn load_coreml_embedding(
         .output_key
         .clone_from(&embedding_info.output_key);
 
-    let cache_dir = root.join(COREML_CACHE_DIRECTORY).join(format!(
-        "batch-{COREML_BATCH_SIZE}-sequence-{sequence_length}"
-    ));
-    fs::create_dir_all(&cache_dir).map_err(AppError::io)?;
     let provider = ep::CoreML::default()
         .with_model_format(ep::coreml::ModelFormat::MLProgram)
         .with_compute_units(ep::coreml::ComputeUnits::All)
@@ -141,7 +166,14 @@ pub(super) fn load_coreml_embedding(
         );
     let mut embedding = TextEmbedding::try_new_from_user_defined(embedding_model, options)
         .map_err(|error| {
-            AppError::model(format!("failed to load Core ML embedding model: {error}"))
+            let message =
+                AppError::model(format!("failed to load Core ML embedding model: {error}"));
+            match error {
+                fastembed::Error::Ort(_)
+                | fastembed::Error::OrtBuilder(_)
+                | fastembed::Error::OrtSession(_) => cache::BuildError::Compile(message),
+                _ => cache::BuildError::Input(message),
+            }
         })?;
     let mut padding = embedding
         .tokenizer

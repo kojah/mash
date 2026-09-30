@@ -128,6 +128,12 @@ quantized ONNX CPU model. After upgrading an existing Mac installation, rerun
 `mash models install` once to install the FP32 asset and compile its Core ML
 cache.
 
+Core ML cache construction is serialized across processes for each shape.
+If an SDK compilation fails, mash tries one fresh cache directory and publishes
+it only after successful model construction. Loaded sessions retain their old
+cache until they finish; retired caches are cleaned up when no reader uses them.
+Indexing reports model-loading progress while waiting or compiling.
+
 Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`

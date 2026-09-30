@@ -97,7 +97,7 @@ fn coreml_sequence_buckets_preserve_token_boundaries_and_maximum_length() {
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR and Apple Silicon Core ML"]
-fn coreml_bucketed_batches_preserve_vectors_and_measure_throughput() {
+fn benchmark_coreml_bucketed_batches_preserve_vectors_and_measure_throughput() {
     let root = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(PathBuf::from)
         .expect("explicit model directory");
@@ -117,7 +117,7 @@ fn coreml_bucketed_batches_preserve_vectors_and_measure_throughput() {
             .iter()
             .map(|g| g.content.as_str())
             .collect::<Vec<_>>();
-        let expected = reference.embed(texts.clone(), None).unwrap();
+        let expected = reference.model.embed(texts.clone(), None).unwrap();
         let actual = pool.embed(&groups).unwrap();
         let mut min_cosine = 1_f32;
         for (expected, actual) in expected.iter().zip(&actual) {
@@ -128,12 +128,12 @@ fn coreml_bucketed_batches_preserve_vectors_and_measure_throughput() {
             assert!(cosine >= 0.999, "{words} words: cosine {cosine}");
         }
         for _ in 0..2 {
-            reference.embed(texts.clone(), None).unwrap();
+            reference.model.embed(texts.clone(), None).unwrap();
             pool.embed(&groups).unwrap();
         }
         let start = Instant::now();
         for _ in 0..10 {
-            reference.embed(texts.clone(), None).unwrap();
+            reference.model.embed(texts.clone(), None).unwrap();
         }
         let reference_ms = start.elapsed().as_secs_f64() * 1000.0;
         let start = Instant::now();
@@ -159,6 +159,7 @@ fn coreml_bucketed_batches_preserve_vectors_and_measure_throughput() {
             message_ids: Vec::new(),
         }];
         let expected = reference
+            .model
             .embed(vec![groups[0].content.as_str(); COREML_BATCH_SIZE], None)
             .unwrap();
         let actual = pool.embed(&groups).unwrap();
