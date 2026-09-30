@@ -7,6 +7,8 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use std::path::Path;
 
+mod limits;
+use limits::Budget;
 #[cfg(test)]
 mod tests;
 
@@ -164,47 +166,65 @@ enum Part {
 struct Content {
     canonical: Vec<String>,
     prose: Vec<String>,
+    retained: usize,
 }
 impl Content {
-    fn part(&mut self, part: Part) {
-        match part {
+    fn append(&mut self, canonical: String, prose: Option<String>) -> Result<(), AppError> {
+        let bytes = canonical.len()
+            + std::mem::size_of::<String>()
+            + prose
+                .as_ref()
+                .map_or(0, |text| text.len() + std::mem::size_of::<String>());
+        let retained = self
+            .retained
+            .checked_add(bytes)
+            .ok_or_else(limits::invalid)?;
+        if retained > limits::MAX_RETAINED_BYTES {
+            return Err(limits::invalid());
+        }
+        self.retained = retained;
+        self.canonical.push(canonical);
+        self.prose.extend(prose);
+        Ok(())
+    }
+
+    fn part(&mut self, part: Part) -> Result<(), AppError> {
+        let (canonical, prose) = match part {
             Part::Text {
                 text,
                 synthetic,
                 ignored,
             } => {
-                if !synthetic && !ignored {
-                    self.prose.push(text.clone());
-                }
-                self.canonical.push(text);
+                let prose = (!synthetic && !ignored).then(|| text.clone());
+                (text, prose)
             }
-            Part::Reasoning { text } => self.canonical.push(format!("Reasoning: {text}")),
-            Part::Tool { name, tool, state } => self.canonical.push(format!(
-                "Tool {}: {state}",
-                name.or(tool).unwrap_or_default()
-            )),
+            Part::Reasoning { text } => (format!("Reasoning: {text}"), None),
+            Part::Tool { name, tool, state } => (
+                format!("Tool {}: {state}", name.or(tool).unwrap_or_default()),
+                None,
+            ),
             Part::File {
                 filename,
                 name,
                 url,
                 uri,
-            } => self.canonical.push(format!(
-                "File {}: {}",
-                filename.or(name).unwrap_or_default(),
-                url.or(uri).unwrap_or_default()
-            )),
-            Part::Unknown => {}
-        }
+            } => (
+                format!(
+                    "File {}: {}",
+                    filename.or(name).unwrap_or_default(),
+                    url.or(uri).unwrap_or_default()
+                ),
+                None,
+            ),
+            Part::Unknown => return Ok(()),
+        };
+        self.append(canonical, prose)
     }
-    fn text(text: String, searchable: bool) -> Self {
-        Self {
-            prose: if searchable {
-                vec![text.clone()]
-            } else {
-                Vec::new()
-            },
-            canonical: vec![text],
-        }
+    fn text(text: String, searchable: bool) -> Result<Self, AppError> {
+        let mut content = Self::default();
+        let prose = searchable.then(|| text.clone());
+        content.append(text, prose)?;
+        Ok(content)
     }
 }
 
@@ -215,6 +235,7 @@ fn normalize(
     created: i64,
     content: &Content,
     messages: &mut Vec<NormalizedMessage>,
+    budget: &mut Budget,
 ) -> Result<(), AppError> {
     if created < 0 {
         return Err(AppError::configuration(
@@ -225,7 +246,7 @@ fn normalize(
     if canonical.trim().is_empty() {
         return Ok(());
     }
-    messages.push(NormalizedMessage {
+    let message = NormalizedMessage {
         id: super::parsers::stable_id("message", &[Provider::Opencode.as_str(), &source.key(), id]),
         ordinal: i64::try_from(messages.len())
             .map_err(|_| AppError::internal("too many OpenCode messages"))?,
@@ -236,7 +257,14 @@ fn normalize(
         role,
         content: canonical,
         created_at: Some(created),
-    });
+    };
+    budget.retain(
+        std::mem::size_of::<NormalizedMessage>()
+            + message.id.len()
+            + message.content.len()
+            + message.search_projection.as_ref().map_or(0, String::len),
+    )?;
+    messages.push(message);
     Ok(())
 }
 
@@ -244,16 +272,19 @@ fn current(
     connection: &Connection,
     source: &SourceIdentity,
     session: &str,
+    budget: &mut Budget,
 ) -> Result<Vec<NormalizedMessage>, AppError> {
     let mut statement = connection
         .prepare(
-            "SELECT id,type,time_created,data,length(CAST(data AS BLOB)) AS bytes
+            "SELECT id,type,time_created,data,length(CAST(data AS BLOB)) AS bytes,
+             length(CAST(data AS BLOB))+length(CAST(id AS BLOB))+length(CAST(type AS BLOB)) AS input_bytes
         FROM session_message WHERE session_id=?1 ORDER BY seq,id",
         )
         .map_err(AppError::database)?;
     let mut rows = statement.query([session]).map_err(AppError::database)?;
     let mut messages = Vec::new();
     while let Some(row) = rows.next().map_err(AppError::database)? {
+        budget.read(row.get("input_bytes").map_err(AppError::database)?)?;
         let kind: String = row.get("type").map_err(AppError::database)?;
         let kind = Kind::deserialize(
             serde::de::value::StrDeserializer::<serde::de::value::Error>::new(&kind),
@@ -262,31 +293,34 @@ fn current(
         let (role, content) = match kind {
             Kind::User => {
                 let user: User = sqlite_source::bounded_json(row)?;
-                let mut content = Content::text(user.text, true);
+                let mut content = Content::text(user.text, true)?;
                 for file in user.files {
-                    content.canonical.push(format!(
-                        "File {}: {}\n{}",
-                        file.name.unwrap_or_default(),
-                        file.uri,
-                        file.description.unwrap_or_default()
-                    ));
+                    content.append(
+                        format!(
+                            "File {}: {}\n{}",
+                            file.name.unwrap_or_default(),
+                            file.uri,
+                            file.description.unwrap_or_default()
+                        ),
+                        None,
+                    )?;
                 }
                 (Role::User, content)
             }
             Kind::Assistant => {
                 let mut content = Content::default();
                 for part in sqlite_source::bounded_json::<Assistant>(row)?.content {
-                    content.part(part);
+                    content.part(part)?;
                 }
                 (Role::Assistant, content)
             }
             Kind::Synthetic => (
                 Role::User,
-                Content::text(sqlite_source::bounded_json::<Text>(row)?.text, false),
+                Content::text(sqlite_source::bounded_json::<Text>(row)?.text, false)?,
             ),
             Kind::System => (
                 Role::System,
-                Content::text(sqlite_source::bounded_json::<Text>(row)?.text, false),
+                Content::text(sqlite_source::bounded_json::<Text>(row)?.text, false)?,
             ),
             Kind::Shell => {
                 let shell = sqlite_source::bounded_json::<Shell>(row)?;
@@ -295,7 +329,7 @@ fn current(
                     Content::text(
                         format!("Command: {}\n{}", shell.command, shell.output),
                         false,
-                    ),
+                    )?,
                 )
             }
             Kind::Compaction => {
@@ -305,7 +339,7 @@ fn current(
                     Content::text(
                         format!("Compaction: {}\n{}", compaction.summary, compaction.recent),
                         false,
-                    ),
+                    )?,
                 )
             }
             Kind::AgentSwitched | Kind::ModelSwitched | Kind::Unknown => continue,
@@ -318,6 +352,7 @@ fn current(
             row.get("time_created").map_err(AppError::database)?,
             &content,
             &mut messages,
+            budget,
         )?;
     }
     Ok(messages)
@@ -327,10 +362,12 @@ fn legacy(
     connection: &Connection,
     source: &SourceIdentity,
     session: &str,
+    budget: &mut Budget,
 ) -> Result<Vec<NormalizedMessage>, AppError> {
     let mut statement = connection
         .prepare(
-            "SELECT id,time_created,data,length(CAST(data AS BLOB)) AS bytes
+            "SELECT id,time_created,data,length(CAST(data AS BLOB)) AS bytes,
+             length(CAST(data AS BLOB))+length(CAST(id AS BLOB)) AS input_bytes
         FROM message WHERE session_id=?1 ORDER BY time_created,id",
         )
         .map_err(AppError::database)?;
@@ -343,6 +380,7 @@ fn legacy(
     let mut rows = statement.query([session]).map_err(AppError::database)?;
     let mut messages = Vec::new();
     while let Some(row) = rows.next().map_err(AppError::database)? {
+        budget.read(row.get("input_bytes").map_err(AppError::database)?)?;
         let id: String = row.get("id").map_err(AppError::database)?;
         let message: LegacyMessage = sqlite_source::bounded_json(row)?;
         let mut content = Content::default();
@@ -350,7 +388,8 @@ fn legacy(
             .query([id.as_str(), session])
             .map_err(AppError::database)?;
         while let Some(fragment) = fragments.next().map_err(AppError::database)? {
-            content.part(sqlite_source::bounded_json(fragment)?);
+            budget.read(fragment.get("bytes").map_err(AppError::database)?)?;
+            content.part(sqlite_source::bounded_json(fragment)?)?;
         }
         normalize(
             source,
@@ -359,6 +398,7 @@ fn legacy(
             row.get("time_created").map_err(AppError::database)?,
             &content,
             &mut messages,
+            budget,
         )?;
     }
     Ok(messages)
@@ -370,6 +410,24 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         .as_deref()
         .ok_or_else(|| AppError::configuration("OpenCode requires a session identity"))?;
     let connection = sqlite_source::open(&source.path)?;
+    let mut budget = Budget::default();
+    let metadata_bytes: i64 = connection
+        .query_row(
+            "SELECT COALESCE(length(CAST(s.title AS BLOB)),0)
+          +COALESCE(length(CAST(s.directory AS BLOB)),0)
+          +COALESCE(length(CAST(p.worktree AS BLOB)),0)
+          +COALESCE(length(CAST(p.vcs AS BLOB)),0)
+        FROM session s JOIN project p ON p.id=s.project_id WHERE s.id=?1",
+            [session],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(AppError::database)?
+        .ok_or_else(|| AppError::configuration("OpenCode session disappeared; retry index"))?;
+    if metadata_bytes > sqlite_source::MAX_RECORD_BYTES {
+        return Err(limits::invalid());
+    }
+    budget.read(metadata_bytes)?;
     let metadata = connection
         .query_row(
             "SELECT s.title,s.directory,p.worktree,p.vcs,s.time_created,s.time_updated
@@ -399,9 +457,9 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         ));
     }
     let messages = if uses_current(&connection, session)? {
-        current(&connection, source, session)?
+        current(&connection, source, session, &mut budget)?
     } else {
-        legacy(&connection, source, session)?
+        legacy(&connection, source, session, &mut budget)?
     };
     Ok(ParsedFile {
         conversation: Some(Conversation {

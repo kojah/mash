@@ -2,6 +2,8 @@ use super::*;
 use crate::ingestion::{IndexOptions, index, source_stamp_for};
 use crate::storage::Storage;
 
+mod memory;
+
 // Required columns from upstream core/session/sql.ts and core/project/sql.ts.
 const SCHEMA: &str = "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;
 CREATE TABLE project(id TEXT PRIMARY KEY,worktree TEXT,vcs TEXT);

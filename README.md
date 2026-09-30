@@ -159,7 +159,14 @@ including WAL changes. Each session becomes one thread. Sessions with
 `message`/`part` tables. User and assistant text is searchable; reasoning, tools,
 files, shell output, compaction and synthetic/ignored text remain context only.
 Operational events and unknown part types are omitted. Session activity controls
-the history horizon. The adapter follows the upstream
+the history horizon. OpenCode JSON records are checked for the 8 MiB byte limit
+and a 65,536-node structural limit before typed decoding. OpenCode sessions have
+a 64 MiB cumulative text-read budget and a 65,536-record limit; normalized
+messages and individual legacy-message assembly have a 32 MiB retention budget.
+Session metadata is capped at 8 MiB before fetching it. Exceeding these limits
+fails indexing and preserves the previously indexed snapshot and checkpoint.
+These parser budgets do not measure process RSS across concurrent workers.
+The adapter follows the upstream
 [database schema](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/sql.ts)
 and [message schema](https://github.com/anomalyco/opencode/blob/dev/packages/schema/src/session-message.ts).
 

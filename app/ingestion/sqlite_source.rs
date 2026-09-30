@@ -27,6 +27,5 @@ pub(super) fn bounded_json<T: serde::de::DeserializeOwned>(
         ));
     }
     let json: String = row.get("data").map_err(AppError::database)?;
-    serde_json::from_str(&json)
-        .map_err(|_| AppError::configuration("invalid structured provider history"))
+    super::records::decode(json.as_bytes())
 }
