@@ -562,6 +562,23 @@ and view may run concurrently, while model-heavy operations use a single permit
 to bound memory and CPU use. Remote embeddings use the same node configuration
 for CLI and MCP operations.
 
+## Code organization
+
+CLI and MCP translate inputs into typed application-core requests. Implementation
+modules are grouped by responsibility:
+
+- `app/ingestion/`: history discovery, typed provider records, and normalization;
+  `app/ingestion.rs` coordinates ingestion and checkpoints.
+- `app/semantic/`: model installation/cache, embedding batches, Core ML, remote
+  embeddings, and hybrid retrieval.
+- `app/shared/redis_index/`: canonical upload validation, atomic publication,
+  and read queries; the parent module handles connections and schema setup.
+- `app/tests/`: CLI contract tests grouped by behavior, with common setup in
+  `support.rs`. CLI and MCP share marker fixtures from `app/test_support.rs`.
+
+Keep assertions in individual tests. Share setup for repeated fixtures, and
+split independent cases so each failure names the behavior that broke.
+
 ## Verification
 
 Use Cranelift for development builds and tests. Install the nightly component

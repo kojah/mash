@@ -10,6 +10,8 @@ mod search_filter;
 mod semantic;
 mod shared;
 mod storage;
+#[cfg(test)]
+mod test_support;
 mod watch;
 #[cfg(unix)]
 mod worker;

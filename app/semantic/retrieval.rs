@@ -1,0 +1,272 @@
+//! Hybrid candidates, reciprocal rank fusion, reranking, and exact vector scoring.
+use super::CANDIDATE_LIMIT;
+use super::RERANK_LIMIT;
+use super::RRF_K;
+use super::embeddings::embedding_generation;
+use super::models::Backend;
+use super::remote;
+use crate::AppError;
+use crate::storage::{SearchHit, SemanticChunks, Storage};
+use std::collections::HashMap;
+
+pub(super) struct QuantizedVector {
+    pub(super) values: Vec<u8>,
+    pub(super) norm: f32,
+}
+
+pub(crate) fn hybrid_search_filtered(
+    generation: &str,
+    storage: &Storage,
+    backend: &mut Backend,
+    query: &str,
+    limit: usize,
+    legacy: (Option<crate::provider::Provider>, Option<u32>),
+    filters: Option<&crate::search_filter::Scope>,
+) -> Result<Vec<SearchHit>, AppError> {
+    let (provider, days) = legacy;
+    let lexical = storage.search_filtered(query, CANDIDATE_LIMIT, provider, days, filters)?;
+    let query_vector = backend
+        .embed(&[query])?
+        .pop()
+        .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
+    let query_vector = quantize_vector(&query_vector);
+    let semantic = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
+    let ranked = rank_quantized(&query_vector, &semantic, CANDIDATE_LIMIT);
+    if ranked.is_empty() {
+        return Ok(lexical.into_iter().take(limit).collect());
+    }
+    let message_rowids = ranked
+        .iter()
+        .map(|(message_rowid, _)| *message_rowid)
+        .collect::<Vec<_>>();
+    let mut semantic_hits = storage.search_hits(&message_rowids)?;
+    for (hit, (_, score)) in semantic_hits.iter_mut().zip(&ranked) {
+        hit.semantic_score = Some(*score);
+    }
+    let mut fused = fuse(lexical, semantic_hits);
+    let rerank_count = fused.len().min(RERANK_LIMIT);
+    let rerank_ids = fused[..rerank_count]
+        .iter()
+        .map(|hit| hit.id.as_str())
+        .collect::<Vec<_>>();
+    let documents = storage.search_documents(&rerank_ids)?;
+    let document_refs = documents.iter().map(String::as_str).collect::<Vec<_>>();
+    let reranked = backend.rerank(query, &document_refs)?;
+    for result in reranked {
+        if let Some(hit) = fused.get_mut(result.index) {
+            hit.rerank_score = Some(result.score);
+        }
+    }
+    fused[..rerank_count].sort_by(|left, right| {
+        right
+            .rerank_score
+            .unwrap_or(f32::NEG_INFINITY)
+            .total_cmp(&left.rerank_score.unwrap_or(f32::NEG_INFINITY))
+            .then_with(|| right.fusion_score.total_cmp(&left.fusion_score))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    fused.truncate(limit);
+    Ok(fused)
+}
+
+/// Model-space identity shared by the CPU ONNX and Apple Core ML executions.
+/// Unlike the local storage generation, batching and chunk layout do not affect it.
+pub(crate) fn model_space(model: &str, dimensions: usize) -> String {
+    if model == "sentence-transformers/all-MiniLM-L6-v2" && dimensions == 384 {
+        SHARED_EMBEDDING_GENERATION.to_owned()
+    } else {
+        format!("remote:{model}:{dimensions}:i8-cosine:v1")
+    }
+}
+
+pub(crate) fn configured_generation(config: Option<&remote::Configuration>) -> String {
+    config.map_or_else(
+        || embedding_generation().to_owned(),
+        |c| model_space(&c.model, c.dimensions),
+    )
+}
+
+pub(crate) const SHARED_EMBEDDING_GENERATION: &str = "all-MiniLM-L6-v2:384:i8-cosine:v1";
+
+pub(crate) fn shared_query_vector(
+    backend: &mut Backend,
+    query: &str,
+) -> Result<Vec<f64>, AppError> {
+    let vector = backend
+        .embed(&[query])?
+        .pop()
+        .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
+    Ok(quantize_vector(&vector)
+        .values
+        .into_iter()
+        .map(|value| f64::from(value.cast_signed()))
+        .collect())
+}
+
+// Shared query vectors contain bounded, quantized integers; conversion is exact.
+#[allow(clippy::cast_possible_truncation)]
+pub(crate) fn local_candidates(
+    storage: &Storage,
+    generation: &str,
+    query: &str,
+    vector: &[f64],
+    provider: Option<crate::provider::Provider>,
+    days: Option<u32>,
+    filters: Option<&crate::search_filter::Scope>,
+) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
+    let lexical = storage.search_filtered(query, CANDIDATE_LIMIT, provider, days, filters)?;
+    let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
+    let chunks = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
+    let ranked = rank_quantized(&quantize_vector(&vector), &chunks, CANDIDATE_LIMIT);
+    let rowids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+    let mut semantic = storage.search_hits(&rowids)?;
+    for (hit, (_, score)) in semantic.iter_mut().zip(ranked) {
+        hit.semantic_score = Some(score);
+    }
+    let fused = fuse(lexical, semantic);
+    let ids = fused.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>();
+    let documents = storage.search_documents(&ids)?;
+    Ok((fused, documents))
+}
+
+pub(crate) fn fuse(lexical: Vec<SearchHit>, semantic: Vec<SearchHit>) -> Vec<SearchHit> {
+    let mut hits = HashMap::new();
+    let mut scores = HashMap::<String, f32>::new();
+    for (rank, hit) in lexical.into_iter().enumerate() {
+        let id = format!("{:?}:{}", hit.node_id, hit.id);
+        scores.insert(id.clone(), reciprocal_rank(rank));
+        hits.insert(id, hit);
+    }
+    for (rank, hit) in semantic.into_iter().enumerate() {
+        let id = format!("{:?}:{}", hit.node_id, hit.id);
+        *scores.entry(id.clone()).or_default() += reciprocal_rank(rank);
+        if let Some(existing) = hits.get_mut(&id) {
+            existing.semantic_score = hit.semantic_score;
+        } else {
+            hits.insert(id, hit);
+        }
+    }
+    let mut fused: Vec<SearchHit> = hits
+        .into_iter()
+        .map(|(id, mut hit)| {
+            hit.fusion_score = scores.get(&id).copied().unwrap_or_default();
+            hit
+        })
+        .collect();
+    fused.sort_by(|left, right| {
+        right
+            .fusion_score
+            .total_cmp(&left.fusion_score)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    fused
+}
+
+fn reciprocal_rank(zero_based_rank: usize) -> f32 {
+    let rank = u16::try_from(zero_based_rank).unwrap_or(u16::MAX);
+    1.0 / (RRF_K + f32::from(rank) + 1.0)
+}
+
+pub(super) fn quantize_vector(vector: &[f32]) -> QuantizedVector {
+    let max_abs = vector
+        .iter()
+        .map(|value| value.abs())
+        .fold(0.0_f32, f32::max);
+    if max_abs <= f32::EPSILON {
+        return QuantizedVector {
+            values: vec![0; vector.len()],
+            norm: 0.0,
+        };
+    }
+    let scale = 127.0 / max_abs;
+    let mut norm_squared = 0_i32;
+    let values = vector
+        .iter()
+        .map(|value| {
+            let quantized = quantize_component(*value, scale);
+            let quantized_i32 = i32::from(quantized);
+            norm_squared += quantized_i32 * quantized_i32;
+            quantized.cast_unsigned()
+        })
+        .collect();
+    QuantizedVector {
+        values,
+        norm: exactly_representable_f32(norm_squared).sqrt(),
+    }
+}
+
+pub(super) fn quantized_cosine(left: &QuantizedVector, right: &[u8], right_norm: f32) -> f32 {
+    if left.values.len() != right.len() || left.values.is_empty() {
+        return 0.0;
+    }
+    let denominator = left.norm * right_norm;
+    if denominator <= f32::EPSILON {
+        return 0.0;
+    }
+    let product = left
+        .values
+        .iter()
+        .zip(right)
+        .map(|(&left, &right)| i32::from(left.cast_signed()) * i32::from(right.cast_signed()))
+        .sum::<i32>();
+    (exactly_representable_f32(product) / denominator).clamp(-1.0, 1.0)
+}
+
+fn quantize_component(value: f32, scale: f32) -> i8 {
+    let rounded = (value * scale).round().clamp(-127.0, 127.0);
+    debug_assert!((-127.0..=127.0).contains(&rounded));
+    #[allow(clippy::cast_possible_truncation)]
+    {
+        rounded as i8
+    }
+}
+
+fn exactly_representable_f32(value: i32) -> f32 {
+    // A 384-dimensional signed-byte dot product is bounded by 6,193,536,
+    // below f32's exact-integer limit of 2^24.
+    debug_assert!(value.unsigned_abs() <= 1 << f32::MANTISSA_DIGITS);
+    #[allow(clippy::cast_precision_loss)]
+    {
+        value as f32
+    }
+}
+
+pub(super) fn rank_quantized(
+    query: &QuantizedVector,
+    vectors: &SemanticChunks,
+    limit: usize,
+) -> Vec<(i64, f32)> {
+    if limit == 0 || vectors.dimensions == 0 || query.values.len() != vectors.dimensions {
+        return Vec::new();
+    }
+    let mut ranked = Vec::new();
+    for chunk in &vectors.chunks {
+        if chunk.dimensions != vectors.dimensions
+            || chunk.norms.len() != chunk.message_rowids.len()
+            || chunk.eligible.len() != chunk.message_rowids.len()
+            || chunk.values.len() != chunk.message_rowids.len().saturating_mul(chunk.dimensions)
+        {
+            return Vec::new();
+        }
+        for (index, vector) in chunk.values.chunks_exact(chunk.dimensions).enumerate() {
+            if chunk.eligible[index] {
+                ranked.push((
+                    chunk.message_rowids[index],
+                    quantized_cosine(query, vector, chunk.norms[index]),
+                ));
+            }
+        }
+    }
+    let compare = |left: &(i64, f32), right: &(i64, f32)| {
+        right
+            .1
+            .total_cmp(&left.1)
+            .then_with(|| left.0.cmp(&right.0))
+    };
+    if ranked.len() > limit {
+        ranked.select_nth_unstable_by(limit, compare);
+        ranked.truncate(limit);
+    }
+    ranked.sort_unstable_by(compare);
+    ranked
+}
