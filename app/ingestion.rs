@@ -6,6 +6,7 @@ use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime};
 
 mod aider;
+mod cline;
 mod copilot;
 mod discovery;
 mod gemini;
@@ -50,6 +51,7 @@ impl Provider {
             Self::Pi => |source| pi::parse(&source.path),
             Self::Copilot => |source| copilot::parse(&source.path),
             Self::GeminiCli => |source| gemini::parse(&source.path),
+            Self::Cline => cline::parse,
         }
     }
 }

@@ -44,6 +44,11 @@ impl Targets {
                                     || path.file_name().is_some_and(|name| {
                                         name == ".aider.chat.history.md"
                                             || name == ".project_root"
+                                            || name == "ui_messages.json"
+                                            || name == "taskHistory.json"
+                                            || name
+                                                .to_str()
+                                                .is_some_and(|n| n.ends_with(".messages.json"))
                                             || name.to_str().is_some_and(|n| {
                                                 n.starts_with("session-")
                                                     && path.extension().is_some_and(|e| {

@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot|gemini-cli]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot|gemini-cli|cline]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -237,13 +237,40 @@ The format follows the official [recording schema](https://github.com/google-gem
 [recording service](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingService.ts)
 and [project registry](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/config/projectRegistry.ts).
 
+Cline is opt-in through `[providers.cline]`. Configure the extension's native
+`tasks` directory, explicit `ui_messages.json` files, the SDK `sessions.db`, or
+directories containing native `*.messages.json` artifacts. The current SDK
+defaults to `~/.cline/data/db/sessions.db`; its configured directories and
+recorded artifact paths can differ. The adapter reads the catalog and its WAL
+without modifying them, follows recorded message paths, and suppresses duplicate
+artifact discovery when the catalog owns those files.
+
+UI snapshots preserve task requests, feedback, assistant prose and typed
+questions/plans. Partial responses, reasoning and operational rows remain
+context-only. SDK artifacts preserve repeated real turns despite IDs/timestamps
+being regenerated on resume. Visible completion summaries and replies to known
+question tools are searchable; ordinary tools, attachments, injected model
+context, hidden resume prompts and subagent histories are context-only.
+Compaction sidecars do not replace canonical message history. Logged native
+task metadata, SDK manifests or catalog workspace roots supply project filters;
+repositories are not inferred from files read by the model.
+
+Snapshots are limited to 8 MiB and each decoded message/block sequence to 16,384
+entries. Invalid or interrupted writes preserve the previous indexed revision.
+Metadata and external artifact changes invalidate source checkpoints and are
+included in watch targets. Mixed extension/SDK histories with the same task ID
+are rejected pending migration reconstruction, rather than allowing one source
+to overwrite the other. That migration case remains tracked in Beads.
+See the source-linked [Cline contract](docs/cline-ingestion-contract.md) for
+verified schemas and remaining validation gates.
+
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 25 and shared PostgreSQL
-schema 11 preserve existing messages and vectors. Update the shared service before
-publishing Pi, Copilot or Gemini histories from upgraded nodes.
+keep their existing ordinal neighbourhoods. SQLite schema 26 and shared PostgreSQL
+schema 12 preserve existing messages and vectors. Update the shared service before
+publishing Pi, Copilot, Gemini or Cline histories from upgraded nodes.
 
 ## Configuration
 

@@ -12,7 +12,8 @@ fn version_twenty_three_provider_migration_preserves_context_vectors_and_readine
         .execute_batch(
             &include_str!("../schema.sql")
                 .replace(", 'copilot'", "")
-                .replace(", 'gemini-cli'", ""),
+                .replace(", 'gemini-cli'", "")
+                .replace(", 'cline'", ""),
         )
         .unwrap();
     connection.execute_batch(

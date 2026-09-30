@@ -26,6 +26,7 @@ pub(crate) enum Provider {
     Pi,
     Copilot,
     GeminiCli,
+    Cline,
 }
 
 /// Enum keys keep configuration and routing exhaustive without duplicating a
@@ -43,6 +44,7 @@ impl Provider {
         Self::Pi,
         Self::Copilot,
         Self::GeminiCli,
+        Self::Cline,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -56,6 +58,7 @@ impl Provider {
             Self::Pi => "pi",
             Self::Copilot => "copilot",
             Self::GeminiCli => "gemini-cli",
+            Self::Cline => "cline",
         }
     }
 
@@ -71,6 +74,7 @@ impl Provider {
             Self::Pi => 7,
             Self::Copilot => 8,
             Self::GeminiCli => 9,
+            Self::Cline => 10,
         }
     }
 
@@ -85,6 +89,7 @@ impl Provider {
             Self::Pi => "p",
             Self::Copilot => "g",
             Self::GeminiCli => "m",
+            Self::Cline => "n",
         }
     }
 }
@@ -108,6 +113,7 @@ impl std::str::FromStr for Provider {
             "pi" => Ok(Self::Pi),
             "copilot" => Ok(Self::Copilot),
             "gemini-cli" => Ok(Self::GeminiCli),
+            "cline" => Ok(Self::Cline),
             _ => Err(crate::AppError::usage("unsupported provider")),
         }
     }

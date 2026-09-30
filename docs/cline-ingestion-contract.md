@@ -1,9 +1,9 @@
 # Cline ingestion contract
 
-Status: upstream format verified; the mash adapter is still tracked by
-`mash-c0d.1.8` and is not implemented. This contract covers both native extension
-history and current SDK/CLI history. Supporting only exports or only the old
-extension layout does not complete that task.
+Status: typed native UI and SDK/catalog ingestion implemented; production
+completion is still tracked by `mash-c0d.1.8`. Mixed legacy-to-SDK migration
+reconstruction and upstream resume/compaction fixtures remain open. This
+contract covers both native extension history and current SDK/CLI history.
 
 ## Evidence
 
@@ -137,7 +137,22 @@ Required tests before closing `mash-c0d.1.8`:
 6. Real-model retrieval with message and thread results, project filters,
    canonical viewing, and local/shared per-provider routing on both backends.
 
-Still to verify before implementation decisions are final: subtype-specific
-ask display schemas, how SDK display normalization removes injected user-input
-wrappers, and how migrated legacy and resumed SDK histories retain or share task
-identities. Preserve these as explicit uncertainties rather than guessing.
+Implemented display handling follows native question/plan schemas, removes SDK
+user-input envelopes and mode notices, and excludes synthetic resume, hook and
+display-role context. Native `ask_question`/`ask_followup_question` tool calls
+and paired successful user replies are projected as prose. Completion tools
+`submit_and_exit` and `attempt_completion` project their summary/result, following
+the upstream [message translator](https://github.com/cline/cline/blob/3435f72fcf4cb843bee946b8f9e981683564c9e3/apps/vscode/src/sdk/message-translator.ts),
+[synthetic-user mapping](https://github.com/cline/cline/blob/3435f72fcf4cb843bee946b8f9e981683564c9e3/apps/vscode/src/sdk/sdk-user-message-mapping.ts)
+and [tool definitions](https://github.com/cline/cline/blob/3435f72fcf4cb843bee946b8f9e981683564c9e3/sdk/packages/core/src/extensions/tools/definitions.ts).
+
+Migration remains a material gap: the extension preserves the legacy task ID
+when adopting SDK history and merges the legacy UI prefix with SDK messages
+after a resume-warning boundary. See
+[sdk-task-history.ts](https://github.com/cline/cline/blob/3435f72fcf4cb843bee946b8f9e981683564c9e3/apps/vscode/src/sdk/sdk-task-history.ts).
+Mash rejects discovered legacy UI/catalog collisions explicitly until it can
+reconstruct that combined history, including when SDK artifacts are configured
+without a catalog. Existing tests use native
+schema fixtures; actual upstream resume/compaction fixtures are still needed
+to prove the full production gate. Do not close the provider task on the
+strength of parser fixtures alone.

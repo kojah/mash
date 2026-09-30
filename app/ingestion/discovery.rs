@@ -18,6 +18,25 @@ pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for (&provider, paths) in &options.providers {
         for path in paths {
+            if provider == Provider::Cline {
+                if let Some(metadata) = super::cline::metadata_path(path) {
+                    roots.push(metadata);
+                }
+                // Discovery failures are reported by indexing; the configured
+                // root remains watched so repaired stores can be retried.
+                if let Ok(discovery) =
+                    discover_history_files(provider, std::slice::from_ref(path), false)
+                {
+                    for source in discovery.sources {
+                        roots.extend(
+                            source
+                                .dependencies
+                                .into_iter()
+                                .map(|d| d.path().to_path_buf()),
+                        );
+                    }
+                }
+            }
             if provider == Provider::GeminiCli
                 && let Some(marker) = super::gemini::project_marker(path)
             {
@@ -177,6 +196,10 @@ pub(super) fn discover_history_files(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     let mut discovery = discover_physical_sources(provider, roots, authoritative)?;
+    if provider == Provider::Cline {
+        discovery.sources = super::cline::sources(discovery.sources)?;
+        return Ok(discovery);
+    }
     if provider == Provider::GeminiCli {
         let paths: BTreeSet<_> = discovery
             .sources
@@ -210,6 +233,7 @@ pub(super) fn discover_history_files(
         | Provider::GeminiCli => {
             return Ok(discovery);
         }
+        Provider::Cline => unreachable!("Cline discovery handled above"),
     };
     discovery.sources = discovery
         .sources
@@ -251,6 +275,16 @@ fn discover_physical_sources(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     discover_files(roots, authoritative, |path, explicit| match provider {
+        Provider::Cline => {
+            path.file_name().is_some_and(|n| {
+                n == "ui_messages.json"
+                    || n == "sessions.db"
+                    || n.to_str().is_some_and(|s| s.ends_with(".messages.json"))
+            }) || (explicit
+                && path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("json")))
+        }
         Provider::Aider => {
             if explicit {
                 path.extension()

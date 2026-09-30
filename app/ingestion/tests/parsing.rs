@@ -23,7 +23,8 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
                 | crate::provider::Provider::Openclaw
                 | crate::provider::Provider::Pi
                 | crate::provider::Provider::Copilot
-                | crate::provider::Provider::GeminiCli => {
+                | crate::provider::Provider::GeminiCli
+                | crate::provider::Provider::Cline => {
                     unreachable!("this fixture covers the JSONL providers")
                 }
             };
@@ -38,7 +39,8 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
             | crate::provider::Provider::Openclaw
             | crate::provider::Provider::Pi
             | crate::provider::Provider::Copilot
-            | crate::provider::Provider::GeminiCli => {
+            | crate::provider::Provider::GeminiCli
+            | crate::provider::Provider::Cline => {
                 unreachable!("this fixture covers the JSONL providers")
             }
         }
