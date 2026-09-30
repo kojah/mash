@@ -43,6 +43,13 @@ impl Targets {
                                 && (path.extension().is_some_and(|ext| ext == "jsonl")
                                     || path.file_name().is_some_and(|name| {
                                         name == ".aider.chat.history.md"
+                                            || name == ".project_root"
+                                            || name.to_str().is_some_and(|n| {
+                                                n.starts_with("session-")
+                                                    && path.extension().is_some_and(|e| {
+                                                        e.eq_ignore_ascii_case("json")
+                                                    })
+                                            })
                                             || name == "state.db"
                                             || name == "state.db-wal"
                                             || name == "opencode.db"
@@ -245,6 +252,8 @@ mod tests {
             Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(path)
         };
         assert!(directory.relevant(&change(root.join(".aider.chat.history.md"))));
+        assert!(directory.relevant(&change(root.join("session-native.json"))));
+        assert!(directory.relevant(&change(root.join(".project_root"))));
         assert!(directory.relevant(&change(root.join("state.db-wal"))));
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));
         assert!(directory.relevant(&change(root.join("openclaw-agent.sqlite-wal"))));

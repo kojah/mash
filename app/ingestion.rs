@@ -8,6 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 mod aider;
 mod copilot;
 mod discovery;
+mod gemini;
 mod hermes;
 mod json;
 mod openclaw;
@@ -48,6 +49,7 @@ impl Provider {
             Self::Openclaw => openclaw::parse,
             Self::Pi => |source| pi::parse(&source.path),
             Self::Copilot => |source| copilot::parse(&source.path),
+            Self::GeminiCli => |source| gemini::parse(&source.path),
         }
     }
 }

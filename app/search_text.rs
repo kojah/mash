@@ -33,10 +33,7 @@ pub(crate) fn project<'a>(role: &Role, text: &'a str) -> Cow<'a, str> {
     {
         return Cow::Borrowed("");
     }
-    let mut result = Cow::Borrowed(text);
-    for tag in CONTEXT_TAGS {
-        result = remove_blocks(result, tag);
-    }
+    let mut result = without_context_blocks(text, CONTEXT_TAGS);
     if trimmed.starts_with("# AGENTS.md instructions") && text.contains("<INSTRUCTIONS>") {
         result = remove_blocks(result, "INSTRUCTIONS");
         let content = result.as_ref();
@@ -44,6 +41,11 @@ pub(crate) fn project<'a>(role: &Role, text: &'a str) -> Cow<'a, str> {
         result = Cow::Owned(content[end..].trim_start().to_owned());
     }
     result
+}
+
+pub(crate) fn without_context_blocks<'a>(text: &'a str, tags: &[&str]) -> Cow<'a, str> {
+    tags.iter()
+        .fold(Cow::Borrowed(text), |text, tag| remove_blocks(text, tag))
 }
 
 fn remove_blocks<'a>(text: Cow<'a, str>, tag: &str) -> Cow<'a, str> {

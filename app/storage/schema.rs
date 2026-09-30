@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 24;
+pub(super) const SCHEMA_VERSION: i64 = 25;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -206,7 +206,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
             "CREATE TABLE conversations_next (
                 id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL CHECK (provider IN (
-                    'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot'
+                    'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli'
                 )),
                 source_path TEXT NOT NULL,
                 title TEXT, created_at INTEGER, updated_at INTEGER,
@@ -317,33 +317,33 @@ fn purge_unsupported_providers(connection: &Connection) -> Result<(), AppError> 
             "DELETE FROM message_fts
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli')
               );
              DELETE FROM message_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli')
               );
              DELETE FROM pending_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli')
               );
              DELETE FROM messages
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli')
               );
              DELETE FROM conversations
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli');
              DELETE FROM source_checkpoints
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli');
              DELETE FROM tombstones
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot');",
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli');",
         )
         .map_err(AppError::database)
 }

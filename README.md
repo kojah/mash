@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot|gemini-cli]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -209,13 +209,41 @@ preserving the previous indexed snapshot until a complete refresh succeeds.
 The native format follows the official [Copilot event schema](https://github.com/github/copilot-sdk/blob/main/nodejs/src/generated/session-events.ts)
 and [VS Code history reader](https://github.com/microsoft/vscode-copilot-chat/blob/main/src/extension/chatSessions/copilotcli/common/copilotCLITools.ts).
 
+Gemini CLI is opt-in through `[providers.gemini-cli]`, with
+`roots = ["/absolute/path/to/.gemini/tmp"]` or explicit native `.jsonl`/`.json`
+session files. Configure its sandbox runtime directory instead when Gemini
+stores sessions there. The adapter replays native recording semantics: repeated
+message IDs replace previous versions in their original position, `$set.messages`
+replaces the saved history, and `$rewindTo` removes its target and everything
+after it. Context checkpoints can discard earlier turns; mash indexes the saved
+history that Gemini would resume. Broken rewind references and incomplete writes
+fail explicitly and preserve the previous indexed snapshot.
+
+Search uses `displayContent` when present and keeps thoughts, tools, commands,
+hook/session context, operational messages and subagent sessions out of search
+evidence. Newly introduced checkpoint turns are model context; previously recorded
+turns keep their provenance across checkpoint updates. Complete JSON snapshots
+have no event provenance, so filtering there uses the stored roles and known
+context markers. Tool and reasoning text remains available through `view`; binary
+attachment contents are omitted. The adjacent native `.project_root` ownership
+marker supplies project metadata only when its SHA-256 matches the logged
+`projectHash`; otherwise the logged hash identifies the project. Marker creation,
+changes and removal trigger a refresh without changing the history's age horizon.
+Repository metadata is not inferred. A JSONL sibling takes precedence over its
+old JSON file when both are discovered, avoiding duplicate migrated sessions.
+Reads are limited to 8 MiB per JSONL record or complete native JSON document,
+and 8 KiB per project marker; oversized input is reported without truncation.
+The format follows the official [recording schema](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingTypes.ts),
+[recording service](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingService.ts)
+and [project registry](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/config/projectRegistry.ts).
+
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 24 and shared PostgreSQL
-schema 10 preserve existing messages and vectors. Update the shared service before
-publishing Pi or Copilot histories from upgraded nodes.
+keep their existing ordinal neighbourhoods. SQLite schema 25 and shared PostgreSQL
+schema 11 preserve existing messages and vectors. Update the shared service before
+publishing Pi, Copilot or Gemini histories from upgraded nodes.
 
 ## Configuration
 

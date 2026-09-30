@@ -7,9 +7,13 @@ fn version_twenty_three_provider_migration_preserves_context_vectors_and_readine
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("old.sqlite3");
     let connection = Connection::open(&path).unwrap();
-    // Version 23 differs from 24 only in the conversations provider constraint.
+    // Version 23 has the same message layout but excludes later providers.
     connection
-        .execute_batch(&include_str!("../schema.sql").replace(", 'copilot'", ""))
+        .execute_batch(
+            &include_str!("../schema.sql")
+                .replace(", 'copilot'", "")
+                .replace(", 'gemini-cli'", ""),
+        )
         .unwrap();
     connection.execute_batch(
         "INSERT INTO conversations(id,provider,source_path,source_key) VALUES('session','pi','/tmp/pi.jsonl','file:/tmp/pi.jsonl');

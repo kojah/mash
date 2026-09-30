@@ -7,13 +7,27 @@ pub(crate) struct SourceIdentity {
     pub(crate) session: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Dependency {
+    Required(PathBuf),
+    Optional(PathBuf),
+}
+
+impl Dependency {
+    pub(super) fn path(&self) -> &std::path::Path {
+        match self {
+            Self::Required(path) | Self::Optional(path) => path,
+        }
+    }
+}
+
 /// Scan metadata changes independently of a source's identity.
 #[derive(Clone)]
 pub(crate) struct HistorySource {
     pub(crate) identity: SourceIdentity,
     pub(crate) activity_ns: Option<i64>,
     pub(crate) estimated_bytes: Option<u64>,
-    pub(crate) dependencies: Vec<PathBuf>,
+    pub(crate) dependencies: Vec<Dependency>,
 }
 
 impl HistorySource {
@@ -28,8 +42,12 @@ impl HistorySource {
 
     pub(crate) fn stamp(&self) -> Result<super::SourceStamp, crate::AppError> {
         let mut stamp = super::source_stamp_for(&self.identity)?;
+        let activity = self.activity_ns.or_else(|| {
+            (self.identity.session.is_none() && !self.dependencies.is_empty())
+                .then_some(stamp.modified_ns)
+        });
         stamp.include_dependencies(&self.dependencies)?;
-        stamp.activity_ns = self.activity_ns;
+        stamp.activity_ns = activity;
         Ok(stamp)
     }
 }

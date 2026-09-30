@@ -133,7 +133,10 @@ pub(super) fn discover(path: &Path) -> Result<Vec<HistorySource>, AppError> {
             let mut dependencies = Vec::new();
             if let Some(cold) = archive::cold(&connection, &session)? {
                 estimated_bytes = estimated_bytes.saturating_add(cold.estimated_bytes()?);
-                dependencies.extend(cold.dependency(path)?);
+                dependencies.extend(
+                    cold.dependency(path)?
+                        .map(super::source::Dependency::Required),
+                );
             }
             Ok(HistorySource {
                 identity: SourceIdentity {

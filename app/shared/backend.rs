@@ -444,7 +444,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 10 {
+        if version != 11 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
