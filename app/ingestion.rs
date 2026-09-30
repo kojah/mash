@@ -17,6 +17,7 @@ mod cursor;
 mod discovery;
 mod gemini;
 mod hermes;
+mod identities;
 mod json;
 pub(crate) mod messages;
 mod native;

@@ -8,6 +8,7 @@ mod observability;
 mod progress;
 mod provider;
 mod role;
+mod scratch;
 mod search_filter;
 mod search_query;
 mod search_ranking;

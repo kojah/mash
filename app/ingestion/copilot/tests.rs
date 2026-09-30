@@ -6,6 +6,7 @@ use crate::{
 use serde_json::{Value, json};
 use std::io::Write;
 
+mod identities;
 mod staging;
 
 fn record(id: &str, kind: &str, data: Value) -> Value {

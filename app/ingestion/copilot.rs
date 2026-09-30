@@ -3,12 +3,7 @@
 use super::{Conversation, NormalizedMessage, ParsedFile, SourceIdentity, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use serde::Deserialize;
-use std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    io::BufReader,
-    path::Path,
-};
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 
 #[cfg(test)]
 mod tests;
@@ -360,7 +355,8 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let created_at = timestamp(&start.created_at)?;
     let mut updated_at = created_at;
     let mut workspace = start.context.filter(|w| !w.pending_git_context);
-    let mut ids = HashSet::from([first_id]);
+    let mut ids = super::identities::Identities::default();
+    ids.insert(&first_id)?;
     let mut heads = HashMap::<Option<String>, i64>::new();
     let mut messages = super::messages::Builder::default();
     for line in lines {
@@ -368,7 +364,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         let time = timestamp(&record.timestamp)?;
         if record.id.trim().is_empty()
             || record.parent_id.as_deref() == Some(&record.id)
-            || !ids.insert(record.id.clone())
+            || !ids.insert(&record.id)?
         {
             return Err(AppError::configuration(
                 "empty, duplicate or self-parented Copilot event identity",

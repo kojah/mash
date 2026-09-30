@@ -2,6 +2,22 @@ use super::*;
 use crate::storage::tests::conversation_with_messages;
 use std::collections::BTreeMap;
 
+#[cfg(unix)]
+#[test]
+fn embedding_plan_files_and_directory_are_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let storage = Storage::open_writer(&root.path().join("index.sqlite3")).unwrap();
+    let plan = EmbeddingPlan::new(&storage).unwrap();
+    let file = std::path::Path::new(plan.connection.path().unwrap());
+    let directory = file.parent().unwrap();
+    assert_eq!(
+        directory.metadata().unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+}
+
 #[test]
 fn disk_plan_preserves_byte_order_projections_duplicates_and_empty_plans() {
     let directory = tempfile::tempdir().unwrap();

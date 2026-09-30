@@ -21,12 +21,8 @@ pub(crate) struct EmbeddingPlan {
 impl EmbeddingPlan {
     #[tracing::instrument(name = "plan_embeddings", skip_all, fields(pending_vectors = tracing::field::Empty))]
     pub(crate) fn new(storage: &Storage) -> Result<Self, AppError> {
-        let directory = tempfile::Builder::new()
-            .prefix("mash-embedding-plan-")
-            .tempdir()
-            .map_err(AppError::io)?;
-        let mut connection =
-            Connection::open(directory.path().join("plan.sqlite3")).map_err(AppError::database)?;
+        let directory = crate::scratch::directory("mash-embedding-plan-")?;
+        let mut connection = crate::scratch::sqlite(&directory.path().join("plan.sqlite3"))?;
         connection
             .execute_batch(
                 "PRAGMA cache_size = -8192;

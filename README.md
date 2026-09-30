@@ -151,6 +151,7 @@ inline budget. JSONL parsing, native Copilot CLI parsing and Claude reconciliati
 feed this staging incrementally; local storage and shared uploads read it in
 bounded batches.
 Scratch files use `TMPDIR` and are removed when their owner finishes or fails.
+Sensitive scratch SQLite stores use owner-only directories and files on Unix.
 Checksums detect corrupt staging before publication. Metadata still grows with
 message count, and some native adapters buffer their input before normalization.
 See the [large-history staging measurement](benchmarks/2026-10-01-normalized-message-staging.md)
