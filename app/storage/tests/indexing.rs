@@ -4,6 +4,44 @@ use crate::ingestion::SourceStamp;
 use std::collections::BTreeSet;
 
 #[test]
+fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_projection_edits() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let mut value = conversation("canonical context and visible sentinel");
+    value.messages[0].search_projection = Some("visible sentinel".into());
+    storage.replace_conversation(&value).unwrap();
+    storage
+        .replace_embeddings(
+            "fixture",
+            &[EmbeddingWrite {
+                message_id: "message-1",
+                vector: &[127],
+                norm: 127.0,
+            }],
+        )
+        .unwrap();
+    value.messages[0].content = "changed canonical context".into();
+    value.messages[0].created_at = Some(123);
+    storage.replace_conversation(&value).unwrap();
+    assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
+    assert!(storage.messages_needing_embeddings().unwrap().is_empty());
+    assert_eq!(
+        storage.view("message-1", 0).unwrap()[0].content,
+        "changed canonical context"
+    );
+    value.messages[0].search_projection = Some("different visible evidence".into());
+    storage.replace_conversation(&value).unwrap();
+    assert_eq!(storage.embedding_count("fixture").unwrap(), 0);
+    assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
+    value.messages[0].search_projection = Some(String::new());
+    storage.replace_conversation(&value).unwrap();
+    assert!(storage.messages_needing_embeddings().unwrap().is_empty());
+    value.messages[0].search_projection = None;
+    storage.replace_conversation(&value).unwrap();
+    assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
+}
+
+#[test]
 fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     use crate::ingestion::SourceIdentity;
     use crate::provider::Provider;

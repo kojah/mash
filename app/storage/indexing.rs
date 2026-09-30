@@ -12,10 +12,13 @@ use crate::ingestion::Conversation;
 
 const FTS_BULK_REBUILD_PERCENT: u64 = 90;
 
+#[cfg(test)]
+mod memory;
+
 struct MessageState {
     fingerprint: String,
     ordinal: i64,
-    search_text: String,
+    search_text_hash: blake3::Hash,
 }
 
 impl Storage {
@@ -438,8 +441,8 @@ impl Storage {
                     .map_err(AppError::database)?;
                 if existing_messages
                     .get(&message.id)
-                    .map(|state| state.search_text.as_str())
-                    != Some(message_search_text(message))
+                    .map(|state| state.search_text_hash)
+                    != Some(blake3::hash(message_search_text(message).as_bytes()))
                 {
                     delete_embedding
                         .execute([&message.id])
@@ -791,24 +794,34 @@ impl Storage {
         &self,
         conversation_id: &str,
     ) -> Result<BTreeMap<String, MessageState>, AppError> {
-        let rows = sql::ConversationMessageState::builder()
+        let query = sql::ConversationMessageState::builder()
             .conversation_id(conversation_id)
-            .build()
-            .query_many(&self.connection)
+            .build();
+        let mut statement = self
+            .connection
+            .prepare_cached(query.query_str())
             .map_err(AppError::database)?;
-        Ok(rows
-            .into_iter()
+        // Decode and fingerprint one text at a time. Collecting generated rows
+        // first would retain another full copy of the conversation's text.
+        statement
+            .query_map(
+                query.as_params(),
+                sql::ConversationMessageStateRow::from_row,
+            )
+            .map_err(AppError::database)?
             .map(|row| {
-                (
+                let row = row?;
+                Ok((
                     row.id,
                     MessageState {
                         fingerprint: row.fingerprint,
                         ordinal: row.ordinal,
-                        search_text: row.search_text,
+                        search_text_hash: blake3::hash(row.search_text.as_bytes()),
                     },
-                )
+                ))
             })
-            .collect())
+            .collect::<rusqlite::Result<_>>()
+            .map_err(AppError::database)
     }
 }
 
