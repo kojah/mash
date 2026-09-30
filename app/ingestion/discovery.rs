@@ -123,7 +123,13 @@ impl SourceStamp {
 }
 
 pub(crate) fn source_stamp(path: &Path) -> Result<SourceStamp, AppError> {
-    let metadata = path.metadata().map_err(AppError::io)?;
+    let metadata = path.metadata().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            AppError::source_changed()
+        } else {
+            AppError::io(error)
+        }
+    })?;
     let size_bytes = i64::try_from(metadata.len())
         .map_err(|_| AppError::internal("source file is too large"))?;
     let modified_ns = metadata

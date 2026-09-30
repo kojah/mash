@@ -240,7 +240,7 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
 }
 
 #[test]
-fn queued_results_reject_changed_or_removed_sources_before_writing() {
+fn queued_results_refresh_changed_sources_and_reject_removed_sources_before_writing() {
     for remove in [false, true] {
         let directory = tempfile::tempdir().unwrap();
         let source = directory.path().join("session.jsonl");
@@ -258,7 +258,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
             write_claude_session(&source, "session", "replacement has different length");
         }
         let mut writer = Storage::open_writer(&directory.path().join("mash.sqlite3")).unwrap();
-        apply_parsed_source(
+        let applied = apply_parsed_source(
             &mut writer,
             Provider::ClaudeCode,
             ParsedSource {
@@ -270,10 +270,37 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
                 parsed: Ok(parsed),
             },
             &mut empty_summary(),
-        )
-        .expect_err("queued stale content must not be applied");
+        );
+        if remove {
+            let error = applied.expect_err("removed source must not be applied");
+            assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
+            assert!(error.error.retryable);
+        } else {
+            assert!(applied.unwrap());
+        }
         writer.commit_writer().unwrap();
-        assert_eq!(writer.counts().unwrap().messages, 0);
+        assert_eq!(writer.counts().unwrap().messages, u64::from(!remove));
+        assert!(
+            writer
+                .search("sentinel", 10, None, None)
+                .unwrap()
+                .is_empty()
+        );
+        if !remove {
+            assert_eq!(
+                writer.search("replacement", 10, None, None).unwrap().len(),
+                1
+            );
+            assert!(
+                writer
+                    .source_checkpoint_matches(
+                        Provider::ClaudeCode,
+                        &SourceIdentity::file(&source),
+                        &source_stamp(&source).unwrap()
+                    )
+                    .unwrap()
+            );
+        }
         assert!(
             !writer
                 .source_checkpoint_matches(
@@ -339,6 +366,55 @@ fn unstable_source_retries_are_bounded_and_actionable() {
         .err()
         .unwrap();
     assert_eq!(fs::metadata(&path).unwrap().len(), initial_size + 3);
+    assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
+    assert!(error.error.retryable);
+    assert!(matches!(
+        error.error.recommended_action,
+        Some(crate::Action::Index)
+    ));
+}
+
+#[test]
+fn stable_retry_reads_atomic_replacement_instead_of_retired_content() {
+    fn replace_once(source: &HistorySource) -> Result<ParsedFile, AppError> {
+        let path = &source.identity.path;
+        let marker = path.with_extension("replaced");
+        let parsed = parse_claude(path)?;
+        if !marker.exists() {
+            let replacement = path.with_extension("new");
+            write_claude_session(&replacement, "session", "replacement dialogue");
+            fs::rename(replacement, path).map_err(AppError::io)?;
+            fs::write(marker, b"done").map_err(AppError::io)?;
+        }
+        Ok(parsed)
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.jsonl");
+    write_claude_session(&path, "session", "retired content");
+    let source = HistorySource::file(&path);
+    let mut stamp = source.stamp().unwrap();
+    let parsed = parse_source_with_retries(&source, &mut stamp, replace_once).unwrap();
+    assert_eq!(
+        parsed.conversation.unwrap().messages[0].content,
+        "replacement dialogue"
+    );
+    stamp.verify(&source.identity).unwrap();
+}
+
+#[test]
+fn missing_source_exhausts_retries_without_parsing_or_claiming_success() {
+    fn must_not_parse(_: &HistorySource) -> Result<ParsedFile, AppError> {
+        panic!("missing source must not reach the parser")
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.jsonl");
+    write_claude_session(&path, "session", "content");
+    let source = HistorySource::file(&path);
+    let mut stamp = source.stamp().unwrap();
+    fs::remove_file(path).unwrap();
+    let error = parse_source_with_retries(&source, &mut stamp, must_not_parse)
+        .err()
+        .unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
     assert!(error.error.retryable);
     assert!(matches!(

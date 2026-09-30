@@ -470,7 +470,11 @@ fn parse_source_with_retries(
         if attempt > 0 {
             std::thread::sleep(Duration::from_millis(50));
         }
-        *stamp = source.stamp()?;
+        *stamp = match source.stamp() {
+            Ok(stamp) => stamp,
+            Err(error) if error.error.kind == crate::ErrorKind::SourceChanged => continue,
+            Err(error) => return Err(error),
+        };
         match parse_stable_source(source, stamp, parse) {
             Err(error) if error.error.kind == crate::ErrorKind::SourceChanged => {}
             result => return result,
@@ -493,16 +497,24 @@ fn parse_stable_source(
 fn apply_parsed_source(
     storage: &mut Storage,
     provider: Provider,
-    result: ParsedSource,
+    mut result: ParsedSource,
     summary: &mut IndexSummary,
 ) -> Result<bool, AppError> {
-    let parsed = result.parsed?;
+    let mut parsed = result.parsed?;
     // A producer can wait in the bounded queue while another source is applied.
-    // Reject a change during that wait before replacing content or checkpoints.
-    result
-        .source
-        .stamp
-        .verify(&result.source.history.identity)?;
+    // Discard stale normalized content before re-reading, keeping the same
+    // bounded-memory behavior as the parser workers.
+    if let Err(error) = result.source.stamp.verify(&result.source.history.identity) {
+        if error.error.kind != crate::ErrorKind::SourceChanged {
+            return Err(error);
+        }
+        drop(parsed);
+        parsed = parse_source_with_retries(
+            &result.source.history,
+            &mut result.source.stamp,
+            provider.parser(),
+        )?;
+    }
     summary.malformed_records += parsed.malformed_records;
     if let Some(conversation) = parsed.conversation {
         apply_conversation(storage, &conversation, summary)?;

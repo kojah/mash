@@ -877,8 +877,10 @@ times, with 50 ms between attempts. Local and shared-only ingestion both use thi
 stable-read check. Stable malformed input fails without retries. If a source keeps
 changing, indexing returns a retryable `source-changed` error recommending `index`;
 an incomplete scan cannot authorize removal of missing histories. Local queued
-results are checked again before writing, so a change after parsing can still
-require another indexing pass.
+results are checked again before writing. If the source changed while waiting,
+the stale content is discarded and a new bounded stable read runs before any
+content or checkpoint is replaced. A removed source still requires another
+indexing pass.
 
 Watch mode writes one JSON result per completed pass to stdout (newline-delimited
 JSON); progress and typed errors go to stderr. Ctrl-C finishes the active pass
