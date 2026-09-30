@@ -116,8 +116,9 @@ Malformed input preserves the last successfully indexed revision.
    inputs rather than executing a real compaction operation.
 3. Verify project/repository metadata, native text visibility and stable message
    identities without deriving a repository from arbitrary files the model read.
-4. Inspect first-party Cursor IDE storage and add native IDE fixtures. Do not
-   declare IDE coverage based on Agent or transcript formats.
+4. Implement and validate the separate IDE reader using the verified
+   [desktop contract and native fixture](cursor-ide-ingestion-contract.md).
+   Do not declare IDE coverage based on Agent or transcript formats.
 5. Validate production deployment and real-session retrieval across local and
    shared indexes before closing the parent task. Routing is wired through the
    shared provider enum, including config, indexing, watching and search filters.

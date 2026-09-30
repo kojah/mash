@@ -284,7 +284,9 @@ Each blob is limited to 8 MiB, each protobuf to 65,536 fields, cumulative reads
 to 64 MiB and retained normalized history to 32 MiB. Missing, corrupt or oversized
 reachable history fails indexing and preserves the previous revision. These are
 parser limits rather than process RSS limits. Cursor IDE storage is not yet
-supported. The [Cursor ingestion contract](docs/cursor-ingestion-contract.md)
+supported; its [native storage contract](docs/cursor-ide-ingestion-contract.md)
+and deterministic fixture are recorded for the pending reader.
+The [Cursor ingestion contract](docs/cursor-ingestion-contract.md)
 records first-party fixture provenance and remaining real-session validation gates.
 
 For tree histories, `view --context N` includes up to N actual ancestors and

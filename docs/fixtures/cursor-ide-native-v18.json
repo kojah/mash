@@ -1,0 +1,46 @@
+{
+  "desktopVersion": "3.22.12",
+  "desktopCommit": "3a92974361033b2051526321308c2740fe5912c0",
+  "rows": [
+    {
+      "key": "bubbleId:fixture-ide-session:request-1",
+      "value": "{\"bubbleId\":\"request-1\",\"type\":1,\"text\":\"How does the cBioPortal mutation importer work?\",\"createdAt\":\"2026-09-30T10:00:00.000Z\"}"
+    },
+    {
+      "key": "bubbleId:fixture-ide-session:answer-1",
+      "value": "{\"bubbleId\":\"answer-1\",\"type\":2,\"text\":\"Validate the study metadata before import.\",\"thinking\":{\"text\":\"private-ide-reasoning\",\"isLastThinkingChunk\":true}}"
+    },
+    {
+      "key": "bubbleId:fixture-ide-session:simulated-1",
+      "value": "{\"bubbleId\":\"simulated-1\",\"type\":1,\"text\":\"private-ide-simulated-context\",\"isSimulatedMsg\":true,\"simulatedMsgReason\":2}"
+    },
+    {
+      "key": "bubbleId:fixture-ide-session:tool-1",
+      "value": "{\"bubbleId\":\"tool-1\",\"type\":2,\"text\":\"private-ide-tool-context\",\"toolFormerData\":{\"tool\":51,\"status\":\"completed\",\"params\":{\"title\":\"Choose mutation metadata\",\"questions\":[]}}}"
+    },
+    {
+      "key": "bubbleId:fixture-ide-session:request-2",
+      "value": "{\"bubbleId\":\"request-2\",\"type\":1,\"text\":\"How does the cBioPortal mutation importer work?\",\"createdAt\":\"2026-09-30T10:00:00.001Z\"}"
+    },
+    {
+      "key": "bubbleId:fixture-ide-session:answer-2",
+      "value": "{\"bubbleId\":\"answer-2\",\"type\":2,\"text\":\"Check structural variants and mutation metadata.\",\"images\":[{\"uri\":\"file:///work/image.png\"}]}"
+    },
+    {
+      "key": "bubbleId:fixture-ide-session:orphan-old-branch",
+      "value": "{\"bubbleId\":\"orphan-old-branch\",\"type\":1,\"text\":\"private-abandoned-branch-context\"}"
+    },
+    {
+      "key": "composerData:fixture-ide-session",
+      "value": "{\"_v\":18,\"composerId\":\"fixture-ide-session\",\"richText\":\"\",\"hasLoaded\":true,\"text\":\"private-unsent-draft-context\",\"fullConversationHeadersOnly\":[{\"bubbleId\":\"request-1\",\"type\":1,\"createdAt\":\"2026-09-30T10:00:00.000Z\"},{\"bubbleId\":\"answer-1\",\"type\":2},{\"bubbleId\":\"simulated-1\",\"type\":1},{\"bubbleId\":\"tool-1\",\"type\":2},{\"bubbleId\":\"request-2\",\"type\":1,\"createdAt\":\"2026-09-30T10:00:00.001Z\"},{\"bubbleId\":\"answer-2\",\"type\":2}],\"conversationMap\":{},\"status\":\"completed\",\"context\":{},\"generatingBubbleIds\":[],\"codeBlockData\":{},\"originalFileStates\":{},\"newlyCreatedFiles\":[],\"newlyCreatedFolders\":[],\"lastUpdatedAt\":1790762400001,\"createdAt\":1790762400000,\"hasChangedContext\":false,\"capabilities\":[],\"name\":\"cBioPortal native IDE fixture\",\"isFileListExpanded\":false,\"canvasPillCollapsed\":false,\"browserChipManuallyDisabled\":false,\"browserChipManuallyEnabled\":false,\"unifiedMode\":\"agent\",\"activeCustomMode\":null,\"committedCustomMode\":null,\"pendingExitedCustomMode\":null,\"forceMode\":\"edit\",\"usageData\":{},\"allAttachedFileCodeChunksUris\":[],\"modelConfig\":{\"modelName\":\"default\",\"maxMode\":false},\"subComposerIds\":[],\"subagentComposerIds\":[],\"capabilityContexts\":[],\"todos\":[],\"isQueueExpanded\":true,\"hasUnreadMessages\":false,\"gitHubPromptDismissed\":false,\"totalLinesAdded\":0,\"totalLinesRemoved\":0,\"addedFiles\":0,\"removedFiles\":0,\"isDraft\":false,\"isCreatingWorktree\":false,\"isApplyingWorktree\":false,\"isUndoingWorktree\":false,\"applied\":false,\"pendingCreateWorktree\":false,\"worktreeStartedReadOnly\":false,\"isBestOfNSubcomposer\":false,\"isBestOfNParent\":false,\"isSpec\":false,\"isProject\":false,\"isSpecSubagentDone\":false,\"isContinuationInProgress\":false,\"stopHookLoopCount\":0,\"trackedGitRepos\":[{\"path\":\"/work/cbioportal\",\"branchName\":\"main\"}],\"speculativeSummarizationEncryptionKey\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"isNAL\":true,\"planModeSuggestionUsed\":false,\"debugModeSuggestionUsed\":false,\"conversationState\":\"~ShdmaWxlOi8vL3dvcmsvY2Jpb3BvcnRhbNABgPKGjo80\",\"queueItems\":[],\"blobEncryptionKey\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"latestConversationSummary\":\"private-ide-summary-context\",\"isAgentic\":true,\"workspaceIdentifier\":{\"id\":\"fixture-workspace\",\"uri\":{\"scheme\":\"file\",\"path\":\"/work/cbioportal\"}}}"
+    }
+  ],
+  "expectedBubbleIds": [
+    "request-1",
+    "answer-1",
+    "simulated-1",
+    "tool-1",
+    "request-2",
+    "answer-2"
+  ]
+}
