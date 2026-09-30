@@ -50,6 +50,49 @@ fn status_without_models_recommends_install_without_downloading() {
 }
 
 #[test]
+fn oversized_model_metadata_fails_before_indexing_or_loading_and_status_explains_recovery() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("config.toml");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let models = root.path().join("models");
+    create_valid_model_marker(&models);
+    let marker = std::fs::File::create(models.join("installed.json")).unwrap();
+    marker.set_len(1024 * 1024 + 1).unwrap();
+    let database = root.path().join("index.sqlite3");
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+    ];
+    let status = run_json(&[base.as_slice(), &["status"]].concat());
+    assert_eq!(status["ready"], false);
+    assert_eq!(status["recommended_action"], "models install");
+    for args in [
+        vec!["index"],
+        vec!["search", "cbioportal", "--local", "--no-worker"],
+    ] {
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args(base)
+            .args(args)
+            .timeout(std::time::Duration::from_secs(5))
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(4));
+        assert_eq!(output.stdout, [] as [u8; 0]);
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "model");
+        assert_eq!(error["error"]["recommended_action"], "models install");
+        assert!(!database.exists());
+    }
+    assert_eq!(std::fs::read_dir(&models).unwrap().count(), 2);
+    assert_eq!(marker.metadata().unwrap().len(), 1024 * 1024 + 1);
+}
+
+#[test]
 fn status_with_models_but_no_database_recommends_index() {
     let fixture = NodeFixture::new();
     let status = fixture.status();

@@ -6,22 +6,24 @@ use super::embeddings::EmbeddingGroup;
 use super::embeddings::{EmbeddingPool, EmbeddingPoolBackend};
 use super::remote;
 use super::{
-    COREML_CACHE_DIRECTORY, EMBEDDING_MODEL, EMBEDDING_REPOSITORY, MARKER_NAME, RERANKER_MODEL,
-    RERANKER_REPOSITORY, embedding_generation, model_space,
+    EMBEDDING_MODEL, EMBEDDING_REPOSITORY, MARKER_NAME, RERANKER_MODEL, RERANKER_REPOSITORY,
+    embedding_generation, model_space,
 };
 use crate::AppError;
 use fastembed::{
     InitOptionsUserDefined, RerankInitOptions, RerankInitOptionsUserDefined, TextEmbedding,
-    TextInitOptions, TextRerank, TokenizerFiles, UserDefinedEmbeddingModel,
-    UserDefinedRerankingModel,
+    TextInitOptions, TextRerank, UserDefinedEmbeddingModel, UserDefinedRerankingModel,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
-use walkdir::WalkDir;
+mod assets;
+use assets::{InstallMarker, inventory, write_marker};
+pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
+
 pub(crate) struct Models {
     root: PathBuf,
     remote: Option<remote::Configuration>,
@@ -91,29 +93,6 @@ pub(crate) struct InstallSummary {
     reranker_model: &'static str,
     embedding_dimensions: usize,
     files: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct InstallMarker {
-    schema: u32,
-    embedding_model: String,
-    reranker_model: String,
-    embedding_dimensions: usize,
-    #[serde(default)]
-    coreml_embedding: bool,
-    #[serde(default = "default_embedding_available")]
-    embedding_available: bool,
-    files: Vec<InstalledFile>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct InstalledFile {
-    path: String,
-    size: u64,
-}
-
-fn default_embedding_available() -> bool {
-    true
 }
 
 impl Models {
@@ -302,40 +281,7 @@ impl Models {
     }
 
     fn read_valid_marker(&self) -> Result<InstallMarker, AppError> {
-        let bytes = fs::read(self.root.join(MARKER_NAME)).map_err(|error| {
-            AppError::model(format!("cannot read installed model marker: {error}"))
-        })?;
-        let marker: InstallMarker = serde_json::from_slice(&bytes)
-            .map_err(|error| AppError::model(format!("invalid model marker: {error}")))?;
-        if (self.remote.is_none() && !marker.embedding_available)
-            || marker.schema != 1
-            || marker.embedding_model != EMBEDDING_MODEL.to_string()
-            || marker.reranker_model != RERANKER_MODEL.to_string()
-            || marker.coreml_embedding != coreml_embedding_enabled()
-            || marker.files.is_empty()
-            || (self.remote.is_some()
-                && !marker
-                    .files
-                    .iter()
-                    .any(|file| file.path.contains(RERANKER_REPOSITORY)))
-        {
-            return Err(AppError::model(
-                "model marker does not match this mash build",
-            ));
-        }
-        for file in &marker.files {
-            if self.remote.is_some() && !file.path.contains(RERANKER_REPOSITORY) {
-                continue;
-            }
-            let path = self.root.join(&file.path);
-            let metadata = fs::metadata(path).map_err(|error| {
-                AppError::model(format!("installed model asset is unavailable: {error}"))
-            })?;
-            if !metadata.is_file() || metadata.len() != file.size {
-                return Err(AppError::model("installed model assets are incomplete"));
-            }
-        }
-        Ok(marker)
+        assets::read_valid_marker(&self.root, self.remote.is_some())
     }
 }
 
@@ -498,71 +444,6 @@ const fn embedding_model_description() -> &'static str {
     } else {
         "sentence-transformers/all-MiniLM-L6-v2 (quantized ONNX)"
     }
-}
-
-pub(super) fn snapshot(root: &Path, repository: &str) -> Result<PathBuf, AppError> {
-    let revision =
-        fs::read_to_string(root.join(repository).join("refs/main")).map_err(|error| {
-            AppError::model(format!("cannot read installed model revision: {error}"))
-        })?;
-    let revision = revision.trim();
-    if revision.len() != 40 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(AppError::model("installed model revision is invalid"));
-    }
-    let snapshot = root.join(repository).join("snapshots").join(revision);
-    if !snapshot.is_dir() {
-        return Err(AppError::model("installed model snapshot is unavailable"));
-    }
-    Ok(snapshot)
-}
-
-pub(super) fn read_model_file(path: &Path) -> Result<Vec<u8>, AppError> {
-    fs::read(path).map_err(|error| AppError::model(format!("cannot read installed model: {error}")))
-}
-
-pub(super) fn read_tokenizer_files(snapshot: &Path) -> Result<TokenizerFiles, AppError> {
-    Ok(TokenizerFiles {
-        tokenizer_file: read_model_file(&snapshot.join("tokenizer.json"))?,
-        config_file: read_model_file(&snapshot.join("config.json"))?,
-        special_tokens_map_file: read_model_file(&snapshot.join("special_tokens_map.json"))?,
-        tokenizer_config_file: read_model_file(&snapshot.join("tokenizer_config.json"))?,
-    })
-}
-
-fn inventory(root: &Path) -> Result<Vec<InstalledFile>, AppError> {
-    let mut files = Vec::new();
-    for entry in WalkDir::new(root).follow_links(false) {
-        let entry = entry.map_err(|error| AppError::model(error.to_string()))?;
-        if entry.path() == root.join(MARKER_NAME)
-            || !fs::metadata(entry.path()).is_ok_and(|m| m.is_file())
-        {
-            continue;
-        }
-        let path = entry
-            .path()
-            .strip_prefix(root)
-            .map_err(|error| AppError::model(error.to_string()))?;
-        if path.starts_with(COREML_CACHE_DIRECTORY) {
-            continue;
-        }
-        let metadata = fs::metadata(entry.path()).map_err(AppError::io)?;
-        files.push(InstalledFile {
-            path: path.to_string_lossy().into_owned(),
-            size: metadata.len(),
-        });
-    }
-    files.sort_by(|left, right| left.path.cmp(&right.path));
-    Ok(files)
-}
-
-fn write_marker(root: &Path, marker: &InstallMarker) -> Result<(), AppError> {
-    let path = root.join(MARKER_NAME);
-    let temporary = root.join("installed.json.tmp");
-    let bytes = serde_json::to_vec_pretty(marker).map_err(|error| {
-        AppError::internal(format!("failed to serialize model marker: {error}"))
-    })?;
-    fs::write(&temporary, bytes).map_err(AppError::io)?;
-    fs::rename(temporary, path).map_err(AppError::io)
 }
 
 #[cfg(test)]

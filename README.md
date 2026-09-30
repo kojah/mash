@@ -730,6 +730,12 @@ shared index, including this node. MCP search exposes equivalent `local` and
 with `realized_mode = "local-hybrid"` and `shared_error`; explicit shared search
 returns an error. Incomplete local embeddings still require `mash index`.
 Models remain local and are installed only by `models install`.
+Installation metadata is checked before loading models: the marker is limited to
+1 MiB and 4,096 asset entries, revisions to 128 bytes, and each tokenizer/config
+file to 16 MiB. Invalid paths, duplicate entries, wrong local dimensions and
+missing or truncated assets return a model error recommending `mash models install`.
+Hugging Face snapshot symlinks remain supported. Markers are published atomically
+after installation checks, using a unique staging file for each installer.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and

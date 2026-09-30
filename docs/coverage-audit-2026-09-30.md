@@ -66,3 +66,31 @@ verification and real-provider UI compatibility remain separate open gates.
 
 The reproducible command and startup contracts complete this measurement slice.
 The broader audit remains tracked as `mash-c0d.8`.
+
+## Model metadata follow-up
+
+Follow-up `mash-c0d.8.3` bounds installation marker, revision and tokenizer reads,
+validates inventory paths/counts and local dimensions, and publishes markers with
+unique atomic staging files. Remote readiness checks the actual reranker
+repository component. Asset validation and discovery now live in
+`app/semantic/models/assets.rs`, separately from model execution and caching.
+
+Eight metadata tests exercise corrupted/incomplete assets and failure recovery.
+The subsequent LLVM run passed 320 tests (three manual benchmarks excluded),
+including real installed models and both disposable backends. A later, additional
+CLI test passed with Cranelift and verifies oversized metadata yields actionable
+status and model errors without database creation or model-directory mutation.
+That CLI test is not part of the following instrumented measurement.
+
+| Measure | Model metadata follow-up |
+| --- | ---: |
+| Production-file lines | 15,171 / 16,991 (89.29%) |
+| Regions | 21,806 / 25,333 (86.08%) |
+| Functions | 1,576 / 1,962 (80.33%) |
+| Asset boundary lines | 155 / 185 (83.78%) |
+| Model execution/cache lines | 200 / 325 (61.54%) |
+
+The instrumented run took 48.726 seconds excluding compilation and reporting.
+The same exclusions and interpretation limits above apply. Model download/load
+failure handling and platform-specific Core ML behavior still require stronger
+evidence; a tested metadata boundary does not close those broader gates.
