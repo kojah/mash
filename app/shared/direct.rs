@@ -122,7 +122,7 @@ async fn ingest_scan(
         .collect();
     let mut observed = Vec::new();
     for source in &scan.sources {
-        let hash = source.publication_hash();
+        let hash = source.identity.publication_hash();
         observed.push(hash.clone());
         if observed.len() == 128 {
             write_event(
@@ -133,30 +133,39 @@ async fn ingest_scan(
                 },
             )?;
         }
-        let path = source.path.clone();
-        let stamp = crate::blocking(move || ingestion::source_stamp(&path)).await?;
+        let identity = source.clone();
+        let stamp = crate::blocking(move || identity.stamp()).await?;
         let size = stamp.size_bytes;
-        let modified = stamp.modified_ns;
+        let modified = stamp.activity_ns.unwrap_or(stamp.modified_ns);
         if scan.cutoff.is_some_and(|c| modified < c) {
             continue;
         }
         result.summary.scanned_files += 1;
         result.summary.processed_files += 1;
-        result.summary.discovered_bytes += u64::try_from(size).unwrap_or_default();
-        result.summary.processed_bytes += u64::try_from(size).unwrap_or_default();
+        let bytes = source
+            .estimated_bytes
+            .unwrap_or_else(|| u64::try_from(size).unwrap_or_default());
+        result.summary.discovered_bytes += bytes;
+        result.summary.processed_bytes += bytes;
         let checkpoint = checkpoints.get(hash.as_str());
         if !full
-            && checkpoint
-                .is_some_and(|c| c.size_bytes == size && c.modified_ns == modified && c.ready)
+            && checkpoint.is_some_and(|c| {
+                c.size_bytes == size
+                    && c.modified_ns == modified
+                    && c.fingerprint == stamp.fingerprint
+                    && c.ready
+            })
         {
             result.summary.unchanged_sources += 1;
             result.summary.checkpoint_skipped_sources += 1;
             continue;
         }
-        let source = source.clone();
+        let source = source.identity.clone();
+        let expected_stamp = stamp.clone();
         let provider = scan.provider;
         let parsed =
-            crate::blocking(move || DirectScan::parse_source(provider, &source, stamp)).await?;
+            crate::blocking(move || DirectScan::parse_source(provider, &source, &expected_stamp))
+                .await?;
         if parsed.malformed_records != 0 {
             return Err(AppError::shared(
                 "shared indexing encountered malformed history; upload was not committed",
@@ -192,6 +201,7 @@ async fn ingest_scan(
                 path_hash: hash,
                 size_bytes: size,
                 modified_ns: modified,
+                fingerprint: stamp.fingerprint,
                 conversation_id,
                 ready: true,
             }),

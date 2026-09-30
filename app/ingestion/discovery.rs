@@ -1,5 +1,5 @@
 //! Discover histories, apply age horizons, and verify authoritative scans.
-use super::{IndexOptions, ParsedFile, SourceIdentity};
+use super::{HistorySource, IndexOptions, ParsedFile, SourceIdentity};
 use crate::AppError;
 use crate::provider::Provider;
 use std::collections::BTreeSet;
@@ -8,19 +8,34 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use walkdir::WalkDir;
 
 pub(super) struct Discovery {
-    pub(super) files: Vec<PathBuf>,
+    pub(super) sources: Vec<HistorySource>,
     pub(super) complete: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SourceStamp {
     pub(crate) size_bytes: i64,
     pub(crate) modified_ns: i64,
+    pub(crate) fingerprint: String,
+    pub(crate) activity_ns: Option<i64>,
 }
 
 impl SourceStamp {
-    pub(crate) fn verify(self, path: &Path) -> Result<(), AppError> {
-        if source_stamp(path)? != self {
+    pub(crate) fn file(size_bytes: i64, modified_ns: i64) -> Self {
+        Self {
+            size_bytes,
+            modified_ns,
+            fingerprint: String::new(),
+            activity_ns: None,
+        }
+    }
+
+    pub(crate) fn verify(&self, source: &SourceIdentity) -> Result<(), AppError> {
+        let current = source_stamp_for(source)?;
+        if current.size_bytes != self.size_bytes
+            || current.modified_ns != self.modified_ns
+            || current.fingerprint != self.fingerprint
+        {
             return Err(AppError::configuration(
                 "history changed while indexing; retry index",
             ));
@@ -41,23 +56,52 @@ pub(crate) fn source_stamp(path: &Path) -> Result<SourceStamp, AppError> {
         .as_nanos();
     let modified_ns = i64::try_from(modified_ns)
         .map_err(|_| AppError::internal("source modification time is out of range"))?;
+    Ok(SourceStamp::file(size_bytes, modified_ns))
+}
+
+pub(crate) fn source_stamp_for(source: &SourceIdentity) -> Result<SourceStamp, AppError> {
+    let main = source_stamp(&source.path)?;
+    if source.session.is_none() {
+        return Ok(main);
+    }
+    let mut wal_path = source.path.as_os_str().to_os_string();
+    wal_path.push("-wal");
+    let wal = if Path::new(&wal_path).try_exists().map_err(AppError::io)? {
+        Some(source_stamp(Path::new(&wal_path))?)
+    } else {
+        None
+    };
+    let mut hash = blake3::Hasher::new();
+    for stamp in [Some(&main), wal.as_ref()] {
+        hash.update(&[u8::from(stamp.is_some())]);
+        if let Some(stamp) = stamp {
+            hash.update(&stamp.size_bytes.to_le_bytes());
+            hash.update(&stamp.modified_ns.to_le_bytes());
+        }
+    }
     Ok(SourceStamp {
-        size_bytes,
-        modified_ns,
+        size_bytes: main
+            .size_bytes
+            .saturating_add(wal.as_ref().map_or(0, |s| s.size_bytes)),
+        modified_ns: main
+            .modified_ns
+            .max(wal.as_ref().map_or(0, |s| s.modified_ns)),
+        fingerprint: hash.finalize().to_hex().to_string(),
+        activity_ns: None,
     })
 }
 
 pub(super) fn verify_authoritative_discovery(
     provider: Provider,
     roots: &[PathBuf],
-    observed_paths: &BTreeSet<String>,
+    observed_keys: &BTreeSet<String>,
 ) -> Result<(), AppError> {
     let final_paths = discover_history_files(provider, roots, true)?
-        .files
+        .sources
         .into_iter()
-        .map(|path| path.to_string_lossy().into_owned())
+        .map(|source| source.identity.key())
         .collect::<BTreeSet<_>>();
-    if final_paths != *observed_paths {
+    if final_paths != *observed_keys {
         return Err(AppError::configuration(
             "configured provider roots changed while indexing",
         ));
@@ -66,6 +110,48 @@ pub(super) fn verify_authoritative_discovery(
 }
 
 pub(super) fn discover_history_files(
+    provider: Provider,
+    roots: &[PathBuf],
+    authoritative: bool,
+) -> Result<Discovery, AppError> {
+    let mut discovery = discover_physical_sources(provider, roots, authoritative)?;
+    if provider == Provider::Hermes {
+        discovery.sources = discovery
+            .sources
+            .into_iter()
+            .map(|source| super::hermes::discover(&source.identity.path))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+    }
+    Ok(discovery)
+}
+
+pub(crate) fn validate_output_path(
+    database: &Path,
+    options: &IndexOptions,
+) -> Result<(), AppError> {
+    let output = match database.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(AppError::io(error)),
+    };
+    for (&provider, roots) in &options.providers {
+        let discovery =
+            discover_physical_sources(provider, roots, options.roots_are_authoritative)?;
+        for source in discovery.sources {
+            if source.identity.path.canonicalize().map_err(AppError::io)? == output {
+                return Err(AppError::configuration(
+                    "the mash index database must not be a provider history source",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn discover_physical_sources(
     provider: Provider,
     roots: &[PathBuf],
     authoritative: bool,
@@ -81,6 +167,10 @@ pub(super) fn discover_history_files(
             }
         }
         Provider::ClaudeCode | Provider::Codex => is_jsonl(path),
+        Provider::Hermes => {
+            path.file_name().is_some_and(|name| name == "state.db")
+                || (explicit && path.extension().is_some_and(|e| e == "db"))
+        }
     })
 }
 
@@ -149,7 +239,7 @@ fn discover_files(
         }
     }
     Ok(Discovery {
-        files: files.into_iter().collect(),
+        sources: files.into_iter().map(HistorySource::file).collect(),
         complete,
     })
 }
@@ -181,7 +271,7 @@ pub(super) fn cutoff_modified_ns(
 pub(crate) struct DirectScan {
     pub(crate) provider: Provider,
     roots: Vec<PathBuf>,
-    pub(crate) sources: Vec<SourceIdentity>,
+    pub(crate) sources: Vec<HistorySource>,
     pub(crate) complete: bool,
     authoritative: bool,
     pub(crate) cutoff: Option<i64>,
@@ -191,9 +281,9 @@ impl DirectScan {
     pub(crate) fn parse_source(
         provider: Provider,
         source: &SourceIdentity,
-        stamp: SourceStamp,
+        stamp: &SourceStamp,
     ) -> Result<ParsedFile, AppError> {
-        super::parse_stable_source(&source.path, stamp, provider.parser())
+        super::parse_stable_source(source, stamp, provider.parser())
     }
 
     pub(crate) fn verify(&self) -> Result<(), AppError> {
@@ -201,7 +291,7 @@ impl DirectScan {
             let observed = self
                 .sources
                 .iter()
-                .map(|source| source.path.to_string_lossy().into_owned())
+                .map(|source| source.identity.key())
                 .collect();
             verify_authoritative_discovery(self.provider, &self.roots, &observed)?;
         }
@@ -220,11 +310,7 @@ pub(crate) fn direct_scans(options: &IndexOptions) -> Result<Vec<DirectScan>, Ap
             Ok(DirectScan {
                 provider,
                 roots: roots.clone(),
-                sources: discovery
-                    .files
-                    .into_iter()
-                    .map(SourceIdentity::file)
-                    .collect(),
+                sources: discovery.sources,
                 complete: discovery.complete,
                 authoritative: options.roots_are_authoritative,
                 cutoff,

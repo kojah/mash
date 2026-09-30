@@ -35,7 +35,7 @@ generated projection and decoder. Schema migrations and low-level vector/storage
 writes remain explicit driver operations.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -131,6 +131,18 @@ unknown. Its unlabelled Markdown can also make assistant blockquotes ambiguous;
 outside code fences these remain context-only, consistent with operational output.
 Each history file is one thread, including appended Aider runs. See the
 [upstream history writer](https://github.com/Aider-AI/aider/blob/main/aider/io.py).
+
+Hermes Agent is opt-in through `[providers.hermes]`, with
+`roots = ["/absolute/path/to/.hermes/state.db"]` or its containing directory.
+The adapter reads native SQLite sessions without running upstream migrations or
+repairs. Each session becomes a thread; compaction copies are deduplicated and
+model-only rows are excluded. User and assistant prose is searchable, while tool
+calls and results remain canonical context. Logged `cwd` and `git_repo_root`
+populate project/repository filters. WAL-only changes invalidate checkpoints and
+trigger watchers; the history horizon uses each session's activity time.
+The adapter requires the native display-history columns in the
+[upstream schema](https://github.com/NousResearch/hermes-agent/blob/main/hermes_state_common.py)
+and follows its [display projection](https://github.com/NousResearch/hermes-agent/blob/main/hermes_state_messages.py).
 
 ## Configuration
 

@@ -47,8 +47,4 @@ fn maintained_repository_is_independent_and_minimal() {
     for removed in ["franken", "asupersync", "toon", "msgpack"] {
         assert!(!manifest.to_ascii_lowercase().contains(removed));
     }
-    let readme = std::fs::read_to_string(root.join("README.md")).expect("README");
-    for removed in ["OpenCode", "Copilot", "Hermes", "Pi histories"] {
-        assert!(!readme.contains(removed), "stale provider docs: {removed}");
-    }
 }

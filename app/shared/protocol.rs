@@ -112,6 +112,8 @@ pub(super) struct Checkpoint {
     pub path_hash: String,
     pub size_bytes: i64,
     pub modified_ns: i64,
+    #[serde(default)]
+    pub fingerprint: String,
     pub conversation_id: Option<String>,
     #[serde(default)]
     pub ready: bool,

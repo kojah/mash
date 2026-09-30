@@ -75,3 +75,12 @@ DO $$ BEGIN
         UPDATE version SET version=5 WHERE singleton;
     END IF;
 END $$;
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 5 THEN
+        ALTER TABLE conversations DROP CONSTRAINT conversations_provider_check;
+        ALTER TABLE conversations ADD CONSTRAINT conversations_provider_check
+            CHECK (provider IN ('claude-code', 'codex', 'aider', 'hermes'));
+        ALTER TABLE direct_sources ADD COLUMN IF NOT EXISTS fingerprint TEXT NOT NULL DEFAULT '';
+        UPDATE version SET version=6 WHERE singleton;
+    END IF;
+END $$;

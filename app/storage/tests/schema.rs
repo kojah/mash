@@ -42,8 +42,7 @@ fn version_eighteen_source_migration_preserves_history_vectors_and_checkpoints()
             .source_checkpoint_matches(
                 Provider::Codex,
                 &SourceIdentity::file("/tmp/history.jsonl"),
-                100,
-                200
+                &crate::ingestion::SourceStamp::file(100, 200)
             )
             .unwrap()
     );
@@ -70,8 +69,7 @@ fn version_eighteen_source_migration_preserves_history_vectors_and_checkpoints()
             .source_checkpoint_matches(
                 Provider::Codex,
                 &SourceIdentity::file("/tmp/history.jsonl"),
-                100,
-                200
+                &crate::ingestion::SourceStamp::file(100, 200)
             )
             .unwrap()
     );
@@ -99,8 +97,7 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
             &crate::ingestion::SourceIdentity::file("/tmp/old.jsonl"),
-            10,
-            20,
+            &crate::ingestion::SourceStamp::file(10, 20),
         )
         .unwrap();
     storage.commit_writer().unwrap();
@@ -114,8 +111,7 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
                 &crate::ingestion::SourceIdentity::file("/tmp/old.jsonl"),
-                10,
-                20
+                &crate::ingestion::SourceStamp::file(10, 20)
             )
             .unwrap()
     );
@@ -149,8 +145,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
             &crate::ingestion::SourceIdentity::file("/tmp/source.jsonl"),
-            10,
-            20,
+            &crate::ingestion::SourceStamp::file(10, 20),
         )
         .unwrap();
     storage.commit_writer().unwrap();
@@ -167,8 +162,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
                 &crate::ingestion::SourceIdentity::file("/tmp/source.jsonl"),
-                10,
-                20
+                &crate::ingestion::SourceStamp::file(10, 20)
             )
             .unwrap()
     );
@@ -451,7 +445,7 @@ fn version_eight_migration_removes_every_unsupported_provider_surface() {
     assert!(schema.contains("'claude-code'"));
     assert!(schema.contains("'codex'"));
     assert!(!schema.contains("'opencode'"));
-    for provider in ["opencode", "github-copilot", "hermes", "pi"] {
+    for provider in ["opencode", "github-copilot", "pi"] {
         let error = storage
             .connection
             .execute(

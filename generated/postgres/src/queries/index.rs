@@ -177,6 +177,7 @@ pub struct Sources {
     pub size_bytes: i64,
     pub modified_ns: i64,
     pub conversation_id: Option<String>,
+    pub fingerprint: String,
     pub ready: bool,
 }
 pub struct SourcesBorrowed<'a> {
@@ -185,6 +186,7 @@ pub struct SourcesBorrowed<'a> {
     pub size_bytes: i64,
     pub modified_ns: i64,
     pub conversation_id: Option<&'a str>,
+    pub fingerprint: &'a str,
     pub ready: bool,
 }
 impl<'a> From<SourcesBorrowed<'a>> for Sources {
@@ -195,6 +197,7 @@ impl<'a> From<SourcesBorrowed<'a>> for Sources {
             size_bytes,
             modified_ns,
             conversation_id,
+            fingerprint,
             ready,
         }: SourcesBorrowed<'a>,
     ) -> Self {
@@ -204,6 +207,7 @@ impl<'a> From<SourcesBorrowed<'a>> for Sources {
             size_bytes,
             modified_ns,
             conversation_id: conversation_id.map(|v| v.into()),
+            fingerprint: fingerprint.into(),
             ready,
         }
     }
@@ -1251,7 +1255,7 @@ impl FreshnessStmt {
 pub struct SourcesStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn sources() -> SourcesStmt {
     SourcesStmt(
-        "SELECT provider,path_hash,size_bytes,modified_ns,conversation_id, NOT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2)) AS ready FROM direct_sources s WHERE node_id=$3",
+        "SELECT provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint, NOT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2)) AS ready FROM direct_sources s WHERE node_id=$3",
         None,
     )
 }
@@ -1283,7 +1287,8 @@ impl SourcesStmt {
                         size_bytes: row.try_get(2)?,
                         modified_ns: row.try_get(3)?,
                         conversation_id: row.try_get(4)?,
-                        ready: row.try_get(5)?,
+                        fingerprint: row.try_get(5)?,
+                        ready: row.try_get(6)?,
                     })
                 },
             mapper: |it| Sources::from(it),

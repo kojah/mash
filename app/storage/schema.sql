@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (
         provider IN (
-            'claude-code', 'codex', 'aider'
+            'claude-code', 'codex', 'aider', 'hermes'
         )
     ),
     source_path TEXT NOT NULL,
@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS source_checkpoints (
     source_key TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
     modified_ns INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (provider, source_key)
 );
 CREATE TABLE IF NOT EXISTS derived_state (

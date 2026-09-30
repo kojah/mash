@@ -351,8 +351,12 @@ async fn index_routes(
     let db = database.to_path_buf();
     let root = models.to_path_buf();
     let embeddings = configuration.embeddings.clone();
-    let mut response =
-        crate::blocking(move || index(&db, &root, embeddings, full, &local_options)).await?;
+    let all_sources = options.clone();
+    let mut response = crate::blocking(move || {
+        ingestion::validate_output_path(&db, &all_sources)?;
+        index(&db, &root, embeddings, full, &local_options)
+    })
+    .await?;
     if let Response::Index(result) = &mut response {
         if routed_both(configuration) {
             result.shared = Some(

@@ -17,7 +17,7 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
                 crate::provider::Provider::ClaudeCode => {
                     serde_json::json!({"type":"user","sessionId":"chat","uuid":id,"message":{"role":"user","content":text}})
                 }
-                crate::provider::Provider::Aider => {
+                crate::provider::Provider::Aider | crate::provider::Provider::Hermes => {
                     unreachable!("this fixture covers the JSONL providers")
                 }
             };
@@ -26,7 +26,7 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
         let parsed = match provider {
             crate::provider::Provider::Codex => parse_codex(file.path()),
             crate::provider::Provider::ClaudeCode => parse_claude(file.path()),
-            crate::provider::Provider::Aider => {
+            crate::provider::Provider::Aider | crate::provider::Provider::Hermes => {
                 unreachable!("this fixture covers the JSONL providers")
             }
         }

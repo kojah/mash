@@ -52,8 +52,7 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
             .source_checkpoint_matches(
                 Provider::ClaudeCode,
                 &SourceIdentity::file(&source),
-                old_stamp.size_bytes,
-                old_stamp.modified_ns,
+                &crate::ingestion::SourceStamp::file(old_stamp.size_bytes, old_stamp.modified_ns)
             )
             .unwrap()
     );
@@ -78,7 +77,12 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
         let source = directory.path().join("session.jsonl");
         write_claude_session(&source, "session", "queued sentinel");
         let stamp = source_stamp(&source).unwrap();
-        let parsed = parse_stable_source(&source, stamp, parse_claude).unwrap();
+        let parsed = parse_stable_source(
+            &SourceIdentity::file(&source),
+            &stamp,
+            Provider::ClaudeCode.parser(),
+        )
+        .unwrap();
         if remove {
             fs::remove_file(&source).unwrap();
         } else {
@@ -91,7 +95,8 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
             ParsedSource {
                 source: SourceFile {
                     identity: SourceIdentity::file(&source),
-                    stamp,
+                    stamp: stamp.clone(),
+                    estimated_bytes: u64::try_from(stamp.size_bytes).unwrap(),
                 },
                 parsed: Ok(parsed),
             },
@@ -105,8 +110,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
                 .source_checkpoint_matches(
                     Provider::ClaudeCode,
                     &SourceIdentity::file(&source),
-                    stamp.size_bytes,
-                    stamp.modified_ns,
+                    &crate::ingestion::SourceStamp::file(stamp.size_bytes, stamp.modified_ns)
                 )
                 .unwrap()
         );
@@ -115,7 +119,7 @@ fn queued_results_reject_changed_or_removed_sources_before_writing() {
 
 #[test]
 fn a_changed_discovered_stamp_is_rejected_before_parsing() {
-    fn must_not_parse(_: &Path) -> Result<ParsedFile, AppError> {
+    fn must_not_parse(_: &SourceIdentity) -> Result<ParsedFile, AppError> {
         panic!("changed source must be rejected before the parser runs")
     }
     let directory = tempfile::tempdir().unwrap();
@@ -123,7 +127,7 @@ fn a_changed_discovered_stamp_is_rejected_before_parsing() {
     write_claude_session(&source, "session", "initial");
     let stamp = source_stamp(&source).unwrap();
     write_claude_session(&source, "session", "changed after discovery");
-    let error = parse_stable_source(&source, stamp, must_not_parse)
+    let error = parse_stable_source(&SourceIdentity::file(&source), &stamp, must_not_parse)
         .err()
         .expect("discovery stamp is stale");
     assert!(error.error.message.contains("history changed"));
@@ -346,7 +350,7 @@ fn configured_root_disappearing_after_discovery_rolls_back_without_purge() {
             provider: Provider::ClaudeCode,
             roots: std::slice::from_ref(&root),
             cutoff_modified_ns: None,
-            parse: parse_claude,
+            parse: Provider::ClaudeCode.parser(),
             authoritative: true,
         },
         discovery,
@@ -385,8 +389,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
         .record_source_checkpoint(
             crate::provider::Provider::ClaudeCode,
             &SourceIdentity::file(&old_source),
-            10,
-            20,
+            &crate::ingestion::SourceStamp::file(10, 20),
         )
         .expect("seed checkpoint");
     writer
@@ -439,8 +442,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
             .source_checkpoint_matches(
                 crate::provider::Provider::ClaudeCode,
                 &SourceIdentity::file(&old_source),
-                10,
-                20
+                &crate::ingestion::SourceStamp::file(10, 20)
             )
             .unwrap()
     );
@@ -544,8 +546,7 @@ fn horizon_admits_the_boundary_and_preserves_deleted_old_sources() {
             .source_checkpoint_matches(
                 crate::provider::Provider::ClaudeCode,
                 &SourceIdentity::file(&old_path),
-                old_stamp.size_bytes,
-                old_stamp.modified_ns,
+                &crate::ingestion::SourceStamp::file(old_stamp.size_bytes, old_stamp.modified_ns)
             )
             .expect("old checkpoint")
     );
@@ -587,8 +588,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
         .record_source_checkpoint(
             crate::provider::Provider::ClaudeCode,
             &SourceIdentity::file(directory.path().join("claude.jsonl")),
-            10,
-            20,
+            &crate::ingestion::SourceStamp::file(10, 20),
         )
         .expect("Claude checkpoint");
     writer
@@ -630,8 +630,7 @@ fn selecting_one_provider_never_reconciles_an_unselected_provider() {
             .source_checkpoint_matches(
                 crate::provider::Provider::ClaudeCode,
                 &SourceIdentity::file(directory.path().join("claude.jsonl")),
-                10,
-                20,
+                &crate::ingestion::SourceStamp::file(10, 20)
             )
             .unwrap()
     );

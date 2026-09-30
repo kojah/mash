@@ -7,6 +7,30 @@ pub(crate) struct SourceIdentity {
     pub(crate) session: Option<String>,
 }
 
+/// Scan metadata changes independently of a source's identity.
+#[derive(Clone)]
+pub(crate) struct HistorySource {
+    pub(crate) identity: SourceIdentity,
+    pub(crate) activity_ns: Option<i64>,
+    pub(crate) estimated_bytes: Option<u64>,
+}
+
+impl HistorySource {
+    pub(crate) fn file(path: impl Into<PathBuf>) -> Self {
+        Self {
+            identity: SourceIdentity::file(path),
+            activity_ns: None,
+            estimated_bytes: None,
+        }
+    }
+
+    pub(crate) fn stamp(&self) -> Result<super::SourceStamp, crate::AppError> {
+        let mut stamp = super::source_stamp_for(&self.identity)?;
+        stamp.activity_ns = self.activity_ns;
+        Ok(stamp)
+    }
+}
+
 impl SourceIdentity {
     pub(crate) fn file(path: impl Into<PathBuf>) -> Self {
         Self {

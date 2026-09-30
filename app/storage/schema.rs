@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 19;
+pub(super) const SCHEMA_VERSION: i64 = 20;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -194,7 +194,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
             "CREATE TABLE conversations_next (
                 id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL CHECK (provider IN (
-                    'claude-code', 'codex', 'aider'
+                    'claude-code', 'codex', 'aider', 'hermes'
                 )),
                 source_path TEXT NOT NULL,
                 title TEXT, created_at INTEGER, updated_at INTEGER,
@@ -250,18 +250,24 @@ fn migrate_source_checkpoints(connection: &Connection) -> Result<(), AppError> {
     add_column_if_missing(
         connection,
         "source_checkpoints",
+        "fingerprint",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    add_column_if_missing(
+        connection,
+        "source_checkpoints",
         "source_key",
         "TEXT NOT NULL DEFAULT ''",
     )?;
     connection.execute_batch(
         "CREATE TABLE source_checkpoints_next (
             provider TEXT NOT NULL, source_key TEXT NOT NULL, source_path TEXT NOT NULL,
-            size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
+            size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL, fingerprint TEXT NOT NULL DEFAULT '',
             PRIMARY KEY(provider, source_key)
          );
          INSERT INTO source_checkpoints_next
             SELECT provider, CASE WHEN source_key = '' THEN 'file:' || source_path ELSE source_key END,
-                   source_path, size_bytes, modified_ns
+                   source_path, size_bytes, modified_ns, fingerprint
               FROM source_checkpoints;
          DROP TABLE source_checkpoints;
          ALTER TABLE source_checkpoints_next RENAME TO source_checkpoints;"
@@ -298,33 +304,33 @@ fn purge_unsupported_providers(connection: &Connection) -> Result<(), AppError> 
             "DELETE FROM message_fts
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes')
               );
              DELETE FROM message_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes')
               );
              DELETE FROM pending_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes')
               );
              DELETE FROM messages
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes')
               );
              DELETE FROM conversations
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes');
              DELETE FROM source_checkpoints
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider');
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes');
              DELETE FROM tombstones
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider');",
+              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes');",
         )
         .map_err(AppError::database)
 }

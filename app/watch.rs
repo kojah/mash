@@ -30,8 +30,21 @@ impl Targets {
                     .any(|file| file == path || file.starts_with(path))
                     || self.roots.iter().any(|root| {
                         root.starts_with(path)
+                            || (root.extension().is_some_and(|extension| extension == "db")
+                                && root.parent() == path.parent()
+                                && path.file_name().is_some_and(|name| {
+                                    let mut wal_name =
+                                        root.file_name().unwrap_or_default().to_os_string();
+                                    wal_name.push("-wal");
+                                    name == wal_name
+                                }))
                             || (path.starts_with(root)
                                 && (path.extension().is_some_and(|ext| ext == "jsonl")
+                                    || path.file_name().is_some_and(|name| {
+                                        name == ".aider.chat.history.md"
+                                            || name == "state.db"
+                                            || name == "state.db-wal"
+                                    })
                                     || matches!(
                                         event.kind,
                                         EventKind::Create(notify::event::CreateKind::Folder)
@@ -203,6 +216,36 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_markdown_and_database_wal_events_trigger_refresh_for_file_or_directory_roots() {
+        use notify::event::{AccessKind, DataChange, ModifyKind};
+        let root = PathBuf::from("/histories");
+        let directory = Targets {
+            roots: vec![root.clone()],
+            files: Vec::new(),
+        };
+        let database = Targets {
+            roots: vec![root.join("state.db")],
+            files: Vec::new(),
+        };
+        let custom = Targets {
+            roots: vec![root.join("custom.db")],
+            files: Vec::new(),
+        };
+        let change = |path| {
+            Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(path)
+        };
+        assert!(directory.relevant(&change(root.join(".aider.chat.history.md"))));
+        assert!(directory.relevant(&change(root.join("state.db-wal"))));
+        assert!(database.relevant(&change(root.join("state.db-wal"))));
+        assert!(custom.relevant(&change(root.join("custom.db-wal"))));
+        assert!(!custom.relevant(&change(root.join("other.db-wal"))));
+        assert!(!database.relevant(
+            &Event::new(EventKind::Access(AccessKind::Read)).add_path(root.join("state.db-wal"))
+        ));
+        assert!(!directory.relevant(&change(root.join("README.md"))));
+    }
 
     #[tokio::test]
     async fn pending_publication_retries_without_another_filesystem_event() {

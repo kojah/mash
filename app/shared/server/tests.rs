@@ -162,6 +162,59 @@ async fn redis_round_trips_every_supported_provider_with_filters() {
     provider_contract(Service::new_backend(false, true).await).await;
 }
 
+async fn wal_checkpoint_contract(service: Service) {
+    use crate::shared::protocol::{Checkpoint, Event, NodeState, Start};
+    let hash = blake3::hash(b"database-session-alpha").to_hex().to_string();
+    let fingerprint = blake3::hash(b"database-and-wal-stamp").to_hex().to_string();
+    let source = Checkpoint {
+        provider: crate::provider::Provider::Hermes,
+        path_hash: hash.clone(),
+        size_bytes: 8192,
+        modified_ns: 200,
+        fingerprint: fingerprint.clone(),
+        conversation_id: None,
+        ready: true,
+    };
+    let events = [
+        Event::Start(Start {
+            instance: "native-session-test".into(),
+            revision: None,
+            base_revision: Some(0),
+            snapshot: false,
+            forgets: Vec::new(),
+        }),
+        Event::Source(source),
+        Event::Finish,
+    ]
+    .into_iter()
+    .map(|event| serde_json::to_value(event).unwrap())
+    .collect::<Vec<_>>();
+    service
+        .upload(FIRST, &events)
+        .await
+        .error_for_status()
+        .unwrap();
+    let state: NodeState = serde_json::from_value(service.get("state", FIRST).await).unwrap();
+    assert_eq!(state.sources.len(), 1);
+    assert_eq!(state.sources[0].provider, crate::provider::Provider::Hermes);
+    assert_eq!(state.sources[0].path_hash, hash);
+    assert_eq!(state.sources[0].fingerprint, fingerprint);
+    assert_eq!(state.sources[0].modified_ns, 200);
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
+async fn postgres_round_trips_native_session_wal_fingerprints() {
+    wal_checkpoint_contract(Service::new_backend(true, false).await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn redis_round_trips_native_session_wal_fingerprints() {
+    wal_checkpoint_contract(Service::new_backend(false, true).await).await;
+}
+
 async fn remote_space_contract(service: Service) {
     let generation = crate::semantic::model_space("voyage-4", 1024);
     let mut events = snapshot(1);

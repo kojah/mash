@@ -70,7 +70,8 @@ fn set_modified(path: &Path, modified: SystemTime) {
         .expect("set fixture modification time");
 }
 
-fn parse_with_late_failure(path: &Path) -> Result<ParsedFile, AppError> {
+fn parse_with_late_failure(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
+    let path = &source.path;
     if path.file_name().and_then(|name| name.to_str()) == Some("failure.jsonl") {
         std::thread::sleep(Duration::from_millis(50));
         return Err(AppError::io(std::io::Error::new(
@@ -81,7 +82,8 @@ fn parse_with_late_failure(path: &Path) -> Result<ParsedFile, AppError> {
     parse_claude(path)
 }
 
-fn parse_then_append(path: &Path) -> Result<ParsedFile, AppError> {
+fn parse_then_append(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
+    let path = &source.path;
     let parsed = parse_claude(path)?;
     fs::OpenOptions::new()
         .append(true)

@@ -7,18 +7,21 @@ use std::time::{Duration, Instant, SystemTime};
 
 mod aider;
 mod discovery;
+mod hermes;
 mod json;
 mod parsers;
 mod source;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use discovery::{DirectScan, direct_scans, source_stamp};
+#[cfg(test)]
+use discovery::source_stamp;
+pub(crate) use discovery::validate_output_path;
+pub(crate) use discovery::{DirectScan, SourceStamp, direct_scans, source_stamp_for};
 use discovery::{
-    Discovery, SourceStamp, cutoff_modified_ns, discover_history_files,
-    verify_authoritative_discovery,
+    Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
 };
-pub(crate) use source::SourceIdentity;
+pub(crate) use source::{HistorySource, SourceIdentity};
 
 use crate::AppError;
 use crate::storage::Storage;
@@ -28,11 +31,12 @@ const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 
 impl Provider {
-    fn parser(self) -> fn(&Path) -> Result<ParsedFile, AppError> {
+    fn parser(self) -> fn(&SourceIdentity) -> Result<ParsedFile, AppError> {
         match self {
-            Self::ClaudeCode => parsers::parse_claude,
-            Self::Codex => parsers::parse_codex,
-            Self::Aider => aider::parse,
+            Self::ClaudeCode => |source| parsers::parse_claude(&source.path),
+            Self::Codex => |source| parsers::parse_codex(&source.path),
+            Self::Aider => |source| aider::parse(&source.path),
+            Self::Hermes => hermes::parse,
         }
     }
 }
@@ -93,13 +97,14 @@ struct ProviderScan<'a> {
     provider: Provider,
     roots: &'a [PathBuf],
     cutoff_modified_ns: Option<i64>,
-    parse: fn(&Path) -> Result<ParsedFile, AppError>,
+    parse: fn(&SourceIdentity) -> Result<ParsedFile, AppError>,
     authoritative: bool,
 }
 
 struct SourceFile {
     identity: SourceIdentity,
     stamp: SourceStamp,
+    estimated_bytes: u64,
 }
 
 struct ParsedSource {
@@ -252,7 +257,7 @@ fn index_provider_inner(
                     let Some(source) = pending.get(index) else {
                         break;
                     };
-                    let parsed = parse_stable_source(&source.identity.path, source.stamp, parse)
+                    let parsed = parse_stable_source(&source.identity, &source.stamp, parse)
                         .map_err(|error| {
                             if authoritative {
                                 configured_source_error(&source.identity.path, &error)
@@ -262,7 +267,8 @@ fn index_provider_inner(
                         });
                     let source = SourceFile {
                         identity: source.identity.clone(),
-                        stamp: source.stamp,
+                        stamp: source.stamp.clone(),
+                        estimated_bytes: source.estimated_bytes,
                     };
                     if sender.send(ParsedSource { source, parsed }).is_err() {
                         break;
@@ -281,7 +287,7 @@ fn index_provider_inner(
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
             };
-            let source_bytes = u64::try_from(result.source.stamp.size_bytes).unwrap_or_default();
+            let source_bytes = result.source.estimated_bytes;
             summary.processed_files += 1;
             summary.processed_bytes = summary.processed_bytes.saturating_add(source_bytes);
             match apply_parsed_source(storage, provider, result, summary) {
@@ -311,15 +317,11 @@ fn index_provider_inner(
     if authoritative {
         verify_authoritative_discovery(provider, roots, &observed_paths)?;
     }
-    let observed_keys = observed_paths
-        .iter()
-        .map(|path| SourceIdentity::file(path).key())
-        .collect();
     summary.purged_conversations += reconcile_complete_sources(
         storage,
         complete,
         provider,
-        &observed_keys,
+        &observed_paths,
         roots,
         cutoff_modified_ns,
     )?;
@@ -373,34 +375,38 @@ fn prepare_sources(
     let complete = discovery.complete;
     let mut pending = Vec::new();
     let mut observed_paths = BTreeSet::new();
-    for path in discovery.files {
-        let identity = SourceIdentity::file(path.clone());
-        observed_paths.insert(path.to_string_lossy().into_owned());
-        let stamp = source_stamp(&path).map_err(|error| {
+    for source in discovery.sources {
+        let identity = source.identity.clone();
+        let path = &identity.path;
+        observed_paths.insert(identity.key());
+        let stamp = source.stamp().map_err(|error| {
             if authoritative {
-                configured_source_error(&path, &error)
+                configured_source_error(path, &error)
             } else {
                 error
             }
         })?;
-        if cutoff_modified_ns.is_some_and(|cutoff| stamp.modified_ns < cutoff) {
+        if cutoff_modified_ns
+            .is_some_and(|cutoff| stamp.activity_ns.unwrap_or(stamp.modified_ns) < cutoff)
+        {
             continue;
         }
         summary.scanned_files += 1;
-        let bytes = u64::try_from(stamp.size_bytes).unwrap_or_default();
+        let bytes = source
+            .estimated_bytes
+            .unwrap_or_else(|| u64::try_from(stamp.size_bytes).unwrap_or_default());
         summary.discovered_bytes = summary.discovered_bytes.saturating_add(bytes);
-        if storage.source_checkpoint_matches(
-            provider,
-            &identity,
-            stamp.size_bytes,
-            stamp.modified_ns,
-        )? {
+        if storage.source_checkpoint_matches(provider, &identity, &stamp)? {
             summary.unchanged_sources += 1;
             summary.checkpoint_skipped_sources += 1;
             summary.processed_files += 1;
             summary.processed_bytes = summary.processed_bytes.saturating_add(bytes);
         } else {
-            pending.push(SourceFile { identity, stamp });
+            pending.push(SourceFile {
+                identity,
+                stamp,
+                estimated_bytes: bytes,
+            });
         }
     }
     Ok((pending, observed_paths, complete))
@@ -415,13 +421,13 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
 }
 
 fn parse_stable_source(
-    path: &Path,
-    stamp: SourceStamp,
-    parse: fn(&Path) -> Result<ParsedFile, AppError>,
+    source: &SourceIdentity,
+    stamp: &SourceStamp,
+    parse: fn(&SourceIdentity) -> Result<ParsedFile, AppError>,
 ) -> Result<ParsedFile, AppError> {
-    stamp.verify(path)?;
-    let parsed = parse(path)?;
-    stamp.verify(path)?;
+    stamp.verify(source)?;
+    let parsed = parse(source)?;
+    stamp.verify(source)?;
     Ok(parsed)
 }
 
@@ -434,7 +440,7 @@ fn apply_parsed_source(
     let parsed = result.parsed?;
     // A producer can wait in the bounded queue while another source is applied.
     // Reject a change during that wait before replacing content or checkpoints.
-    result.source.stamp.verify(&result.source.identity.path)?;
+    result.source.stamp.verify(&result.source.identity)?;
     summary.malformed_records += parsed.malformed_records;
     if let Some(conversation) = parsed.conversation {
         apply_conversation(storage, &conversation, summary)?;
@@ -447,8 +453,7 @@ fn apply_parsed_source(
         storage.record_source_checkpoint(
             provider,
             &result.source.identity,
-            result.source.stamp.size_bytes,
-            result.source.stamp.modified_ns,
+            &result.source.stamp,
         )?;
     }
     Ok(parsed.malformed_records == 0)

@@ -62,6 +62,7 @@ pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&st
              CREATE TABLE source_checkpoints (
                 provider TEXT NOT NULL, source_path TEXT NOT NULL, source_key TEXT NOT NULL,
                 size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
+                fingerprint TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY(provider, source_key)
              );
              CREATE TABLE semantic_chunks (
@@ -77,7 +78,7 @@ pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&st
              INSERT INTO derived_state VALUES (1, 0, NULL);
              INSERT INTO conversations(id, provider, source_path, source_key)
                 VALUES ('session', 'codex', '/tmp/session.jsonl', 'file:/tmp/session.jsonl');
-             PRAGMA user_version = 19;",
+             PRAGMA user_version = 20;",
         )
         .expect("readiness schema");
     connection

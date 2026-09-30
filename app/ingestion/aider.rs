@@ -327,7 +327,11 @@ mod tests {
         };
         let scans = super::super::direct_scans(&options).unwrap();
         assert_eq!(
-            scans[0].sources,
+            scans[0]
+                .sources
+                .iter()
+                .map(|source| source.identity.clone())
+                .collect::<Vec<_>>(),
             [super::super::SourceIdentity::file(&native)]
         );
         let options = super::super::IndexOptions {
@@ -335,7 +339,11 @@ mod tests {
             ..options
         };
         assert_eq!(
-            super::super::direct_scans(&options).unwrap()[0].sources,
+            super::super::direct_scans(&options).unwrap()[0]
+                .sources
+                .iter()
+                .map(|source| source.identity.clone())
+                .collect::<Vec<_>>(),
             [super::super::SourceIdentity::file(custom)]
         );
         std::fs::remove_file(native).unwrap();

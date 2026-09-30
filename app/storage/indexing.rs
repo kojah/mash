@@ -271,16 +271,21 @@ impl Storage {
         &self,
         provider: Provider,
         source: &crate::ingestion::SourceIdentity,
-        size_bytes: i64,
-        modified_ns: i64,
+        stamp: &crate::ingestion::SourceStamp,
     ) -> Result<bool, AppError> {
         Ok(self
             .connection
             .query_row(
                 "SELECT 1 FROM source_checkpoints
                   WHERE provider = ?1 AND source_key = ?2
-                    AND size_bytes = ?3 AND modified_ns = ?4",
-                params![provider, source.key(), size_bytes, modified_ns],
+                    AND size_bytes = ?3 AND modified_ns = ?4 AND fingerprint = ?5",
+                params![
+                    provider,
+                    source.key(),
+                    stamp.size_bytes,
+                    stamp.activity_ns.unwrap_or(stamp.modified_ns),
+                    stamp.fingerprint
+                ],
                 |_| Ok(()),
             )
             .optional()
@@ -292,19 +297,18 @@ impl Storage {
         &mut self,
         provider: Provider,
         source: &crate::ingestion::SourceIdentity,
-        size_bytes: i64,
-        modified_ns: i64,
+        stamp: &crate::ingestion::SourceStamp,
     ) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection
             .execute(
-                "INSERT INTO source_checkpoints(provider, source_key, size_bytes, modified_ns, source_path)
-                 VALUES (?1, ?2, ?3, ?4, ?5)
+                "INSERT INTO source_checkpoints(provider, source_key, size_bytes, modified_ns, source_path, fingerprint)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT(provider, source_key) DO UPDATE SET
                     size_bytes = excluded.size_bytes,
                     modified_ns = excluded.modified_ns,
-                    source_path = excluded.source_path",
-                params![provider, source.key(), size_bytes, modified_ns, source.path.to_string_lossy()],
+                    source_path = excluded.source_path, fingerprint = excluded.fingerprint",
+                params![provider, source.key(), stamp.size_bytes, stamp.activity_ns.unwrap_or(stamp.modified_ns), source.path.to_string_lossy(), stamp.fingerprint],
             )
             .map_err(AppError::database)?;
         Ok(())

@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::ingestion::SourceStamp;
 use std::collections::BTreeSet;
 
 #[test]
@@ -27,7 +28,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
         value.source = source.clone();
         storage.replace_conversation(&value).unwrap();
         storage
-            .record_source_checkpoint(Provider::Codex, &source, 10, modified)
+            .record_source_checkpoint(Provider::Codex, &source, &SourceStamp::file(10, modified))
             .unwrap();
         sources.push(source);
     }
@@ -47,12 +48,16 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     assert_ne!(paths[0].1, paths[1].1);
     assert!(
         storage
-            .source_checkpoint_matches(Provider::Codex, &sources[0], 10, 100)
+            .source_checkpoint_matches(Provider::Codex, &sources[0], &SourceStamp::file(10, 100))
             .unwrap()
     );
     assert!(
         !storage
-            .source_checkpoint_matches(Provider::ClaudeCode, &sources[0], 10, 100)
+            .source_checkpoint_matches(
+                Provider::ClaudeCode,
+                &sources[0],
+                &SourceStamp::file(10, 100)
+            )
             .unwrap()
     );
 
@@ -75,12 +80,12 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     }
     assert!(
         !storage
-            .source_checkpoint_matches(Provider::Codex, &sources[1], 10, 100)
+            .source_checkpoint_matches(Provider::Codex, &sources[1], &SourceStamp::file(10, 100))
             .unwrap()
     );
     assert!(
         storage
-            .source_checkpoint_matches(Provider::Codex, &sources[2], 10, 1)
+            .source_checkpoint_matches(Provider::Codex, &sources[2], &SourceStamp::file(10, 1))
             .unwrap()
     );
     drop(storage);
@@ -153,8 +158,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
             &crate::ingestion::SourceIdentity::file("/tmp/session-1.jsonl"),
-            100,
-            200,
+            &SourceStamp::file(100, 200),
         )
         .expect("durable source checkpoint");
     writer.checkpoint_writer().expect("checkpoint batch");
@@ -176,8 +180,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
                 &crate::ingestion::SourceIdentity::file("/tmp/session-1.jsonl"),
-                100,
-                200
+                &SourceStamp::file(100, 200)
             )
             .expect("read checkpoint")
     );
