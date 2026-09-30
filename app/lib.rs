@@ -7,11 +7,13 @@ mod semantic;
 mod shared;
 mod storage;
 mod watch;
+#[cfg(unix)]
+mod worker;
 
 use std::ffi::OsString;
 use std::io::{self, Write};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
@@ -31,6 +33,14 @@ async fn blocking<T: Send + 'static>(
 /// ```
 #[must_use]
 pub fn main_entry() -> i32 {
+    #[cfg(unix)]
+    {
+        let arguments = std::env::args_os().collect::<Vec<_>>();
+        if arguments.len() == 3 && arguments[1] == "--internal-search-worker" {
+            return crate::worker::run(std::path::Path::new(&arguments[2]))
+                .map_or_else(|error| error.code, |()| 0);
+        }
+    }
     execute(std::env::args_os(), &mut io::stdout(), &mut io::stderr())
 }
 
@@ -63,20 +73,20 @@ fn write_json<T: Serialize>(writer: &mut dyn Write, value: &T) -> Result<(), App
         .map_err(|error| AppError::internal(format!("failed to write response: {error}")))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct AppError {
     error: ErrorBody,
     #[serde(skip)]
     code: i32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ErrorBody {
-    kind: &'static str,
+    kind: String,
     message: String,
     retryable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    recommended_action: Option<&'static str>,
+    recommended_action: Option<String>,
 }
 
 impl AppError {
@@ -147,7 +157,7 @@ impl AppError {
     fn new(code: i32, kind: &'static str, message: impl Into<String>, retryable: bool) -> Self {
         Self {
             error: ErrorBody {
-                kind,
+                kind: kind.to_owned(),
                 message: message.into(),
                 retryable,
                 recommended_action: None,
@@ -164,7 +174,7 @@ impl AppError {
         recommended_action: &'static str,
     ) -> Self {
         let mut error = Self::new(code, kind, message, retryable);
-        error.error.recommended_action = Some(recommended_action);
+        error.error.recommended_action = Some(recommended_action.to_owned());
         error
     }
 }

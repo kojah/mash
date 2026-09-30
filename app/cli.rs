@@ -16,9 +16,10 @@ use crate::semantic::{self, Models};
 use crate::shared;
 use crate::storage::Storage;
 
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Clone, Deserialize, Serialize, Parser)]
+#[serde(deny_unknown_fields)]
 #[command(name = "mash", version, about, arg_required_else_help = true)]
-struct Cli {
+pub(crate) struct Cli {
     /// Versioned mash node and provider configuration.
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<PathBuf>,
@@ -35,7 +36,7 @@ struct Cli {
     command: Command,
 }
 
-#[derive(Debug, Clone, Subcommand)]
+#[derive(Debug, Clone, Deserialize, Serialize, Subcommand)]
 enum Command {
     /// Discover and index supported local histories.
     Index {
@@ -71,6 +72,9 @@ enum Command {
         /// Query only SQLite, without contacting the shared service.
         #[arg(long, conflicts_with = "shared")]
         local: bool,
+        /// Run in this process without the shared idle search worker.
+        #[arg(long)]
+        no_worker: bool,
     },
     /// Return a message and adjacent context.
     View {
@@ -110,7 +114,7 @@ enum Command {
     },
 }
 
-#[derive(Debug, Clone, Subcommand)]
+#[derive(Debug, Clone, Deserialize, Serialize, Subcommand)]
 enum ModelsCommand {
     /// Explicitly install embedding and reranking models.
     Install,
@@ -254,7 +258,84 @@ where
         runtime.block_on(crate::mcp::run(startup, watch, debounce_ms))?;
         Ok(Response::McpStopped)
     } else {
+        #[cfg(unix)]
+        if matches!(
+            cli.command,
+            Command::Search {
+                no_worker: false,
+                ..
+            }
+        ) {
+            return runtime.block_on(process_search(cli));
+        }
         runtime.block_on(run_async(arguments))
+    }
+}
+
+#[cfg(unix)]
+async fn process_search(mut cli: Cli) -> Result<Response, AppError> {
+    let path = cli.config.clone();
+    let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
+    let cwd = std::env::current_dir().map_err(AppError::io)?;
+    let absolute = |path: PathBuf| {
+        if path.is_absolute() {
+            path
+        } else {
+            cwd.join(path)
+        }
+    };
+    cli.config = cli
+        .config
+        .map(absolute)
+        .or_else(|| configuration.loaded.then(|| configuration.path.clone()));
+    cli.db = Some(absolute(cli.db.unwrap_or_else(default_database_path)));
+    let models_dir = absolute(cli.models_dir.unwrap_or_else(default_models_path));
+    cli.models_dir = Some(models_dir.clone());
+    let models = Models::new(models_dir).with_remote(configuration.embeddings.clone());
+    if !models.is_installed() {
+        // Preserve direct validation/error ordering without starting an idle
+        // process for a missing or incomplete model installation.
+        return run_parsed(cli).await;
+    }
+    let mut environment = vec![
+        "HOME".to_owned(),
+        "XDG_CONFIG_HOME".to_owned(),
+        "XDG_DATA_HOME".to_owned(),
+        "HTTP_PROXY".to_owned(),
+        "HTTPS_PROXY".to_owned(),
+        "ALL_PROXY".to_owned(),
+        "NO_PROXY".to_owned(),
+        "http_proxy".to_owned(),
+        "https_proxy".to_owned(),
+        "all_proxy".to_owned(),
+        "no_proxy".to_owned(),
+        "SSL_CERT_FILE".to_owned(),
+    ];
+    if let Some(shared) = &configuration.shared {
+        environment.push(shared.token_env.clone());
+    }
+    if let Some(embeddings) = &configuration.embeddings
+        && let Some(name) = &embeddings.token_env
+    {
+        environment.push(name.clone());
+    }
+    let Ok(profile) = serde_json::to_vec(&(&cli.config, &cli.db, &cli.models_dir)) else {
+        return run_parsed(cli).await;
+    };
+    if let Some(result) = crate::worker::search(&cli, &profile, &environment).await {
+        return result.map(Response::Search);
+    }
+    run_parsed(cli).await
+}
+
+#[cfg(unix)]
+pub(crate) async fn worker_search(cli: Cli) -> Result<SearchResponse, AppError> {
+    if !matches!(cli.command, Command::Search { .. }) {
+        return Err(AppError::usage("search worker accepts only searches"));
+    }
+    match run_parsed(cli).await? {
+        Response::Search(response) => Ok(response),
+        _ => Err(AppError::internal("unexpected search worker response")),
     }
 }
 
@@ -334,6 +415,7 @@ async fn dispatch(
             filters,
             shared: use_shared,
             local: use_local,
+            ..
         } => {
             let filters = filters.resolve(
                 configuration

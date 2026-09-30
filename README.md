@@ -13,7 +13,7 @@ The service uses Redis Search by default, with PostgreSQL + pgvector as an alter
 
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex]... [--since-days N|--all-history]
-mash search <query> [--local | --shared] [--limit N] [--provider PROVIDER] [--days N]
+mash search <query> [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <conversation-id>
@@ -28,6 +28,19 @@ index HTTP API; it reports its listening address as JSON on stderr and keeps
 stdout empty. Bare `mash` prints help. Global
 options are `--config PATH`, `--db PATH`, and
 `--models-dir PATH`.
+
+On Linux and macOS, CLI searches automatically share an on-demand local worker
+for the same configuration, database, model directory, and credential environment.
+The first search loads models; subsequent commands reuse the models and shared
+HTTP connections, even for different queries. The worker exits after 60 seconds
+without requests and releases its memory. Concurrent searches queue through the
+same worker. It accepts only searches through a private per-user Unix socket;
+no system service is installed.
+
+Use `mash search "query" --no-worker` to run entirely within that CLI process.
+If the worker cannot be reached, search runs directly. Configurations and index
+data are read for every request; results are not cached. MCP sessions continue
+to reuse models within their own process and do not launch CLI workers.
 
 ## Models and indexing
 

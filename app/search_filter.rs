@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
-#[derive(Debug, Clone, clap::Args)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, clap::Args)]
+#[serde(default, deny_unknown_fields)]
 pub(crate) struct Arguments {
     #[arg(long)]
     provider: Vec<String>,

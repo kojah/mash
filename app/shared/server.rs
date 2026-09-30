@@ -169,7 +169,7 @@ struct App {
 struct ApiError(StatusCode, AppError);
 impl From<AppError> for ApiError {
     fn from(error: AppError) -> Self {
-        let status = match error.error.kind {
+        let status = match error.error.kind.as_str() {
             "usage" | "configuration" => StatusCode::BAD_REQUEST,
             "conflict" => StatusCode::CONFLICT,
             _ => StatusCode::SERVICE_UNAVAILABLE,

@@ -12,7 +12,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio_postgres::Row;
 pub(super) fn conflict(message: &str) -> AppError {
     let mut error = AppError::shared(message);
-    error.error.kind = "conflict";
+    "conflict".clone_into(&mut error.error.kind);
     error
 }
 pub(super) fn valid_id(id: &str) -> Result<(), AppError> {

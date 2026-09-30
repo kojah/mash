@@ -18,8 +18,11 @@ Keep the CLI command surface limited to `index`, `search`, `view`, `status`,
 - Keep concrete local FastEmbed and remote HTTP embedding options with exact
   cosine search, RRF, and bounded local reranking. Support Voyage and the
   OpenAI-compatible embeddings API without provider traits or registries.
-- Do not add provider traits, registries, daemons, ANN indexes, compatibility
+- Do not add provider traits, registries, installed daemons, ANN indexes, compatibility
   shims, alternate output modes, a TUI, export, or analytics.
+- CLI searches may share an on-demand, per-user local worker. It must exit after
+  60 seconds of inactivity, accept only searches, and preserve direct execution
+  with `search --no-worker`. Do not install it as a system service.
 - Support opt-in debounced synchronization with `index --watch` and MCP startup
   `--watch`. Keep it within the running process; do not install a daemon.
 - Keep ingestion to the two concrete mash-owned JSONL parsers. Do not add
