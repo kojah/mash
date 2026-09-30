@@ -1,0 +1,1339 @@
+{
+  "provenance": "Unmodified official IDE 2.5.5 runtime; synthetic text only. Root snapshot taken with SQLite backup before fork/failed rewind. No model inference or external API. Dialogue SQL rows are exact; non-dialogue payloads intentionally omitted and their headers retained.",
+  "package_url": "https://edgedl.me.gvt1.com/edgedl/release2/j0qc3/antigravity/stable/2.5.5-4923483625488384/linux-x64/Antigravity%20IDE.tar.gz",
+  "package_sha256": "0c5233b297d2b3aebb61af49f8944012c2953d361a5ebb16978490636917f831",
+  "schema_fixture": "antigravity-native-runtime-2.5.5.json",
+  "assistant_request": {
+    "cascadeId": "50000000-0000-4000-8000-000000000001",
+    "additionalSteps": [
+      {
+        "type": "CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+        "status": "CORTEX_STEP_STATUS_DONE",
+        "metadata": {
+          "source": "CORTEX_STEP_SOURCE_MODEL"
+        },
+        "plannerResponse": {
+          "response": "Use cBioPortal study and sample filters before selecting mutation profiles.",
+          "thinking": "Synthetic reasoning should remain outside lexical search."
+        }
+      }
+    ]
+  },
+  "scoped_request": {
+    "cascadeId": "50000000-0000-4000-8000-000000000001",
+    "items": [
+      {
+        "text": "Explain cBioPortal "
+      },
+      {
+        "item": {
+          "textBlock": {
+            "content": "synthetic_scope_only_marker",
+            "label": "Attached context"
+          }
+        }
+      },
+      {
+        "text": " mutation filtering."
+      }
+    ]
+  },
+  "fork_request": {
+    "sourceCascadeId": "50000000-0000-4000-8000-000000000001",
+    "forkAtStepIndex": 2,
+    "targetForkWorkspace": "FORK_TARGET_CURRENT_WORKSPACE"
+  },
+  "fork_response": {
+    "newCascadeId": "8a4cd8d9-9e7c-4bd6-9007-f1fba7bab4cf",
+    "forkedAtStepIndex": 2
+  },
+  "rewind_request": {
+    "cascadeId": "50000000-0000-4000-8000-000000000001",
+    "stepIndex": 2
+  },
+  "rewind_response": {
+    "code": "unknown",
+    "message": "neither PlanModel nor RequestedModel specified. You must specify a valid model. (error ID: b588cf59020c4bbd971e34d158fe780e)"
+  },
+  "root_before_mutation": {
+    "trajectory_meta": [
+      {
+        "trajectory_id": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+        "cascade_id": "50000000-0000-4000-8000-000000000001",
+        "trajectory_type": 4,
+        "source": 1
+      }
+    ],
+    "trajectory_metadata_blob": [
+      {
+        "id": "main",
+        "data": {
+          "base64": "EgwI5/7z1QYQ7dPfqwEaJGRkNGExYTA1LTNkZGEtNGIyMC05ZWIwLTI0Y2VmOWUyYzE2ODIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx",
+          "sha256": "9fed4899c30e03e546cd19eb780312a745b3041b15abeaa2dca4bd85e23a6377"
+        }
+      }
+    ],
+    "parent_references": [],
+    "step_headers": [
+      {
+        "idx": 0,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 1,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 2,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 3,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 4,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 5,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 6,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 7,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 8,
+        "step_type": 15,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 9,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 10,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 11,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 12,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 13,
+        "step_type": 15,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 14,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 15,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 16,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 17,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 18,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 19,
+        "step_type": 15,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 20,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 21,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 22,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      }
+    ],
+    "dialogue_steps": [
+      {
+        "idx": 0,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIif/z1QYQ9+37uwIYBGIkNGY5MzI5ZTQtYWU2Yy00YTM5LWFkN2MtYjI5NmY2ZmMxMzBlogFMCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAiJ//PVBhCSuqm8Ag==",
+          "sha256": "c6add8fb534da9252b26a4b2b927c9c4cd2cee25d3fe42bdcbf8cf3f249aff5e"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqaAQoMCIn/89UGEPft+7sCGARiJDRmOTMyOWU0LWFlNmMtNGEzOS1hZDdjLWIyOTZmNmZjMTMwZaIBTAokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSARIKEAgDEgwIif/z1QYQkrqpvAKaAb0BEjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLho9CjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLiIAYj0KO2owygECWAHSAigSJhIkbWNwKGNocm9tZV9kZXZ0b29scy9ldmFsdWF0ZV9zY3JpcHQpygMGKgQKABgB",
+          "sha256": "8a52b1cd15b2826287145c4717ac8fcecc078b09440b8ef310fdbaaaf601b582"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 2,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIq//z1QYQ0t340gEYBGIkN2E3YTFjY2YtN2RmOS00MDU2LTk2NDItZDVmZmZkODhlNmVkogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQAiIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCKv/89UGEM3nldMB",
+          "sha256": "5aae5267d7202c9091891b0b28ff12a85f7f95e52221b40715c19b4b15649001"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCKv/89UGENLd+NIBGARiJDdhN2ExY2NmLTdkZjktNDA1Ni05NjQyLWQ1ZmZmZDg4ZTZlZKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEAIiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAir//PVBhDN55XTAZoB/AESO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uGj0KO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "1c68a3528725e45ca3c2800a922f12e022c8b5ce382962ded3122690eb8d32c6"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 5,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIqIH01QYQ0JjazQEYBGIkMGUwYjdhYzEtYjQyNy00YzQyLWI5NDgtZmVjMzM4ZTcyOTdhogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQBSIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCKiB9NUGEJjo9M0B",
+          "sha256": "6bf4342ff23609e084fd03f6be8fda9477314921e0aa157b0e190ae5bcbe4c44"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCKiB9NUGENCY2s0BGARiJDBlMGI3YWMxLWI0MjctNGM0Mi1iOTQ4LWZlYzMzOGU3Mjk3YaIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEAUiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAiogfTVBhCY6PTNAZoB/AESO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uGj0KO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "0b2db152c4f619cb502364e1d4606f5a082bdd8370a49ba26e534014beff7b7b"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 8,
+        "step_type": 15,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "GAJiJGY3NmYzZTExLWFlNmEtNDczZS04MTY2LWRkM2E5YzQ2MzU4MKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEAgiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAiqgfTVBhCokMffAQ==",
+          "sha256": "3f32d44462b5bb71d3cf2a8ad064e935754f25bb66306146afc0ae105d1da5fd"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA8gAyqOARgCYiRmNzZmM2UxMS1hZTZhLTQ3M2UtODE2Ni1kZDNhOWM0NjM1ODCiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRAIIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSARIKEAgDEgwIqoH01QYQqJDH3wGiAYgBCktVc2UgY0Jpb1BvcnRhbCBzdHVkeSBhbmQgc2FtcGxlIGZpbHRlcnMgYmVmb3JlIHNlbGVjdGluZyBtdXRhdGlvbiBwcm9maWxlcy4aOVN5bnRoZXRpYyByZWFzb25pbmcgc2hvdWxkIHJlbWFpbiBvdXRzaWRlIGxleGljYWwgc2VhcmNoLg==",
+          "sha256": "e966593394921f19e4e5d40117fd9f4ca9c37e5ddfe3b24f76842795b56be6ea"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 10,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgsI4YH01QYQjOuDMRgEYiQ3NTVhYTFkNy1kODhmLTQzOGEtODg0Yy05MzZlNzdlYTY0MDiiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRAKIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSAREKDwgDEgsI4YH01QYQ+eWfMQ==",
+          "sha256": "aecede09afb7667c1f817da6648447b7f4e4a64b0012b8e68250cdf630606ab9"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqaAQoLCOGB9NUGEIzrgzEYBGIkNzU1YWExZDctZDg4Zi00MzhhLTg4NGMtOTM2ZTc3ZWE2NDA4ogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQCiIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gERCg8IAxILCOGB9NUGEPnlnzGaAfwBEjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLho9CjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLiIAYj0KO2owygECWAHSAigSJhIkbWNwKGNocm9tZV9kZXZ0b29scy9ldmFsdWF0ZV9zY3JpcHQpygMGKgQKABgBaj0KO2owygECWAHSAigSJhIkbWNwKGNocm9tZV9kZXZ0b29scy9ldmFsdWF0ZV9zY3JpcHQpygMGKgQKABgB",
+          "sha256": "773042c5c1e3588edd8799cd46e564e4678d5608e3c1b38dce864166e79c52c6"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 13,
+        "step_type": 15,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "GAJiJDViOGJiYzM3LWU1MjItNDRhNi04YmE0LTMwYWFlOGYwMjRjY6IBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEA0iJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEQoPCAMSCwjjgfTVBhD9mf5A",
+          "sha256": "83e630c1ff85714740e1f93c5e126a8568468258f79d0380441709eedec46340"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA8gAyqNARgCYiQ1YjhiYmMzNy1lNTIyLTQ0YTYtOGJhNC0zMGFhZThmMDI0Y2OiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRANIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSAREKDwgDEgsI44H01QYQ/Zn+QKIBiAEKS1VzZSBjQmlvUG9ydGFsIHN0dWR5IGFuZCBzYW1wbGUgZmlsdGVycyBiZWZvcmUgc2VsZWN0aW5nIG11dGF0aW9uIHByb2ZpbGVzLho5U3ludGhldGljIHJlYXNvbmluZyBzaG91bGQgcmVtYWluIG91dHNpZGUgbGV4aWNhbCBzZWFyY2gu",
+          "sha256": "23ba8a6c0176e54eb42f3de9fed29445a7c002f53a185d2dd22ec17999a88cea"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 16,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIuoL01QYQ7+Ki0AEYBGIkM2ZhZmM0ZTUtYzkxOC00ZjRjLWFiY2UtYjgyNjIyNDUwMWFhogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQECIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCLqC9NUGEKm3zdAB",
+          "sha256": "581609de18403bd8f336cf1e004067fbe296fa7c926a90c7835e157a212a084f"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCLqC9NUGEO/iotABGARiJDNmYWZjNGU1LWM5MTgtNGY0Yy1hYmNlLWI4MjYyMjQ1MDFhYaIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEBAiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAi6gvTVBhCpt83QAZoB/AESO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uGj0KO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "574be4f37eaa9bbda05ff7fb3bd3a92690e53408be23a0037774ed4717ce512b"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 19,
+        "step_type": 15,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "GAJiJDY5OTEwNjg5LWFkYjEtNGNhOC05ZjBhLTA2YWM3NjVlODJmNKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEBMiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAi8gvTVBhCF1ITdAQ==",
+          "sha256": "ff30b56476b0bebdfec370264cb2f31f61f44ec3e2a80eaff3860aad8e25dde1"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA8gAyqOARgCYiQ2OTkxMDY4OS1hZGIxLTRjYTgtOWYwYS0wNmFjNzY1ZTgyZjSiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRATIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSARIKEAgDEgwIvIL01QYQhdSE3QGiAYgBCktVc2UgY0Jpb1BvcnRhbCBzdHVkeSBhbmQgc2FtcGxlIGZpbHRlcnMgYmVmb3JlIHNlbGVjdGluZyBtdXRhdGlvbiBwcm9maWxlcy4aOVN5bnRoZXRpYyByZWFzb25pbmcgc2hvdWxkIHJlbWFpbiBvdXRzaWRlIGxleGljYWwgc2VhcmNoLg==",
+          "sha256": "6f6c99cae47b08ae961864cd3b39469eadb149546f99b86b2f93b51f246fdefd"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 21,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIvYL01QYQrsix5wEYBGIkYWQxZmNmMDAtNmIyZC00NmJiLWExZTktYmRlNzc4MDFmZjM4ogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQFSIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCL2C9NUGEMOX0ecB",
+          "sha256": "92f1846130847ffca0f809c18656e773acf286fc9f6e486e9261bbb46c2d11ef"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCL2C9NUGEK7IsecBGARiJGFkMWZjZjAwLTZiMmQtNDZiYi1hMWU5LWJkZTc3ODAxZmYzOKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEBUiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAi9gvTVBhDDl9HnAZoBoAISOkV4cGxhaW4gY0Jpb1BvcnRhbCBAW0F0dGFjaGVkIGNvbnRleHRdIG11dGF0aW9uIGZpbHRlcmluZy4aFQoTRXhwbGFpbiBjQmlvUG9ydGFsIBozEjFaLwobc3ludGhldGljX3Njb3BlX29ubHlfbWFya2VyGhBBdHRhY2hlZCBjb250ZXh0GhYKFCBtdXRhdGlvbiBmaWx0ZXJpbmcuIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "406bf319dfb75781c35416e8b238f8175d6e5c9b5d88089b3e2c0d39369bd1b2"
+        },
+        "step_format": 0
+      }
+    ]
+  },
+  "fork": {
+    "trajectory_meta": [
+      {
+        "trajectory_id": "d732add2-596a-4ade-b1a6-45991b42a914",
+        "cascade_id": "8a4cd8d9-9e7c-4bd6-9007-f1fba7bab4cf",
+        "trajectory_type": 4,
+        "source": 1
+      }
+    ],
+    "trajectory_metadata_blob": [
+      {
+        "id": "main",
+        "data": {
+          "base64": "EgwIvoL01QYQ+MOThwIaJGE4MzAxOGUyLTMyNDQtNDQzZC05NWQxLTQyZDg1YjI0NGQ4MDIkOGE0Y2Q4ZDktOWU3Yy00YmQ2LTkwMDctZjFmYmE3YmFiNGNm",
+          "sha256": "eec1ab59f964ccb7e80adca34ad493593631d5ca8bdab2cd56c9f97729084071"
+        }
+      }
+    ],
+    "parent_references": [
+      {
+        "idx": 0,
+        "data": {
+          "base64": "CiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQAhgEIA4oAjIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx",
+          "sha256": "7f5999e8d8161a3abdb602942dc635a9e4515be76c1a6832ebf525cfdba4fd1a"
+        }
+      }
+    ],
+    "step_headers": [
+      {
+        "idx": 0,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 1,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 2,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 3,
+        "step_type": 101,
+        "status": 3,
+        "step_format": 0
+      }
+    ],
+    "dialogue_steps": [
+      {
+        "idx": 0,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIif/z1QYQ9+37uwIYBGIkNGY5MzI5ZTQtYWU2Yy00YTM5LWFkN2MtYjI5NmY2ZmMxMzBlogFMCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAiJ//PVBhCSuqm8Ag==",
+          "sha256": "c6add8fb534da9252b26a4b2b927c9c4cd2cee25d3fe42bdcbf8cf3f249aff5e"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqaAQoMCIn/89UGEPft+7sCGARiJDRmOTMyOWU0LWFlNmMtNGEzOS1hZDdjLWIyOTZmNmZjMTMwZaIBTAokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSARIKEAgDEgwIif/z1QYQkrqpvAKaAb0BEjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLho9CjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLiIAYj0KO2owygECWAHSAigSJhIkbWNwKGNocm9tZV9kZXZ0b29scy9ldmFsdWF0ZV9zY3JpcHQpygMGKgQKABgB",
+          "sha256": "8a52b1cd15b2826287145c4717ac8fcecc078b09440b8ef310fdbaaaf601b582"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 2,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIq//z1QYQ0t340gEYBGIkN2E3YTFjY2YtN2RmOS00MDU2LTk2NDItZDVmZmZkODhlNmVkogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQAiIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCKv/89UGEM3nldMB",
+          "sha256": "5aae5267d7202c9091891b0b28ff12a85f7f95e52221b40715c19b4b15649001"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCKv/89UGENLd+NIBGARiJDdhN2ExY2NmLTdkZjktNDA1Ni05NjQyLWQ1ZmZmZDg4ZTZlZKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEAIiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAir//PVBhDN55XTAZoB/AESO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uGj0KO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "1c68a3528725e45ca3c2800a922f12e022c8b5ce382962ded3122690eb8d32c6"
+        },
+        "step_format": 0
+      }
+    ]
+  },
+  "root_after_failed_rewind": {
+    "trajectory_meta": [
+      {
+        "trajectory_id": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+        "cascade_id": "50000000-0000-4000-8000-000000000001",
+        "trajectory_type": 4,
+        "source": 1
+      }
+    ],
+    "trajectory_metadata_blob": [
+      {
+        "id": "main",
+        "data": {
+          "base64": "EgwI5/7z1QYQ7dPfqwEaJGRkNGExYTA1LTNkZGEtNGIyMC05ZWIwLTI0Y2VmOWUyYzE2ODIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx",
+          "sha256": "9fed4899c30e03e546cd19eb780312a745b3041b15abeaa2dca4bd85e23a6377"
+        }
+      }
+    ],
+    "parent_references": [],
+    "step_headers": [
+      {
+        "idx": 0,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 1,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 2,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 3,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 4,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 5,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 6,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 7,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 8,
+        "step_type": 15,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 9,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 10,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 11,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 12,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 13,
+        "step_type": 15,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 14,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 15,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 16,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 17,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 18,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 19,
+        "step_type": 15,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 20,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 21,
+        "step_type": 14,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 22,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      },
+      {
+        "idx": 23,
+        "step_type": 17,
+        "status": 3,
+        "step_format": 0
+      }
+    ],
+    "dialogue_steps": [
+      {
+        "idx": 0,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIif/z1QYQ9+37uwIYBGIkNGY5MzI5ZTQtYWU2Yy00YTM5LWFkN2MtYjI5NmY2ZmMxMzBlogFMCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAiJ//PVBhCSuqm8Ag==",
+          "sha256": "c6add8fb534da9252b26a4b2b927c9c4cd2cee25d3fe42bdcbf8cf3f249aff5e"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqaAQoMCIn/89UGEPft+7sCGARiJDRmOTMyOWU0LWFlNmMtNGEzOS1hZDdjLWIyOTZmNmZjMTMwZaIBTAokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSARIKEAgDEgwIif/z1QYQkrqpvAKaAb0BEjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLho9CjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLiIAYj0KO2owygECWAHSAigSJhIkbWNwKGNocm9tZV9kZXZ0b29scy9ldmFsdWF0ZV9zY3JpcHQpygMGKgQKABgB",
+          "sha256": "8a52b1cd15b2826287145c4717ac8fcecc078b09440b8ef310fdbaaaf601b582"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 2,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIq//z1QYQ0t340gEYBGIkN2E3YTFjY2YtN2RmOS00MDU2LTk2NDItZDVmZmZkODhlNmVkogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQAiIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCKv/89UGEM3nldMB",
+          "sha256": "5aae5267d7202c9091891b0b28ff12a85f7f95e52221b40715c19b4b15649001"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCKv/89UGENLd+NIBGARiJDdhN2ExY2NmLTdkZjktNDA1Ni05NjQyLWQ1ZmZmZDg4ZTZlZKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEAIiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAir//PVBhDN55XTAZoB/AESO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uGj0KO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "1c68a3528725e45ca3c2800a922f12e022c8b5ce382962ded3122690eb8d32c6"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 5,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIqIH01QYQ0JjazQEYBGIkMGUwYjdhYzEtYjQyNy00YzQyLWI5NDgtZmVjMzM4ZTcyOTdhogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQBSIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCKiB9NUGEJjo9M0B",
+          "sha256": "6bf4342ff23609e084fd03f6be8fda9477314921e0aa157b0e190ae5bcbe4c44"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCKiB9NUGENCY2s0BGARiJDBlMGI3YWMxLWI0MjctNGM0Mi1iOTQ4LWZlYzMzOGU3Mjk3YaIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEAUiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAiogfTVBhCY6PTNAZoB/AESO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uGj0KO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "0b2db152c4f619cb502364e1d4606f5a082bdd8370a49ba26e534014beff7b7b"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 8,
+        "step_type": 15,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "GAJiJGY3NmYzZTExLWFlNmEtNDczZS04MTY2LWRkM2E5YzQ2MzU4MKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEAgiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAiqgfTVBhCokMffAQ==",
+          "sha256": "3f32d44462b5bb71d3cf2a8ad064e935754f25bb66306146afc0ae105d1da5fd"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA8gAyqOARgCYiRmNzZmM2UxMS1hZTZhLTQ3M2UtODE2Ni1kZDNhOWM0NjM1ODCiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRAIIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSARIKEAgDEgwIqoH01QYQqJDH3wGiAYgBCktVc2UgY0Jpb1BvcnRhbCBzdHVkeSBhbmQgc2FtcGxlIGZpbHRlcnMgYmVmb3JlIHNlbGVjdGluZyBtdXRhdGlvbiBwcm9maWxlcy4aOVN5bnRoZXRpYyByZWFzb25pbmcgc2hvdWxkIHJlbWFpbiBvdXRzaWRlIGxleGljYWwgc2VhcmNoLg==",
+          "sha256": "e966593394921f19e4e5d40117fd9f4ca9c37e5ddfe3b24f76842795b56be6ea"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 10,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgsI4YH01QYQjOuDMRgEYiQ3NTVhYTFkNy1kODhmLTQzOGEtODg0Yy05MzZlNzdlYTY0MDiiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRAKIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSAREKDwgDEgsI4YH01QYQ+eWfMQ==",
+          "sha256": "aecede09afb7667c1f817da6648447b7f4e4a64b0012b8e68250cdf630606ab9"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqaAQoLCOGB9NUGEIzrgzEYBGIkNzU1YWExZDctZDg4Zi00MzhhLTg4NGMtOTM2ZTc3ZWE2NDA4ogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQCiIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gERCg8IAxILCOGB9NUGEPnlnzGaAfwBEjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLho9CjtFeHBsYWluIGNCaW9Qb3J0YWwgbXV0YXRpb24gZmlsdGVyaW5nIGFuZCBzYW1wbGUgc2VsZWN0aW9uLiIAYj0KO2owygECWAHSAigSJhIkbWNwKGNocm9tZV9kZXZ0b29scy9ldmFsdWF0ZV9zY3JpcHQpygMGKgQKABgBaj0KO2owygECWAHSAigSJhIkbWNwKGNocm9tZV9kZXZ0b29scy9ldmFsdWF0ZV9zY3JpcHQpygMGKgQKABgB",
+          "sha256": "773042c5c1e3588edd8799cd46e564e4678d5608e3c1b38dce864166e79c52c6"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 13,
+        "step_type": 15,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "GAJiJDViOGJiYzM3LWU1MjItNDRhNi04YmE0LTMwYWFlOGYwMjRjY6IBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEA0iJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEQoPCAMSCwjjgfTVBhD9mf5A",
+          "sha256": "83e630c1ff85714740e1f93c5e126a8568468258f79d0380441709eedec46340"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA8gAyqNARgCYiQ1YjhiYmMzNy1lNTIyLTQ0YTYtOGJhNC0zMGFhZThmMDI0Y2OiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRANIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSAREKDwgDEgsI44H01QYQ/Zn+QKIBiAEKS1VzZSBjQmlvUG9ydGFsIHN0dWR5IGFuZCBzYW1wbGUgZmlsdGVycyBiZWZvcmUgc2VsZWN0aW5nIG11dGF0aW9uIHByb2ZpbGVzLho5U3ludGhldGljIHJlYXNvbmluZyBzaG91bGQgcmVtYWluIG91dHNpZGUgbGV4aWNhbCBzZWFyY2gu",
+          "sha256": "23ba8a6c0176e54eb42f3de9fed29445a7c002f53a185d2dd22ec17999a88cea"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 16,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIuoL01QYQ7+Ki0AEYBGIkM2ZhZmM0ZTUtYzkxOC00ZjRjLWFiY2UtYjgyNjIyNDUwMWFhogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQECIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCLqC9NUGEKm3zdAB",
+          "sha256": "581609de18403bd8f336cf1e004067fbe296fa7c926a90c7835e157a212a084f"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCLqC9NUGEO/iotABGARiJDNmYWZjNGU1LWM5MTgtNGY0Yy1hYmNlLWI4MjYyMjQ1MDFhYaIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEBAiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAi6gvTVBhCpt83QAZoB/AESO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uGj0KO0V4cGxhaW4gY0Jpb1BvcnRhbCBtdXRhdGlvbiBmaWx0ZXJpbmcgYW5kIHNhbXBsZSBzZWxlY3Rpb24uIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "574be4f37eaa9bbda05ff7fb3bd3a92690e53408be23a0037774ed4717ce512b"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 19,
+        "step_type": 15,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "GAJiJDY5OTEwNjg5LWFkYjEtNGNhOC05ZjBhLTA2YWM3NjVlODJmNKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEBMiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAi8gvTVBhCF1ITdAQ==",
+          "sha256": "ff30b56476b0bebdfec370264cb2f31f61f44ec3e2a80eaff3860aad8e25dde1"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA8gAyqOARgCYiQ2OTkxMDY4OS1hZGIxLTRjYTgtOWYwYS0wNmFjNzY1ZTgyZjSiAU4KJDczMjBhMGFhLTZkODMtNGFjNS05NWFhLTkyNTk2MThlYzY3MRATIiQ1MDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDHSARIKEAgDEgwIvIL01QYQhdSE3QGiAYgBCktVc2UgY0Jpb1BvcnRhbCBzdHVkeSBhbmQgc2FtcGxlIGZpbHRlcnMgYmVmb3JlIHNlbGVjdGluZyBtdXRhdGlvbiBwcm9maWxlcy4aOVN5bnRoZXRpYyByZWFzb25pbmcgc2hvdWxkIHJlbWFpbiBvdXRzaWRlIGxleGljYWwgc2VhcmNoLg==",
+          "sha256": "6f6c99cae47b08ae961864cd3b39469eadb149546f99b86b2f93b51f246fdefd"
+        },
+        "step_format": 0
+      },
+      {
+        "idx": 21,
+        "step_type": 14,
+        "status": 3,
+        "has_subtrajectory": 0,
+        "metadata": {
+          "base64": "CgwIvYL01QYQrsix5wEYBGIkYWQxZmNmMDAtNmIyZC00NmJiLWExZTktYmRlNzc4MDFmZjM4ogFOCiQ3MzIwYTBhYS02ZDgzLTRhYzUtOTVhYS05MjU5NjE4ZWM2NzEQFSIkNTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx0gESChAIAxIMCL2C9NUGEMOX0ecB",
+          "sha256": "92f1846130847ffca0f809c18656e773acf286fc9f6e486e9261bbb46c2d11ef"
+        },
+        "error_details": null,
+        "permissions": null,
+        "task_details": null,
+        "render_info": null,
+        "step_payload": {
+          "base64": "CA4gAyqcAQoMCL2C9NUGEK7IsecBGARiJGFkMWZjZjAwLTZiMmQtNDZiYi1hMWU5LWJkZTc3ODAxZmYzOKIBTgokNzMyMGEwYWEtNmQ4My00YWM1LTk1YWEtOTI1OTYxOGVjNjcxEBUiJDUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMdIBEgoQCAMSDAi9gvTVBhDDl9HnAZoBoAISOkV4cGxhaW4gY0Jpb1BvcnRhbCBAW0F0dGFjaGVkIGNvbnRleHRdIG11dGF0aW9uIGZpbHRlcmluZy4aFQoTRXhwbGFpbiBjQmlvUG9ydGFsIBozEjFaLwobc3ludGhldGljX3Njb3BlX29ubHlfbWFya2VyGhBBdHRhY2hlZCBjb250ZXh0GhYKFCBtdXRhdGlvbiBmaWx0ZXJpbmcuIgBiPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAFqPQo7ajDKAQJYAdICKBImEiRtY3AoY2hyb21lX2RldnRvb2xzL2V2YWx1YXRlX3NjcmlwdCnKAwYqBAoAGAE=",
+          "sha256": "406bf319dfb75781c35416e8b238f8175d6e5c9b5d88089b3e2c0d39369bd1b2"
+        },
+        "step_format": 0
+      }
+    ]
+  },
+  "native_dialogue_response": [
+    {
+      "type": "CORTEX_STEP_TYPE_USER_INPUT",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "createdAt": "2026-09-30T12:24:41.662632183Z",
+        "source": "CORTEX_STEP_SOURCE_USER_EXPLICIT",
+        "executionId": "4f9329e4-ae6c-4a39-ad7c-b296f6fc130e",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:24:41.663379218Z"
+            }
+          ]
+        }
+      },
+      "userInput": {
+        "items": [
+          {
+            "text": "Explain cBioPortal mutation filtering and sample selection."
+          }
+        ],
+        "userResponse": "Explain cBioPortal mutation filtering and sample selection.",
+        "activeUserState": {},
+        "userConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_USER_INPUT",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "createdAt": "2026-09-30T12:25:15.442379986Z",
+        "source": "CORTEX_STEP_SOURCE_USER_EXPLICIT",
+        "executionId": "7a7a1ccf-7df9-4056-9642-d5fffd88e6ed",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 2,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:25:15.442856397Z"
+            }
+          ]
+        }
+      },
+      "userInput": {
+        "items": [
+          {
+            "text": "Explain cBioPortal mutation filtering and sample selection."
+          }
+        ],
+        "userResponse": "Explain cBioPortal mutation filtering and sample selection.",
+        "activeUserState": {},
+        "userConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "lastUserConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_USER_INPUT",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "createdAt": "2026-09-30T12:29:28.431393872Z",
+        "source": "CORTEX_STEP_SOURCE_USER_EXPLICIT",
+        "executionId": "0e0b7ac1-b427-4c42-b948-fec338e7297a",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 5,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:29:28.431830040Z"
+            }
+          ]
+        }
+      },
+      "userInput": {
+        "items": [
+          {
+            "text": "Explain cBioPortal mutation filtering and sample selection."
+          }
+        ],
+        "userResponse": "Explain cBioPortal mutation filtering and sample selection.",
+        "activeUserState": {},
+        "userConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "lastUserConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "source": "CORTEX_STEP_SOURCE_MODEL",
+        "executionId": "f76f3e11-ae6a-473e-8166-dd3a9c463580",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 8,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:29:30.468830248Z"
+            }
+          ]
+        }
+      },
+      "plannerResponse": {
+        "response": "Use cBioPortal study and sample filters before selecting mutation profiles.",
+        "thinking": "Synthetic reasoning should remain outside lexical search."
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_USER_INPUT",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "createdAt": "2026-09-30T12:30:25.102823308Z",
+        "source": "CORTEX_STEP_SOURCE_USER_EXPLICIT",
+        "executionId": "755aa1d7-d88f-438a-884c-936e77ea6408",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 10,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:30:25.103281401Z"
+            }
+          ]
+        }
+      },
+      "userInput": {
+        "items": [
+          {
+            "text": "Explain cBioPortal mutation filtering and sample selection."
+          }
+        ],
+        "userResponse": "Explain cBioPortal mutation filtering and sample selection.",
+        "activeUserState": {},
+        "userConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "lastUserConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "source": "CORTEX_STEP_SOURCE_MODEL",
+        "executionId": "5b8bbc37-e522-44a6-8ba4-30aae8f024cc",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 13,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:30:27.136285437Z"
+            }
+          ]
+        }
+      },
+      "plannerResponse": {
+        "response": "Use cBioPortal study and sample filters before selecting mutation profiles.",
+        "thinking": "Synthetic reasoning should remain outside lexical search."
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_USER_INPUT",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "createdAt": "2026-09-30T12:31:54.436777327Z",
+        "source": "CORTEX_STEP_SOURCE_USER_EXPLICIT",
+        "executionId": "3fafc4e5-c918-4f4c-abce-b826224501aa",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 16,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:31:54.437476265Z"
+            }
+          ]
+        }
+      },
+      "userInput": {
+        "items": [
+          {
+            "text": "Explain cBioPortal mutation filtering and sample selection."
+          }
+        ],
+        "userResponse": "Explain cBioPortal mutation filtering and sample selection.",
+        "activeUserState": {},
+        "userConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "lastUserConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_PLANNER_RESPONSE",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "source": "CORTEX_STEP_SOURCE_MODEL",
+        "executionId": "69910689-adb1-4ca8-9f0a-06ac765e82f4",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 19,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:31:56.463546885Z"
+            }
+          ]
+        }
+      },
+      "plannerResponse": {
+        "response": "Use cBioPortal study and sample filters before selecting mutation profiles.",
+        "thinking": "Synthetic reasoning should remain outside lexical search."
+      }
+    },
+    {
+      "type": "CORTEX_STEP_TYPE_USER_INPUT",
+      "status": "CORTEX_STEP_STATUS_DONE",
+      "metadata": {
+        "createdAt": "2026-09-30T12:31:57.485254190Z",
+        "source": "CORTEX_STEP_SOURCE_USER_EXPLICIT",
+        "executionId": "ad1fcf00-6b2d-46bb-a1e9-bde77801ff38",
+        "sourceTrajectoryStepInfo": {
+          "trajectoryId": "7320a0aa-6d83-4ac5-95aa-9259618ec671",
+          "stepIndex": 21,
+          "cascadeId": "50000000-0000-4000-8000-000000000001"
+        },
+        "internalMetadata": {
+          "statusTransitions": [
+            {
+              "updatedStatus": "CORTEX_STEP_STATUS_DONE",
+              "timestamp": "2026-09-30T12:31:57.485772227Z"
+            }
+          ]
+        }
+      },
+      "userInput": {
+        "items": [
+          {
+            "text": "Explain cBioPortal "
+          },
+          {
+            "item": {
+              "textBlock": {
+                "content": "synthetic_scope_only_marker",
+                "label": "Attached context"
+              }
+            }
+          },
+          {
+            "text": " mutation filtering."
+          }
+        ],
+        "userResponse": "Explain cBioPortal @[Attached context] mutation filtering.",
+        "activeUserState": {},
+        "userConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "lastUserConfig": {
+          "plannerConfig": {
+            "customizationDiscoveryConfig": {
+              "profiles": {
+                "activeProfile": "",
+                "enablePersonal": true
+              }
+            },
+            "toolConfig": {
+              "antigravityBrowser": {
+                "browserJsExecutionPolicy": "BROWSER_JS_EXECUTION_POLICY_DISABLED"
+              },
+              "permissionConfig": {
+                "effectiveGrants": {
+                  "deny": [
+                    "mcp(chrome_devtools/evaluate_script)"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
