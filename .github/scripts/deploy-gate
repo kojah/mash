@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# This script runs inside the deployment lock, after CI has validated GITHUB_SHA.
+# API failures and malformed revisions fail closed; superseded runs skip safely.
+if [[ "${GITHUB_REF:?}" != refs/heads/main ]] ||
+   [[ "${GITHUB_EVENT_NAME:?}" != push && "$GITHUB_EVENT_NAME" != workflow_dispatch ]]; then
+  echo 'deploy=false' >> "${GITHUB_OUTPUT:?}"
+  echo 'Skipping deployment outside a main push or manual main CI run.'
+  exit 0
+fi
+
+if [[ ! "${GITHUB_SHA:?}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo 'Invalid validated commit SHA.' >&2
+  exit 1
+fi
+main_sha=$(gh api "repos/${GITHUB_REPOSITORY:?}/git/ref/heads/main" --jq '.object.sha')
+if [[ ! "$main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+  echo 'Invalid main commit SHA returned by GitHub.' >&2
+  exit 1
+fi
+if [[ "$main_sha" != "$GITHUB_SHA" ]]; then
+  echo 'deploy=false' >> "${GITHUB_OUTPUT:?}"
+  echo "Skipping superseded commit $GITHUB_SHA; main is $main_sha."
+  exit 0
+fi
+echo 'deploy=true' >> "${GITHUB_OUTPUT:?}"

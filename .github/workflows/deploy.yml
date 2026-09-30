@@ -1,19 +1,42 @@
 name: Deploy mash
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
+    secrets:
+      TS_OAUTH_CLIENT_ID:
+        required: true
+      TS_OAUTH_SECRET:
+        required: true
+      DEPLOY_SSH_PRIVATE_KEY:
+        required: true
+      DEPLOY_SSH_KNOWN_HOSTS:
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
+  # Hold the lock from the main-head check through the last atomic install.
+  # A queued older run must recheck main after a newer deployment finishes.
   group: deploy-mash-main
   cancel-in-progress: false
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Check validated commit is still main
+        id: gate
+        run: bash .github/scripts/deploy-gate
+        env:
+          GH_TOKEN: ${{ github.token }}
   deploy:
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
     uses: jamesqo/gha-workflows/.github/workflows/rust-cli-deploy.yml@v3
     with:
       binary: mash

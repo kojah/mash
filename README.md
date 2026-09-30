@@ -984,9 +984,20 @@ Cranelift. On the affected nightly, use `RUSTFLAGS=-Znext-solver=no make coverag
 
 ## Automatic deployment
 
-Every push to `main` builds the Linux x86-64 and Apple Silicon binaries in
-GitHub Actions, then atomically deploys `mash` to `~/.local/bin` on Xenia,
-dev-macbook, and personal-macbook over Tailscale. The macOS binary is
+Every push to `main` first runs CI, including generated-query checks, linting,
+and SQLite, PostgreSQL, and Redis tests. Only a successful run can build and
+deploy the Linux x86-64 and Apple Silicon binaries from that same commit.
+Deployments are serialized; a superseded commit is skipped after acquiring
+the deployment lock. New pushes do not interrupt an active deployment.
+To request a manual deployment, run the **CI** workflow on `main`; it runs
+the same validation and current-commit gate. Pull requests and manual runs
+on other branches never deploy.
+
+Deployment atomically installs `mash` to `~/.local/bin` on Xenia,
+dev-macbook, and personal-macbook over Tailscale. Atomic installation is per
+machine; a network failure can leave the fleet partially updated, and the
+workflow reports failure so the current CI deployment can be retried.
+The macOS binary is
 cross-compiled on the Linux runner with `cargo-zigbuild`; destination machines
 need neither this repository nor a Rust toolchain.
 
