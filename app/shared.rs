@@ -561,7 +561,8 @@ async fn search_prepared(
     // display their projection, which also omits embedded tool results.
     apply_projections(lexical.iter_mut().chain(&mut semantic), &documents);
     let query = query.to_owned();
-    let fused = crate::blocking(move || {
+    let ranking_query = query.clone();
+    let (mut backend, selection) = crate::blocking(move || {
         let mut fused = semantic::fuse(lexical, semantic, unit);
         fused.extend(local_hits);
         fused.sort_by(|a, b| {
@@ -570,21 +571,23 @@ async fn search_prepared(
                 .then_with(|| a.node_id.cmp(&b.node_id))
                 .then_with(|| a.id.cmp(&b.id))
         });
-        Ok(crate::search_results::diversify(fused, unit))
+        let fused = crate::search_results::diversify(fused, unit);
+        let selection =
+            crate::search_ranking::select(&mut backend, &ranking_query, fused, unit, limit)?;
+        Ok((backend, selection))
     })
     .await?;
-    let count = fused.len().min(unit.rerank_limit());
     let (context, context_error) = context_documents(
         config,
         context_database,
         context_generation,
         &query,
-        &fused[..count],
+        &selection.hits[..selection.count],
     )
     .await?;
     documents.extend(context);
     crate::blocking(move || {
-        let fused = rerank_combined(&mut backend, &query, fused, &documents, (limit, unit))?;
+        let fused = rerank_combined(&mut backend, &query, selection, &documents, (limit, unit))?;
         Ok((fused, shared_error.or(context_error)))
     })
     .await
@@ -722,47 +725,21 @@ fn retrieve_local_candidates(
 fn rerank_combined(
     backend: &mut semantic::Backend,
     query: &str,
-    mut fused: Vec<SearchHit>,
+    selection: crate::search_ranking::Selection,
     documents: &HashMap<(String, String), String>,
     options: (usize, crate::search_results::SearchUnit),
 ) -> Result<Vec<SearchHit>, AppError> {
     let (limit, unit) = options;
-    let count = fused.len().min(unit.rerank_limit());
-    let documents = fused[..count]
+    let selected = selection.hits[..selection.count]
         .iter()
         .map(|hit| {
             documents
                 .get(&(hit.node_id.clone().unwrap_or_default(), hit.id.clone()))
-                .map(String::as_str)
+                .cloned()
                 .ok_or_else(|| AppError::shared("shared candidate has no search projection"))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    if count > 0 {
-        for result in backend.rerank_search(query, &documents)? {
-            if let Some(hit) = fused[..count].get_mut(result.index) {
-                hit.rerank_score = Some(result.score);
-            }
-        }
-        fused[..count].sort_by(|a, b| {
-            b.rerank_score
-                .unwrap_or(f32::NEG_INFINITY)
-                .total_cmp(&a.rerank_score.unwrap_or(f32::NEG_INFINITY))
-                .then_with(|| b.fusion_score.total_cmp(&a.fusion_score))
-                .then_with(|| a.node_id.cmp(&b.node_id))
-                .then_with(|| a.id.cmp(&b.id))
-        });
-    }
-    if matches!(unit, crate::search_results::SearchUnit::Messages) {
-        fused.truncate(limit.min(1000));
-    } else {
-        fused[count..].sort_by(|a, b| {
-            b.fusion_score
-                .total_cmp(&a.fusion_score)
-                .then_with(|| a.node_id.cmp(&b.node_id))
-                .then_with(|| a.id.cmp(&b.id))
-        });
-    }
-    Ok(fused)
+    crate::search_ranking::score(backend, query, selection, &selected, unit, limit)
 }
 
 #[cfg(test)]

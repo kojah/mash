@@ -8,6 +8,7 @@ mod provider;
 mod role;
 mod search_filter;
 mod search_query;
+mod search_ranking;
 mod search_results;
 mod search_text;
 mod semantic;

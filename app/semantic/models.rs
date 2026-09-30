@@ -412,12 +412,38 @@ impl Backend {
         query: S,
         documents: &[S],
     ) -> Result<Vec<fastembed::RerankResult>, AppError> {
-        self.reranker
-            // A long injected or legitimate message otherwise pads every short
-            // message in the batch to 512 tokens. Preserve all candidates and
-            // original indexes while bounding padding to one document.
-            .rerank(query, documents, false, Some(1))
-            .map_err(|error| AppError::model(format!("reranking inference failed: {error}")))
+        let mut order = (0..documents.len()).collect::<Vec<_>>();
+        let bucket = |index: usize| documents[index].as_ref().len().next_power_of_two();
+        order.sort_by_key(|&index| bucket(index));
+        let mut scores = Vec::with_capacity(documents.len());
+        // Small batches of similarly sized documents amortize inference calls
+        // without making a long history message pad every short candidate.
+        for group in order.chunk_by(|&a, &b| bucket(a) == bucket(b)) {
+            for indices in group.chunks(4) {
+                let refs = indices
+                    .iter()
+                    .map(|&index| documents[index].as_ref())
+                    .collect::<Vec<_>>();
+                let results = self
+                    .reranker
+                    .rerank(query.as_ref(), &refs, false, Some(4))
+                    .map_err(|error| {
+                        AppError::model(format!("reranking inference failed: {error}"))
+                    })?;
+                for mut result in results {
+                    result.index = *indices.get(result.index).ok_or_else(|| {
+                        AppError::model("reranker returned an invalid document index")
+                    })?;
+                    scores.push(result);
+                }
+            }
+        }
+        scores.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| a.index.cmp(&b.index))
+        });
+        Ok(scores)
     }
 
     /// Focus long candidates on query evidence before the tokenizer truncates

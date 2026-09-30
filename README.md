@@ -445,9 +445,11 @@ See [the search quality audit](docs/search-audit-2026-09-30.md) for measured fai
 and remaining relevance limitations.
 
 Thread retrieval considers up to 200 lexical and 200 semantic candidates per
-index. Before reranking, it keeps at most three distinct messages per conversation
-and considers one from each conversation before second and third matches.
-At most 30 messages are reranked. Threads are grouped before applying `limit`;
+index. It keeps up to six distinct candidate messages per conversation. A first
+reranking pass evaluates up to 20 grouped thread documents, then individual
+evidence is reranked for five to ten promising threads (at most 60 messages).
+Each evidence document includes bounded text from its two nearest searchable
+neighbours. Threads are grouped before applying `limit`;
 their score is reciprocal rank of the best qualifying message plus a bounded
 bonus for up to two additional qualifying excerpts. The bonus is smaller than
 the gap to the next message rank, so weaker matches cannot push a thread above
@@ -457,7 +459,7 @@ the reranking budget. Other semantic-only
 matches qualify only after being evaluated by the reranker; unreranked neighbours
 do not fill out thread results. Raw model logits are not calibrated probabilities,
 so a negative score alone does not disqualify a semantic paraphrase. A query may
-return fewer threads than requested. Message mode retains its exploratory candidate results.
+return fewer threads than requested. Message mode applies the same evidence gate.
 Recency does not change ranking; use date filters to restrict history.
 Copies with the same provider and conversation ID are grouped across nodes;
 identical role and whitespace-normalized message content earns no additional credit.
@@ -471,11 +473,12 @@ reranking budgets. `limit` counts the selected unit, and filters apply equally
 to both modes before retrieval. Thread excerpts are bounded to 800 characters
 plus ellipses, with a window around a query term when present. Results describe
 the bounded candidate pool, not an exhaustive count of matches in each chat.
-Existing Redis snapshots lack newly stored conversation metadata until republished;
-their thread IDs and matching message references remain usable.
+On server startup, older Redis snapshots receive a resumable metadata repair from
+their canonical records without changing their revision or last-updated timestamp.
+Unknown upstream metadata remains null.
 
-Reranking evaluates documents individually so a long message does not pad every
-short candidate to the tokenizer's maximum length. Candidate budgets stay unchanged.
+Reranking uses batches of up to four documents grouped by length, reducing
+inference overhead and padding between short and long candidates.
 For messages longer than 2,400 characters, reranking uses a bounded window around
 the first query term (or the start for semantic-only matches), keeping late lexical
 evidence visible instead of always truncating the message's opening. `view` still

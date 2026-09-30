@@ -178,6 +178,9 @@ fn reranking_windows_reveal_late_evidence_without_changing_short_messages() {
     let window = rerank_document(&long, "cbioportal importer");
     assert!(window.contains("cBioPortal importer"));
     assert!(window.chars().count() <= 2402);
+    let short_window = evidence_window(&long, "cbioportal importer", 160);
+    assert!(short_window.contains("cBioPortal importer"));
+    assert!(short_window.chars().count() <= 162);
     assert!(window.starts_with('…'));
     assert!(rerank_document(&long, "semantic paraphrase").starts_with("unrelated introduction"));
     let natural_query = format!(
@@ -187,6 +190,47 @@ fn reranking_windows_reveal_late_evidence_without_changing_short_messages() {
     assert!(
         rerank_document(&natural_query, "what about the cBioPortal importer?")
             .contains("cBioPortal importer")
+    );
+}
+
+#[test]
+fn contextual_evidence_uses_nearest_searchable_messages_with_a_fixed_budget() {
+    let anchor = hit("thread", "anchor");
+    let message = |id: &str, role, content: String| crate::storage::Message {
+        id: id.into(),
+        ordinal: 0,
+        role,
+        content,
+        created_at: None,
+    };
+    let messages = vec![
+        message(
+            "distant",
+            crate::role::Role::User,
+            "distant unrelated text".into(),
+        ),
+        message(
+            "before",
+            crate::role::Role::User,
+            "cache earlier ".repeat(100),
+        ),
+        message("tool", crate::role::Role::Tool, "tool noise".into()),
+        message("anchor", crate::role::Role::User, anchor.content.clone()),
+        message(
+            "after",
+            crate::role::Role::Assistant,
+            "cache later ".repeat(100),
+        ),
+    ];
+    let document = contextual_document(&anchor, "cache", &messages);
+    assert!(document.contains("cache earlier"));
+    assert!(document.contains("cache later"));
+    assert!(!document.contains("distant unrelated"));
+    assert!(!document.contains("tool noise"));
+    assert!(document.chars().count() < 800);
+    assert_eq!(
+        contextual_document(&anchor, "cache", &[]),
+        "Matched message: anchor"
     );
 }
 
@@ -266,7 +310,15 @@ fn candidate_diversity_prevents_one_chat_from_occupying_the_rerank_budget() {
     let hits = diversify(hits, SearchUnit::Threads);
     assert_eq!(
         hits.iter().map(|h| h.id.as_str()).collect::<Vec<_>>(),
-        ["message-0", "short-match", "message-1", "message-2"]
+        [
+            "message-0",
+            "short-match",
+            "message-1",
+            "message-2",
+            "message-3",
+            "message-4",
+            "message-5"
+        ]
     );
 }
 

@@ -43,9 +43,9 @@ pub(crate) fn hybrid_search_filtered(
     for (hit, (_, score)) in semantic_hits.iter_mut().zip(&ranked) {
         hit.semantic_score = Some(*score);
     }
-    let mut fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit), unit);
-    let rerank_count = fused.len().min(unit.rerank_limit());
-    let documents = fused[..rerank_count]
+    let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit), unit);
+    let selection = crate::search_ranking::select(backend, query, fused, unit, limit)?;
+    let documents = selection.hits[..selection.count]
         .iter()
         .map(|hit| {
             let context = storage.view_content(
@@ -58,31 +58,7 @@ pub(crate) fn hybrid_search_filtered(
             ))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
-    let document_refs = documents.iter().map(String::as_str).collect::<Vec<_>>();
-    let reranked = backend.rerank_search(query, &document_refs)?;
-    for result in reranked {
-        if let Some(hit) = fused.get_mut(result.index) {
-            hit.rerank_score = Some(result.score);
-        }
-    }
-    fused[..rerank_count].sort_by(|left, right| {
-        right
-            .rerank_score
-            .unwrap_or(f32::NEG_INFINITY)
-            .total_cmp(&left.rerank_score.unwrap_or(f32::NEG_INFINITY))
-            .then_with(|| right.fusion_score.total_cmp(&left.fusion_score))
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    if matches!(unit, crate::search_results::SearchUnit::Messages) {
-        fused.truncate(limit);
-    } else {
-        fused[rerank_count..].sort_by(|a, b| {
-            b.fusion_score
-                .total_cmp(&a.fusion_score)
-                .then_with(|| a.id.cmp(&b.id))
-        });
-    }
-    Ok(fused)
+    crate::search_ranking::score(backend, query, selection, &documents, unit, limit)
 }
 
 /// Model-space identity shared by the CPU ONNX and Apple Core ML executions.

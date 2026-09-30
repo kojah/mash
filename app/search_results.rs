@@ -154,11 +154,11 @@ pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit
         return hits;
     }
     let mut counts = HashMap::new();
-    let mut rounds: [Vec<SearchHit>; 3] = Default::default();
+    let mut rounds: [Vec<SearchHit>; 6] = Default::default();
     for hit in hits {
         let key = (hit.provider, hit.conversation_id.clone());
         let count = counts.entry(key).or_insert(0);
-        if *count < 3 {
+        if *count < rounds.len() {
             rounds[*count].push(hit);
             *count += 1;
         }
@@ -296,26 +296,35 @@ pub(crate) fn contextual_document(
 ) -> String {
     let mut document = format!(
         "Matched message: {}",
-        evidence_window(&hit.content, query, 700)
+        evidence_window(&hit.content, query, 350)
     );
-    for message in messages
+    let Some(anchor) = messages.iter().position(|message| message.id == hit.id) else {
+        return document;
+    };
+    let mut neighbours = messages
         .iter()
-        .filter(|message| message.id != hit.id)
-        .take(4)
-    {
-        let text = crate::search_text::project(&message.role, &message.content);
-        if text.trim().is_empty() {
-            continue;
-        }
+        .enumerate()
+        .filter(|(_, message)| message.id != hit.id)
+        .map(|(index, message)| {
+            (
+                index.abs_diff(anchor),
+                message,
+                crate::search_text::project(&message.role, &message.content),
+            )
+        })
+        .filter(|(_, _, text)| !text.trim().is_empty())
+        .collect::<Vec<_>>();
+    neighbours.sort_by_key(|(distance, _, _)| *distance);
+    for (_, message, text) in neighbours.into_iter().take(2) {
         document.push_str("\nNearby ");
         document.push_str(message.role.as_str());
         document.push_str(" message: ");
-        document.push_str(&evidence_window(&text, query, 400));
+        document.push_str(&evidence_window(&text, query, 160));
     }
     document
 }
 
-fn evidence_window(content: &str, query: &str, length: usize) -> String {
+pub(crate) fn evidence_window(content: &str, query: &str, length: usize) -> String {
     let offset = query
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.len() >= 3 && word.is_ascii())
@@ -329,7 +338,11 @@ fn evidence_window(content: &str, query: &str, length: usize) -> String {
         .min()
         .unwrap_or(0);
     // An ASCII match begins at a UTF-8 boundary even in multilingual content.
-    let start = content[..offset].chars().count().saturating_sub(160);
+    let leading_context = (length / 3).min(160);
+    let start = content[..offset]
+        .chars()
+        .count()
+        .saturating_sub(leading_context);
     let mut characters = content.chars().skip(start);
     let mut snippet = String::new();
     if start > 0 {

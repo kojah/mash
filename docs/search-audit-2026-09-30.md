@@ -31,6 +31,7 @@ measured precision/recall score. Private history captures remain outside Git.
 | `purple platypus quantum waffle` | Five irrelevant threads | Joint cosine/reranker evidence gate in both result modes |
 | `qzxv981723zznohistory` | Five irrelevant threads | Require literal mixed alphanumeric identifiers |
 | Model-warmth paraphrase | Unrelated agent-framework discussion ranked above caching | Bounded nearby-message context for reranking |
+| Refreshed-corpus caching query | Relevant message was fourth within its thread and fell outside the old three-anchor budget | Select promising threads before ranking up to six distinct evidence anchors |
 | `search without SSH` | Parallel-search question selected as evidence | Contextual reranking selects the SSH-removal request |
 | Automatic review/compaction transcripts | Injected history appeared as user evidence | Exclude dedicated injected-message prefixes and browser context |
 | Japanese query | Unrelated English greetings | Reject unsupported scripts before inference |
@@ -50,9 +51,12 @@ changes (Beads `mash-jh7`).
 
 ## Boundaries and refresh
 
-Reranking reads at most four nearby messages for each of 30 thread candidates
-(or 10 message candidates), with fixed character budgets. Shared context calls
-have bounded concurrency. Canonical `view` output is unchanged; the internal
+Thread selection first ranks at most 20 grouped documents, retaining up to six
+candidate messages per thread. Individual evidence is then reranked for five to
+ten promising threads (up to 60 messages); message mode evaluates ten candidates.
+Each evidence document includes at most two nearest searchable messages with fixed character
+budgets. Shared context calls have bounded concurrency. Canonical `view` output
+is unchanged; the internal
 HTTP view request can select searchable projections. Context errors preserve
 local fallback and surface through shared-search status.
 
@@ -74,7 +78,7 @@ Missing upstream metadata remains missing rather than being guessed.
 
 ## Regression validation
 
-178 tests passed with real local models and disposable Redis Search and
+180 tests passed with real local models and disposable Redis Search and
 PostgreSQL/pgvector services; two performance benchmarks were intentionally
 excluded. Tests cover literal FTS queries, reference precision/recall, abstention,
 unsupported scripts, projection exclusions, migration readiness, projected
@@ -86,7 +90,20 @@ The final refreshed-corpus matrix ran all 44 requests against schema 17 and an
 updated temporary HTTP server on the existing shared Redis data. Each mode had
 19 successful searches and three intended typed errors (unsupported script,
 punctuation, and stopwords). Both no-match cases returned zero; both PR 180
-threads were retained. No shared transport/context errors occurred.
+threads were retained. No shared transport/context errors occurred. The matrix
+was repeated after length-bucket batching and shorter context changes; caching
+and SSH-removal evidence remained first in both modes. A short-window regression
+also verifies that late query terms remain inside 160-character inputs.
+
+A separate warm-worker sample used seven distinct queries twice per mode,
+excluding the first request from each mode. Its 13 warm requests had median
+latencies of 479 ms local-only and 696 ms local-plus-shared, with maxima of
+677 ms and 864 ms respectively. Local startup was 2,180 ms; the first combined
+request was 535 ms with the worker already warm. These are Xenia measurements
+using a loopback shared HTTP service, not cross-machine network latency.
+Length-bucket batches of four and smaller nearby-message windows reduced the
+earlier roughly one-second warm inference cost while retaining the audited
+evidence. No query-result cache is needed for this improvement.
 
 The private explicit refresh took 501 seconds: ingestion 2.3 seconds, derived
 search refresh 4.2 seconds, and changed-record embedding 493 seconds. It retained
