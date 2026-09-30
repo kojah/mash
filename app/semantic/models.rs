@@ -134,6 +134,7 @@ impl Models {
         self.read_valid_marker().map(|_| ())
     }
 
+    #[tracing::instrument(name = "load_search_models", skip_all)]
     pub(crate) fn load(&self) -> Result<Option<LoadedBackend>, AppError> {
         if !self.root.join(MARKER_NAME).is_file() {
             return Ok(None);
@@ -186,6 +187,7 @@ impl Models {
         }
     }
 
+    #[tracing::instrument(name = "load_embedding_models", skip_all)]
     pub(crate) fn load_indexer(&self) -> Result<Option<EmbeddingPool>, AppError> {
         if let Some(config) = &self.remote {
             return Ok(Some(EmbeddingPool {
@@ -245,6 +247,7 @@ impl Backend {
         })
     }
 
+    #[tracing::instrument(name = "embed", skip_all)]
     pub(crate) fn embed<S: AsRef<str> + Send + Sync>(
         &mut self,
         texts: &[S],
@@ -265,6 +268,7 @@ impl Backend {
             .map_err(|error| AppError::model(format!("embedding inference failed: {error}")))
     }
 
+    #[tracing::instrument(name = "rerank_inference", skip_all)]
     pub(crate) fn rerank<S: AsRef<str> + Send + Sync>(
         &mut self,
         query: S,

@@ -157,6 +157,22 @@ thread, so it cannot replace the parent's history. An explicit `mash index`
 upgrades older indexes and reprocesses source checkpoints to repair this identity
 collision; search never performs the upgrade or indexing itself.
 
+For pipeline diagnostics, set `MASH_TRACE=1`. mash writes JSON trace events to
+stderr, including process/request IDs, request elapsed milliseconds, nested stage spans, span busy/idle timing,
+safe error kinds, and HTTP status codes. CLI JSON and MCP messages remain on
+stdout. Only mash's own trace targets are enabled; dependency logs are excluded.
+Trace fields omit query/history text, paths, filters, credentials, and vectors.
+Existing indexing progress events can also appear on stderr.
+
+For example, `MASH_TRACE=1 mash search cbioportal --local --no-worker 2>trace.jsonl`
+exposes model loading, embedding, lexical retrieval, vector loading/scoring and
+reranking. Use `MASH_TRACE=1 mash mcp` for repeated requests or
+`MASH_TRACE=1 mash serve --server-config server.toml` on the shared server. The on-demand
+worker suppresses its own stderr, so the CLI's worker trace measures its client
+boundary; use `--no-worker` or MCP to inspect inference stages. Request IDs are
+local to a process, paired with process IDs; distributed propagation across HTTP
+and worker connections remains planned.
+
 Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`
 or an explicit Markdown history file. Directory roots discover only
 `.aider.chat.history.md`; custom `--chat-history-file` paths can be configured

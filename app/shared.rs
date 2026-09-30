@@ -468,6 +468,7 @@ pub(crate) async fn view(
     )
     .await
 }
+#[tracing::instrument(name = "combined_search", skip_all)]
 pub(crate) async fn search(
     config: &SharedConfig,
     local_database: Option<&Path>,
@@ -490,6 +491,7 @@ struct PreparedSearch {
     generation: String,
 }
 
+#[tracing::instrument(name = "prepare_search", skip_all)]
 async fn prepare_search(
     local_database: Option<&Path>,
     models_dir: &Path,
@@ -524,6 +526,7 @@ async fn prepare_search(
     .await
 }
 
+#[tracing::instrument(name = "retrieve_and_rank", skip_all)]
 async fn search_prepared(
     config: &SharedConfig,
     local_database: Option<&Path>,
@@ -758,6 +761,7 @@ async fn context_documents(
     Ok((documents, error))
 }
 
+#[tracing::instrument(name = "local_candidates", skip_all)]
 fn retrieve_local_candidates(
     database: Option<&Path>,
     generation: &str,
@@ -780,6 +784,7 @@ fn retrieve_local_candidates(
     )
 }
 
+#[tracing::instrument(name = "rerank", skip_all)]
 fn rerank_combined(
     backend: &mut semantic::Backend,
     query: &str,

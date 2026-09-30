@@ -32,6 +32,7 @@ pub(super) fn resolve(
     filters.resolve(node)
 }
 
+#[tracing::instrument(name = "search", skip_all)]
 pub(super) async fn run(
     configuration: &ResolvedConfig,
     database: &Path,
@@ -93,6 +94,7 @@ pub(super) async fn run(
     }
 }
 
+#[tracing::instrument(name = "local_search", skip_all)]
 fn local_search(
     database_path: &Path,
     models_dir: &Path,

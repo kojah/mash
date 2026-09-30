@@ -15,6 +15,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+#[tracing::instrument(name = "index", skip_all)]
 pub(super) async fn run(
     configuration: &ResolvedConfig,
     database: &Path,
@@ -67,6 +68,7 @@ pub(super) async fn run(
     Ok(result)
 }
 
+#[tracing::instrument(name = "local_index", skip_all)]
 fn index(
     database_path: &Path,
     models_dir: &Path,

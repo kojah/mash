@@ -308,7 +308,11 @@ fn index_provider_pipeline(
             let sender = sender.clone();
             let pending = &pending;
             let next_source = &next_source;
+            let parent_trace = tracing::Span::current();
+            let dispatcher = tracing::dispatcher::get_default(Clone::clone);
             scope.spawn(move || {
+                let _dispatcher = tracing::dispatcher::set_default(&dispatcher);
+                let _parent = parent_trace.enter();
                 loop {
                     let index = next_source.fetch_add(1, Ordering::Relaxed);
                     let Some(source) = pending.get(index) else {
@@ -501,6 +505,7 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
     ))
 }
 
+#[tracing::instrument(name = "parse_source", skip_all)]
 fn parse_source_with_retries(
     source: &HistorySource,
     stamp: &mut SourceStamp,
@@ -537,6 +542,7 @@ fn parse_stable_source(
     parsed
 }
 
+#[tracing::instrument(name = "apply_source", skip_all, fields(provider = provider.as_str()))]
 fn apply_parsed_source(
     storage: &mut Storage,
     provider: Provider,

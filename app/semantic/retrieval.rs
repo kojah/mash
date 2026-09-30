@@ -12,6 +12,7 @@ pub(super) struct QuantizedVector {
     pub(super) norm: f32,
 }
 
+#[tracing::instrument(name = "hybrid_search", skip_all)]
 pub(crate) fn hybrid_search_filtered(
     generation: &str,
     storage: &Storage,
@@ -24,14 +25,17 @@ pub(crate) fn hybrid_search_filtered(
     let (provider, days) = legacy;
     let (limit, unit) = options;
     let candidate_limit = unit.candidate_limit();
-    let lexical = storage.search_filtered(query, candidate_limit, provider, days, filters)?;
+    let lexical = tracing::info_span!("lexical_candidates")
+        .in_scope(|| storage.search_filtered(query, candidate_limit, provider, days, filters))?;
     let query_vector = backend
         .embed(&[query])?
         .pop()
         .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
     let query_vector = quantize_vector(&query_vector);
-    let semantic = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
-    let ranked = rank_quantized(&query_vector, &semantic, candidate_limit);
+    let semantic = tracing::info_span!("load_vectors")
+        .in_scope(|| storage.semantic_chunks_filtered(generation, provider, days, filters))?;
+    let ranked = tracing::info_span!("score_vectors")
+        .in_scope(|| rank_quantized(&query_vector, &semantic, candidate_limit));
     if ranked.is_empty() {
         return Ok(crate::search_results::diversify(lexical, unit));
     }
@@ -97,6 +101,7 @@ pub(crate) fn shared_query_vector(
 
 // Shared query vectors contain bounded, quantized integers; conversion is exact.
 #[allow(clippy::cast_possible_truncation)]
+#[tracing::instrument(name = "vector_candidates", skip_all)]
 pub(crate) fn local_candidates(
     storage: &Storage,
     generation: &str,

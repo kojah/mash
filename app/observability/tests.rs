@@ -1,0 +1,129 @@
+use super::*;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+use tracing::instrument::WithSubscriber;
+
+#[derive(Clone)]
+struct Capture(Arc<Mutex<Vec<u8>>>);
+
+impl Write for Capture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_requests_keep_blocking_spans_and_exclude_dependency_payloads() {
+    let bytes = Arc::new(Mutex::new(Vec::new()));
+    let capture = Capture(bytes.clone());
+    let dispatcher = tracing::Dispatch::new(subscriber(move || capture.clone()));
+    let request = |id| {
+        let dispatcher = dispatcher.clone();
+        async move {
+            use tracing::Instrument;
+            async {
+                crate::blocking(move || {
+                    let _stage = tracing::info_span!("blocking_stage").entered();
+                    tracing::info!(outcome = "success", "blocking completed");
+                    tracing::info!(target: "reqwest", secret = "credential-canary", "excluded dependency");
+                    Ok(())
+                }).await.unwrap();
+            }.instrument(tracing::info_span!("request", request_id = id))
+                .await;
+        }
+        .with_subscriber(dispatcher)
+    };
+    tokio::join!(request(11_u64), request(22_u64));
+    let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+    assert!(!output.contains("credential-canary"));
+    let mut requests = std::collections::BTreeSet::new();
+    for line in output.lines() {
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        if event["fields"]["message"] == "blocking completed" {
+            let spans = event["spans"].as_array().unwrap();
+            requests.insert(spans[0]["request_id"].as_u64().unwrap());
+            assert_eq!(spans[1]["name"], "blocking_stage");
+        }
+    }
+    assert_eq!(requests, [11, 22].into());
+    assert!(output.contains("time.busy"));
+}
+
+#[tokio::test]
+async fn failed_core_request_does_not_record_query_filters_paths_or_error_text() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
+    let bytes = Arc::new(Mutex::new(Vec::new()));
+    let capture = Capture(bytes.clone());
+    let subscriber = subscriber(move || capture.clone());
+    let request = crate::core::Request {
+        paths: crate::core::Paths {
+            config: Some(config),
+            db: Some(directory.path().join("path-canary")),
+            models_dir: None,
+        },
+        operation: crate::core::Operation::Search {
+            query: "query-canary".into(),
+            limit: 5,
+            unit: crate::search_results::SearchUnit::Threads,
+            filters: Box::default(),
+            local: true,
+            shared: true,
+        },
+    };
+    assert!(
+        crate::core::execute(request)
+            .with_subscriber(subscriber)
+            .await
+            .is_err()
+    );
+    let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+    assert!(!output.contains("query-canary"));
+    assert!(!output.contains("path-canary"));
+    assert!(!output.contains("mutually exclusive"));
+    assert!(output.contains("Usage"), "{output}");
+    assert!(output.contains("request_id"));
+}
+
+#[test]
+fn parser_threads_inherit_request_context_without_recording_source_content() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("path-canary.jsonl");
+    std::fs::write(&source, r#"{"type":"user","sessionId":"parent","uuid":"u1","message":{"role":"user","content":"history-canary"}}"#).unwrap();
+    let bytes = Arc::new(Mutex::new(Vec::new()));
+    let capture = Capture(bytes.clone());
+    let dispatcher = tracing::Dispatch::new(subscriber(move || capture.clone()));
+    tracing::dispatcher::with_default(&dispatcher, || {
+        tracing::info_span!("request", request_id = 44_u64).in_scope(|| {
+            let mut storage =
+                crate::storage::Storage::open_writer(&directory.path().join("index.sqlite3"))
+                    .unwrap();
+            let options = crate::ingestion::IndexOptions {
+                providers: [(crate::provider::Provider::ClaudeCode, vec![source])].into(),
+                roots_are_authoritative: true,
+                since_days: None,
+            };
+            crate::ingestion::index(&mut storage, &options).unwrap();
+        });
+    });
+    let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+    assert!(!output.contains("path-canary"));
+    assert!(!output.contains("history-canary"));
+    let mut stages = std::collections::BTreeSet::new();
+    for line in output.lines() {
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        if matches!(
+            event["span"]["name"].as_str(),
+            Some("parse_source" | "apply_source")
+        ) {
+            assert_eq!(event["spans"][0]["request_id"], 44);
+            stages.insert(event["span"]["name"].as_str().unwrap().to_owned());
+        }
+    }
+    assert_eq!(stages.len(), 2);
+}

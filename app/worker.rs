@@ -147,6 +147,7 @@ async fn read_frame(stream: &mut UnixStream, limit: usize) -> std::io::Result<Ve
     Ok(bytes)
 }
 
+#[tracing::instrument(name = "worker_search", skip_all, fields(request_id = crate::observability::request_id(), process_id = std::process::id()))]
 pub(crate) async fn search(
     request: &Request,
     profile: &[u8],

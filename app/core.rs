@@ -2,6 +2,7 @@
 use crate::AppError;
 use crate::config::{self, ResolvedConfig};
 use directories::ProjectDirs;
+use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 
 mod indexing;
@@ -16,11 +17,43 @@ pub(crate) use models::{
 };
 
 pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
+    use tracing::Instrument;
+    let operation = match &request.operation {
+        Operation::Index(_) => "index",
+        Operation::Search { .. } => "search",
+        Operation::View { .. } => "view",
+        Operation::Status { .. } => "status",
+        Operation::Forget { .. } => "forget",
+        Operation::ModelsInstall => "models_install",
+    };
+    async {
+        let started = std::time::Instant::now();
+        let result = execute_inner(request).await;
+        tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
+        match &result {
+            Ok(_) => tracing::info!(outcome = "success", "request completed"),
+            Err(error) => tracing::info!(outcome = "error", error_kind = ?error.error.kind, "request completed"),
+        }
+        result
+    }
+        .instrument(tracing::info_span!(
+            "request",
+            request_id = crate::observability::request_id(),
+            process_id = std::process::id(),
+            operation,
+            elapsed_ms = tracing::field::Empty
+        ))
+        .await
+}
+
+async fn execute_inner(request: Request) -> Result<Response, AppError> {
     let path = request.paths.config;
     let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
     let database = request.paths.db.unwrap_or_else(default_database_path);
     let models = request.paths.models_dir.unwrap_or_else(default_models_path);
-    dispatch(request.operation, &configuration, &database, &models).await
+    dispatch(request.operation, &configuration, &database, &models)
+        .boxed()
+        .await
 }
 
 #[cfg(unix)]

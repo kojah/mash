@@ -166,6 +166,7 @@ pub(crate) fn embedding_generation() -> &'static str {
     })
 }
 
+#[tracing::instrument(name = "rebuild_embeddings", skip_all)]
 pub(crate) fn rebuild_embeddings(
     storage: &mut Storage,
     pool: &mut EmbeddingPool,

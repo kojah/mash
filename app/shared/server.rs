@@ -91,6 +91,12 @@ enum Store {
     Redis(super::redis_index::Store),
 }
 impl Store {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Postgres(_) => "postgres",
+            Self::Redis(_) => "redis",
+        }
+    }
     async fn freshness(&self, id: &Identity) -> Result<super::Freshness, AppError> {
         match self {
             Self::Postgres(pool) => backend::freshness(pool, id).await,
@@ -109,6 +115,7 @@ impl Store {
             Self::Redis(store) => store.state(id).await,
         }
     }
+    #[tracing::instrument(name = "backend_search", skip_all, fields(backend = self.label()))]
     async fn search(
         &self,
         id: &Identity,
@@ -119,6 +126,7 @@ impl Store {
             Self::Redis(store) => store.search(id, input).await,
         }
     }
+    #[tracing::instrument(name = "backend_view", skip_all, fields(backend = self.label()))]
     async fn view(
         &self,
         id: &Identity,
@@ -149,6 +157,7 @@ impl Store {
             Self::Redis(store) => store.forget(id, input).await,
         }
     }
+    #[tracing::instrument(name = "backend_index", skip_all, fields(backend = self.label()))]
     async fn index(
         &self,
         id: &Identity,
@@ -324,7 +333,16 @@ fn pool(config: &Configuration) -> Result<Pool, AppError> {
         .build()
         .map_err(|_| AppError::configuration("could not configure PostgreSQL pool"))
 }
-async fn authorize(State(app): State<App>, mut request: Request, next: Next) -> Response {
+#[tracing::instrument(name = "http_request", skip_all, fields(request_id = crate::observability::request_id(), process_id = std::process::id(), status = tracing::field::Empty, elapsed_ms = tracing::field::Empty))]
+async fn authorize(State(app): State<App>, request: Request, next: Next) -> Response {
+    let started = std::time::Instant::now();
+    let response = authorize_inner(app, request, next).await;
+    tracing::Span::current().record("status", response.status().as_u16());
+    tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
+    response
+}
+
+async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response {
     let token = request
         .headers()
         .get("authorization")
