@@ -1,10 +1,37 @@
 //! Class-normalized TF-IDF labels; memberships may contribute to several topics.
 mod discourse;
+mod links;
 pub(super) mod ranking;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 pub(super) type Terms = BTreeMap<String, u64>;
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum TextMode {
+    Raw,
+    VisibleLinks,
+}
+
+pub(super) fn text_mode() -> TextMode {
+    if std::env::var_os("MASH_TEST_TOPIC_VISIBLE_LINKS").is_some() {
+        TextMode::VisibleLinks
+    } else {
+        TextMode::Raw
+    }
+}
+
+fn label_text(text: &str) -> Cow<'_, str> {
+    match text_mode() {
+        TextMode::Raw => Cow::Borrowed(text),
+        TextMode::VisibleLinks => {
+            let prefix: String = text.chars().take(4096).collect();
+            Cow::Owned(links::visible(&prefix))
+        }
+    }
+}
 #[derive(Clone, Serialize)]
 pub(super) struct Term {
     pub(super) text: String,
@@ -12,6 +39,7 @@ pub(super) struct Term {
 }
 pub(super) fn terms(text: &str) -> Terms {
     let mut counts = Terms::new();
+    let text = label_text(text);
     for word in text.split(|c: char| !c.is_alphanumeric()) {
         let word = word.to_lowercase();
         if eligible(&word) {
@@ -32,6 +60,7 @@ fn eligible(word: &str) -> bool {
 /// phrases across punctuation, stop words, or discarded metadata tokens.
 pub(super) fn candidates(text: &str) -> Terms {
     let prefix: String = text.chars().take(4096).collect();
+    let prefix = label_text(&prefix);
     let mut terms = Terms::new();
     let mut tokens = 0;
     for sentence in prefix.split([

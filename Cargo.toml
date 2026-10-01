@@ -68,6 +68,7 @@ ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"]
 tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
 
 [dev-dependencies]
+pulldown-cmark = { version = "0.13.4", default-features = false }
 ort = { version = "2.0.0-rc.13", default-features = false }
 postgres = "0.19.14"
 rmcp = { version = "3.4.0", default-features = false, features = ["client", "server", "macros", "transport-io"] }

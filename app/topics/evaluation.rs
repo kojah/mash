@@ -316,6 +316,7 @@ struct Cluster {
 #[derive(Serialize)]
 struct Report {
     mode: Mode,
+    label_text: labels::TextMode,
     radius: f64,
     routing: super::birch::Routing,
     assignment_weighting: assignments::Weighting,
@@ -354,6 +355,7 @@ struct Report {
 #[derive(Serialize)]
 struct RejectedRun {
     mode: Mode,
+    label_text: labels::TextMode,
     radius: f64,
     routing: super::birch::Routing,
     assignment_weighting: assignments::Weighting,
@@ -443,6 +445,7 @@ fn run(
     let clusters = label_clusters(threads, &memberships, &leaves, &classes);
     let label_ms = start.elapsed().as_secs_f64() * 1000.0;
     Ok(Report {
+        label_text: labels::text_mode(),
         mode,
         radius,
         routing,
@@ -578,6 +581,7 @@ fn benchmark_topic_discovery() {
                     Ok(report) => report,
                     Err(error) => {
                         let rejected = RejectedRun {
+                            label_text: labels::text_mode(),
                             mode,
                             radius,
                             routing: routing(),
