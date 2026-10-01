@@ -931,7 +931,10 @@ keeps its slot until the work succeeds or fails, including if the requester
 disconnects or times out. Cancellation does not imply rollback: retry using the
 existing node/revision checks. Busy mutations return a retryable HTTP 503;
 search and metadata reads do not consume mutation slots. This bounds the number
-of mutations, not their total RAM. Staging changed revisions uses extra memory and writes,
+of mutations, not their total RAM. The [large-replacement overlap measurement](benchmarks/2026-10-01-shared-publication-concurrency.md)
+records candidate-search latency and API/database memory with one mutation slot;
+it does not validate four simultaneous large publications or a 2-GiB database budget.
+Staging changed revisions uses extra memory and writes,
 and the service loads canonical node data when applying changes; unchanged data
 can reuse the existing stage. These are deliberate limits on the initial
 backend. Benchmark actual search latency, update cost, memory use, and retrieval
