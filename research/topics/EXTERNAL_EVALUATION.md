@@ -128,6 +128,12 @@ but precision36.82% and reverse/shuffled ARI .1584/.3112 are inadequate robustne
 evidence. No validation-driven choice, independent coding gold or production
 promotion. Exact calibration/evaluation repetitions and source/input separation
 are verified; model work is measured but full ingestion cost remains unknown.
+The [cut-free hierarchy follow-up](../../benchmarks/2026-10-01-cut-free-hierarchy.md)
+reuses those now-exposed99/95-anchor samples without inference/refitting. Tree
+LCA-mass retrieval generally loses full-intent AP versus raw cosine. Grafting
+improves triplet order agreement over rotation in19/20 comparisons, but mean
+exact-clade Jaccard is only .254/.222. This is exploratory structural evidence,
+not new held-out evaluation, semantic parent/overlap or guided-search proof.
 
 Pinned raw SHA256:
 

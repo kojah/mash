@@ -2595,6 +2595,113 @@ require their original code-pinned commits: the fit helper now accepts explicit
 validated thresholds, while its defaults remain unchanged, and pair scoring
 iterates supplied named views without inventing an unused mean vector.
 
+\subsection{Cut-free hierarchy retrieval and topology stability}
+Poor flat cuts might hide a useful hierarchy. Before outputs, freeze a structural
+diagnostic in \path{research/topics/external_hierarchy.py}, reusing calibration
+capture \path{18fdb773b198d3f592738b5d39aaa90c5339658e0b11e57aa0f7b619cd05da04}
+and previously reserved evaluation capture
+\path{8819efd81ba90111f56a9cd6b2c79c4202ff71ca4b98fba3b0877c04c89e1954}.
+Both outcomes are now exposed: this is not new held-out evaluation. Revalidate
+source/split/anchors/declared proxy labels, exact original model-input hashes,
+complete pair grids, unit vectors and inference/dependency pins. Reuse99/95 fit
+anchors and2590/2621 cross-group pairs, all five frozen views; no inference,
+downloads or lexical refitting. Unknown/inactive-proxy fit leaves remain present.
+
+Existing greedy, rotate and independent GRINCH-style grafting controls\cite{grinch}
+use exact leaf neighbors, float64 normalized centroid directions and stable
+arrival ties; no author-code parity. Forward/reverse/seed17 orders and two samples
+give90 fits. A pair's fixed retrieval score is negative number of \emph{all fit
+leaves} in its lowest common ancestor (LCA). Smaller containing branches rank
+closer. Compare AP/AUC to that view's raw cosine on identical service/intent and
+within-service support. Capture every canonical internal clade, including root,
+and pair LCA/hash/mass/score. No cut search or best-cut oracle. This is a structural
+proxy, not semantic parent correctness or standard single-label dendrogram purity;
+overlapping declared proxies cannot be silently converted to mutually exclusive
+gold topics. Canonical fixed-sample clade hashes are not persistent topic IDs.
+
+Arrival stability uses1024 fixed seed20261001 source-identity triplets and closest
+pair by minimum LCA mass, plus exact-clade Jaccard excluding root/leaves, relative
+to forward of the same sample/view/mode. Include all fit leaves, not only
+label-eligible pairs. Save complete triplets and choices. These topology metrics
+do not validate semantic ancestors or inherited tags.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+View & Raw service & Tree service & Raw intent & Tree intent \\
+\midrule
+\multicolumn{5}{c}{Calibration sample; forward GRINCH-style tree} \\
+Current & .456187 & .405068 & .395457 & .338070 \\
+Joined & .587312 & .467144 & .399572 & .352074 \\
+Lexical & .358725 & .329462 & .267301 & .216048 \\
+Current75+lexical25 & .452793 & .454998 & .388256 & .353164 \\
+Joined75+lexical25 & .590386 & .546365 & .411475 & .381590 \\
+\midrule
+\multicolumn{5}{c}{Previously reserved, now exposed sample; forward tree} \\
+Current & .544020 & .460673 & .476435 & .387587 \\
+Joined & .699960 & .583881 & .495495 & .381924 \\
+Lexical & .440251 & .407712 & .366614 & .322956 \\
+Current75+lexical25 & .541536 & .462871 & .478044 & .427439 \\
+Joined75+lexical25 & .699496 & .563002 & .514407 & .392737 \\
+\bottomrule
+\end{tabular}
+\end{center}
+AP only; all AUCs/orders/modes are captured, without selecting their best outcome.
+Most forward tree service scores lose AP; all10 lose full-intent AP. Within-service
+results are mixed: previously reserved raw/tree current .794241/.742618,
+joined .688185/.651106, lexical .778366/.749270, current fusion .799321/.838360,
+joined fusion .707789/.679810. Preserve the current-fusion exception rather than
+claim universal loss. A different branch score or cut might behave differently.
+
+\begin{center}
+\small
+\begin{tabular}{llrr}
+\toprule
+Sample & Mode & Mean triplet agreement & Mean clade Jaccard \\
+\midrule
+Calibration & Greedy & .461523 & .081154 \\
+Calibration & Rotate & .486230 & .211390 \\
+Calibration & GRINCH-style & .658008 & .253830 \\
+Previously reserved & Greedy & .421094 & .074777 \\
+Previously reserved & Rotate & .481250 & .185219 \\
+Previously reserved & GRINCH-style & .697754 & .221546 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Descriptive means over five views and reverse/shuffled orders,10 controls per
+sample/mode, not confidence/significance estimates. Grafting improves triplet
+agreement over rotation in19/20 comparisons, with one tie; GRINCH-style ranges
+.539063--.816406 calibration and .547852--.832031 previously reserved. Exact
+branches remain unstable despite broader triplet gains. Better stability does
+not consistently improve AP. This particular tree/score combination often loses
+useful pair similarity; it does not establish inherent GRINCH failure or validate
+author linkage/theory, semantic parents, multi-membership or guided search.
+Next compare linkage preserving pairwise geometry, including vector-mean dot
+product versus normalized centroid directions, then independent quality/label
+and lifecycle gates. A diffuse mean's score changes when normalized; that
+algebraic hypothesis is not an established remedy. Track in \texttt{mash-c0d.19.2.32}.
+
+Two fresh captures match exactly on all non-timing fields. Independent checks
+reconstruct minimal pair LCAs from canonical clades, verify all90 hierarchies,
+92,160 triplet choices and AP/AUC. Explicit JSON arrays preserve triplet schema
+through round-trip. Synthetic fixtures check canonical clades, LCA sizes, unlabeled
+leaf retention, stability, perfect ranking and invalid/incomplete inputs. One
+initial test wrongly expected a greedy pair's LCA to be root; the actual branch
+contains three leaves, including the unlabeled leaf. Correct the expectation,
+not the algorithm. All195 research tests pass. Total after-imports8.309/8.515 s;
+all90 fits2.865/2.924 s; validation/topology/metrics4.501/4.625 s. Per-fit
+7.814--104.635/7.355--120.213 ms; insertion-p95 .0568--2.4849/.0515--2.9457 ms.
+Fit excludes validation, LCA/metrics and serialization, includes thread-limit
+setup; CPU and insertion samples are captured. Total excludes imports/serialization.
+No inference/refit or full ingestion/RSS/p95-update/persistence/edits/deletes/
+restart/parity/scalability gate. Two approximately45.46 MB private captures:
+\path{hierarchy-first.json} SHA256
+\path{d2dbbb8de3583d4bc362e104bb8fc25e8b9b1a6798bb197a3a0f9b9fb6f96411}
+and \path{hierarchy-second.json} SHA256
+\path{df953cfe548a219c848de4c907b7d1557b68294eaf48b8b8ef660a2abd199d4e}.
+No Rust topic or MCP promotion follows.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

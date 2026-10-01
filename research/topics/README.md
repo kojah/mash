@@ -904,6 +904,12 @@ frozen settings, then16 reserved groups evaluate them without tuning. Calibratio
 selects joined BIRCH .8 and fixes fragmentation, but reserved forward intent
 precision is37% and order stability is weak. No method is promoted; reserved
 outcomes remain development proxies, not independent coding-topic gold.
+The [cut-free hierarchy diagnostic](../../benchmarks/2026-10-01-cut-free-hierarchy.md)
+uses `external_hierarchy.py` on those now-exposed samples. Smaller-LCA ranking
+generally loses similarity information; grafting improves triplet stability but
+exact branches remain unstable. Capture all canonical clades/pair LCAs and test
+JSON round-trips. No semantic ancestor claim; linkage comparison is tracked in
+`mash-c0d.19.2.32` before any Rust or MCP topic promotion.
 
 Run lab input-boundary tests:
 
