@@ -15,11 +15,16 @@ overlapping, interpretable topics that can guide subsequent retrieval. Long
 sessions contain multiple subjects, while short replies may depend on context.
 The intended system must update incrementally, preserve source provenance, and
 support topic exploration and filtering without replacing ordinary search.
-This draft records the research protocol and initial exploratory experiments:
-twelve geometry controls on 664 independent threads and a small user-turn
-boundary pilot. These experiments expose tradeoffs in order sensitivity,
-abstention, broad clusters and oversegmentation. They do not yet establish a
-selected method, reliable topic quality, or improved agent search performance.
+This draft records source-pinned dialogue, context, lexical-label and hierarchy
+experiments on a frozen corpus of 664 independent threads. Context improves
+some provider-specific boundary rankings but does not reliably resolve rejected
+proposals. Exact structural spans preserve source provenance, while simple
+similarity selectors fail known correction and blanket-approval cases. An online
+GRINCH-style control improves observed hierarchy-order agreement over rotations
+alone on 538 development thread means, at higher processing cost than online
+BIRCH. Source reviews are exposed exploratory judgments, not independent ground
+truth. These experiments do not yet establish a selected method, reliable topic
+quality, ingestion-overhead compliance or improved agent search performance.
 \end{abstract}
 
 \section{Problem and research questions}
@@ -1009,6 +1014,127 @@ the private span review has SHA256
 \path{34ea9a8c11d875aa5c5b3c0af9c8dde1351cf5481149cc26d9af8003c39abd55}.
 Wider source-reviewed grouping and topical relevance, with endorsement assessed
 separately, remain necessary before selecting a production method.
+
+\subsection{Online hierarchy grouping controls}
+We add an independent Python GRINCH-style control inspired by
+GRINCH~\cite{grinch} and the authors' pinned Scala reference~\cite{grinchreference}.
+It compares greedy nearest-leaf insertion, rotation ascent, and
+rotation/grafting/post-graft restructuring. Neighbor search is exact; graft
+queries exclude the current subtree. Linkage uses cosine between sums of
+normalized input vectors. Strict mutual preference, ascent on ties, float64,
+an epsilon-sized zero aggregate direction and LCA-bounded restructuring are
+explicit implementation choices. There is no ANN, size/height cap or
+single-elimination approximation. A 2,000-leaf lab bound fails closed. This is
+not reference execution, byte parity, proof of the paper's separation assumptions,
+or an application runtime implementation.
+
+All 538 development thread means enter each session fit; 126 reserved groups
+are excluded. Vectors and the source-group partition are unchanged from the
+initial raw-geometry controls. No new embedding inference or generative model
+work occurs. Compare forward/reverse arrival and shuffle seed 17, each in two
+fresh processes. Online BIRCH consumes one vector per \texttt{partial\_fit},
+with threshold 0.4, branching factor 64 and no global clustering. A separate
+synthetic comparison uses 96 normalized two-coordinate path vectors in six
+disjoint 17-coordinate blocks. Class labels enter evaluation only. This is a
+sanity check, not semantic session ground truth or exhaustive verification of
+model separation.
+
+Xenia exposes 16 x86-64 logical CPUs on an AMD EPYC 9645 host. Python 3.11.15,
+NumPy 2.4.6 and scikit-learn 1.9.1 run with one numerical thread. Fit timings
+include incremental updates; loading, whole-tree validation, cut extraction,
+signature generation and evaluation are separate. Table~\ref{tab:online-cost}
+reports descriptive ranges across orders and fresh runs, not confidence intervals.
+Validation checks every live node's binary structure, membership, parent links,
+reachability and cached counts/vector aggregates. Tests validate every insertion,
+including random and identical/canceling vectors, five synthetic arrival orders,
+and a deliberately misplaced subtree recovered by restructuring.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{lrrl}
+\toprule
+Method & Fit (ms) & Insert p95 (ms) & Cut clusters: F/R/S\\
+\midrule
+Greedy &49--70&0.113--0.193&135/147/129\\
+Rotate &85--111&0.270--0.338&75/85/78\\
+GRINCH-style &641--1392&2.492--5.765&78/88/97\\
+BIRCH &197--232&0.536--0.588&141/137/137\\
+\bottomrule
+\end{tabular}
+\caption{538-thread development grouping controls. F/R/S denote forward,
+reverse and shuffled arrival. Native tree cuts and BIRCH radii differ.}
+\label{tab:online-cost}
+\end{table}
+
+Tree cuts require every internal merger in an accepted clade to have cosine at
+least 0.7, explicitly accounting for linkage inversions. That cutoff and BIRCH's
+radius are different uncalibrated operating points. We compare each method's
+native cut across arrival orders using adjusted Rand score~\cite{sklearn}, not
+semantic correctness or cross-method cut equivalence. Hierarchy-order diagnostics
+use Jaccard overlap of nontrivial clades and closest-pair agreement in 4,096 fixed
+canonical triplets (seed 20261001). The closest pair has the smallest LCA subtree;
+canonical identities bind sampling independently of arrival order. No equivalent
+binary BIRCH dendrogram is extracted.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{llll}
+\toprule
+Method & Cut ARI & Triplet agreement & Clade Jaccard\\
+\midrule
+Greedy &0.519/0.877&0.476/0.405&0.110/0.123\\
+Rotate &0.649/0.717&0.679/0.663&0.324/0.301\\
+GRINCH-style &0.987/0.797&0.810/0.890&0.360/0.315\\
+BIRCH &0.963/0.713&---&---\\
+\bottomrule
+\end{tabular}
+\caption{Forward versus reverse/shuffled order diagnostics on session means.
+These measure agreement, not validated semantic topics or ancestors.}
+\label{tab:online-order}
+\end{table}
+
+GRINCH-style grafting improves the observed hierarchy-order diagnostics over
+rotation alone, but exact search costs more than BIRCH. It performs 74--169
+grafts per session arrival order. No restructuring swap occurs in these captures;
+the operation is retained and tested separately rather than silently ablated.
+Peak session-process RSS is 188--190\,MiB across methods, including scientific
+imports and corpus loading. These are Python measurements, not Rust worker costs
+or the topics-on/off ingestion gate. Clade overlap remains modest even when
+triplet agreement is stronger, so stable topic identities and semantic ancestor
+relationships are unproven.
+
+Synthetic dendrogram purity, averaging class purity at each same-class distinct
+pair's LCA, is 0.983/0.983/0.335 for greedy, 1.000/1.000/0.336 for rotation,
+and 1.000 in all three orders for GRINCH-style. Shuffled GRINCH-style makes
+35 grafts. Every native cut, including BIRCH, yields 96 singleton clusters and
+zero adjusted Rand score against the six classes, despite perfect cross-order
+cut agreement. Thus even perfect synthetic tree purity does not make an arbitrary
+cutoff useful, and agreement alone does not establish meaningful partitions.
+Real-session dendrogram purity remains unset: independent corresponding
+single-class labels do not exist, and multi-topic thread semantics are not
+equivalent to the synthetic classes.
+
+Forty-eight fresh-process captures reproduce all non-timing fields across their
+24 matching pairs, including operations, memberships, signatures and provenance.
+Ninety-five lab tests pass. Each capture pins code/lock hashes, generation,
+canonical partition, arrival identities, versions and rechecked author-reference
+file hashes. The private summary pins all capture bytes and comparator source;
+its SHA256 is
+\path{bb46074e2865f7c1826c4a3e89b8e0cb95aaf6ed67bfd5c9cfc61b685b0bf07f}.
+The lab modules are \path{research/topics/online_tree.py},
+\path{research/topics/grinch_controls.py},
+\path{research/topics/hierarchy_metrics.py} and
+\path{research/topics/compare_grouping.py}. Full results and reproduction details
+are in \path{benchmarks/2026-10-01-grinch-online-controls.md}.
+
+We retain GRINCH-style as a candidate without selecting a winner or changing
+application defaults. Source-reviewed dialogue units, grouping/label quality,
+secondary-subject fidelity and semantic ancestors remain necessary. The prototype
+is insert-only: versioned edits/deletes, restart persistence, overlapping topic
+membership and full ingestion costs require separate evaluation before Rust
+promotion or exposing topic-tree MCP tools and inherited tags.
 
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new

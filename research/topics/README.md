@@ -672,6 +672,77 @@ Keep reports and source material outside Git. Fingerprints include the exact
 reference report bytes; use the same artifact across a comparison. Timing for
 fit and labels excludes loading and interpreter startup; peak RSS includes them.
 
+## Online hierarchy controls
+
+`online_tree.py` provides an independent GRINCH-style Python control based on
+the paper and [pinned authors' Scala reference](https://github.com/iesl/grinch/tree/a2747d3c5d3405cf27afc839bc28352b99c3e309).
+It is not an execution of the reference or a byte-parity reproduction. Compare
+greedy nearest-leaf insertion, insertion with rotations, and insertion with
+rotations/grafting/post-graft restructuring. Neighbor search is exact over leaves;
+graft queries exclude the current subtree. Linkage is cosine between sums of
+normalized input vectors. Rotations use pre-insertion ascent, grafts require
+strict mutual preference, and restructuring stays below the post-graft LCA.
+Ties preserve arrival order in leaf search and serial order in restructuring;
+equal graft preferences ascend instead of stalling. Float64 and an epsilon-sized
+zero-sum direction are explicit differences from the Scala float32 implementation.
+There is no ANN, graft height/size cap or single-elimination approximation. A
+2,000-leaf lab bound fails closed; it is not a production scalability result.
+
+`grinch_controls.py` compares these three trees with online BIRCH
+(`partial_fit` one point at a time, radius 0.4, branching factor 64, no global
+clustering). Use `--source sessions` with the frozen database and partition: all
+538 development thread means are inserted and 126 reserved groups excluded.
+No source text is rewritten and no new inference occurs. The three arrival orders
+are forward, reverse and fixed shuffle seed 17. A separate synthetic control has
+96 normalized path vectors in six disjoint coordinate blocks, with class labels
+used only in evaluation. Synthetic purity does not establish real topic quality
+or prove that the paper's separation assumptions hold for our linkage.
+
+Fit timings include incremental updates; whole-tree validation, cuts, signatures
+and evaluation are reported separately. Every live node is checked for binary
+shape, exact membership/parent links, reachable identity and cached vector/count
+consistency. Tests validate after each insertion, including random inputs,
+identical/canceling vectors, five synthetic path arrival orders and a deliberate
+post-graft restructuring fixture. Internal nodes are geometric clades, not
+verified semantic parents or inherited topic tags. The prototype is insert-only;
+edits/deletes, restart persistence, multi-topic membership and source-unit quality
+remain unimplemented.
+
+For order comparison, captures include nontrivial clade hashes and the closest
+pair in 4,096 fixed canonical triplets (seed 20261001). Native tree cuts require
+every internal merge in an accepted clade to have cosine at least 0.7. This
+handles linkage inversions explicitly but is an uncalibrated operating point,
+different from BIRCH's radius; neither cluster count nor cut agreement measures
+semantic quality. Synthetic dendrogram purity uses all same-class distinct pairs,
+without consulting class labels during insertion. Real-session purity remains
+unset because there are no corresponding independent single-class labels.
+
+Run each method/order in a fresh process with one numerical thread and explicit
+`--reference-manifest` pointing to the privately captured authors' source hashes:
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/grinch_controls.py \
+  --source sessions --method grinch --order forward \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --reference-manifest "$PRIVATE_REFERENCE_MANIFEST" --output "$PRIVATE_REPORT"
+```
+
+The manifest is pinned to the reviewed authors' commit and its file hashes are
+rechecked; that source is never executed. Reports pin implementation/lock hashes,
+generation, canonical partition, arrival identities and library versions. Keep
+source identities and memberships in private artifacts outside Git. No method
+may be promoted from structural correctness, synthetic purity or fit-only speed.
+
+The [48-capture experiment](../../benchmarks/2026-10-01-grinch-online-controls.md)
+finds stronger GRINCH-style order diagnostics than rotation alone and perfect
+purity on the shuffled synthetic control, at higher exact-search cost: 641–1,392 ms
+for 538 threads versus 197–232 ms for BIRCH. No real-topic purity or method winner
+is established. All 24 fresh-run pairs reproduce non-timing fields. Run
+`compare_grouping.py --captures "$PRIVATE_CAPTURE_DIRECTORY" --output "$FRESH_PRIVATE_SUMMARY"`
+to validate paired results and recompute descriptive order diagnostics; source,
+code, parameter, partition, sampling and membership mismatches fail closed.
+
 ## Reproduction
 
 Install the locked lab environment outside the repository:
