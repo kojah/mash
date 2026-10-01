@@ -959,6 +959,11 @@ confound maximum matching. A disclosed post-hoc `stored_frequency.py` control
 penalizes exact-input document frequency without dropping source records and
 improves exploratory ranking. Coverage is only 20.8% of original user records;
 no independent semantic topic quality or production ingestion gate is established.
+The subsequent [projection coverage audit](../../benchmarks/2026-10-02-projection-coverage.md)
+corrects that denominator: all admitted nonempty projections have vectors;
+canonical user-role counts include thousands of Claude tool results. Separate
+`projection_coverage.py` ledger and `native_projection_audit.py` corroboration
+retain exclusions and readiness state without source text output or index mutation.
 
 Run lab input-boundary tests:
 

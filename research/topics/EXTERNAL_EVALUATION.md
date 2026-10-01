@@ -180,6 +180,11 @@ read after source-only selection. It is private, exposed and incomplete (20.8%
 stored-message coverage), not external independent topic gold. Source-only input
 frequency weights improve a post-hoc fixed maximum-match control, but cannot
 prove overlapping semantic tags, secondary aspects or ancestor/guided-search quality.
+The [denominator audit](../../benchmarks/2026-10-02-projection-coverage.md) finds
+complete vector coverage of admitted search projections, while canonical user-role
+records include provider tool outputs. The 20.8% ratio is not an inference-failure
+rate or human-topic recall. Readiness remains unverified; native source
+corroboration is limited to the selected Claude exclusions.
 
 Pinned raw SHA256:
 

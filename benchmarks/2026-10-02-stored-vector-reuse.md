@@ -35,7 +35,11 @@ match. It remains sensitive to thread length and does not identify semantic aspe
 The sample has 90 Codex and 38 Claude Code threads, 26 exact project identities,
 1,812 distinct stored vectors and 38 duplicate within-thread inputs, versus 8,888
 original user messages. Thus 1,850 nonempty stored source occurrences represent
-only 20.8% of user records; this frozen subset is not complete topic coverage.
+only 20.8% of user-role records. The later [projection audit](2026-10-02-projection-coverage.md)
+corrects the embedding-completeness interpretation: all 1,850 nonempty search
+projections have vectors; all other selected records have explicit empty overrides.
+Native corroboration identifies 6,744 excluded Claude tool-result-only records.
+This denominator is not independent human-turn or semantic topic coverage.
 Selected threads have 2–128 vectors. All 8,128 thread pairs have metadata support:
 1,289 equal-project positives and 6,839 negatives, prevalence .15859.
 
@@ -114,6 +118,6 @@ Private captures are outside Git under `topic-stored-vector-reuse-20261002`:
 - Stored repeat: `583a3b223e20a355ab04f81c4d9cb2c30571127bb632245099851eaab566976e`.
 - Frequency first: `c8722463953eae559510328446f50469877c12b7096cadf32a5b9dceadf52a1a`.
 
-Next prioritize complete source-vector coverage, genuinely annotated aspect pairs
+Next prioritize validated evidence/context admission, genuinely annotated aspect pairs
 and independently reserved thread outcomes. Freeze any selection before evaluation;
 require label/ancestor/guided-search and full ingestion/lifecycle gates before Rust.
