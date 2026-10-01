@@ -74,4 +74,21 @@ fn known_worker_wrappers_leave_payload_and_unrecognized_requests() {
     assert!(projected.contains(payload));
     assert!(!projected.contains("Worker instructions"));
     assert!(!projected.contains("result.json"));
+    let page = "## Page Feedback: /checks/\n**Viewport:** 1200×800\n\n### 1. h3 \"Checks\"\n**Location:** .content-panel > #checks\n**Feedback:** Repair the broken table.";
+    let projected = super::project(&format!(
+        "{instructions}<submitted_feedback>{page}</submitted_feedback>\n{routing}\nAlso preserve the links."
+    ))
+    .unwrap();
+    assert!(projected.starts_with("Repair the broken table."));
+    assert!(projected.contains("h3 \"Checks\""));
+    assert!(projected.contains("Page: /checks/"));
+    assert!(projected.contains("Also preserve the links."));
+    assert!(!projected.contains("Viewport"));
+    assert!(!projected.contains("content-panel"));
+    let unknown = page.replace("**Location:**", "**Nearby text:**");
+    let projected = super::project(&format!(
+        "{instructions}<submitted_feedback>{unknown}</submitted_feedback>"
+    ))
+    .unwrap();
+    assert!(projected.contains(&unknown));
 }

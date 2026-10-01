@@ -1,6 +1,7 @@
 //! Put factual subjects before repeated worker boilerplate for bounded models.
 //! Retain unknown context; this is derived evidence, not instruction execution.
 mod feedback;
+mod page;
 const MAXIMUM_BYTES: usize = 65_536;
 const PR_HEADER: &str = "Revise the supplied GitHub pull request title and description into the author's writing style.";
 
@@ -41,10 +42,9 @@ pub(super) fn project(text: &str) -> Option<String> {
         return None;
     }
     if feedback::known_instructions(instructions) {
-        Some(format!(
-            "UI feedback.\n<submitted_feedback>{feedback}</submitted_feedback>\n{}",
-            feedback::tail(tail)
-        ))
+        let subjects = page::project(feedback);
+        let feedback = subjects.as_deref().unwrap_or(feedback.trim());
+        Some(format!("{feedback}\n{}", feedback::tail(tail)))
     } else {
         Some(format!(
             "UI feedback.\n<submitted_feedback>{feedback}</submitted_feedback>\n\nWorker instructions:\n{instructions}{tail}"
