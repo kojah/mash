@@ -134,6 +134,12 @@ LCA-mass retrieval generally loses full-intent AP versus raw cosine. Grafting
 improves triplet order agreement over rotation in19/20 comparisons, but mean
 exact-clade Jaccard is only .254/.222. This is exploratory structural evidence,
 not new held-out evaluation, semantic parent/overlap or guided-search proof.
+The [average-cosine linkage ablation](../../benchmarks/2026-10-01-average-linkage.md)
+retains original centroid behavior and verifies every archived decision while
+testing unnormalized vector-mean dot products. Previously reserved forward
+GRINCH-style full-intent AP improves for all five views, but calibration has
+three losses, and exact-clade stability remains weak. Both samples are exposed;
+this does not select a production method or constitute fresh held-out evidence.
 
 Pinned raw SHA256:
 

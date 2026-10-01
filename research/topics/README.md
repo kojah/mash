@@ -910,6 +910,13 @@ generally loses similarity information; grafting improves triplet stability but
 exact branches remain unstable. Capture all canonical clades/pair LCAs and test
 JSON round-trips. No semantic ancestor claim; linkage comparison is tracked in
 `mash-c0d.19.2.32` before any Rust or MCP topic promotion.
+The [average-cosine linkage ablation](../../benchmarks/2026-10-01-average-linkage.md)
+uses `linkage_comparison.py` with explicit centroid-default/average options.
+All90 old centroid decisions reproduce exactly;180-tree repeats match. Average
+improves several AP/stability controls but has counterexamples and still weak
+branch stability. Fresh independent validation/labels/lifecycle are required.
+`Node.link_vector` supports both meanings; hierarchy captures now explicitly
+record linkage in schema version2. No compatibility alias or production change.
 
 Run lab input-boundary tests:
 

@@ -13,11 +13,16 @@ class Mode(StrEnum):
     GRINCH = "grinch"
 
 
+class Linkage(StrEnum):
+    CENTROID = "centroid"
+    AVERAGE = "average"
+
+
 @dataclass(eq=False)
 class Node:
     serial: int
     total: np.ndarray
-    direction: np.ndarray
+    link_vector: np.ndarray
     count: int
     leaf: int | None = None
     parent: "Node | None" = None
@@ -36,12 +41,14 @@ class Statistics:
 
 class Tree:
     """Insert-only prototype; float64, stable arrival-order ties, no ANN/caps."""
-    def __init__(self, mode: Mode, maximum_leaves: int = 2000, maximum_dimensions: int = 1024):
+    def __init__(self, mode: Mode, maximum_leaves: int = 2000, maximum_dimensions: int = 1024,
+                 linkage: Linkage = Linkage.CENTROID):
         if maximum_leaves < 1:
             raise ValueError("positive research leaf bound required")
         if type(maximum_dimensions) is not int or not 1 <= maximum_dimensions <= 8192:
             raise ValueError("bounded positive research dimension limit required")
         self.mode = Mode(mode)
+        self.linkage = Linkage(linkage)
         self.maximum_leaves = maximum_leaves
         self.maximum_dimensions = maximum_dimensions
         self.root: Node | None = None
@@ -53,10 +60,14 @@ class Tree:
         self.statistics = Statistics()
         self.serial = 0
 
-    def _node(self, total: np.ndarray, count: int, leaf: int | None = None) -> Node:
+    def _link_vector(self, total: np.ndarray, count: int) -> np.ndarray:
+        if self.linkage == Linkage.AVERAGE:
+            return total / count
         norm = np.linalg.norm(total)
-        direction = total / norm if norm > np.finfo(np.float64).eps else np.zeros_like(total)
-        node = Node(self.serial, total, direction, count, leaf)
+        return total / norm if norm > np.finfo(np.float64).eps else np.zeros_like(total)
+
+    def _node(self, total: np.ndarray, count: int, leaf: int | None = None) -> Node:
+        node = Node(self.serial, total, self._link_vector(total, count), count, leaf)
         self.nodes[node.serial] = node
         self.serial += 1
         return node
@@ -66,14 +77,13 @@ class Tree:
             if node.children is not None:
                 left, right = node.children
                 node.total = left.total + right.total
-                norm = np.linalg.norm(node.total)
-                node.direction = node.total / norm if norm > np.finfo(np.float64).eps else np.zeros_like(node.total)
                 node.count = left.count + right.count
+                node.link_vector = self._link_vector(node.total, node.count)
             node = node.parent
 
     def score(self, a: Node, b: Node) -> float:
         self.statistics.comparisons += 1
-        return float(np.clip(a.direction @ b.direction, -1, 1))
+        return float(np.clip(a.link_vector @ b.link_vector, -1, 1))
 
     @staticmethod
     def sibling(node: Node) -> Node:
@@ -112,7 +122,7 @@ class Tree:
 
     def _nearest(self, node: Node, excluded: tuple[int, ...] = ()) -> Node | None:
         self.statistics.nearest_searches += 1
-        scores = self.matrix[:len(self.leaves)] @ node.direction
+        scores = self.matrix[:len(self.leaves)] @ node.link_vector
         self.statistics.comparisons += len(scores) - len(excluded)
         scores[list(excluded)] = -np.inf
         best = int(np.argmax(scores)) if len(scores) else None
@@ -262,10 +272,9 @@ class Tree:
                 total = left.total + right.total
                 if node.count != left.count + right.count or not np.allclose(node.total, total, rtol=1e-12, atol=1e-12):
                     raise ValueError("stale subtree aggregate")
-            norm = np.linalg.norm(node.total)
-            expected = node.total / norm if norm > np.finfo(np.float64).eps else np.zeros_like(node.total)
-            if not np.isfinite(node.total).all() or not np.allclose(node.direction, expected, rtol=1e-12, atol=1e-12):
-                raise ValueError("stale subtree direction")
+            expected = self._link_vector(node.total, node.count)
+            if not np.isfinite(node.total).all() or not np.allclose(node.link_vector, expected, rtol=1e-12, atol=1e-12):
+                raise ValueError("stale subtree linkage vector")
         if visited != set(self.nodes) or len(leaves) != len(self.leaves) or len(visited) != 2 * len(leaves) - 1:
             raise ValueError("unreachable or nonbinary live tree")
 

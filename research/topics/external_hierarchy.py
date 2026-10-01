@@ -15,7 +15,7 @@ from external_clustering import representations
 from external_context import compare
 from hierarchy_metrics import triplet_signature
 from multiwoz import PINS, Speaker, load
-from online_tree import Mode, Tree
+from online_tree import Linkage, Mode, Tree
 from reference_review import digest
 
 
@@ -77,14 +77,14 @@ def frozen_phase(corpus, path, phase):
     return capture, identities, views, rows
 
 
-def fit_tree(identities, matrix, indices, mode):
+def fit_tree(identities, matrix, indices, mode, linkage=Linkage.CENTROID):
     if not identities or len(identities) > 1024 or len(set(identities)) != len(identities) or sorted(indices) != list(range(len(identities))):
         raise ValueError('bounded unique identities and complete arrival permutation required')
     if matrix.ndim != 2 or matrix.shape[0] != len(identities) or not 1 <= matrix.shape[1] <= 8192 or not np.isfinite(matrix).all():
         raise ValueError('bounded aligned finite matrix required')
     if not np.allclose(np.linalg.norm(matrix, axis=1), 1, atol=1e-12, rtol=0):
         raise ValueError('unit input vectors required')
-    tree = Tree(mode, maximum_leaves=len(identities), maximum_dimensions=8192)
+    tree = Tree(mode, maximum_leaves=len(identities), maximum_dimensions=8192, linkage=linkage)
     start, cpu, samples = time.perf_counter(), time.process_time(), []
     with threadpool_limits(limits=1):
         for index in indices:
@@ -145,7 +145,7 @@ def metrics(rows, scores):
     return result
 
 
-def experiment(root, calibration_path, evaluation_path):
+def experiment(root, calibration_path, evaluation_path, linkage=Linkage.CENTROID):
     start = time.perf_counter()
     corpus = load(root)
     results, timings, inputs_meta = {}, {}, {}
@@ -163,7 +163,7 @@ def experiment(root, calibration_path, evaluation_path):
                 forward = None
                 for order, indices in orders.items():
                     key = f'{phase}/{view}/{mode}/{order}'
-                    tree, timings[key] = fit_tree(identities, matrix, indices, mode)
+                    tree, timings[key] = fit_tree(identities, matrix, indices, mode, linkage)
                     before = time.perf_counter()
                     result = topology(tree, rows)
                     if forward is None:
@@ -173,10 +173,10 @@ def experiment(root, calibration_path, evaluation_path):
                     timings[key]['evaluation_ms'] = (time.perf_counter() - before) * 1000
                     results[key] = result
     timings['total_ms'] = (time.perf_counter() - start) * 1000
-    return {'version': 1, 'scope': 'exposed-development-cut-free-hierarchy-diagnostic',
+    return {'version': 2, 'scope': 'exposed-development-cut-free-hierarchy-diagnostic',
             'policy': {'score': 'negative-all-fit-leaf-count-of-LCA', 'triplets': 1024,
                        'triplet_seed': 20261001, 'shuffle_seed': 17, 'root_leaves_excluded_from_clade_jaccard': True,
-                       'new_inference_calls': 0, 'threshold_selection': False},
+                       'new_inference_calls': 0, 'threshold_selection': False, 'linkage': Linkage(linkage)},
             'versions': {n: importlib.metadata.version(n) for n in ('numpy', 'scikit-learn', 'threadpoolctl')},
             'code_pins': {n: digest(Path(__file__).with_name(n).read_bytes()) for n in
                 ('external_hierarchy.py', 'cluster_calibration.py', 'external_clustering.py', 'external_analysis.py',

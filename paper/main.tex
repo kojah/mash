@@ -2702,11 +2702,140 @@ and \path{hierarchy-second.json} SHA256
 \path{df953cfe548a219c848de4c907b7d1557b68294eaf48b8b8ef660a2abd199d4e}.
 No Rust topic or MCP promotion follows.
 
+\subsection{Average-cosine linkage ablation with preserved default decisions}
+Normalizing cluster means may discard cohesion magnitude. For unit leaf vectors,
+define \(\mu_A=\sum_{i\in A}v_i/|A|\), then
+\[
+ s_{\mathrm{avg}}(A,B)=\mu_A^\top\mu_B
+ =\frac{1}{|A||B|}\sum_{i\in A,j\in B}v_i^\top v_j.
+\]
+Using \(1-v_i^\top v_j\) gives the standard average pairwise distance
+definition\cite{averagelinkage}. We test this similarity inside the existing
+online exact-leaf rotate/graft prototype\cite{grinch}, not SciPy's offline
+agglomerative procedure or author GRINCH code. Our original \texttt{centroid}
+enum denotes normalized-centroid cosine, not SciPy's Euclidean centroid method.
+No novelty or author-theory-transfer claim. This is an algebraic hypothesis,
+not proof that normalization caused all previous false merges.
+
+Add concrete \texttt{Linkage.CENTROID}/\texttt{AVERAGE}, keeping centroid default.
+\texttt{Node.link\_vector} replaces the direction field: normalized sum or
+unnormalized mean. One helper covers node creation, refresh and validation;
+unit leaves, exact neighbors, stable arrival ties, strict graft preferences and
+bounded buffers unchanged. Generated insertion tests check every node-pair score
+against explicit all-leaf cross-cosine matrices, aggregate invariants/canceling
+sums, default equivalence and invalid linkage rejection. A separate regression
+guard rejects changed policy, input order, decisions, schema or extra fields.
+
+Before outcomes, freeze reuse of the two now-exposed99/95-anchor samples and
+all five views. Each linkage:three modes,three arrival orders,two samples gives
+90 trees,180 total. Same fixed LCA-mass AP/AUC and1024-triplet/clade stability
+metrics. No new inference/refit/download/generative calls, cut/calibration or
+outcome-based choice. \path{research/topics/linkage_comparison.py} verifies all90
+centroid inputs, clades, pair LCAs, triplets, metrics and statistics exactly
+against the archived hierarchy capture. Only declared hierarchy schema1-to-2,
+explicit linkage policy, code pins and timings may differ. No broad normalization
+or score tolerance excuses decision drift. Move nested timing objects into one
+top-level field for strict repeat comparison; original captures stay immutable.
+
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+View & Centroid service & Average service & Centroid intent & Average intent \\
+\midrule
+\multicolumn{5}{c}{Calibration sample; forward GRINCH-style AP} \\
+Current & .405068 & .405070 & .338070 & .337181 \\
+Joined & .467144 & .527619 & .352074 & .356006 \\
+Lexical & .329462 & .355807 & .216048 & .269148 \\
+Current75+lexical25 & .454998 & .418945 & .353164 & .352512 \\
+Joined75+lexical25 & .546365 & .547115 & .381590 & .363195 \\
+\midrule
+\multicolumn{5}{c}{Previously reserved, now exposed sample; forward AP} \\
+Current & .460673 & .538095 & .387587 & .464991 \\
+Joined & .583881 & .594355 & .381924 & .384344 \\
+Lexical & .407712 & .428525 & .322956 & .354518 \\
+Current75+lexical25 & .462871 & .494085 & .427439 & .447929 \\
+Joined75+lexical25 & .563002 & .607329 & .392737 & .412305 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Previously-reserved forward full-intent AP improves for all five views, but
+three calibration full-intent scores decrease. All five previously-reserved
+average full-intent scores still fall below corresponding raw cosine AP.
+Within-service AP there is mixed: current .742618-to-.788138, joined
+.651106-to-.651011, lexical .749270-to-.785349, current fusion
+.838360-to-.796840, joined fusion .679810-to-.681644. Preserve these losses.
+Across90 paired controls service AP improves in43,full-intent in41,within-service
+in31; all30 greedy trees are exactly unchanged, including topology/metrics/
+statistics, because they insert by nearest leaves without aggregate rotate/graft
+preferences. Counts are descriptive dependent comparisons, not significance
+tests or method-selection votes.
+
+\begin{center}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Sample & Mode & C triplet & A triplet & C clade & A clade \\
+\midrule
+Calibration & Greedy & .461523 & .461523 & .081154 & .081154 \\
+Calibration & Rotate & .486230 & .539063 & .211390 & .261946 \\
+Calibration & GRINCH-style & .658008 & .753906 & .253830 & .360156 \\
+Previously reserved & Greedy & .421094 & .421094 & .074777 & .074777 \\
+Previously reserved & Rotate & .481250 & .544434 & .185219 & .229375 \\
+Previously reserved & GRINCH-style & .697754 & .788672 & .221546 & .336359 \\
+\bottomrule
+\end{tabular}
+\end{center}
+C/A denote centroid/average. Means over five views and reverse/shuffled orders;
+clade metric is exact Jaccard excluding root/leaves. Average improves aggregate
+stability, but exact branches remain weak at mean Jaccard .36/.34. No stable
+semantic ancestors, overlapping membership, label or guided-search gain proved.
+This warrants fresh preregistered independent calibration/outcome groups with
+false-merge/coverage and label/rare-topic/ancestor checks, not promotion from
+already exposed outcomes. \texttt{mash-c0d.19.2.32} remains open.
+
+Two fresh comparison captures match every non-timing field. Independent checks
+verify all180 canonical hierarchies/minimal pair LCAs,184,320 triplet choices,
+AP/AUC, unchanged30 greedy trees and preserved90 archived centroid outputs.
+All199 research tests pass. Total after-imports15.989/16.041 s; centroid90
+fits2.785/2.735 s,average2.366/2.420 s. Topology/metrics4.154/4.118 s centroid,
+4.145/4.132 s average. Average per-fit6.300--88.965/6.499--87.306 ms and
+insertion-p95 .0389--1.8832/.0399--1.8397 ms; centroid7.248--109.941/
+7.503--105.947 ms,p95 .0513--2.4607/.0542--2.4423 ms. Fit includes thread-limit
+setup, excludes validation/topology/metrics/serialization; CPU/insertion samples
+captured. One-thread BLAS, bounded exact-neighbor prototype; no production scale
+or complete-ingestion throughput/RSS/p95-update/persistence/lifecycle/parity gate.
+
+Across15 GRINCH-style controls per sample:
+\begin{center}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Sample & Linkage & Grafts & Comparisons & Rotations \\
+\midrule
+Calibration & Centroid & 996 & 373897 & 3951 \\
+Calibration & Average & 1211 & 408680 & 2057 \\
+Previously reserved & Centroid & 893 & 348961 & 3922 \\
+Previously reserved & Average & 1010 & 373344 & 2086 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Average has more grafts and
+comparisons but fewer rotations. Scheduling and restructuring work differ;
+do not attribute wall-time changes solely to arithmetic. Approximately89.91 MB
+private captures \path{linkage-first.json} SHA256
+\path{10527284a2fb8ee0a66ebe2a1d726a303635383585bf19330a79ad6e427275df}
+and \path{linkage-second.json} SHA256
+\path{32bc025474f639396861d5b58e2a8d2a6e17e3c4733cabbcb988467b229c85a0}.
+No application Rust configuration, inference or MCP behavior changes.
+
 \section{Planned evaluation and unresolved requirements}
-Next experiments will compare bounded dialogue units and source-grounded context
-selection, holding discovery fixed; then label-only contrastive training-background
-weights and representative-phrase scoring, holding memberships fixed. Online
-discovery alternatives come after unit/label evaluation. Changes to geometry
+Next use fresh preregistered calibration/outcome groups for the promising average
+linkage, with explicit false-merge/coverage checks before independent coding/provider
+validation. Compare bounded dialogue units and source-grounded context with
+discovery fixed; test label-only contrastive training-background weights and
+representative-phrase scoring with memberships fixed. Further discovery alternatives
+must address measured unit/label failures. Changes to geometry
 must be frozen/versioned so previously inserted statistics remain compatible.
 Edits, deletions, late replies and provisional episode boundaries require explicit
 lifecycle semantics and measured incremental costs.

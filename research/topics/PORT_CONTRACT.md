@@ -47,6 +47,12 @@ expected/actual identities and bounded numeric differences. Compare memberships
 as sets of stable canonical source identities, not incidental cluster numbers.
 For ties and topology decisions, retain explicit canonical tie rules and event
 traces; do not canonicalize away a genuinely different parent relationship.
+Freeze the linkage formula and aggregation weights explicitly. Normalized-centroid
+cosine differs from the dot product of unnormalized vector means (average
+cross-leaf cosine for unit inputs); silently normalizing a mean changes the method.
+Include unequal cluster sizes, diffuse/canceling sums and score/order ties in
+shared fixtures. Record the selected linkage in the versioned stage schema;
+the exposed Python ablation is not a selected Rust port or parity CI gate.
 
 Freeze synthetic/non-sensitive golden fixtures in Git. Include empty inputs,
 duplicates, zero and canceling vectors, nonfinite/malformed input rejection,

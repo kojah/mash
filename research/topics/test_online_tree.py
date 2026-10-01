@@ -25,7 +25,7 @@ class OnlineTreeTests(unittest.TestCase):
                 tree.insert(str(i), np.asarray(vector))
                 tree.validate()
             self.assertEqual(tree.root.count, 16)
-            self.assertTrue(np.isfinite(tree.root.direction).all())
+            self.assertTrue(np.isfinite(tree.root.link_vector).all())
 
     def test_invalid_inputs_do_not_change_existing_tree(self):
         tree = Tree(Mode.GRINCH, maximum_leaves=2)
