@@ -886,6 +886,11 @@ uses `multiview.py` and the same archived vectors/draws. Fixed concatenations an
 token-count gating reduce fine-intent loss but do not eliminate it; no method is
 promoted. The shared evaluation summary accepts explicit controls and verifies
 every original baseline metric/paired replicate without new inference.
+The [lexical-context follow-up](../../benchmarks/2026-10-01-lexical-context.md)
+uses `lexical_context.py` with disjoint unlabelled development background and
+frozen TF-IDF/current/joined cosine fusion. Current fusion improves the fine-intent
+point score slightly but broad/fine tradeoffs remain; no production method is
+selected. Background text/group exclusions, sparse features and IDF are captured.
 
 Run lab input-boundary tests:
 

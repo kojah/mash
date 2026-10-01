@@ -35,6 +35,13 @@ does not prove equivalent context selection. The two-axis development diagnostic
 is not a selected production classifier or a substitute for independent judgments.
 
 The reference runner and Rust runner must emit the same versioned stage schema.
+Exercise serialization round-trips before differential comparison: the emitted
+Python object must have the same schema after JSON decoding. For example, a
+library's tuple-valued n-gram setting must be emitted as the schema's array,
+otherwise a repeat can fail on representation despite identical algorithm results.
+Keep that conversion explicit at the output boundary; do not broadly coerce
+types or normalize away real source/model/policy drift. Include schema-type checks
+for numeric, boolean, enum and array fields in the selected fixture contract.
 The differential comparator reports the first mismatching stage, source fixture,
 expected/actual identities and bounded numeric differences. Compare memberships
 as sets of stable canonical source identities, not incidental cluster numbers.

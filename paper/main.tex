@@ -2284,6 +2284,116 @@ gate occurs. Capture SHA256 values for \path{multiview-first.json} and
 \path{b5e373e3f18d8b4d94921755119b9e050dbd8b6e56f5725163e0568d9705c34f}
 and \path{bf2ed9bb3322b113c098e3f635f35b40aacdfe1af8d42be33ace7097972cadc5}.
 
+\subsection{Frozen lexical background and dense/sparse cosine controls}
+The remaining specificity loss motivates a frozen lexical follow-up on the same
+32 development groups and 206 original common model-support anchors. Prior
+contextual topic models combine contextual and lexical information
+\cite{contextualtopics}; our fixed TF-IDF/cosine controls do not replicate their
+trained neural model. This experiment follows exposed development outcomes,
+not independent confirmation, and reads no official train/test shard.
+
+Before outputs, freeze lowercase Unicode word tokenization with pattern
+\verb|(?u)\b\w\w+\b|, unigrams/bigrams, minimum document frequency two,
+maximum 8,192 features, smooth IDF, sublinear term frequency, float64 L2
+normalization and no stopword list. Fit only on original USER strings from the
+480 unselected development groups; remove exact selected USER strings found
+elsewhere, deduplicate remaining exact background strings and order by source
+hash. Evaluation-only tokens cannot enter the background vocabulary, and metadata
+never enters feature construction. Retain background hashes, vocabulary/IDF and
+sparse vectors. This is an explicit development background fit, not held-out test
+data; no weights/tokenization are fitted to intent labels.
+
+Compare lexical cosine alone, 75\% current cosine plus 25\% lexical cosine, and
+75\% joined cosine plus 25\% lexical cosine. The lexical view always uses original
+current USER text. Compute scores as weighted scalar cosines rather than dense
+concatenation. Zero lexical rows abstain from every matched comparison, with
+explicit support/reasons and no silent fallback. Before adding scores, require
+complete original source/input/pair revalidation and unchanged full-support
+baseline metrics. Restricted-support baselines are recomputed when needed.
+Primary service/intent/within-service AP/AUC reuse the exact 1,000 archived
+whole-dialogue draws and original pair-weight/self-source rules; per-domain point
+scores are secondary. There is no new model initialization/inference, generative
+call, tuning or annotation-dependent input choice. Vocabulary/IDF are frozen for
+this experiment; compatible online basis updates and full ingestion costs remain
+unresolved.
+
+The background contains 3,607 USER turns from 480 groups. Remove six exact
+evaluation-text occurrences and 48 background duplicates, leaving 3,553 fit
+strings. Vocabulary has 3,783 features, with 64,511 background and 3,704 evaluation
+nonzero entries. Every original common-support anchor has nonzero lexical features;
+support remains 206 anchors/12,341 cross-dialogue pairs/3,448 within-service pairs.
+Exact-text deduplication does not remove paraphrases or template overlap.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Control & Service AP & Intent AP & Within AP & Within AUC \\
+\midrule
+Current & 0.464235 & 0.399102 & 0.802038 & 0.583550 \\
+Mean & 0.534925 & 0.415504 & 0.752176 & 0.512996 \\
+Joined & 0.555472 & 0.417893 & 0.737828 & 0.490344 \\
+Lexical & 0.363991 & 0.317964 & 0.821366 & 0.643287 \\
+Current fusion & 0.462814 & 0.400921 & 0.806329 & 0.591405 \\
+Joined fusion & 0.557339 & 0.432407 & 0.752233 & 0.506874 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Empirical paired service AP ranges versus current are
+[$-0.157502$, $-0.049807$] for lexical, [$-0.006951$, 0.004481] for current
+fusion and [0.043318, 0.147113] for joined fusion. Intent AP ranges are
+[$-0.143692$, $-0.028032$], [$-0.005521$, 0.009119] and
+[$-0.014461$, 0.087375]. Within-service AP ranges are
+[$-0.009001$, 0.043446], [0.001322, 0.007438] and
+[$-0.079620$, $-0.019214$]; corresponding AUC ranges are
+[0.004073, 0.112089], [0.004387, 0.011686] and
+[$-0.130171$, $-0.008225$]. All 1,000 draws retain both classes in every primary
+slice. These uncalibrated empirical ranges do not establish formal significance,
+noninferiority or independent confirmation. Within-service prevalence is 72.16\%.
+
+Per-domain point AP on unchanged supports is:
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Domain & Current & Joined & Lexical & Current fusion & Joined fusion \\
+\midrule
+Attraction & 0.223221 & 0.226880 & 0.216563 & 0.228449 & 0.239835 \\
+Hotel & 0.281696 & 0.381683 & 0.226208 & 0.282862 & 0.384009 \\
+Restaurant & 0.155075 & 0.232215 & 0.122134 & 0.156552 & 0.226150 \\
+Train & 0.489262 & 0.566958 & 0.253252 & 0.479219 & 0.567582 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Lexical evidence improves within-service separation, but lexical-only weakens
+broad service separation. Current fusion provides a small finer-intent gain
+with a small broad-AP decline; joined fusion recovers some finer intent but
+remains well below current text. Effects are not uniform across domains. No
+control clearly improves both broad and fine point scores, and no post-hoc
+tolerance or production promotion follows. Next test separate broad/fine
+discovery views, then cluster memberships, labels and guided search rather than
+pair ranking alone. Require independent coding-session/provider evidence,
+reserved evaluation, compatible online basis evolution and full ingestion/parity
+gates. All 181 isolated research tests pass. The initial repeat rejected a
+serialization mismatch between a library tuple parameter and its JSON array;
+the stage output now explicitly uses an array, with a JSON-round-trip regression
+test. Preserve the initial capture/logs and use fresh final paths, rather than
+rewrite an old code-pinned result.
+
+Two fresh final captures match exactly on all non-timing fields, including
+background/vocabulary/IDF, sparse vectors, pair scores/truth and every resampling
+result. NumPy 2.4.6/scikit-learn 1.9.1 feature work takes 281.79/223.51 ms;
+sparse Gram construction and candidate scoring take 68.93/44.03 ms. Complete
+analysis after imports costs 90.31/87.00 s, including validation and 18,000
+resampled method evaluations plus point metrics, excluding serialization.
+These descriptive cached-vector costs exclude original embedding inference,
+clustering, labels and persistence; no ingestion/RSS/search-latency/parity gate
+is established. Zero new model calls. Final capture SHA256 values for
+\path{lexical-final-first.json} and \path{lexical-final-second.json} are
+\path{21e9b729899037ac8f8680ffcc5b2515f2f76fb3cad2fdfcd2e2723744ea4b48}
+and \path{8046f743d81486a34f3aeeaf2d69537923a723f7a330d33f9331c199f35451ba}.
+The preserved initial capture hash is
+\path{85608d4295bf72f31abe6965ca6b201cf347097a90061ca9ea22304b1931f626};
+its decoded non-code/non-timing fields agree with the final first capture.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

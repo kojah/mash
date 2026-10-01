@@ -101,6 +101,15 @@ not general context resolution; vector duplication/contextual inference costs
 remain relevant. Original intent-analysis code is reproducible at `b85cd38`;
 the reusable summarizer now accepts explicit controls with unchanged defaults.
 
+The [lexical fusion experiment](../../benchmarks/2026-10-01-lexical-context.md)
+fits frozen TF-IDF on 3,553 unique USER strings from 480 disjoint development
+groups, after exact evaluation-text exclusions. All 206 evaluation anchors have
+nonzero lexical features; no support changes. Current fusion within-service AP
+is 0.8063 versus current 0.8020, while service AP is 0.4628 versus 0.4642.
+Joined fusion retains a substantial finer-intent loss. These exposed state proxies
+support further lexical/separate-view testing, not production selection or robust
+coding-topic/label claims. Online vocabulary/IDF compatibility remains unresolved.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.
