@@ -149,6 +149,15 @@ expose a high all-connected baseline: overlap F1 cannot establish useful topic
 navigation. These remain outcome-separated development proxies from the same
 public shard, whose texts were previously eligible as background, rather than
 independent coding-topic judgments. No Rust method or ingestion gate is selected.
+The [programming-question source/transfer diagnostic](../../benchmarks/2026-10-02-programming-title-transfer.md)
+adds200 pinned API-visible Stack Overflow questions with separate community tags
+and input-only group/sampling identities. Its reserved all-tag prevalence is .0253,
+avoiding the preceding dialogue proxy's .7917 all-connected precision ceiling.
+Transferring the two frozen intent cuts to title-only embeddings leaves mostly
+singletons: average finds3/51 shared-tag pairs, centroid zero. This rejects cut
+transfer, not online topic modeling generally. Body/answer/context and complete
+agent-session gold remain absent; edits, unknown license metadata and source
+survivorship are disclosed. No model choice, generative calls or production gate.
 
 Pinned raw SHA256:
 

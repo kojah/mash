@@ -2956,9 +2956,142 @@ repeat \path{00a2d17909fb5541da94ea5be3a741854345ec8635bb826dcfafbc118799aaba}.
 Captures remain private under \path{topic-public-multiwoz-20261001}; source code
 is \path{research/topics/precision_calibration.py}. No Rust method is selected.
 
+\subsection{Programming-question corpus and frozen-cut transfer}
+The thread-union ceiling motivates a complementary source with sparser
+externally supplied topic metadata. Stack Overflow tags describe question
+topics and permit multiple tags~\cite{stackoverflowtags}; prior supervised
+multilabel title/text tag prediction includes Mehta and Sodhani~\cite{mehta2015tagger}.
+We use community tags only as evaluation proxies, not training features or a
+replication of their classifier. They are editable, incomplete language/library/task
+descriptors; non-overlap does not establish semantic unrelatedness. Programming
+questions do not provide full agent-session primary/secondary or parent judgments.
+
+Preregister source acquisition before inspection: two unauthenticated API 2.3
+\path{/questions} requests, site \path{stackoverflow}, creation ascending,
+UTC June 2024 inclusive [1717200000,1719791999], pages 1/2, pagesize 100,
+built-in \path{withbody}~\cite{stackexchangequestions}. No tag/vote/answer
+filters or replacement sampling. Both return 100 items, more pages and no backoff;
+remaining quota 299/298 of 300. Captures are dated October 1 22:11:57/22:12:06 UTC
+(October 2 Berlin). Raw pages 313955/355332 bytes have SHA256
+\path{c4b9b5201844097667671199caec22b8437c614b7b1a9e46e440a1bfb629a3e6}
+and \path{076b0660cf9547154b4c9c68298ea3354bc27632ff720059a68aee3d571e5a18}.
+These are the first 200 surviving API-visible questions in the interval, posted
+June 1 00:00:54--08:54:40 UTC, not a random monthly or historical-original snapshot.
+There are 111 edited, 17 closed and 105 answered questions. Text/tags may have
+changed since publication; generative assistance and pretraining overlap are
+unknown. No answers, comments or complete dialogue context are collected.
+Mutable endpoint queries need not reproduce frozen bytes; a public source
+release has not been prepared.
+
+The source has 200 canonical content groups, no duplicates or conflicting aliases.
+Raw attribution/owner records stay outside Git. License metadata is
+\path{CC BY-SA 4.0} for 183 questions and absent for 17, preserved explicitly
+unknown rather than invented or excluded. Tag-count distribution for 1/2/3/4/5
+tags is 17/42/56/45/40. \path{stackoverflow_source.py} validates source hashes
+before decoding, page counts, literal IDs/booleans/quota, creation range/order,
+bounded title/body/tag fields and question attribution links. Input and tag
+reference dataclasses are separate. Group identity uses only decoded title and
+original body HTML; markup is not executed. Hash-rank with seed
+\path{mash-topic-stackoverflow-v1-20261002}: first 64 calibration-source,
+next 64 reserved-source, remaining 72 background. No metadata/model-driven
+selection; insufficient groups fail without resampling.
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Phase & Questions & Pairs & Shared tags & No shared tags & Prevalence \\
+\midrule
+Calibration-source & 64 & 2016 & 97 & 1919 & .0481 \\
+Reserved-source & 64 & 2016 & 51 & 1965 & .0253 \\
+Background & 72 & 2556 & 159 & 2397 & .0622 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The background is unused in this experiment. No synonyms/language tags are
+removed and natural prevalence is retained. Inventory repeats are byte-identical
+SHA256 \path{2e6ec9385886941d38cde9edb938de5e9b6d12c4c337766c011b57e3ad2977d6}.
+Sparse overlap gives a harder proxy discrimination test than the prior .7917
+thread-union prevalence, but remains incomplete external metadata.
+
+Preregister the transfer diagnostic after inventory, before model outcomes.
+\path{question_transfer.py} verifies the original calibration SHA, intent
+winners, algorithm/encoder code pins and dependencies before inference.
+Transfer current-average .4 and current-centroid .6 exactly: no cut grid,
+new tuning or outcome-based method choice. Each input is one title after a single
+\path{html.unescape}; original body HTML is retained unused. Tags/score/owner/
+license/answers never enter vectors. Installed pinned MiniLM singleton one-thread
+CPU, mean pooling, symmetric signed-byte rounding and normalized float64
+directions remain unchanged. Reject model-window violations without
+padding/truncation and exclude exact calibration titles from reserved fitting.
+All 128 titles are supported/distinct across phases, needing 128 calls, maximum 48
+tokens. Each question has one cut membership; overlapping unit topics, body
+context and semantic inheritance are not tested. Both 64-question phases are
+transfer outcomes, not selection data for a new method; they are now exposed.
+
+\begin{center}
+\begin{tabular}{llrrrr}
+\toprule
+Phase & Setting & Clusters & Singletons & P & R \\
+\midrule
+Calibration-source & Average .4 & 59 & 54 & .2000 & .0103 \\
+Calibration-source & Centroid .6 & 64 & 64 & Undefined & .0000 \\
+Reserved-source & Average .4 & 61 & 58 & 1.0000 & .0588 \\
+Reserved-source & Centroid .6 & 64 & 64 & Undefined & .0000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+All forward/reverse/seed-17 partitions match (12 trees, ARI 1). This is singleton-heavy
+stability, not useful robust topics. Average has calibration counts 1 TP/4 FP/96 FN/
+1915 TN and reserved 3/0/48/1965; F1 .0196/.1111. Just five/three predicted links
+fail the former calibration criterion's minimum 20; perfect reserved precision
+rests on three matches. Centroid has zero TP/FP and recall/F1 zero in both phases.
+Average specificity is .9979/1, centroid 1: near-perfect specificity with negligible
+recall does not establish quality. All-connected F1 is .0918/.0493; singleton
+recall/F1 zero. Frozen dialogue cuts do not transfer usefully to this title proxy.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Raw title cosine & AP & ROC AUC & Positive prevalence \\
+\midrule
+Calibration-source & .1166 & .6429 & .0481 \\
+Reserved-source & .1898 & .7415 & .0253 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Raw ranking retains proxy signal. AP and partition F1 have different meanings;
+question pairs are dependent, with no significance or uncertainty guarantee
+claimed. Results reject threshold transfer, not embeddings or online discovery
+generally. Title-only text, sparse source support and tag granularity constrain
+interpretation. Source-grounded body/episode units and target-representation
+calibration require newly reserved evaluation before quality claims.
+Saved leaf similarities provide a descriptive fragmentation diagnostic:
+shared-tag median cosine .0704/.1156 and 90th percentiles .2375/.3236;
+only 2/3 positive and 7/0 negative pairs reach .4. No leaf pair reaches .6
+(maxima .5200/.4724). Partition merges are not independent threshold edges:
+average calibration retains one positive/four negative links rather than all
+above-cut edges. Corpus, input unit and tag granularity change together, so
+the score shift cannot isolate a single cause or justify reserved-based retuning.
+
+Two runs take .7915/.7640 seconds, inference 189.67/175.22 milliseconds,
+and all 12 tree fits 286.39/263.28 milliseconds wall. Totals include source/contract
+loading, model construction, pair scoring and evaluation, excluding output
+serialization. No RSS audit, persistence, lifecycle or complete-ingestion
+overhead gate. All non-timing fields repeat exactly, including 128 vectors,
+source/model/code pins, partitions and operation counts. Separate recomputation
+verifies 200 disjoint groups/title-source hashes/unit norms, all 4032 pair truths
+and dot scores, all 12 confusion counts and independently tie-aware AP/AUC.
+The lab passes 214 tests, including label-independent inputs/splits, unknown
+license handling, malformed fields, pagination/hash failures and sparse baselines.
+Transfer SHA256 \path{a77d5efeb2ce4a816419bf6ed3efc1c5bb0dfcde26988c91c6280293db619333},
+repeat \path{100eb33027d221d414fb14be6b23a6d206a9affea5d5a2784effdf01c728c8fe}.
+Private captures reside under \path{topic-public-stackoverflow-20261002}.
+No Rust method, semantic ancestry or guided-search gain is selected.
+
 \section{Planned evaluation and unresolved requirements}
-Next prioritize granular coding/provider topic units and thread discrimination
-with independently reviewed evidence, preserving all frozen outcomes. Compare
+Next prioritize source-grounded body/episode units, target-representation
+calibration and granular coding/provider thread discrimination with independently
+reviewed evidence and newly reserved outcomes. Preserve all exposed results. Compare
 bounded dialogue units and source-grounded context with
 discovery fixed; test label-only contrastive training-background weights and
 representative-phrase scoring with memberships fixed. Further discovery alternatives

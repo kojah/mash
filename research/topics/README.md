@@ -926,6 +926,15 @@ contract. Average intent cuts are steadier across arrival orders; centroid has
 higher forward recall. Secondary multiple-direct-tag thread scores approach an
 all-connected baseline, exposing weak discrimination. No labels, semantic
 ancestors, guided-search gain or production method are established.
+The [programming-title transfer diagnostic](../../benchmarks/2026-10-02-programming-title-transfer.md)
+uses `stackoverflow_source.py` to validate200 pinned public questions and separate
+source inputs from community tag references. An annotation-independent64/64/72
+split has sparse shared-tag pairs. `question_transfer.py` verifies the old frozen
+calibration hash/algorithm pins and tests both intent cuts without tuning on new
+outcomes. Both fragment badly despite raw cosine ranking signal; singleton-heavy
+ARI and three-match perfect precision do not justify promotion. Bodies/answers
+are unused; question tags are not full agent-session topic gold. Repeats and all
+pair/count/ranking invariants are verified; source/captures stay outside Git.
 
 Run lab input-boundary tests:
 
