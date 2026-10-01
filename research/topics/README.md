@@ -347,6 +347,45 @@ vocabulary/label maintenance. English stopwords can also suppress domain terms.
 Next test source-supported contextual/episode representations and phrase quality
 before adding noise filters or selecting a discovery method.
 
+## Source-preserving phrases and YAKE
+
+`phrase_labels.py` uses the same frozen oracle supports to compare source-adjacent
+c-TF-IDF, a fixed phrase-length multiplier with containment pruning, and the
+official YAKE 0.7.3 implementation. YAKE uses local text statistics without a
+trained model. Its dependency is isolated in this research project's lockfile;
+no Rust dependency, model download or production behavior changes.
+
+The source analyzer treats stopwords and non-whitespace punctuation gaps as
+boundaries rather than deleting them before forming bigrams. Every returned
+keyword must occur as a casefolded, whitespace-normalized phrase within an
+individual supporting source record. This avoids cross-record or skipped-word
+phrases. It does not establish semantic correctness or endorsement. YAKE uses
+English, maximum two words, sequence deduplication .9, window 1 and top 32
+candidates; source-supported candidates retain YAKE order and are capped at 8.
+Supporting records are separated by newline-period-newline, affecting YAKE's
+position statistics. Source documents are capped at 64 KiB. Length weighting is
+a fixed heuristic, not RAKE or semantic MMR; RAKE motivates delimiter handling.
+
+Run with the preceding label-control inputs, adding `--label-report` pointing to
+the frozen `subject-labels-final.json`. The script verifies its source fingerprints
+and exact subject supports. The original baseline has 36/138 keywords that are
+not contiguous in their supporting records. The new 796-feature vocabulary emits
+135 source-adjacent keywords, 123 length-weighted and 129 YAKE keywords. Four YAKE
+candidates are rejected by source support. The length-weighted control restores
+compounds such as `remote control`, but also elevates old session titles as topics.
+YAKE yields some useful compounds but still ranks conversational approvals and
+session selectors. Neither is promoted as a topic-quality solution. These are
+exposed qualitative observations, not independent semantic precision estimates.
+
+Two fresh runs reproduce non-measurement fields. Source features take 4–6 ms and
+combined ranking, YAKE and support checks 176–202 ms for 18 subjects; final elapsed
+after imports is 691 ms including corpus load. The verified report includes the
+baseline contiguity audit counts. No inference occurs. Full ingestion
+overhead and online label maintenance remain unmeasured. Sixty-five lab tests
+pass, including stopword/punctuation boundaries, identifiers and source-support
+checks that cannot combine records or skip words. Next improve source topical
+units and metadata/endorsement handling before evaluating automatic discovery.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current

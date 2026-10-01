@@ -777,6 +777,51 @@ Oracle supports and prior reviewer exposure prevent discovery or generalization
 claims. Contextual/episode representations and phrase quality require testing
 before further filtering or discovery-method selection.
 
+\subsection{Source-preserving phrase controls and YAKE}
+The previous control removes stopwords before forming bigrams. A source audit
+finds that 36 of its 138 keywords do not occur contiguously in their supporting
+records under casefolded whitespace normalization and word boundaries. We test a
+source-adjacent unigram/bigram analyzer that treats stopwords and punctuation
+gaps as boundaries, following delimiter-based candidate extraction as a useful
+principle from RAKE \cite{rake}. We retain c-TF-IDF and compare a fixed
+phrase-length multiplier with lexical containment pruning. This is not a RAKE
+implementation or semantic MMR. Every returned candidate must occur within one
+supporting source record, without combining records or skipping words.
+
+We also test the official YAKE 0.7.3 implementation \cite{yakeimplementation},
+which uses local text statistics without a trained model. Parameters are English,
+at most two words, sequence deduplication threshold 0.9, context window 1 and
+32 candidates. Source-supported candidates retain YAKE order and are capped at
+eight. Records are separated by newline-period-newline to discourage cross-record
+phrases; this changes positional statistics. Documents are capped at 64\,KiB.
+The dependency and transitive packages are confined to the locked Python lab.
+No model downloads, inference calls or Rust behavior changes occur. The same
+18 oracle subjects and their exact source supports are verified against the
+frozen sidecar; reference names and rationales remain excluded from inputs.
+
+The source-adjacent vocabulary has 796 features, versus 1,279 in the preceding
+control. It emits 135 c-TF-IDF keywords, 123 length-weighted keywords and
+129 source-supported YAKE keywords. Four YAKE candidates fail the contiguity
+check and are rejected. The length-weighted control restores compounds such as
+``remote control'' but also elevates names of old sessions as current topics.
+YAKE sometimes supplies useful compounds while continuing to rank approval
+language and session selectors. Source contiguity is an integrity property, not
+semantic correctness or endorsement. These exposed qualitative observations
+do not establish independent semantic precision, and neither method is promoted
+as the topic-quality solution. Topical units, metadata and context selection
+still require improvement before automatic discovery evaluation.
+
+Two fresh runs reproduce non-measurement fields. Source-feature construction
+takes 4--6\,ms; combined ranking, YAKE and source-support checks take
+176--202\,ms for 18 subjects. Final elapsed time after imports is 691\,ms,
+including frozen corpus loading. These are not end-to-end ingestion or online
+maintenance costs. Sixty-five lab tests pass, including stopword/punctuation
+boundaries, identifiers and support checks that cannot combine records or skip
+words. The implementation is \path{research/topics/phrase_labels.py}; private
+\path{phrase-labels-verified.json} includes the baseline contiguity audit counts
+and has SHA256
+\path{0660d3825689e7f2c9fd8aa85a9b949502b1b501e5e8f78cb603a07832f9527c}.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training
