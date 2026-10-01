@@ -140,6 +140,16 @@ record results, select a method, then implement it in Rust. Keep the Python lab
 isolated from the application and private corpora/artifacts outside Git.
 Update `paper/main.tex` and `paper/references.bib` alongside substantive topic
 experiments with procedures, setup, prior art, results, analysis and limitations.
+Topic modeling must not use an LLM: no generative summaries, rewriting, labeling,
+taxonomy synthesis or paid topic-inference calls. Prefer reusing existing local
+embeddings with lightweight online clustering and lexical labels. Any additional
+non-generative model work must be measured, bounded and justified by quality.
+Measure complete ingestion with topics enabled versus disabled, including context
+processing, clustering, label maintenance and persistence. A provisional engineering
+target is at most 10% throughput loss on matched workloads; report initial indexing,
+incremental edits/deletes, p95 update latency, CPU and peak RSS. This is an unverified
+target, not a demonstrated result. Do not promote a method using clustering-only
+timings or quality alone.
 Keep exploratory development distinct from held-out evaluation; do not claim
 semantic quality, novelty or guided-search gains without corresponding evidence.
 Build the living manuscript using `paper/build.py` with output outside Git.

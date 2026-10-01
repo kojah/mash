@@ -6,6 +6,23 @@ implementation only after selection. This directory is an offline lab, not a
 runtime dependency or a new CLI command. See the
 [research compilation](../../benchmarks/2026-10-01-topic-quality-research.md).
 
+Topic modeling must be fast enough to avoid materially slowing ingestion and must
+not use an LLM. Exclude generative summarization, rewriting, labels and taxonomy
+synthesis, including local LLMs and paid topic-inference calls. Reuse existing
+local embeddings first; additional non-generative encoder work needs measured
+quality gains and bounded costs. LLM-based prior art is context, not a candidate
+implementation. Independent source review remains an evaluation requirement.
+
+The provisional performance gate is no more than 10% ingestion-throughput loss
+versus topics disabled on matched workloads. Measure the full path, including
+context processing, extra encoder calls, clustering, label maintenance and writes,
+for initial indexing, new threads, appended turns, edits and deletions. Keep model
+assets, provider inputs, routing/backends and hardware fixed. Report warm/cold
+runs, repeated timings, p95 update latency, CPU and peak process RSS, and distinguish
+amortized label refresh from immediate processing. Current clustering-only timings
+do not satisfy this gate. Quality and performance both need evidence before Rust
+method selection or promotion.
+
 ## Shortlist and decision protocol
 
 | Boundary | First comparisons | Reason |
@@ -170,6 +187,41 @@ Linear histories may contain inherited or compacted context. The source guard is
 not comprehensive secret scanning, so do not print entire packets. Keep existing
 user-only judgments frozen; any full-context judgments need their own evidence
 scope. No topic/search input or production admission behavior changes here.
+
+## Native source fidelity audit
+
+`native_audit.py` checks the same frozen development anchors against their current
+native files without printing or storing source bodies in its report. It
+reconstructs the application's BLAKE3 message IDs from Claude thread/UUID pairs
+or explicit Codex raw-message and completed turn/item IDs. It requires exact role
+and canonical-text SHA256 equality; a text-only match is insufficient. Unsupported
+canonical tool/thinking forms and conflicting replay identities are explicit
+failures. The completed-message subset ignores image blocks according to the
+typed ingestion schema; it does not guess image contents or reconcile mirrors.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/native_audit.py \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --annotations "$PRIVATE_ANNOTATIONS" --output "$PRIVATE_NATIVE_AUDIT"
+```
+
+Each source is limited to 64 MiB, 100,000 records and 8 MiB per record. Re-reading
+exact bytes catches changes during capture. Reports pin whole-file/record hashes,
+source IDs, annotation/code/lock hashes and recognized origin-field presence.
+Claude anchor parent links are checked through at most 64 native metadata edges
+to the closest represented message or root. Missing or conflicting edges are
+reported. Codex linear ancestry is explicitly unverified. Current native bytes
+need not equal the historical whole file used to create the snapshot; individual
+matched records are the evidence. Native origin metadata does not establish
+substantive intent, and source fidelity does not establish semantic topic quality.
+
+All 84 expanded-review anchors match native identity, role and canonical text;
+one requires a completed Codex attachment event. All 40 Claude anchor edges match
+(36 parents, four roots). The report is byte-identical on a fresh repeat. The
+existing admission and boundary judgments remain unchanged. Full preceding-chain
+content verification, source-supported referent resolution and production
+eligibility rules remain subsequent work, tracked in Beads and the paper.
 
 ## Initial controls
 

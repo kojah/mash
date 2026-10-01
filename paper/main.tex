@@ -67,6 +67,25 @@ tags. Our initial BIRCH implementation uses the scikit-learn reference API
 
 \section{Experimental protocol}
 \subsection{Research sequence and evidence separation}
+\paragraph{Engineering constraints.}
+Topic modeling must avoid materially slowing ingestion and must not use an LLM.
+We exclude generative summaries, rewriting, labels and taxonomy synthesis,
+including local LLM execution and paid topic-inference calls. LLM-assisted prior
+art informs comparisons but is outside the candidate runtime methods. Existing
+local embeddings should be reused where possible; additional non-generative
+encoder work requires measured quality benefit and bounded cost. Source review
+is evaluation evidence, not a generative transformation in the algorithm.
+
+Our provisional engineering target is no more than a 10\% ingestion-throughput
+loss against topics disabled on matched workloads. This target is not yet
+validated. Tests must include context processing, any additional encoder calls,
+clustering, lexical-label maintenance and persistence, with provider inputs,
+model assets, routing/backends and hardware held fixed. Initial indexing, new
+threads, appended turns, edits and deletions need repeated warm/cold measurements,
+p95 update latency, CPU and peak RSS. Amortized label refresh must be distinguished
+from immediate update cost. The fit/label timings below exclude complete ingestion
+and therefore cannot establish that this constraint is met.
+
 The agreed workflow is literature compilation, approach shortlist, Python
 experiments with recorded results, method selection, then Rust implementation.
 The Python environment is isolated from the Rust application. Private source
@@ -419,6 +438,51 @@ artifact directory, SHA256
 Repeated captures reproduce all packet contexts exactly; 25 lab tests pass,
 including sibling/future exclusion, broken ancestry, source-pin invalidation
 and explicit display/traversal limits.
+
+\subsection{Native record fidelity}
+We next check all 84 expanded-review anchors against the current native provider
+files, independently of text-only similarity. The Python audit reconstructs
+the application's BLAKE3 message IDs: Claude thread/UUID pairs and Codex explicit
+raw-message IDs or completed turn/item IDs, retaining the source-path component
+used by Codex ingestion. Matching requires identity, role and canonical-text
+SHA256 equality. It does not infer a source identity from matching text or a
+stored ordinal. The audit handles canonical text blocks and the known completed
+message text subset; unsupported tool/thinking forms and conflicting identities
+are reported rather than synthesized. This lab adds BLAKE3 Python 1.0.10 to the
+locked environment; it introduces no runtime application dependency.
+
+Each native file is capped at 64\,MiB, 100,000 records and 8\,MiB per record.
+Exact bytes are re-read to detect changes during capture. Reports retain file
+and record hashes, source IDs, recognized origin-field presence, code/lock hashes
+and the unchanged annotation identity, without message bodies. For Claude
+anchors, parent UUIDs are followed through up to 64 native metadata records to
+the closest represented message or root and compared with the stored parent
+ordinal. Missing, cyclic or conflicting ancestry is explicit. Codex linear
+ancestry and whole preceding-chain content remain outside this verification.
+
+All 84 anchors match native identity, role and canonical text. Initially 83
+match raw-message envelopes; the remaining attachment matches its explicit
+Codex completed-message event, whose image block is not interpreted as text.
+All 40 Claude anchor edges match: 36 parents and four roots. The 13 records
+previously marked protocol/generated and the single sensitive-value record
+are among the exact source matches, with no secret value displayed. The
+subagent conversation's ten generated-framing records nevertheless carry the
+same external-user marker as its substantive request. Native role/origin
+markers therefore cannot substitute for source-admission judgments in this
+sample. The audit verifies provenance; it does not independently establish
+the correctness of every manual admission label or semantic topic assignment.
+
+A fresh repeat produces a byte-identical report. Current whole-file hashes pin
+the audited bytes, not historical whole-file equivalence with the indexing run.
+Original user-only annotations, contextual packets and model predictions remain
+unchanged. Thirty-one lab tests pass, covering identity-vs-text mismatches,
+content/role changes, conflicting replay identities, metadata parent paths,
+cycles/missing edges and explicit completed-attachment handling. The implementation
+is \path{research/topics/native_audit.py}; the private report
+\path{native-audit-final.json} is under the expanded-review artifact directory,
+SHA256 \path{b34464f13ef99d326e482daa58a89d802c788f9d4ac94664f7cf83c5bf0b360e}.
+Source-supported chained-reference judgments and production admission rules
+remain unresolved; no topic-quality or downstream retrieval gain is claimed.
 
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
