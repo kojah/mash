@@ -2,7 +2,7 @@ use super::{Mode, Segment, Thread, labels, run};
 use crate::provider::Provider;
 use std::collections::BTreeMap;
 
-fn thread(axes: &[usize]) -> Thread {
+pub(super) fn thread(axes: &[usize]) -> Thread {
     let user_messages: Vec<_> = axes
         .iter()
         .map(|axis| {
@@ -21,6 +21,7 @@ fn thread(axes: &[usize]) -> Thread {
         vectors: user_messages.iter().map(|m| m.vector.clone()).collect(),
         words: labels::Terms::new(),
         user_messages,
+        user_sources: axes.iter().map(|_| "database frontend".into()).collect(),
         ignored_user_messages: 0,
     }
 }

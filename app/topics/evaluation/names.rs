@@ -20,6 +20,13 @@ pub(super) struct Labeler {
     cache: BTreeMap<String, Vec<f64>>,
 }
 impl Labeler {
+    pub(super) fn project_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
+        if texts.len() > 64 {
+            return Err(AppError::usage("topic projection batch cap exceeded"));
+        }
+        self.pool.shared_vectors(texts)
+    }
+
     pub(super) fn load(generation: &str) -> Result<Option<Self>, AppError> {
         if std::env::var_os("MASH_TEST_TOPIC_SEMANTIC_LABELS").is_none() {
             return Ok(None);

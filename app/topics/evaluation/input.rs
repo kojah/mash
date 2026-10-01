@@ -1,0 +1,353 @@
+//! Derived topic text; canonical history and stored search vectors stay intact.
+use super::{Thread, labels, names::Labeler, normalize};
+use crate::AppError;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
+
+enum Projection<'a> {
+    Keep(&'a str),
+    Omit,
+    Replace(String),
+}
+
+fn project(text: &str) -> Projection<'_> {
+    let trimmed = text.trim();
+    if trimmed.starts_with("<send_user_message_question_reply>") {
+        return reply_projection(text);
+    }
+    if trimmed
+        .strip_prefix("<turn_aborted>")
+        .and_then(|body| body.strip_suffix("</turn_aborted>"))
+        .is_some_and(|body| {
+            body.trim_start()
+                .starts_with("The user interrupted the previous turn on purpose.")
+                && !body.contains("<turn_aborted>")
+                && !body.contains("</turn_aborted>")
+        })
+    {
+        return Projection::Omit;
+    }
+    let replacement = if trimmed.starts_with("# AGENTS.md instructions for ") {
+        let Some((title, body)) = trimmed.split_once('\n') else {
+            return Projection::Keep(text);
+        };
+        if title.trim_end().is_empty() {
+            return Projection::Keep(text);
+        }
+        let Some(body) = body.trim_start().strip_prefix("<INSTRUCTIONS>") else {
+            return Projection::Keep(text);
+        };
+        let Some((_, tail)) = body.split_once("</INSTRUCTIONS>") else {
+            return Projection::Keep(text);
+        };
+        tail.trim().to_owned()
+    } else if let Some(body) = trimmed.strip_prefix("# Files mentioned by the user:\n") {
+        let Some((files, request)) = body.split_once("\n## My request:") else {
+            return Projection::Keep(text);
+        };
+        let request = if request.is_empty() {
+            request
+        } else if let Some(request) = request.strip_prefix('\n') {
+            request
+        } else {
+            return Projection::Keep(text);
+        };
+        let files: Vec<_> = files
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        if files.is_empty()
+            || files
+                .iter()
+                .any(|line| !line.starts_with("## ") || !line.contains(": "))
+        {
+            return Projection::Keep(text);
+        }
+        let mut output = String::new();
+        let mut rest = request;
+        while let Some(start) = rest.find("<image name=[Image #") {
+            output.push_str(&rest[..start]);
+            let image = &rest[start..];
+            let Some(open_end) = image.find('>') else {
+                return Projection::Keep(text);
+            };
+            let Some(close) = image[open_end + 1..].find("</image>") else {
+                return Projection::Keep(text);
+            };
+            let close = open_end + 1 + close;
+            // Unknown/nonempty image content could carry real evidence.
+            if !image[open_end + 1..close].trim().is_empty() {
+                return Projection::Keep(text);
+            }
+            output.push('\n');
+            rest = &image[close + "</image>".len()..];
+        }
+        output.push_str(rest);
+        output.trim().to_owned()
+    } else {
+        return Projection::Keep(text);
+    };
+    if labels::substantive(&replacement) {
+        Projection::Replace(replacement)
+    } else {
+        Projection::Omit
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QuestionReply {
+    #[serde(rename = "questionItemId")]
+    _question_item_id: String,
+    answer: String,
+    #[serde(default)]
+    question: Option<String>,
+}
+
+fn reply_projection(text: &str) -> Projection<'_> {
+    let Some(body) = text
+        .trim()
+        .strip_prefix("<send_user_message_question_reply>")
+        .and_then(|body| body.strip_suffix("</send_user_message_question_reply>"))
+    else {
+        return Projection::Keep(text);
+    };
+    if body.len() > 65536 {
+        return Projection::Keep(text);
+    }
+    let Ok(replies) = serde_json::from_str::<Vec<QuestionReply>>(body) else {
+        return Projection::Keep(text);
+    };
+    if replies.is_empty() || replies.len() > 8 {
+        return Projection::Keep(text);
+    }
+    let mut output = Vec::new();
+    for reply in replies {
+        if let Some(question) = reply.question {
+            output.push(question);
+        }
+        output.push(reply.answer);
+    }
+    let output = output.join("\n");
+    if labels::substantive(&output) {
+        Projection::Replace(output)
+    } else {
+        Projection::Omit
+    }
+}
+
+#[derive(Serialize)]
+pub(super) struct Summary {
+    omitted_messages: usize,
+    projected_messages: usize,
+    deduplicated_messages: usize,
+    unique_embeddings: usize,
+    elapsed_ms: f64,
+}
+
+struct Plan {
+    thread: String,
+    messages: Vec<super::Segment>,
+    sources: Vec<String>,
+    projected: Vec<(usize, usize)>,
+    omitted: usize,
+    deduplicated: usize,
+}
+
+struct Preparation {
+    plans: Vec<Plan>,
+    texts: Vec<String>,
+}
+
+fn prepare(threads: &BTreeMap<String, Thread>) -> Result<Preparation, AppError> {
+    let mut texts = Vec::new();
+    let mut seen = BTreeMap::new();
+    let mut plans = Vec::new();
+    let phrases = std::env::var_os("MASH_TEST_TOPIC_PHRASES").is_some();
+    for (id, thread) in threads {
+        if thread.user_sources.len() != thread.user_messages.len() {
+            return Err(AppError::usage("topic source/evidence alignment mismatch"));
+        }
+        let mut plan = Plan {
+            thread: id.clone(),
+            messages: Vec::new(),
+            sources: Vec::new(),
+            projected: Vec::new(),
+            omitted: 0,
+            deduplicated: 0,
+        };
+        let mut sources_seen = BTreeSet::new();
+        for (source, message) in thread.user_sources.iter().zip(&thread.user_messages) {
+            match project(source) {
+                Projection::Omit => plan.omitted += 1,
+                Projection::Keep(text) => {
+                    if !sources_seen.insert(text.to_owned()) {
+                        plan.deduplicated += 1;
+                        continue;
+                    }
+                    plan.messages.push(message.clone());
+                    plan.sources.push(text.to_owned());
+                }
+                Projection::Replace(text) => {
+                    if !sources_seen.insert(text.clone()) {
+                        plan.deduplicated += 1;
+                        continue;
+                    }
+                    let index = *seen.entry(text.clone()).or_insert_with(|| {
+                        let index = texts.len();
+                        texts.push(text.clone());
+                        index
+                    });
+                    if texts.len() > 1024 {
+                        return Err(AppError::usage("topic input projection cap exceeded"));
+                    }
+                    plan.projected.push((plan.messages.len(), index));
+                    plan.messages.push(super::Segment {
+                        vector: Vec::new(), // filled only after successful model work
+                        words: if phrases {
+                            labels::candidates(&text)
+                        } else {
+                            labels::terms(&text)
+                        },
+                        messages: message.messages,
+                    });
+                    plan.sources.push(text);
+                }
+            }
+        }
+        plans.push(plan);
+    }
+    Ok(Preparation { plans, texts })
+}
+
+/// Build and validate every replacement before mutating derived thread evidence.
+/// Changed text must receive a fresh compatible vector, never a stale search vector.
+pub(super) fn clean(
+    threads: &mut BTreeMap<String, Thread>,
+    mut labeler: Option<&mut Labeler>,
+) -> Result<Summary, AppError> {
+    let start = Instant::now();
+    let Preparation { plans, texts } = prepare(threads)?;
+    let mut vectors = Vec::new();
+    if !texts.is_empty() {
+        let labeler = labeler.as_mut().ok_or_else(|| {
+            AppError::model("topic text projection requires explicit compatible local models")
+        })?;
+        for batch in texts.chunks(64) {
+            let references: Vec<_> = batch.iter().map(String::as_str).collect();
+            let embedded = labeler.project_vectors(&references)?;
+            if embedded.len() != batch.len() {
+                return Err(AppError::model(
+                    "unexpected topic projection embedding count",
+                ));
+            }
+            for vector in embedded {
+                vectors.push(normalize(&vector, 384)?);
+            }
+        }
+    }
+    let mut omitted = 0;
+    let mut projected = 0;
+    let mut deduplicated = 0;
+    for plan in plans {
+        let mut messages = plan.messages;
+        for (message, vector) in &plan.projected {
+            messages[*message].vector = vectors[*vector].clone();
+        }
+        let thread = threads
+            .get_mut(&plan.thread)
+            .expect("prepared thread exists");
+        thread.user_messages = messages;
+        thread.user_sources = plan.sources;
+        thread.ignored_user_messages += plan.omitted + plan.deduplicated;
+        omitted += plan.omitted;
+        projected += plan.projected.len();
+        deduplicated += plan.deduplicated;
+    }
+    Ok(Summary {
+        omitted_messages: omitted,
+        projected_messages: projected,
+        deduplicated_messages: deduplicated,
+        unique_embeddings: texts.len(),
+        elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+    })
+}
+
+#[test]
+fn projections_preserve_real_requests_and_unknown_or_quoted_frames() {
+    let agents = "# AGENTS.md instructions for /example\n\n<INSTRUCTIONS>Use Git.</INSTRUCTIONS>";
+    assert!(matches!(project(agents), Projection::Omit));
+    assert!(
+        matches!(project(&format!("{agents}\nInvestigate cBioPortal.")), Projection::Replace(text) if text == "Investigate cBioPortal.")
+    );
+    let files = "# Files mentioned by the user:\n\n## Photo.jpg: /example.jpg\n\n## My request:\n";
+    assert!(matches!(project(files), Projection::Omit));
+    let image = "<image name=[Image #1] path=\"/example.jpg\">\n</image>";
+    assert!(
+        matches!(project(&format!("{files}Compare PostgreSQL and Redis.\n{image}")), Projection::Replace(text) if text == "Compare PostgreSQL and Redis.")
+    );
+    for text in [
+        format!("```\n{agents}\n```"),
+        format!("{files}<image name=[Image #1]>meaningful image text</image>"),
+        format!("{files}<image name=[Image #1]>"),
+        "# AGENTS.md instructions for /example\n<INSTRUCTIONS>unfinished".to_owned(),
+        "# Files mentioned by the user:\nunknown paragraph\n## My request:\nKeep this".to_owned(),
+        "How do we write AGENTS.md instructions?".to_owned(),
+    ] {
+        assert!(matches!(project(&text), Projection::Keep(_)));
+    }
+}
+
+#[test]
+fn changed_topic_text_cannot_silently_reuse_stored_vectors() {
+    let mut thread = super::anchored::thread(&[0]);
+    thread.user_sources = vec!["# AGENTS.md instructions for /example\n<INSTRUCTIONS>Git</INSTRUCTIONS>\nInvestigate cBioPortal.".into()];
+    let mut threads = BTreeMap::from([("thread".into(), thread)]);
+    assert!(clean(&mut threads, None).is_err());
+    assert_eq!(threads["thread"].user_messages[0].vector[0], 1.0);
+    assert!(threads["thread"].user_sources[0].contains("<INSTRUCTIONS>"));
+}
+
+#[test]
+fn clarification_projection_keeps_question_and_answer_without_protocol_ids() {
+    let text = r#"<send_user_message_question_reply>
+[{"questionItemId":"transport-id","answer":"Yes, PostgreSQL","question":"Which shared backend?"}]
+</send_user_message_question_reply>"#;
+    assert!(
+        matches!(project(text), Projection::Replace(value) if value == "Which shared backend?\nYes, PostgreSQL")
+    );
+    for text in [
+        text.replace("\"Yes, PostgreSQL\"", "123"),
+        text.replace("\"transport-id\"", "null"),
+        format!("{text}\nPlease investigate PostgreSQL."),
+        "<send_user_message_question_reply>[{}]</send_user_message_question_reply>".into(),
+    ] {
+        assert!(matches!(project(&text), Projection::Keep(_)));
+    }
+    assert!(matches!(
+        project(
+            "<turn_aborted>The user interrupted the previous turn on purpose. Processes may still be running.</turn_aborted>"
+        ),
+        Projection::Omit
+    ));
+}
+
+#[test]
+fn derived_omissions_and_dedup_leave_canonical_vectors_available() {
+    let mut thread = super::anchored::thread(&[0, 0, 0]);
+    thread.user_sources = vec![
+        "# AGENTS.md instructions for /example\n<INSTRUCTIONS>Git</INSTRUCTIONS>".into(),
+        "database frontend".into(),
+        "database frontend".into(),
+    ];
+    let mut threads = BTreeMap::from([("thread".into(), thread)]);
+    let summary = clean(&mut threads, None).unwrap();
+    assert_eq!(summary.omitted_messages, 1);
+    assert_eq!(summary.deduplicated_messages, 1);
+    assert_eq!(summary.projected_messages, 0);
+    assert_eq!(threads["thread"].user_messages.len(), 1);
+    assert_eq!(threads["thread"].user_sources, ["database frontend"]);
+    assert_eq!(threads["thread"].vectors.len(), 3);
+    assert_eq!(threads["thread"].ignored_user_messages, 2);
+}

@@ -2,6 +2,7 @@
 mod anchored;
 mod anchors;
 mod assignments;
+mod input;
 mod names;
 use super::segments::{Builder, Segment};
 use super::{AssignmentModel, Settings, TopicId, birch::Tree, labels, normalize};
@@ -20,6 +21,7 @@ struct Thread {
     vectors: Vec<Vec<f64>>,
     words: labels::Terms,
     user_messages: Vec<Segment>,
+    user_sources: Vec<String>,
     ignored_user_messages: usize,
 }
 
@@ -112,11 +114,13 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
             vectors: Vec::new(),
             words: labels::Terms::new(),
             user_messages: Vec::new(),
+            user_sources: Vec::new(),
             ignored_user_messages: 0,
         });
         if role == Role::User && !labels::substantive(&text) {
             thread.ignored_user_messages += 1;
         } else if role == Role::User {
+            thread.user_sources.push(text.clone());
             thread.user_messages.push(Segment {
                 vector: vector.clone(),
                 words: if phrases {
@@ -261,6 +265,7 @@ fn held_out_copied_threads_do_not_train_the_discovery_model() {
                     words: labels::terms("database"),
                     messages: 1,
                 }],
+                user_sources: vec!["database".into()],
                 ignored_user_messages: 0,
             }
         })
@@ -482,8 +487,16 @@ fn benchmark_topic_discovery() {
         std::env::var_os("MASH_TEST_TOPIC_REPORT_DIR").expect("private report directory"),
     );
     std::fs::create_dir_all(&output).unwrap();
-    let (threads, generation) = corpus(&database);
+    let (mut threads, generation) = corpus(&database);
     let mut labeler = names::Labeler::load(&generation).unwrap();
+    if std::env::var_os("MASH_TEST_TOPIC_CLEAN_INPUT").is_some() {
+        let summary = input::clean(&mut threads, labeler.as_mut()).unwrap();
+        std::fs::write(
+            output.join("input-summary.json"),
+            serde_json::to_vec_pretty(&summary).unwrap(),
+        )
+        .unwrap();
+    }
     assert!(!threads.is_empty());
     let holdout = std::env::var_os("MASH_TEST_TOPIC_HOLDOUT").is_some();
     let modes: &[Mode] = if std::env::var_os("MASH_TEST_TOPIC_REPRESENTATIVES").is_some() {
