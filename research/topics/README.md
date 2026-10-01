@@ -987,6 +987,15 @@ count/scoring/ranking work is about 7.5 times faster; this is not production
 search or complete ingestion. Older capture guards stay strict. All 255 lab
 tests pass; semantic quality and Rust parity remain open.
 
+The [representation-specific question calibration](../../benchmarks/2026-10-02-question-representation-calibration.md)
+uses `question_calibration.py` on only the original exposed calibration cohort.
+Six source-only views, both linkages and nine cuts produce 108 candidates/324
+partitions. None reaches the unchanged .70 precision/20-link gate, even forward
+only. Do not relax the gate or evaluate a fallback winner on old reserved data.
+Source/lexical/unit reconstruction, all pair counts, exact repeats and 259 tests
+pass. This negative development calibration motivates a different representation
+or discovery approach; it does not establish semantic quality or select a method.
+
 Run lab input-boundary tests:
 
 ```bash

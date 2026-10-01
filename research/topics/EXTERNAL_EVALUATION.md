@@ -195,6 +195,13 @@ references do not establish semantic label precision or agent-session quality.
 Both comparisons repeat all non-timing fields, with independent source/score
 reconstruction. No new held-out split or production method is claimed.
 
+The [representation-specific calibration](../../benchmarks/2026-10-02-question-representation-calibration.md)
+uses only the original exposed calibration questions. Neither robust nor
+forward-only selection finds an eligible setting on the frozen 108-candidate
+grid. No cutoff is relaxed and no fallback receives evaluation on already
+exposed reserved outcomes. A post-hoc reference-only feasibility check is an
+oracle sanity bound, never source features or a production topic method.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.
