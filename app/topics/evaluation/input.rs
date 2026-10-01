@@ -2,6 +2,7 @@
 mod framing;
 mod reorder;
 pub(super) mod runtime_context;
+mod startup;
 use super::{Thread, labels, names::Labeler, normalize};
 use crate::AppError;
 use serde::{Deserialize, Serialize};
@@ -151,6 +152,8 @@ fn reply_projection(text: &str) -> Projection<'_> {
 #[derive(Serialize)]
 pub(super) struct Summary {
     runtime_context_policy: runtime_context::Policy,
+    startup_context_policy: startup::Policy,
+    omitted_startup_context: usize,
     omitted_skill_documents: usize,
     omitted_messages: usize,
     projected_messages: usize,
@@ -167,6 +170,7 @@ struct Plan {
     omitted: usize,
     omitted_skill_documents: usize,
     deduplicated: usize,
+    omitted_startup_context: usize,
 }
 
 struct Preparation {
@@ -177,7 +181,11 @@ struct Preparation {
 fn prepare(
     threads: &BTreeMap<String, Thread>,
     policy: runtime_context::Policy,
+    startup: Option<&startup::Selection>,
 ) -> Result<Preparation, AppError> {
+    if let Some(selection) = startup {
+        selection.validate(threads)?;
+    }
     let mut texts = Vec::new();
     let mut seen = BTreeMap::new();
     let mut plans = Vec::new();
@@ -194,9 +202,15 @@ fn prepare(
             omitted: 0,
             omitted_skill_documents: 0,
             deduplicated: 0,
+            omitted_startup_context: 0,
         };
         let mut sources_seen = BTreeSet::new();
         for (source, message) in thread.user_sources.iter().zip(&thread.user_messages) {
+            if startup.is_some_and(|selection| selection.omits(id, source)) {
+                plan.omitted += 1;
+                plan.omitted_startup_context += 1;
+                continue;
+            }
             match project_with_policy(&source.text, policy) {
                 Projection::Omit => {
                     plan.omitted += 1;
@@ -250,7 +264,9 @@ pub(super) fn clean(
     mut labeler: Option<&mut Labeler>,
 ) -> Result<Summary, AppError> {
     let start = Instant::now();
-    let Preparation { plans, texts } = prepare(threads, runtime_context::policy())?;
+    let startup = startup::Selection::load()?;
+    let Preparation { plans, texts } =
+        prepare(threads, runtime_context::policy(), startup.as_ref())?;
     let mut vectors = Vec::new();
     if !texts.is_empty() {
         let labeler = labeler.as_mut().ok_or_else(|| {
@@ -275,6 +291,7 @@ pub(super) fn clean(
     let mut projected = 0;
     let mut deduplicated = 0;
     let mut omitted_skill_documents = 0;
+    let mut omitted_startup_context = 0;
     for plan in plans {
         let mut messages = plan.messages;
         for (message, vector) in &plan.projected {
@@ -290,9 +307,12 @@ pub(super) fn clean(
         projected += plan.projected.len();
         deduplicated += plan.deduplicated;
         omitted_skill_documents += plan.omitted_skill_documents;
+        omitted_startup_context += plan.omitted_startup_context;
     }
     Ok(Summary {
         runtime_context_policy: runtime_context::policy(),
+        startup_context_policy: startup::Selection::policy(startup.as_ref()),
+        omitted_startup_context,
         omitted_skill_documents,
         omitted_messages: omitted,
         projected_messages: projected,

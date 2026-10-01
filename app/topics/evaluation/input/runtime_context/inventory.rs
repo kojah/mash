@@ -30,8 +30,8 @@ fn benchmark_skill_context_inventory() {
         std::env::var_os("MASH_TEST_TOPIC_REPORT_DIR").expect("explicit private report directory"),
     );
     let (threads, _) = crate::topics::evaluation::corpus(&path);
-    let before = super::super::prepare(&threads, Policy::Preserve).unwrap();
-    let after = super::super::prepare(&threads, Policy::OmitSkillDocuments).unwrap();
+    let before = super::super::prepare(&threads, Policy::Preserve, None).unwrap();
+    let after = super::super::prepare(&threads, Policy::OmitSkillDocuments, None).unwrap();
     assert_eq!(
         before.texts, after.texts,
         "exclusions do not rewrite or embed text"

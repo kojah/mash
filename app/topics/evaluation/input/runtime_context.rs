@@ -93,8 +93,8 @@ mod tests {
             "# AGENTS.md instructions\n<INSTRUCTIONS>Use Git.</INSTRUCTIONS>\nInvestigate SQLite."
                 .into();
         let threads = std::collections::BTreeMap::from([("fixture".into(), thread)]);
-        let before = super::super::prepare(&threads, Policy::Preserve).unwrap();
-        let after = super::super::prepare(&threads, Policy::OmitSkillDocuments).unwrap();
+        let before = super::super::prepare(&threads, Policy::Preserve, None).unwrap();
+        let after = super::super::prepare(&threads, Policy::OmitSkillDocuments, None).unwrap();
         assert_eq!(before.texts, after.texts);
         assert_eq!(before.plans[0].projected, [(1, 0)]);
         assert_eq!(after.plans[0].projected, [(0, 0)]);

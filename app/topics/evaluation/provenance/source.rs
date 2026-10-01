@@ -54,6 +54,17 @@ pub(in crate::topics::evaluation) struct Source {
 }
 
 impl Source {
+    pub(in crate::topics::evaluation) fn reviewed_canonical(
+        &self,
+        message: &str,
+        hash: &[u8; 32],
+    ) -> bool {
+        matches!(self.kind, TextKind::Canonical)
+            && matches!(&self.origin, Origin::Stored { message_id, canonical_hash, .. }
+                if message_id == message && canonical_hash == hash)
+            && blake3::hash(self.text.as_bytes()).as_bytes() == hash
+    }
+
     fn identity(&self) -> Option<Identity> {
         let Origin::Stored {
             message_id,
