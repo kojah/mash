@@ -1,4 +1,5 @@
 //! Derived topic text; canonical history and stored search vectors stay intact.
+mod framing;
 mod reorder;
 use super::{Thread, labels, names::Labeler, normalize};
 use crate::AppError;
@@ -35,64 +36,7 @@ fn project(text: &str) -> Projection<'_> {
     {
         return Projection::Omit;
     }
-    let replacement = if trimmed.starts_with("# AGENTS.md instructions for ") {
-        let Some((title, body)) = trimmed.split_once('\n') else {
-            return Projection::Keep(text);
-        };
-        if title.trim_end().is_empty() {
-            return Projection::Keep(text);
-        }
-        let Some(body) = body.trim_start().strip_prefix("<INSTRUCTIONS>") else {
-            return Projection::Keep(text);
-        };
-        let Some((_, tail)) = body.split_once("</INSTRUCTIONS>") else {
-            return Projection::Keep(text);
-        };
-        tail.trim().to_owned()
-    } else if let Some(body) = trimmed.strip_prefix("# Files mentioned by the user:\n") {
-        let Some((files, request)) = body.split_once("\n## My request:") else {
-            return Projection::Keep(text);
-        };
-        let request = if request.is_empty() {
-            request
-        } else if let Some(request) = request.strip_prefix('\n') {
-            request
-        } else {
-            return Projection::Keep(text);
-        };
-        let files: Vec<_> = files
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .collect();
-        if files.is_empty()
-            || files
-                .iter()
-                .any(|line| !line.starts_with("## ") || !line.contains(": "))
-        {
-            return Projection::Keep(text);
-        }
-        let mut output = String::new();
-        let mut rest = request;
-        while let Some(start) = rest.find("<image name=[Image #") {
-            output.push_str(&rest[..start]);
-            let image = &rest[start..];
-            let Some(open_end) = image.find('>') else {
-                return Projection::Keep(text);
-            };
-            let Some(close) = image[open_end + 1..].find("</image>") else {
-                return Projection::Keep(text);
-            };
-            let close = open_end + 1 + close;
-            // Unknown/nonempty image content could carry real evidence.
-            if !image[open_end + 1..close].trim().is_empty() {
-                return Projection::Keep(text);
-            }
-            output.push('\n');
-            rest = &image[close + "</image>".len()..];
-        }
-        output.push_str(rest);
-        output.trim().to_owned()
-    } else {
+    let Some(replacement) = framing::project(text) else {
         return Projection::Keep(text);
     };
     if labels::substantive(&replacement) {
