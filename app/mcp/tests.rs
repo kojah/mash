@@ -4,6 +4,7 @@ use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
 mod incomplete;
+mod selections;
 
 #[tokio::test]
 async fn typed_search_requests_validate_before_touching_models_or_storage() {
@@ -28,9 +29,11 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
                 query: "--models-dir=untrusted".into(),
                 limit: None,
                 unit: crate::search_results::SearchUnit::Threads,
-                provider: Some(Provider::Codex),
-                days: None,
-                filter,
+                filters: crate::search_filter::Selection {
+                    provider: vec![Provider::Codex],
+                    filter,
+                    ..Default::default()
+                },
                 local,
                 shared,
             }))
@@ -43,9 +46,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
             limit: None,
             unit: crate::search_results::SearchUnit::Threads,
-            provider: None,
-            days: None,
-            filter: None,
+            filters: crate::search_filter::Selection::default(),
             local: true,
             shared: false,
         }))
@@ -198,6 +199,16 @@ async fn indexing_streams_correlated_progress_before_the_tool_result() {
 fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     let search = tools.iter().find(|tool| tool.name == "search").unwrap();
     assert!(search.input_schema["properties"].get("filter").is_some());
+    for field in [
+        "provider",
+        "conversation",
+        "node",
+        "role",
+        "project",
+        "repository",
+    ] {
+        assert_eq!(search.input_schema["properties"][field]["type"], "array");
+    }
     let unit = &search.input_schema["properties"]["unit"];
     assert_eq!(unit["default"], "threads");
     let schema = serde_json::to_string(&search.input_schema).unwrap();
@@ -271,10 +282,14 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     assert_eq!(body["ready"], false);
     assert_eq!(status.structured_content.as_ref(), Some(&body));
     assert_eq!(body["configuration"]["loaded"], true);
-    let args = json!({"query":"--models-dir=untrusted", "shared":false})
-        .as_object()
-        .expect("object")
-        .clone();
+    let args = json!({
+        "query":"--models-dir=untrusted", "shared":false,
+        "unit":"messages", "provider":["codex", "claude-code"],
+        "conversation":["thread-a", "thread-b"], "after":2, "before":3
+    })
+    .as_object()
+    .expect("object")
+    .clone();
     let result = client
         .call_tool(CallToolRequestParams::new("search").with_arguments(args))
         .await

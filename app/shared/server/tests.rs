@@ -6,6 +6,7 @@ mod context;
 mod correlation;
 mod cursor;
 mod native;
+mod selections;
 mod windsurf;
 
 const FIRST: &str = "test-api-token-first-32-bytes-long";
@@ -120,6 +121,7 @@ async fn provider_contract(service: Service) {
             .unwrap();
         assert_eq!(result[0].content, "providerneedle canonical history");
     }
+    selections::verify_thread_provider_scopes(&service, &vector).await;
     verify_delayed_provider_publication_stays_forgotten(&service, &vector).await;
     service.cleanup().await;
 }

@@ -28,10 +28,8 @@ struct Search {
     /// Return threads (default) or individual messages. Thread matches reference view anchors.
     #[serde(default)]
     unit: crate::search_results::SearchUnit,
-    provider: Option<Provider>,
-    days: Option<u32>,
-    /// Boolean metadata filter: all/any/not, node/provider/role/conversation/project/repository lists, after/before Unix timestamps.
-    filter: Option<crate::search_filter::Filter>,
+    #[serde(flatten)]
+    filters: crate::search_filter::Selection,
     #[serde(default)]
     shared: bool,
     /// Search only the local SQLite index.
@@ -221,12 +219,7 @@ impl Mash {
             query: request.query,
             limit: request.limit.unwrap_or(20),
             unit: request.unit,
-            filters: Box::new(crate::search_filter::Selection {
-                provider: request.provider.into_iter().collect(),
-                days: request.days,
-                filter: request.filter,
-                ..Default::default()
-            }),
+            filters: Box::new(request.filters),
             shared: request.shared,
             local: request.local,
         })

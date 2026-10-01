@@ -4,6 +4,7 @@ use crate::search_results::SearchUnit;
 use crate::storage::EmbeddingWrite;
 
 mod correlation;
+mod selections;
 
 #[tokio::test]
 async fn context_deadline_preserves_completed_evidence_without_waiting_for_every_wave() {

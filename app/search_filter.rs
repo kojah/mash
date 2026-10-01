@@ -4,13 +4,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Selection {
+    /// Provider alternatives; omitted or empty selects all providers.
     pub(crate) provider: Vec<Provider>,
     pub(crate) days: Option<u32>,
     pub(crate) node: Vec<String>,
     pub(crate) role: Vec<crate::role::Role>,
+    /// Canonical thread IDs from thread search; omitted or empty selects all threads.
     pub(crate) conversation: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
     pub(crate) project: Vec<String>,

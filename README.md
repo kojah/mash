@@ -574,6 +574,32 @@ the node label `local`. `--days` is a rolling message-age window. `--after` is
 inclusive and `--before` exclusive; both accept `YYYY-MM-DD` (UTC midnight) or
 RFC3339 timestamps with an explicit offset.
 
+MCP exposes the same selection fields: `provider`, `conversation`, `node`,
+`role`, `project` and `repository` are arrays, including for a single value.
+`after` and `before` use Unix seconds. Omitted or empty shortcut arrays impose
+no restriction; an empty list inside a structured predicate, such as
+`{"conversation": []}`, matches nothing. Unknown thread IDs match nothing.
+Use canonical `conversation_id` values returned by thread search to drill down
+into messages from promising threads:
+
+```bash
+mash search 'deployment' --unit threads
+mash search 'rollback procedure' --unit messages \
+  --conversation THREAD_A --conversation THREAD_B \
+  --provider codex --provider claude-code
+```
+
+The corresponding MCP drill-down request is:
+
+```json
+{
+  "query": "rollback procedure",
+  "unit": "messages",
+  "conversation": ["THREAD_A", "THREAD_B"],
+  "provider": ["codex", "claude-code"]
+}
+```
+
 ```bash
 mash search 'database migration' --provider codex --provider claude-code \
   --role user --role assistant --after 2026-09-01 --before 2026-10-01
