@@ -54,6 +54,9 @@ masking, conserved support, visible-link handling and context enrichment.
 Use original centroid label scoring, not the rejected representative-scoring
 ablation. Label formulas are fixed; their vocabularies/statistics naturally
 change with assignment.
+Reserved-source exclusion applies to discovery fitting. Existing label
+statistics still use assigned threads, including reserved sources; this is not
+a fully held-out label-training evaluation.
 
 The external audit verifies that BIRCH controls reproduce the previous trial,
 both algorithms receive identical training-vector fingerprints, and eligibility,
