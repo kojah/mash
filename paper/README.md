@@ -11,8 +11,9 @@ Do not turn diagnostic metrics into quality claims, infer statistical significan
 from single runs, or claim novelty before reviewing prior art. Record negative
 results as well as improvements. Authorship and submission venue remain open.
 
-The draft contains the first twelve Python geometry controls and a small
-source-pinned user-only boundary pilot. It is a research record, not a completed
+The draft contains twelve Python geometry controls, the initial user-only boundary
+pilot, an expanded eight-conversation review and a bounded preceding-context audit.
+It is a research record, not a completed
 paper or evidence of production topic quality. Full model/hardware provenance,
 independent annotations, quality/online lifecycle gates and guided-agent retrieval
 evaluation remain incomplete. Raw histories, annotation IDs and individual topic

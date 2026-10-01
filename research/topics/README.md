@@ -142,6 +142,35 @@ the searchable user text, with prior corpus familiarity; full assistant/native
 branch context and independent human review remain incomplete. Detailed aggregate
 procedures, counts and unchanged-parameter baseline results are in the paper.
 
+## Preceding conversational context
+
+`preceding_context.py` produces private source-pinned review packets for every
+visible user anchor in a frozen development annotation file. Claude records follow
+the snapshot's native parent ordinals; linear records follow preceding stored
+order. Missing, forward, mixed or ambiguous ancestry fails rather than falling
+back to a nearby assistant message. No future or sibling records are borrowed.
+The packet walks at most 64 raw records to the previous visible user or root.
+It displays only searchable user/assistant prose, with 16 KiB per-record and
+32 KiB total display bounds, explicit omissions and the existing display guard.
+Tool/developer text is not displayed; hashes of traversed canonical/searchable
+records still make context edits detectable. Outputs must be outside Git, cannot
+overwrite existing files, and stdout contains only aggregate counts.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/preceding_context.py \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --annotations "$PRIVATE_ANNOTATIONS" --output "$PRIVATE_CONTEXT_PACKETS"
+```
+
+This verifies traversal of stored edges, not independent native-file fidelity or
+semantic referent resolution. Reaching a previous user record does not prove that
+the referent is resolved: that record may itself be an approval or generated frame.
+Linear histories may contain inherited or compacted context. The source guard is
+not comprehensive secret scanning, so do not print entire packets. Keep existing
+user-only judgments frozen; any full-context judgments need their own evidence
+scope. No topic/search input or production admission behavior changes here.
+
 ## Initial controls
 
 `run.py` reads an existing consistent SQLite snapshot in read-only mode. It uses

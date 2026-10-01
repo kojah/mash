@@ -371,6 +371,55 @@ Private artifacts are recorded under \path{topic-python-review-v2-20261001}:
 unchanged, and these development results do not consume the reserved partition
 as a tuning set or establish external generalization.
 
+\subsection{Causal preceding-context audit}
+The negative boundary controls motivate examining conversational units before
+further clustering or threshold tuning, consistent with dialogue-aware
+segmentation research \cite{khatri,xing,gao}. We retain all eight development cases
+and their frozen user-only judgments, and export one preceding-context packet
+for each of the 84 visible user anchors. The procedure follows stored native
+parent ordinals for Claude Code and stored linear order for Codex; it never
+substitutes nearby siblings or future responses. Missing, forward, mixed or
+ambiguous parent relationships fail explicitly. User source hashes are checked
+again within the context-capture read transaction.
+
+Each walk stops at the previous nonempty searchable user record, a root, or
+64 raw records. Only searchable user/assistant prose is displayed, with a
+16\,KiB per-record and 32\,KiB total display budget; oversized records are
+omitted explicitly rather than truncated. Tool/developer text is not displayed,
+but traversed record IDs, roles, parent edges and canonical/searchable SHA256s
+contribute to the context pin. The existing conservative standalone-value
+display guard applies. This is a private review representation, not a production
+admission policy, general secret scanner or embedding transformation.
+
+Of the 84 packets, 40 follow stored native edges and 44 use linear order.
+Seventy-four reach a preceding visible user, eight reach a root and two reach
+the record limit. No displayed record exceeds the size budgets; the largest
+packet displays 6,591 UTF-8 bytes and one displayed value is redacted.
+For the 29 previously marked referential anchors, 26 reach a previous visible
+user, two reach a root and one reaches the record limit; 24 have preceding
+searchable assistant prose in their bounded packet. Crucially, twelve previous
+visible user records are themselves referential, twelve are substantive content,
+one is protocol framing and one is attachment-only. An immediate user-pair
+representation therefore often leaves the antecedent unresolved. Selected
+assistant-context inspection also shows repeated approvals within permission
+and deployment discussions, illustrating why a bare approval should not define
+a new semantic topic.
+
+These counts concern stored traversal and existing admission judgments, not
+independent native-file verification, resolved referents or measured topic gains.
+A completed bounded interval is not a complete conversation or a guarantee of
+semantic sufficiency. Linear order may contain inherited or compacted context.
+The original boundary annotations and predictions remain unchanged. Before
+testing contextual representations, we need native-envelope checks and separate,
+source-supported contextual judgments, including unresolved chained references.
+The implementation is \path{research/topics/preceding_context.py}; the final
+private packet is \path{preceding-context-final.json} under the expanded-review
+artifact directory, SHA256
+\path{6b3e5c615747d3292edf25f770d78823180e73dd5b369929a332ea7321e7d02e}.
+Repeated captures reproduce all packet contexts exactly; 25 lab tests pass,
+including sibling/future exclusion, broken ancestry, source-pin invalidation
+and explicit display/traversal limits.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background
