@@ -666,6 +666,70 @@ remain limitations. Source-only contextual representations and downstream
 semantic quality need evaluation before promotion; reviewer-written text must
 not become model input.
 
+\subsection{Source-only contextual embeddings}
+We next test whether causal source context improves boundary representations.
+Three controls re-encode user text alone, join the preceding exchange and anchor
+with double newlines, or average separately encoded normalized record directions
+equally before normalization. Context is applied only to originally referential
+anchors according to the frozen oracle admission; other substantive anchors
+remain user-only. Reference-resolution labels and reviewer rationales are not
+used to construct inputs. Excluded framing, sensitive and attachment anchors
+remain barriers rather than being compressed out of the sequence.
+
+We reuse the explicit installed quantized MiniLM assets and singleton,
+one-thread CPU encoder described earlier, without downloads or generative calls.
+At most four preceding prose records are allowed. Missing, redacted, over-cap
+or record-limit-incomplete exchanges abstain. Tokenization disables truncation
+and rejects inputs exceeding 512 tokens before inference. Record means reject
+the whole representation if any constituent exceeds the window; this prevents
+silently deleting difficult evidence. Native causal paths govern captured
+context, but comparisons retain the frozen linear user-boundary study scope.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrrrr}
+\hline
+Representation & Encoded / 68 & Scored / 40 & AP & ROC & TP/FP/abstain \\
+\hline
+User only & 66 & 38 & .561 & .697 & 11/25/2 \\
+Joined exchange & 60 & 35 & .726 & .889 & 9/14/5 \\
+Record mean & 61 & 36 & .720 & .897 & 10/10/4 \\
+\hline
+\end{tabular}
+\caption{Contextual embedding pilot. AP and ROC AUC use the common 35 known
+boundaries with nine changes. Fixed cosine 0.55 decisions use all 40 known
+boundaries, including abstentions.}
+\label{tab:context-embeddings}
+\end{table}
+
+Table~\ref{tab:context-embeddings} provides a promising ranking signal, but the
+effect is provider-dependent: Codex AP on common support rises from .465 to
+.852/.884, while Claude AP falls from .833 to .583/.583 on only two changes.
+The fixed cutoff remains inadequate: precision is .306/.391/.500 and recall
+including abstentions is .917/.750/.833. Joined input rejects six oversized
+anchors and two incomplete exchanges; record means reject five and two,
+respectively, versus two oversized user-only anchors. Retaining context can
+create artificial continuity or import assistant proposals the user did not
+endorse. User-only exploratory boundaries, oracle admission and prior reviewer
+exposure prevent treating these results as robust topic quality or resolution
+accuracy. No threshold retuning or reserved-group evaluation occurs.
+
+Across the three methods, a shared bounded cache performs 121 unique encodes and
+120 cache hits; the maximum encoded input is 475 tokens. In one final run,
+inference takes 926\,ms and elapsed time after imports is 1,731\,ms. Process peak
+RSS is 751.2\,MiB, including the scientific stack and frozen corpus loader.
+Sequential cache reuse means new-call counts are not standalone method costs;
+preflight tokenization is included in elapsed time, not encoder tokenization
+statistics. These measurements do not establish production ingestion overhead.
+Reuse of compatible stored vectors for record means remains unimplemented and
+unverified. Two fresh runs reproduce all non-measurement fields; 57 lab tests
+pass, including overflow rejection before inference and cancellation abstention.
+The implementation is \path{research/topics/context_embeddings.py}; private
+\path{context-embeddings-final.json} has SHA256
+\path{04519e21d4234e3e05bd6b9b58ee193199a2b40b598c816368a5264e7264c6a6}.
+Independent full-dialogue semantic evaluation and complete ingestion costs remain
+required before Rust or production promotion.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training

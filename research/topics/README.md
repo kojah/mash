@@ -268,6 +268,49 @@ calls occur. Repeated non-timing fields are identical; 53 lab tests pass. Next
 compare source-only contextual representations and semantic quality, without
 feeding reviewer-written interpretations into models or tuning on reserved groups.
 
+## Source-only contextual embedding pilot
+
+`context_embeddings.py` compares re-embedded user-only text, a joined preceding
+exchange plus anchor, and an equal mean of separately encoded normalized record
+directions. Context is applied only to originally referential anchors according
+to the frozen oracle admission sidecar; source-backed resolution labels and
+reviewer rationales never influence input selection. Content anchors stay
+user-only. Generated framing/sensitive/attachment anchors remain barriers in the
+original sequence. This is not an automatic admission or referent classifier.
+
+Use the same database/partition/boundary/source-review inputs as the lexical
+controls, plus `--contexts`, `--reference-review`, `--snapshot` and a fresh private
+`--output`. Assets must already be explicitly installed; no download or LLM call
+occurs. The exchange permits at most four preceding prose records. Missing,
+redacted, over-cap or record-limit-incomplete exchanges abstain. Tokenization has
+truncation disabled; inputs exceeding 512 tokens are rejected before inference.
+For record means, any oversized constituent rejects the whole representation.
+
+| Representation | Encoded anchors / 68 | Known scored / 40 | Common AP | Common ROC AUC | Fixed cosine .55 TP / FP / abstentions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| User only | 66 | 38 | .561 | .697 | 11 / 25 / 2 |
+| Joined exchange | 60 | 35 | .726 | .889 | 9 / 14 / 5 |
+| Record mean | 61 | 36 | .720 | .897 | 10 / 10 / 4 |
+
+The common comparison has 35 known boundaries with nine changes. Codex AP rises
+from .465 to .852/.884, but Claude AP falls from .833 to .583/.583 on just two
+changes. The unchanged fixed cutoff still has weak precision and loses changes
+through abstentions: recall including abstentions .917/.750/.833. This is a
+promising context-representation signal, not robust semantic topic quality or a
+method/default selection. Frozen boundaries are user-only exploratory judgments;
+overlapping context can also create artificial continuity and inherit unendorsed
+assistant proposals. Full-dialogue judgments and independent review are needed.
+
+Two fresh runs reproduce every non-measurement field. Across all methods, the
+shared bounded cache performs 121 unique encodes and 120 cache hits, with a maximum
+475 tokens actually encoded. In the final run, inference takes 926 ms, elapsed
+after imports 1,731 ms and process peak RSS 751.2 MiB. Sequential cache reuse means
+new-call counts are not standalone method costs. Timing excludes production
+ingestion/persistence and does not establish the <=10% overhead target. Record
+means may permit reuse of compatible existing vectors later; that reuse is not
+implemented or verified here. Fifty-seven lab tests pass, including rejection
+before inference, context integrity and cancellation abstention.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current
