@@ -18,7 +18,7 @@ fn evidence(
     mode: Mode,
 ) -> Result<BTreeMap<TopicId, Evidence>, AppError> {
     let mut evidence: BTreeMap<TopicId, Evidence> = BTreeMap::new();
-    let (minimum, relative) = if matches!(mode, Mode::UserSegments) {
+    let (minimum, relative) = if mode.segmented() {
         (0.65, 0.92)
     } else {
         (0.55, 0.9)
@@ -44,7 +44,7 @@ fn evidence(
         .values()
         .map(|entry| entry.support)
         .fold(0.0, f64::max);
-    if matches!(mode, Mode::UserSegments) {
+    if mode.segmented() {
         evidence.retain(|_, entry| entry.support >= best * 0.1);
     }
     Ok(evidence)

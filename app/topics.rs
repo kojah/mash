@@ -2,6 +2,7 @@
 mod birch;
 #[cfg(test)]
 mod evaluation;
+mod grouping;
 mod labels;
 mod segments;
 #[cfg(test)]

@@ -1,4 +1,5 @@
 //! Read-only real-history diagnostic; private reports never enter stdout/traces.
+mod anchored;
 mod assignments;
 use super::segments::{Builder, Segment};
 use super::{AssignmentModel, Settings, TopicId, birch::Tree, labels, normalize};
@@ -120,6 +121,28 @@ enum Mode {
     Segments,
     UserMean,
     UserSegments,
+    UserGroupedLoose,
+    UserGroupedStrict,
+    UserAnchored,
+}
+
+impl Mode {
+    fn segmented(self) -> bool {
+        matches!(
+            self,
+            Self::UserSegments
+                | Self::UserGroupedLoose
+                | Self::UserGroupedStrict
+                | Self::UserAnchored
+        )
+    }
+    fn group_similarity(self) -> Option<f64> {
+        match self {
+            Self::UserGroupedLoose => Some(0.45),
+            Self::UserGroupedStrict => Some(0.6),
+            _ => None,
+        }
+    }
 }
 
 fn thread_samples(thread: &Thread, mode: Mode) -> Vec<Segment> {
@@ -159,7 +182,10 @@ fn thread_samples(thread: &Thread, mode: Mode) -> Vec<Segment> {
                 messages: vectors.len(),
             }]
         }
-        Mode::UserSegments => {
+        Mode::UserSegments
+        | Mode::UserGroupedLoose
+        | Mode::UserGroupedStrict
+        | Mode::UserAnchored => {
             let mut builder = Builder::new(384, 8, 0.75).unwrap();
             let mut output = Vec::new();
             for message in &thread.user_messages {
@@ -248,6 +274,9 @@ struct Report {
     samples: usize,
     duplicates_across_threads: usize,
     topics: usize,
+    microtopics: usize,
+    group_similarity: Option<f64>,
+    grouping_ms: f64,
     cf_depth: usize,
     fit_ms: f64,
     assignment_ms: f64,
@@ -326,7 +355,12 @@ fn run(
         if holdout && held_out(thread) {
             continue;
         }
-        for segment in thread_samples(thread, mode) {
+        let discovery_mode = if matches!(mode, Mode::UserAnchored) {
+            Mode::UserMean
+        } else {
+            mode
+        };
+        for segment in thread_samples(thread, discovery_mode) {
             let vector = segment.vector;
             let mut hash = blake3::Hasher::new();
             for value in &vector {
@@ -342,6 +376,14 @@ fn run(
     }
     let fit_ms = start.elapsed().as_secs_f64() * 1000.0;
     let leaves = tree.leaves();
+    let microtopics = leaves.len();
+    let group_similarity = mode.group_similarity();
+    let start = Instant::now();
+    let leaves = match group_similarity {
+        Some(minimum) => super::grouping::group(384, &leaves, minimum)?,
+        None => leaves,
+    };
+    let grouping_ms = start.elapsed().as_secs_f64() * 1000.0;
     let model = AssignmentModel::new(
         384,
         leaves.iter().map(|(id, v, _)| (*id, v.clone())).collect(),
@@ -371,6 +413,9 @@ fn run(
         samples,
         duplicates_across_threads: duplicates,
         topics: leaves.len(),
+        microtopics,
+        group_similarity,
+        grouping_ms,
         cf_depth: tree.depth(),
         fit_ms,
         assignment_ms,
@@ -395,7 +440,11 @@ fn benchmark_topic_discovery() {
     let (threads, generation) = corpus(&database);
     assert!(!threads.is_empty());
     let holdout = std::env::var_os("MASH_TEST_TOPIC_HOLDOUT").is_some();
-    let modes: &[Mode] = if std::env::var_os("MASH_TEST_TOPIC_BASELINES").is_some() {
+    let modes: &[Mode] = if std::env::var_os("MASH_TEST_TOPIC_ANCHORED").is_some() {
+        &[Mode::UserAnchored]
+    } else if std::env::var_os("MASH_TEST_TOPIC_GROUPING").is_some() {
+        &[Mode::UserGroupedLoose, Mode::UserGroupedStrict]
+    } else if std::env::var_os("MASH_TEST_TOPIC_BASELINES").is_some() {
         &[Mode::ThreadMean, Mode::Segments]
     } else {
         &[Mode::UserMean, Mode::UserSegments]
