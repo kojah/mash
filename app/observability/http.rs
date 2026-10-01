@@ -1,7 +1,23 @@
 //! Opaque per-hop correlation; incoming metadata never becomes arbitrary log text.
 pub(crate) const HEADER: &str = "x-mash-trace-id";
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub(crate) struct TraceId(String);
+
+impl TryFrom<String> for TraceId {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(value.as_bytes()).ok_or("invalid trace ID")
+    }
+}
+
+impl From<TraceId> for String {
+    fn from(value: TraceId) -> Self {
+        value.0
+    }
+}
 
 impl TraceId {
     pub(crate) fn parse(value: &[u8]) -> Option<Self> {

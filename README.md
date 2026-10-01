@@ -216,15 +216,18 @@ For example, `MASH_TRACE=1 mash search cbioportal --local --no-worker 2>trace.js
 exposes model loading, embedding, lexical retrieval, vector loading/scoring and
 reranking. Use `MASH_TRACE=1 mash mcp` for repeated requests or
 `MASH_TRACE=1 mash serve --server-config server.toml` on the shared server. The on-demand
-worker suppresses its own stderr, so the CLI's worker trace measures its client
-boundary; use `--no-worker` or MCP to inspect inference stages. Request IDs are
+worker suppresses its own stderr to preserve detached execution. With tracing
+enabled, its reply carries a validated opaque `trace_id`, worker process ID,
+execution milliseconds (excluding connection/queue wait), and outcome. The CLI
+emits these as a `worker reply` event inside its `worker_search` span. Use
+`--no-worker` or MCP to inspect individual inference stages. Request IDs are
 local to a process, paired with process IDs. With tracing enabled, each shared
 HTTP call sends an opaque `x-mash-trace-id`; its `shared_http_request` client
 span and the server's `http_request` span record the same `trace_id`. Enable
 tracing on both processes and match that field to correlate status and timing.
 The server replaces missing, malformed or duplicate IDs with a fresh local ID;
-client tracing disabled sends no correlation header. Worker propagation and
-fleet overhead measurements remain planned.
+client tracing disabled sends no correlation header or worker diagnostics request.
+Detailed worker stage streaming and fleet overhead measurements remain planned.
 
 Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`
 or an explicit Markdown history file. Directory roots discover only

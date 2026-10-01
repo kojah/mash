@@ -9,18 +9,36 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
+use tracing::Instrument;
 
 use crate::AppError;
 use crate::core::{Request, SearchResponse};
+use crate::observability::http::TraceId;
 
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_REQUEST: usize = 1024 * 1024;
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
+struct WorkerRequest<T = Request> {
+    request: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<TraceId>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Diagnostics {
+    trace_id: TraceId,
+    process_id: u32,
+    elapsed_ms: u64,
+}
+
+#[derive(Deserialize, Serialize)]
 struct Reply {
     code: i32,
     result: Result<SearchResponse, AppError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostics: Option<Diagnostics>,
 }
 
 fn uid() -> std::io::Result<u32> {
@@ -158,7 +176,14 @@ pub(crate) async fn search(
     }
     let owner = uid().ok()?;
     let path = socket_path(profile, environment, owner).ok()?;
-    let request = serde_json::to_vec(request).ok()?;
+    let trace_id = tracing::enabled!(tracing::Level::INFO)
+        .then(TraceId::generate)
+        .flatten();
+    let request = serde_json::to_vec(&WorkerRequest {
+        request,
+        trace_id: trace_id.clone(),
+    })
+    .ok()?;
     // Retry once if an idle worker exited just as the client connected. Searches
     // are read-only; an interrupted connection can safely be retried.
     for _ in 0..2 {
@@ -171,6 +196,9 @@ pub(crate) async fn search(
         // Let queued searches retain the operation's own HTTP timeouts instead
         // of counting time spent waiting for another search against them.
         if let Ok(reply) = attempt.await {
+            if !report_diagnostics(&reply, trace_id.as_ref()) {
+                continue;
+            }
             return Some(reply.result.map_err(|mut error| {
                 error.code = reply.code;
                 error
@@ -178,6 +206,52 @@ pub(crate) async fn search(
         }
     }
     None
+}
+
+fn report_diagnostics(reply: &Reply, expected: Option<&TraceId>) -> bool {
+    match (&reply.diagnostics, expected) {
+        (Some(diagnostics), Some(expected)) if diagnostics.trace_id == *expected => {
+            tracing::info!(
+                trace_id = diagnostics.trace_id.as_str(),
+                worker_process_id = diagnostics.process_id,
+                worker_elapsed_ms = diagnostics.elapsed_ms,
+                outcome = if reply.result.is_ok() { "ok" } else { "error" },
+                "worker reply"
+            );
+            true
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+async fn execute_request(bytes: &[u8]) -> Reply {
+    let started = std::time::Instant::now();
+    let (result, trace_id) = match serde_json::from_slice::<WorkerRequest>(bytes) {
+        Ok(WorkerRequest { request, trace_id }) => {
+            let span = tracing::info_span!(
+                "worker_execute",
+                trace_id = trace_id.as_ref().map(TraceId::as_str),
+                process_id = std::process::id()
+            );
+            (
+                crate::core::worker_search(request).instrument(span).await,
+                trace_id,
+            )
+        }
+        Err(_) => (Err(AppError::usage("invalid search worker request")), None),
+    };
+    let code = result.as_ref().err().map_or(0, |error| error.code);
+    let diagnostics = trace_id.map(|trace_id| Diagnostics {
+        trace_id,
+        process_id: std::process::id(),
+        elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+    });
+    Reply {
+        code,
+        result,
+        diagnostics,
+    }
 }
 
 struct SocketCleanup {
@@ -219,12 +293,7 @@ async fn serve(path: &Path, idle: Duration) -> Result<(), AppError> {
         else {
             continue;
         };
-        let result = match serde_json::from_slice::<Request>(&bytes) {
-            Ok(request) => crate::core::worker_search(request).await,
-            Err(_) => Err(AppError::usage("invalid search worker request")),
-        };
-        let code = result.as_ref().err().map_or(0, |error| error.code);
-        let reply = serde_json::to_vec(&Reply { code, result })
+        let reply = serde_json::to_vec(&execute_request(&bytes).await)
             .map_err(|_| AppError::internal("serialize search worker response"))?;
         let _ = tokio::time::timeout(
             Duration::from_secs(2),
@@ -243,118 +312,4 @@ pub(crate) fn run(path: &Path) -> Result<(), AppError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn invalid_searches_return_usage_without_connecting_or_starting_a_worker() {
-        let directory = tempfile::tempdir().unwrap();
-        let profile = directory.path().as_os_str().as_bytes();
-        let socket = socket_path(profile, &[], uid().unwrap()).unwrap();
-        assert!(socket.starts_with(std::env::temp_dir()));
-        assert!(!socket.exists());
-        for (query, local, shared, filter) in [
-            ("the and of", true, false, None),
-            (
-                "wie konfiguriere ich den gemeinsamen Suchindex",
-                true,
-                false,
-                None,
-            ),
-            ("cbioportal", true, true, None),
-            (
-                "cbioportal",
-                true,
-                false,
-                Some(crate::search_filter::Filter::Project(vec![String::new()])),
-            ),
-        ] {
-            let request = Request {
-                paths: crate::core::Paths {
-                    config: None,
-                    db: None,
-                    models_dir: None,
-                },
-                operation: crate::core::Operation::Search {
-                    query: query.into(),
-                    limit: 5,
-                    unit: crate::search_results::SearchUnit::Threads,
-                    filters: Box::new(crate::search_filter::Selection {
-                        filter,
-                        ..Default::default()
-                    }),
-                    local,
-                    shared,
-                },
-            };
-            let error = search(&request, profile, &[]).await.unwrap().unwrap_err();
-            assert_eq!(error.error.kind, crate::ErrorKind::Usage);
-            assert_eq!(error.code, 2);
-            assert!(!socket.exists());
-        }
-    }
-
-    #[tokio::test]
-    async fn worker_rejects_mutations_and_exits_after_idle_without_leaving_socket() {
-        let directory = tempfile::tempdir().unwrap();
-        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
-        let path = directory.path().join("test.sock");
-        let socket = path.clone();
-        let task = tokio::spawn(async move { serve(&socket, Duration::from_millis(150)).await });
-        let owner = uid().unwrap();
-        let mut stream = tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                if let Ok(stream) = connect(&path, owner).await {
-                    break stream;
-                }
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
-        assert_eq!(fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
-        let request = serde_json::json!({"paths":{"config":null,"db":null,"models_dir":null},"operation":{"Forget":{"id":"test"}}});
-        write_frame(
-            &mut stream,
-            &serde_json::to_vec(&request).unwrap(),
-            MAX_REQUEST,
-        )
-        .await
-        .unwrap();
-        let reply: Reply =
-            serde_json::from_slice(&read_frame(&mut stream, MAX_RESPONSE).await.unwrap()).unwrap();
-        assert_eq!(reply.code, 2);
-        assert_eq!(
-            reply.result.unwrap_err().error.kind,
-            crate::ErrorKind::Usage
-        );
-        tokio::time::timeout(Duration::from_secs(2), task)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        assert!(!path.exists());
-    }
-
-    #[tokio::test]
-    async fn frames_reject_oversized_inputs_before_allocating() {
-        let (mut writer, mut reader) = UnixStream::pair().unwrap();
-        writer.write_u32(1024).await.unwrap();
-        assert!(read_frame(&mut reader, 10).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn private_directory_rejects_symlinks_and_broad_permissions() {
-        let root = tempfile::tempdir().unwrap();
-        let directory = root.path().join("worker");
-        fs::create_dir(&directory).unwrap();
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
-        let owner = uid().unwrap();
-        assert!(private_directory(&directory, owner).is_err());
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
-        private_directory(&directory, owner).unwrap();
-        let link = root.path().join("link");
-        std::os::unix::fs::symlink(&directory, &link).unwrap();
-        assert!(private_directory(&link, owner).is_err());
-    }
-}
+mod tests;
