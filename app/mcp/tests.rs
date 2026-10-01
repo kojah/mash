@@ -3,6 +3,8 @@ use crate::test_support::create_valid_model_marker as install_test_marker;
 use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
+mod incomplete;
+
 #[tokio::test]
 async fn typed_search_requests_validate_before_touching_models_or_storage() {
     let dir = tempfile::tempdir().unwrap();

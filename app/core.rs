@@ -31,6 +31,7 @@ pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
         let result = execute_inner(request).await;
         tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
         match &result {
+            Ok(response) if response.needs_retry() => tracing::info!(outcome = "incomplete", "request completed"),
             Ok(_) => tracing::info!(outcome = "success", "request completed"),
             Err(error) => tracing::info!(outcome = "error", error_kind = ?error.error.kind, "request completed"),
         }

@@ -52,19 +52,25 @@ pub(super) async fn run(
         result.shared = Some(shared::publish(database, config).await);
     }
     result.total_milliseconds = elapsed_milliseconds(started);
-    crate::progress::emit(&crate::progress::Event::new(
-        if result
-            .shared
-            .as_ref()
-            .is_some_and(shared::Publication::is_pending)
-        {
-            crate::progress::Phase::SharedPending
-        } else {
-            crate::progress::Phase::Complete
-        },
-        result.total_milliseconds,
-        Some(0),
-    ));
+    let phase = if result
+        .shared
+        .as_ref()
+        .is_some_and(shared::Publication::is_pending)
+    {
+        crate::progress::Phase::SharedPending
+    } else if result.needs_retry() {
+        crate::progress::Phase::Incomplete
+    } else {
+        crate::progress::Phase::Complete
+    };
+    crate::progress::emit(&crate::progress::Event {
+        malformed_records: Some(result.malformed_records),
+        ..crate::progress::Event::new(
+            phase,
+            result.total_milliseconds,
+            (!result.needs_retry()).then_some(0),
+        )
+    });
     Ok(result)
 }
 
@@ -130,11 +136,12 @@ fn index(
     };
     let embedding_milliseconds = elapsed_milliseconds(embedding_started);
     let counts = storage.counts()?;
-    if !already_published {
+    if !already_published && summary.malformed_records == 0 {
         crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
             storage.mark_semantic_index_ready(&generation)
         })?;
     }
+    let ready = storage.semantic_index_is_ready(&generation)?;
     storage.commit_writer()?;
     if full {
         crate::progress::during(crate::progress::Phase::DatabaseCheckpoint, || {
@@ -161,7 +168,11 @@ fn index(
         embeddings: embeddings.stored_vectors,
         model_inferences: embeddings.model_inferences,
         reused_embeddings: embeddings.reused_vectors,
-        realized_mode: SearchMode::Hybrid,
+        realized_mode: if ready {
+            SearchMode::Hybrid
+        } else {
+            SearchMode::Unavailable
+        },
         model_load_milliseconds,
         storage_setup_milliseconds,
         ingestion_milliseconds,

@@ -103,12 +103,15 @@ impl Fixture {
 
     fn json(&self, arguments: &[&str], online: bool) -> Value {
         let output = self.run(arguments, online);
+        let body: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let pending_index =
+            arguments.first() == Some(&"index") && body["shared"]["state"] == "pending";
         assert!(
-            output.status.success(),
+            output.status.code() == Some(if pending_index { 9 } else { 0 }),
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        serde_json::from_slice(&output.stdout).unwrap()
+        body
     }
 
     fn client(&self) -> postgres::Client {

@@ -3,6 +3,39 @@ use super::*;
 use std::sync::{Arc, Mutex};
 use tracing::instrument::WithSubscriber;
 
+#[tokio::test]
+async fn partial_index_result_is_traced_as_incomplete_without_source_text() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source-canary.jsonl");
+    std::fs::write(&source, "malformed-history-canary\n").unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(
+        &config,
+        format!("version = 1\n[providers.claude-code]\nroots = [{source:?}]\n"),
+    )
+    .unwrap();
+    let models = directory.path().join("models");
+    crate::test_support::create_valid_model_marker(&models);
+    let (bytes, dispatcher) = test_support::capture();
+    let result = crate::core::execute(crate::core::Request {
+        paths: crate::core::Paths {
+            config: Some(config),
+            db: Some(directory.path().join("index.sqlite3")),
+            models_dir: Some(models),
+        },
+        operation: crate::core::Operation::Index(crate::core::IndexRequest::default()),
+    })
+    .with_subscriber(dispatcher)
+    .await
+    .unwrap();
+    assert!(result.needs_retry());
+    let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+    assert!(output.contains("\"outcome\":\"incomplete\""));
+    assert!(!output.contains("\"outcome\":\"success\""));
+    assert!(!output.contains("source-canary"));
+    assert!(!output.contains("malformed-history-canary"));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn concurrent_requests_keep_blocking_spans_and_exclude_dependency_payloads() {
     let bytes = Arc::new(Mutex::new(Vec::new()));

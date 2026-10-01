@@ -98,8 +98,17 @@ pub(crate) struct IndexResponse {
 
 impl Response {
     pub(crate) fn needs_retry(&self) -> bool {
-        matches!(self, Self::Index(result) if result.malformed_records > 0
-            || result.shared.as_ref().is_some_and(shared::Publication::is_pending))
+        matches!(self, Self::Index(result) if result.needs_retry())
+    }
+}
+
+impl IndexResponse {
+    pub(super) fn needs_retry(&self) -> bool {
+        self.malformed_records > 0
+            || self
+                .shared
+                .as_ref()
+                .is_some_and(shared::Publication::is_pending)
     }
 }
 

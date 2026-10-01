@@ -76,7 +76,10 @@ where
                 let _ = write_json(stderr, &error);
                 error.code
             },
-            |()| 0,
+            |()| match response {
+                cli::Response::Operation(value) if value.needs_retry() => 9,
+                _ => 0,
+            },
         ),
         Err(error) => {
             let _ = write_json(stderr, &error);

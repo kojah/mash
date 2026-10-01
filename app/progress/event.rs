@@ -22,6 +22,8 @@ pub(crate) struct Event {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub committed_batches: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub malformed_records: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub messages_per_second: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bytes_per_second: Option<u64>,
@@ -88,6 +90,7 @@ impl Event {
             discovered_bytes: Some(summary.discovered_bytes),
             changed_messages: Some(summary.changed_messages),
             committed_batches: Some(summary.committed_batches),
+            malformed_records: Some(summary.malformed_records),
             eta_scope: scope,
             ..Self::new(phase, elapsed_ms, eta)
         }
@@ -116,6 +119,7 @@ pub(crate) enum Phase {
     SharedUpload,
     SharedCommit,
     SharedPending,
+    Incomplete,
     Complete,
 }
 
@@ -140,6 +144,7 @@ impl Phase {
             Self::SharedUpload => "shared-upload",
             Self::SharedCommit => "shared-commit",
             Self::SharedPending => "shared-pending",
+            Self::Incomplete => "incomplete",
             Self::Complete => "complete",
         }
     }

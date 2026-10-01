@@ -120,7 +120,10 @@ fn render(event: &Event) {
         bar
     });
     let phase = event.phase;
-    if matches!(phase, Phase::Complete | Phase::SharedPending) {
+    if matches!(
+        phase,
+        Phase::Complete | Phase::SharedPending | Phase::Incomplete
+    ) {
         bar.finish_with_message(display(event));
         terminal.take();
         return;
@@ -167,13 +170,22 @@ pub(crate) fn display(event: &Event) -> String {
     let counter = counter(event)
         .map(|(done, total, unit)| format!(" · {done}/{total} {unit}"))
         .unwrap_or_default();
-    let eta = event.eta_seconds.map_or_else(
-        || "ETA estimating".to_owned(),
-        |seconds| format!("ETA {}m {:02}s", seconds / 60, seconds % 60),
-    );
+    let eta = if matches!(phase, Phase::SharedPending | Phase::Incomplete) {
+        "retry required".to_owned()
+    } else {
+        event.eta_seconds.map_or_else(
+            || "ETA estimating".to_owned(),
+            |seconds| format!("ETA {}m {:02}s", seconds / 60, seconds % 60),
+        )
+    };
+    let malformed = event
+        .malformed_records
+        .filter(|count| *count > 0)
+        .map(|count| format!(" · {count} malformed records"))
+        .unwrap_or_default();
     let elapsed = event.elapsed_milliseconds / 1_000;
     let scope = &event.eta_scope;
-    format!("mash index · {phase}{counter} · {elapsed}s elapsed · {eta} ({scope})")
+    format!("mash index · {phase}{counter}{malformed} · {elapsed}s elapsed · {eta} ({scope})")
 }
 
 pub(crate) fn phase(name: Phase, elapsed_ms: u64) {

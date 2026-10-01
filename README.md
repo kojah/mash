@@ -89,6 +89,14 @@ Model loading, search rebuilding, snapshot preparation, and server
 commit show activity with an unknown ETA until work can be measured. Shared
 uploads report bytes and an upload ETA; completion is reported only after the
 server acknowledges publication (or `shared-pending` if publication fails).
+An attempt that skips malformed records ends with `incomplete` and the malformed
+count, rather than `complete`; either incomplete state reports that a retry is
+required. The CLI exits with status 9 and MCP sets `isError: true` while retaining
+the structured partial counts. Correct the source or publication failure and run
+`mash index` again; already committed usable data is preserved.
+A partial initial run remains unready for search until a clean indexing attempt
+finishes. Malformed input alone does not invalidate an unchanged, previously
+completed local index.
 Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
 newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
 The final command response stays JSON on stdout. Watching remains opt-in with

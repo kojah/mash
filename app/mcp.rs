@@ -195,6 +195,7 @@ impl Mash {
 fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResult {
     match result {
         Ok(value) => match serde_json::to_value(&value) {
+            Ok(json) if value.needs_retry() => CallToolResult::structured_error(json),
             Ok(json) => CallToolResult::structured(json),
             Err(_) => CallToolResult::error(vec![ContentBlock::text(
                 "failed to serialize tool response",

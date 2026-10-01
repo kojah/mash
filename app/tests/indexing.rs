@@ -1,5 +1,7 @@
 use super::*;
 
+mod incomplete;
+
 #[test]
 fn index_without_models_fails_before_creating_the_database() {
     let directory = tempfile::tempdir().expect("temporary directory");

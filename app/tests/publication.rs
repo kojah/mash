@@ -47,7 +47,12 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
         }
         let output = command.args(args).output().expect("run");
         assert!(
-            output.status.success(),
+            output.status.code()
+                == Some(if args.first() == Some(&"index") && !online {
+                    9
+                } else {
+                    0
+                }),
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
