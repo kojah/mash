@@ -11,6 +11,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 
+mod admission;
 mod configuration;
 mod store;
 mod upload;
@@ -199,18 +200,18 @@ async fn forget(
     Extension(id): Extension<Identity>,
     input: Result<Json<protocol::Forget>, JsonRejection>,
 ) -> Result<Json<protocol::Forgotten>, ApiError> {
-    Ok(Json(app.store.forget(&id, json(input)?).await?))
+    let input = json(input)?;
+    let permit = admission::reserve(&app.uploads)?;
+    Ok(Json(
+        admission::run(permit, async move { app.store.forget(&id, input).await }).await?,
+    ))
 }
 async fn index(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
     request: Request,
 ) -> Result<Json<protocol::Indexed>, ApiError> {
-    let _permit = app
-        .uploads
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| AppError::shared("shared index upload capacity is busy; retry later"))?;
+    let permit = admission::reserve(&app.uploads)?;
     if request
         .headers()
         .get("content-type")
@@ -225,7 +226,9 @@ async fn index(
         Store::Qdrant(store) => store.max_node_bytes(),
     };
     let file = spool(request.into_body(), max_bytes).await?;
-    Ok(Json(app.store.index(&id, file).await?))
+    Ok(Json(
+        admission::run(permit, async move { app.store.index(&id, file).await }).await?,
+    ))
 }
 pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
     let config = configuration::load(path).await?;

@@ -4,6 +4,7 @@ use deadpool_postgres::{Manager, Pool};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+mod admission;
 mod antigravity;
 mod context;
 mod correlation;
@@ -308,6 +309,7 @@ struct Service {
     url: String,
     group: String,
     task: tokio::task::JoinHandle<()>,
+    uploads: Arc<tokio::sync::Semaphore>,
 }
 
 async fn exclude_own_contract(service: Service) {
@@ -780,10 +782,11 @@ impl Service {
         } else {
             Store::Postgres(pool.clone())
         };
+        let uploads = Arc::new(tokio::sync::Semaphore::new(4));
         let app = App {
             store: store.clone(),
             identities,
-            uploads: Arc::new(tokio::sync::Semaphore::new(4)),
+            uploads: uploads.clone(),
         };
         let task = tokio::spawn(async move {
             axum::serve(listener, router(app)).await.unwrap();
@@ -794,6 +797,7 @@ impl Service {
             url,
             group,
             task,
+            uploads,
         }
     }
     fn request(&self, route: &str, token: &str) -> reqwest::RequestBuilder {

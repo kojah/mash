@@ -925,7 +925,13 @@ same chunk/checksum format. Catalogs contain no message bodies or vectors and
 become visible and retire with their canonical snapshot. An explicit publication
 creates a catalog for an older snapshot before that stage can be reused.
 Set `max_concurrent_uploads` (default 4, range 1–16) to bound concurrent staging
-work; large histories should use 1. Staging changed revisions uses extra memory and writes,
+work; large histories should use 1. The same capacity also covers `forget`
+mutations on all shared backends. A complete upload or accepted forget operation
+keeps its slot until the work succeeds or fails, including if the requester
+disconnects or times out. Cancellation does not imply rollback: retry using the
+existing node/revision checks. Busy mutations return a retryable HTTP 503;
+search and metadata reads do not consume mutation slots. This bounds the number
+of mutations, not their total RAM. Staging changed revisions uses extra memory and writes,
 and the service loads canonical node data when applying changes; unchanged data
 can reuse the existing stage. These are deliberate limits on the initial
 backend. Benchmark actual search latency, update cost, memory use, and retrieval
