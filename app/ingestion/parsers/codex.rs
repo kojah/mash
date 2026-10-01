@@ -163,8 +163,7 @@ fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
                 .arguments
                 .as_ref()
                 .or(payload.input.as_ref())
-                .map(json::stringify)
-                .unwrap_or_default();
+                .map_or_else(String::new, json::stringify);
             (
                 crate::role::Role::Assistant,
                 format!("Tool {name}: {arguments}"),

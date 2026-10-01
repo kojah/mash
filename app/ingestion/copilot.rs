@@ -284,8 +284,7 @@ impl Payload {
             Self::ToolComplete { data } => {
                 let mut content = data
                     .result
-                    .map(|r| r.detailed_content.unwrap_or(r.content))
-                    .unwrap_or_default();
+                    .map_or_else(String::new, |r| r.detailed_content.unwrap_or(r.content));
                 if let Some(error) = data.error {
                     if !content.is_empty() {
                         content.push('\n');

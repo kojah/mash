@@ -167,9 +167,9 @@ fn counter(event: &Event) -> Option<(u64, u64, &'static str)> {
 
 pub(crate) fn display(event: &Event) -> String {
     let phase = &event.phase;
-    let counter = counter(event)
-        .map(|(done, total, unit)| format!(" · {done}/{total} {unit}"))
-        .unwrap_or_default();
+    let counter = counter(event).map_or_else(String::new, |(done, total, unit)| {
+        format!(" · {done}/{total} {unit}")
+    });
     let eta = if matches!(phase, Phase::SharedPending | Phase::Incomplete) {
         "retry required".to_owned()
     } else {
@@ -181,8 +181,7 @@ pub(crate) fn display(event: &Event) -> String {
     let malformed = event
         .malformed_records
         .filter(|count| *count > 0)
-        .map(|count| format!(" · {count} malformed records"))
-        .unwrap_or_default();
+        .map_or_else(String::new, |count| format!(" · {count} malformed records"));
     let elapsed = event.elapsed_milliseconds / 1_000;
     let scope = &event.eta_scope;
     format!("mash index · {phase}{counter}{malformed} · {elapsed}s elapsed · {eta} ({scope})")

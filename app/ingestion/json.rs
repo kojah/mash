@@ -246,7 +246,7 @@ impl Block {
                 Some(format!(
                     "Tool {}: {}",
                     self.name.as_deref().unwrap_or("unknown"),
-                    input.as_ref().map(stringify).unwrap_or_default()
+                    input.as_ref().map_or_else(String::new, stringify)
                 ))
             }
             Kind::ToolResult => self.content.as_ref().and_then(Content::flatten),

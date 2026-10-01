@@ -137,8 +137,7 @@ fn normalize(
         let mut prose = Vec::new();
         for part in request
             .response
-            .map(models::Response::parts)
-            .unwrap_or_default()
+            .map_or_else(Vec::new, models::Response::parts)
         {
             let (text, projection) = part.text();
             if !text.is_empty() {

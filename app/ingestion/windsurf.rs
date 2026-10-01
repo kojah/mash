@@ -46,8 +46,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let workspaces = root
         .metadata
         .as_ref()
-        .map(|m| m.workspaces.as_slice())
-        .unwrap_or_default();
+        .map_or(&[][..], |m| m.workspaces.as_slice());
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id: parsers::stable_id("session", &[Provider::Windsurf.as_str(), session]),
