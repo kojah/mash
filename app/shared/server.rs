@@ -1,23 +1,24 @@
-use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Extension, Request, State, rejection::JsonRejection};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts};
-use futures_util::TryStreamExt;
 use serde::Deserialize;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
-use super::{backend, protocol};
+mod configuration;
+mod store;
+mod upload;
+
+use super::protocol;
 use crate::AppError;
+use store::Store;
+use upload::spool;
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,167 +27,6 @@ pub(super) struct Identity {
     pub node_id: String,
     pub generation: String,
     pub dimensions: usize,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AuthorizedNode {
-    group_id: String,
-    node_id: String,
-    token_env: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Configuration {
-    version: u32,
-    #[serde(default)]
-    embeddings: EmbeddingSpace,
-    #[serde(default = "default_listen")]
-    listen: SocketAddr,
-    #[serde(default)]
-    backend: BackendChoice,
-    database_url_env: Option<String>,
-    redis_url_env: Option<String>,
-    #[serde(default = "default_connections")]
-    max_connections: usize,
-    #[serde(default = "default_redis_node_mib")]
-    redis_max_node_mib: usize,
-    #[serde(default)]
-    redis_vector_index: super::redis_index::VectorIndex,
-    #[serde(default = "default_uploads")]
-    max_concurrent_uploads: usize,
-    nodes: Vec<AuthorizedNode>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct EmbeddingSpace {
-    model: String,
-    dimensions: usize,
-}
-impl Default for EmbeddingSpace {
-    fn default() -> Self {
-        Self {
-            model: "sentence-transformers/all-MiniLM-L6-v2".into(),
-            dimensions: 384,
-        }
-    }
-}
-
-#[derive(Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum BackendChoice {
-    Postgres,
-    #[default]
-    Redis,
-}
-
-fn default_redis_node_mib() -> usize {
-    64
-}
-fn default_uploads() -> usize {
-    4
-}
-#[derive(Clone)]
-enum Store {
-    Postgres(Pool),
-    Redis(super::redis_index::Store),
-}
-impl Store {
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Postgres(_) => "postgres",
-            Self::Redis(_) => "redis",
-        }
-    }
-    async fn freshness(&self, id: &Identity) -> Result<super::Freshness, AppError> {
-        match self {
-            Self::Postgres(pool) => backend::freshness(pool, id).await,
-            Self::Redis(store) => store.freshness(id).await,
-        }
-    }
-    #[tracing::instrument(name = "backend_list_threads", skip_all, fields(backend = self.label()))]
-    async fn list_threads(
-        &self,
-        id: &Identity,
-        input: crate::thread_catalog::Request,
-    ) -> Result<crate::thread_catalog::Page, AppError> {
-        match self {
-            Self::Postgres(pool) => backend::list_threads(pool, id, input).await,
-            Self::Redis(store) => store.list_threads(id, input).await,
-        }
-    }
-    async fn status(&self, id: &Identity) -> Result<crate::storage::Counts, AppError> {
-        match self {
-            Self::Postgres(pool) => backend::status(pool, id).await,
-            Self::Redis(store) => store.status(id).await,
-        }
-    }
-    async fn state(&self, id: &Identity) -> Result<protocol::NodeState, AppError> {
-        match self {
-            Self::Postgres(pool) => backend::state(pool, id).await,
-            Self::Redis(store) => store.state(id).await,
-        }
-    }
-    #[tracing::instrument(name = "backend_search", skip_all, fields(backend = self.label()))]
-    async fn search(
-        &self,
-        id: &Identity,
-        input: protocol::Search,
-    ) -> Result<protocol::Candidates, AppError> {
-        match self {
-            Self::Postgres(pool) => backend::search(pool, id, input).await,
-            Self::Redis(store) => store.search(id, input).await,
-        }
-    }
-    #[tracing::instrument(name = "backend_view", skip_all, fields(backend = self.label()))]
-    async fn view(
-        &self,
-        id: &Identity,
-        input: protocol::View,
-    ) -> Result<Vec<crate::storage::Message>, AppError> {
-        match self {
-            Self::Postgres(pool) => {
-                backend::view(
-                    pool,
-                    id,
-                    &input.node_id,
-                    &input.id,
-                    input.context,
-                    input.content,
-                )
-                .await
-            }
-            Self::Redis(store) => store.view(id, input).await,
-        }
-    }
-    async fn forget(
-        &self,
-        id: &Identity,
-        input: protocol::Forget,
-    ) -> Result<protocol::Forgotten, AppError> {
-        match self {
-            Self::Postgres(pool) => backend::forget(pool, id, input).await,
-            Self::Redis(store) => store.forget(id, input).await,
-        }
-    }
-    #[tracing::instrument(name = "backend_index", skip_all, fields(backend = self.label()))]
-    async fn index(
-        &self,
-        id: &Identity,
-        input: tempfile::NamedTempFile,
-    ) -> Result<protocol::Indexed, AppError> {
-        match self {
-            Self::Postgres(pool) => backend::index(pool, id, input).await,
-            Self::Redis(store) => store.index(id, input).await,
-        }
-    }
-}
-fn default_listen() -> SocketAddr {
-    SocketAddr::from(([127, 0, 0, 1], 8787))
-}
-const fn default_connections() -> usize {
-    16
 }
 
 #[derive(Clone)]
@@ -221,138 +61,6 @@ fn json<T>(input: Result<Json<T>, JsonRejection>) -> Result<T, ApiError> {
     input
         .map(|Json(input)| input)
         .map_err(|error| ApiError(error.status(), AppError::usage("invalid JSON request")))
-}
-fn env_name(name: &str) -> Result<(), AppError> {
-    if name.is_empty()
-        || !name
-            .bytes()
-            .enumerate()
-            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || (i > 0 && b.is_ascii_digit()))
-    {
-        return Err(AppError::configuration(
-            "invalid credential environment variable name",
-        ));
-    }
-    Ok(())
-}
-fn identities(config: &Configuration) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
-    config.redis_vector_index.validate()?;
-    if matches!(config.backend, BackendChoice::Postgres)
-        && config.redis_vector_index != (super::redis_index::VectorIndex::Exact {})
-    {
-        return Err(AppError::configuration(
-            "redis_vector_index HNSW settings require backend=redis",
-        ));
-    }
-    if !(1..=16).contains(&config.max_concurrent_uploads) {
-        return Err(AppError::configuration(
-            "max_concurrent_uploads must be between 1 and 16",
-        ));
-    }
-    if !(1..=4096).contains(&config.redis_max_node_mib) {
-        return Err(AppError::configuration(
-            "redis_max_node_mib must be between 1 and 4096",
-        ));
-    }
-    if config.version != 1
-        || config.nodes.is_empty()
-        || !(1..=128).contains(&config.max_connections)
-    {
-        return Err(AppError::configuration(
-            "server requires version 1, configured nodes, and 1..128 connections",
-        ));
-    }
-    if !(1..=2048).contains(&config.embeddings.dimensions)
-        || config.embeddings.model.trim().is_empty()
-        || config.embeddings.model.len() > 255
-        || config.embeddings.model.chars().any(char::is_control)
-    {
-        return Err(AppError::configuration(
-            "invalid server embedding model or dimensions",
-        ));
-    }
-    let mut result = HashMap::new();
-    let mut unique = HashSet::new();
-    for node in &config.nodes {
-        crate::config::validate_identifier(&node.group_id, "group_id")?;
-        crate::config::validate_identifier(&node.node_id, "node_id")?;
-        env_name(&node.token_env)?;
-        let token = std::env::var(&node.token_env).map_err(|_| {
-            AppError::configuration(format!("set {} to the node's API token", node.token_env))
-        })?;
-        if token.len() < 32 || token.len() > 4096 || !token.bytes().all(|b| b.is_ascii_graphic()) {
-            return Err(AppError::configuration(
-                "API tokens require 32..4096 printable ASCII bytes",
-            ));
-        }
-        if !unique.insert((&node.group_id, &node.node_id))
-            || result
-                .insert(
-                    blake3::hash(token.as_bytes()),
-                    Identity {
-                        group_id: node.group_id.clone(),
-                        node_id: node.node_id.clone(),
-                        generation: crate::semantic::model_space(
-                            &config.embeddings.model,
-                            config.embeddings.dimensions,
-                        ),
-                        dimensions: config.embeddings.dimensions,
-                    },
-                )
-                .is_some()
-        {
-            return Err(AppError::configuration(
-                "each node identity and API token must be unique",
-            ));
-        }
-    }
-    Ok(result)
-}
-fn pool(config: &Configuration) -> Result<Pool, AppError> {
-    let name = config
-        .database_url_env
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("PostgreSQL requires database_url_env"))?;
-    env_name(name)?;
-    let url = std::env::var(name).map_err(|_| {
-        AppError::configuration(format!(
-            "set {name} to the server PostgreSQL connection string"
-        ))
-    })?;
-    let mut options: tokio_postgres::Config = url
-        .parse()
-        .map_err(|_| AppError::configuration("invalid server PostgreSQL connection string"))?;
-    if options.get_ssl_mode() != tokio_postgres::config::SslMode::Disable {
-        options.ssl_mode(tokio_postgres::config::SslMode::Require);
-    }
-    options.connect_timeout(Duration::from_secs(5));
-    options.tcp_user_timeout(Duration::from_secs(30));
-    options.application_name("mash-server");
-    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let tls = rustls::ClientConfig::builder_with_provider(Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()
-    .map_err(|_| AppError::configuration("could not configure PostgreSQL TLS"))?
-    .with_root_certificates(roots)
-    .with_no_client_auth();
-    let manager = Manager::from_config(
-        options,
-        tokio_postgres_rustls::MakeRustlsConnect::new(tls),
-        ManagerConfig {
-            recycling_method: RecyclingMethod::Verified,
-        },
-    );
-    Pool::builder(manager)
-        .max_size(config.max_connections)
-        .runtime(Runtime::Tokio1)
-        .timeouts(Timeouts {
-            wait: Some(Duration::from_secs(5)),
-            create: Some(Duration::from_secs(5)),
-            recycle: Some(Duration::from_secs(5)),
-        })
-        .build()
-        .map_err(|_| AppError::configuration("could not configure PostgreSQL pool"))
 }
 #[tracing::instrument(name = "http_request", skip_all, fields(request_id = crate::observability::request_id(), process_id = std::process::id(), trace_id = tracing::field::Empty, status = tracing::field::Empty, elapsed_ms = tracing::field::Empty))]
 async fn authorize(State(app): State<App>, request: Request, next: Next) -> Response {
@@ -493,56 +201,6 @@ async fn forget(
 ) -> Result<Json<protocol::Forgotten>, ApiError> {
     Ok(Json(app.store.forget(&id, json(input)?).await?))
 }
-async fn spool(body: Body, max_bytes: u64) -> Result<tempfile::NamedTempFile, ApiError> {
-    let file = crate::blocking(|| {
-        tempfile::NamedTempFile::new().map_err(|_| AppError::internal("create incoming index"))
-    })
-    .await?;
-    let output = file
-        .reopen()
-        .map_err(|_| AppError::internal("open incoming index"))?;
-    let mut output = tokio::fs::File::from_std(output);
-    let stream = body.into_data_stream().map_err(std::io::Error::other);
-    let mut input = tokio::io::BufReader::new(tokio_util::io::StreamReader::new(stream));
-    let mut line_bytes = 0usize;
-    let mut total = 0u64;
-    loop {
-        let chunk = input
-            .fill_buf()
-            .await
-            .map_err(|_| AppError::usage("incomplete index upload"))?;
-        if chunk.is_empty() {
-            break;
-        }
-        for byte in chunk {
-            line_bytes += 1;
-            total += 1;
-            if line_bytes > 8 * 1024 * 1024 || total > max_bytes {
-                return Err(ApiError(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    AppError::usage("index upload exceeds limits"),
-                ));
-            }
-            if *byte == b'\n' {
-                line_bytes = 0;
-            }
-        }
-        output
-            .write_all(chunk)
-            .await
-            .map_err(|_| AppError::internal("write incoming index"))?;
-        let consumed = chunk.len();
-        input.consume(consumed);
-    }
-    if line_bytes != 0 {
-        return Err(AppError::usage("unterminated index event").into());
-    }
-    output
-        .flush()
-        .await
-        .map_err(|_| AppError::internal("flush incoming index"))?;
-    Ok(file)
-}
 async fn index(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
@@ -569,86 +227,9 @@ async fn index(
     Ok(Json(app.store.index(&id, file).await?))
 }
 pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
-    let path = path.to_path_buf();
-    let config: Configuration = crate::blocking(move || {
-        use std::io::Read;
-        if !std::fs::metadata(&path)
-            .map_err(|_| AppError::configuration("could not inspect server configuration"))?
-            .is_file()
-        {
-            return Err(AppError::configuration(
-                "server configuration must be a regular file",
-            ));
-        }
-        let mut bytes = Vec::new();
-        std::fs::File::open(path)
-            .map_err(|_| AppError::configuration("could not open server configuration"))?
-            .take(65537)
-            .read_to_end(&mut bytes)
-            .map_err(|_| AppError::configuration("could not read server configuration"))?;
-        if bytes.len() > 65536 {
-            return Err(AppError::configuration(
-                "server configuration exceeds 65536 bytes",
-            ));
-        }
-        let contents = std::str::from_utf8(&bytes)
-            .map_err(|_| AppError::configuration("server configuration must be UTF-8 TOML"))?;
-        toml::from_str(contents)
-            .map_err(|_| AppError::configuration("invalid server configuration"))
-    })
-    .await?;
-    let identities = identities(&config)?;
-    let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
-    let groups = groups.into_iter().collect::<Vec<_>>();
-    let store = match config.backend {
-        BackendChoice::Postgres => {
-            if config.redis_url_env.is_some() {
-                return Err(AppError::configuration(
-                    "PostgreSQL backend does not accept redis_url_env",
-                ));
-            }
-            let pool = pool(&config)?;
-            backend::initialize(&pool, &groups).await?;
-            Store::Postgres(pool)
-        }
-        BackendChoice::Redis => {
-            if config.database_url_env.is_some() {
-                return Err(AppError::configuration(
-                    "Redis backend does not accept database_url_env",
-                ));
-            }
-            let name = config
-                .redis_url_env
-                .as_ref()
-                .ok_or_else(|| AppError::configuration("Redis requires redis_url_env"))?;
-            env_name(name)?;
-            let url = std::env::var(name).map_err(|_| {
-                AppError::configuration(format!("set {name} to the server Redis connection string"))
-            })?;
-            Store::Redis(
-                super::redis_index::Store::connect(
-                    &url,
-                    &groups,
-                    config.embeddings.dimensions,
-                    config
-                        .redis_max_node_mib
-                        .checked_mul(1024 * 1024)
-                        .ok_or_else(|| {
-                            AppError::configuration(
-                                "Redis snapshot limit exceeds platform capacity",
-                            )
-                        })?,
-                    config.redis_vector_index,
-                )
-                .await?,
-            )
-        }
-    };
-    if let Store::Redis(redis) = &store {
-        for identity in identities.values() {
-            redis.repair_metadata(identity).await?;
-        }
-    }
+    let config = configuration::load(path).await?;
+    let identities = configuration::identities(&config)?;
+    let store = store::initialize(&config, &identities).await?;
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| AppError::configuration("could not bind HTTP listener"))?;

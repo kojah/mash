@@ -1179,6 +1179,13 @@ ranking. The HTTP service and concrete database backends remain separate from
 those node-side modules. These boundaries use existing concrete types rather
 than adding transport or provider abstractions.
 
+`app/shared/server.rs` owns Axum routing, authorization, typed HTTP responses
+and the listener lifecycle. Its private `configuration` module loads bounded
+strict TOML and resolves authorized node identities; `store` initializes and
+dispatches to the concrete Redis/PostgreSQL backends; `upload` spools bounded
+NDJSON streams. Configuration and credentials are validated before connecting
+to storage, and backend initialization completes before the listener opens.
+
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_threads`, `view`, `status`, `index`, `forget`,
 and `models_install`. The server uses the same operations and typed JSON errors
