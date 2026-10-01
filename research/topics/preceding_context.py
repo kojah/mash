@@ -20,6 +20,7 @@ class Stop(StrEnum):
     USER = "preceding-visible-user"
     ROOT = "root"
     LIMIT = "record-limit"
+    VISIBLE = "visible-record-limit"
 
 
 class Role(StrEnum):
@@ -51,10 +52,12 @@ def identity(message: Message) -> dict:
 
 def preceding(messages: tuple[Message, ...], anchor: int, *, maximum_records: int = 64,
               maximum_message_bytes: int = 16384, maximum_display_bytes: int = 32768,
-              maximum_users: int = 1) -> dict:
+              maximum_users: int = 1, maximum_visible: int | None = None) -> dict:
     """Follow only causal predecessors; never replace a broken native edge by order."""
     if min(maximum_records, maximum_message_bytes, maximum_display_bytes, maximum_users) < 1:
         raise ValueError("context bounds must be positive")
+    if maximum_visible is not None and (type(maximum_visible) is not int or maximum_visible < 1):
+        raise ValueError("visible context bound must be a positive integer")
     by_ordinal = {m.ordinal: m for m in messages}
     if len(by_ordinal) != len(messages) or len({m.id for m in messages}) != len(messages):
         raise ValueError("ambiguous message identities or ordinals")
@@ -70,6 +73,7 @@ def preceding(messages: tuple[Message, ...], anchor: int, *, maximum_records: in
     used = 0
     omitted = 0
     users = 0
+    visible = 0
     for _ in range(maximum_records):
         if mode == Mode.NATIVE:
             parent = current.parent
@@ -106,11 +110,15 @@ def preceding(messages: tuple[Message, ...], anchor: int, *, maximum_records: in
                 used += len(text.encode())
                 entry.update(text=text, display_status="redacted" if redacted else "included")
             displayed.append(entry)
+            visible += 1
             if current.role == "user":
                 users += 1
                 if users == maximum_users:
                     stop = Stop.USER
                     break
+            if maximum_visible is not None and visible == maximum_visible:
+                stop = Stop.VISIBLE
+                break
     else:
         stop = Stop.LIMIT
     displayed.reverse()
@@ -118,9 +126,11 @@ def preceding(messages: tuple[Message, ...], anchor: int, *, maximum_records: in
            "stop": stop, "bounds": [maximum_records, maximum_message_bytes, maximum_display_bytes]}
     if maximum_users != 1:
         pin["maximum_users"] = maximum_users
+    if maximum_visible is not None:
+        pin['maximum_visible'] = maximum_visible
     return {**pin, "context_sha256": sha(json.dumps(pin, sort_keys=True, separators=(",", ":"))),
             "display": displayed, "omitted_records": omitted,
-            "display_bytes": used, "bounded_interval_complete": stop != Stop.LIMIT,
+            "display_bytes": used, "bounded_interval_complete": stop not in (Stop.LIMIT, Stop.VISIBLE),
             "native_log_verified": False}
 
 

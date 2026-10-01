@@ -8,6 +8,28 @@ def message(ordinal, role, text, parent=None):
 
 
 class PrecedingTests(unittest.TestCase):
+    def test_visible_budget_does_not_count_tools_or_empty_assistant_records(self):
+        records = (message(0, 'user', 'task'), message(1, 'assistant', 'proposal'),
+                   message(2, 'tool', 'output'), message(3, 'assistant', ''),
+                   message(4, 'tool', 'output'), message(5, 'user', 'yes'))
+        result = preceding(records, 5, maximum_users=3, maximum_visible=2)
+        self.assertEqual([m['ordinal'] for m in result['display']], [0, 1])
+        self.assertEqual(len(result['traversed']), 5)
+        self.assertEqual(result['stop'], 'visible-record-limit')
+        self.assertFalse(result['bounded_interval_complete'])
+        capped = preceding(records, 5, maximum_records=2, maximum_visible=2)
+        self.assertEqual(capped['stop'], 'record-limit')
+
+    def test_omitted_visible_records_still_consume_budget(self):
+        records = (message(0, 'user', 'task'), message(1, 'assistant', 'long answer'), message(2, 'user', 'yes'))
+        result = preceding(records, 2, maximum_users=3, maximum_message_bytes=2, maximum_visible=1)
+        self.assertEqual(result['stop'], 'visible-record-limit')
+        self.assertEqual(result['omitted_records'], 1)
+        self.assertIsNone(result['display'][0]['text'])
+        for limit in (0, -1, True, 1.5):
+            with self.assertRaises(ValueError):
+                preceding(records, 2, maximum_visible=limit)
+
     def test_native_context_excludes_sibling_and_future_records(self):
         records = (message(0, "user", "first", -1), message(1, "assistant", "causal", 0),
                    message(2, "assistant", "unrelated sibling", 0), message(3, "user", "yes", 1),

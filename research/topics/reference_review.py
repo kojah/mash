@@ -32,7 +32,8 @@ def exact_keys(value: dict, keys: set[str]) -> None:
         raise ValueError("unexpected annotation fields")
 
 
-def validate(context_bytes: bytes, review_bytes: bytes, annotation: dict) -> tuple[Judgment, ...]:
+def validate_anchors(context_bytes: bytes, review_bytes: bytes, annotation: dict,
+                     expected: dict, context_cases: list) -> tuple[Judgment, ...]:
     """Require every originally referential anchor once, with exact causal evidence."""
     exact_keys(annotation, {"schema_version", "scope", "annotator", "context_sha256",
                             "source_review_sha256", "judgments"})
@@ -43,16 +44,8 @@ def validate(context_bytes: bytes, review_bytes: bytes, annotation: dict) -> tup
     if (annotation["context_sha256"] != digest(context_bytes)
             or annotation["source_review_sha256"] != digest(review_bytes)):
         raise ValueError("reference review source changed")
-    contexts, review = json.loads(context_bytes), json.loads(review_bytes)
-    expected, available = {}, {}
-    for case in review["cases"]:
-        for item in case["admission_judgments"]:
-            if item["kind"] == "referential":
-                key = (case["thread"], item["ordinal"])
-                if key in expected:
-                    raise ValueError("duplicate source anchor")
-                expected[key] = (case["source_sha256"], item)
-    for case in contexts["cases"]:
+    available = {}
+    for case in context_cases:
         for context in case["contexts"]:
             key = (case["thread"], context["anchor"]["ordinal"])
             if key in available:
@@ -98,6 +91,19 @@ def validate(context_bytes: bytes, review_bytes: bytes, annotation: dict) -> tup
     if seen != set(expected):
         raise ValueError("incomplete referential review")
     return tuple(judgments)
+
+
+def validate(context_bytes: bytes, review_bytes: bytes, annotation: dict) -> tuple[Judgment, ...]:
+    contexts, review = json.loads(context_bytes), json.loads(review_bytes)
+    expected = {}
+    for case in review['cases']:
+        for item in case['admission_judgments']:
+            if item['kind'] == 'referential':
+                key = (case['thread'], item['ordinal'])
+                if key in expected:
+                    raise ValueError('duplicate source anchor')
+                expected[key] = (case['source_sha256'], item)
+    return validate_anchors(context_bytes, review_bytes, annotation, expected, contexts['cases'])
 
 
 def main() -> None:

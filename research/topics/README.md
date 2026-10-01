@@ -830,6 +830,15 @@ hit the raw-record limit despite small displayed text; this motivates a separate
 tool-aware retrieval experiment. Native identity verification is not full causal
 order or semantic reference verification, and no resolution judgments are claimed.
 
+The [visible-dialogue budget experiment](../../benchmarks/2026-10-01-visible-dialogue-budget.md)
+keeps the raw64 control exact and compares a separate16-visible/4096-raw traversal
+ceiling. `dialogue_budget.py` requires the original capture as `--baseline`;
+`compare_dialogue_budget.py` verifies complete repeats. `packet_reference_review.py`
+validates source-backed judgments with the shared legacy evidence checker.
+All20 reviewed task references already have cited evidence in raw64; the larger
+window adds65% displayed bytes without an oracle evidence-availability gain.
+Do not promote it as better topic quality. Automatic source selection is next.
+
 Run lab input-boundary tests:
 
 ```bash
