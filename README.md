@@ -1281,6 +1281,10 @@ model and both shared-backend contracts. It writes LLVM JSON coverage to
 `target/llvm-cov/coverage.json`; set `COVERAGE_OUTPUT` to choose another location.
 The coverage task cleans workspace coverage artifacts before execution so older
 binaries cannot contribute obsolete source mappings in a persistent target.
+It waits for idle workers from that target to exit normally before cleaning and
+reporting, allowing their coverage profiles to be written without changing
+production worker behavior. On nightly, use `CARGO_ARGS=--branch` to include
+LLVM's experimental branch instrumentation. This does not measure MC/DC.
 Generated SQL bindings, separate test files, standalone test helpers and the
 test-only relevance evaluator and manual benchmark modules are excluded from the report.
 Tests embedded in production source files still contribute to those files'

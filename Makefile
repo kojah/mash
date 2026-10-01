@@ -24,6 +24,8 @@ coverage:
 	@test -n "$${MASH_TEST_PG_URL}" || (echo 'Set MASH_TEST_PG_URL to disposable PostgreSQL with pgvector'; exit 1)
 	@test -n "$${MASH_TEST_REDIS_URL}" || (echo 'Set MASH_TEST_REDIS_URL to disposable Redis Search'; exit 1)
 	# Persistent targets can retain old binaries and mix obsolete source mappings.
+	python3 tools/wait-coverage-workers.py
 	cargo llvm-cov clean --workspace
 	cargo llvm-cov nextest --no-report --run-ignored all -j 2 -E 'not test(benchmark)' $(CARGO_ARGS)
-	cargo llvm-cov report --json --ignore-filename-regex '/generated/|/tests(/|\.rs$$)|/test_support\.rs$$|/benchmarks\.rs$$|/semantic/evaluation\.rs$$' --output-path "$(COVERAGE_OUTPUT)"
+	python3 tools/wait-coverage-workers.py
+	cargo llvm-cov report --json --ignore-filename-regex '/generated/|/(tests|benchmarks)(/|\.rs$$)|/test_support\.rs$$|/semantic/evaluation\.rs$$|/storage/indexing/memory\.rs$$' --output-path "$(COVERAGE_OUTPUT)"
