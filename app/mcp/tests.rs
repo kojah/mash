@@ -5,6 +5,7 @@ use serde_json::json;
 
 mod incomplete;
 mod selections;
+mod threads;
 
 #[tokio::test]
 async fn typed_search_requests_validate_before_touching_models_or_storage() {
@@ -257,6 +258,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         [
             "forget",
             "index",
+            "list_threads",
             "models_install",
             "search",
             "status",

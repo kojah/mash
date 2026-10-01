@@ -47,6 +47,17 @@ struct Status {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+struct ListThreads {
+    #[serde(flatten)]
+    input: crate::thread_catalog::Request,
+    #[serde(default)]
+    local: bool,
+    #[serde(default)]
+    shared: bool,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct View {
     id: String,
     context: Option<u32>,
@@ -210,6 +221,19 @@ fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResul
 
 #[tool_router]
 impl Mash {
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "Quickly list thread metadata without models or inference. Filter by provider, node, literal title substring or thread activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned conversation_id and provider in search with unit=messages. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
+    )]
+    async fn list_threads(&self, Parameters(input): Parameters<ListThreads>) -> CallToolResult {
+        self.execute(Operation::ListThreads {
+            input: Box::new(input.input),
+            local: input.local,
+            shared: input.shared,
+        })
+        .await
+    }
+
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
         description = "Search conversation threads by default; set unit=messages for individual messages. Thread matches are relevance-ordered excerpts with message_id anchors for view; timestamps are Unix milliseconds. Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."

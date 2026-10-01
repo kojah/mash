@@ -71,6 +71,7 @@ enum Endpoint {
     Freshness,
     State,
     Search,
+    Threads,
     View,
     Index,
     Forget,
@@ -82,6 +83,7 @@ impl Endpoint {
             Self::Freshness => "freshness",
             Self::State => "state",
             Self::Search => "search",
+            Self::Threads => "threads",
             Self::View => "view",
             Self::Index => "index",
             Self::Forget => "forget",
@@ -234,6 +236,14 @@ async fn post<T: serde::de::DeserializeOwned>(
     body: &impl Serialize,
 ) -> Result<T, AppError> {
     response(request(config, reqwest::Method::POST, endpoint)?.json(body)).await
+}
+
+pub(crate) async fn list_threads(
+    config: &SharedConfig,
+    input: &crate::thread_catalog::Request,
+) -> Result<crate::thread_catalog::Page, AppError> {
+    input.validate()?;
+    post(config, Endpoint::Threads, input).await
 }
 fn write_event(file: &mut impl Write, event: &Event) -> Result<(), AppError> {
     serde_json::to_writer(&mut *file, event)

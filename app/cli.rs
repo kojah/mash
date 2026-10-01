@@ -37,6 +37,15 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 enum Command {
+    /// List thread metadata without inference, ordered by activity, creation or title.
+    ListThreads {
+        #[command(flatten)]
+        input: Box<crate::thread_catalog::Request>,
+        #[arg(long, conflicts_with = "shared")]
+        local: bool,
+        #[arg(long)]
+        shared: bool,
+    },
     /// Discover and index supported local histories.
     Index {
         /// Recreate all derived search state.
@@ -206,6 +215,15 @@ impl Cli {
     fn into_request(self) -> Result<Request, AppError> {
         let paths = self.paths();
         let operation = match self.command {
+            Command::ListThreads {
+                input,
+                local,
+                shared,
+            } => Operation::ListThreads {
+                input,
+                local,
+                shared,
+            },
             Command::Index {
                 full,
                 provider,
@@ -466,7 +484,15 @@ mod tests {
         assert_eq!(
             names,
             [
-                "index", "search", "view", "status", "forget", "models", "mcp", "serve"
+                "list-threads",
+                "index",
+                "search",
+                "view",
+                "status",
+                "forget",
+                "models",
+                "mcp",
+                "serve"
             ]
         );
     }

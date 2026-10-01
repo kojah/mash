@@ -141,3 +141,109 @@ fn generated_catalog_title_matching_is_literal_and_provider_lists_are_exact() {
         );
     }
 }
+
+#[test]
+fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows() {
+    use crate::thread_catalog::{Collector, Direction, Request, Sort};
+    let (_directory, storage) = catalog();
+    for (sort, key) in [
+        (Sort::UpdatedAt, "updated_at"),
+        (Sort::CreatedAt, "created_at"),
+        (Sort::Title, "title"),
+    ] {
+        for direction in [Direction::Asc, Direction::Desc] {
+            let input = Request {
+                sort,
+                direction,
+                offset: 1,
+                limit: 2,
+                ..Default::default()
+            };
+            let rows = storage.thread_candidates(&input, "laptop").unwrap();
+            assert_eq!(rows.len(), 4);
+            assert!(rows.iter().all(|row| row.node_id == "laptop"));
+            let mut collector = Collector::new(input).unwrap();
+            for row in rows {
+                collector.push(row);
+            }
+            let actual = collector.finish();
+            assert_eq!(actual.next_offset, Some(3));
+            assert_eq!(
+                actual
+                    .threads
+                    .iter()
+                    .map(|row| row.conversation_id.clone())
+                    .collect::<Vec<_>>(),
+                page(&storage, key, matches!(direction, Direction::Desc), 1, 2)
+            );
+        }
+    }
+    let request = Request {
+        provider: vec![Provider::Codex, Provider::ClaudeCode],
+        title_contains: Some("aLPha".into()),
+        after: Some(3),
+        before: Some(4),
+        node: vec!["laptop".into()],
+        ..Default::default()
+    };
+    let rows = storage.thread_candidates(&request, "laptop").unwrap();
+    assert_eq!(
+        rows.iter()
+            .map(|row| row.conversation_id.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "c"]
+    );
+    for request in [
+        Request {
+            exclude_self: true,
+            ..request.clone()
+        },
+        Request {
+            node: vec!["other".into()],
+            ..request
+        },
+    ] {
+        assert!(
+            storage
+                .thread_candidates(&request, "laptop")
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn catalog_opens_only_existing_current_schemas_without_migration_or_writes() {
+    let (directory, storage) = catalog();
+    let path = directory.path().join("index.sqlite3");
+    let reader = Storage::open_catalog(&path).unwrap();
+    assert!(
+        reader
+            .connection
+            .execute("DELETE FROM conversations", [])
+            .is_err()
+    );
+    assert_eq!(reader.counts().unwrap().conversations, 5);
+    drop(reader);
+    let absent = directory.path().join("missing.sqlite3");
+    assert!(Storage::open_catalog(&absent).is_err());
+    assert!(!absent.exists());
+    storage
+        .connection
+        .pragma_update(None, "query_only", false)
+        .unwrap();
+    for version in [SCHEMA_VERSION - 1, SCHEMA_VERSION + 1] {
+        storage
+            .connection
+            .pragma_update(None, "user_version", version)
+            .unwrap();
+        assert!(Storage::open_catalog(&path).is_err());
+        assert_eq!(
+            storage
+                .connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            version
+        );
+    }
+}

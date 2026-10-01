@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+mod catalog;
 mod claude_sources;
 pub(crate) mod embedding_plan;
 mod indexing;

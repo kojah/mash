@@ -37,6 +37,7 @@ writes remain explicit driver operations.
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot|gemini-cli|cline]... [--since-days N|--all-history]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
+mash list-threads [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <conversation-id>
@@ -675,11 +676,34 @@ representative `node_id`, title/project/repository and timestamps in Unix
 milliseconds, plus `next_offset`. Copies with the same provider/thread ID are
 deduplicated before paging; the best matching copy for the requested sort order
 supplies metadata. `limit` defaults to 50 (1–100); `offset` defaults to 0
-(0–10000). Pages are stable while the index is unchanged; updates between page
+(0–10000). Pagination stops before advertising an offset beyond 10000; narrow
+filters to browse larger collections. Pages are stable while the index is unchanged; updates between page
 requests can shift boundaries. Redis reads that overlap catalog replacement
 return a retryable conflict instead of partial metadata. Older Redis publications
 need an explicit `mash index` on their publishing node to create a catalog.
-The public CLI/MCP metadata-listing wrappers are still being implemented.
+
+Use `mash list-threads` or the MCP `list_threads` tool for the same metadata
+discovery. These thin wrappers call the shared application core. The default
+scope combines local SQLite and other nodes in the configured shared index;
+`--local`/`local=true` stays offline, and `--shared`/`shared=true` reads only the
+shared index including this node. Local and remote reads run concurrently, with
+deduplication and ordering applied before the final page. A shared read has a
+two-second total deadline; combined discovery returns local metadata with
+`shared_error` on failure, while shared-only discovery fails. `shared` in the
+response indicates a successful shared read.
+
+SQLite metadata reads require an existing current schema and never create or
+migrate the database. They require no installed models or completed embedding
+generation, so metadata already recorded during indexing can be inspected.
+This does not make semantic search ready. MCP sort values use `updated_at` and
+`created_at`; CLI values use `updated-at` and `created-at`.
+
+For example, orient first and then search within a returned thread:
+
+```bash
+mash list-threads --provider codex --title-contains cbioportal --limit 10
+mash search 'database migration' --unit messages --provider codex --conversation THREAD_ID
+```
 
 Provision PostgreSQL with the pgvector extension installed. For local development:
 
@@ -1134,7 +1158,7 @@ Example MCP client configuration:
 For shared operations, provide the configured node token environment variable to
 `mash mcp` through your MCP client's environment mechanism. `search` accepts a
 `shared` boolean and a `unit` of `threads` (default) or `messages`; `view` accepts a `shared` publishing node ID. Search, view, and
-status are annotated read-only. Index and forget mutate data; `models_install`
+status and `list_threads` are annotated read-only. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;
 service-side PostgreSQL I/O uses `tokio-postgres` and async/await. SQLite, parsing, and local FastEmbed inference run on blocking
 workers and are awaited by callers. MCP mutations serialize per session; status

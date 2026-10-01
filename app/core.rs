@@ -10,6 +10,7 @@ mod inspection;
 mod maintenance;
 mod models;
 mod search;
+mod threads;
 
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
@@ -20,6 +21,7 @@ pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
     use tracing::Instrument;
     let operation = match &request.operation {
         Operation::Index(_) => "index",
+        Operation::ListThreads { .. } => "list_threads",
         Operation::Search { .. } => "search",
         Operation::View { .. } => "view",
         Operation::Status { .. } => "status",
@@ -90,6 +92,13 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::ListThreads {
+            input,
+            local,
+            shared,
+        } => threads::run(configuration, database, *input, local, shared)
+            .await
+            .map(Response::ListThreads),
         Operation::Index(request) => indexing::run(configuration, database, models, request)
             .await
             .map(Response::Index),

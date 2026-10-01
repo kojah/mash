@@ -18,4 +18,5 @@ mod readiness;
 mod real_models;
 mod retrieval;
 mod shared_server;
+mod threads;
 mod watch_flow;

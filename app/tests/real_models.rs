@@ -75,6 +75,12 @@ fn real_models_index_and_run_hybrid_search() {
         assert!(indexed[timing].is_u64(), "missing index timing: {timing}");
     }
 
+    assert_scoped_message_search(&config, &database, model_arg);
+    assert_thread_search_and_view(&config, &database, model_arg);
+}
+
+fn assert_scoped_message_search(config: &Path, database: &Path, model_arg: &str) {
+    let thread = listed_thread(config, database);
     let found = run_json(&[
         "--config",
         config.to_str().unwrap(),
@@ -85,6 +91,10 @@ fn real_models_index_and_run_hybrid_search() {
         "search",
         "--unit",
         "messages",
+        "--provider",
+        "claude-code",
+        "--conversation",
+        &thread,
         "authentication",
     ]);
     assert_eq!(found["realized_mode"], "hybrid");
@@ -100,7 +110,22 @@ fn real_models_index_and_run_hybrid_search() {
                 .is_some_and(|content| content.contains("authentication credentials"))
         })
     }));
-    assert_thread_search_and_view(&config, &database, model_arg);
+}
+
+fn listed_thread(config: &Path, database: &Path) -> String {
+    let catalog = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "list-threads",
+        "--local",
+        "--provider",
+        "claude-code",
+    ]);
+    let thread = catalog["threads"][0]["conversation_id"].as_str().unwrap();
+    assert_eq!(thread, "hybrid");
+    thread.to_owned()
 }
 
 fn assert_thread_search_and_view(config: &Path, database: &Path, model_arg: &str) {

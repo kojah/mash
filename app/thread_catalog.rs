@@ -31,22 +31,32 @@ pub(crate) enum Direction {
     Desc,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, rmcp::schemars::JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, clap::Args, rmcp::schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Request {
+    #[arg(long)]
     pub(crate) provider: Vec<Provider>,
+    #[arg(long)]
     pub(crate) node: Vec<String>,
     /// Literal substring, ASCII case insensitive; no wildcard syntax.
+    #[arg(long)]
     pub(crate) title_contains: Option<String>,
     /// Inclusive thread activity cutoff in Unix seconds.
+    #[arg(long)]
     pub(crate) after: Option<i64>,
     /// Exclusive thread activity cutoff in Unix seconds.
+    #[arg(long)]
     pub(crate) before: Option<i64>,
+    #[arg(long, value_enum, default_value = "updated-at")]
     pub(crate) sort: Sort,
+    #[arg(long, value_enum, default_value = "desc")]
     pub(crate) direction: Direction,
+    #[arg(long, default_value_t = 50)]
     pub(crate) limit: usize,
+    #[arg(long, default_value_t = 0)]
     pub(crate) offset: usize,
     /// Exclude the caller's published copy, for combined local/shared discovery.
+    #[arg(skip)]
     pub(crate) exclude_self: bool,
 }
 
@@ -236,7 +246,8 @@ impl Collector {
     }
 
     pub(crate) fn finish(self) -> Page {
-        let next_offset = (self.rows.len() > self.request.offset + self.request.limit)
+        let next_offset = (self.rows.len() > self.request.offset + self.request.limit
+            && self.request.offset + self.request.limit <= 10_000)
             .then_some(self.request.offset + self.request.limit);
         Page {
             threads: self

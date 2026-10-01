@@ -1,5 +1,24 @@
 use super::*;
 
+#[test]
+fn pagination_stops_at_the_documented_offset_cap() {
+    let mut collector = Collector::new(Request {
+        offset: 10_000,
+        limit: 1,
+        ..Default::default()
+    })
+    .unwrap();
+    for number in 0..10002 {
+        collector.push(row(&format!("id-{number:05}"), Some(number)));
+    }
+    let page = collector.finish();
+    assert_eq!(page.threads.len(), 1);
+    assert!(
+        page.next_offset.is_none(),
+        "never advertise an offset the request validator rejects"
+    );
+}
+
 fn row(id: &str, time: Option<i64>) -> Thread {
     Thread {
         conversation_id: id.into(),

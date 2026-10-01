@@ -9,6 +9,17 @@ use crate::AppError;
 
 impl Storage {
     pub(crate) fn open_search(path: &Path, generation: &str) -> Result<Self, AppError> {
+        let storage = Self::open_catalog(path)?;
+        if storage.derived_search_is_dirty()? || !storage.semantic_index_is_ready(generation)? {
+            return Err(AppError::search_not_ready(
+                "initial indexing has not completed or the index needs updating; run `mash index`",
+            ));
+        }
+        Ok(storage)
+    }
+
+    /// Current metadata schema only: never initialize, migrate or require models.
+    pub(crate) fn open_catalog(path: &Path) -> Result<Self, AppError> {
         if !path.is_file() {
             return Err(AppError::missing_database(path));
         }
@@ -27,18 +38,12 @@ impl Storage {
                 "index requires an explicit rebuild; run `mash index`",
             ));
         }
-        let storage = Self {
+        Ok(Self {
             connection,
             writer_active: false,
             defer_search_updates: false,
             transaction_base_messages: 0,
-        };
-        if storage.derived_search_is_dirty()? || !storage.semantic_index_is_ready(generation)? {
-            return Err(AppError::search_not_ready(
-                "initial indexing has not completed or the index needs updating; run `mash index`",
-            ));
-        }
-        Ok(storage)
+        })
     }
 
     pub(crate) fn open_existing(path: &Path) -> Result<Self, AppError> {

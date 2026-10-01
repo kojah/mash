@@ -32,6 +32,11 @@ pub(crate) struct IndexRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) enum Operation {
     Index(IndexRequest),
+    ListThreads {
+        input: Box<crate::thread_catalog::Request>,
+        local: bool,
+        shared: bool,
+    },
     Search {
         query: String,
         limit: usize,
@@ -58,6 +63,7 @@ pub(crate) enum Operation {
 #[serde(untagged)]
 pub(crate) enum Response {
     Index(IndexResponse),
+    ListThreads(super::threads::Response),
     Search(SearchResponse),
     View(ViewResponse),
     Status(StatusResponse),
