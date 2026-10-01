@@ -7,12 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # Do not interrupt an all-node deployment when main advances. Stale runs
-  # are skipped by the serialized deployment gate instead.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-
 permissions:
   contents: read
 
@@ -27,6 +21,11 @@ env:
 
 jobs:
   rust:
+    # Cancel obsolete validation jobs, without canceling an active deployment.
+    # The reusable deploy workflow holds its own noncanceling lock and head gate.
+    concurrency:
+      group: mash-ci-rust-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
