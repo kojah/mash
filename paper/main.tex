@@ -615,6 +615,57 @@ accuracy, semantic topic quality or guided-search gains. Not every preceding
 body is native-verified; the bounded view can omit necessary context. Original
 judgments remain unchanged, and no algorithm receives reviewer-written text.
 
+\subsection{Causal context-selection controls}
+Before additional encoding, we compare three fixed source-only selectors on the
+captured contexts: nearest assistant prose, the preceding exchange through its
+nearest user, and the full captured three-user chain. Selection uses only role,
+causal order and display availability, without annotation labels, evidence
+indices or rationales. Missing/redacted nearest assistant prose causes
+abstention rather than substitution by an older answer; omitted/redacted user
+records still bound an exchange. Reference judgments are consulted only after
+all selections have been computed. The cohort itself uses the original oracle
+referential admission and is not an automatic eligibility evaluation.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrrr}
+\hline
+Selector & Complete / 23 & Records / 31 & Bytes & Extra records \\
+\hline
+Nearest assistant & 15 & 23 & 25,698 & 4 \\
+Preceding exchange & 21 & 28 & 29,592 & 43 \\
+Captured chain & 23 & 31 & 91,617 & 194 \\
+\hline
+\end{tabular}
+\caption{Retention of annotated evidence for 23 resolved references. Bytes and
+extra records are summed across all 29 referential anchors. Extra records exceed
+the annotated evidence set, but are not necessarily irrelevant.}
+\label{tab:context-selection}
+\end{table}
+
+Table~\ref{tab:context-selection} shows a coverage/cost tradeoff. The preceding
+exchange retains all annotated evidence for 18/20 task references and 3/3
+metadata references; nearest assistant prose does so for 14/20 and 1/3.
+The full chain's complete coverage follows by construction because the review
+used that same capture, not independent evidence of semantic resolution.
+It carries roughly three times the text of the preceding exchange. Among the
+four interaction-only and two unresolved cases, context is still selected for
+four by nearest assistant and five by each wider selector. Indiscriminate topic
+inheritance therefore remains unjustified. Evidence retention cannot establish
+correct interpretation, selection of endorsed subjects, or topic quality.
+
+Selection across all 84 materialized contexts takes less than 0.5\,ms per
+method in each of two runs. These timings exclude source capture, encoding,
+ingestion and persistence; no model calls occur. Non-timing report fields
+reproduce exactly, and 53 lab tests pass. The implementation is
+\path{research/topics/context_selection.py}; private
+\path{context-selection-final.json} has SHA256
+\path{0b09ccd4cf955c1fe7236cd506804125e7cec832855f6b1fef3144e784e6c0fe}.
+The single exposed reviewer's development labels and bounded stored projections
+remain limitations. Source-only contextual representations and downstream
+semantic quality need evaluation before promotion; reviewer-written text must
+not become model input.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training

@@ -232,6 +232,42 @@ reviewer had prior source, method and prediction exposure; these are exploratory
 judgments, not independent human truth. Preceding bodies use stored projections,
 not comprehensive native verification. Original user-only judgments remain frozen.
 
+## Causal context-selection controls
+
+`context_selection.py` evaluates three fixed selectors: nearest assistant prose
+within the captured chain, the preceding exchange through its nearest user, and
+the full captured three-user chain. Selectors consult only roles, causal order
+and display availability, never reference labels, evidence indices or rationales.
+The nearest-assistant selector abstains if that assistant record is omitted or
+redacted; it does not jump over that record to an older answer. Exchange boundaries
+still respect omitted or redacted users. Original reference labels are used only
+to score selections afterward. Selection itself does not resolve or assign topics.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/context_selection.py \
+  --contexts "$PRIVATE_CHAINED_CONTEXT" --source-review "$PRIVATE_SOURCE_REVIEW" \
+  --annotations "$PRIVATE_REFERENCE_REVIEW" --output "$PRIVATE_SELECTION_REPORT"
+```
+
+| Selector | All annotated evidence retained / 23 resolved cases | Evidence records / 31 | Text bytes across 29 anchors | Additional records beyond annotated evidence |
+| --- | ---: | ---: | ---: | ---: |
+| Nearest assistant | 15 | 23 | 25,698 | 4 |
+| Preceding exchange | 21 | 28 | 29,592 | 43 |
+| Captured chain | 23 | 31 | 91,617 | 194 |
+
+The chain's complete retention follows by construction: the annotations were
+made within that capture. Additional records are not necessarily irrelevant;
+retaining evidence is not semantic resolution. All selectors also supply context
+to some interaction/unresolved cases (four nearest-assistant, five exchange/chain
+of six), so indiscriminate topic inheritance remains unjustified. The cohort uses
+oracle original referential admission, not an automatic eligibility classifier.
+Selection for all 84 captured contexts takes under 0.5 ms in these two materialized
+packet runs; capture, encoding, persistence and ingestion are excluded. No model
+calls occur. Repeated non-timing fields are identical; 53 lab tests pass. Next
+compare source-only contextual representations and semantic quality, without
+feeding reviewer-written interpretations into models or tuning on reserved groups.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current
