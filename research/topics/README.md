@@ -492,6 +492,55 @@ non-overlap, empty input and fenced-code preservation. Next annotate source-span
 relevance/endorsement separately and test automatic selection and grouping before
 any production topic promotion.
 
+## Source-span similarity selection pilot
+
+`span_selection.py` tests top-1/top-3 selection against keeping every structural
+unit in the nearest intact causal assistant response. The three deliberately
+selected hard cases above contain 25 candidates: eight legacy-import spans,
+three project-correction spans and fourteen accepted-fix spans. A private,
+source-pinned review assigns one closed relation per candidate: topical support
+for the current reply, background, procedure, metadata, mixed rejection or a
+rejected proposal. Mixed spans contain relevant subject matter and rejected
+details; they are not clean evidence to borrow. These are exposed single
+coding-assistant judgments, not independent ground truth or a representative
+quality test. The accepted-fix review marks the six detailed rows and their
+summary as seven support spans, not seven separate semantic topics.
+
+Three source-only queries rank candidates with the existing offline MiniLM:
+the current user reply, the preceding user turn, and the equal-weight normalized
+mean of the captured preceding user turns plus the current reply. The chain uses
+at most three preceding users and abstains on missing/redacted/edited/noncausal
+source. Every input must fit the 512-token model window; there is no truncation
+or partial ranking. Scores use cosine and source-order tie-breaking. Review
+relations are used only after ranking, never as encoder inputs or selection rules.
+The validator pins context/capture bytes and exact candidate hashes, rejects
+missing/reordered/unknown judgments and extra fields such as reviewer summaries,
+and rebuilds source offsets against intact causal records. The CLI takes the
+usual frozen database/partition/boundary/source/context/reference inputs plus
+`--spans`, `--pilot`, explicit installed `--snapshot`, and fresh `--output`.
+
+The simple selector is rejected. For the legacy-import correction, none of the
+three top-3 queries selects the clean flag-status paragraph. The current query
+selects the rejected proposal, mixed rejection and background; the preceding
+query selects only background; the chain selects mixed rejection, the rejected
+proposal and background. For the project correction, current top-1 selects access
+metadata while preceding top-1 selects the mixed wrong-project statement. The
+chain abstains because an older user record is redacted. For the accepted fixes,
+every top-3 consists of the family summary and two procedural units, omitting all
+six detailed rows. This is a span-selection failure diagnostic, not measured
+downstream label or topic recall: the summary itself mentions the six families.
+
+Two fresh runs reproduce every non-timing field, including all rankings and
+abstention. The shared cache requires 35 unique singleton encodes, 51 hits and
+at most 79 tokens per encoded input. Inference takes 94–97 ms across all queries;
+elapsed after imports is 679–690 ms including source loading and model setup;
+peak process RSS is 223–228 MiB. These shared-cache lab measurements do not prove
+standalone query costs, production model parity, or the ingestion gate.
+Eighty-two lab tests pass. Keep this negative control rather than tuning top-k or
+adding phrase exceptions on these examples. The next decision needs wider
+source-reviewed evidence for grouping and topic relevance separately from
+endorsement; similarity alone does not supply either.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current

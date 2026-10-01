@@ -931,6 +931,85 @@ private \path{source-spans-final.json} has SHA256
 Source-span relevance/endorsement needs separate annotation; automatic selection
 and grouping require evaluation before production promotion.
 
+\subsection{Source-span similarity selection}
+We evaluate whether exact structural spans can support simple automatic context
+narrowing. Three deliberately selected known hard cases contain 25 candidates:
+eight spans around the legacy-import correction, three around the project
+correction, and fourteen around the accepted fix proposal. An exposed single
+coding-assistant review assigns one source-pinned scalar relation per span:
+current-reply topical support, background, procedure, metadata, mixed rejection,
+or rejected proposal. Mixed rejection contains useful subject matter alongside
+rejected details. The accepted proposal has seven support spans: six detailed
+family rows and one summary, not seven semantic topics. These judgments are
+diagnostic and neither independent ground truth nor representative evaluation.
+No reviewer interpretation, topic name or rationale becomes model input.
+
+We compare keeping every candidate with top-1 and top-3 cosine ranking using
+the installed local MiniLM. The first query is the current reply. After observing
+its failure, we add two exploratory source-only query controls: the preceding
+user turn, and the normalized mean of individual normalized embeddings for the
+captured preceding users plus current reply. The chain contains at most three
+preceding users; missing, redacted, edited or noncausal source causes abstention.
+Each input must fit 512 tokens without truncation or partial ranking. Score ties
+preserve source order. Source/context hashes and rebuilt offsets bind complete
+candidate judgments to intact causal records; unknown fields, incomplete or
+reordered judgments, and inserted reviewer summaries are rejected. Relations are
+consulted only after selection. Table~\ref{tab:span-selection} reports the top-3
+support-span counts, separately from mixed/rejected and other selected material.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{llrrl}
+\toprule
+Case & Query & Support & Mixed/rejected & Other \\
+\midrule
+Legacy flag & Current &0/1&2&1 background\\
+Legacy flag & Previous &0/1&0&3 background\\
+Legacy flag & User chain &0/1&2&1 background\\
+Project correction & Current &0/0&1&2 metadata\\
+Project correction & Previous &0/0&1&2 metadata\\
+Project correction & User chain &\multicolumn{3}{l}{Abstains on redacted user source}\\
+Accepted fixes & Current &1/7&0&2 procedural\\
+Accepted fixes & Previous &1/7&0&2 procedural\\
+Accepted fixes & User chain &1/7&0&2 procedural\\
+\bottomrule
+\end{tabular}
+\caption{Known-case span-selection diagnostic. Support values are counts of
+selected clean support spans over available support spans, not semantic-topic
+recall; 0/0 denotes no clean assistant support span, not a ratio.}
+\label{tab:span-selection}
+\end{table}
+
+All three queries miss the legacy flag-status paragraph. Current top-1 selects
+the rejected proposal; previous top-1 selects background; chain top-1 selects
+mixed rejection. For the project correction, current top-1 selects access
+metadata and previous top-1 selects the mixed wrong-project statement. For the
+accepted fixes, current top-1 selects the family summary, whereas both context
+queries select procedure. All top-3 variants retain only the summary plus two
+procedural units, omitting the six detailed rows. Because the summary mentions
+the families, this is not evidence that six semantic topics would necessarily
+be lost downstream. It demonstrates that similarity-based selection does not
+reliably recover the intended source units or distinguish endorsement. We reject
+the selector without tuning top-k or adding example-specific exceptions.
+
+Two fresh runs reproduce all non-timing fields, including scores, ranking,
+coverage and provenance. A shared cache uses 35 unique singleton encodes and
+51 hits; maximum encoded input is 79 tokens. Across all controls, inference takes
+94--97\,ms, elapsed time after imports is 679--690\,ms including corpus loading
+and model setup, and peak process RSS is 223--228\,MiB. Shared-cache costs do not
+estimate separate production query costs or satisfy the ingestion-overhead gate.
+Eighty-two lab tests pass, covering scalar annotation completeness, exact source
+and causal identity, rejection of reviewer text, deterministic ties, and
+pre-inference overflow abstention. The implementation is
+\path{research/topics/span_selection.py}. Private
+\path{span-selection-contextual.json} has SHA256
+\path{6190a0c96f33d2a752b00a6a5074397b6c5bdb246e422b171c29936206b6910a};
+the private span review has SHA256
+\path{34ea9a8c11d875aa5c5b3c0af9c8dde1351cf5481149cc26d9af8003c39abd55}.
+Wider source-reviewed grouping and topical relevance, with endorsement assessed
+separately, remain necessary before selecting a production method.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training
