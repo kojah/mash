@@ -1116,20 +1116,28 @@ read-only; the service adds missing metadata tables during startup migration.
 ## MCP
 
 CLI and MCP are wrappers around the same typed application core in `app/core.rs`.
-The core owns indexing, search, view, status, forgetting, and model installation.
+The core owns indexing, search, thread listing, view, status, forgetting, and model installation.
 MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
 The cached search worker and watcher also use typed core requests.
 
 `app/core/models.rs` defines those serialized requests and responses.
-Operation handlers live in `app/core/indexing.rs`, `search.rs`, `inspection.rs`
+Operation handlers live in `app/core/indexing.rs`, `search.rs`, `threads.rs`, `inspection.rs`
 and `maintenance.rs`; each returns its concrete result type. The façade resolves
 configuration and paths, dispatches the request and wraps the result once.
 Indexing owns per-index provider routing, progress and watcher target selection;
 inspection owns read-only status and canonical views. Parsing, SQLite and local
 inference run on blocking workers, while shared HTTP operations remain asynchronous.
 
+`app/shared.rs` is the typed shared-index facade. Its private `client` module
+owns pooled HTTP requests, authentication, deadlines and response decoding;
+`publication` owns durable acknowledgements, routing ownership and streaming
+uploads; `retrieval` owns concurrent local/shared candidates, fusion and contextual
+ranking. The HTTP service and concrete database backends remain separate from
+those node-side modules. These boundaries use existing concrete types rather
+than adding transport or provider abstractions.
+
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
-`--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `view`, `status`, `index`, `forget`,
+`--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_threads`, `view`, `status`, `index`, `forget`,
 and `models_install`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
 

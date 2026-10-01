@@ -1,8 +1,9 @@
+use super::client::{Endpoint, get, post};
 use super::protocol::{
     Batch, Checkpoint, ConversationRecord, Event, Forget, Forgotten, MessageRecord, NodeState,
     Start,
 };
-use super::{Endpoint, get, post, upload, write_event};
+use super::publication::{upload, write_event};
 use crate::AppError;
 use crate::config::SharedConfig;
 use crate::ingestion::{self, Conversation, DirectScan, IndexOptions, IndexSummary};

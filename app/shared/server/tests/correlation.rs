@@ -61,8 +61,10 @@ async fn concurrent_http_calls_correlate_failures_and_bound_untrusted_metadata()
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let client = reqwest::Client::new();
     let call = |token| {
-        super::super::super::response::<crate::storage::Counts>(client.get(&url).bearer_auth(token))
-            .with_subscriber(dispatcher.clone())
+        super::super::super::client::response::<crate::storage::Counts>(
+            client.get(&url).bearer_auth(token),
+        )
+        .with_subscriber(dispatcher.clone())
     };
     let (authorized, unauthorized) = tokio::join!(call(FIRST), call("credential-canary"));
     assert!(authorized.is_err());
@@ -70,7 +72,7 @@ async fn concurrent_http_calls_correlate_failures_and_bound_untrusted_metadata()
 
     // Disabled client tracing sends no ID: the tracing server creates its own.
     assert!(
-        super::super::super::response::<crate::storage::Counts>(
+        super::super::super::client::response::<crate::storage::Counts>(
             client.get(&url).bearer_auth(FIRST),
         )
         .with_subscriber(tracing::subscriber::NoSubscriber::default())
