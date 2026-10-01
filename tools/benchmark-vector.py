@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""Vector-only Redis FLAT/HNSW pilot; never point this at production Redis.
+
+Uses existing quantized embeddings as held-out document queries, not user-query
+inference. No history text is exported. Artifacts contain sensitive embeddings.
+"""
+
+import argparse
+import array
+import hashlib
+import json
+import math
+import random
+import socket
+import sqlite3
+import struct
+import time
+import uuid
+from pathlib import Path
+
+
+class Redis:
+    def __init__(self, port):
+        self.socket = socket.create_connection(("127.0.0.1", port), timeout=120)
+        self.reader = self.socket.makefile("rb")
+
+    def read(self):
+        line = self.reader.readline()
+        if not line.endswith(b"\r\n"):
+            raise RuntimeError("truncated Redis reply")
+        kind, value = line[:1], line[1:-2]
+        if kind == b"-":
+            raise RuntimeError(value.decode())
+        if kind == b"+":
+            return value
+        if kind == b":":
+            return int(value)
+        if kind == b"$":
+            length = int(value)
+            if length == -1:
+                return None
+            payload = self.reader.read(length)
+            if len(payload) != length or self.reader.read(2) != b"\r\n":
+                raise RuntimeError("truncated Redis bulk reply")
+            return payload
+        if kind == b"*":
+            return [self.read() for _ in range(int(value))]
+        raise RuntimeError("unexpected Redis reply type")
+
+    def batch(self, commands):
+        output = bytearray()
+        for command in commands:
+            output.extend(f"*{len(command)}\r\n".encode())
+            for argument in command:
+                value = argument if isinstance(argument, bytes) else str(argument).encode()
+                output.extend(f"${len(value)}\r\n".encode())
+                output.extend(value)
+                output.extend(b"\r\n")
+        self.socket.sendall(output)
+        return [self.read() for _ in commands]
+
+    def call(self, *arguments):
+        return self.batch([arguments])[0]
+
+    def close(self):
+        self.reader.close()
+        self.socket.close()
+
+
+def pairs(values):
+    return {values[i].decode(): values[i + 1] for i in range(0, len(values), 2)}
+
+
+def percentiles(values):
+    values = sorted(values)
+    return {name: round(values[max(0, math.ceil(len(values) * fraction) - 1)], 4)
+            for name, fraction in [("p50", .5), ("p95", .95), ("p99", .99)]}
+
+
+def freeze(source, destination):
+    if destination.exists():
+        raise ValueError("use a new artifact directory; refusing to overwrite a frozen corpus")
+    with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True) as original:
+        original.execute("BEGIN")
+        rows = original.execute("""SELECT e.vector, e.dimensions, e.generation,
+            c.provider, coalesce(m.created_at, 0) FROM message_embeddings e
+            JOIN messages m ON m.id=e.message_id
+            JOIN conversations c ON c.id=m.conversation_id ORDER BY e.message_id""").fetchall()
+    if not rows or len({(row[1], row[2]) for row in rows}) != 1:
+        raise ValueError("corpus must have one nonempty embedding generation and dimension")
+    with sqlite3.connect(destination) as frozen:
+        frozen.execute("CREATE TABLE vectors(vector BLOB, dimensions INTEGER, generation TEXT, provider TEXT, created_at INTEGER)")
+        frozen.executemany("INSERT INTO vectors VALUES(?,?,?,?,?)", rows)
+    return rows
+
+
+def search(redis, index, vector, ordinal, predicate, k, ef=None):
+    # Request one extra neighbor and discard the source document after retrieval.
+    # A numeric exclusion would turn even unfiltered queries into hybrid queries
+    # and allow Redis's adaptive planner to select a brute-force filter strategy.
+    expression = (f"({predicate})" if predicate else "*") + f"=>[KNN {k + 1} @vector $v AS distance]"
+    if ef is not None:
+        expression += "=>{$EF_RUNTIME: " + str(ef) + "}"
+    started = time.perf_counter()
+    reply = redis.call("FT.SEARCH", index, expression, "PARAMS", 2, "v", vector,
+                       "SORTBY", "distance", "RETURN", 1, "distance", "LIMIT", 0, k + 1, "DIALECT", 2)
+    elapsed = (time.perf_counter() - started) * 1000
+    found = {reply[i].decode(): float(pairs(reply[i + 1])["distance"])
+             for i in range(1, len(reply), 2)
+             if not reply[i].decode().endswith(f":{ordinal}")}
+    found = dict(list(found.items())[:k])
+    if len(found) > k or any(not math.isfinite(value) for value in found.values()):
+        raise RuntimeError("invalid vector result")
+    return elapsed, found
+
+
+def evaluate(redis, rows, size, queries, k):
+    prefix = "mash-vector-pilot:" + uuid.uuid4().hex + ":"
+    dimensions = rows[0][1]
+    documents = []
+    for ordinal, row in enumerate(rows[:size]):
+        values = array.array("b", row[0])
+        if len(values) != dimensions or not any(values):
+            raise ValueError("invalid quantized vector")
+        vector = struct.pack("<" + "f" * dimensions, *values)
+        documents.append((prefix + str(ordinal), vector, row[3], row[4]))
+    indexes, report = [], []
+    try:
+        for start in range(0, size, 512):
+            redis.batch([("HSET", key, "vector", vector, "provider", provider,
+                          "time", created, "ordinal", start + offset)
+                         for offset, (key, vector, provider, created) in enumerate(documents[start:start+512])])
+        latest = sorted(row[3] for row in documents)[int((size - 1) * .99)]
+        provider = min({row[2] for row in documents}, key=lambda p: sum(row[2] == p for row in documents))
+        escaped_provider = "".join(c if c.isalnum() else "\\" + c for c in provider)
+        filters = {"all": "", "provider": "@provider:{" + escaped_provider + "}",
+                   "recent_1pct": f"@time:[{latest} +inf]"}
+        selected = random.Random(731).sample(range(size), min(queries, size))
+        ground_truth = {}
+        for algorithm in ["FLAT", "HNSW"]:
+            index = prefix + algorithm
+            attributes = ["TYPE", "FLOAT32", "DIM", dimensions, "DISTANCE_METRIC", "COSINE"]
+            if algorithm == "HNSW":
+                attributes += ["M", 16, "EF_CONSTRUCTION", 200]
+            started = time.perf_counter()
+            redis.call("FT.CREATE", index, "ON", "HASH", "PREFIX", 1, prefix,
+                       "SCHEMA", "provider", "TAG", "time", "NUMERIC", "ordinal", "NUMERIC",
+                       "vector", "VECTOR", algorithm, len(attributes), *attributes)
+            indexes.append(index)
+            deadline = time.monotonic() + 300
+            while True:
+                info = pairs(redis.call("FT.INFO", index))
+                if int(info["num_docs"]) == size and int(info["indexing"]) == 0:
+                    break
+                if time.monotonic() > deadline:
+                    raise TimeoutError("index build did not complete")
+                time.sleep(.05)
+            build_ms = (time.perf_counter() - started) * 1000
+            for ef in ([None] if algorithm == "FLAT" else [10, 50, 200]):
+                for name, predicate in filters.items():
+                    timings, recalls, boundary_recalls = [], [], []
+                    for ordinal in selected:
+                        vector = documents[ordinal][1]
+                        elapsed, found = search(redis, index, vector, ordinal, predicate, k, ef)
+                        if algorithm == "FLAT":
+                            ground_truth[name, ordinal] = found
+                        truth = ground_truth[name, ordinal]
+                        if not truth or len(found) != len(truth):
+                            raise RuntimeError("empty or incomplete filtered neighbors")
+                        recalls.append(len(set(found) & set(truth)) / len(truth))
+                        boundary = max(truth.values()) + 1e-6
+                        boundary_recalls.append(sum(value <= boundary for value in found.values()) / len(truth))
+                        timings.append(elapsed)
+                    report.append(dict(size=size, algorithm=algorithm, ef_runtime=ef,
+                        filter=name, filter_matches=sum(
+                            name == "all" or name == "provider" and row[2] == provider
+                            or name == "recent_1pct" and row[3] >= latest for row in documents),
+                        queries=len(selected), k=k, build_ms=round(build_ms, 2),
+                        vector_index_mb=float(info["vector_index_sz_mb"]),
+                        latency_ms=percentiles(timings),
+                        recall_mean=round(sum(recalls)/len(recalls), 5), recall_min=min(recalls),
+                        boundary_recall_mean=round(sum(boundary_recalls)/len(boundary_recalls), 5)))
+        return report
+    finally:
+        for index in indexes:
+            redis.call("FT.DROPINDEX", index)
+        for start in range(0, len(documents), 512):
+            redis.call("UNLINK", *[row[0] for row in documents[start:start+512]])
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--source", type=Path)
+    inputs.add_argument("--frozen", type=Path)
+    parser.add_argument("--artifacts", type=Path, required=True)
+    parser.add_argument("--port", type=int, default=57379, choices=[57379])
+    parser.add_argument("--sizes", type=int, nargs="+", default=[1000, 10000])
+    parser.add_argument("--queries", type=int, default=100)
+    parser.add_argument("--k", type=int, default=20)
+    args = parser.parse_args()
+    args.artifacts.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if args.artifacts.stat().st_mode & 0o077:
+        raise ValueError("artifact directory must be private (0700)")
+    if (args.artifacts / "report.json").exists():
+        raise ValueError("use a new report directory")
+    corpus = args.frozen or args.artifacts / "vectors.sqlite3"
+    if args.frozen:
+        with sqlite3.connect(corpus.resolve().as_uri() + "?mode=ro", uri=True) as frozen:
+            rows = frozen.execute("SELECT vector, dimensions, generation, provider, created_at FROM vectors ORDER BY rowid").fetchall()
+    else:
+        rows = freeze(args.source, corpus)
+    if not rows or len({(row[1], row[2]) for row in rows}) != 1:
+        raise ValueError("corpus must have one nonempty embedding generation and dimension")
+    if args.queries < 1 or args.k < 1 or any(size <= args.k + 1 or size > len(rows) for size in args.sizes):
+        raise ValueError("invalid query count, k or corpus size")
+    redis = Redis(args.port)
+    try:
+        result = dict(corpus_sha256=hashlib.sha256(corpus.read_bytes()).hexdigest(),
+                      vectors=len(rows), dimensions=rows[0][1], generation=rows[0][2],
+                      redis_version=redis.call("INFO", "server").decode(),
+                      host_load=Path("/proc/loadavg").read_text().strip(),
+                      measurements=[])
+        for size in args.sizes:
+            result["measurements"].extend(evaluate(redis, rows, size, args.queries, args.k))
+            (args.artifacts / "report.json").write_text(json.dumps(result, indent=2) + "\n")
+            print(f"completed {size} vectors", flush=True)
+    finally:
+        redis.close()
+
+
+if __name__ == "__main__":
+    main()
