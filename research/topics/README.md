@@ -259,6 +259,41 @@ are pinned; vocabulary/source text is withheld. Fit/scoring costs and full-proce
 RSS do not measure complete ingestion overhead. Results and limitations are in
 the living paper; no production method is selected from this small diagnostic.
 
+## Group-aware dense cutoff calibration
+
+`calibrate_boundaries.py` tests one fixed operating rule: maximize training
+balanced accuracy (mean change recall and continuation specificity), breaking exact
+ties toward the higher dissimilarity cutoff/fewer splits. Candidates are training
+score midpoints and endpoints only. A split requires dissimilarity strictly above
+the selected cutoff. Every canonical development group is excluded in turn from
+all training scores/labels, including any alias thread; insufficient training
+classes cause abstention. Uncertain judgments and missing scores never choose a
+cutoff. The comparator uses dissimilarity >0.45 (cosine <0.55).
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/calibrate_boundaries.py \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --annotations "$PRIVATE_ANNOTATIONS" --source-review "$PRIVATE_SOURCE_REVIEW" \
+  --output "$PRIVATE_CALIBRATION_REPORT"
+```
+
+This uses existing dense vectors and the frozen oracle-admission diagnostic only;
+no lexical vocabulary/IDF is fitted and no inference is invoked. Report each
+training/test group, cutoff, available training classes, out-of-group predictions,
+provider metrics and abstentions. Do not replace fold results with a cutoff fitted
+to all labels. Leave-group-out development results are still exploratory because
+the cohort and single-assistant annotations have informed method choice. This is
+cutoff selection, not probability calibration, semantic-topic validation or the
+complete-ingestion performance gate. The operating rule is fixed before this
+experiment's predictions; any later alternative needs a separately recorded trial.
+
+On the expanded development review, out-of-group calibration reduces false splits
+from 26 to eight but detects only five of twelve changes, missing seven in Codex.
+This tradeoff is rejected; no cutoff is promoted or retuned after the result.
+The paper records fold concentration, source-label limits and the next unit/context
+review. Reserved groups remain untouched.
+
 ## Initial controls
 
 `run.py` reads an existing consistent SQLite snapshot in read-only mode. It uses

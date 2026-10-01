@@ -560,6 +560,63 @@ small common support prevent generalization or semantic-quality claims.
 The complete-ingestion overhead gate remains unmeasured; no Rust method is
 selected or promoted.
 
+\subsection{Out-of-group cutoff calibration}
+We test whether poor fixed-cutoff performance can be repaired without new
+inference. Before predictions, we fix one operating rule: maximize training
+balanced accuracy, the mean of change recall and continuation specificity.
+Exact ties choose the higher dissimilarity cutoff, producing fewer splits.
+Candidate cutoffs are only training-score midpoints and endpoints; decisions
+use strict dissimilarity greater-than. For each canonical development group,
+all its scores and labels are excluded from training. Uncertain judgments and
+missing scores do not fit a cutoff; insufficient training classes would cause
+abstention. We retain source-pinned oracle admission and stored adjacent dense
+vectors, without lexical fitting, phrase/provider exceptions or model inference.
+The fixed comparator remains dissimilarity greater than 0.45 (cosine below 0.55).
+
+Eight groups are excluded in turn; seven supply judged test boundaries and one
+has only uncertain boundaries. Aggregate out-of-group predictions cover all
+40 known boundaries with twelve changes and no abstentions.
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrrrr}
+\toprule
+Rule & Detected & False splits & Missed & Precision & Recall\\
+\midrule
+Fixed cosine 0.55 &12&26&0&0.316&1.000\\
+Out-of-group cutoff &5&8&7&0.385&0.417\\
+\bottomrule
+\end{tabular}
+\caption{Fixed operating objective tested on excluded development groups.
+These familiar exploratory labels are not independent human validation.}
+\label{tab:calibration}
+\end{table}
+
+Table~\ref{tab:calibration} shows fewer false splits at an unacceptable cost to
+change recall. Continuation specificity increases from 0.071 to 0.714, but
+all seven missed changes occur in Codex. Claude retains its three judged changes
+with three false splits (precision 0.500); Codex detects two of nine changes with
+five false splits (precision 0.286, recall 0.222). Selected cosine equivalents
+are about 0.1203 in seven folds and 0.0665 in one. The latter excludes a group
+containing eight of the twelve known changes: its training set has only four
+changes across 27 judged boundaries and apparently high training balanced
+accuracy (0.957), which does not transfer. The small, concentrated development
+sample limits any general interpretation or provider-specific recommendation.
+
+Cutoff fitting and decision construction cost 2.1\,ms in one run, excluding
+data loading and score construction; no inference call occurs. A fresh repeat
+reproduces all non-timing fields exactly. Thirty-nine lab tests pass, including
+exclusion of every alias in the test group, invariance to its edited labels and
+scores, uncertain/missing training exclusion, conservative exact ties and
+abstention accounting. The implementation is
+\path{research/topics/calibrate_boundaries.py}; private report
+\path{calibration.json} in the expanded-review directory has SHA256
+\path{0e5427a0b08e567785e1efa0f37c8e6fe896ebc91ed7e3dcc7b59510b4a02a21}.
+The cutoff rule is not promoted or retuned after this result. This is operating
+threshold selection, not probability calibration or robust semantic episode
+validation. Source-supported units and unresolved reference chains still need
+review; neither complete-ingestion overhead nor useful online topic hierarchies
+are demonstrated.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background
