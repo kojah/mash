@@ -1547,10 +1547,68 @@ Final paired captures have SHA256
 \path{57351f1febedf29f873f9c7c0d02672ad32db8000ebf57c80b7ff00efa6d7d62}
 and \path{4de59ec56fcb12e372b53e74eefcb19d3f46713745e03cd1368215ae905c3534}.
 An exploratory capture before the tested shared model-window helper is excluded.
-Next evaluate payload field roles and label candidates with memberships fixed,
-and obtain native context for referential records. Do not blanket-drop structured
+The following label-only control fixes memberships; native context for referential
+records remains pending. Do not blanket-drop structured
 user messages: one schema/thread cannot justify automatic filtering, a semantic
 hierarchy, or Rust/default promotion.
+
+\subsection{Field-role label controls with frozen memberships}
+Fix the payload pilot's forward GRINCH four groups/eight sources, including the
+same model-window exclusion. Compare full payload, exact task-target plus feedback
+plus unknown fields, and feedback plus unknown fields. A format-specific parser
+recognizes two exposed feedback layouts and separates page, viewport, location,
+element path, nearby text and framing. Unknown content is retained; code markers
+remain under their enclosing field. Preserve complete Unicode offsets and count
+each selected span separately, so removing fields cannot invent compounds.
+This is syntax-based filtering, not semantic importance prediction.
+
+Compare previous c-TF-IDF, record-DF-weighted c-TF-IDF and lexical containment
+diversity, top eight with at most 8,192 features. Background DF counts original
+records, not fragments; statistics are transductive on eight records. No embedding,
+clustering, context borrowing, LLM or reviewer-name features are introduced.
+Require exact reproduction of prior full-payload c-TF-IDF terms and scores.
+Two fresh captures match every nonmeasurement field for all nine controls.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{lrrrr}
+\hline
+Source selection & Vocabulary & Terms & Lost target terms & Labels/metadata-only\\
+\hline
+Full payload & 71 & 193 & 0 & 32/16\\
+Target/feedback/unknown & 39 & 59 & 0 & 25/0\\
+Feedback/unknown & 28 & 37 & 18 & 21/0\\
+\hline
+\end{tabular}
+\caption{Fixed-membership label diagnostic. Label counts use c-TF-IDF. Lost terms
+are distinct target unigrams/bigrams absent from retained text, summed per record;
+18 occurrences affect seven records, not 18 independently judged concepts.}
+\end{table}
+
+Target-inclusive labels remove CSS/viewport candidates while retaining phrases
+such as ``fact model'' lost by feedback-only input. Remaining generic candidates
+and mixed sidebar/heading memberships persist. Record-IDF leaves 14 of 32
+full-payload labels metadata-only; containment diversity leaves 16 of 32.
+All filtered candidates have exact retained-source support, but zero metadata-only
+counts are largely enforced by construction. They are not independent label-quality
+or topic-accuracy evidence. This remains one exposed thread/schema with oracle
+admission and fixed imperfect groups, without human label judgments.
+
+Parsing takes 0.464--0.523 ms; scoring all three variants takes 4.98--5.91 ms
+for full payload, 2.24--2.44 ms target-inclusive and 1.60--1.87 ms feedback-only.
+After-import wall time is 16.39--18.72 ms and CPU 16.29--17.77 ms, with zero
+model calls. Linux process-image VmHWM is 132.24--132.63 MiB including imports,
+while simultaneous rusage reports 955.94 MiB. Preserve both counters: their
+disagreement's cause is unestablished, and prior rusage-only memory attribution
+needs remeasurement before gating. These are label-only batch costs, not complete
+ingestion costs or online-maintenance evidence.
+
+\path{field_labels.py} and \path{compare_field_labels.py} pin and verify complete
+source/membership/scorer coverage; 125 lab tests pass. Final private capture hashes
+are \path{6c87f1b8d1819404a9332f8bf5779eeab20fb244f25ad25602ce6e8d6aa5013c}
+and \path{0eba3f439c20e76681e0b37f514b68d5ff69faa4b58d826d9f165f330f62c313}.
+Next obtain independent judgments and wider format/context coverage, and measure
+stable online backgrounds and complete ingestion before Rust promotion.
 
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context

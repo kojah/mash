@@ -804,6 +804,17 @@ an exact known feedback envelope, on equal model-window support.
 It reduces false merging at fixed cuts but loses genuine overlaps and does not
 improve pair ranking. No general context classifier or topic method is selected.
 
+The [fixed-membership field-label controls](../../benchmarks/2026-10-01-feedback-field-labels.md)
+use `field_labels.py --packets ... --review ... --memberships ... --output ...`
+and `compare_field_labels.py --first ... --second ... --output ...`.
+The prior four memberships/eight sources stay fixed across full-payload,
+target-inclusive and feedback-only labels. Full-payload baseline terms/scores
+must reproduce exactly. Field filtering removes metadata candidates on this
+exposed schema; feedback-only loses target referents. This is not independent
+semantic-quality evidence. Captures retain both Linux VmHWM and OS rusage peaks
+because the counters disagree in this environment; historical rusage-only
+memory attribution requires remeasurement before a performance gate.
+
 Run lab input-boundary tests:
 
 ```bash
