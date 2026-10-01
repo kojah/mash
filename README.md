@@ -795,9 +795,13 @@ stages expire after ten minutes. Redis supplies synchronization timestamps.
 Each upload and each node's serialized canonical snapshot is limited to
 **64 MiB by default**. Set `redis_max_node_mib` in the server configuration
 to raise that bound (1–4096 MiB). Size Redis memory for all nodes' canonical
-data, searchable documents, vectors, and temporary staging copies; this limit
+data, thread catalogs, searchable documents, vectors, and temporary staging copies; this limit
 does not reserve memory or change Redis's `maxmemory` setting.
 Canonical snapshots use bounded 8 MiB Redis values with a checksummed manifest.
+New publications also stage a compact conversation-metadata catalog using the
+same chunk/checksum format. Catalogs contain no message bodies or vectors and
+become visible and retire with their canonical snapshot. An explicit publication
+creates a catalog for an older snapshot before that stage can be reused.
 Set `max_concurrent_uploads` (default 4, range 1–16) to bound concurrent staging
 work; large histories should use 1. Staging changed revisions uses extra memory and writes,
 and the service loads canonical node data when applying changes; unchanged data

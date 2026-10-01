@@ -3,10 +3,49 @@ use super::canonical::{forget, plan};
 use super::fields;
 use super::{
     AppError, CANONICAL_CHUNK_BYTES, CanonicalManifest, Data, Forget, Forgotten, Head, Identity,
-    Indexed, Plan, STAGE_TTL, Store, conflict, data_key, document_key, encode, prefix, redis_error,
-    state_key, valid_id, vector_bytes,
+    Indexed, Plan, STAGE_TTL, Store, catalog_key, conflict, data_key, document_key, encode, prefix,
+    redis_error, state_key, valid_id, vector_bytes,
 };
 impl Store {
+    async fn stage_json(
+        &self,
+        key: String,
+        json: &str,
+        keys: &mut Vec<String>,
+    ) -> Result<(), AppError> {
+        if json.len() > self.max_node_bytes {
+            return Err(AppError::usage(
+                "Redis node exceeds the configured snapshot limit",
+            ));
+        }
+        let manifest = CanonicalManifest {
+            bytes: json.len(),
+            chunks: json.len().div_ceil(CANONICAL_CHUNK_BYTES),
+            digest: blake3::hash(json.as_bytes()).to_hex().to_string(),
+        };
+        for (chunk, bytes) in json.as_bytes().chunks(CANONICAL_CHUNK_BYTES).enumerate() {
+            let chunk_key = format!("{key}:chunk:{chunk}");
+            redis::cmd("SET")
+                .arg(&chunk_key)
+                .arg(bytes)
+                .arg("EX")
+                .arg(STAGE_TTL)
+                .query_async::<()>(&mut self.connection.clone())
+                .await
+                .map_err(redis_error)?;
+            keys.push(chunk_key);
+        }
+        redis::cmd("SET")
+            .arg(&key)
+            .arg(encode(&manifest)?)
+            .arg("EX")
+            .arg(STAGE_TTL)
+            .query_async::<()>(&mut self.connection.clone())
+            .await
+            .map_err(redis_error)?;
+        keys.push(key);
+        Ok(())
+    }
     pub(in crate::shared) async fn index(
         &self,
         identity: &Identity,
@@ -88,44 +127,26 @@ impl Store {
         data: &Data,
         version: &str,
     ) -> Result<Vec<String>, AppError> {
-        let json = encode(data)?;
-        if json.len() > self.max_node_bytes {
-            return Err(AppError::usage(
-                "Redis node exceeds the configured snapshot limit",
-            ));
-        }
-        let mut keys = vec![
+        let mut keys = Vec::new();
+        // Metadata has its own bounded payload; catalog reads need no canonical
+        // message bodies or vectors. Both payloads use the same stage lifecycle.
+        self.stage_json(
             data_key(&identity.group_id, version),
-            state_key(&identity.group_id, version),
-        ];
-        let manifest = CanonicalManifest {
-            bytes: json.len(),
-            chunks: json.len().div_ceil(CANONICAL_CHUNK_BYTES),
-            digest: blake3::hash(json.as_bytes()).to_hex().to_string(),
-        };
-        // Each Redis value remains small even when a node snapshot exceeds 512 MiB.
-        for (chunk, bytes) in json.as_bytes().chunks(CANONICAL_CHUNK_BYTES).enumerate() {
-            let key = format!("{}:chunk:{chunk}", keys[0]);
-            redis::cmd("SET")
-                .arg(&key)
-                .arg(bytes)
-                .arg("EX")
-                .arg(STAGE_TTL)
-                .query_async::<()>(&mut self.connection.clone())
-                .await
-                .map_err(redis_error)?;
-            keys.push(key);
-        }
+            &encode(data)?,
+            &mut keys,
+        )
+        .await?;
+        self.stage_json(
+            catalog_key(&identity.group_id, version),
+            &encode(&data.conversations)?,
+            &mut keys,
+        )
+        .await?;
         let state = data.state(identity);
+        let state_key = state_key(&identity.group_id, version);
         let mut pipe = redis::pipe();
         pipe.cmd("SET")
-            .arg(&keys[0])
-            .arg(encode(&manifest)?)
-            .arg("EX")
-            .arg(STAGE_TTL)
-            .ignore();
-        pipe.cmd("SET")
-            .arg(&keys[1])
+            .arg(&state_key)
             .arg(encode(&state)?)
             .arg("EX")
             .arg(STAGE_TTL)
@@ -133,6 +154,7 @@ impl Store {
         pipe.query_async::<()>(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;
+        keys.push(state_key);
         let mut pipe = redis::pipe();
         let mut queued = 0;
         for message in data.messages.values() {
@@ -244,6 +266,7 @@ impl Store {
         let new_version = blake3::hash(&random).to_hex().to_string();
         let previous = plan.loaded.head.as_ref();
         let reuse = previous.is_some()
+            && previous.is_some_and(|head| head.catalog_ready)
             && !plan.changed
             && plan.loaded.digest.as_deref()
                 == Some(
@@ -260,6 +283,7 @@ impl Store {
             vec![
                 data_key(&identity.group_id, &version),
                 state_key(&identity.group_id, &version),
+                catalog_key(&identity.group_id, &version),
             ]
         } else {
             self.stage(identity, &plan.loaded.data, &version).await?
@@ -273,6 +297,7 @@ impl Store {
             last_synced_at: previous.and_then(|h| h.last_synced_at.clone()),
             last_updated_at: previous.and_then(|h| h.last_updated_at.clone()),
             metadata_ready: !reuse || previous.is_some_and(|h| h.metadata_ready),
+            catalog_ready: true,
         };
         let mut command = redis::cmd("EVAL");
         command

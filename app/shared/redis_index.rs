@@ -6,6 +6,10 @@ mod publish;
 mod read;
 mod response;
 
+#[cfg(test)]
+#[path = "redis_index/tests/catalog.rs"]
+mod catalog_tests;
+
 use crate::provider::Provider;
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -59,6 +63,8 @@ struct Head {
     last_updated_at: Option<String>,
     #[serde(default)]
     metadata_ready: bool,
+    #[serde(default)]
+    catalog_ready: bool,
 }
 #[derive(Default, Deserialize, Serialize)]
 struct Data {
@@ -162,6 +168,9 @@ fn state_key(group: &str, version: &str) -> String {
 }
 fn data_key(group: &str, version: &str) -> String {
     format!("{}stage:{version}:data", prefix(group))
+}
+fn catalog_key(group: &str, version: &str) -> String {
+    format!("{}stage:{version}:catalog", prefix(group))
 }
 fn identity_key(provider: Provider, id: &str) -> String {
     format!("{provider}\0{id}")

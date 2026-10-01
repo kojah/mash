@@ -135,6 +135,7 @@ pub(super) fn start(loaded: &mut Loaded, input: &Start) -> Result<(i64, bool), A
             last_synced_at: None,
             last_updated_at: None,
             metadata_ready: false,
+            catalog_ready: false,
         });
     }
     Ok((revision, input.snapshot && revision == accepted))
