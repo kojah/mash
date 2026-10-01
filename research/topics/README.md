@@ -110,6 +110,38 @@ improve boundaries at the fixed 0.55 threshold. The re-embedded singleton contro
 differs from stored vectors and is essential to interpretation. Results, costs
 and limitations are recorded in the living paper.
 
+## Expanded development source review
+
+`review_packets.py` samples two canonical development groups from each provider ×
+length stratum: short (3–10 nonempty searchable user records), medium (11–40).
+It excludes prior annotation source groups and reserved groups, caps each turn at
+4,096 characters and each thread at 40,000 UTF-8 bytes, and ranks candidates by
+SHA256 of the fixed seed plus canonical group identity. Selection never reads
+candidate model outputs. Insufficient strata fail explicitly. This bounded
+sampling is deliberately not a representative corpus estimate.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/review_packets.py \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --exclude-annotations "$PRIOR_ANNOTATIONS" --output "$PRIVATE_PACKETS"
+```
+
+Packets contain the complete selected searchable user sequence, native IDs,
+ordinals, source hashes and stored-vector availability. The display guard redacts
+standalone credential-like values without changing the source database or source
+hashes. It can redact ordinary opaque identifiers and is not a complete secret
+scanner. Review remains private; do not print entire packets or treat redacted
+values as topic evidence. Preserve original source identity for annotation checks.
+
+The expanded review adds eight conversations/84 records. It freezes source-only
+admission and major/secondary subject judgments before model scoring, alongside
+76 boundary judgments (40 known, 36 uncertain). The source review sidecar pins
+packet/guideline hashes and supporting ordinals. One coding assistant reviewed
+the searchable user text, with prior corpus familiarity; full assistant/native
+branch context and independent human review remain incomplete. Detailed aggregate
+procedures, counts and unchanged-parameter baseline results are in the paper.
+
 ## Initial controls
 
 `run.py` reads an existing consistent SQLite snapshot in read-only mode. It uses

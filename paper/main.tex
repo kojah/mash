@@ -304,6 +304,73 @@ The re-embedded controls strengthen the negative result at this cutoff but do
 not establish whether learned dialogue coherence, calibrated boundaries or
 source-grounded assistant context will perform better.
 
+\subsection{Expanded development source review}
+We add eight development conversations, excluding the first pilot's canonical
+source groups and all reserved groups. Selection takes two groups per provider
+and length stratum: 3--10 or 11--40 nonempty searchable user records. Each record
+is at most 4,096 characters and each thread at most 40,000 UTF-8 bytes. A fixed
+seed, \texttt{mash-topic-review-v2-20261001}, ranks each stratum by SHA256 of seed
+bytes followed by canonical group bytes, independently of model outputs.
+The eligible pool contains 21 groups: Claude Code medium/short 4/3, Codex
+medium/short 6/8. These restrictive bounds and a single user's archive introduce
+substantial selection bias; this is not a representative corpus study.
+
+The selected sequence contains 84 visible user-role records and 76 boundaries.
+Before predictions for this sample, one coding assistant freezes admission,
+subject and boundary judgments from searchable user texts under the annotation
+guidelines. The review identifies 39 substantive-content records, 29 referential
+replies, 13 protocol/generated records, two attachment-only records and one
+redacted credential-like value. Role alone therefore does not identify substantive
+user intent. An opaque-value display guard preserves source hashes but is not a
+general secret scanner; private review artifacts must not be printed or released
+without further review. These are manual source judgments, not a production
+admission classifier or complete native-envelope verification.
+
+The subject sidecar records nine primary, nine secondary and three uncertain
+subject judgments with supporting native ordinals. Six of eight conversations
+have multiple source-supported subjects. This is evidence to retain overlapping
+tags in the evaluation design, not a measured recall score or validated taxonomy.
+The user-only boundary review leaves 36 boundaries uncertain, including framing,
+unresolved referents, unavailable attachment content and ambiguous granularity;
+40 boundaries remain known, with twelve changes. We retain those uncertainties
+rather than treating them as correct continuation predictions.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Control & True changes & False splits & Precision & Recall\\
+\midrule
+Window of three &3&9&0.250&0.250\\
+Adjacent cosine 0.55 &12&26&0.316&1.000\\
+Segment-centroid cosine 0.55 &12&26&0.316&1.000\\
+Disjoint block means 0.55 &12&25&0.324&1.000\\
+\bottomrule
+\end{tabular}
+\caption{Unchanged-parameter controls on the expanded development review;
+36 uncertain boundaries excluded. No judged boundary requires abstention.}
+\label{tab:expanded}
+\end{table}
+
+Table~\ref{tab:expanded} again exposes oversegmentation at the uncalibrated
+cutoff, rather than establishing useful episode quality. Of known boundaries,
+Claude Code contributes twelve with three changes; Codex contributes 28 with
+nine. Adjacent-control precision is 0.273 and 0.333 respectively. The small
+one-false-split difference for block means does not establish a reliable gain.
+No parameters or labels were adjusted after these predictions.
+All groups are distinct development groups; input/source pins, complete admission
+IDs and subject-support ordinals were checked. The review remains single-assistant,
+user-only and familiar with the broader archive, not independently annotated
+human ground truth. Full conversational and native-branch context is required
+before resolving uncertainties or selecting a production topic method.
+
+Private artifacts are recorded under \path{topic-python-review-v2-20261001}:
+\path{packets.json}, \path{annotations.toml}, \path{source-review.json} and
+\path{boundary-baselines.json}. The sampling implementation is
+\path{research/topics/review_packets.py}. Earlier pilot annotations remain
+unchanged, and these development results do not consume the reserved partition
+as a tuning set or establish external generalization.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background
@@ -346,6 +413,9 @@ These artifacts are not publicly released data.
 \item[Raw input fingerprint (SHA256)] \path{2d219b5cb5947231612d4612e6f930e6d6ac740ea00d9cf2eaf9606c0bc772a2}
 \item[Partition report SHA256] \path{9d0206908476cc6948b97307cad8ca3fae94e1d68aee0a3b45a69f697ade37f6}
 \item[Boundary annotations SHA256] \path{85d3113e4f9e6fd7f6111b97f3d3b8ee14fc21392cfeeb1084181ad8c74306b2}
+\item[Expanded review packets SHA256] \path{c76f8dc18e430e5dfb4215ec33749689608afd12213e33cd48392f14c8fa6df5}
+\item[Expanded boundary annotations SHA256] \path{370d2fd4665ea0ce4b2e9df7905903bba0969ef310d0162c76dcdb348d85dc69}
+\item[Expanded subject/admission review SHA256] \path{85845858aee76cc33bec0da699614913f86ad0aa84650dbf6c4d8566f7982191}
 \end{description}
 The annotations are exploratory single-assistant judgments, not independent
 human labels. Future manuscript updates must preserve original run identities
