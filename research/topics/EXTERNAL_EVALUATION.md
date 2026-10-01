@@ -167,6 +167,13 @@ uses no extra inference/refitting and gives small AP gains, requiring fresh
 confirmation. No body-unit strategy, labels, semantic tree or ingestion gate is
 selected. Codepoint/UTF8 fixtures are research-stage evidence, not Rust parity CI.
 
+The [bounded-unit continuation](../../benchmarks/2026-10-02-bounded-question-units.md)
+retains all 128 selected questions and all displayed source ranges, reuses 77
+exact body vectors and requires 407 additional calls. AP improves over titles,
+but fixed lexical fusion has mixed marginal gains and inference cost remains
+substantial. These are exposed ranking diagnostics, not independently annotated
+agent episodes, semantic tree quality or an ingestion gate. No method is selected.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.

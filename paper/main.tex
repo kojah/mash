@@ -3203,6 +3203,83 @@ Captures remain outside Git under \path{topic-public-stackoverflow-20261002}.
 No overlapping membership, labels, ancestors, guided search, persisted tree or
 Rust parity gate is demonstrated.
 
+\subsection{Bounded complete question units with exact vector reuse}
+We preregister a source-grounded continuation on the same exposed 128 questions
+and unchanged 72-question lexical background before new unit/model outcomes.
+Retain the complete title plus displayed body as one input when actual token
+length is 2--512. Otherwise split at recorded block-separator endpoints and
+recursively divide oversized spans at the nearest interior whitespace endpoint
+to the midpoint, choosing the smaller position on ties; use a Unicode-codepoint
+midpoint if no whitespace endpoint exists. Check every final original substring
+with the frozen tokenizer; do not assume monotonic token counts, decode tokens,
+rewrite text or discard a tail. Each modeled span prepends the original title
+and two newlines. Preserve whitespace spans without inference and complete
+displayed-character/UTF-8 coverage with links to the existing HTML provenance.
+Reject a whole question on any unsplittable nonempty unit or more than 32 modeled
+occurrences, preserving its plan. Preflight at most 1024 unique planned/cache
+strings without resampling. This projection retains the previous HTML limitations.
+
+Reuse the 77 prior whole-body directions only after exact input/hash, capture,
+code, dependency and asset checks and finite normalized 384D validation. Deduplicate
+identical inputs per question for scoring while preserving all source occurrences.
+Compare cached title, fixed title75/lexical25, normalized mean unit directions,
+maximum cross-unit cosine, and fixed75/25 lexical fusions. Tags remain evaluation
+only. No new clustering, cut selection or generative calls occur.
+
+All 128 questions now fit: 485 modeled occurrences, 36 whitespace spans, one
+scoring duplicate, 484 unique vectors and 597 planning tokenizations. The 77 short
+questions retain their exact original input/vector; the other 51 use 3--23 modeled
+units. All views use 2016 pairs per phase with 97/51 shared-tag positives.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+ & \multicolumn{2}{c}{Calibration-source} & \multicolumn{2}{c}{Former reserved-source}\\
+View & AP & AUC & AP & AUC\\
+\midrule
+Title & .11660 & .64290 & .18976 & .74151\\
+Title75lex25 & .12623 & .66853 & .20383 & .75461\\
+Unit mean & .15383 & .77057 & .19690 & .80555\\
+Unit maximum & .16757 & .77484 & .21284 & .82317\\
+Mean75lex25 & .15879 & .77843 & .20366 & .81721\\
+Max75lex25 & .17295 & .77832 & .21177 & .83267\\
+\bottomrule
+\end{tabular}
+\caption{Complete bounded units on exposed public-question samples. All views
+retain identical support. Ranking gains do not establish a cutoff, semantic
+episodes, overlapping tags or guided-search improvement.}
+\end{table}
+
+Maximum-unit AP improves over titles by .05097/.02308, but lexical fusion adds
+.00537 in the first phase and loses .00107 in the second. Mean fusion barely
+trails cheap title fusion in the second phase. Repeating titles across units and
+multiple comparisons can bias scores; mechanical subdivision has no independent
+semantic-unit validation. No representation is selected from these exposed results.
+
+Two final fresh-process runs take 5.650/5.743 seconds after imports, including
+contract/source loading, model construction and scoring, excluding serialization.
+Planning takes 355.48/356.83 milliseconds, additional inference 4663.86/4762.52,
+encoder tokenization 147.02/150.36 and scoring 142.26/137.22. Both require 407
+additional singleton calls and 77 cache hits, maximum 508 tokens. Exact reuse
+helps but substantial additional model work remains. No complete-ingestion,
+initial/incremental lifecycle, CPU/RSS or 10\% overhead gate is established.
+Prioritize reuse of existing source-unit vectors and lower-cost alternatives
+before production adoption, then freeze changes before fresh evaluation.
+
+All non-timing fields match in final repeats. Independent reconstruction checks
+all 128 source/UTF-8 ranges, piece references, input hashes and 77 exact reused
+vectors; independently rebuild 4032 pair truths, 24,192 scores and all 12 tie-aware
+AP/AUC values. The 231-test lab covers complete cap-rejection plans, Unicode
+fallback, nonmonotonic token counts and JSON round-trips. An explicit output
+conversion changes tuple-valued internal plans to schema arrays before repeats;
+the original capture is preserved, and all source/vector/score outcomes match.
+Python self-repeat is not Rust parity. Final captures outside Git have SHA256
+\path{ede6119b31439830c7cbf1f01f53e185e8cffe3a4957722b23bb0b205b1850cd}
+and \path{2f6275cb4cc4cbf5b2016c34c452216f2e16348327cf63c8aadd9bb84e1e2fe2}.
+Independent agent-session/topic/ancestor judgments, persisted online lifecycle
+and guided-search evaluation remain required.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

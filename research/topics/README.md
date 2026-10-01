@@ -945,6 +945,13 @@ on all64 questions per phase without inference or refitting. Fusion gains are
 small development evidence; no method is selected. Bounded units, compatible
 vector reuse, fresh outcomes and full ingestion/semantic-quality gates remain.
 
+The [bounded complete-unit diagnostic](../../benchmarks/2026-10-02-bounded-question-units.md)
+uses `bounded_question_units.py` and `question_unit_experiment.py` to retain all
+128 questions, with exact reuse of 77 cached vectors. Mean/max ranking gains
+are mixed against cheap lexical fusion and require 407 additional calls.
+Repeats and complete source/schema checks pass; no production method is selected.
+Additional inference must earn its cost on fresh outcomes and full ingestion.
+
 Run lab input-boundary tests:
 
 ```bash
