@@ -5,6 +5,25 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 struct Summary {
     malformed_records: u64,
+    record_diagnostics: crate::ingestion::diagnostics::Diagnostics,
+}
+
+fn assert_diagnostics(
+    diagnostics: &crate::ingestion::diagnostics::Diagnostics,
+    source: &std::path::Path,
+    malformed: u64,
+) {
+    assert_eq!(u64::try_from(diagnostics.samples.len()).unwrap(), malformed);
+    if malformed > 0 {
+        let issue = &diagnostics.samples[0];
+        assert_eq!(issue.source, source);
+        assert_eq!(issue.line, 2);
+        assert_eq!(issue.provider, crate::provider::Provider::ClaudeCode);
+        assert_eq!(
+            issue.category,
+            crate::ingestion::diagnostics::Category::Data
+        );
+    }
 }
 
 #[tokio::test]
@@ -56,7 +75,11 @@ async fn unavailable_shared_publication_is_a_retryable_mcp_result_with_pending_p
 async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("broken.jsonl");
-    std::fs::write(&source, "not-json\n").unwrap();
+    std::fs::write(
+        &source,
+        "\r\n{\"sessionId\":[\"PRIVATE-MCP-RECORD-CANARY\"]}\r\n",
+    )
+    .unwrap();
     let config = dir.path().join("config.toml");
     std::fs::write(
         &config,
@@ -94,6 +117,7 @@ async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
         let mut terminal = None;
         loop {
             let message = wire_next(&mut read).await;
+            assert!(!message.to_string().contains("PRIVATE-MCP-RECORD-CANARY"));
             if message.get("id").is_some() {
                 assert_eq!(message["id"], id);
                 let result: CallToolResult =
@@ -102,6 +126,7 @@ async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
                 let summary: Summary =
                     serde_json::from_value(result.structured_content.unwrap()).unwrap();
                 assert_eq!(summary.malformed_records, malformed);
+                assert_diagnostics(&summary.record_diagnostics, &source, malformed);
                 break;
             }
             let notification: rmcp::model::ProgressNotificationParam =
@@ -121,10 +146,16 @@ async fn partial_indexing_streams_retry_status_before_mcp_error_and_recovers() {
                 assert!(terminal.replace(event.phase).is_none());
                 assert_eq!(event.malformed_records, Some(malformed));
                 assert_eq!(event.eta_seconds, (malformed == 0).then_some(0));
+                assert_diagnostics(
+                    event.record_diagnostics.as_ref().unwrap(),
+                    &source,
+                    malformed,
+                );
                 if malformed > 0 {
                     let message = notification.message.unwrap();
                     assert!(message.contains("retry required"));
                     assert!(message.contains("1 malformed records"));
+                    assert!(message.contains("broken.jsonl"));
                     assert!(!message.contains("ETA"));
                 }
             }

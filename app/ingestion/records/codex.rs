@@ -8,6 +8,7 @@ const MAX_EVENT_BYTES: usize = 64 * 1024 * 1024;
 pub(in crate::ingestion) struct Lines<R> {
     reader: R,
     finished: bool,
+    physical_line: usize,
 }
 
 impl<R: BufRead + Seek> Lines<R> {
@@ -15,7 +16,17 @@ impl<R: BufRead + Seek> Lines<R> {
         Self {
             reader,
             finished: false,
+            physical_line: 0,
         }
+    }
+
+    pub(in crate::ingestion) fn numbered(
+        mut self,
+    ) -> impl Iterator<Item = Result<(usize, String), AppError>> {
+        std::iter::from_fn(move || {
+            self.next()
+                .map(|result| result.map(|text| (self.physical_line, text)))
+        })
     }
 }
 
@@ -32,6 +43,9 @@ impl<R: BufRead + Seek> Iterator for Lines<R> {
             };
             let result = super::read_line(&mut counted, super::super::MAX_RECORD_BYTES);
             let consumed = counted.bytes;
+            if consumed != 0 {
+                self.physical_line += 1;
+            }
             match result {
                 Ok(Some(line)) => return Some(Ok(line)),
                 Ok(None) => self.finished = true,

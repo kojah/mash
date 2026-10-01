@@ -14,6 +14,7 @@ pub(crate) mod claude;
 mod cline;
 mod copilot;
 mod cursor;
+pub(crate) mod diagnostics;
 mod discovery;
 mod gemini;
 mod hermes;
@@ -83,6 +84,7 @@ pub(crate) struct IndexOptions {
 pub(crate) struct IndexSummary {
     pub(crate) scanned_files: u64,
     pub(crate) malformed_records: u64,
+    pub(crate) record_diagnostics: diagnostics::Diagnostics,
     pub(crate) changed_messages: u64,
     pub(crate) removed_messages: u64,
     pub(crate) unchanged_sources: u64,
@@ -125,6 +127,7 @@ pub(crate) struct NormalizedMessage {
 pub(crate) struct ParsedFile {
     pub(crate) conversation: Option<Conversation>,
     pub(crate) malformed_records: u64,
+    pub(crate) first_record_issue: Option<diagnostics::RecordIssue>,
 }
 
 #[derive(Clone, Copy)]
@@ -172,6 +175,7 @@ fn index_at(
     let mut summary = IndexSummary {
         scanned_files: 0,
         malformed_records: 0,
+        record_diagnostics: diagnostics::Diagnostics::default(),
         changed_messages: 0,
         removed_messages: 0,
         unchanged_sources: 0,
@@ -580,6 +584,19 @@ fn apply_parsed_source(
     // them would replace prior messages and vectors while retaining an old
     // checkpoint, so leave the entire contribution untouched until a clean retry.
     if parsed.malformed_records != 0 {
+        if let Some(issue) = parsed.first_record_issue {
+            tracing::warn!(target: "mash", provider = issue.provider.as_str(),
+                source_fingerprint = %blake3::hash(issue.source.as_os_str().as_encoded_bytes()).to_hex(),
+                line = issue.line, column = issue.column, category = %issue.category,
+                "source snapshot rejected; previous contribution retained");
+            let mut diagnostics = diagnostics::Diagnostics::default();
+            diagnostics.record(issue.clone());
+            summary.record_diagnostics.record(issue);
+            crate::progress::emit(&crate::progress::Event {
+                record_diagnostics: Some(diagnostics),
+                ..crate::progress::Event::new(crate::progress::Phase::SourceRejected, 0, None)
+            });
+        }
         return Ok(false);
     }
     if let Some(conversation) = parsed.conversation {

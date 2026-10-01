@@ -65,6 +65,7 @@ pub(super) async fn run(
     };
     crate::progress::emit(&crate::progress::Event {
         malformed_records: Some(result.malformed_records),
+        record_diagnostics: Some(result.record_diagnostics.clone()),
         ..crate::progress::Event::new(
             phase,
             result.total_milliseconds,
@@ -155,6 +156,7 @@ fn index(
         searchable_messages: counts.searchable_messages,
         scanned_files: summary.scanned_files,
         malformed_records: summary.malformed_records,
+        record_diagnostics: summary.record_diagnostics,
         changed_messages: summary.changed_messages,
         removed_messages: summary.removed_messages,
         unchanged_sources: summary.unchanged_sources,

@@ -237,6 +237,7 @@ fn parse_agent(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             messages: super::messages::Messages::stage(messages.items)?,
         }),
         malformed_records: 0,
+        first_record_issue: None,
     })
 }
 

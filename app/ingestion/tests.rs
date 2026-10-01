@@ -52,6 +52,7 @@ fn empty_summary() -> IndexSummary {
     IndexSummary {
         scanned_files: 0,
         malformed_records: 0,
+        record_diagnostics: diagnostics::Diagnostics::default(),
         changed_messages: 0,
         removed_messages: 0,
         unchanged_sources: 0,

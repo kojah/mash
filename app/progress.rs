@@ -120,6 +120,10 @@ fn render(event: &Event) {
         bar
     });
     let phase = event.phase;
+    if phase == Phase::SourceRejected {
+        bar.println(display(event));
+        return;
+    }
     if matches!(
         phase,
         Phase::Complete | Phase::SharedPending | Phase::Incomplete
@@ -184,7 +188,14 @@ pub(crate) fn display(event: &Event) -> String {
         .map_or_else(String::new, |count| format!(" · {count} malformed records"));
     let elapsed = event.elapsed_milliseconds / 1_000;
     let scope = &event.eta_scope;
-    format!("mash index · {phase}{counter}{malformed} · {elapsed}s elapsed · {eta} ({scope})")
+    let diagnostic = event
+        .record_diagnostics
+        .as_ref()
+        .and_then(|diagnostics| diagnostics.samples.first())
+        .map_or_else(String::new, |issue| format!(" · rejected {issue}"));
+    format!(
+        "mash index · {phase}{counter}{malformed}{diagnostic} · {elapsed}s elapsed · {eta} ({scope})"
+    )
 }
 
 pub(crate) fn phase(name: Phase, elapsed_ms: u64) {

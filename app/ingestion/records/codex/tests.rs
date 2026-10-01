@@ -26,6 +26,19 @@ fn oversized_tool_mirrors_are_validated_and_do_not_consume_following_messages() 
 }
 
 #[test]
+fn numbered_codex_records_include_streamed_events_and_blank_lines() {
+    let large = event(
+        "FileChange",
+        &"x".repeat(super::super::super::MAX_RECORD_BYTES + 1),
+    );
+    let input = format!("\n{large}\r\nnot-json\n");
+    let mut rows = Lines::new(BufReader::new(Cursor::new(input))).numbered();
+    assert_eq!(rows.next().unwrap().unwrap(), (1, String::new()));
+    assert_eq!(rows.next().unwrap().unwrap(), (3, "not-json".to_owned()));
+    assert!(rows.next().is_none());
+}
+
+#[test]
 fn oversized_dialogue_unknown_types_and_malformed_envelopes_fail_closed() {
     let body = "x".repeat(super::super::super::MAX_RECORD_BYTES + 1);
     let valid = event("FileChange", &body);

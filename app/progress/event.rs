@@ -24,6 +24,8 @@ pub(crate) struct Event {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub malformed_records: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_diagnostics: Option<crate::ingestion::diagnostics::Diagnostics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub messages_per_second: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bytes_per_second: Option<u64>,
@@ -91,6 +93,8 @@ impl Event {
             changed_messages: Some(summary.changed_messages),
             committed_batches: Some(summary.committed_batches),
             malformed_records: Some(summary.malformed_records),
+            record_diagnostics: (!summary.record_diagnostics.samples.is_empty())
+                .then(|| summary.record_diagnostics.clone()),
             eta_scope: scope,
             ..Self::new(phase, elapsed_ms, eta)
         }
@@ -106,6 +110,7 @@ pub(crate) enum Phase {
     Discovered,
     Indexing,
     Checkpoint,
+    SourceRejected,
     IngestionComplete,
     SearchRebuild,
     SemanticEmbeddings,
@@ -131,6 +136,7 @@ impl Phase {
             Self::Discovered => "discovered",
             Self::Indexing => "indexing",
             Self::Checkpoint => "checkpoint",
+            Self::SourceRejected => "source-rejected",
             Self::IngestionComplete => "ingestion-complete",
             Self::SearchRebuild => "search-rebuild",
             Self::SemanticEmbeddings => "semantic-embeddings",

@@ -22,7 +22,9 @@ struct ExtractedMessage {
 
 pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
     let file = File::open(path).map_err(AppError::io)?;
-    let lines = super::records::Lines::new(BufReader::new(file));
+    let lines = super::records::Lines::new(BufReader::new(file))
+        .enumerate()
+        .map(|(index, line)| line.map(|text| (index + 1, text)));
     parse_jsonl(path, Provider::ClaudeCode, lines, |raw| {
         if !matches!(raw.kind, Kind::User | Kind::Assistant) {
             return None;
@@ -45,7 +47,7 @@ pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
 
 pub(super) fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
     let file = File::open(path).map_err(AppError::io)?;
-    let lines = super::records::codex::Lines::new(BufReader::new(file));
+    let lines = super::records::codex::Lines::new(BufReader::new(file)).numbered();
     let mut extractor = codex::Extractor::default();
     parse_jsonl(path, Provider::Codex, lines, |raw| extractor.next(raw))
 }
@@ -53,24 +55,21 @@ pub(super) fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
 fn parse_jsonl(
     path: &Path,
     provider: Provider,
-    lines: impl Iterator<Item = Result<String, AppError>>,
+    lines: impl Iterator<Item = Result<(usize, String), AppError>>,
     mut extract: impl FnMut(&Record) -> Option<ExtractedMessage>,
 ) -> Result<ParsedFile, AppError> {
-    let mut malformed_records = 0;
+    let mut rejected = RejectedRecords::default();
     let mut messages = super::messages::Builder::default();
     let mut session_id = None;
     let mut project = None;
     let mut repository = None;
     let mut claude_identity = claude::Identity::default();
     for line in lines {
-        let line = line?;
+        let (number, line) = line?;
         if line.trim().is_empty() {
             continue;
         }
-        let raw: Record = if let Ok(raw) = serde_json::from_str(&line) {
-            raw
-        } else {
-            malformed_records += 1;
+        let Some(raw) = rejected.decode(path, provider, number, &line) else {
             claude_identity.break_replay();
             continue;
         };
@@ -119,7 +118,8 @@ fn parse_jsonl(
     if messages.len() == 0 {
         return Ok(ParsedFile {
             conversation: None,
-            malformed_records,
+            malformed_records: rejected.count,
+            first_record_issue: rejected.first,
         });
     }
     let id = session_id
@@ -150,8 +150,36 @@ fn parse_jsonl(
             updated_at: summary.updated_at,
             messages,
         }),
-        malformed_records,
+        malformed_records: rejected.count,
+        first_record_issue: rejected.first,
     })
+}
+
+#[derive(Default)]
+struct RejectedRecords {
+    count: u64,
+    first: Option<super::diagnostics::RecordIssue>,
+}
+
+impl RejectedRecords {
+    fn decode(
+        &mut self,
+        path: &Path,
+        provider: Provider,
+        line: usize,
+        text: &str,
+    ) -> Option<Record> {
+        match serde_json::from_str(text) {
+            Ok(record) => Some(record),
+            Err(error) => {
+                self.count += 1;
+                self.first.get_or_insert_with(|| {
+                    super::diagnostics::RecordIssue::json(provider, path, line, &error)
+                });
+                None
+            }
+        }
+    }
 }
 
 fn clean_projection(message: &mut ExtractedMessage) {

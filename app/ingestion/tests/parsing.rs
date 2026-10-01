@@ -1,6 +1,48 @@
 use super::*;
 
 #[test]
+fn rejected_jsonl_records_report_physical_positions_without_content() {
+    use crate::ingestion::diagnostics::Category;
+    let canary = "PRIVATE-RECORD-CONTENT-CANARY";
+    for provider in [Provider::ClaudeCode, Provider::Codex] {
+        for (record, category) in [
+            (
+                format!(r#"{{"private":"é{canary}","type":}}"#),
+                Category::Syntax,
+            ),
+            (format!(r#"{{"sessionId":["{canary}"]}}"#), Category::Data),
+            (
+                format!(r#"{{"private":"{canary}","#),
+                Category::UnexpectedEof,
+            ),
+        ] {
+            let source = tempfile::NamedTempFile::new().unwrap();
+            let input = format!("\r\n{{\"type\":\"system\"}}\r\n\n{record}\r\nnot-json\n");
+            fs::write(source.path(), &input).unwrap();
+            let parsed = match provider {
+                Provider::ClaudeCode => parse_claude(source.path()),
+                Provider::Codex => parse_codex(source.path()),
+                _ => unreachable!(),
+            }
+            .unwrap();
+            assert_eq!(parsed.malformed_records, 2);
+            let issue = parsed.first_record_issue.unwrap();
+            assert_eq!(issue.provider, provider);
+            assert_eq!(issue.source, source.path());
+            assert_eq!(issue.line, 4);
+            assert_eq!(issue.category, category);
+            if category == Category::Syntax {
+                assert_eq!(issue.column, record.len(), "column counts UTF-8 bytes");
+            }
+            let serialized = serde_json::to_string(&issue).unwrap();
+            assert!(!serialized.contains(canary));
+            assert!(!issue.to_string().contains(canary));
+            assert_eq!(fs::read_to_string(source.path()).unwrap(), input);
+        }
+    }
+}
+
+#[test]
 fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
     let context = "# AGENTS.md instructions\n<INSTRUCTIONS>cbioportal rules</INSTRUCTIONS><environment_context>cwd</environment_context>";
     let mixed = "<system-reminder>skill text</system-reminder>fix cBioPortal importer";

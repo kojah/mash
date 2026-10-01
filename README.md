@@ -101,6 +101,15 @@ completed local index.
 Malformed JSONL sources contribute no readable fragments to the index. Their
 last complete messages, vectors and checkpoint remain intact until a clean
 retry; healthy sources in the same run can still advance.
+For malformed Claude Code and Codex JSONL, `record_diagnostics` in the final
+CLI/MCP result contains the first rejected record per source: provider, path,
+one-based physical line, byte column, and `syntax`, `data`, or `unexpected-eof`
+category. Samples are capped at 32 sources; `omitted_sources` counts additional
+affected sources, while `malformed_records` still counts all rejected records.
+These diagnostics also appear in progress notifications. Opt-in tracing records
+a source fingerprint in place of its path, plus the provider, line, column and
+category. Neither includes record content or raw decoder error messages. Final-result diagnostics
+remain available when intermediate progress notifications are dropped.
 Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
 newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
 The final command response stays JSON on stdout. Watching remains opt-in with

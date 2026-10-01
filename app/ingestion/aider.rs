@@ -144,6 +144,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         return Ok(ParsedFile {
             conversation: None,
             malformed_records,
+            first_record_issue: None,
         });
     }
     let title = messages
@@ -169,6 +170,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             messages: super::messages::Messages::stage(messages)?,
         }),
         malformed_records,
+        first_record_issue: None,
     })
 }
 

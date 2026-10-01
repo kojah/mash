@@ -101,6 +101,7 @@ pub(super) fn parse(source: &HistorySource) -> Result<ParsedFile, AppError> {
             messages,
         }),
         malformed_records: 0,
+        first_record_issue: None,
     })
 }
 

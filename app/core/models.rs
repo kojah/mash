@@ -78,6 +78,7 @@ pub(crate) struct IndexResponse {
     pub(super) searchable_messages: u64,
     pub(super) scanned_files: u64,
     pub(super) malformed_records: u64,
+    pub(super) record_diagnostics: crate::ingestion::diagnostics::Diagnostics,
     pub(super) changed_messages: u64,
     pub(super) removed_messages: u64,
     pub(super) unchanged_sources: u64,

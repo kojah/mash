@@ -300,5 +300,6 @@ fn parse_native(source: &SourceIdentity, legacy_ui: Option<&Path>) -> Result<Par
             messages: super::messages::Messages::stage(messages)?,
         }),
         malformed_records: 0,
+        first_record_issue: None,
     })
 }

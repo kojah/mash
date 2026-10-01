@@ -30,6 +30,27 @@ fn seed_vectors(storage: &mut Storage, message_ids: &[&str]) {
     storage.commit_and_continue_writer().unwrap();
 }
 
+fn index_with_slow_progress_and_safe_traces(
+    storage: &mut Storage,
+    options: &IndexOptions,
+) -> IndexSummary {
+    let (traces, dispatcher) = crate::observability::test_support::capture();
+    let (sink, _slow_client) = tokio::sync::mpsc::channel(1);
+    sink.try_send(crate::progress::Event::default()).unwrap();
+    let summary = tracing::dispatcher::with_default(&dispatcher, || {
+        crate::progress::on_blocking_thread(Some(sink), || index(storage, options).unwrap())
+    });
+    let traces = String::from_utf8(traces.lock().unwrap().clone()).unwrap();
+    assert!(traces.contains("source snapshot rejected"));
+    assert!(!traces.contains("PRIVATE-TRACE-RECORD-CANARY"));
+    assert_eq!(
+        summary.record_diagnostics.samples.len(),
+        1,
+        "final diagnostics survive a full progress queue"
+    );
+    summary
+}
+
 #[test]
 fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_other_sources_advance()
 {
@@ -52,7 +73,7 @@ fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_oth
     fs::write(
         &source,
         format!(
-            "{}\nnot-json\n{}\n",
+            "{}\n{{\"sessionId\":[\"PRIVATE-TRACE-RECORD-CANARY\"]}}\n{}\n",
             record("first", "damaged fragment sentinel"),
             record("third", "uncommitted third sentinel")
         ),
@@ -60,9 +81,11 @@ fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_oth
     .unwrap();
     let healthy = directory.path().join("healthy.jsonl");
     write_claude_session(&healthy, "healthy-session", "healthy source sentinel");
-    let partial = index(&mut storage, &options(directory.path())).unwrap();
+    let partial =
+        index_with_slow_progress_and_safe_traces(&mut storage, &options(directory.path()));
     storage.commit_and_continue_writer().unwrap();
     assert_eq!(partial.malformed_records, 1);
+    assert_record_location(&partial, &source);
     assert_eq!(
         partial.changed_messages, 1,
         "only the healthy source changes"
@@ -133,6 +156,13 @@ fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_oth
             )
             .unwrap()
     );
+}
+
+fn assert_record_location(summary: &IndexSummary, source: &Path) {
+    let issue = &summary.record_diagnostics.samples[0];
+    assert_eq!(issue.source, source);
+    assert_eq!(issue.line, 2);
+    assert_eq!(issue.category, diagnostics::Category::Data);
 }
 
 #[test]

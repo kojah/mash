@@ -61,5 +61,6 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             messages: super::messages::Messages::stage(messages)?,
         }),
         malformed_records: 0,
+        first_record_issue: None,
     })
 }
