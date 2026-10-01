@@ -9,9 +9,15 @@ use crate::AppError;
 
 #[derive(Default)]
 pub(super) struct Identity {
-    parents: BTreeMap<String, ParentLink>,
+    parents: BTreeMap<String, Ancestry>,
     pub(super) keys: Vec<Option<String>>,
     agent: Option<String>,
+}
+
+#[derive(PartialEq, Eq)]
+enum Ancestry {
+    Known(ParentLink),
+    Ambiguous,
 }
 
 impl Identity {
@@ -29,16 +35,15 @@ impl Identity {
             self.agent = Some(agent.clone());
         }
         if let Some(uuid) = record.uuid.as_ref() {
-            if self
-                .parents
-                .get(uuid)
-                .is_some_and(|parent| parent != &record.parent)
-            {
-                return Err(AppError::configuration(
-                    "Claude native message has conflicting ancestry",
-                ));
-            }
-            self.parents.insert(uuid.clone(), record.parent.clone());
+            let parent = Ancestry::Known(record.parent.clone());
+            self.parents
+                .entry(uuid.clone())
+                .and_modify(|known| {
+                    if *known != parent {
+                        *known = Ancestry::Ambiguous;
+                    }
+                })
+                .or_insert(parent);
         }
         Ok(())
     }
@@ -59,11 +64,11 @@ impl Identity {
     }
 }
 
-pub(super) fn normalize(
+fn normalize(
     thread: &str,
     messages: Messages,
     keys: Vec<Option<String>>,
-    parents: &BTreeMap<String, ParentLink>,
+    parents: &BTreeMap<String, Ancestry>,
 ) -> Result<(Messages, Lineage), AppError> {
     if messages.len() != keys.len() {
         return Err(AppError::internal(
@@ -80,10 +85,13 @@ pub(super) fn normalize(
         let mut message = message?;
         let parent = if let Some(key) = key {
             message.id.clone_from(&identities[&key]);
-            match parents.get(&key).unwrap_or(&ParentLink::Missing) {
-                ParentLink::Missing => previous.clone(),
-                ParentLink::Root => None,
-                ParentLink::Parent(parent) => resolve_parent(thread, parent, &identities, parents)?,
+            match parents.get(&key) {
+                None | Some(Ancestry::Known(ParentLink::Missing)) => previous.clone(),
+                Some(Ancestry::Known(ParentLink::Root)) => None,
+                Some(Ancestry::Known(ParentLink::Parent(parent))) => {
+                    resolve_parent(thread, parent, &identities, parents)?
+                }
+                Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry()),
             }
         } else {
             previous.clone()
@@ -98,7 +106,7 @@ fn resolve_parent(
     thread: &str,
     parent: &str,
     identities: &BTreeMap<String, String>,
-    parents: &BTreeMap<String, ParentLink>,
+    parents: &BTreeMap<String, Ancestry>,
 ) -> Result<Option<String>, AppError> {
     let mut current = parent;
     let mut visited = BTreeSet::new();
@@ -112,9 +120,17 @@ fn resolve_parent(
             ));
         }
         match parents.get(current) {
-            Some(ParentLink::Parent(parent)) => current = parent,
-            Some(ParentLink::Root | ParentLink::Missing) => return Ok(None),
+            Some(Ancestry::Known(ParentLink::Parent(parent))) => current = parent,
+            Some(Ancestry::Known(ParentLink::Root | ParentLink::Missing)) => return Ok(None),
+            Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry()),
             None => return Ok(Some(stable_id("claude-message", &[thread, current]))),
         }
     }
+}
+
+fn ambiguous_ancestry() -> AppError {
+    // Native metadata events can be repeated and reparented without being part
+    // of dialogue ancestry. Reject ambiguity only if a retained message or its
+    // parent chain depends on it; never choose an arbitrary first/last parent.
+    AppError::configuration("Claude native message has conflicting ancestry")
 }

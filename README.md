@@ -187,7 +187,10 @@ of the transcript's physical path. SQLite retains each physical source's
 contribution and derives one logical thread from their union. Matching copies
 are deduplicated; divergent branches retain their own causal context. Rewinding,
 emptying, or deleting one copy removes only that copy's contribution. Conflicting
-payloads or ancestry for the same native UUID fail transactionally. Records
+payloads or ancestry for the same native message UUID fail transactionally.
+Repeated metadata events with conflicting parents are ignored when no retained
+dialogue depends on them; ambiguous events in a message's parent chain still fail.
+Records
 without a UUID retain path-based fallback identity.
 
 Normal and independently routed shared publication use this same reconciliation.
