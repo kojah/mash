@@ -1,6 +1,10 @@
 --! node
 SELECT instance, revision FROM nodes WHERE node_id=:node FOR UPDATE;
 
+--! thread_catalog : (title?, project?, repository?, created_at?, updated_at?)
+SELECT node_id,id,provider,title,project,repository,created_at,updated_at
+FROM conversations;
+
 --! node_state
 SELECT instance, revision FROM nodes WHERE node_id=:node;
 

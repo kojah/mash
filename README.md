@@ -659,6 +659,28 @@ that service connects to PostgreSQL, using async `tokio-postgres` and a bounded
 `deadpool-postgres` connection pool (16 connections by default). There is one
 joint index per group, with node ownership enforced by the service.
 
+`POST /v1/threads` lists thread metadata without model inference, message bodies
+or vectors. Use the same bearer token as other shared API calls. Its typed JSON
+request accepts `provider` and `node` arrays, literal ASCII-case-insensitive
+`title_contains`, inclusive `after` and exclusive `before` activity bounds in
+Unix seconds, and `exclude_self`. Activity refers to recorded thread `updated_at`;
+unknown activity does not match a time bound. Omitted or empty arrays impose no
+restriction. Sort by `updated_at` (default), `created_at` or `title`, with
+`direction` set to `asc` or `desc` (default). Title ordering uses binary string
+order. Missing sort values always come last; provider, thread ID and node break
+ties deterministically.
+
+The response contains `threads` with canonical `conversation_id`, provider,
+representative `node_id`, title/project/repository and timestamps in Unix
+milliseconds, plus `next_offset`. Copies with the same provider/thread ID are
+deduplicated before paging; the best matching copy for the requested sort order
+supplies metadata. `limit` defaults to 50 (1–100); `offset` defaults to 0
+(0–10000). Pages are stable while the index is unchanged; updates between page
+requests can shift boundaries. Redis reads that overlap catalog replacement
+return a retryable conflict instead of partial metadata. Older Redis publications
+need an explicit `mash index` on their publishing node to create a catalog.
+The public CLI/MCP metadata-listing wrappers are still being implemented.
+
 Provision PostgreSQL with the pgvector extension installed. For local development:
 
 ```bash

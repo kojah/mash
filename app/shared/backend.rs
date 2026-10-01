@@ -396,6 +396,42 @@ fn pg_error(error: tokio_postgres::Error) -> AppError {
     drop(error);
     result
 }
+
+pub(super) async fn list_threads(
+    pool: &Pool,
+    identity: &Identity,
+    input: crate::thread_catalog::Request,
+) -> Result<crate::thread_catalog::Page, AppError> {
+    use futures_util::TryStreamExt;
+    let mut collector = crate::thread_catalog::Collector::new(input.clone())?;
+    let mut connection = connection(pool).await?;
+    let client = transaction(&mut connection, identity).await?;
+    let statement = pg::thread_catalog();
+    let rows = statement.bind(&client).iter().await.map_err(pg_error)?;
+    futures_util::pin_mut!(rows);
+    while let Some(row) = rows.try_next().await.map_err(pg_error)? {
+        if !input.admits_node(&row.node_id, &identity.node_id) {
+            continue;
+        }
+        let provider = row
+            .provider
+            .parse()
+            .map_err(|_| AppError::shared("invalid shared thread provider"))?;
+        collector.push(crate::thread_catalog::Thread {
+            conversation_id: row.id,
+            provider,
+            node_id: row.node_id,
+            metadata: crate::search_results::ThreadMetadata {
+                title: row.title,
+                project: row.project,
+                repository: row.repository,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            },
+        });
+    }
+    Ok(collector.finish())
+}
 pub(super) fn group_schema(group: &str) -> String {
     format!("mash_g_{}", &blake3::hash(group.as_bytes()).to_hex()[..32])
 }

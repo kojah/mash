@@ -103,6 +103,17 @@ impl Store {
             Self::Redis(store) => store.freshness(id).await,
         }
     }
+    #[tracing::instrument(name = "backend_list_threads", skip_all, fields(backend = self.label()))]
+    async fn list_threads(
+        &self,
+        id: &Identity,
+        input: crate::thread_catalog::Request,
+    ) -> Result<crate::thread_catalog::Page, AppError> {
+        match self {
+            Self::Postgres(pool) => backend::list_threads(pool, id, input).await,
+            Self::Redis(store) => store.list_threads(id, input).await,
+        }
+    }
     async fn status(&self, id: &Identity) -> Result<crate::storage::Counts, AppError> {
         match self {
             Self::Postgres(pool) => backend::status(pool, id).await,
@@ -403,6 +414,7 @@ fn router(app: App) -> Router {
         .route("/v1/status", get(status))
         .route("/v1/state", get(state))
         .route("/v1/search", post(search))
+        .route("/v1/threads", post(list_threads))
         .route("/v1/view", post(view))
         .route("/v1/forget", post(forget))
         .route("/v1/index", post(index))
@@ -443,6 +455,15 @@ async fn search(
     input: Result<Json<protocol::Search>, JsonRejection>,
 ) -> Result<Json<protocol::Candidates>, ApiError> {
     Ok(Json(app.store.search(&id, json(input)?).await?))
+}
+async fn list_threads(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+    input: Result<Json<crate::thread_catalog::Request>, JsonRejection>,
+) -> Result<Json<crate::thread_catalog::Page>, ApiError> {
+    let input = json(input)?;
+    input.validate()?;
+    Ok(Json(app.store.list_threads(&id, input).await?))
 }
 async fn view(
     State(app): State<App>,

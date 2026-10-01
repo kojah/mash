@@ -1,7 +1,9 @@
 //! Redis connection/schema setup and internal snapshot representation.
 mod canonical;
+mod catalog;
 mod fields;
 mod metadata;
+mod payload;
 mod publish;
 mod read;
 mod response;
@@ -343,63 +345,22 @@ impl Store {
     async fn load(&self, identity: &Identity) -> Result<Loaded, AppError> {
         let (head, expected) = self.head(identity).await?;
         let (data, digest) = if let Some(head) = &head {
-            let raw: Option<String> = redis::cmd("GET")
-                .arg(data_key(&identity.group_id, &head.version))
-                .query_async(&mut self.connection.clone())
-                .await
-                .map_err(redis_error)?;
-            let Some(raw) = raw else {
-                if self.head(identity).await?.1 != expected {
-                    return Err(conflict(
-                        "shared node changed while reading; retry the operation",
-                    ));
-                }
-                return Err(AppError::shared(
-                    "Redis canonical data is missing; use persistence and noeviction",
-                ));
-            };
-            let manifest: CanonicalManifest = decode(&raw)?;
-            if manifest.bytes > self.max_node_bytes
-                || manifest.chunks == 0
-                || manifest.chunks != manifest.bytes.div_ceil(CANONICAL_CHUNK_BYTES)
-            {
-                return Err(AppError::shared(
-                    "Redis canonical manifest exceeds the configured snapshot limit or is invalid",
+            let payload = self
+                .read_payload(&data_key(&identity.group_id, &head.version))
+                .await;
+            if self.head(identity).await?.1 != expected {
+                return Err(conflict(
+                    "shared node changed while reading; retry the operation",
                 ));
             }
-            let mut bytes = Vec::with_capacity(manifest.bytes);
-            for chunk in 0..manifest.chunks {
-                let part: Option<Vec<u8>> = redis::cmd("GET")
-                    .arg(format!(
-                        "{}:chunk:{chunk}",
-                        data_key(&identity.group_id, &head.version)
-                    ))
-                    .query_async(&mut self.connection.clone())
-                    .await
-                    .map_err(redis_error)?;
-                let part =
-                    part.ok_or_else(|| AppError::shared("Redis canonical chunk is missing"))?;
-                if part.len() > CANONICAL_CHUNK_BYTES
-                    || bytes.len().saturating_add(part.len()) > manifest.bytes
-                {
-                    return Err(AppError::shared("invalid Redis canonical chunk length"));
-                }
-                bytes.extend_from_slice(&part);
-            }
-            if bytes.len() != manifest.bytes
-                || blake3::hash(&bytes).to_hex().as_str() != manifest.digest
-            {
-                return Err(AppError::shared(
-                    "Redis canonical snapshot checksum mismatch",
-                ));
-            }
+            let (bytes, digest) = payload?;
             let data = crate::blocking(move || {
                 let text = String::from_utf8(bytes)
                     .map_err(|_| AppError::shared("invalid Redis canonical data"))?;
                 decode(&text)
             })
             .await?;
-            (data, Some(manifest.digest))
+            (data, Some(digest))
         } else {
             (Data::default(), None)
         };

@@ -22,6 +22,7 @@ mod shared;
 mod storage;
 #[cfg(test)]
 mod test_support;
+mod thread_catalog;
 mod watch;
 #[cfg(unix)]
 mod worker;

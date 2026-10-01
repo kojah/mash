@@ -259,6 +259,12 @@ async fn explicit_publication_upgrades_old_heads_without_exposing_failed_snapsho
         .query_async::<i64>(&mut fixture.store.connection.clone())
         .await
         .unwrap();
+    let error = fixture
+        .store
+        .list_threads(&fixture.identity, crate::thread_catalog::Request::default())
+        .await
+        .unwrap_err();
+    assert!(error.error.message.contains("mash index"));
     fixture.upload(1, "retained title").await.unwrap();
     let (upgraded, _) = fixture.catalog().await;
     assert_ne!(upgraded.version, old_version);
@@ -268,5 +274,122 @@ async fn explicit_publication_upgrades_old_heads_without_exposing_failed_snapsho
     let (retained, rows) = fixture.catalog().await;
     assert_eq!(retained.version, upgraded.version);
     assert_eq!(rows["thread"].title.as_deref(), Some("retained title"));
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn catalog_reads_need_no_message_payload_and_detect_retired_versions() {
+    let fixture = Fixture::new().await;
+    fixture.upload(1, "old title").await.unwrap();
+    let old = fixture
+        .store
+        .head(&fixture.identity)
+        .await
+        .unwrap()
+        .0
+        .unwrap();
+    let heads = [(fixture.identity.node_id.clone(), old)].into();
+    fixture.upload(2, "current title").await.unwrap();
+    let error = fixture
+        .store
+        .catalog_page(
+            &fixture.identity,
+            crate::thread_catalog::Request::default(),
+            heads,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.error.kind, crate::ErrorKind::Conflict);
+
+    let current = fixture
+        .store
+        .head(&fixture.identity)
+        .await
+        .unwrap()
+        .0
+        .unwrap();
+    redis::cmd("UNLINK")
+        .arg(data_key(&fixture.identity.group_id, &current.version))
+        .arg(format!(
+            "{}:chunk:0",
+            data_key(&fixture.identity.group_id, &current.version)
+        ))
+        .arg(document_key(
+            &fixture.identity.group_id,
+            &current.version,
+            "message",
+        ))
+        .query_async::<i64>(&mut fixture.store.connection.clone())
+        .await
+        .unwrap();
+    let page = fixture
+        .store
+        .list_threads(&fixture.identity, crate::thread_catalog::Request::default())
+        .await
+        .unwrap();
+    assert_eq!(page.threads.len(), 1);
+    assert_eq!(
+        page.threads[0].metadata.title.as_deref(),
+        Some("current title")
+    );
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn catalog_reads_reject_oversized_manifests_bad_checksums_and_missing_chunks() {
+    let fixture = Fixture::new().await;
+    fixture.upload(1, "retained title").await.unwrap();
+    let head = fixture
+        .store
+        .head(&fixture.identity)
+        .await
+        .unwrap()
+        .0
+        .unwrap();
+    let key = catalog_key(&fixture.identity.group_id, &head.version);
+    let original: String = redis::cmd("GET")
+        .arg(&key)
+        .query_async(&mut fixture.store.connection.clone())
+        .await
+        .unwrap();
+    for oversized in [true, false] {
+        let mut manifest: CanonicalManifest = decode(&original).unwrap();
+        if oversized {
+            manifest.bytes = fixture.store.max_node_bytes + 1;
+        } else {
+            manifest.digest = "bad checksum".into();
+        }
+        redis::cmd("SET")
+            .arg(&key)
+            .arg(encode(&manifest).unwrap())
+            .query_async::<()>(&mut fixture.store.connection.clone())
+            .await
+            .unwrap();
+        let error = fixture
+            .store
+            .list_threads(&fixture.identity, crate::thread_catalog::Request::default())
+            .await
+            .unwrap_err();
+        assert_eq!(error.error.kind, crate::ErrorKind::SharedIndex);
+    }
+    redis::cmd("SET")
+        .arg(&key)
+        .arg(original)
+        .query_async::<()>(&mut fixture.store.connection.clone())
+        .await
+        .unwrap();
+    redis::cmd("UNLINK")
+        .arg(format!("{key}:chunk:0"))
+        .query_async::<i64>(&mut fixture.store.connection.clone())
+        .await
+        .unwrap();
+    let error = fixture
+        .store
+        .list_threads(&fixture.identity, crate::thread_catalog::Request::default())
+        .await
+        .unwrap_err();
+    assert_eq!(error.error.kind, crate::ErrorKind::SharedIndex);
     fixture.cleanup().await;
 }

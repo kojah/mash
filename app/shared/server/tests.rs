@@ -7,6 +7,7 @@ mod correlation;
 mod cursor;
 mod native;
 mod selections;
+mod threads;
 mod windsurf;
 
 const FIRST: &str = "test-api-token-first-32-bytes-long";
