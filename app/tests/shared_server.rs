@@ -138,6 +138,18 @@ fn assert_startup_rejected(config: &[u8], tokens: &[(&str, &str)], message: &str
 const STARTUP_NODE: &str = "\n[[nodes]]\ngroup_id = 'test-group'\nnode_id = 'test-node'\ntoken_env = 'MASH_STARTUP_TOKEN_A'\n";
 const STARTUP_TOKEN: &str = "startup-test-credential-with-32-bytes";
 
+#[test]
+fn server_rejects_invalid_mutation_snapshot_budget_before_backend_access() {
+    for budget in [0, 65537] {
+        let config = format!("version=1\nmax_mutation_snapshot_mib={budget}\n{STARTUP_NODE}");
+        assert_startup_rejected(
+            config.as_bytes(),
+            &[("MASH_STARTUP_TOKEN_A", STARTUP_TOKEN)],
+            "max_mutation_snapshot_mib must be between 1 and 65536",
+        );
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 async fn qdrant_default_server_configuration_starts_and_creates_group_collections() {

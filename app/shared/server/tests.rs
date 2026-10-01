@@ -12,6 +12,7 @@ mod cursor;
 mod native;
 mod relevance;
 mod selections;
+mod snapshot_budget;
 mod threads;
 mod windsurf;
 
@@ -686,16 +687,34 @@ impl Service {
         .await
     }
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "shared fixture wires the same identities and HTTP server for each concrete backend"
-    )]
     async fn with_backend(
         database: bool,
         backend: TestBackend,
         dimensions: usize,
         max_node_bytes: usize,
         first_token: &str,
+    ) -> Self {
+        Self::with_budget(
+            database,
+            backend,
+            dimensions,
+            max_node_bytes,
+            first_token,
+            crate::shared::snapshot_budget::Budget::default(),
+        )
+        .await
+    }
+    #[allow(
+        clippy::too_many_lines,
+        reason = "shared fixture wires the same identities and HTTP server for each concrete backend"
+    )]
+    async fn with_budget(
+        database: bool,
+        backend: TestBackend,
+        dimensions: usize,
+        max_node_bytes: usize,
+        first_token: &str,
+        budget: crate::shared::snapshot_budget::Budget,
     ) -> Self {
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
@@ -765,7 +784,8 @@ impl Service {
                     super::super::qdrant_index::MemoryTier::default(),
                 )
                 .await
-                .unwrap(),
+                .unwrap()
+                .with_snapshot_budget(budget.clone()),
             )
         } else if matches!(backend, TestBackend::Redis) {
             Store::Redis(
@@ -777,7 +797,8 @@ impl Service {
                     super::super::redis_index::VectorIndex::default(),
                 )
                 .await
-                .unwrap(),
+                .unwrap()
+                .with_snapshot_budget(budget),
             )
         } else {
             Store::Postgres(pool.clone())

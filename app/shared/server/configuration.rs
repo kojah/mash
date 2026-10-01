@@ -43,6 +43,8 @@ pub(super) struct Configuration {
     pub(super) redis_vector_index: redis_index::VectorIndex,
     #[serde(default = "default_uploads")]
     pub(super) max_concurrent_uploads: usize,
+    #[serde(default = "default_snapshot_budget")]
+    pub(super) max_mutation_snapshot_mib: usize,
     nodes: Vec<AuthorizedNode>,
 }
 #[derive(Deserialize)]
@@ -75,6 +77,9 @@ fn default_redis_node_mib() -> usize {
 fn default_uploads() -> usize {
     4
 }
+fn default_snapshot_budget() -> usize {
+    crate::shared::snapshot_budget::DEFAULT_MIB
+}
 fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8787))
 }
@@ -100,6 +105,7 @@ pub(super) fn identities(
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
     config.redis_vector_index.validate()?;
     config.qdrant_vector_index.validate()?;
+    crate::shared::snapshot_budget::Budget::validate(config.max_mutation_snapshot_mib)?;
     if !matches!(config.backend, BackendChoice::Redis)
         && config.redis_vector_index != (redis_index::VectorIndex::Exact {})
     {

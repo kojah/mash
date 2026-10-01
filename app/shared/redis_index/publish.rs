@@ -49,20 +49,25 @@ impl Store {
         identity: &Identity,
         file: tempfile::NamedTempFile,
     ) -> Result<Indexed, AppError> {
-        if file
+        let incoming = file
             .as_file()
             .metadata()
             .map_err(|_| AppError::internal("inspect index upload"))?
-            .len()
-            > self.max_node_bytes()
-        {
+            .len();
+        if incoming > self.max_node_bytes() {
             return Err(AppError::usage(
                 "Redis upload exceeds the configured snapshot limit",
             ));
         }
         let pending = self.pending_snapshot(identity).await?;
+        let reservation = self
+            .snapshot_budget
+            .reserve(pending.encoded_bytes(), incoming)?;
         let dimensions = identity.dimensions;
-        let plan = crate::blocking(move || plan(&file, pending.decode()?, dimensions)).await?;
+        let (plan, _reservation) = crate::blocking(move || {
+            plan(&file, pending.decode()?, dimensions).map(|plan| (plan, reservation))
+        })
+        .await?;
         let instance = plan
             .loaded
             .head
@@ -81,8 +86,9 @@ impl Store {
             return Err(AppError::usage("too many forget identities"));
         }
         let pending = self.pending_snapshot(identity).await?;
+        let reservation = self.snapshot_budget.reserve(pending.encoded_bytes(), 0)?;
         let instance = input.instance.clone();
-        let (plan, forgotten) = crate::blocking(move || {
+        let (plan, forgotten, _reservation) = crate::blocking(move || {
             let loaded = pending.decode()?;
             let accepted = loaded.head.as_ref().map_or(0, |h| h.revision);
             if loaded
@@ -110,7 +116,7 @@ impl Store {
                 forgotten |= forget(&mut plan.loaded.data, id)?;
             }
             plan.changed = forgotten;
-            Ok((plan, forgotten))
+            Ok((plan, forgotten, reservation))
         })
         .await?;
         self.commit(identity, plan, instance, false).await?;

@@ -35,7 +35,7 @@ use crate::AppError;
 use crate::semantic;
 use crate::storage::{Counts, Message, SearchHit};
 
-// Bound uploads and canonical node snapshots to the configured memory budget.
+// Bound canonical payload sizes independently from mutation work admission.
 const STAGE_TTL: u32 = 600;
 const CANONICAL_CHUNK_BYTES: usize = 8 * 1024 * 1024;
 
@@ -60,6 +60,7 @@ pub(super) struct Store {
     connection: ConnectionManager,
     max_node_bytes: usize,
     vector_index: VectorIndex,
+    snapshot_budget: super::snapshot_budget::Budget,
 }
 async fn extend_metadata_schema(
     connection: &mut ConnectionManager,
@@ -190,6 +191,13 @@ fn timestamp(value: Option<String>) -> Result<Option<String>, AppError> {
         .transpose()
 }
 impl Store {
+    pub(in crate::shared) fn with_snapshot_budget(
+        mut self,
+        budget: super::snapshot_budget::Budget,
+    ) -> Self {
+        self.snapshot_budget = budget;
+        self
+    }
     #[tracing::instrument(name = "redis_index_initialize", skip_all, fields(vector_algorithm = vector_index.algorithm()))]
     pub(super) async fn connect(
         url: &str,
@@ -266,6 +274,7 @@ impl Store {
             connection,
             max_node_bytes,
             vector_index,
+            snapshot_budget: super::snapshot_budget::Budget::default(),
         })
     }
 

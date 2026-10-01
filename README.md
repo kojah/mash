@@ -931,7 +931,31 @@ keeps its slot until the work succeeds or fails, including if the requester
 disconnects or times out. Cancellation does not imply rollback: retry using the
 existing node/revision checks. Busy mutations return a retryable HTTP 503;
 search and metadata reads do not consume mutation slots. This bounds the number
-of mutations, not their total RAM. The [large-replacement overlap measurement](benchmarks/2026-10-01-shared-publication-concurrency.md)
+of mutations, not their total RAM.
+
+Redis and Qdrant also use `max_mutation_snapshot_mib` (default 1,024, range
+1–65,536) to admit snapshot work by size. Each mutation reserves the sum of its
+existing canonical snapshot and incoming upload bytes, rounded up to MiB, with
+a minimum of one MiB. `forget` reserves the existing snapshot size. Reservations
+are shared across all configured nodes/groups in one API process and remain held
+through decoding, planning and publication. Busy capacity returns a retryable
+503. A mutation larger than the entire budget returns a nonretryable 400 naming
+the setting to increase; the active revision stays unchanged. Uploads and stored
+chunks may already have been privately spooled before this check, but typed
+snapshot decoding has not started. PostgreSQL processes stream batches rather
+than full canonical snapshots, so this particular budget applies only to Redis
+and Qdrant.
+
+This setting measures serialized inputs, **not RSS**. Allow additional RAM for
+decoded objects, readers, allocator caches, transport buffers and database staging;
+multiple API processes have separate budgets. Raising a node's payload cap may
+also require raising this budget, especially for full replacements that count
+both the old snapshot and new upload. The [two-node admission comparison](benchmarks/2026-10-01-shared-snapshot-budget.md)
+records the memory/throughput tradeoff and successful retries on a real corpus.
+The `reserve_snapshot_work` trace span reports work MiB, limit MiB and
+accepted/busy/oversized outcome without payloads or node identifiers.
+
+The [large-replacement overlap measurement](benchmarks/2026-10-01-shared-publication-concurrency.md)
 records candidate-search latency and API/database memory with one mutation slot;
 it does not validate four simultaneous large publications or a 2-GiB database budget.
 Qdrant context reads use projected thread ancestry before fetching selected

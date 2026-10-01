@@ -52,6 +52,7 @@ pub(super) struct Store {
     api: api::Client,
     max_node_bytes: usize,
     vector_index: VectorIndex,
+    snapshot_budget: super::snapshot_budget::Budget,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -167,6 +168,13 @@ fn sparse(text: &str, query: bool) -> api::Sparse {
     }
 }
 impl Store {
+    pub(in crate::shared) fn with_snapshot_budget(
+        mut self,
+        budget: super::snapshot_budget::Budget,
+    ) -> Self {
+        self.snapshot_budget = budget;
+        self
+    }
     pub(super) fn max_node_bytes(&self) -> u64 {
         u64::try_from(self.max_node_bytes).unwrap_or(u64::MAX)
     }
@@ -192,6 +200,7 @@ impl Store {
             api,
             max_node_bytes,
             vector_index,
+            snapshot_budget: super::snapshot_budget::Budget::default(),
         })
     }
     async fn node(&self, identity: &Identity) -> Result<NodeHead, AppError> {

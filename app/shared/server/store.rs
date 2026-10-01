@@ -165,6 +165,7 @@ pub(super) async fn initialize(
 ) -> Result<Store, AppError> {
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
     let groups = groups.into_iter().collect::<Vec<_>>();
+    let budget = crate::shared::snapshot_budget::Budget::new(config.max_mutation_snapshot_mib)?;
     let store = match config.backend {
         BackendChoice::Qdrant => {
             let name = config
@@ -202,7 +203,8 @@ pub(super) async fn initialize(
                     config.qdrant_vector_index,
                     config.qdrant_memory,
                 )
-                .await?,
+                .await?
+                .with_snapshot_budget(budget.clone()),
             )
         }
         BackendChoice::Postgres => {
@@ -244,7 +246,8 @@ pub(super) async fn initialize(
                         })?,
                     config.redis_vector_index,
                 )
-                .await?,
+                .await?
+                .with_snapshot_budget(budget),
             )
         }
     };

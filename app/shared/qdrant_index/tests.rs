@@ -523,6 +523,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
         api: api::Client::new(&url, None, 1024).unwrap(),
         max_node_bytes: 1024,
         vector_index: VectorIndex::default(),
+        snapshot_budget: super::super::snapshot_budget::Budget::default(),
     };
     let error = store.load(&identity).await.err().expect("stale snapshot");
     assert!(matches!(error.error.kind, crate::ErrorKind::Conflict));

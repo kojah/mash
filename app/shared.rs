@@ -11,6 +11,7 @@ mod redis_index;
 mod retrieval;
 pub(crate) mod server;
 mod snapshot;
+mod snapshot_budget;
 
 pub(crate) use client::{freshness, list_threads, view};
 pub(crate) use publication::{forget_routed, publish, publish_routed, routed_status, status};

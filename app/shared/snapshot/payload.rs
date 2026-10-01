@@ -68,6 +68,9 @@ impl Receiver {
 }
 
 impl Received {
+    pub(in crate::shared) fn encoded_bytes(&self) -> usize {
+        self.bytes
+    }
     /// A complete, checksum-verified file; call on a blocking worker.
     #[tracing::instrument(name = "decode_shared_snapshot", skip_all, fields(bytes = self.bytes))]
     pub(in crate::shared) fn decode<T: DeserializeOwned>(self) -> Result<T, AppError> {

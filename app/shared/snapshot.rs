@@ -51,6 +51,11 @@ pub(super) struct PendingSnapshot {
     pub(super) expected: String,
 }
 impl PendingSnapshot {
+    pub(in crate::shared) fn encoded_bytes(&self) -> usize {
+        self.payload
+            .as_ref()
+            .map_or(0, payload::Received::encoded_bytes)
+    }
     pub(in crate::shared) fn decode(self) -> Result<Loaded, AppError> {
         let digest = self.payload.as_ref().map(|p| p.digest.clone());
         let data = self
