@@ -855,6 +855,14 @@ from four known failures are reviewed completely; other candidate records remain
 unreviewed. Current-user cosine helps some top3 results but misses concrete details
 at top1; no automatic selector or production topic method is selected.
 
+The [bounded section-association control](../../benchmarks/2026-10-01-section-associations.md)
+uses `section_links.py` and `section_experiment.py` to reuse verified passage ranks
+without new inference. Explicit layout introductions link to at most four original
+list/table children, with source provenance, caps, deduplication and fixed unique-unit
+budgets. Included-unit counts improve for current-user queries but greedy expansion
+loses other requested aspects and sometimes retrieves generic criteria. Wider
+coverage and section-diverse allocation remain open; no production method is promoted.
+
 Run lab input-boundary tests:
 
 ```bash

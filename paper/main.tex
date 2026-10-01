@@ -1860,6 +1860,71 @@ Ranking hashes are
 \path{cd8f1ebb5f8c9bef1d222180a9e6c87cc5cc0331d6b23c2043125789d05d6d1a}
 and \path{3e05c9f0ece52a2623b8e4f917cc6b4ec589ab9d88fb82ed86cfadfad8fc6920}.
 
+\subsection{Bounded section associations without new inference}
+Reuse the verified passage rankings, unchanged seventy-four source units/six oracle
+pairs/four known cases and two-axis judgments. Freeze a layout-only association:
+an explicit Markdown heading or colon-ended paragraph (including closing emphasis)
+links to the immediately following same-record list/table run. Stop at any other
+kind, including prose/code; store at most four children and the total run size.
+Capped children remain ordinary candidates. This is not general Markdown parsing
+or semantic topic hierarchy. No task phrases or judgments enter association.
+
+Compare original standalone selection with intro-to-child replacement under equal
+unique-unit budgets one/three. Follow original ranking, emit linked children in
+source order, deduplicate and stop at the budget. Do not recurse or cross records.
+Retain child source identities, Unicode/UTF-8 offsets, digests, original scores and
+matched-intro provenance. The child score is not recomputed conditional similarity.
+No text rewriting or new inference occurs. Unsupported queries remain unsupported;
+standalone counts must exactly reproduce the original review.
+
+Eight associations are found; four runs exceed the child-link cap. At budget three:
+\begin{center}
+\begin{tabular}{lrrrrr}
+\hline
+Mode & Anchors & Returned & Original included & Section included & Mixed \\
+\hline
+Current user & 4 & 10 & 5 & 9 & 1 \\
+Preceding user & 3 & 7 & 0 & 3 & 1 \\
+User chain & 3 & 7 & 0 & 3 & 1 \\
+Recency & 4 & 10 & 0 & 0 & 2 \\
+\hline
+\end{tabular}
+\end{center}
+Current-user budget one changes from one included/one mixed/two nontopical among
+four returned to three included/one mixed. On the common three-anchor support,
+budget-three included counts are current three to six of seven, preceding/chain
+zero to three of seven, recency unchanged zero. The one-candidate migration case
+returns only one unit. Different own-support denominators are not equal workloads.
+
+Greater included-unit purity conceals aspect losses. Easy-fix children exhaust the
+budget before the separately requested next tier. Remaining-work children omit
+channel contracts; the original ordering overview names all four remaining
+families, so replacing it can reduce coverage. Reorganization supplies generic
+decision criteria instead of named split targets. The mixed migration paragraph
+has no section link and stays unresolved. Prior-user pooling still selects an
+intervening installation task; recency still picks the wrong source. Thus layout
+helps navigate some matched headings but greedy expansion crowds out other aspects.
+Do not interpret nine included units of ten as topic-label quality or complete
+reference resolution. Next compare section/source-diverse allocation and specific
+target coverage under fixed budgets, with broader source review.
+
+Two fresh captures match every nonmeasurement field, including full two-control/
+four-method/two-budget grids, associations/caps, source coordinates/scores, selected
+identities, intro provenance, visits, counts and abstentions. Layout costs
+0.95--0.98 ms; selection/counting 0.52--0.54 ms; validation/loading/control total
+23.84--24.21 ms after imports. These are six-record descriptive batch costs,
+not production latency, distributions or full-ingestion overhead. No new inference
+occurs, but prerequisite ranks made 81 calls per capture; this is not evidence for
+zero-cost production passage embeddings. No memory or ingestion gate is established.
+The 152-test lab covers layout/source boundaries, caps, equal budgets, annotation-
+independent selection, abstentions, original counts and exact repeat round trips.
+Python checks do not establish Rust parity CI or a selected topic method.
+
+This remains an exposed post-ranking oracle-source diagnostic on one Codex group;
+no independent human quality or guided-search gain is claimed. Private captures:
+\path{d4e81d835544a89f8cdff3ffdb611c5426ea40aa3d825072818230c2e78e6fe4}
+and \path{a008985f964f6d86b4c5eee96b2d754291ebc29f9d08f80396ce893a348bbebc}.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background
