@@ -6,6 +6,56 @@ use super::*;
 async fn qdrant_context_preserves_branches_and_rejects_broken_publications() {
     contract(Service::qdrant(384).await).await;
 }
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_context_projects_multiple_topology_pages_and_fetches_selected_batches() {
+    let service = Service::qdrant(384).await;
+    let mut events = snapshot(1);
+    let base: MessageRecord = serde_json::from_value(events[2]["records"][0].clone()).unwrap();
+    let records: Vec<_> = (0..256)
+        .map(|ordinal| MessageRecord {
+            id: format!("message-{ordinal}"),
+            ordinal,
+            context: MessageContext::Linear,
+            content: format!("canonical {ordinal}: {}", "payload ".repeat(128)),
+            projection: format!("projection {ordinal}"),
+            ..base.clone()
+        })
+        .collect();
+    events.splice(
+        2..3,
+        records.chunks(128).map(|batch| {
+            serde_json::to_value(Event::Batch(Batch::Messages {
+                records: batch.to_vec(),
+            }))
+            .unwrap()
+        }),
+    );
+    let response = service.upload(FIRST, &events).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "{}",
+        response.text().await.unwrap()
+    );
+    for representation in [MessageContent::Canonical, MessageContent::SearchProjection] {
+        let messages = view(&service, 125, 100, representation).await;
+        assert_eq!(messages.len(), 201);
+        for (message, ordinal) in messages.iter().zip(25..=225) {
+            assert_eq!(message.ordinal, ordinal);
+            assert_eq!(message.id, format!("message-{ordinal}"));
+            let expected = match representation {
+                MessageContent::Canonical => {
+                    format!("canonical {ordinal}: {}", "payload ".repeat(128))
+                }
+                MessageContent::SearchProjection => format!("projection {ordinal}"),
+            };
+            assert_eq!(message.content, expected);
+        }
+    }
+    service.cleanup().await;
+}
 use crate::{
     message_context::MessageContext,
     shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start, View},

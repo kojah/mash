@@ -377,13 +377,13 @@ impl Store {
             .api
             .retrieve::<Document>(&name, &[point_id(&["message", &head.version, &input.id])])
             .await?;
-        let Some(anchor) = records.into_iter().next().map(|p| p.payload.message) else {
+        let Some(anchor) = super::context::anchor(records, &head, &input)? else {
             self.unchanged(&other, &head.version).await?;
             return Ok(vec![]);
         };
         let records = self
             .api
-            .scroll::<Document>(
+            .scroll_fields::<super::context::Outline>(
                 &name,
                 api::Filter {
                     must: vec![
@@ -393,10 +393,20 @@ impl Store {
                     ],
                     ..api::Filter::default()
                 },
+                super::context::FIELDS,
             )
             .await?;
+        let (selection, head, input) = crate::blocking(move || {
+            super::context::select(&anchor, records, &head, &input)
+                .map(|selection| (selection, head, input))
+        })
+        .await?;
+        let mut records = Vec::new();
+        for ids in selection.ids(&head.version).chunks(100) {
+            records.extend(self.api.retrieve::<Document>(&name, ids).await?);
+        }
         self.unchanged(&other, &head.version).await?;
-        crate::blocking(move || super::context::messages(&anchor, records, &head, &input)).await
+        crate::blocking(move || selection.messages(records, &head, &input)).await
     }
 }
 fn hits(

@@ -145,9 +145,15 @@ struct Retrieve<'a> {
 struct Scroll {
     filter: Filter,
     limit: usize,
-    with_payload: bool,
+    with_payload: Payload,
     with_vector: bool,
     offset: Option<String>,
+}
+#[derive(Clone, Serialize)]
+#[serde(untagged)]
+enum Payload {
+    All(bool),
+    Fields(&'static [&'static str]),
 }
 #[derive(Deserialize)]
 struct ScrollResult<P> {
@@ -573,6 +579,23 @@ impl Client {
         name: &str,
         filter: Filter,
     ) -> Result<Vec<Record<P>>, AppError> {
+        self.scroll_selected(name, filter, Payload::All(true)).await
+    }
+    pub(super) async fn scroll_fields<P: DeserializeOwned>(
+        &self,
+        name: &str,
+        filter: Filter,
+        fields: &'static [&'static str],
+    ) -> Result<Vec<Record<P>>, AppError> {
+        self.scroll_selected(name, filter, Payload::Fields(fields))
+            .await
+    }
+    async fn scroll_selected<P: DeserializeOwned>(
+        &self,
+        name: &str,
+        filter: Filter,
+        payload: Payload,
+    ) -> Result<Vec<Record<P>>, AppError> {
         let mut output = Vec::new();
         let mut offset = None;
         loop {
@@ -583,7 +606,7 @@ impl Client {
                     Some(&Scroll {
                         filter: filter.clone(),
                         limit: 100,
-                        with_payload: true,
+                        with_payload: payload.clone(),
                         with_vector: false,
                         offset: offset.clone(),
                     }),

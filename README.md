@@ -934,6 +934,9 @@ search and metadata reads do not consume mutation slots. This bounds the number
 of mutations, not their total RAM. The [large-replacement overlap measurement](benchmarks/2026-10-01-shared-publication-concurrency.md)
 records candidate-search latency and API/database memory with one mutation slot;
 it does not validate four simultaneous large publications or a 2-GiB database budget.
+Qdrant context reads use projected thread ancestry before fetching selected
+message bodies; the [long-thread context comparison](benchmarks/2026-10-01-qdrant-context-projection.md)
+records the measured memory/latency change and remaining thread-size costs.
 Staging changed revisions uses extra memory and writes,
 and the service loads canonical node data when applying changes; unchanged data
 can reuse the existing stage. These are deliberate limits on the initial
