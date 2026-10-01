@@ -876,6 +876,11 @@ uses `multiwoz.py` and `external_context.py` for exact typed source validation,
 label-separated inputs and repeatable cross-dialogue service-proxy evaluation.
 Bounded preceding context improves proxy AP on common support; topic-label quality,
 semantic hierarchy and production performance remain unverified.
+The [intent-specificity follow-up](../../benchmarks/2026-10-01-external-intent-specificity.md)
+uses `external_analysis.py` to revalidate archived vectors and compute paired
+whole-dialogue resampling ranges without inference. Context hurts find/book
+separation within shared services; broad-domain gains alone cannot select a
+topic representation. Declared intent labels remain evaluation-only.
 
 Run lab input-boundary tests:
 

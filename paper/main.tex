@@ -2092,6 +2092,102 @@ Bounded context remains a candidate, not a selected production method. Episode,
 granular-aspect, label and independently judged coding-session evaluations remain
 necessary before reserved-test evaluation and full performance/parity gates.
 
+\subsection{External intent specificity and whole-dialogue resampling}
+The broad-service improvement motivates an exploratory follow-up on the same
+frozen selection/vectors, without additional inference or tuning. Declare intent,
+within-service and per-domain slices and 1,000 paired whole-dialogue resamples
+before computing the new outcomes, but after inspecting the service experiment;
+this is not independent confirmation or original preregistered evidence.
+The loader now preserves schema-declared $(\mathrm{service},\mathrm{intent})$
+labels separately from original turns and rejects identical transcript aliases
+with conflicting intents even when their active services agree. Revalidate all
+selected identities, original input hashes, annotations, vector norms/supports
+and complete common pair grids against the pinned source and archived capture.
+The historical inference capture/code pins are preserved rather than regenerated.
+
+Intent positives share a declared service/intent pair; within-service evaluation
+retains pairs sharing an active service, then contrasts their intent overlap.
+Supported intent types are attraction/find and hotel/restaurant/train find/book.
+Unknown intents, empty proxies, roots and same-original-dialogue pairs remain
+excluded. Domain slices contain pairs with the service at either endpoint, with
+positives requiring it at both. Slices overlap and differ in prevalence; compare
+methods within each slice, not raw AP between domains.
+
+For each fixed-seed (20261001) replicate, sample 32 complete dialogue groups with
+replacement and weight original cross-group pair $(i,j)$ by $m_i m_j$, where
+$m_i$ is the sampled multiplicity. Never create same-original-group pairs when
+a dialogue is sampled twice. All methods/slices share the same 1,000 draws.
+There are 31 eligible groups among the 32 selected groups; one contributes no
+common proxy pairs. Report one-class draws explicitly; all slices support both
+classes in all 1,000 draws. Report empirical 2.5/50/97.5 percentiles of paired
+AP/AUC changes versus current text. Vertex-based resampling of dependent pair
+data motivates this procedure \cite{snowboot}; coverage for our nonlinear AP/AUC
+metrics is not calibrated. The ranges are empirical sensitivity summaries, not
+validated confidence coverage or formal significance tests. Seven correlated
+slices, small group count, repeated development inspection, source templates and
+annotation/proxy limitations remain explicit.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Slice & Current AP & Mean AP & Joined AP \\
+\midrule
+Service & 0.464235 & 0.534925 & 0.555472 \\
+Intent & 0.399102 & 0.415504 & 0.417893 \\
+Within-service intent & 0.802038 & 0.752176 & 0.737828 \\
+Attraction & 0.223221 & 0.226965 & 0.226880 \\
+Hotel & 0.281696 & 0.351224 & 0.381683 \\
+Restaurant & 0.155075 & 0.189513 & 0.232215 \\
+Train & 0.489262 & 0.534548 & 0.566958 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Service/intent slices share 12,341 pairs, with 3,448/2,488 positives respectively.
+The within-service slice has 3,448 pairs, 2,488 positive and 960 negative;
+positive prevalence is 72.16\%, so high AP does not imply strong fine-intent
+discrimination. Its AUC is 0.583550/0.512996/0.490344 for current/mean/joined,
+compared with overall intent AUC 0.656245/0.691091/0.692769. Per-domain pair/
+positive counts are attraction 5,807/849, hotel 6,418/1,104, restaurant 4,742/531
+and train 6,103/970. Complete counts, AUCs, draws and deltas are retained.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Slice & Mean paired AP range & Joined paired AP range \\
+\midrule
+Service & [0.030232, 0.113276] & [0.037493, 0.145551] \\
+Intent & [$-0.025443$, 0.060741] & [$-0.033016$, 0.073371] \\
+Within-service intent & [$-0.075000$, $-0.019972$] & [$-0.097649$, $-0.030696$] \\
+Attraction & [$-0.039911$, 0.061792] & [$-0.056242$, 0.070886] \\
+Hotel & [0.019614, 0.142323] & [0.023692, 0.207558] \\
+Restaurant & [$-0.009859$, 0.095341] & [0.005152, 0.172589] \\
+Train & [$-0.026684$, 0.118267] & [$-0.010409$, 0.179941] \\
+\bottomrule
+\end{tabular}
+\end{center}
+Within-service paired AUC ranges are [$-0.115989$, $-0.016328$] for mean and
+[$-0.149669$, $-0.022709$] for joined. Context may strengthen domain similarity
+while obscuring find/book distinctions; this explanation is a hypothesis rather
+than established causality. The result rejects promotion of joined context as
+the sole topic representation based on the previous broad-service improvement.
+Attraction barely gains AP while hotel gains more, so effects are not uniform.
+Next evaluate bounded representations that retain current-turn specificity while
+adding useful context, without gold-dependent selectors or approval-phrase rules.
+Coding-session aspect/label/tree/guided-search quality remains unverified.
+
+Two fresh analyses agree exactly on all non-timing fields, including every draw,
+pair score/truth, source/code/version pins and paired replicate delta. NumPy
+2.4.6/scikit-learn 1.9.1 analysis costs 101.24/98.96 s after imports, including
+source/capture validation and seven slices with 1,000 resamples (21,000 weighted
+method evaluations), excluding serialization. This is offline evaluation cost,
+not production ingestion overhead. No model is initialized and no new inference
+call occurs. All 171 isolated lab tests pass. Artifact hashes for
+\path{intent-bootstrap-first.json} and \path{intent-bootstrap-second.json} are
+\path{b31098e45cec9d521690e67fc395c90819ca7aad01dbc2b98672cb20dd587ec6}
+and \path{46a903d0adad9cf00a6a6c8c5623cb4cbddf911a910612b099e93886d5b6e8e2}.
+Bead \texttt{mash-c0d.19.2.31} tracks the next specificity-preserving context controls;
+complete ingestion, calibrated evaluation and Python/Rust parity gates remain open.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

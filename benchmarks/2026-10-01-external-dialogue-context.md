@@ -116,6 +116,9 @@ env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_T
 
 The runner refuses to overwrite captures. Code changes intentionally break pinned
 repeat equality; preserve original run identities rather than laundering drift.
+Run the original inference/repeat command with code at commit `1ba0bca`; the later
+intent-annotation extension changes the loader's code pin. The inference captures
+are preserved and reused by the [follow-up](2026-10-01-external-intent-specificity.md).
 Synthetic tests cover source corruption, metadata separation, Unicode offsets,
 copy differences, unknown values, alias consistency, contextual adjacency,
 cross-dialogue proxy support and exact repeat drift. All 165 lab tests pass.

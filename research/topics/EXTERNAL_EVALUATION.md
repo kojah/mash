@@ -80,6 +80,17 @@ Next evaluate episode/topic specificity, cross-domain breakdowns and independent
 coding-session quality before selecting a method; retain untouched test data
 until selection. Complete-ingestion and Rust-parity gates remain required.
 
+The [intent-specificity follow-up](../../benchmarks/2026-10-01-external-intent-specificity.md)
+reuses frozen vectors with evaluation-only declared intents and paired whole-dialogue
+resampling. Context's broad-service gain does not transfer to within-service intent
+distinctions: AP is 0.8020/0.7522/0.7378 for current/mean/joined; joined's empirical
+paired AP range is [-0.0976, -0.0307]. These task proxies do not establish granular
+coding topics, and resampling coverage is not calibrated. Do not promote joined
+context as the sole topic representation. Bead `mash-c0d.19.2.31` tracks controls
+that preserve specificity while admitting context. The source loader now retains
+declared intent pairs and detects alias conflicts within a service; old inference
+captures retain their historical code pins, reproducible at commit `1ba0bca`.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.

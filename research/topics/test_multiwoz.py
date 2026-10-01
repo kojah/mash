@@ -41,6 +41,7 @@ class MultiwozTests(unittest.TestCase):
         self.assertEqual(corpus.dialogues[0].turns[0].text, 'é🙂')
         self.assertEqual((corpus.spans[0].start, corpus.spans[0].end, corpus.spans[0].byte_start, corpus.spans[0].byte_end), (0, 2, 0, 6))
         self.assertEqual(corpus.labels[0].active, (Service.HOTEL,))
+        self.assertEqual(corpus.labels[0].declared_intents, ((Service.HOTEL, 'find_hotel'),))
         self.assertEqual(corpus.labels[1].active, ())
         self.assertEqual(corpus.labels[1].unknown_intents, ((Service.TAXI, 'find_taxi'),))
         self.assertFalse(corpus.copies[0].source_values_equal)
@@ -78,3 +79,15 @@ class MultiwozTests(unittest.TestCase):
         self.assertEqual((selected[0].id, duplicates), ('alias', 1))
         duplicate['turns'][0]['frames'][0]['state']['active_intent'] = 'NONE'
         with self.assertRaises(ValueError): select(parse(schema, [*rows, duplicate]), 'fixed', maximum=1)
+
+    def test_alias_conflicts_within_same_service_are_not_hidden(self):
+        schema, rows = fixture()
+        extra = copy.deepcopy(schema[0]['intents'][0])
+        extra['name'] = 'book_hotel'
+        schema[0]['intents'].append(extra)
+        duplicate = copy.deepcopy(rows[0])
+        duplicate['dialogue_id'] = 'alias'
+        duplicate['turns'][0]['frames'][0]['state']['active_intent'] = 'book_hotel'
+        corpus = parse(schema, [*rows, duplicate])
+        self.assertEqual(corpus.labels[0].active, corpus.labels[2].active)
+        with self.assertRaises(ValueError): select(corpus, 'fixed', maximum=1)

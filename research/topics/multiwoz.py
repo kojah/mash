@@ -60,6 +60,7 @@ class Label:
     ordinal: int
     active: tuple[Service, ...]
     unknown_intents: tuple[tuple[Service, str], ...]
+    declared_intents: tuple[tuple[Service, str], ...]
 
 
 @dataclass(frozen=True)
@@ -158,7 +159,7 @@ def parse(schema_rows, rows):
             if not isinstance(text, str) or not text.strip() or len(text.encode()) > 65536:
                 raise ValueError('invalid or oversized original utterance')
             turns.append(Turn(identity, ordinal, speaker, text))
-            frame_seen, active, unknown, states = set(), [], [], {}
+            frame_seen, active, unknown, declared, states = set(), [], [], [], {}
             for frame in raw['frames']:
                 exact_keys(frame, {'service', 'actions', 'slots', *({'state'} if speaker == Speaker.USER else set())})
                 service = Service(frame['service'])
@@ -178,12 +179,13 @@ def parse(schema_rows, rows):
                     if intent != 'NONE':
                         if intent in schema[service].intents:
                             active.append(service)
+                            declared.append((service, intent))
                         else:
                             unknown.append((service, intent))
             if speaker == Speaker.USER:
                 if frame_seen != set(schema):
                     raise ValueError('incomplete source user frame coverage')
-                labels.append(Label(identity, ordinal, tuple(sorted(active)), tuple(sorted(unknown))))
+                labels.append(Label(identity, ordinal, tuple(sorted(active)), tuple(sorted(unknown)), tuple(sorted(declared))))
             for frame in raw['frames']:
                 service = Service(frame['service'])
                 for slot in frame['slots']:
@@ -232,7 +234,7 @@ def select(corpus, seed, maximum=32):
     """Canonical whole-text groups only; no service/intent names used for sampling."""
     if not isinstance(seed, str) or not seed or type(maximum) is not int or not 1 <= maximum <= 32:
         raise ValueError('bounded source selection required')
-    labels = {(l.dialogue, l.ordinal): (l.active, l.unknown_intents) for l in corpus.labels}
+    labels = {(l.dialogue, l.ordinal): (l.active, l.unknown_intents, l.declared_intents) for l in corpus.labels}
     groups, duplicates = {}, 0
     for dialogue in sorted(corpus.dialogues, key=lambda d: d.id):
         if dialogue.group in groups:
