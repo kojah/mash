@@ -200,6 +200,7 @@ pub(super) async fn initialize(
                             )
                         })?,
                     config.qdrant_vector_index,
+                    config.qdrant_memory,
                 )
                 .await?,
             )

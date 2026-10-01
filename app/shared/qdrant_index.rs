@@ -11,6 +11,14 @@ use super::snapshot::{Data, Head, Loaded};
 use crate::AppError;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum MemoryTier {
+    #[default]
+    Cached,
+    Cold,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "algorithm", rename_all = "lowercase", deny_unknown_fields)]
 pub(super) enum VectorIndex {
@@ -169,13 +177,15 @@ impl Store {
         dimensions: usize,
         max_node_bytes: usize,
         vector_index: VectorIndex,
+        memory: MemoryTier,
     ) -> Result<Self, AppError> {
         vector_index.validate()?;
         let api = api::Client::new(url, key, max_node_bytes)?;
         api.verify_version().await?;
         for group in groups {
-            api.initialize(&collection(group, true), None).await?;
-            api.initialize(&collection(group, false), Some(dimensions))
+            api.initialize(&collection(group, true), None, MemoryTier::Cached)
+                .await?;
+            api.initialize(&collection(group, false), Some(dimensions), memory)
                 .await?;
         }
         Ok(Self {

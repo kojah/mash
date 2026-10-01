@@ -760,6 +760,7 @@ impl Service {
                     dimensions,
                     max_node_bytes,
                     super::super::qdrant_index::VectorIndex::default(),
+                    super::super::qdrant_index::MemoryTier::default(),
                 )
                 .await
                 .unwrap(),

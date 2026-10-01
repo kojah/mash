@@ -392,6 +392,14 @@ fn server_rejects_backend_credential_configuration_mixups() {
 fn qdrant_server_rejects_incompatible_settings_before_network_access() {
     for (settings, message) in [
         (
+            "backend = 'redis'\nqdrant_memory = 'cold'",
+            "require backend=qdrant",
+        ),
+        (
+            "backend = 'qdrant'\nqdrant_memory = 'disk'",
+            "invalid server configuration",
+        ),
+        (
             "backend = 'redis'\nqdrant_url_env = 'MASH_QDRANT_URL'",
             "require backend=qdrant",
         ),

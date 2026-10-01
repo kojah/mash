@@ -1095,6 +1095,7 @@ qdrant_url_env = "MASH_QDRANT_URL"
 # Optional for an authenticated Qdrant service:
 # qdrant_api_key_env = "MASH_QDRANT_API_KEY"
 qdrant_max_node_mib = 64
+qdrant_memory = "cached" # Or "cold" for vectors and dense/sparse indexes without prewarming.
 
 [[nodes]]
 group_id = "personal"
@@ -1120,6 +1121,14 @@ Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
 contain credentials, paths, queries or fragments; redirects are disabled so keys
 are not forwarded elsewhere. Qdrant credentials belong only on the HTTP server.
 Changing backends requires an explicit `mash index` from each publishing node.
+`qdrant_memory` selects the Qdrant 1.19+ `cached` (default) or `cold` tier for
+dense vectors, the HNSW index and the sparse lexical index in new message
+collections. Startup validates reported placement on existing collections;
+changing the setting requires a new group and explicit reindexing. Mash does
+not automatically migrate or rebuild collections. Cold storage still uses the
+operating system's page cache, and payload indexes and snapshot publication have
+their own memory costs. Lower peak RAM and search latency need workload-specific
+measurement; see [Qdrant's storage documentation](https://qdrant.tech/documentation/manage-data/storage/).
 
 Each group has an isolated message collection with named cosine dense vectors
 and IDF-weighted sparse lexical vectors, plus a metadata collection for canonical

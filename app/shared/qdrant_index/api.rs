@@ -1,9 +1,11 @@
 //! Small typed REST boundary; credentials and upstream bodies never enter errors.
-use super::{AppError, failure};
+use super::{AppError, MemoryTier, failure};
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::time::Duration;
+#[cfg(test)]
+mod schema_tests;
 
 #[derive(Clone)]
 pub(super) struct Client {
@@ -170,6 +172,8 @@ enum OperationStatus {
 struct DenseConfig {
     size: usize,
     distance: String,
+    #[serde(flatten)]
+    placement: Placement,
     #[serde(default, skip_serializing)]
     quantization_config: Option<serde::de::IgnoredAny>,
     #[serde(default, skip_serializing)]
@@ -182,11 +186,41 @@ struct DenseConfig {
 #[derive(Serialize, Deserialize)]
 struct SparseConfig {
     modifier: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    index: Option<Placement>,
 }
 #[derive(Serialize, Deserialize)]
 struct Hnsw {
     m: usize,
     ef_construct: usize,
+    #[serde(flatten)]
+    placement: Placement,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Placement {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    memory: Option<MemoryTier>,
+    // Qdrant may still report this deprecated field; explicit memory takes precedence.
+    #[serde(default, skip_serializing)]
+    on_disk: Option<bool>,
+}
+
+impl Placement {
+    fn new(memory: MemoryTier) -> Self {
+        Self {
+            memory: Some(memory),
+            on_disk: None,
+        }
+    }
+
+    fn matches(&self, expected: MemoryTier) -> bool {
+        self.memory.unwrap_or(if self.on_disk == Some(true) {
+            MemoryTier::Cold
+        } else {
+            MemoryTier::Cached
+        }) == expected
+    }
 }
 #[derive(Serialize)]
 struct Create {
@@ -230,12 +264,14 @@ struct PayloadIndex<'a> {
 fn schema_fields(
     info: &Info,
     dimensions: Option<usize>,
+    memory: MemoryTier,
 ) -> Result<&'static [(&'static str, &'static str)], AppError> {
     let vectors = &info.config.params.vectors;
     let valid = if let Some(dimensions) = dimensions {
         vectors.len() == 1
             && vectors.get("dense").is_some_and(|v| {
                 v.size == dimensions
+                    && v.placement.matches(memory)
                     && v.distance == "Cosine"
                     && v.quantization_config.is_none()
                     && v.hnsw_config.is_none()
@@ -243,10 +279,17 @@ fn schema_fields(
                     && v.datatype.as_deref().is_none_or(|t| t == "float32")
             })
             && info.config.params.sparse_vectors.as_ref().is_some_and(|s| {
-                s.len() == 1 && s.get("lexical").is_some_and(|v| v.modifier == "idf")
+                s.len() == 1
+                    && s.get("lexical").is_some_and(|v| {
+                        v.modifier == "idf"
+                            && v.index
+                                .as_ref()
+                                .map_or(memory == MemoryTier::Cached, |p| p.matches(memory))
+                    })
             })
             && info.config.hnsw_config.m == 16
             && info.config.hnsw_config.ef_construct == 200
+            && info.config.hnsw_config.placement.matches(memory)
             && info.config.quantization_config.is_none()
     } else {
         vectors.is_empty()
@@ -384,6 +427,7 @@ impl Client {
         &self,
         name: &str,
         dimensions: Option<usize>,
+        memory: MemoryTier,
     ) -> Result<(), AppError> {
         let path = format!("collections/{name}");
         let exists = self
@@ -399,6 +443,7 @@ impl Client {
                     DenseConfig {
                         size,
                         distance: "Cosine".into(),
+                        placement: Placement::new(memory),
                         quantization_config: None,
                         hnsw_config: None,
                         multivector_config: None,
@@ -411,6 +456,7 @@ impl Client {
                     "lexical".into(),
                     SparseConfig {
                         modifier: "idf".into(),
+                        index: Some(Placement::new(memory)),
                     },
                 )])
             });
@@ -420,6 +466,7 @@ impl Client {
                 hnsw_config: Hnsw {
                     m: 16,
                     ef_construct: 200,
+                    placement: Placement::new(memory),
                 },
             };
             // A second API process may create the same collection. Always inspect it afterward.
@@ -428,7 +475,7 @@ impl Client {
             return Err(failure());
         }
         let info: Info = self.call(Method::GET, &path, None::<&()>).await?;
-        let fields = schema_fields(&info, dimensions)?;
+        let fields = schema_fields(&info, dimensions, memory)?;
         for &(field_name, field_schema) in fields {
             if let Some(installed) = info.payload_schema.get(field_name) {
                 if installed.data_type != field_schema {

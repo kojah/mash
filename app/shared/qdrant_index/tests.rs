@@ -1,6 +1,7 @@
 use super::*;
 use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
 use std::io::Write;
+mod memory;
 
 struct Fixture {
     store: Store,
@@ -9,6 +10,10 @@ struct Fixture {
 }
 impl Fixture {
     async fn new(index: VectorIndex) -> Self {
+        Self::with_memory(index, MemoryTier::Cached).await
+    }
+
+    async fn with_memory(index: VectorIndex, memory: MemoryTier) -> Self {
         let mut random = [0u8; 16];
         getrandom::fill(&mut random).unwrap();
         let group = format!("qdrant-test-{}", hex::encode(random));
@@ -19,7 +24,7 @@ impl Fixture {
             generation: crate::semantic::model_space("test", 4),
             dimensions: 4,
         };
-        let store = Store::connect(&url, None, &[group], 4, 64 * 1024 * 1024, index)
+        let store = Store::connect(&url, None, &[group], 4, 64 * 1024 * 1024, index, memory)
             .await
             .unwrap();
         Self {
@@ -87,21 +92,22 @@ impl Fixture {
         }
         file
     }
+    fn query(&self) -> protocol::Search {
+        protocol::Search {
+            unit: crate::search_results::SearchUnit::Messages,
+            query: "needle".into(),
+            generation: self.identity.generation.clone(),
+            vector: vec![127.0, 0.0, 0.0, 0.0],
+            provider: None,
+            days: None,
+            exclude_self: false,
+            filter: None,
+        }
+    }
+
     async fn search(&self) -> protocol::Candidates {
         self.store
-            .search(
-                &self.identity,
-                protocol::Search {
-                    unit: crate::search_results::SearchUnit::Messages,
-                    query: "needle".into(),
-                    generation: self.identity.generation.clone(),
-                    vector: vec![127.0, 0.0, 0.0, 0.0],
-                    provider: None,
-                    days: None,
-                    exclude_self: false,
-                    filter: None,
-                },
-            )
+            .search(&self.identity, self.query())
             .await
             .unwrap()
     }
@@ -216,7 +222,8 @@ async fn qdrant_reopen_schema_mismatch_and_failed_upload_preserve_published_data
             std::slice::from_ref(&fixture.identity.group_id),
             8,
             64 * 1024 * 1024,
-            VectorIndex::default()
+            VectorIndex::default(),
+            MemoryTier::Cached,
         )
         .await
         .is_err()
@@ -228,6 +235,7 @@ async fn qdrant_reopen_schema_mismatch_and_failed_upload_preserve_published_data
         4,
         64 * 1024 * 1024,
         VectorIndex::Hnsw { ef_runtime: 200 },
+        MemoryTier::Cached,
     )
     .await
     .unwrap();
@@ -317,6 +325,7 @@ async fn qdrant_rejects_old_server_before_writes_and_sends_key_only_to_origin() 
         4,
         1024,
         VectorIndex::default(),
+        MemoryTier::Cached,
     )
     .await;
     let error = result

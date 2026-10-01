@@ -33,6 +33,8 @@ pub(super) struct Configuration {
     pub(super) qdrant_max_node_mib: usize,
     #[serde(default)]
     pub(super) qdrant_vector_index: qdrant_index::VectorIndex,
+    #[serde(default)]
+    pub(super) qdrant_memory: qdrant_index::MemoryTier,
     #[serde(default = "default_connections")]
     pub(super) max_connections: usize,
     #[serde(default = "default_redis_node_mib")]
@@ -108,6 +110,7 @@ pub(super) fn identities(
     if !matches!(config.backend, BackendChoice::Qdrant)
         && (config.qdrant_url_env.is_some()
             || config.qdrant_api_key_env.is_some()
+            || config.qdrant_memory != qdrant_index::MemoryTier::default()
             || config.qdrant_vector_index != qdrant_index::VectorIndex::default())
     {
         return Err(AppError::configuration(
