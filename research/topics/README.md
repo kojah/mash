@@ -846,6 +846,15 @@ Token-window support and abstentions are explicit. Recency wins cited-record
 retrieval but fails some narrowing/deferred references; retrieving a rejected
 proposal is not endorsement. Fine accepted-passage selection remains unimplemented.
 
+The [two-axis passage diagnostic](../../benchmarks/2026-10-01-two-axis-passage-scope.md)
+uses `passage_scope.py` for exact source/gap coverage and Unicode/UTF-8 coordinates,
+then `passage_ranking.py` and `compare_passage_ranking.py` for repeatable controls.
+It separates topicality from requested scope: rejected work can remain topical,
+and mixed paragraphs cannot become fabricated accepted evidence. Six source pairs
+from four known failures are reviewed completely; other candidate records remain
+unreviewed. Current-user cosine helps some top3 results but misses concrete details
+at top1; no automatic selector or production topic method is selected.
+
 Run lab input-boundary tests:
 
 ```bash

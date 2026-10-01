@@ -1790,6 +1790,76 @@ Private final capture hashes are
 \path{ccccc17d0ef89b04a0da8d49f50ebaf053ee816ac54c8ac3f67209d3e5fbcf92}
 and \path{34b34ccc0ad3c7bd46a364ee664068d87684abd8df6d7fc450d4511f99caa120}.
 
+\subsection{Passage topicality versus requested scope}
+Freeze six source pairs from four observed record-ranking failures before passage
+scoring: narrowed easy/next-tier fixes, remaining versus completed work, deferred
+reorganization versus installation status, and rejection of compatibility migration.
+This is a post-ranking, oracle cited/nearest-source shortlist in one exposed Codex
+group, not representative or held-out evaluation. A single coding assistant reads
+complete sources and annotates every structural unit; rationales/labels never enter
+segmentation or scoring. Independent human intent truth remains unavailable.
+
+Record two axes: topical/background/procedure/metadata relevance and
+included/excluded/mixed/unspecified requested scope (not-applicable for nontopical
+units). Rejected proposals can still be topical. Keep-together constraints need not
+request splitting. Preserve all units and structural gaps with exact Unicode
+code-point and UTF-8 byte offsets and source digests; do not rewrite mixed evidence.
+The six pairs contain 74 units: 39 topical/included, two topical/mixed, sixteen
+background, twelve procedure and five metadata. Both the broad all-cases
+interpretation and migration proposal remain indivisible mixed paragraphs.
+Whole-unit acceptance or topic deletion would discard this distinction.
+
+Compare current-user, preceding-user, captured-user-chain cosine and recency at
+fixed top1/top3. Recency uses newest record then source reading order; cosine ties
+use manifest source order/unit index. Reuse the offline singleton, one-thread
+MiniLM encoder with strict 2--512-token support and no truncation. All candidate
+units fit (maximum encoded input 109 tokens). Prior-user/chain support is missing
+for the remaining-work anchor; abstain without query fallback.
+\begin{center}
+\begin{tabular}{lrrrrr}
+\hline
+Mode & Anchors & Top3 returned & Topical & Included & Mixed \\
+\hline
+Recency & 4 & 10 & 2 & 0 & 2 \\
+Current user & 4 & 10 & 7 & 5 & 2 \\
+Preceding user & 3 & 7 & 2 & 0 & 2 \\
+User chain & 3 & 7 & 2 & 0 & 2 \\
+\hline
+\end{tabular}
+\end{center}
+On the common three-anchor support, current-user top3 has five topical/three
+included/two mixed among seven returned; each other mode has two topical/zero
+included/two mixed among seven. A one-unit migration source returns only one
+candidate even at top3. Different own-support denominators are not equal workloads.
+
+Current-user top1 reaches only one included unit across four cases. It prefers
+easy-fix/remaining-work headings over concrete details, while top3 recovers some
+scope. For deferred reorganization, prior-user pooling favors the intervening
+installation task. Mixed migration evidence cannot be resolved by ranking alone.
+Unlike record-level recency, passage ranking evaluates scope-bearing units, so the
+results are not contradictory. Next compare bounded structural section associations
+with standalone units, retaining exact child provenance and explicit exclusions.
+No phrase-specific rules, automatic endorsement or production selector follows.
+
+Two manifests are byte-identical; two fresh rankings match every nonmeasurement
+field including scores, models, source hashes, complete method/unit coverage and
+support decisions. Each makes 81 inference calls with 129 cache hits: 138.64--145.74
+ms inference and 343.05--344.52 ms total after imports. These experimental four-case
+costs include model setup/validation, not ingestion or production latency gates.
+No generative/remote model calls occur; no memory gate is established. Additional
+encoding still requires complete-ingestion and matched quality justification.
+The 146-test Python lab verifies offsets/gaps, topical rejection, intact causal
+source, annotations, complete ranks, abstentions and score drift; Rust parity CI
+remains unimplemented. All-source review for twenty-one anchors is still pending.
+
+Private manifest SHA256 is
+\path{95970be91022b27e85660e2027ad70e7c66aa2c2e817463c332aff6408e484db};
+review SHA256 is
+\path{3c2deddffe46485a902b9692bea5347f4e832380eaef34fc8c73635ef9f160d1}.
+Ranking hashes are
+\path{cd8f1ebb5f8c9bef1d222180a9e6c87cc5cc0331d6b23c2043125789d05d6d1a}
+and \path{3e05c9f0ece52a2623b8e4f917cc6b4ec589ab9d88fb82ed86cfadfad8fc6920}.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

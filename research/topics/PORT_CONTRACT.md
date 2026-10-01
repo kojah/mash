@@ -27,6 +27,13 @@ non-ASCII whitespace and embedded code. Convert only at valid character
 boundaries; reject offsets inside a UTF-8 character. Do not confuse either form
 with UTF-16 code units, graphemes or tokenizer offsets.
 
+Keep topical relevance separate from requested scope/stance wherever the selected
+method represents them. Rejected proposals can still be topic evidence, and mixed
+units must not become implicitly accepted passages. Fixtures must preserve both
+decisions, including exclusions and abstentions; matching a source record alone
+does not prove equivalent context selection. The two-axis development diagnostic
+is not a selected production classifier or a substitute for independent judgments.
+
 The reference runner and Rust runner must emit the same versioned stage schema.
 The differential comparator reports the first mismatching stage, source fixture,
 expected/actual identities and bounded numeric differences. Compare memberships
