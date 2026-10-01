@@ -1,6 +1,7 @@
 //! Derived topic text; canonical history and stored search vectors stay intact.
 mod framing;
 mod reorder;
+pub(super) mod runtime_context;
 use super::{Thread, labels, names::Labeler, normalize};
 use crate::AppError;
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,14 @@ enum Projection<'a> {
 }
 
 fn project(text: &str) -> Projection<'_> {
+    project_with_policy(text, runtime_context::policy())
+}
+
+fn project_with_policy(text: &str, policy: runtime_context::Policy) -> Projection<'_> {
     let trimmed = text.trim();
+    if runtime_context::omit(trimmed, policy) {
+        return Projection::Omit;
+    }
     if delivery_only(trimmed) || !labels::substantive(text) {
         return Projection::Omit;
     }
@@ -142,6 +150,8 @@ fn reply_projection(text: &str) -> Projection<'_> {
 
 #[derive(Serialize)]
 pub(super) struct Summary {
+    runtime_context_policy: runtime_context::Policy,
+    omitted_skill_documents: usize,
     omitted_messages: usize,
     projected_messages: usize,
     deduplicated_messages: usize,
@@ -155,6 +165,7 @@ struct Plan {
     sources: Vec<super::provenance::Source>,
     projected: Vec<(usize, usize)>,
     omitted: usize,
+    omitted_skill_documents: usize,
     deduplicated: usize,
 }
 
@@ -163,7 +174,10 @@ struct Preparation {
     texts: Vec<String>,
 }
 
-fn prepare(threads: &BTreeMap<String, Thread>) -> Result<Preparation, AppError> {
+fn prepare(
+    threads: &BTreeMap<String, Thread>,
+    policy: runtime_context::Policy,
+) -> Result<Preparation, AppError> {
     let mut texts = Vec::new();
     let mut seen = BTreeMap::new();
     let mut plans = Vec::new();
@@ -178,12 +192,17 @@ fn prepare(threads: &BTreeMap<String, Thread>) -> Result<Preparation, AppError> 
             sources: Vec::new(),
             projected: Vec::new(),
             omitted: 0,
+            omitted_skill_documents: 0,
             deduplicated: 0,
         };
         let mut sources_seen = BTreeSet::new();
         for (source, message) in thread.user_sources.iter().zip(&thread.user_messages) {
-            match project(&source.text) {
-                Projection::Omit => plan.omitted += 1,
+            match project_with_policy(&source.text, policy) {
+                Projection::Omit => {
+                    plan.omitted += 1;
+                    plan.omitted_skill_documents +=
+                        usize::from(runtime_context::omit(source.text.trim(), policy));
+                }
                 Projection::Keep(text) => {
                     if !sources_seen.insert(text.to_owned()) {
                         plan.deduplicated += 1;
@@ -231,7 +250,7 @@ pub(super) fn clean(
     mut labeler: Option<&mut Labeler>,
 ) -> Result<Summary, AppError> {
     let start = Instant::now();
-    let Preparation { plans, texts } = prepare(threads)?;
+    let Preparation { plans, texts } = prepare(threads, runtime_context::policy())?;
     let mut vectors = Vec::new();
     if !texts.is_empty() {
         let labeler = labeler.as_mut().ok_or_else(|| {
@@ -255,6 +274,7 @@ pub(super) fn clean(
     let mut omitted = 0;
     let mut projected = 0;
     let mut deduplicated = 0;
+    let mut omitted_skill_documents = 0;
     for plan in plans {
         let mut messages = plan.messages;
         for (message, vector) in &plan.projected {
@@ -269,8 +289,11 @@ pub(super) fn clean(
         omitted += plan.omitted;
         projected += plan.projected.len();
         deduplicated += plan.deduplicated;
+        omitted_skill_documents += plan.omitted_skill_documents;
     }
     Ok(Summary {
+        runtime_context_policy: runtime_context::policy(),
+        omitted_skill_documents,
         omitted_messages: omitted,
         projected_messages: projected,
         deduplicated_messages: deduplicated,

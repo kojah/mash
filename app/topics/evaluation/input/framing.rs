@@ -1,5 +1,5 @@
 //! Recognize complete generated envelopes while preserving unknown evidence.
-mod environment;
+pub(super) mod environment;
 
 const MAXIMUM_BYTES: usize = 65_536;
 

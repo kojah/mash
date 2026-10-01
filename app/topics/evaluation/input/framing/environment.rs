@@ -1,6 +1,6 @@
 //! Small recognizer for the observed context schema; unknown variants survive.
 
-pub(super) fn absolute_path(path: &str) -> bool {
+pub(in crate::topics::evaluation::input) fn absolute_path(path: &str) -> bool {
     path.starts_with('/') && !path.contains(['<', '>', '\n', '\r']) && path.len() <= 4096
 }
 

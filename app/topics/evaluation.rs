@@ -317,6 +317,7 @@ struct Cluster {
 }
 #[derive(Serialize)]
 struct Report {
+    runtime_context_policy: input::runtime_context::Policy,
     discovery_algorithm: discovery::Algorithm,
     discovery_input_fingerprint: String,
     extraction_ms: f64,
@@ -364,6 +365,7 @@ struct Report {
 
 #[derive(Serialize)]
 struct RejectedRun {
+    runtime_context_policy: input::runtime_context::Policy,
     discovery_algorithm: discovery::Algorithm,
     mode: Mode,
     label_representation_policy: representatives::Policy,
@@ -467,6 +469,7 @@ fn run(
     }
     let label_ms = start.elapsed().as_secs_f64() * 1000.0;
     Ok(Report {
+        runtime_context_policy: input::runtime_context::policy(),
         discovery_algorithm: algorithm,
         discovery_input_fingerprint: input_fingerprint,
         extraction_ms,
@@ -592,6 +595,7 @@ fn benchmark_topic_discovery() {
                     Ok(report) => report,
                     Err(error) => {
                         let rejected = RejectedRun {
+                            runtime_context_policy: input::runtime_context::policy(),
                             discovery_algorithm: discovery::algorithm(),
                             label_representation_policy: representatives::policy(),
                             label_text: labels::text_mode(),
