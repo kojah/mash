@@ -10,6 +10,12 @@ use std::collections::BTreeMap;
 
 pub(super) type Terms = BTreeMap<String, u64>;
 
+/// Complete option approvals can borrow verified reply context without dropping
+/// the user's choice or mistaking a literal/technical request for an approval.
+pub(super) fn option_reply(text: &str) -> bool {
+    projection::option_only(text)
+}
+
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum DiscourseMode {

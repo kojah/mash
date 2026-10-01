@@ -62,6 +62,89 @@ fn only_generic_deictic_requests_borrow_context() {
 }
 
 #[test]
+fn option_context_is_opt_in_and_does_not_borrow_for_technical_or_quoted_requests() {
+    for text in [
+        "sounds good let’s do (A)",
+        "sure let’s do (1) and (2)",
+        "alright. let’s do (2), followed by (1) overnight then",
+        "(1) yes let’s do it.",
+    ] {
+        assert!(request_kind(text, Policy::DeicticOnly).is_none());
+        assert!(matches!(
+            request_kind(text, Policy::DeicticAndOptions),
+            Some(RequestKind::OptionApproval)
+        ));
+    }
+    for text in [
+        "sounds good let’s do (A) and fix Redis",
+        "let’s do (Go)",
+        "let’s do (1) in /tmp",
+        "Explain `let’s do (A)`",
+        "let’s do (A + B)",
+        "let’s do (A) + (B)",
+        "use option 2 for this",
+        "hello world",
+        "let’s do (A) and",
+    ] {
+        assert!(
+            request_kind(text, Policy::DeicticAndOptions).is_none(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn option_approval_borrows_only_its_verified_following_answer() {
+    let (connection, _) = database(Some(-1));
+    let text = "sounds good let’s do (A)";
+    connection
+        .execute("UPDATE messages SET content=?1 WHERE ordinal=0", [text])
+        .unwrap();
+    let source = connection.query_row("SELECT id AS message_id,ordinal,content AS canonical_content,false AS stored_projection FROM messages WHERE ordinal=0", [], |r| Source::stored(r, text.into())).unwrap();
+    insert(
+        &connection,
+        1,
+        "assistant",
+        "Tool Bash: opaque payload",
+        Some(""),
+        Some(0),
+    );
+    insert(&connection, 2, "user", "opaque result", Some(""), Some(1));
+    insert(&connection, 3, "assistant", &answer(), None, Some(2));
+    insert(&connection, 4, "user", "Now compare Redis.", None, Some(3));
+    insert(
+        &connection,
+        5,
+        "assistant",
+        &"Redis unrelated answer. ".repeat(40),
+        None,
+        Some(4),
+    );
+    let Choice::Answer {
+        anchor,
+        answer: selected,
+        complete,
+    } = selection::read(&connection, "thread", &source).unwrap()
+    else {
+        panic!("expected verified answer")
+    };
+    let contextual = source.with_context(&anchor, &selected, complete).unwrap();
+    assert!(contextual.text.starts_with(text));
+    assert!(contextual.text.contains("deadlock"));
+    assert!(!contextual.text.contains("Redis"));
+    assert_eq!(selected.anchor(), Some(("message-3", 3)));
+    assert_eq!(source.text, text);
+    insert(&connection, 6, "assistant", &answer(), None, Some(0));
+    connection
+        .execute("DELETE FROM messages WHERE ordinal BETWEEN 4 AND 5", [])
+        .unwrap();
+    assert!(matches!(
+        selection::read(&connection, "thread", &source).unwrap(),
+        Choice::Skip(Skip::AmbiguousBranch)
+    ));
+}
+
+#[test]
 fn empty_tool_envelopes_do_not_end_a_turn_but_unembedded_requests_do() {
     let (connection, source) = database(None);
     insert(&connection, 1, "user", "tool payload", Some(""), None);

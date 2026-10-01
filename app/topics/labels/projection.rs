@@ -104,7 +104,7 @@ fn choices(tokens: &[Token]) -> bool {
 /// Recognize complete short option acknowledgments, not an arbitrary request
 /// containing a number. Unknown subjects, quoted code and malformed lists keep
 /// their original labels. The indexing/discovery admission parser is unchanged.
-fn option_only(text: &str) -> bool {
+pub(super) fn option_only(text: &str) -> bool {
     if text.chars().count() > 256
         || text.contains(['`', '"', '-', '/', '+', '*', '=', '<', '>', '[', ']'])
     {

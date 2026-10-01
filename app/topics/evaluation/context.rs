@@ -29,8 +29,49 @@ enum Choice {
     Skip(Skip),
 }
 
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Policy {
+    DeicticOnly,
+    DeicticAndOptions,
+}
+
+fn policy() -> Policy {
+    if std::env::var_os("MASH_TEST_TOPIC_OPTION_CONTEXT").is_some() {
+        Policy::DeicticAndOptions
+    } else {
+        Policy::DeicticOnly
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum RequestKind {
+    Deictic,
+    OptionApproval,
+}
+
+#[derive(Default, Serialize)]
+struct Counts {
+    eligible: usize,
+    enriched: usize,
+    skipped: BTreeMap<Skip, usize>,
+}
+
+fn request_kind(text: &str, policy: Policy) -> Option<RequestKind> {
+    if eligible(text) {
+        Some(RequestKind::Deictic)
+    } else if matches!(policy, Policy::DeicticAndOptions) && labels::option_reply(text) {
+        Some(RequestKind::OptionApproval)
+    } else {
+        None
+    }
+}
+
 #[derive(Serialize)]
 pub(super) struct Summary {
+    policy: Policy,
+    request_kinds: BTreeMap<RequestKind, Counts>,
     eligible_requests: usize,
     enriched_requests: usize,
     unique_embeddings: usize,
@@ -139,6 +180,8 @@ pub(super) fn enrich(
         .unchecked_transaction()
         .map_err(AppError::database)?;
     let mut summary = Summary {
+        policy: policy(),
+        request_kinds: BTreeMap::new(),
         eligible_requests: 0,
         enriched_requests: 0,
         unique_embeddings: 0,
@@ -153,10 +196,11 @@ pub(super) fn enrich(
             return Err(AppError::usage("context source alignment mismatch"));
         }
         for (index, source) in thread.user_sources.iter().enumerate() {
-            if !eligible(&source.text) {
+            let Some(kind) = request_kind(&source.text, summary.policy) else {
                 continue;
-            }
+            };
             summary.eligible_requests += 1;
+            summary.request_kinds.entry(kind).or_default().eligible += 1;
             let (anchor, answer, complete) = match selection::read(&transaction, id, source)? {
                 Choice::Answer {
                     anchor,
@@ -165,6 +209,13 @@ pub(super) fn enrich(
                 } => (anchor, answer, complete),
                 Choice::Skip(reason) => {
                     *summary.skipped.entry(reason).or_default() += 1;
+                    *summary
+                        .request_kinds
+                        .entry(kind)
+                        .or_default()
+                        .skipped
+                        .entry(reason)
+                        .or_default() += 1;
                     continue;
                 }
             };
@@ -183,6 +234,7 @@ pub(super) fn enrich(
                 embedding,
                 source,
             });
+            summary.request_kinds.entry(kind).or_default().enriched += 1;
         }
     }
     drop(transaction);
