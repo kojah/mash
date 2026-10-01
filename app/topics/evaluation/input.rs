@@ -1,4 +1,5 @@
 //! Derived topic text; canonical history and stored search vectors stay intact.
+mod reorder;
 use super::{Thread, labels, names::Labeler, normalize};
 use crate::AppError;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,9 @@ fn project(text: &str) -> Projection<'_> {
     let trimmed = text.trim();
     if delivery_only(trimmed) || !labels::substantive(text) {
         return Projection::Omit;
+    }
+    if let Some(text) = reorder::project(text) {
+        return Projection::Replace(text);
     }
     if trimmed.starts_with("<send_user_message_question_reply>") {
         return reply_projection(text);
@@ -289,7 +293,9 @@ pub(super) fn clean(
         let labeler = labeler.as_mut().ok_or_else(|| {
             AppError::model("topic text projection requires explicit compatible local models")
         })?;
-        for batch in texts.chunks(64) {
+        // Long rewritten descriptions need one CPU batch per wave, avoiding
+        // simultaneous long-sequence workspaces in multiple model sessions.
+        for batch in texts.chunks(8) {
             let references: Vec<_> = batch.iter().map(String::as_str).collect();
             let embedded = labeler.project_vectors(&references)?;
             if embedded.len() != batch.len() {
