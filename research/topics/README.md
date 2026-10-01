@@ -821,6 +821,15 @@ PRIVATE.json -- PYTHON research/topics/RUNNER.py ...` for Linux target-only
 20 ms RSS/PSS sampling. Sampled peaks are lower bounds; timings may be perturbed.
 This does not replace complete-ingestion or child-process measurements.
 
+The [fresh referential context audit](../../benchmarks/2026-10-01-fresh-referential-context-audit.md)
+uses `packet_contexts.py --database ... --partition-report ... --packets ...
+--review ... --output ...` to validate complete original source groups, capture
+prior reviewed referential anchors and separately audit current native identities.
+The original three-user/64-record limits remain unchanged. Eighteen of21 intervals
+hit the raw-record limit despite small displayed text; this motivates a separate
+tool-aware retrieval experiment. Native identity verification is not full causal
+order or semantic reference verification, and no resolution judgments are claimed.
+
 Run lab input-boundary tests:
 
 ```bash
