@@ -3,6 +3,7 @@ mod ancestry;
 mod anchored;
 mod anchors;
 mod assignments;
+mod context;
 mod discovery;
 mod input;
 mod names;
@@ -536,6 +537,14 @@ fn benchmark_topic_discovery() {
         let summary = input::clean(&mut threads, labeler.as_mut()).unwrap();
         std::fs::write(
             output.join("input-summary.json"),
+            serde_json::to_vec_pretty(&summary).unwrap(),
+        )
+        .unwrap();
+    }
+    if std::env::var_os("MASH_TEST_TOPIC_CONTEXT").is_some() {
+        let summary = context::enrich(&database, &mut threads, labeler.as_mut()).unwrap();
+        std::fs::write(
+            output.join("context-summary.json"),
             serde_json::to_vec_pretty(&summary).unwrap(),
         )
         .unwrap();

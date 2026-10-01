@@ -149,6 +149,7 @@ enum State {
 #[serde(rename_all = "snake_case")]
 enum SourceScope {
     RetainedEmbeddedUserMessages,
+    ContextualUserRequests,
 }
 
 #[derive(Serialize)]
@@ -189,7 +190,7 @@ impl<'a> Collector<'a> {
             text_remaining: MAXIMUM_TEXT_BYTES,
             refs_remaining: MAXIMUM_REFERENCES,
             report: Report {
-                schema_version: 2,
+                schema_version: 3,
                 state: if supported {
                     State::UserEvidence
                 } else {
@@ -230,14 +231,19 @@ impl<'a> Collector<'a> {
         scores.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         scores.truncate(MAXIMUM_TOPICS);
         let previous_text_remaining = self.text_remaining;
-        let sources: Vec<_> = thread
-            .user_sources
-            .iter()
-            .take(self.refs_remaining)
-            .map(|s| source::Reference::capture(s, &mut self.text_remaining))
-            .collect();
-        self.refs_remaining -= sources.len();
-        self.report.source_references += sources.len();
+        let mut sources = Vec::new();
+        for source in &thread.user_sources {
+            let cost = source.reference_cost();
+            if cost > self.refs_remaining {
+                break;
+            }
+            self.refs_remaining -= cost;
+            self.report.source_references += cost;
+            if cost == 2 {
+                self.report.source_scope = SourceScope::ContextualUserRequests;
+            }
+            sources.push(source::Reference::capture(source, &mut self.text_remaining));
+        }
         self.report.text_bytes += previous_text_remaining - self.text_remaining;
         let topics = scores
             .into_iter()

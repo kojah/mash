@@ -1,5 +1,19 @@
+use crate::AppError;
 use rusqlite::Row;
 use serde::Serialize;
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub(in crate::topics::evaluation) struct Identity {
+    message_id: String,
+    ordinal: i64,
+    canonical_hash: [u8; 32],
+}
+
+impl Identity {
+    fn valid(&self) -> bool {
+        !self.message_id.is_empty() && self.message_id.len() <= 256 && self.ordinal >= 0
+    }
+}
 
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -8,6 +22,16 @@ pub(in crate::topics::evaluation) enum Origin {
         message_id: String,
         ordinal: i64,
         canonical_hash: [u8; 32],
+    },
+    Contextual {
+        user: Identity,
+        assistant: Identity,
+        user_text_chars: usize,
+        user_derived_hash: [u8; 32],
+        assistant_text_kind: TextKind,
+        assistant_prefix_chars: usize,
+        assistant_prefix_hash: [u8; 32],
+        assistant_prefix_complete: bool,
     },
     Synthetic,
 }
@@ -18,6 +42,7 @@ pub(in crate::topics::evaluation) enum TextKind {
     Canonical,
     SearchProjection,
     TopicProjection,
+    ContextualRequest,
     Synthetic,
 }
 
@@ -29,6 +54,78 @@ pub(in crate::topics::evaluation) struct Source {
 }
 
 impl Source {
+    fn identity(&self) -> Option<Identity> {
+        let Origin::Stored {
+            message_id,
+            ordinal,
+            canonical_hash,
+        } = &self.origin
+        else {
+            return None;
+        };
+        Some(Identity {
+            message_id: message_id.clone(),
+            ordinal: *ordinal,
+            canonical_hash: *canonical_hash,
+        })
+    }
+
+    pub(in crate::topics::evaluation) fn anchor(&self) -> Option<(&str, i64)> {
+        match &self.origin {
+            Origin::Stored {
+                message_id,
+                ordinal,
+                ..
+            } => Some((message_id, *ordinal)),
+            _ => None,
+        }
+    }
+
+    pub(in crate::topics::evaluation) fn with_context(
+        &self,
+        anchor: &Self,
+        answer: &Self,
+        answer_complete: bool,
+    ) -> Result<Self, AppError> {
+        let user = self
+            .identity()
+            .ok_or_else(|| AppError::usage("context requires a stored user anchor"))?;
+        let assistant = answer
+            .identity()
+            .ok_or_else(|| AppError::usage("context requires a stored assistant source"))?;
+        if Some(&user) != anchor.identity().as_ref() || assistant.ordinal <= user.ordinal {
+            return Err(AppError::database_data(
+                "topic context source identity changed",
+            ));
+        }
+        let user_text_chars = self.text.chars().count();
+        let assistant_prefix_chars = answer.text.chars().count();
+        if user_text_chars > 256 || !(256..=2048).contains(&assistant_prefix_chars) {
+            return Err(AppError::usage("invalid topic context text bounds"));
+        }
+        Ok(Self {
+            text: format!("{}\n\n{}", self.text, answer.text),
+            kind: TextKind::ContextualRequest,
+            origin: Origin::Contextual {
+                user,
+                assistant,
+                user_text_chars,
+                user_derived_hash: *blake3::hash(self.text.as_bytes()).as_bytes(),
+                assistant_text_kind: answer.kind,
+                assistant_prefix_chars,
+                assistant_prefix_hash: *blake3::hash(answer.text.as_bytes()).as_bytes(),
+                assistant_prefix_complete: answer_complete,
+            },
+        })
+    }
+
+    pub(in crate::topics::evaluation) fn reference_cost(&self) -> usize {
+        if matches!(self.origin, Origin::Contextual { .. }) {
+            2
+        } else {
+            1
+        }
+    }
     pub(in crate::topics::evaluation) fn stored(
         row: &Row<'_>,
         text: String,
@@ -64,6 +161,19 @@ impl Source {
                 ordinal,
                 ..
             } => !message_id.is_empty() && message_id.len() <= 256 && *ordinal >= 0,
+            Origin::Contextual {
+                user,
+                assistant,
+                user_text_chars,
+                assistant_prefix_chars,
+                ..
+            } => {
+                user.valid()
+                    && assistant.valid()
+                    && assistant.ordinal > user.ordinal
+                    && *user_text_chars <= 256
+                    && (256..=2048).contains(assistant_prefix_chars)
+            }
             Origin::Synthetic => true,
         }
     }
@@ -115,6 +225,9 @@ impl Reference {
     }
 
     pub(super) fn stored(&self) -> bool {
-        matches!(self.origin, Origin::Stored { .. })
+        matches!(
+            self.origin,
+            Origin::Stored { .. } | Origin::Contextual { .. }
+        )
     }
 }

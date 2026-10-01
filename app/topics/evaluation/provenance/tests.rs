@@ -213,3 +213,47 @@ fn topic_cap_and_segment_sampling_report_what_was_omitted() {
         assert!(!topic.samples[0].complete_canonical_references);
     }
 }
+
+#[test]
+fn contextual_origins_share_the_reference_budget_without_losing_alignment() {
+    let user = stored("what is this pipeline?", 0);
+    let reply = stored(&"deadlock detection and runtime validation ".repeat(16), 1);
+    let contextual = user.with_context(&user, &reply, true).unwrap();
+    let selection = Selection::parse("threads=['thread']").unwrap();
+    let mut thread = super::super::anchored::thread(&[0]);
+    thread.user_sources = vec![contextual];
+    for budget in [1, 2] {
+        let mut collector = Collector::new(&selection, Mode::UserSegments);
+        collector.refs_remaining = budget;
+        let mut scores = Scores::default();
+        scores.add(SegmentScore::new(0, 0, 1, 0.9, 0.9, 1.0));
+        collector.record("thread", &thread, vec![(TopicId(0), 0.9, scores)]);
+        let report = collector.finish();
+        let evidence = &report.threads["thread"];
+        assert_eq!(evidence.sources.len(), usize::from(budget == 2));
+        assert_eq!(report.source_references, if budget == 2 { 2 } else { 0 });
+        assert_eq!(evidence.omitted_sources, usize::from(budget == 1));
+        assert_eq!(
+            evidence.topics[0].samples[0].complete_canonical_references,
+            budget == 2
+        );
+        assert!(!evidence.topics[0].samples[0].complete_derived_text);
+        if budget == 2 {
+            assert!(matches!(
+                report.source_scope,
+                SourceScope::ContextualUserRequests
+            ));
+            assert!(matches!(
+                evidence.sources[0].origin,
+                Origin::Contextual {
+                    assistant_prefix_complete: true,
+                    ..
+                }
+            ));
+            assert_eq!(
+                evidence.sources[0].derived_hash,
+                *blake3::hash(thread.user_sources[0].text.as_bytes()).as_bytes()
+            );
+        }
+    }
+}
