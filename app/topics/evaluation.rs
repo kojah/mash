@@ -1,5 +1,6 @@
 //! Read-only real-history diagnostic; private reports never enter stdout/traces.
 mod anchored;
+mod anchors;
 mod assignments;
 mod names;
 use super::segments::{Builder, Segment};
@@ -145,6 +146,7 @@ enum Mode {
     UserGroupedLoose,
     UserGroupedStrict,
     UserAnchored,
+    UserRepresentatives,
 }
 
 impl Mode {
@@ -155,6 +157,7 @@ impl Mode {
                 | Self::UserGroupedLoose
                 | Self::UserGroupedStrict
                 | Self::UserAnchored
+                | Self::UserRepresentatives
         )
     }
     fn group_similarity(self) -> Option<f64> {
@@ -206,7 +209,8 @@ fn thread_samples(thread: &Thread, mode: Mode) -> Vec<Segment> {
         Mode::UserSegments
         | Mode::UserGroupedLoose
         | Mode::UserGroupedStrict
-        | Mode::UserAnchored => {
+        | Mode::UserAnchored
+        | Mode::UserRepresentatives => {
             let mut builder = Builder::new(384, 8, 0.75).unwrap();
             let mut output = Vec::new();
             for message in &thread.user_messages {
@@ -393,7 +397,13 @@ fn run(
         } else {
             mode
         };
-        for segment in thread_samples(thread, discovery_mode) {
+        let segments = thread_samples(thread, discovery_mode);
+        let segments = if matches!(mode, Mode::UserRepresentatives) {
+            anchors::select(&segments, 384, 4, 0.65)?
+        } else {
+            segments
+        };
+        for segment in segments {
             let vector = segment.vector;
             let mut hash = blake3::Hasher::new();
             for value in &vector {
@@ -476,7 +486,9 @@ fn benchmark_topic_discovery() {
     let mut labeler = names::Labeler::load(&generation).unwrap();
     assert!(!threads.is_empty());
     let holdout = std::env::var_os("MASH_TEST_TOPIC_HOLDOUT").is_some();
-    let modes: &[Mode] = if std::env::var_os("MASH_TEST_TOPIC_ANCHORED").is_some() {
+    let modes: &[Mode] = if std::env::var_os("MASH_TEST_TOPIC_REPRESENTATIVES").is_some() {
+        &[Mode::UserRepresentatives, Mode::UserAnchored]
+    } else if std::env::var_os("MASH_TEST_TOPIC_ANCHORED").is_some() {
         &[Mode::UserAnchored]
     } else if std::env::var_os("MASH_TEST_TOPIC_GROUPING").is_some() {
         &[Mode::UserGroupedLoose, Mode::UserGroupedStrict]

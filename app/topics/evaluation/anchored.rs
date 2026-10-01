@@ -57,3 +57,34 @@ fn thread_discovery_with_segment_assignment_preserves_secondary_topic_matches() 
     assert!(database.terms.iter().any(|term| term.text == "database"));
     assert!(!database.terms.iter().any(|term| term.text == "frontend"));
 }
+
+#[test]
+fn representative_discovery_covers_a_mixed_thread_without_single_topic_founders() {
+    let threads = BTreeMap::from([("mixed".into(), thread(&[0, 1]))]);
+    let report = run(
+        &threads,
+        "model-v1",
+        Mode::UserRepresentatives,
+        0.2,
+        false,
+        false,
+    )
+    .unwrap();
+    assert_eq!(report.samples, 2);
+    assert_eq!(report.memberships["mixed"].len(), 2);
+    // A whole-thread mean is below the assignment threshold of either subject
+    // when the mixed thread covers four unrelated axes.
+    let threads = BTreeMap::from([("mixed".into(), thread(&[0, 1, 2, 3]))]);
+    let anchored = run(&threads, "model-v1", Mode::UserAnchored, 0.2, false, false).unwrap();
+    assert!(anchored.memberships["mixed"].is_empty());
+    let representatives = run(
+        &threads,
+        "model-v1",
+        Mode::UserRepresentatives,
+        0.2,
+        false,
+        false,
+    )
+    .unwrap();
+    assert_eq!(representatives.memberships["mixed"].len(), 4);
+}
