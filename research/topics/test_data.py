@@ -10,7 +10,7 @@ import numpy as np
 from data import load
 
 
-class FrozenInputTests(unittest.TestCase):
+class FrozenInputFixture(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -35,6 +35,8 @@ class FrozenInputTests(unittest.TestCase):
                                (message, thread, ordinal))
                     db.execute("INSERT INTO message_embeddings VALUES (?,?,'frozen')", (message, vector))
 
+
+class FrozenInputTests(FrozenInputFixture):
     def test_preserves_groups_deduplicates_and_does_not_write(self):
         before = self.db.read_bytes()
         first = load(self.db, self.partition)

@@ -1,0 +1,275 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,booktabs}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+\setlength{\emergencystretch}{2em}
+\title{Multi-topic Modelling of LLM Chat Sessions for Guided Agent Search}
+\author{Authorship to be finalized}
+\date{Living research draft --- 1 October 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+We investigate how to organize histories of interactions with coding agents into
+overlapping, interpretable topics that can guide subsequent retrieval. Long
+sessions contain multiple subjects, while short replies may depend on context.
+The intended system must update incrementally, preserve source provenance, and
+support topic exploration and filtering without replacing ordinary search.
+This draft records the research protocol and initial exploratory experiments:
+twelve geometry controls on 664 independent threads and a small user-turn
+boundary pilot. These experiments expose tradeoffs in order sensitivity,
+abstention, broad clusters and oversegmentation. They do not yet establish a
+selected method, reliable topic quality, or improved agent search performance.
+\end{abstract}
+
+\section{Problem and research questions}
+A coding-agent session is not necessarily one document about one subject. A
+session may discuss implementation, diagnosis, tooling and unrelated planning.
+Conversely, a short approval can continue a substantive earlier discussion while
+carrying little standalone lexical evidence. Our target is a source-grounded
+collection of topic tags per thread, with meaningful ancestor inheritance and
+tools for browsing topics, finding candidate threads, and searching messages
+within those threads. A topic's discovery structure and its semantic taxonomy
+are distinct objects; an internal clustering node is not automatically a useful
+parent label.
+
+We ask: (RQ1) which conversation units preserve primary and secondary subjects;
+(RQ2) which discovery and representation methods produce specific, accurate
+overlapping tags; (RQ3) how quality changes with insertion order, incremental
+updates and provider; and (RQ4) whether topic guidance improves retrieval success
+and cost for agents compared with the existing hybrid search workflow. These
+are research questions, not claims already demonstrated. Novelty remains to be
+established through a fuller literature review.
+
+\section{Related work}
+DevGPT provides developer--ChatGPT conversations linked to software artifacts
+\cite{devgpt}. Its publicly shared conversations are useful external material,
+but their selection and tool-trace coverage differ from local coding histories.
+Contextual topic classification uses conversation history and dialogue-act
+features \cite{khatri}; this motivates context experiments rather than wholesale
+copying of assistant answers into every short user turn.
+
+Utterance-pair coherence models \cite{xing} and topic-aware representations
+\cite{gao} motivate evaluating dialogue episodes before clustering entire
+sessions. These learned approaches are not equivalent to a threshold on raw
+adjacent embedding similarity. BERTopic separates embedding-based discovery
+from class-based TF-IDF representation \cite{bertopic}; we accordingly evaluate
+label quality independently of discovery. Automatic coherence can disagree with
+human judgments \cite{hoyle}, so it is not our sole selection criterion.
+
+GRINCH uses rotation and grafting to revise an incremental hierarchy
+\cite{grinch}. Its theoretical order-independent recovery requires assumptions
+about linkage consistency; it does not establish accuracy on our embeddings.
+MemTree studies dynamic hierarchical memory \cite{memtree}. Its memory-retrieval
+evaluation is adjacent evidence, not validation of granular overlapping topic
+tags. Our initial BIRCH implementation uses the scikit-learn reference API
+\cite{sklearn}; the production choice remains open.
+
+\section{Experimental protocol}
+\subsection{Research sequence and evidence separation}
+The agreed workflow is literature compilation, approach shortlist, Python
+experiments with recorded results, method selection, then Rust implementation.
+The Python environment is isolated from the Rust application. Private source
+texts, native IDs and detailed assignments remain outside the Git repository;
+this manuscript contains aggregate results. An existing Rust prototype is not
+evidence that a topic feature is production ready.
+
+Development annotations and model selection must be separated from reserved
+evaluation. We intend to annotate primary and secondary subjects, irrelevant
+framing, context-dependent turns, episode boundaries and semantic parents,
+independently of candidate model outputs. Annotation uncertainty, incomplete
+source context and disagreements must be retained. Independent human review and
+inter-annotator agreement have not yet been completed. The boundary pilot below
+uses a single coding-assistant reviewer and is not a human ground-truth study.
+
+\subsection{Frozen data and reproducibility}
+The initial local snapshot contains 789 native threads from Codex and Claude
+Code, with 6,714 compatible stored user-message vectors. The controls remove 242
+duplicate searchable user texts within threads and select one representative
+for each canonical source group, removing 121 duplicate threads. The resulting
+cohort contains 664 independent threads. A frozen partition report supplies
+generation and canonical identities, not cleaned topic vectors.
+
+The reserved partition consists of groups whose first identity byte modulo five
+equals zero: 126 threads; held-out discovery uses the other 538. This partition
+is fixed before fitting. Full discovery is an exploratory control, and reserved
+coverage after full discovery is not a generalization measurement. Future
+independent test data may be necessary because the corpus has also been used in
+earlier exploratory development.
+
+Stored vectors are 384-dimensional signed-byte representations. Each vector is
+converted to floating point and normalized; each thread is represented by the
+normalized mean of its unique user vectors. No model inference occurs in these
+controls. The loader rejects incompatible dimensions/generations, missing groups,
+invalid vectors and a live SQLite WAL. It opens the snapshot read-only and hashes
+the source fields, vector bytes, generation and exact partition report for
+comparison integrity. A complete published embedding-model provenance and
+quantization specification remains a reproducibility task; generation identity
+alone is insufficient for an external researcher to regenerate the vectors.
+
+Runs use Python 3.11.15, NumPy 2.4.6 and scikit-learn 1.9.1 on the Linux Xenia
+host (KVM guest, 16 visible vCPUs, AMD EPYC 9645 reported by \texttt{lscpu},
+approximately 62.8 GiB guest RAM), with locked dependencies and one numeric CPU
+thread. These guest specifications do not imply dedicated physical CPU access.
+Each run starts a
+fresh process. Fit and label times exclude loading and interpreter startup;
+peak RSS includes them. Load isolation and broader hardware characterization remain
+to be added. No repeated-run latency distribution or confidence interval is
+claimed from a single forward run.
+
+\subsection{Initial geometry and label controls}
+We run three methods in full/held-out discovery and forward/reverse native
+thread order, giving twelve runs. BIRCH uses threshold 0.4, branching factor 64
+and no final global clustering. HDBSCAN uses Euclidean distance, minimum cluster
+size 5, minimum samples 5 and excess-of-mass selection. Average linkage uses
+cosine distance with cut threshold 0.3. Parameters are initial controls, not
+tuned to equivalent semantic quality. HDBSCAN and average linkage are offline
+comparators, not direct solutions to incremental maintenance.
+
+For the label control, we concatenate training texts by fitted cluster, count
+English-stopword-filtered unigrams and bigrams (maximum vocabulary 20,000), and
+rank terms using
+\begin{equation}
+ s_{t,c}=\frac{f_{t,c}}{\max(L_c,1)}
+          \log\left(1+\frac{\overline{L}}{\max(f_t,1)}\right),
+\end{equation}
+where $L_c$ is counted cluster length, $\overline{L}$ its mean across clusters,
+and $f_t$ total counted training frequency. We retain the top eight terms.
+Stopwords affect labels only, not stored embedding inputs. This is a c-TF-IDF
+control, not a full BERTopic pipeline or a validated naming method.
+
+We also record a common nearest normalized-centroid assignment at cosine
+similarity at least 0.7. This is an uncalibrated diagnostic, not native HDBSCAN
+prediction, overlapping assignment, or semantic correctness. Fit noise remains
+distinct from diagnostic centroid assignment.
+
+\section{Results and analysis}
+\subsection{Geometry controls}
+Table~\ref{tab:geometry} records forward-run counts/times and forward/reverse
+coassignment Jaccard. The latter compares sets of within-cluster training pairs,
+excluding noise. Empty pair unions must not be scored as perfect stability.
+Cluster size and noise qualify interpretation: broad merging or abstention can
+produce favorable stability without useful topics.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Method & Scope & Clusters & Noise & Largest & Fit ms & Label ms & Jaccard\\
+\midrule
+BIRCH & Full &166&0&104&30.8&1326.2&0.701\\
+BIRCH & Held-out &141&0&101&34.5&1202.3&0.933\\
+HDBSCAN & Full &40&225&36&192.7&896.3&0.983\\
+HDBSCAN & Held-out &31&205&34&115.6&868.6&0.953\\
+Average-link & Full &112&0&191&62.9&1254.7&1.000\\
+Average-link & Held-out &100&0&155&48.7&1232.3&1.000\\
+\bottomrule
+\end{tabular}
+\caption{Exploratory raw thread-mean controls, not quality-ranked methods.}
+\label{tab:geometry}
+\end{table}
+
+Forward peak process RSS ranges from 228.7 to 237.3 MiB. Held-out centroid
+coverage is 119/126 for BIRCH, 103/126 for HDBSCAN and 118/126 for average linkage.
+Coverage is not assignment accuracy. BIRCH's fast fit comes with order sensitivity
+in the full control. HDBSCAN's smaller clusters and substantial noise require
+checking rare-topic recall; average linkage's 191-member largest cluster needs
+semantic review. Labeling costs exceed fitting in these runs. This observation
+does not imply optimal label implementation or end-to-end indexing latency.
+GRINCH was not part of these twelve controls, and no winner is selected.
+
+\subsection{Earlier embedding-cleanup pilot}
+Before establishing the Python lab, a paired local-embedding pilot compared raw
+and conversationally cleaned inputs on two synthetic corpora (25 documents and
+21 positive queries each) and a source-reviewed short-request corpus (17 targets
+plus 100 provider-balanced distractors). Both singleton and document-batch
+embedding policies were checked. The real requests ranked first in all 17 cases
+under both input policies, leaving no measured improvement or headroom. Synthetic
+cases showed no aggregate gain and some near-tied ranking regressions. These
+measurements used dense quantized retrieval rather than the complete hybrid
+search pipeline, lacked independent exhaustive negative judgments, and cannot
+establish that cleaning improves either topics or end-to-end retrieval.
+Production embedding inputs remain unchanged. The detailed historical protocol
+and results are recorded in
+\path{benchmarks/2026-10-01-embedding-cleanup.md}; they are exploratory evidence,
+not part of the twelve Python geometry controls.
+
+\subsection{Exploratory user-turn boundary pilot}
+We select the first two eligible development threads per provider in native-ID
+order, requiring 6--20 nonempty searchable user turns and at most 1,500 characters
+per turn. This purposive bounded selection yields four threads, 33 turns and
+29 boundaries. It excludes reserved groups and is not representative random
+sampling. Empty search projections are omitted; nonempty unembedded turns are
+retained, and cosine predictors abstain on boundaries adjacent to missing
+vectors rather than bridging them silently.
+
+A single coding assistant reviews the user-only text sequence and records same
+subject, changed subject or uncertain judgments with rationales before running
+the current predictors. SHA256 pins the exact IDs, ordinals and searchable texts.
+Six boundaries are uncertain, leaving 23 judged boundaries with six changes.
+The reviewer has prior exposure to parts of the corpus; this is neither blinded
+human annotation nor an independent test set. Assistant responses and native
+branch structure are not reviewed here, so these judgments apply only to linear
+user-text presentation.
+
+Controls split every three user turns, split adjacent vectors below cosine 0.55,
+or split against the current segment's normalized mean below 0.55. The mean resets
+at a split or missing-vector boundary. The fixed-window predictor detects 2/6
+changes with five false positives (precision 0.286, recall 0.333). Both cosine
+controls detect 6/6 with fourteen false positives (precision 0.300, recall 1.000).
+No predictor abstains on a judged boundary in these selected cases. Uncertain
+judgments are excluded, not counted as correct predictions.
+
+At this fixed threshold, the cosine controls oversegment the reviewed user-only
+continuations. This motivates context-aware episode representations and boundary
+evaluation; it does not prove a learned segmentation method is better or justify
+a threshold selected on these examples. Label granularity itself needs clearer
+guidelines and independent review before scaling the study.
+
+\section{Planned evaluation and unresolved requirements}
+Next experiments will compare bounded dialogue units and source-grounded context
+selection, holding discovery fixed; then label-only contrastive training-background
+weights and representative-phrase scoring, holding memberships fixed. Online
+discovery alternatives come after unit/label evaluation. Changes to geometry
+must be frozen/versioned so previously inserted statistics remain compatible.
+Edits, deletions, late replies and provisional episode boundaries require explicit
+lifecycle semantics and measured incremental costs.
+
+The topic evaluation will report primary/secondary assignment precision and
+recall, rare-topic coverage, label specificity/intrusion, semantic parent
+correctness and inherited ancestor correctness, provider breakdowns, order
+stability, wall time, RSS and inference cost. Future guided-search tasks will
+compare direct hybrid search, thread-first navigation and topic-guided navigation
+under equal query/tool budgets, reporting relevant-source success, ranking and
+time/cost with uncertainty estimates. These tasks have not yet been conducted.
+
+Private histories limit release and external reproducibility. Before a public
+evaluation, establish reviewed release permissions or an appropriate external
+corpus, record complete model/hardware provenance, obtain independent annotations,
+and preserve development/test separation. Current geometry and boundary results
+are exploratory diagnostics. Robust overlapping tags, validated semantic trees,
+MCP topic tools and improved downstream agent search remain unproven.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\appendix
+\section{Experiment ledger}
+The geometry controls are implemented in \path{research/topics/run.py}; the
+boundary pilot in \path{research/topics/episodes.py}. Dependencies are pinned in
+\path{research/topics/uv.lock}. Private artifacts are recorded under
+\path{topic-python-baselines-20261001} and
+\path{topic-python-boundaries-20261001}. The source snapshot is
+\path{search-performance-d62a597/index.sqlite3}; the frozen partition report is
+\path{topic-option-context-clusters-20261001/control-birch-full/UserRepresentatives-0.4-false.json}.
+These artifacts are not publicly released data.
+
+\begin{description}
+\item[Embedding generation] \path{ca9c7766f955402eb34db3c324da24a512e1118de44e3d9aa9a0faeeac0da5f4}
+\item[Raw input fingerprint (SHA256)] \path{2d219b5cb5947231612d4612e6f930e6d6ac740ea00d9cf2eaf9606c0bc772a2}
+\item[Partition report SHA256] \path{9d0206908476cc6948b97307cad8ca3fae94e1d68aee0a3b45a69f697ade37f6}
+\item[Boundary annotations SHA256] \path{85d3113e4f9e6fd7f6111b97f3d3b8ee14fc21392cfeeb1084181ad8c74306b2}
+\end{description}
+The annotations are exploratory single-assistant judgments, not independent
+human labels. Future manuscript updates must preserve original run identities
+and explain changes in input, annotation, parameters or implementation.
+\end{document}

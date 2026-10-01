@@ -31,6 +31,39 @@ no numeric quality acceptance threshold has yet been justified by annotations.
 Then specify bounded online insertion, edit/delete, restart and model-version
 behavior before porting to Rust or exposing topic MCP tools and filters.
 
+Update the [living LaTeX paper](../../paper/README.md) as experiments proceed,
+including procedures, setup, citations, results, analysis and limitations.
+
+## Source-pinned boundary development pilot
+
+`episodes.py` accepts private TOML annotations with `schema_version = 1`, the
+embedding `generation`, and `[[cases]]` containing `thread`, `source_sha256` and
+ordered `[[cases.boundaries]]` records (`left`, `right`, `judgment`, `rationale`).
+Judgment is `same`, `change` or `uncertain`; ordinals identify adjacent nonempty
+searchable user turns. Source SHA256 covers every such turn's native ID, ordinal
+and full searchable text using compact UTF-8 JSON. Every boundary must be present,
+including uncertain ones. Reserved groups are rejected for this development pilot.
+
+The controls are windows of three turns, adjacent cosine below 0.55 and current
+segment-centroid cosine below 0.55. Nonempty unembedded turns remain in sequence;
+cosine predictors abstain on adjacent boundaries and reset rather than silently
+bridging missing evidence. Uncertain judgments are excluded from scoring;
+abstention does not earn positive recall. This is user-only linear presentation,
+not branch-aware dialogue segmentation or independently validated context labels.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/episodes.py \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --annotations "$PRIVATE_ANNOTATIONS" --output "$PRIVATE_REPORT"
+```
+
+The first development pilot is recorded in the paper: four purposively bounded
+threads, 29 boundaries, six uncertain. One coding assistant reviewed user texts
+before these predictions, with prior corpus exposure; this is not blind human
+ground truth. All controls need a broader independently annotated test set before
+method selection or threshold tuning can establish quality.
+
 ## Initial controls
 
 `run.py` reads an existing consistent SQLite snapshot in read-only mode. It uses

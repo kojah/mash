@@ -134,6 +134,16 @@ Work on and push `main`; it is the repository's sole development branch.
 
 ## Agent work tracking
 
+Topic modeling is the first priority. Follow the research sequence: compile
+prior art, shortlist approaches, perform reproducible Python experiments and
+record results, select a method, then implement it in Rust. Keep the Python lab
+isolated from the application and private corpora/artifacts outside Git.
+Update `paper/main.tex` and `paper/references.bib` alongside substantive topic
+experiments with procedures, setup, prior art, results, analysis and limitations.
+Keep exploratory development distinct from held-out evaluation; do not claim
+semantic quality, novelty or guided-search gains without corresponding evidence.
+Build the living manuscript using `paper/build.py` with output outside Git.
+
 Use Beads (`bd`) for substantive work and discovered follow-ups. On a fresh clone,
 run `bd bootstrap`; then run `bd prime` for the workflow and `bd ready` for available
 tasks. Create focused issues, claim work with `bd update ID --status in_progress`,
