@@ -1445,6 +1445,113 @@ and unexplained differential results. Python remains development-only. Parity,
 independent semantic quality and complete-ingestion performance are separate
 promotion gates: faithfully reproducing a weak candidate is insufficient.
 
+\subsection{Fresh source origins and explicit feedback payloads}
+Before another clustering adjustment, we broaden source review with four unseen
+development canonical groups. Freeze seed \texttt{mash-topic-review-v3-20261001},
+one case per existing Claude/Codex short/medium stratum, excluding original and
+v2 review groups including aliases. Retain prior eligibility: 3--40 complete
+nonempty searchable user turns, at most 4096 characters per turn and 40000 UTF-8
+bytes per thread; reserved groups excluded. The remaining eligible counts are
+Claude medium 2/short 1 and Codex medium 4/short 6. Eligibility remains within
+the vector-bearing frozen two-provider corpus, not all possible histories.
+No criteria are widened after reading sources, and a fresh process reproduces
+the complete packet byte-for-byte.
+
+The four cases contain 13/10/36/7 records, 66 total. An exposed coding assistant
+reviews complete user sequences and explicit task envelopes, but not native
+assistant context for referential turns. Origin judgments are 21 direct
+tasks/questions, 21 referential, 10 protocol, four agent-coordination messages,
+nine wrapped UI tasks and one wrapped smoke-test control. Coordination may
+contain useful technical instructions but is not presumed to be direct user
+intent. Referents remain unresolved; no endorsement or independent human truth
+is claimed. Historical commands/instructions are source data, never executed.
+The sampler pins exclusions, canonical partition and code hashes. Review
+validation checks every identity, ordinal, body hash, group and complete sequence
+before inference. The display guard is not a general secret scanner/source filter.
+
+The nine UI requests embed an exact \texttt{submitted\_feedback} envelope amid
+repeated worker instructions. Before predictions, review specific task facets:
+sidebar hierarchy, component-specific headings, checks-table display and FAQ
+edits. One record has two facets. A common UI/documentation parent alone does
+not imply the same fine aspect. Across nine records there are six overlapping
+and 30 distinct pairs; facet names and rationales enter evaluation only.
+The smoke-test control is excluded by oracle origin review. This exposed,
+single-thread pilot is not a general origin classifier.
+
+Compare intact source text with the exact substring between one opening and
+one closing envelope tag. Missing, repeated, nested, reversed or empty delimiters
+fail closed. No paraphrasing, field cleanup, guessed context or approval
+recognizers are used; page metadata and element selectors remain inside the
+payload. The recognizer is deliberately specific to this known source format,
+identified after source inspection, not a general conversational resolver.
+Both modes use identical model-window support: eight records fit installed
+quantized MiniLM's 512-token preflight. The FAQ source takes 714 tokens despite
+a 444-token payload, so it is excluded from both modes without truncation.
+Eight pairs abstain; evaluated support is six positive and 22 negative pairs.
+The preceding fixed four methods run forward/reverse with no tuning, producing
+16 controls. Two fresh captures reproduce all nonmeasurement fields exactly,
+including window coverage, model calls, code/source hashes, rankings, labels
+and memberships.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Mode &AP/AUC&Clusters&Native TP/FP&Centroid TP/FP\\
+\midrule
+Intact &0.771/0.818&1&6/22&6/22\\
+Exact payload &0.695/0.818&4&4/6&4/7\\
+\bottomrule
+\end{tabular}
+\caption{BIRCH, GRINCH-style and average linkage agree on these counts in both
+orders; centroid affinity uses the diagnostic cosine 0.7 rule. Results use the
+same 28 supported pairs, with eight source-window abstentions.}
+\end{table}
+
+Payload selection reduces false merging at the fixed native cuts, but loses two
+genuine overlaps and lowers average precision; unchanged ROC area does not
+establish better semantic quality. HDBSCAN puts all eight records into noise
+in both modes, giving 0TP/0FP and six false negatives; $-1$ is never counted
+as a shared topic. These are correlated coding-assistant development judgments,
+not held-out assignment accuracy, and the cuts remain uncalibrated.
+
+One payload cluster still mixes sidebar-layout and heading-change facets.
+Inspected label candidates rank generated CSS selectors, \texttt{feedback},
+\texttt{location} and viewport numbers alongside \texttt{codebase} and
+\texttt{architecture}. Other clusters surface \texttt{checks} or
+\texttt{inferred facts}; the intact cluster ranks generic worker terms such as
+\texttt{file}, \texttt{status}, \texttt{agentation} and \texttt{batch}.
+These source-supported examples are not independent label-quality judgments.
+Removing an outer instruction template alone leaves metadata inside the payload.
+
+On Xenia with the pinned runtime, numerical/encoder CPU threads one and singleton
+calls, eight matched sources total 3070 tokens/11723 bytes intact versus
+910 tokens/2299 bytes as payloads. Each mode makes eight unique calls and zero
+cache hits. Encoding including preflight takes 295--395\,ms intact and
+74--156\,ms payload; inference takes 275--370\,ms and 64--128\,ms.
+Selection takes 0.11--0.12\,ms per representation. GRINCH-style grouping
+including validation/cuts takes 5.1--12.1\,ms and 6.3--8.2\,ms respectively.
+Complete 16-control wall time is 1.39--2.14 seconds, CPU 1.23--1.43 seconds and
+peak RSS 956\,MiB including full frozen-corpus validation/loading and scientific
+runtime. Ranges cover two fresh processes, not uncertainty intervals or a
+general speedup claim. Full-ingestion performance remains unverified.
+
+The 117-test lab suite covers bounded sampling, exclusion unions/aliases,
+generation changes, complete source judgments, ambiguous envelopes, Unicode
+offsets, equal model-window support and complete repeated grids. Private
+\path{topic-python-review-v3-20261001} packets have SHA256
+\path{aef0466adc83637930c500efb0601df28c20fb4015ee8340aa48776466433010};
+pre-prediction review SHA256 is
+\path{a7346ceab7339263e96ebfc17df2a7d8cf568b07e3954b040c0a6e28b0ae95ec}.
+Final paired captures have SHA256
+\path{57351f1febedf29f873f9c7c0d02672ad32db8000ebf57c80b7ff00efa6d7d62}
+and \path{4de59ec56fcb12e372b53e74eefcb19d3f46713745e03cd1368215ae905c3534}.
+An exploratory capture before the tested shared model-window helper is excluded.
+Next evaluate payload field roles and label candidates with memberships fixed,
+and obtain native context for referential records. Do not blanket-drop structured
+user messages: one schema/thread cannot justify automatic filtering, a semantic
+hierarchy, or Rust/default promotion.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

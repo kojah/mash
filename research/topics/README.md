@@ -792,6 +792,18 @@ The [Rust port contract](PORT_CONTRACT.md) defines the required reference/parity
 gates before implementation. A candidate has not been selected, and the
 production differential CI gate is not implemented yet.
 
+The [fresh review/payload pilot](../../benchmarks/2026-10-01-feedback-payload-controls.md)
+samples four unseen development source groups, preserving prior eligibility and
+excluding original/v2 review aliases. `review_packets.py` supports an explicit
+`--seed`, bounded `--per-stratum`, and repeated `--also-exclude-annotations` paths;
+it pins every exclusion, partition and source-module hash. Do not resample based
+on model outputs. `packet_review.py` validates complete source-origin judgments.
+`payload_experiment.py` compares nine oracle-reviewed UI tasks' intact text versus
+an exact known feedback envelope, on equal model-window support.
+`compare_payloads.py` verifies both modes/all16 controls and nonmeasurement fields.
+It reduces false merging at fixed cuts but loses genuine overlaps and does not
+improve pair ranking. No general context classifier or topic method is selected.
+
 Run lab input-boundary tests:
 
 ```bash

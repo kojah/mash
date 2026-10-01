@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
+import tempfile
 
-from review_packets import Candidate, CohortProvider, LengthStratum, select, review_text
+from review_packets import Candidate, CohortProvider, LengthStratum, exclusions, select, review_text
 
 
 class SamplingTests(unittest.TestCase):
@@ -32,3 +34,23 @@ class SamplingTests(unittest.TestCase):
         self.assertNotIn(sensitive, display)
         text = "Investigate the channel ownership deadlock."
         self.assertEqual(review_text(text), (text, False))
+
+    def test_counts_and_seeds_are_bounded_and_strata_are_not_silently_dropped(self):
+        for seed, count in (("", 1), ("seed", 0), ("seed", True), ("seed", 17), ("seed", 3)):
+            with self.assertRaises(ValueError):
+                select(self.candidates(), seed, count)
+        self.assertEqual(len(select(self.candidates(), "new", 1)), 4)
+
+    def test_exclusions_union_aliases_and_reject_generation_or_missing_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = tuple(Path(directory) / name for name in ("first.toml", "second.toml"))
+            for path, identity in zip(paths, ("old", "alias")):
+                path.write_text(f'schema_version = 1\ngeneration = "g"\n[[cases]]\nthread = "{identity}"\n')
+            groups = {"old": [1] * 32, "alias": [1] * 32}
+            excluded, manifest = exclusions(paths, groups, "g")
+            self.assertEqual(excluded, {bytes([1]) * 32})
+            self.assertEqual(len(manifest), 2)
+            with self.assertRaises(ValueError):
+                exclusions(paths, groups, "changed")
+            with self.assertRaises(ValueError):
+                exclusions(paths, {"old": [1] * 32}, "g")

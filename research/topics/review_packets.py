@@ -38,6 +38,8 @@ def review_text(text: str) -> tuple[str, bool]:
 
 
 def select(candidates: list[Candidate], seed: str, per_stratum: int = 2) -> tuple[Candidate, ...]:
+    if not isinstance(seed, str) or not seed.strip() or type(per_stratum) is not int or not 1 <= per_stratum <= 16:
+        raise ValueError("nonempty sampling seed and bounded positive stratum count required")
     if any(len(c.group) != 32 or c.group[0] % 5 == 0 for c in candidates) or len({c.group for c in candidates}) != len(candidates):
         raise ValueError("sampling must use independent development source groups")
     strata = sorted({(c.provider, c.stratum) for c in candidates})
@@ -54,18 +56,45 @@ def select(candidates: list[Candidate], seed: str, per_stratum: int = 2) -> tupl
     return tuple(result)
 
 
+def exclusions(paths: tuple[Path, ...], groups: dict, generation: str) -> tuple[set[bytes], list[dict]]:
+    """Exclude every previously reviewed canonical group, including aliases."""
+    result, manifest = set(), []
+    for path in paths:
+        raw = path.read_bytes()
+        if len(raw) > 16 * 1024 * 1024:
+            raise ValueError("excluded annotation file exceeds cap")
+        specification = tomllib.loads(raw.decode())
+        if specification.get("schema_version") != 1 or specification.get("generation") != generation:
+            raise ValueError("excluded annotation generation/schema changed")
+        if not isinstance(specification.get("cases"), list):
+            raise ValueError("excluded annotation cases required")
+        for case in specification["cases"]:
+            identity = case.get("thread") if isinstance(case, dict) else None
+            group = groups.get(identity)
+            if (not isinstance(group, list) or len(group) != 32
+                    or any(type(value) is not int or not 0 <= value <= 255 for value in group)):
+                raise ValueError("excluded thread lacks a valid canonical group")
+            result.add(bytes(group))
+        manifest.append({"sha256": hashlib.sha256(raw).hexdigest(), "cases": len(specification["cases"])})
+    return result, manifest
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("database", "partition-report", "exclude-annotations", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
+    parser.add_argument("--also-exclude-annotations", type=Path, action="append", default=[])
+    parser.add_argument("--seed", default="mash-topic-review-v2-20261001")
+    parser.add_argument("--per-stratum", type=int, default=2)
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError("use a fresh output path")
+    if args.output.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
+        raise ValueError("private source packets must remain outside Git")
     dataset = load(args.database, args.partition_report)
-    excluded = {c["thread"] for c in tomllib.loads(args.exclude_annotations.read_text())["cases"]}
     groups = json.loads(args.partition_report.read_text())["partition"]["source_ids"]
-    excluded_groups = {bytes(groups[identity]) for identity in excluded}
-    policy = {"seed": "mash-topic-review-v2-20261001", "per_stratum": 2,
+    excluded_groups, excluded_manifest = exclusions((args.exclude_annotations, *args.also_exclude_annotations), groups, dataset.generation)
+    policy = {"seed": args.seed, "per_stratum": args.per_stratum,
               "minimum_users": 3, "maximum_users": 40, "short_maximum_users": 10,
               "maximum_turn_characters": 4096, "maximum_thread_utf8_bytes": 40000,
               "scope": "complete_nonempty_searchable_user_sequence", "reserved_groups": "excluded",
@@ -95,12 +124,16 @@ def main() -> None:
                                              "display_redacted": review_text(t.text)[1],
                                              "text_sha256": hashlib.sha256(t.text.encode()).hexdigest(),
                                              "stored_vector_available": t.vector is not None} for t in turns]}
-    selected = select(candidates, policy["seed"])
+    selected = select(candidates, policy["seed"], policy["per_stratum"])
     counts = {f"{provider}/{stratum}": sum((c.provider, c.stratum) == (provider, stratum) for c in candidates)
               for provider, stratum in sorted({(c.provider, c.stratum) for c in candidates})}
     report = {"schema_version": 1, "generation": dataset.generation, "input_fingerprint": dataset.fingerprint,
               "policy": policy, "eligible_strata": counts,
               "excluded_annotations_sha256": hashlib.sha256(args.exclude_annotations.read_bytes()).hexdigest(),
+              "excluded_manifests": excluded_manifest,
+              "partition_sha256": dataset.partition_sha256,
+              "source_sha256": {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
+                                for name in ("review_packets.py", "data.py", "episodes.py", "uv.lock")},
               "cases": [packets[c.thread] for c in selected]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("x") as output:
