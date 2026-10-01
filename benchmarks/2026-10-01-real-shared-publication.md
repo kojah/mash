@@ -114,3 +114,51 @@ reviewed relevance judgments, full local/shared fusion and reranking latency,
 replacement/restart/concurrent publication costs, and reliable storage/RAM
 measurements. These results do not spend the separate post-refresh end-to-end
 search optimization cycle or resolve its native-corruption prerequisite.
+
+## Follow-up: stream canonical serialization to a private file
+
+The snapshot-spooling implementation accompanying this report replaces the full
+JSON `String` allocation in both Qdrant and Redis publication with a private,
+size-limited temporary file. Serialization and incremental BLAKE3 hashing run
+on a blocking worker. Network staging reads bounded chunks; Qdrant chunks retain
+valid UTF-8 boundaries, while Redis retains its exact binary chunk layout and
+manifest format. Redis reuse decisions use the spool's digest. No history fields
+or context edges are dropped, and active-head publication remains conditional.
+
+Repeating Qdrant publication with the exact same frozen NDJSON body produced:
+
+| Measurement | Before | With spooled serialization |
+| --- | ---: | ---: |
+| API process peak RSS | 1,246,572 KiB | 697,736 KiB |
+| Upload through publication | 95.146 s | 86.141 s |
+| Published messages / embeddings | 225,267 / 29,453 | 225,267 / 29,453 |
+| Highest sampled database working set | 1.944 GiB | 1.971 GiB |
+
+The API peak RSS decreased by **44.0%**, approximately 536 MiB, in this initial
+publication. Runtime was lower in this observation, but there is only one run
+per implementation and host load was uncontrolled; this is not proof of a
+throughput improvement. Early follow-up publication overlapped doctest
+compilation. Both runs used cached/exact Qdrant with the same 4-core/2-GiB
+database limits and a host API process without a memory limit.
+
+This change trades a full heap buffer for temporary file I/O and reclaimable
+filesystem cache. It does not eliminate the in-memory validated snapshot,
+replacement-read buffers, backend payload/index allocations, or the risk from
+concurrent large publishers. Qdrant still approached its database memory limit.
+Redis's database OOM was not retried at the same insufficient budget; live Redis
+tests verify chunk manifests, digest-based reuse, replacement, and forgetting,
+but its real-corpus resource improvement remains unmeasured.
+
+Validation: 550 tests passed, including explicit real-model, PostgreSQL, Redis,
+Qdrant, CLI, and MCP tests; 10 manual benchmarks were excluded. The new encoding
+test checks exact serialized bytes and digest, size limits, and UTF-8 chunk
+boundaries. A live Qdrant regression checks multi-chunk canonical content and
+serialization-budget rejection without replacing the active head. Clippy with
+all targets/features, formatting, doctests, and whitespace checks passed.
+
+Follow-up artifacts are in
+`/home/james/scratch/mash-artifacts/shared-publication-spooled-20261001`, including
+the binary hash, publication response, resource samples, comparison, collection
+counts, and cleanup evidence. Both owned collections were removed and the
+evaluation container was stopped. `mash-c0d.21` remains in progress for
+replacement/concurrent memory measurements and publication admission bounds.

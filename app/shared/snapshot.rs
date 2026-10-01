@@ -9,7 +9,9 @@ use crate::storage::Counts;
 use crate::{AppError, semantic};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+pub(super) mod encoding;
 mod plan;
+pub(super) use encoding::Encoded;
 pub(super) use plan::{forget, plan};
 fn identity_key(provider: Provider, id: &str) -> String {
     format!("{provider}\0{id}")

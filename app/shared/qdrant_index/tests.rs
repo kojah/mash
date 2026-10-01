@@ -115,6 +115,67 @@ impl Fixture {
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_spooled_snapshot_round_trips_unicode_chunks_and_rejects_over_budget() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let mut plan = crate::shared::snapshot::plan(
+        &fixture.file(1, "large"),
+        fixture.store.load(&fixture.identity).await.unwrap(),
+        4,
+    )
+    .unwrap();
+    let content = format!("{}🦀é漢字", "a".repeat(4 * 1024 * 1024));
+    plan.loaded
+        .data
+        .messages
+        .get_mut("message-0")
+        .unwrap()
+        .content = content.clone();
+    fixture
+        .store
+        .commit(&fixture.identity, plan, "instance".into(), true)
+        .await
+        .unwrap();
+    let node = fixture.store.node(&fixture.identity).await.unwrap();
+    assert!(node.manifest.as_ref().unwrap().chunks >= 2);
+    let loaded = fixture.store.load(&fixture.identity).await.unwrap();
+    assert_eq!(loaded.data.messages["message-0"].content, content);
+    assert_eq!(
+        loaded.data.messages["message-1"].content,
+        "needle canonical large"
+    );
+    let mut plan =
+        crate::shared::snapshot::plan(&fixture.file(2, "replacement"), loaded, 4).unwrap();
+    plan.loaded
+        .data
+        .messages
+        .get_mut("message-0")
+        .unwrap()
+        .content = content;
+    let encoded =
+        crate::shared::snapshot::Encoded::new(&plan.loaded.data, 64 * 1024 * 1024).unwrap();
+    let mut limited = fixture.store.clone();
+    limited.max_node_bytes = encoded.bytes - 1;
+    let error = limited
+        .commit(&fixture.identity, plan, "instance".into(), true)
+        .await
+        .unwrap_err();
+    assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+    let current = fixture.store.node(&fixture.identity).await.unwrap();
+    assert_eq!(current.version, node.version);
+    assert_eq!(current.head.unwrap().revision, 1);
+    assert!(
+        fixture
+            .search()
+            .await
+            .documents
+            .iter()
+            .all(|d| !d.projection.contains("replacement"))
+    );
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 async fn qdrant_conditional_publication_handles_competing_first_and_replacement_uploads() {
     let fixture = Fixture::new(VectorIndex::Hnsw { ef_runtime: 200 }).await;
     for revision in [1, 2] {
@@ -177,6 +238,7 @@ async fn qdrant_conditional_publication_handles_competing_first_and_replacement_
         .stage(
             &fixture.identity,
             &plan.loaded.data,
+            &crate::shared::snapshot::Encoded::new(&plan.loaded.data, 64 * 1024 * 1024).unwrap(),
             "unpublished-test-version",
         )
         .await

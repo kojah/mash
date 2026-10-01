@@ -5,25 +5,23 @@ use super::{
     Indexed, Plan, STAGE_TTL, Store, catalog_key, conflict, data_key, document_key, encode, prefix,
     redis_error, state_key, valid_id, vector_bytes,
 };
+use crate::shared::snapshot::{Encoded, encoding};
 use crate::shared::snapshot::{forget, plan};
 impl Store {
     async fn stage_json(
         &self,
         key: String,
-        json: &str,
+        encoded: &Encoded,
         keys: &mut Vec<String>,
     ) -> Result<(), AppError> {
-        if json.len() > self.max_node_bytes {
-            return Err(AppError::usage(
-                "Redis node exceeds the configured snapshot limit",
-            ));
-        }
         let manifest = CanonicalManifest {
-            bytes: json.len(),
-            chunks: json.len().div_ceil(CANONICAL_CHUNK_BYTES),
-            digest: blake3::hash(json.as_bytes()).to_hex().to_string(),
+            bytes: encoded.bytes,
+            chunks: encoded.bytes.div_ceil(CANONICAL_CHUNK_BYTES),
+            digest: encoded.digest.clone(),
         };
-        for (chunk, bytes) in json.as_bytes().chunks(CANONICAL_CHUNK_BYTES).enumerate() {
+        let mut reader = encoded.reader()?;
+        for chunk in 0..manifest.chunks {
+            let bytes = encoding::read_bytes(&mut reader, CANONICAL_CHUNK_BYTES).await?;
             let chunk_key = format!("{key}:chunk:{chunk}");
             redis::cmd("SET")
                 .arg(&chunk_key)
@@ -125,23 +123,17 @@ impl Store {
         &self,
         identity: &Identity,
         data: &Data,
+        encoded: &Encoded,
+        catalog: &Encoded,
         version: &str,
     ) -> Result<Vec<String>, AppError> {
         let mut keys = Vec::new();
         // Metadata has its own bounded payload; catalog reads need no canonical
         // message bodies or vectors. Both payloads use the same stage lifecycle.
-        self.stage_json(
-            data_key(&identity.group_id, version),
-            &encode(data)?,
-            &mut keys,
-        )
-        .await?;
-        self.stage_json(
-            catalog_key(&identity.group_id, version),
-            &encode(&data.conversations)?,
-            &mut keys,
-        )
-        .await?;
+        self.stage_json(data_key(&identity.group_id, version), encoded, &mut keys)
+            .await?;
+        self.stage_json(catalog_key(&identity.group_id, version), catalog, &mut keys)
+            .await?;
         let state = data.state(identity);
         let state_key = state_key(&identity.group_id, version);
         let mut pipe = redis::pipe();
@@ -259,6 +251,13 @@ impl Store {
         if !(1..=99_999_999_999_999).contains(&plan.revision) {
             return Err(AppError::usage("invalid Redis revision"));
         }
+        let max_bytes = self.max_node_bytes;
+        let (plan, encoded, catalog) = crate::blocking(move || {
+            let encoded = Encoded::new(&plan.loaded.data, max_bytes)?;
+            let catalog = Encoded::new(&plan.loaded.data.conversations, max_bytes)?;
+            Ok((plan, encoded, catalog))
+        })
+        .await?;
         let counts = plan.loaded.data.counts(identity);
         let mut random = [0u8; 32];
         getrandom::fill(&mut random)
@@ -268,12 +267,7 @@ impl Store {
         let reuse = previous.is_some()
             && previous.is_some_and(|head| head.catalog_ready)
             && !plan.changed
-            && plan.loaded.digest.as_deref()
-                == Some(
-                    blake3::hash(encode(&plan.loaded.data)?.as_bytes())
-                        .to_hex()
-                        .as_str(),
-                );
+            && plan.loaded.digest.as_deref() == Some(encoded.digest.as_str());
         let version = if reuse {
             previous.unwrap().version.clone()
         } else {
@@ -286,7 +280,8 @@ impl Store {
                 catalog_key(&identity.group_id, &version),
             ]
         } else {
-            self.stage(identity, &plan.loaded.data, &version).await?
+            self.stage(identity, &plan.loaded.data, &encoded, &catalog, &version)
+                .await?
         };
         let head = Head {
             instance,

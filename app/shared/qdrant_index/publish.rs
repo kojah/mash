@@ -4,6 +4,7 @@ use super::{
     AppError, Chunk, Document, Head, Identity, Manifest, NodeHead, PointKind, Store, api,
     collection, failure, point_id, sparse, tokens,
 };
+use crate::shared::snapshot::Encoded;
 use crate::shared::{
     backend::{conflict, valid_id},
     protocol::{Forget, Forgotten, Indexed},
@@ -87,9 +88,10 @@ impl Store {
         &self,
         identity: &Identity,
         data: &Data,
+        encoded: &Encoded,
         version: &str,
     ) -> Result<Manifest, AppError> {
-        let manifest = self.stage_snapshot(identity, data, version).await?;
+        let manifest = self.stage_snapshot(identity, encoded, version).await?;
         self.stage_catalog(identity, data, version).await?;
         self.stage_documents(identity, data, version).await?;
         Ok(manifest)
@@ -97,24 +99,16 @@ impl Store {
     async fn stage_snapshot(
         &self,
         identity: &Identity,
-        data: &Data,
+        encoded: &Encoded,
         version: &str,
     ) -> Result<Manifest, AppError> {
-        let json = serde_json::to_string(data)
-            .map_err(|_| AppError::internal("serialize Qdrant snapshot"))?;
-        if json.len() > self.max_node_bytes {
-            return Err(AppError::usage(
-                "Qdrant node exceeds the configured snapshot limit",
-            ));
-        }
-        let digest = blake3::hash(json.as_bytes()).to_hex().to_string();
         // Keep chunks valid UTF-8 and below Qdrant's default request-size bound.
-        let mut begin = 0;
+        let mut reader = encoded.reader()?;
         let mut chunks = 0;
-        while begin < json.len() {
-            let mut end = begin.saturating_add(4 * 1024 * 1024).min(json.len());
-            while !json.is_char_boundary(end) {
-                end -= 1;
+        loop {
+            let text = snapshot::encoding::read_text(&mut reader, 4 * 1024 * 1024).await?;
+            if text.is_empty() {
+                break;
             }
             let point = api::Point {
                 id: point_id(&["chunk", version, &chunks.to_string()]),
@@ -122,7 +116,7 @@ impl Store {
                 payload: Chunk {
                     kind: PointKind::Chunk,
                     version: version.into(),
-                    text: json[begin..end].into(),
+                    text,
                 },
             };
             self.api
@@ -135,13 +129,12 @@ impl Store {
                     },
                 )
                 .await?;
-            begin = end;
             chunks += 1;
         }
         Ok(Manifest {
-            bytes: json.len(),
+            bytes: encoded.bytes,
             chunks,
-            digest,
+            digest: encoded.digest.clone(),
         })
     }
     async fn stage_catalog(
@@ -259,6 +252,12 @@ impl Store {
         if plan.revision < 1 {
             return Err(AppError::usage("invalid Qdrant revision"));
         }
+        let max_bytes = self.max_node_bytes;
+        let (plan, encoded) = crate::blocking(move || {
+            let encoded = Encoded::new(&plan.loaded.data, max_bytes)?;
+            Ok((plan, encoded))
+        })
+        .await?;
         let counts = plan.loaded.data.counts(identity);
         let mut random = [0u8; 32];
         getrandom::fill(&mut random)
@@ -286,7 +285,10 @@ impl Store {
             metadata_ready: true,
             catalog_ready: true,
         };
-        let manifest = match self.stage(identity, &plan.loaded.data, &version).await {
+        let manifest = match self
+            .stage(identity, &plan.loaded.data, &encoded, &version)
+            .await
+        {
             Ok(manifest) => manifest,
             Err(error) => {
                 self.cleanup(identity, &version).await;

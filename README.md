@@ -1077,6 +1077,14 @@ For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
 exact retrieval scores the matching shared vectors. Redis also supports opt-in
 HNSW as described above; its filtered policy can still choose exact scoring.
+Qdrant and Redis serialize canonical publication JSON to private temporary
+files on blocking workers and stream bounded chunks from those files. This
+avoids keeping a second full serialized snapshot in API memory. Temporary disk
+must hold the incoming upload and canonical JSON (plus the Redis thread catalog)
+until publication finishes. The validated canonical data still resides in
+memory, and replacement reads and backend staging have additional costs;
+the configured node snapshot limit is not a process RAM budget. Account for
+concurrent uploads when provisioning the API and database.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
 recall tradeoffs before choosing approximate retrieval.
 
