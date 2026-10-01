@@ -1,10 +1,11 @@
 //! Class-normalized TF-IDF labels; memberships may contribute to several topics.
+pub(super) mod ranking;
 use super::TopicId;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
 pub(super) type Terms = BTreeMap<String, u64>;
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub(super) struct Term {
     pub(super) text: String,
     pub(super) score: f64,
@@ -13,15 +14,131 @@ pub(super) fn terms(text: &str) -> Terms {
     let mut counts = Terms::new();
     for word in text.split(|c: char| !c.is_alphanumeric()) {
         let word = word.to_lowercase();
-        if (3..=64).contains(&word.len())
-            && word.chars().next().is_some_and(char::is_alphabetic)
-            && !(word.len() >= 12 && word.bytes().all(|x| x.is_ascii_hexdigit()))
-            && !STOP.contains(&word.as_str())
-        {
+        if eligible(&word) {
             *counts.entry(word).or_default() += 1;
         }
     }
     counts
+}
+
+fn eligible(word: &str) -> bool {
+    ((3..=64).contains(&word.len()) || ["go", "js", "ai", "ui", "ml", "db"].contains(&word))
+        && word.chars().next().is_some_and(char::is_alphabetic)
+        && !(word.len() >= 12 && word.bytes().all(|x| x.is_ascii_hexdigit()))
+        && !STOP.contains(&word)
+}
+
+/// Bound label work to a source prefix; preserve adjacency and never synthesize
+/// phrases across punctuation, stop words, or discarded metadata tokens.
+pub(super) fn candidates(text: &str) -> Terms {
+    let prefix: String = text.chars().take(4096).collect();
+    let mut terms = Terms::new();
+    let mut tokens = 0;
+    for sentence in prefix.split([
+        '\n', '\r', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}',
+    ]) {
+        let mut window: Vec<String> = Vec::new();
+        for word in sentence
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+        {
+            if tokens >= 256 {
+                return terms;
+            }
+            tokens += 1;
+            let word = word.to_lowercase();
+            if !eligible(&word) {
+                window.clear();
+                continue;
+            }
+            *terms.entry(word.clone()).or_default() += 1;
+            window.push(word);
+            if window.len() > 3 {
+                window.remove(0);
+            }
+            for length in 2..=window.len() {
+                *terms
+                    .entry(window[window.len() - length..].join(" "))
+                    .or_default() += 1;
+            }
+        }
+    }
+    terms
+}
+
+/// Exact short acknowledgments and delivery markers do not discover topics.
+/// Keep canonical history/search unchanged and never discard a larger request
+/// merely because it starts with a greeting or ends with thanks.
+pub(super) fn substantive(text: &str) -> bool {
+    if text.chars().count() > 256 {
+        return true;
+    }
+    let normalized = text
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join(" ");
+    !normalized.is_empty()
+        && ![
+            "hello",
+            "hi",
+            "hey",
+            "thanks",
+            "thank you",
+            "yes",
+            "no",
+            "ok",
+            "okay",
+            "alright",
+            "sounds good",
+            "sure",
+            "fine",
+            "keep going",
+            "continue",
+            "go ahead",
+            "alright sounds good",
+            "sure sounds good",
+            "request interrupted",
+            "request interrupted by user",
+        ]
+        .contains(&normalized.as_str())
+}
+
+#[test]
+fn topic_input_filter_omits_only_short_exact_acknowledgments() {
+    for text in [
+        "Hello!",
+        "sounds good.",
+        "OK",
+        "[Request interrupted by user]",
+        "",
+    ] {
+        assert!(!substantive(text));
+    }
+    for text in [
+        "Hello, how does PostgreSQL indexing work?",
+        "thanks but fix the deadlock",
+        "hello world",
+        "Redis",
+        "hi there is a bug",
+    ] {
+        assert!(substantive(text));
+    }
+}
+
+#[test]
+fn phrase_candidates_preserve_boundaries_and_have_bounded_work() {
+    let terms =
+        candidates("Go package database connection pool. frontend layout. database and frontend");
+    assert!(terms.contains_key("go package"));
+    assert!(terms.contains_key("database connection pool"));
+    assert!(terms.contains_key("frontend layout"));
+    assert!(!terms.contains_key("pool frontend"));
+    assert!(!terms.contains_key("database frontend"));
+    let bounded = candidates(&format!("{} forbidden", "database ".repeat(300)));
+    assert!(!bounded.contains_key("forbidden"));
+    assert!(bounded.values().all(|count| *count <= 256));
 }
 
 #[test]
@@ -40,7 +157,9 @@ const STOP: &[&str] = &[
     "when", "where", "how", "into", "they", "their", "them", "then", "than", "also", "about",
     "all", "use", "using", "let", "like", "please", "want", "need", "its", "our", "out", "which",
     "there", "these", "those", "get", "some", "only", "more", "one", "new", "okay", "yes", "well",
-    "been", "does", "don", "did", "make", "now", "because", "any", "each", "other",
+    "been", "does", "don", "did", "make", "now", "because", "any", "each", "other", "through",
+    "already", "every", "very", "such", "here", "still", "much", "most", "really", "must", "per",
+    "before", "after", "until", "during", "within", "while", "above", "below",
 ];
 
 #[allow(

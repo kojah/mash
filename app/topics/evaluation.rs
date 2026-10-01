@@ -1,6 +1,7 @@
 //! Read-only real-history diagnostic; private reports never enter stdout/traces.
 mod anchored;
 mod assignments;
+mod names;
 use super::segments::{Builder, Segment};
 use super::{AssignmentModel, Settings, TopicId, birch::Tree, labels, normalize};
 use crate::provider::Provider;
@@ -18,6 +19,7 @@ struct Thread {
     vectors: Vec<Vec<f64>>,
     words: labels::Terms,
     user_messages: Vec<Segment>,
+    ignored_user_messages: usize,
 }
 
 #[test]
@@ -31,14 +33,14 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
          CREATE TABLE messages(id TEXT,conversation_id TEXT,ordinal INTEGER,
              content TEXT,search_projection TEXT,role TEXT);
          CREATE TABLE message_embeddings(message_id TEXT,vector BLOB,generation TEXT);
-         INSERT INTO conversations VALUES ('a','codex',NULL),('b','claude-code','title');
+         INSERT INTO conversations VALUES ('a','codex',NULL),('b','claude-code','title'),('c','codex',NULL);
          INSERT INTO messages VALUES ('a1','a',0,'database',NULL,'user'),
-             ('a2','a',1,'hidden','database','user'),('b1','b',0,'database',NULL,'assistant');",
+             ('a2','a',1,'hidden','database','user'),('b1','b',0,'database',NULL,'assistant'),('c1','c',0,'Hello!',NULL,'user');",
         )
         .unwrap();
     let mut vector = vec![0_u8; 384];
     vector[0] = 127;
-    for id in ["a1", "a2", "b1"] {
+    for id in ["a1", "a2", "b1", "c1"] {
         connection
             .execute(
                 "INSERT INTO message_embeddings VALUES (?1,?2,'model-v1')",
@@ -49,7 +51,7 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
     drop(connection);
     let (threads, generation) = corpus(&path);
     assert_eq!(generation, "model-v1");
-    assert_eq!(threads.len(), 2);
+    assert_eq!(threads.len(), 3);
     assert_eq!(threads["a"].vectors.len(), 1);
     assert_eq!(threads["b"].vectors.len(), 1);
     assert_eq!(threads["a"].provider, Provider::Codex);
@@ -58,6 +60,9 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
     assert!(!threads["a"].words.contains_key("hidden"));
     assert_eq!(threads["a"].user_messages.len(), 1);
     assert!(threads["b"].user_messages.is_empty());
+    assert!(threads["c"].user_messages.is_empty());
+    assert_eq!(threads["c"].ignored_user_messages, 1);
+    assert_eq!(threads["c"].vectors.len(), 1); // canonical input remains available
 }
 
 fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
@@ -67,6 +72,7 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
     let mut threads: BTreeMap<String, Thread> = BTreeMap::new();
     let mut generations = BTreeSet::new();
     let mut seen = BTreeSet::new();
+    let phrases = std::env::var_os("MASH_TEST_TOPIC_PHRASES").is_some();
     while let Some(row) = rows.next().unwrap() {
         let id: String = row.get(0).unwrap();
         let provider_name: String = row.get(1).unwrap();
@@ -97,11 +103,18 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
             vectors: Vec::new(),
             words: labels::Terms::new(),
             user_messages: Vec::new(),
+            ignored_user_messages: 0,
         });
-        if role == Role::User {
+        if role == Role::User && !labels::substantive(&text) {
+            thread.ignored_user_messages += 1;
+        } else if role == Role::User {
             thread.user_messages.push(Segment {
                 vector: vector.clone(),
-                words: labels::terms(&text),
+                words: if phrases {
+                    labels::candidates(&text)
+                } else {
+                    labels::terms(&text)
+                },
                 messages: 1,
             });
         }
@@ -236,6 +249,7 @@ fn held_out_copied_threads_do_not_train_the_discovery_model() {
                     words: labels::terms("database"),
                     messages: 1,
                 }],
+                ignored_user_messages: 0,
             }
         })
         .find(held_out)
@@ -258,6 +272,11 @@ struct Cluster {
     threads: usize,
     providers: BTreeMap<Provider, usize>,
     terms: Vec<labels::Term>,
+    semantic_terms: Option<Vec<labels::ranking::SemanticTerm>>,
+    #[serde(skip)]
+    candidates: Vec<labels::Term>,
+    #[serde(skip)]
+    center: Vec<f64>,
     examples: Vec<String>,
 }
 #[derive(Serialize)]
@@ -271,6 +290,7 @@ struct Report {
     held_out_threads: usize,
     held_out_assigned_threads: usize,
     threads: usize,
+    ignored_user_messages: usize,
     samples: usize,
     duplicates_across_threads: usize,
     topics: usize,
@@ -281,6 +301,7 @@ struct Report {
     fit_ms: f64,
     assignment_ms: f64,
     label_ms: f64,
+    semantic_labels: Option<names::Summary>,
     assigned_threads: usize,
     overlapping_threads: usize,
     maximum_topics_per_thread: usize,
@@ -308,21 +329,25 @@ fn label_clusters(
             members.entry(*topic).or_default().push(&threads[id]);
         }
     }
-    let mut labels = labels::labels(classes, 8);
+    let mut labels = labels::labels(classes, 64);
     leaves
         .iter()
-        .map(|(id, _, count)| {
+        .map(|(id, center, count)| {
             let members = members.remove(id).unwrap_or_default();
             let mut providers = BTreeMap::new();
             for member in &members {
                 *providers.entry(member.provider).or_default() += 1;
             }
+            let candidates = labels.remove(id).unwrap_or_default();
             Cluster {
                 id: *id,
                 samples: *count,
                 threads: members.len(),
                 providers,
-                terms: labels.remove(id).unwrap_or_default(),
+                terms: candidates.iter().take(8).cloned().collect(),
+                semantic_terms: None,
+                candidates,
+                center: center.clone(),
                 examples: members.iter().take(6).map(|t| t.title.clone()).collect(),
             }
         })
@@ -410,6 +435,7 @@ fn run(
             .filter(|(id, topics)| holdout && held_out(&threads[*id]) && !topics.is_empty())
             .count(),
         threads: threads.len(),
+        ignored_user_messages: threads.values().map(|t| t.ignored_user_messages).sum(),
         samples,
         duplicates_across_threads: duplicates,
         topics: leaves.len(),
@@ -420,6 +446,7 @@ fn run(
         fit_ms,
         assignment_ms,
         label_ms,
+        semantic_labels: None,
         assigned_threads: memberships.values().filter(|t| !t.is_empty()).count(),
         overlapping_threads: memberships.values().filter(|t| t.len() > 1).count(),
         maximum_topics_per_thread: memberships.values().map(BTreeSet::len).max().unwrap_or(0),
@@ -438,6 +465,7 @@ fn benchmark_topic_discovery() {
     );
     std::fs::create_dir_all(&output).unwrap();
     let (threads, generation) = corpus(&database);
+    let mut labeler = names::Labeler::load(&generation).unwrap();
     assert!(!threads.is_empty());
     let holdout = std::env::var_os("MASH_TEST_TOPIC_HOLDOUT").is_some();
     let modes: &[Mode] = if std::env::var_os("MASH_TEST_TOPIC_ANCHORED").is_some() {
@@ -453,7 +481,7 @@ fn benchmark_topic_discovery() {
         for radius in [0.4, 0.6] {
             for reversed in [false, true] {
                 let path = output.join(format!("{mode:?}-{radius}-{reversed}.json"));
-                let report = match run(&threads, &generation, mode, radius, reversed, holdout) {
+                let mut report = match run(&threads, &generation, mode, radius, reversed, holdout) {
                     Ok(report) => report,
                     Err(error) => {
                         let rejected = RejectedRun {
@@ -470,6 +498,9 @@ fn benchmark_topic_discovery() {
                         continue;
                     }
                 };
+                if let Some(labeler) = &mut labeler {
+                    report.semantic_labels = Some(labeler.apply(&mut report.clusters).unwrap());
+                }
                 std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
                 println!(
                     "{mode:?} radius={radius} reversed={reversed} threads={} samples={} topics={} fit_ms={:.1} assignment_ms={:.1} overlap={}",

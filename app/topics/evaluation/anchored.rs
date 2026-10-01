@@ -21,6 +21,7 @@ fn thread(axes: &[usize]) -> Thread {
         vectors: user_messages.iter().map(|m| m.vector.clone()).collect(),
         words: labels::Terms::new(),
         user_messages,
+        ignored_user_messages: 0,
     }
 }
 

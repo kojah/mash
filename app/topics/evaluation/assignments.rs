@@ -103,6 +103,7 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
             vectors: Vec::new(),
             words: labels::Terms::new(),
             user_messages,
+            ignored_user_messages: 0,
         },
     )]);
     let model = AssignmentModel::new(
