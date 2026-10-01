@@ -1,7 +1,11 @@
 # Research directions for topic quality
 
 This is a research and experiment plan, not evidence that any new method has
-passed Mash's relevance gates. Track follow-up in `mash-c0d.19.2.12`. The Rust
+passed Mash's relevance gates. Topic modeling is now the first priority. Follow
+the updated sequence: compile research, shortlist approaches, experiment in
+Python and record results, then implement the selected approach in Rust.
+Track the research lab in `mash-c0d.19.2.21` and quality work in
+`mash-c0d.19.2.12`. The Rust
 topic implementation remains an offline prototype; production topic MCP
 integration must still pass quality and lifecycle checks.
 
@@ -30,8 +34,46 @@ also describes class-based BM25 and square-root normalized term-frequency
 weighting. Evaluate these as separate ablations. They are not a justification
 for blindly deleting frequent domain words or rare technical identifiers.
 
-These algorithms can be implemented in Rust with our existing local embedding
-model; none requires generative LLM calls or adopting the Python package.
+Evaluate these algorithms in the isolated [Python lab](../research/topics/README.md)
+first. Any selected production implementation will remain Rust; the research
+environment does not become an application dependency.
+
+## Conversation-specific prior art and experiment order
+
+[ChatGPT Choreography](https://doi.org/10.1109/MC.2025.3532347) applies topic
+modeling and thematic analysis to developer–ChatGPT dialogues. Its publisher
+abstract supports the application precedent; it does not establish parameters
+or quality for coding-agent traces. [DevGPT](https://github.com/NAIST-SE/DevGPT)
+provides an external developer-conversation corpus, with shared-conversation
+selection bias and different tool-trace coverage from our local histories.
+
+[Contextual Topic Modeling for Dialog Systems](https://arxiv.org/abs/1810.08135)
+uses conversational context and dialogue acts for topic classification. This
+motivates context ablations, rather than evidence that every short reply should
+borrow the following assistant answer. Native source grounding establishes
+provenance, not whether the borrowed text introduces a different subject.
+
+[Xing and Carenini](https://aclanthology.org/2021.sigdial-1.18/) learn utterance-pair
+coherence for dialogue segmentation. [Gao et al.](https://arxiv.org/abs/2305.02747)
+learn topic-aware utterance representations. Both motivate testing episodes
+before clustering long sessions; neither proves a raw adjacent-cosine threshold
+is enough. Compare bounded windows, turn pairs and lexical boundary evidence
+before adding trained segmentation assets. Online episodes need provisional
+boundaries and explicit rules for late replies, edits and deletions.
+
+[MemTree](https://arxiv.org/abs/2410.14052) incrementally organizes memories and
+aggregates parent representations with LLMs. It is useful hierarchy-maintenance
+prior art, but its QA evaluation does not validate granular multi-label topic
+quality, and its generative cost differs from our intended default. Neither a
+memory tree nor BIRCH's physical CF tree automatically constitutes a semantic
+taxonomy.
+
+Experiment order: frozen raw geometry controls; independently annotated dialogue
+units and referential-context selection; label-only contrastive c-TF-IDF and
+representative-phrase scoring; then online discovery and semantic hierarchy.
+Hold units and labels fixed when comparing algorithms. Avoid changing cleanup,
+segmentation, clustering and labels together. Existing filler-removal retrieval
+pilots did not demonstrate a gain; keep production embedding inputs unchanged.
 
 ## Evaluation
 
