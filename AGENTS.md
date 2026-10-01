@@ -105,6 +105,14 @@ real-corpus benchmarks and bulk collection cleanup. Large Qdrant collection
 deletion can delay unrelated requests and make short integration-test deadlines
 fail. Give benchmarks their own backend instance and clean up only their owned
 groups/collections after their process handles have completed.
+The ignored `shared_backend_persisted_restart_contract` owns and restarts fresh
+PostgreSQL, Redis and Qdrant containers, plus real API processes. Preload the
+same images used by CI and set `MASH_TEST_SERVER_BINARY` to the built mash binary;
+set `MASH_TEST_DOCKER_SG=1` on Xenia for Docker group access. It rediscovers host
+ports after database restarts and never restarts the externally supplied test
+services. CI also removes fixtures with its exact run-owner label if the test
+fails or times out. This verifies acknowledged writes and graceful database
+restart, not power-loss durability or failover.
 
 Use `cargo build-clif`, `cargo run-clif`, and `cargo test-clif` for development
 iteration. Retain Clippy, formatting, and doctest validation. On the installed

@@ -11,6 +11,7 @@ mod correlation;
 mod cursor;
 mod native;
 mod relevance;
+mod restart;
 mod selections;
 mod snapshot_budget;
 mod threads;

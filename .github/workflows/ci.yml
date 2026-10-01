@@ -131,6 +131,21 @@ jobs:
         run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
         env:
           MASH_TEST_QDRANT_URL: http://localhost:6333
+      - name: Verify persisted shared backends after database and API restart
+        env:
+          MASH_TEST_RESTART_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}-restart
+        run: |
+          cargo build --locked --bin mash
+          MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
+            cargo nextest run --profile ci --run-ignored only --no-tests fail -j 1 \
+              -E 'test(shared_backend_persisted_restart_contract)'
+      - name: Clean owned restart fixtures after test failure or timeout
+        if: always()
+        env:
+          MASH_TEST_RESTART_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}-restart
+        run: >-
+          docker ps -aq --filter "label=mash.test.owner=$MASH_TEST_RESTART_OWNER" |
+          xargs --no-run-if-empty docker rm -f -v
       - run: sccache --show-stats
       - name: Save verified installed test models
         if: success() && steps.model-cache.outputs.cache-hit != 'true'
