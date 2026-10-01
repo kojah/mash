@@ -78,6 +78,18 @@ pub(crate) struct MessageReference {
 }
 
 pub(crate) type EvidenceKey = (Provider, String, crate::role::Role, blake3::Hash);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(crate) enum HitKey {
+    Message(EvidenceKey, String),
+    Evidence(EvidenceKey),
+}
+
+pub(crate) fn hit_key(hit: &SearchHit, unit: SearchUnit) -> HitKey {
+    match unit {
+        SearchUnit::Messages => HitKey::Message(evidence_key(hit), hit.id.clone()),
+        SearchUnit::Threads => HitKey::Evidence(evidence_key(hit)),
+    }
+}
 
 pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
     let text = hit.content.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -129,13 +141,12 @@ pub(crate) fn merge_copies(existing: &mut SearchHit, other: SearchHit) {
 
 pub(crate) fn deduplicate(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit> {
     let hits = eligible(hits);
-    if matches!(unit, SearchUnit::Messages) {
-        return hits;
-    }
     let mut positions = HashMap::new();
     let mut unique = Vec::<SearchHit>::new();
     for hit in hits {
-        let key = evidence_key(&hit);
+        // Message mode preserves repeated content with different canonical IDs,
+        // but copies of the same message on other nodes occupy one result slot.
+        let key = hit_key(&hit, unit);
         if let Some(&index) = positions.get(&key) {
             merge_copies(&mut unique[index], hit);
         } else {

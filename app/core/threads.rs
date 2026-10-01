@@ -92,6 +92,7 @@ async fn shared_window(
         request.limit = (window - rows.len()).min(100);
         let page = shared::list_threads(config, &request).await?;
         if page.threads.len() > request.limit
+            || (page.next_offset.is_some() && page.threads.len() != request.limit)
             || page
                 .next_offset
                 .is_some_and(|next| next != request.offset + request.limit || next > 10_000)

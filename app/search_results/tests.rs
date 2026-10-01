@@ -1,6 +1,59 @@
 use super::*;
 
 #[test]
+fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
+    let original = hit("thread", "message");
+    let mut replica = hit("thread", "message");
+    replica.node_id = Some("peer".into());
+    let mut repeated = hit("thread", "repeated-message");
+    repeated.content.clone_from(&original.content);
+    let mut divergent = hit("thread", "message");
+    divergent.node_id = Some("peer-diverged".into());
+    divergent.content = "changed history".into();
+    let mut another_provider = hit("thread", "message");
+    another_provider.provider = Provider::ClaudeCode;
+    let another_thread = hit("other-thread", "message");
+    let rows = deduplicate(
+        vec![
+            original,
+            replica,
+            repeated,
+            divergent,
+            another_provider,
+            another_thread,
+        ],
+        SearchUnit::Messages,
+    );
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[0].copies.len(), 1);
+    assert_eq!(rows[0].copies[0].node_id.as_deref(), Some("peer"));
+    assert_eq!(rows[1].id, "repeated-message");
+    assert_eq!(rows[2].content, "changed history");
+    assert_eq!(rows[3].provider, Provider::ClaudeCode);
+    assert_eq!(rows[4].conversation_id, "other-thread");
+}
+
+#[test]
+fn message_replicas_fuse_once_even_when_rankers_choose_different_nodes() {
+    let mut lexical_copy = hit("thread", "a");
+    lexical_copy.node_id = Some("peer".into());
+    let mut semantic_copy = hit("thread", "a");
+    semantic_copy.node_id = Some("other-peer".into());
+    semantic_copy.semantic_score = Some(0.9);
+    let rows = crate::semantic::fuse(
+        vec![hit("thread", "a"), lexical_copy, hit("thread", "b")],
+        vec![semantic_copy, hit("thread", "b")],
+        SearchUnit::Messages,
+    );
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].id, "a");
+    assert_eq!(rows[0].copies.len(), 2);
+    assert_eq!(rows[0].semantic_score, Some(0.9));
+    assert!((rows[0].fusion_score - 2.0 / 61.0).abs() < 1e-6);
+    assert!((rows[1].fusion_score - 2.0 / 62.0).abs() < 1e-6);
+}
+
+#[test]
 fn weak_semantic_neighbours_abstain_but_negative_logit_paraphrases_survive() {
     for unit in [SearchUnit::Threads, SearchUnit::Messages] {
         let mut useful = hit("useful", "model caching");

@@ -1,6 +1,8 @@
 use super::*;
 use crate::thread_catalog::{Direction, Page, Request, Sort};
 
+mod integrated;
+
 fn catalog_snapshot(revision: i64) -> Vec<Value> {
     let mut events = snapshot(revision);
     events[1]["records"] = json!([

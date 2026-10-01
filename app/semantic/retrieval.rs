@@ -4,6 +4,7 @@ use super::embeddings::embedding_generation;
 use super::models::Backend;
 use super::remote;
 use crate::AppError;
+use crate::search_results::{HitKey, hit_key};
 use crate::storage::{SearchHit, SemanticChunks, Storage};
 use std::collections::HashMap;
 
@@ -173,23 +174,6 @@ pub(crate) fn fuse(
             .then_with(|| left.id.cmp(&right.id))
     });
     fused
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-enum HitKey {
-    Message(Option<String>, String),
-    Evidence(crate::search_results::EvidenceKey),
-}
-
-fn hit_key(hit: &SearchHit, unit: crate::search_results::SearchUnit) -> HitKey {
-    match unit {
-        crate::search_results::SearchUnit::Messages => {
-            HitKey::Message(hit.node_id.clone(), hit.id.clone())
-        }
-        crate::search_results::SearchUnit::Threads => {
-            HitKey::Evidence(crate::search_results::evidence_key(hit))
-        }
-    }
 }
 
 fn reciprocal_rank(zero_based_rank: usize) -> f32 {

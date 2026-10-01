@@ -3,6 +3,8 @@ use crate::provider::Provider;
 use crate::search_results::ThreadMetadata;
 use axum::{Json, Router, routing::post};
 
+mod failures;
+
 fn config(directory: &Path, url: &str) -> ResolvedConfig {
     let path = directory.join("config.toml");
     std::fs::write(&path, format!("version = 1\nproviders = {{}}\n[shared]\ngroup_id = 'group'\nnode_id = 'laptop'\napi_url = '{url}'\ntoken_env = 'HOME'\n")).unwrap();

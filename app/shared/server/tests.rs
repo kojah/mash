@@ -609,6 +609,16 @@ impl Service {
         dimensions: usize,
         max_node_bytes: usize,
     ) -> Self {
+        Self::with_token(database, redis, dimensions, max_node_bytes, FIRST).await
+    }
+
+    async fn with_token(
+        database: bool,
+        redis: bool,
+        dimensions: usize,
+        max_node_bytes: usize,
+        first_token: &str,
+    ) -> Self {
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
         } else {
@@ -636,7 +646,7 @@ impl Service {
         }
         let identities = Arc::new(HashMap::from([
             (
-                blake3::hash(FIRST.as_bytes()),
+                blake3::hash(first_token.as_bytes()),
                 Identity {
                     group_id: group.clone(),
                     node_id: "first".into(),

@@ -938,7 +938,11 @@ with different IDs remain separate.
 
 Use `mash search QUERY --unit messages` or MCP `unit = "messages"` for full
 individual message results with the existing 50-candidate and ten-message
-reranking budgets. `limit` counts the selected unit, and filters apply equally
+reranking budgets. Copies with the same provider, conversation, canonical message
+ID, role and whitespace-normalized content occupy one message result, with
+alternate view anchors in `copies`. Repeated content with different message IDs
+and divergent copies remain separate. Replicas do not earn additional fusion
+credit. `limit` counts the selected unit, and filters apply equally
 to both modes before retrieval. Thread excerpts are bounded to 800 characters
 plus ellipses, with a window around a query term when present. Results describe
 the bounded candidate pool, not an exhaustive count of matches in each chat.
