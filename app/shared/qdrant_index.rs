@@ -7,7 +7,7 @@ mod read;
 mod tests;
 
 use super::server::Identity;
-use super::snapshot::{Data, Head, Loaded};
+use super::snapshot::{Head, Loaded};
 use crate::AppError;
 use serde::{Deserialize, Serialize};
 
@@ -223,8 +223,15 @@ impl Store {
         Ok(node)
     }
     async fn load(&self, identity: &Identity) -> Result<Loaded, AppError> {
+        let pending = self.pending_snapshot(identity).await?;
+        crate::blocking(move || pending.decode()).await
+    }
+    async fn pending_snapshot(
+        &self,
+        identity: &Identity,
+    ) -> Result<super::snapshot::PendingSnapshot, AppError> {
         let node = self.node(identity).await?;
-        let data = if let Some(manifest) = &node.manifest {
+        let payload = if let Some(manifest) = &node.manifest {
             if manifest.bytes > self.max_node_bytes
                 || manifest.chunks == 0
                 || manifest.chunks > manifest.bytes
@@ -232,7 +239,7 @@ impl Store {
                 return Err(failure());
             }
             let payload = async {
-                let mut bytes = Vec::new();
+                let mut receiver = super::snapshot::payload::Receiver::new(manifest.bytes).await?;
                 for chunk in 0..manifest.chunks {
                     let id = point_id(&["chunk", &node.version, &chunk.to_string()]);
                     let points = self
@@ -242,32 +249,23 @@ impl Store {
                     let point = points.into_iter().next().ok_or_else(failure)?;
                     if point.payload.kind != PointKind::Chunk
                         || point.payload.version != node.version
-                        || bytes.len().saturating_add(point.payload.text.len()) > manifest.bytes
                     {
                         return Err(failure());
                     }
-                    bytes.extend_from_slice(point.payload.text.as_bytes());
+                    receiver.append(point.payload.text.as_bytes()).await?;
                 }
-                Ok::<_, AppError>(bytes)
+                receiver.finish(&manifest.digest).await
             }
             .await;
             self.unchanged(identity, &node.version).await?;
-            let bytes = payload?;
-            if bytes.len() != manifest.bytes
-                || blake3::hash(&bytes).to_hex().as_str() != manifest.digest
-            {
-                return Err(failure());
-            }
-            crate::blocking(move || serde_json::from_slice::<Data>(&bytes).map_err(|_| failure()))
-                .await?
+            Some(payload?)
         } else {
-            Data::default()
+            None
         };
-        Ok(Loaded {
-            digest: node.manifest.map(|m| m.digest),
+        Ok(super::snapshot::PendingSnapshot {
+            payload,
             head: node.head,
             expected: node.version,
-            data,
         })
     }
     async fn unchanged(&self, identity: &Identity, version: &str) -> Result<(), AppError> {

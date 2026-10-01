@@ -45,11 +45,10 @@ impl Store {
                 if !head.catalog_ready {
                     return Err(AppError::shared("shared thread catalog is unavailable; run `mash index` on the publishing node"));
                 }
-                let (bytes, _) = self.read_payload(&catalog_key(&identity.group_id, &head.version)).await?;
+                let received = self.read_payload(&catalog_key(&identity.group_id, &head.version)).await?;
                 let node = node.clone();
                 collector = crate::blocking(move || {
-                    let rows: BTreeMap<String, ConversationRecord> = serde_json::from_slice(&bytes)
-                        .map_err(|_| AppError::shared("invalid Redis thread catalog"))?;
+                    let rows: BTreeMap<String, ConversationRecord> = received.decode()?;
                     for (id, row) in rows {
                         if id != row.id { return Err(AppError::shared("inconsistent Redis thread catalog identity")); }
                         collector.push(Thread { conversation_id: row.id, provider: row.provider, node_id: node.clone(),

@@ -10,6 +10,7 @@ use crate::{AppError, semantic};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub(super) mod encoding;
+pub(super) mod payload;
 mod plan;
 pub(super) use encoding::Encoded;
 pub(super) use plan::{forget, plan};
@@ -42,6 +43,26 @@ pub(super) struct Loaded {
     pub(super) head: Option<Head>,
     pub(super) expected: String,
     pub(super) data: Data,
+}
+/// Keep decoding and mutation planning on one worker to reuse freed allocations.
+pub(super) struct PendingSnapshot {
+    pub(super) payload: Option<payload::Received>,
+    pub(super) head: Option<Head>,
+    pub(super) expected: String,
+}
+impl PendingSnapshot {
+    pub(in crate::shared) fn decode(self) -> Result<Loaded, AppError> {
+        let digest = self.payload.as_ref().map(|p| p.digest.clone());
+        let data = self
+            .payload
+            .map_or_else(|| Ok(Data::default()), payload::Received::decode)?;
+        Ok(Loaded {
+            digest,
+            head: self.head,
+            expected: self.expected,
+            data,
+        })
+    }
 }
 pub(super) struct Plan {
     pub(super) loaded: Loaded,

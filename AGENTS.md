@@ -100,6 +100,11 @@ env TMPDIR=/home/james/scratch/achi-tmp \
 
 The real-model integration test is ignored by default and requires an explicit
 `MASH_TEST_MODELS_DIR` pointing at assets created by `mash models install`.
+Keep full shared-backend validation on disposable services separate from
+real-corpus benchmarks and bulk collection cleanup. Large Qdrant collection
+deletion can delay unrelated requests and make short integration-test deadlines
+fail. Give benchmarks their own backend instance and clean up only their owned
+groups/collections after their process handles have completed.
 
 Use `cargo build-clif`, `cargo run-clif`, and `cargo test-clif` for development
 iteration. Retain Clippy, formatting, and doctest validation. On the installed

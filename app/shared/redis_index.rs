@@ -285,8 +285,15 @@ impl Store {
         ))
     }
     async fn load(&self, identity: &Identity) -> Result<Loaded, AppError> {
+        let pending = self.pending_snapshot(identity).await?;
+        crate::blocking(move || pending.decode()).await
+    }
+    async fn pending_snapshot(
+        &self,
+        identity: &Identity,
+    ) -> Result<super::snapshot::PendingSnapshot, AppError> {
         let (head, expected) = self.head(identity).await?;
-        let (data, digest) = if let Some(head) = &head {
+        let payload = if let Some(head) = &head {
             let payload = self
                 .read_payload(&data_key(&identity.group_id, &head.version))
                 .await;
@@ -295,22 +302,14 @@ impl Store {
                     "shared node changed while reading; retry the operation",
                 ));
             }
-            let (bytes, digest) = payload?;
-            let data = crate::blocking(move || {
-                let text = String::from_utf8(bytes)
-                    .map_err(|_| AppError::shared("invalid Redis canonical data"))?;
-                decode(&text)
-            })
-            .await?;
-            (data, Some(digest))
+            Some(payload?)
         } else {
-            (Data::default(), None)
+            None
         };
-        Ok(Loaded {
-            digest,
+        Ok(super::snapshot::PendingSnapshot {
+            payload,
             head,
             expected,
-            data,
         })
     }
 }

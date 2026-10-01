@@ -60,9 +60,9 @@ impl Store {
                 "Redis upload exceeds the configured snapshot limit",
             ));
         }
-        let loaded = self.load(identity).await?;
+        let pending = self.pending_snapshot(identity).await?;
         let dimensions = identity.dimensions;
-        let plan = crate::blocking(move || plan(&file, loaded, dimensions)).await?;
+        let plan = crate::blocking(move || plan(&file, pending.decode()?, dimensions)).await?;
         let instance = plan
             .loaded
             .head
@@ -80,9 +80,10 @@ impl Store {
         if input.ids.len() > 10000 {
             return Err(AppError::usage("too many forget identities"));
         }
-        let loaded = self.load(identity).await?;
+        let pending = self.pending_snapshot(identity).await?;
         let instance = input.instance.clone();
         let (plan, forgotten) = crate::blocking(move || {
+            let loaded = pending.decode()?;
             let accepted = loaded.head.as_ref().map_or(0, |h| h.revision);
             if loaded
                 .head

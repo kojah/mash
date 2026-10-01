@@ -1082,7 +1082,10 @@ files on blocking workers and stream bounded chunks from those files. This
 avoids keeping a second full serialized snapshot in API memory. Temporary disk
 must hold the incoming upload and canonical JSON (plus the Redis thread catalog)
 until publication finishes. The validated canonical data still resides in
-memory, and replacement reads and backend staging have additional costs;
+memory. Stored canonical snapshots and Redis catalogs are also received into
+private, checksummed files and decoded on blocking workers, avoiding a full
+input JSON buffer during replacement or retry. Temporary disk must accommodate
+these reads too. Backend staging and validated data have additional costs;
 the configured node snapshot limit is not a process RAM budget. Account for
 concurrent uploads when provisioning the API and database.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
