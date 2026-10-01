@@ -1370,6 +1370,15 @@ and does not run CLI integration contracts. Keep the full suite, real-model and
 shared-backend checks as completion gates. See the
 [measured workflow](benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
 
+CI also runs the [labeled hybrid relevance matrix](benchmarks/2026-10-01-shared-relevance.md)
+with explicitly installed models against local SQLite and all three shared backends.
+The shared tests require their disposable backend endpoint and
+`MASH_TEST_MODELS_DIR`. To run these checks together with those variables set:
+
+```bash
+cargo test-clif --lib --run-ignored only -j 1 -E 'test(labeled)' --success-output immediate
+```
+
 The installed August 2026 nightly can hit a [Clippy compiler crash](https://github.com/rust-lang/rust/issues/161495)
 when checking async code. On that toolchain, use
 `RUSTFLAGS=-Znext-solver=no cargo clippy --all-targets -- -D warnings`.

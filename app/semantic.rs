@@ -3,7 +3,7 @@
 mod coreml;
 mod embeddings;
 #[cfg(test)]
-mod evaluation;
+pub(crate) mod evaluation;
 mod models;
 pub(crate) mod remote;
 mod retrieval;

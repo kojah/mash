@@ -112,3 +112,33 @@ relevant = []
 text = "keeping a model warm between CLI searches"
 relevant = []
 filters = { conversation = ["garden"] }
+
+[[queries]]
+text = "repair authentication credentials"
+relevant = ["tokens"]
+filters = { provider = ["claude-code"], role = ["user"], conversation = ["tokens"] }
+[[queries]]
+text = "repair authentication credentials"
+relevant = []
+filters = { provider = ["codex"] }
+[[queries]]
+text = "repair authentication credentials"
+relevant = []
+filters = { role = ["assistant"] }
+[[queries]]
+text = "PR 180"
+relevant = ["pr180"]
+forbidden = ["other-pr180", "issue180", "pr183", "number"]
+filters = { filter = { all = [{ any = [{ conversation = ["pr180"] }, { conversation = ["other-pr180"] }] }, { not = { conversation = ["other-pr180"] } }] } }
+[[queries]]
+text = "keeping a model warm between CLI searches"
+relevant = ["cache"]
+filters = { conversation = ["cache"] }
+[[queries]]
+text = '"joint index"'
+relevant = []
+filters = { conversation = ["joint-pain"] }
+[[queries]]
+text = "repair authentication credentials"
+relevant = []
+filters = { after = 1 }

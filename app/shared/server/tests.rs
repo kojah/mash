@@ -9,6 +9,7 @@ mod context;
 mod correlation;
 mod cursor;
 mod native;
+mod relevance;
 mod selections;
 mod threads;
 mod windsurf;

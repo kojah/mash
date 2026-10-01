@@ -42,7 +42,15 @@ struct Message<'a> {
     content: &'a str,
 }
 
-fn fixture(corpus: &Corpus) -> (tempfile::TempDir, Paths) {
+fn corpus() -> Corpus {
+    let corpus: Corpus =
+        toml::from_str(include_str!("../../docs/fixtures/search-relevance.toml")).unwrap();
+    assert_eq!(corpus.version, 1);
+    corpus
+}
+
+pub(crate) fn fixture() -> (tempfile::TempDir, Paths) {
+    let corpus = corpus();
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("claude");
     std::fs::create_dir(&source).unwrap();
@@ -119,16 +127,22 @@ fn regressions(query: &Query, ids: &[&str], unit: SearchUnit) -> Vec<String> {
 #[tokio::test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application_core() {
-    let corpus: Corpus =
-        toml::from_str(include_str!("../../docs/fixtures/search-relevance.toml")).unwrap();
-    assert_eq!(corpus.version, 1);
-    let (_root, paths) = fixture(&corpus);
+    let (_root, paths) = fixture();
     crate::core::execute(Request {
         paths: paths.clone(),
         operation: Operation::Index(IndexRequest::default()),
     })
     .await
     .unwrap();
+    assert_eq!(
+        evaluate(&paths, false).await,
+        Vec::<String>::new(),
+        "relevance regressions"
+    );
+}
+
+pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
+    let corpus = corpus();
     let mut failures = Vec::new();
     for unit in [SearchUnit::Messages, SearchUnit::Threads] {
         let mut precision = 0.0;
@@ -144,14 +158,20 @@ async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application
                     limit: 5,
                     unit,
                     filters: Box::new(query.filters.clone()),
-                    shared: false,
-                    local: true,
+                    shared,
+                    local: !shared,
                 },
             })
             .await
             .unwrap() else {
                 panic!("search response");
             };
+            assert_eq!(
+                response.shared, shared,
+                "shared search must not fall back to local: {:?}",
+                response.shared_error
+            );
+            assert!(response.shared_error.is_none());
             let ids = match &response.results {
                 Results::Messages(hits) => hits
                     .iter()
@@ -163,7 +183,7 @@ async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application
                     .collect::<Vec<_>>(),
             };
             eprintln!(
-                "relevance {unit:?} {:?}: {ids:?} elapsed_ms={}",
+                "relevance shared={shared} {unit:?} {:?}: {ids:?} elapsed_ms={}",
                 query.text,
                 started.elapsed().as_millis()
             );
@@ -191,11 +211,11 @@ async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application
             failures.extend(regressions(query, &ids, unit));
         }
         eprintln!(
-            "relevance {unit:?}: precision@returned5={:.3} recall@5={:.3} MRR@5={:.3}",
+            "relevance shared={shared} {unit:?}: precision@returned5={:.3} recall@5={:.3} MRR@5={:.3}",
             precision / positive_count,
             recall / positive_count,
             reciprocal_rank / positive_count
         );
     }
-    assert_eq!(failures, Vec::<String>::new(), "relevance regressions");
+    failures
 }
