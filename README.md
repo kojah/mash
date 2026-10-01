@@ -919,6 +919,12 @@ Each upload and each node's serialized canonical snapshot is limited to
 to raise that bound (1–4096 MiB). Size Redis memory for all nodes' canonical
 data, thread catalogs, searchable documents, vectors, and temporary staging copies; this limit
 does not reserve memory or change Redis's `maxmemory` setting.
+The [real-history Redis publication and persistence check](benchmarks/2026-10-01-redis-publication-persistence.md)
+published and replaced 225,267 canonical messages with an 8 GiB container budget
+and `maxmemory=6gb`; allocation peaked at 4.27 GiB during replacement and settled
+near 2.08 GiB after restart. Its 2 GiB predecessor was OOM-killed. These are
+corpus-specific measurements, not minimum safe sizing or a guarantee for several
+nodes, concurrent publishers, persistence rewrites, or continued growth.
 Canonical snapshots use bounded 8 MiB Redis values with a checksummed manifest.
 New publications also stage a compact conversation-metadata catalog using the
 same chunk/checksum format. Catalogs contain no message bodies or vectors and
