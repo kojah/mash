@@ -140,6 +140,15 @@ testing unnormalized vector-mean dot products. Previously reserved forward
 GRINCH-style full-intent AP improves for all five views, but calibration has
 three losses, and exact-clade stability remains weak. Both samples are exposed;
 this does not select a production method or constitute fresh held-out evidence.
+The [precision-constrained follow-up](../../benchmarks/2026-10-02-precision-calibration.md)
+excludes all64 previous groups and freezes cuts on16 new calibration groups before
+evaluating16 reserved groups. Full-intent settings retain observed precision≥.70
+across three reserved orders; average is steadier, centroid stronger forward.
+The service-selected lexical fusion fails transfer. Direct-tag thread unions
+expose a high all-connected baseline: overlap F1 cannot establish useful topic
+navigation. These remain outcome-separated development proxies from the same
+public shard, whose texts were previously eligible as background, rather than
+independent coding-topic judgments. No Rust method or ingestion gate is selected.
 
 Pinned raw SHA256:
 

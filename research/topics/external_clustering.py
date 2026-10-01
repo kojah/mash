@@ -50,16 +50,21 @@ def memberships(clusters, identities):
     return {i: n for n, c in enumerate(sorted(tuple(sorted(c)) for c in clusters)) for i in c}
 
 
-def pair_metrics(rows, assignment, gold_key):
+def boolean_metrics(truth, predictions):
+    if len(truth) != len(predictions) or any(type(v) is not bool for v in (*truth, *predictions)):
+        raise ValueError('aligned literal boolean outcomes required')
     counts = {'tp': 0, 'fp': 0, 'tn': 0, 'fn': 0}
-    for row in rows:
-        predicted = assignment[row['left']] == assignment[row['right']]
-        truth = row[gold_key]
-        counts['tp' if predicted and truth else 'fp' if predicted else 'fn' if truth else 'tn'] += 1
+    for gold, predicted in zip(truth, predictions):
+        counts['tp' if predicted and gold else 'fp' if predicted else 'fn' if gold else 'tn'] += 1
     tp, fp, fn = counts['tp'], counts['fp'], counts['fn']
-    return {**counts, 'pairs': len(rows), 'precision': tp / (tp + fp) if tp + fp else None,
+    return {**counts, 'pairs': len(truth), 'precision': tp / (tp + fp) if tp + fp else None,
             'recall': tp / (tp + fn) if tp + fn else None,
             'f1': 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else None}
+
+
+def pair_metrics(rows, assignment, gold_key):
+    return boolean_metrics([row[gold_key] for row in rows],
+                           [assignment[row['left']] == assignment[row['right']] for row in rows])
 
 
 def fit(identities, matrix, indices, method, threshold=None):

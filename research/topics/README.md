@@ -917,6 +917,15 @@ improves several AP/stability controls but has counterexamples and still weak
 branch stability. Fresh independent validation/labels/lifecycle are required.
 `Node.link_vector` supports both meanings; hierarchy captures now explicitly
 record linkage in schema version2. No compatibility alias or production change.
+The [precision-constrained calibration](../../benchmarks/2026-10-02-precision-calibration.md)
+uses `precision_calibration.py` with another16 calibration/16 reserved groups,
+excluding all64 previous groups. Per-linkage cuts maximize recall subject to
+observed proxy precision≥.70 and20 links, with an explicit unsupported result.
+Reserved execution requires the frozen calibration SHA and revalidates the full
+contract. Average intent cuts are steadier across arrival orders; centroid has
+higher forward recall. Secondary multiple-direct-tag thread scores approach an
+all-connected baseline, exposing weak discrimination. No labels, semantic
+ancestors, guided-search gain or production method are established.
 
 Run lab input-boundary tests:
 

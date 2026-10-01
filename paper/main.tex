@@ -2829,10 +2829,137 @@ and \path{linkage-second.json} SHA256
 \path{32bc025474f639396861d5b58e2a8d2a6e17e3c4733cabbcb988467b229c85a0}.
 No application Rust configuration, inference or MCP behavior changes.
 
+\subsection{Precision-constrained calibration and multi-tag thread diagnostics}
+The next experiment excludes all 64 previous groups and hash-selects 32 additional
+development groups with seed
+\path{mash-topic-multiwoz-precision-v1-20261001}: 16 calibration and 16 reserved.
+The seed retains its date; reporting completed October 2. This is an
+outcome-separated development experiment, not independent coding-topic gold:
+the shard was structurally inspected and these texts were previously eligible
+as lexical background. Templates, cumulative-state effects and pretraining
+overlap remain possible. The fixed annotation-free lexical basis now uses 416
+remaining groups: 3137 USER turns minus 24 exact selected-string exclusions and 26
+duplicates, giving 3087 unique strings, 3458 vocabulary entries and 55645 nonzeros.
+Vocabulary, IDF and background manifests must exactly match across phases.
+
+Preregister ten forward GRINCH-style trees (five fixed views times two linkages),
+reusing each at cuts .1 through .9 in increments of .1. For each linkage and
+service/full-intent objective, maximize unit-pair recall subject to observed
+precision at least .70 and 20 predicted cross-group links; break ties by higher
+precision then lexical candidate ID. No eligible candidate means unsupported,
+without relaxing the criterion. This is a provisional proxy selection rule,
+not a statistical precision guarantee or production acceptance threshold.
+Full-intent is primary; service is a broad diagnostic. Freeze the calibration
+artifact SHA before reserved execution, which rejects policy, split, source/model,
+code/dependency, winner or lexical-basis drift. Test only four unique frozen
+winners and fixed current-centroid .7, in forward/reverse/seed17 orders:
+15 partitions from nine reused trees. No reserved-based retuning or selection.
+
+Calibration has 121 USER anchors minus 16 root-context abstentions, yielding 105
+fit units and 2459 eligible cross-group pairs (885 service/526 intent positives).
+Reserved has 122 anchors minus 16 roots and one exact calibration input, yielding
+105 fit units and 3129 eligible pairs (1161 service/766 intent positives).
+Unknown or empty proxy labels exclude pairs from metrics, never from fitting.
+Installed pinned MiniLM inference is singleton CPU, one thread, with a 1024
+unique-input preflight, no padding/truncation/downloads or generative calls.
+Both current and joined support are required for all five views.
+
+\begin{center}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Frozen setting & Objective & Cal P & Cal R & Reserved P & Reserved R \\
+\midrule
+Current average .4 & Intent & .7195 & .1122 & .7204 & .2624 \\
+Current centroid .6 & Intent & .7143 & .0856 & .8862 & .3864 \\
+Current average .3 & Service & .7465 & .2429 & .8200 & .3256 \\
+Current+lexical centroid .3 & Service & .8537 & .1582 & .6489 & .4091 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Reserved columns are forward only. Service-selected lexical fusion fails the
+precision criterion forward and shuffled (shuffled service precision .3969).
+Eligibility on calibration does not guarantee transfer even on a related corpus.
+
+\begin{center}
+\begin{tabular}{llrrrr}
+\toprule
+Intent setting & Arrival & P & R & F1 & ARI vs forward \\
+\midrule
+Average .4 & Forward & .7204 & .2624 & .3847 & 1.0000 \\
+Average .4 & Reverse & .7686 & .2559 & .3839 & .9046 \\
+Average .4 & Shuffled & .7765 & .2585 & .3879 & .8320 \\
+Centroid .6 & Forward & .8862 & .3864 & .5382 & 1.0000 \\
+Centroid .6 & Reverse & .7905 & .1084 & .1906 & .4756 \\
+Centroid .6 & Shuffled & .7422 & .1240 & .2125 & .5284 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Average's forward confusion counts are 201 TP/78 FP/565 FN/2285 TN; centroid's
+are 296/38/470/2325. Average partitions have 26/29/27 clusters with 9/13/10
+singletons; centroid has 47/54/50 clusters with 33/37/33 singletons. Average is
+steadier across tested orders, centroid has higher forward precision/recall.
+Partition ARI does not establish exact branches or semantic parents; three
+dependent orders do not establish statistical superiority. Fixed centroid .7
+forward gives P .9211/R .0457/F1 .0871 with 82 clusters/70 singletons. All-one
+gives P .2448/R 1/F1 .3933; singleton gives zero recall/F1 and undefined P.
+Average .4 forward F1 is below all-one despite much higher precision, illustrating
+why a single aggregate score is insufficient.
+
+For a secondary thread diagnostic, assign each original dialogue the set of
+direct cut-cluster IDs represented by all its fit units. A thread can receive
+multiple tags; units still have one cut membership. This is not soft membership,
+labeled topics or semantic ancestor inheritance. Predict related threads when
+tag sets intersect. Proxy truth is the union of known nonempty labels from the
+same fit units, not full-thread human judgments. Calibration excludes one group
+without eligible proxy evidence, leaving 15 groups/105 pairs/74 intent positives;
+reserved has 16 groups/120 pairs/95 intent positives and 102 service positives.
+Retain predicted tags even on excluded groups. Thread outcomes never tune cuts.
+
+\begin{center}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Forward thread intent & TP & FP & FN & TN & P & R & F1 \\
+\midrule
+Average intent .4 & 86 & 13 & 9 & 12 & .8687 & .9053 & .8866 \\
+Centroid intent .6 & 75 & 9 & 20 & 16 & .8929 & .7895 & .8380 \\
+Fixed centroid .7 & 33 & 1 & 62 & 24 & .9706 & .3474 & .5116 \\
+All connected & 95 & 25 & 0 & 0 & .7917 & 1.0000 & .8837 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Average .4 threads have 4--7 direct tags; centroid .6 has 3--8. Average rejects
+only 12 of 25 unrelated proxy pairs (specificity .48), centroid 16 (.64).
+Average's F1 gain over all-connected is just .0029. Both service-selected forward
+settings connect all 120 pairs, exactly matching all-connected. High overlap
+recall/F1 is weak evidence of navigation quality. Granular coding/aspect judgments,
+harder unrelated pairs and equal-budget guided-search tasks remain required.
+
+Calibration makes 226 unique model calls (maximum 63 tokens), reserved 227
+(maximum 73). Two runs total 5.011/4.071 seconds calibration and 2.178/1.915
+reserved; inference 772.09/614.95 and 475.69/424.33 milliseconds respectively.
+All ten/nine tree fits sum 1061.72/764.98 and 584.59/481.37 milliseconds wall.
+Totals include loading, model construction, background features, trees, cuts and
+evaluation; serialization is outside the timer. These are Xenia lab costs,
+not matched production ingestion, RSS, persistence or edit/delete measurements.
+No provisional 10\% overhead gate is established.
+
+Both phase repeats match every non-timing field. Separate recomputation verifies
+all 105 partitions' source coverage, unit/thread confusion counts, 96-group and
+background separation, and absence of calibration hashes in evaluated model
+inputs. A wrong calibration hash fails before inference with no capture.
+The lab suite passes 204 tests. Calibration SHA256
+\path{c0dcfd2f4db61702af8692db98ec2a61763f0ab11f4755962944f6833f17140f},
+repeat \path{0e017e6b638242a33e09b40c7989334c946b2226b590438c1d16b6875c9ecd38};
+reserved \path{a67015fd9f2d192913886e74dd9c55411b9c98f781b96f5ed744fde7d27adba3},
+repeat \path{00a2d17909fb5541da94ea5be3a741854345ec8635bb826dcfafbc118799aaba}.
+Captures remain private under \path{topic-public-multiwoz-20261001}; source code
+is \path{research/topics/precision_calibration.py}. No Rust method is selected.
+
 \section{Planned evaluation and unresolved requirements}
-Next use fresh preregistered calibration/outcome groups for the promising average
-linkage, with explicit false-merge/coverage checks before independent coding/provider
-validation. Compare bounded dialogue units and source-grounded context with
+Next prioritize granular coding/provider topic units and thread discrimination
+with independently reviewed evidence, preserving all frozen outcomes. Compare
+bounded dialogue units and source-grounded context with
 discovery fixed; test label-only contrastive training-background weights and
 representative-phrase scoring with memberships fixed. Further discovery alternatives
 must address measured unit/label failures. Changes to geometry
