@@ -58,6 +58,8 @@ struct Probe {
 #[derive(Serialize)]
 struct Topic {
     id: TopicId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_representation: Option<super::representatives::Selection>,
     supporting_terms: usize,
     probes: Vec<Probe>,
     candidates: Vec<labels::ranking::SemanticTerm>,
@@ -153,6 +155,7 @@ fn capture(
             .collect();
         topics.push(Topic {
             id: cluster.id,
+            label_representation: cluster.name.label_representation.clone(),
             supporting_terms: words.len(),
             probes,
             candidates,

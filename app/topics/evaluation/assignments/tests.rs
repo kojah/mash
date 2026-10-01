@@ -30,6 +30,7 @@ fn conserved_support_rejects_ambiguous_many_way_matches_and_keeps_secondary_subj
         Mode::UserSegments,
         Weighting::Independent,
         false,
+        false,
     )
     .unwrap();
     assert_eq!(independent.len(), 14);
@@ -38,6 +39,7 @@ fn conserved_support_rejects_ambiguous_many_way_matches_and_keeps_secondary_subj
         &model,
         Mode::UserSegments,
         Weighting::Conserved,
+        true,
         true,
     )
     .unwrap();
@@ -48,6 +50,11 @@ fn conserved_support_rejects_ambiguous_many_way_matches_and_keeps_secondary_subj
     assert_eq!(conserved[&TopicId(12)].support, 4.0);
     assert_eq!(conserved[&TopicId(13)].support, 1.0);
     assert_eq!(conserved[&TopicId(13)].words, labels::terms("frontend"));
+    // Four adjacent database messages form one segment; references are segment
+    // indices, not message indices, and frontend is the following segment.
+    assert_eq!(conserved[&TopicId(12)].segments, [0]);
+    assert_eq!(conserved[&TopicId(13)].segments, [1]);
+    assert!(independent.values().all(|entry| entry.segments.is_empty()));
 }
 
 #[test]
@@ -68,6 +75,7 @@ fn one_multisubject_segment_preserves_both_topics_and_conserves_evidence_mass() 
         Mode::UserSegments,
         Weighting::Conserved,
         true,
+        true,
     )
     .unwrap();
     assert_eq!(evidence.len(), 2);
@@ -76,4 +84,5 @@ fn one_multisubject_segment_preserves_both_topics_and_conserves_evidence_mass() 
     assert!(mass <= 1.0);
     assert!((evidence[&TopicId(0)].support - evidence[&TopicId(1)].support).abs() < 1e-12);
     assert!(evidence.values().all(|entry| entry.scores.is_some()));
+    assert!(evidence.values().all(|entry| entry.segments == [0]));
 }

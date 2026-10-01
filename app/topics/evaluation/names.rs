@@ -10,6 +10,8 @@ use std::time::Instant;
 pub(super) struct Summary {
     inference: Inference,
     scoring: labels::ranking::Weights,
+    representation_policy: super::representatives::Policy,
+    representative_topics: usize,
     unique_candidates: usize,
     newly_embedded: usize,
     cached_candidates: usize,
@@ -34,6 +36,8 @@ enum Inference {
 pub(super) struct Name {
     pub(super) terms: Vec<labels::Term>,
     pub(super) semantic_terms: Option<Vec<labels::ranking::SemanticTerm>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) label_representation: Option<super::representatives::Selection>,
     #[serde(skip)]
     pub(super) candidates: Vec<labels::Term>,
     #[serde(skip)]
@@ -44,9 +48,16 @@ impl Name {
         Self {
             terms: candidates.iter().take(8).cloned().collect(),
             semantic_terms: None,
+            label_representation: None,
             candidates,
             center,
         }
+    }
+
+    fn scoring_center(&self) -> &[f64] {
+        self.label_representation
+            .as_ref()
+            .map_or(&self.center, |selection| &selection.center)
     }
 }
 impl Labeler {
@@ -54,7 +65,7 @@ impl Labeler {
         &self,
         name: &Name,
     ) -> Result<Vec<labels::ranking::SemanticTerm>, AppError> {
-        labels::ranking::inspect(&name.center, &name.candidates, &self.cache)
+        labels::ranking::inspect(name.scoring_center(), &name.candidates, &self.cache)
     }
 
     pub(super) fn project_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
@@ -120,15 +131,25 @@ impl Labeler {
             }
         }
         let mut labeled = 0;
+        let representative_topics = names
+            .iter()
+            .filter(|name| name.label_representation.is_some())
+            .count();
         for cluster in names {
-            let terms =
-                labels::ranking::rank(&cluster.center, &cluster.candidates, &self.cache, 8)?;
+            let terms = labels::ranking::rank(
+                cluster.scoring_center(),
+                &cluster.candidates,
+                &self.cache,
+                8,
+            )?;
             labeled += usize::from(!terms.is_empty());
             cluster.semantic_terms = Some(terms);
         }
         Ok(Summary {
             inference: self.inference,
             scoring: labels::ranking::weights(labels::shortlist::policy()),
+            representation_policy: super::representatives::policy(),
+            representative_topics,
             unique_candidates: unique.len(),
             newly_embedded: missing.len(),
             cached_candidates: self.cache.len(),

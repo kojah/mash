@@ -9,6 +9,7 @@ mod input;
 mod names;
 mod partition;
 mod provenance;
+mod representatives;
 mod review;
 use super::segments::{Builder, Segment};
 use super::{AssignmentModel, TopicId, labels, normalize};
@@ -317,6 +318,7 @@ struct Cluster {
 #[derive(Serialize)]
 struct Report {
     mode: Mode,
+    label_representation_policy: representatives::Policy,
     label_text: labels::TextMode,
     label_discourse: labels::DiscourseMode,
     label_shortlist: labels::shortlist::Policy,
@@ -358,6 +360,7 @@ struct Report {
 #[derive(Serialize)]
 struct RejectedRun {
     mode: Mode,
+    label_representation_policy: representatives::Policy,
     label_text: labels::TextMode,
     label_discourse: labels::DiscourseMode,
     label_shortlist: labels::shortlist::Policy,
@@ -437,6 +440,7 @@ fn run(
         memberships,
         classes,
         supporting_words,
+        supporting_segments,
         assignment_evidence,
     } = assignments::assign(
         threads,
@@ -447,9 +451,13 @@ fn run(
     )?;
     let assignment_ms = start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let clusters = label_clusters(threads, &memberships, &leaves, &classes);
+    let mut clusters = label_clusters(threads, &memberships, &leaves, &classes);
+    if representatives::enabled() {
+        representatives::apply(threads, &supporting_segments, mode, holdout, &mut clusters)?;
+    }
     let label_ms = start.elapsed().as_secs_f64() * 1000.0;
     Ok(Report {
+        label_representation_policy: representatives::policy(),
         label_text: labels::text_mode(),
         label_discourse: labels::discourse_mode(),
         label_shortlist: labels::shortlist::policy(),
@@ -570,6 +578,7 @@ fn benchmark_topic_discovery() {
                     Ok(report) => report,
                     Err(error) => {
                         let rejected = RejectedRun {
+                            label_representation_policy: representatives::policy(),
                             label_text: labels::text_mode(),
                             label_discourse: labels::discourse_mode(),
                             label_shortlist: labels::shortlist::policy(),

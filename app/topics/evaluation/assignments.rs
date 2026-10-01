@@ -36,11 +36,13 @@ struct Evidence {
     support: f64,
     words: labels::Terms,
     scores: Option<super::provenance::Scores>,
+    segments: Vec<usize>,
 }
 pub(super) struct Assignments {
     pub(super) memberships: BTreeMap<String, BTreeSet<TopicId>>,
     pub(super) classes: BTreeMap<TopicId, labels::Terms>,
     pub(super) supporting_words: BTreeMap<String, BTreeMap<TopicId, labels::Terms>>,
+    pub(super) supporting_segments: BTreeMap<String, BTreeMap<TopicId, Vec<usize>>>,
     pub(super) assignment_evidence: Option<super::provenance::Report>,
 }
 
@@ -50,6 +52,7 @@ fn evidence(
     mode: Mode,
     weighting: Weighting,
     capture: bool,
+    representatives: bool,
 ) -> Result<BTreeMap<TopicId, Evidence>, AppError> {
     if capture {
         super::provenance::Collector::validate(thread)?;
@@ -61,6 +64,7 @@ fn evidence(
         (0.55, 0.9)
     };
     let mut offset = 0;
+    let mut retained_segments = 0;
     for (index, segment) in thread_samples(thread, mode).into_iter().enumerate() {
         let end = offset + segment.messages;
         if capture && end > thread.user_sources.len() {
@@ -75,6 +79,15 @@ fn evidence(
         let weight = weighting.factor(&hits);
         for hit in hits {
             let entry = evidence.entry(hit.topic).or_default();
+            if representatives {
+                retained_segments += 1;
+                if retained_segments > super::representatives::MAXIMUM_MATCHES {
+                    return Err(AppError::usage(
+                        "topic label representative match cap exceeded",
+                    ));
+                }
+                entry.segments.push(index);
+            }
             #[allow(clippy::cast_precision_loss)]
             {
                 let support = hit.cosine * segment.messages as f64 * weight;
@@ -124,14 +137,27 @@ pub(super) fn assign(
     let mut memberships = BTreeMap::new();
     let mut classes = BTreeMap::new();
     let mut supporting_words = BTreeMap::new();
+    let mut supporting_segments = BTreeMap::new();
+    let mut retained_segments = 0;
     let capture = std::env::var_os("MASH_TEST_TOPIC_HIERARCHY").is_some();
+    let representatives = super::representatives::enabled();
     for (id, thread) in threads {
         let mut topics = BTreeSet::new();
         let mut words = BTreeMap::new();
+        let mut segments = BTreeMap::new();
         let selected = collector.as_ref().is_some_and(|c| c.selected(id));
         let mut scores = Vec::new();
-        for (topic, entry) in evidence(thread, model, mode, weighting, selected)? {
+        for (topic, entry) in evidence(thread, model, mode, weighting, selected, representatives)? {
             topics.insert(topic);
+            if !entry.segments.is_empty() {
+                retained_segments += entry.segments.len();
+                if retained_segments > super::representatives::MAXIMUM_MATCHES {
+                    return Err(AppError::usage(
+                        "topic label representative match cap exceeded",
+                    ));
+                }
+                segments.insert(topic, entry.segments);
+            }
             if capture {
                 words.insert(topic, entry.words.clone());
             }
@@ -147,6 +173,9 @@ pub(super) fn assign(
             collector.as_mut().unwrap().record(id, thread, scores);
         }
         memberships.insert(id.clone(), topics);
+        if !segments.is_empty() {
+            supporting_segments.insert(id.clone(), segments);
+        }
         if capture {
             supporting_words.insert(id.clone(), words);
         }
@@ -155,6 +184,7 @@ pub(super) fn assign(
         memberships,
         classes,
         supporting_words,
+        supporting_segments,
         assignment_evidence: collector.map(super::provenance::Collector::finish),
     })
 }
