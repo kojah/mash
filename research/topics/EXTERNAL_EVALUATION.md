@@ -120,6 +120,15 @@ than promotion from pair-ranking gains. Fresh repeats match all non-timing field
 No useful semantic hierarchy, overlapping tags, labels or guided-search gain
 is demonstrated, and no production ingestion/parity gate is satisfied.
 
+The [two-phase granularity calibration](../../benchmarks/2026-10-01-cluster-calibration.md)
+excludes the old32 groups, hash-selects16 calibration/16 reserved groups, and
+refits lexical background excluding all64 selected groups. Freeze winner before
+reserved outcomes:joined BIRCH .8. Reserved forward intent recall rises to50.68%,
+but precision36.82% and reverse/shuffled ARI .1584/.3112 are inadequate robustness
+evidence. No validation-driven choice, independent coding gold or production
+promotion. Exact calibration/evaluation repetitions and source/input separation
+are verified; model work is measured but full ingestion cost remains unknown.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.

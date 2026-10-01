@@ -77,7 +77,7 @@ def evaluation_grid(anchors, vectors, support):
                          'services': sorted(set(a['active']) | set(b['active'])), 'shared_services': sorted(shared),
                          'service_overlap': bool(shared),
                          'intent_overlap': bool(set(map(tuple, a['intents'])) & set(map(tuple, b['intents']))),
-                         'scores': {c: float(vectors[c][left] @ vectors[c][right]) for c in Control}})
+                         'scores': {c: float(vectors[c][left] @ vectors[c][right]) for c in vectors}})
     return rows
 
 

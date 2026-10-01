@@ -898,6 +898,12 @@ produce mostly singletons and very low cross-dialogue proxy recall; perfect orde
 stability in some views is therefore weak evidence. No method is selected.
 The tree retains its default1024D cap and permits an explicit bounded8192D setting
 for these lexical controls. Production sparse costs and lifecycle remain untested.
+The [separate-sample calibration](../../benchmarks/2026-10-01-cluster-calibration.md)
+uses `cluster_calibration.py` in two phases:16 new calibration groups select
+frozen settings, then16 reserved groups evaluate them without tuning. Calibration
+selects joined BIRCH .8 and fixes fragmentation, but reserved forward intent
+precision is37% and order stability is weak. No method is promoted; reserved
+outcomes remain development proxies, not independent coding-topic gold.
 
 Run lab input-boundary tests:
 

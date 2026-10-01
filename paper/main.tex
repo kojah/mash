@@ -2481,6 +2481,120 @@ selection follows from the present exposed sample. Coding/provider evidence,
 independent judgments, guided search and lifecycle/ingestion/parity gates remain
 required.
 
+\subsection{Two-phase separate-sample granularity calibration}
+The fragmentation diagnostic motivates representation-specific calibration,
+rather than selection from ranking alone. Before new outcomes, preregister
+\path{research/topics/cluster_calibration.py}: exclude the original32 exposed
+groups from the pinned512-group development shard, hash-select32 new groups
+using \texttt{mash-topic-multiwoz-calibration-v1-20261001}, first16 calibration
+and next16 reserved outcome evaluation. No label stratification, replacements
+or resampling. This is development-internal reserved outcome evaluation, not an
+external untouched test: full source structure/aggregate annotations were
+previously inspected and some new text contributed to the old lexical background.
+No prior clustering outcomes for these partitions; template/paraphrase/pretraining
+overlap remains unknown. Service/find/book proxies are not coding-topic gold.
+
+Refit the fixed lexical policy on448 groups excluding all64 exposed/new groups
+and exact selected USER strings:3380 USER occurrences minus21 selected-string
+occurrences and32 duplicates gives3327 unique texts,3648 features and60,170
+nonzeros. Fit basis is identical across phases and checked against the frozen
+artifact. Reserved anchors with exact current/joined input strings occurring
+in calibration inputs abstain before matched support; no replacements or fallback.
+Use installed hash-pinned CPU MiniLM, current and exact preceding-SYSTEM+USER
+inputs, singleton2--512 tokens, no truncation/padding/download, normalized quantized
+384D. Whole-phase1024-unique-input cap is checked before inference. Five views
+include lexical and fixed75/25 dense/lexical fusion, with no new representation
+weights. Fit support never depends on proxy annotations.
+
+Calibration-forward only,60 candidates: five views, BIRCH radii
+.3/.4/.5/.6/.7/.8 and independent GRINCH-style cuts .1/.3/.5/.6/.7/.9.
+Keep branch64/no global cluster count and exact tree neighbors. Maximize service
+pair F1 for broad discovery and \emph{full intent F1} for fine discovery;
+within-service F1 is diagnostic only because high positive prevalence rewards
+collapse. Ties use lexicographic candidate identity. Persist all partitions,
+counts, policies, source/split/model/code pins and winners before the separate
+evaluation command. Reject contract/basis/recalculated-winner drift. Evaluate
+only frozen winners plus fixed-current BIRCH .4/tree .7 references and
+all-one/singleton baselines, forward/reverse/seed17 arrivals. No reserved-outcome
+selection, threshold expansion or new alternatives. Sorted identity is not
+event-time ingestion; this experiment is insert-only.
+
+Calibration has115 USER anchors,16 root-context abstentions,99 commonly supported
+anchors, no lexical-zero rows and2590 eligible cross-group pairs: service715/1875,
+intent465/2125 and within-service465/250 positives/negatives. Both objectives
+select joined BIRCH .8,20 groups/13 singletons: serviceF1 .529638,
+precision .589041/recall .481119; intentF1 .402288, precision .361301/recall
+.453763. All-one service/intent F1 .432678/.304419. Winner at the radius-grid
+boundary limits conclusions; it does not justify outcome-adaptive expansion.
+The first calibration artifact hash is recorded before reserved execution.
+
+Reserved evaluation has112 USER anchors,16 root-context and one
+exact-calibration-input abstention,95 matched anchors and2621 eligible pairs:
+service914/1707, intent590/2031, within-service590/324. No lexical-zero rows.
+All evaluated methods/orders use unchanged matched support.
+\begin{center}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Frozen setting & Arrival & Groups & Singleton & Service F1 & Intent F1 \\
+\midrule
+Joined BIRCH .8 & Forward & 20 & 16 & .530707 & .426534 \\
+Joined BIRCH .8 & Reverse & 30 & 22 & .475000 & .431900 \\
+Joined BIRCH .8 & Shuffled & 25 & 20 & .699552 & .546575 \\
+Current BIRCH .4 & Forward & 83 & 72 & .017316 & .026667 \\
+Current tree .7 & Forward & 80 & 71 & .042735 & .065359 \\
+All-one & Any & 1 & 0 & .517115 & .367487 \\
+Single leaves & Any & 95 & 95 & .000000 & .000000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Primary forward winner service precision/recall .564039/.501094; full-intent
+.368227/.506780. Service TP/FP/TN/FN458/354/1353/456, intent299/513/1518/291.
+Within-service intent F1 .570611, precision/recall .652838/.506780 versus
+all-one F1 .784574: another reason not to use this high-prevalence slice as a
+standalone objective. Reverse/shuffled intent precision/recall .458175/.408475
+and .458621/.676271; forward-relative ARI .158404/.311206, versus fixed current
+BIRCH .845705/.814254 and tree .862974/.862974. Do not choose shuffled from its
+better outcome; more stable reference cuts still miss almost all positive pairs.
+
+Selection changes both representation and radius relative to the fixed-current
+references; it does not isolate a threshold-only causal effect.
+Calibration resolves much fragmentation, but forward intent precision remains
+37\%, reverse broad F1 falls below all-one and low partition ARI exposes arrival
+sensitivity. This small16-group dependent-pair evaluation has no confidence or
+significance/noninferiority estimate. Proxy co-membership is not a semantic
+partition and ignores multi-topic overlap/ancestry. No labels or guided-search
+gain tested. Next investigate stable multi-resolution/overlapping discovery with
+explicit false-merge/coverage goals, new reserved evaluation and independent
+coding/provider judgments; no production promotion or post-outcome radius change.
+
+Two calibration captures and two evaluation captures each match exactly on all
+non-timing fields: full vectors/inference statistics, basis, annotations,
+partitions, arrivals, confusion counts, ARI and tree statistics. Independent
+verification checks source/background/input separation, all69 candidate/evaluation
+partitions and confusion counts, and the calibration-only winners. All191 research
+tests pass. Calibration214 inference calls cost479.77/582.88 ms, all60 fits
+3.306/3.090 s and complete after-imports experiment5.347/5.381 s. Reserved207
+calls cost379.24/372.37 ms; all9 fits315.94/316.59 ms; total1.480/1.498 s.
+Winner forward fit37.51/39.49 ms, insertion-p95 .469/.497 ms. Fit timing excludes
+final prediction/cuts/validation/metrics/persistence; total excludes imports and
+serialization, includes preparation, with one-thread BLAS/model. Additional joined
+inference and background work are not free production operations. No full
+ingestion/p95-update/RSS/lifecycle/persistence or Rust parity gate.
+
+Artifact hashes for \path{calibration-first.json}, \path{calibration-second.json},
+\path{calibrated-evaluation-first.json}, \path{calibrated-evaluation-second.json}:
+\begin{itemize}
+\item \path{18fdb773b198d3f592738b5d39aaa90c5339658e0b11e57aa0f7b619cd05da04}
+\item \path{d25ba5b8a13feab630b148553a8669c8f6e2fda9b7ac7c07c1813396ccee3c80}
+\item \path{8819efd81ba90111f56a9cd6b2c79c4202ff71ca4b98fba3b0877c04c89e1954}
+\item \path{79bfebf0d6f83621136494933a2b9d3a1ec250338be0cd62312aad546f82bfc5}
+\end{itemize}
+All source/captures remain outside Git. Historical frozen-control captures still
+require their original code-pinned commits: the fit helper now accepts explicit
+validated thresholds, while its defaults remain unchanged, and pair scoring
+iterates supplied named views without inventing an unused mean vector.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

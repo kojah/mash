@@ -62,7 +62,7 @@ def pair_metrics(rows, assignment, gold_key):
             'f1': 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else None}
 
 
-def fit(identities, matrix, indices, method):
+def fit(identities, matrix, indices, method, threshold=None):
     if sorted(indices) != list(range(len(identities))):
         raise ValueError('arrival must be an exact permutation')
     if matrix.ndim != 2 or matrix.shape[0] != len(identities) or not 1 <= len(identities) <= 1024 or not 1 <= matrix.shape[1] <= 8192:
@@ -72,7 +72,10 @@ def fit(identities, matrix, indices, method):
     tree = Tree(Mode.GRINCH, maximum_leaves=len(identities), maximum_dimensions=8192) if method == 'grinch' else None
     if method not in ('grinch', 'birch'):
         raise ValueError('unknown method')
-    model = Birch(threshold=.4, branching_factor=64, n_clusters=None) if tree is None else None
+    threshold = (.4 if method == 'birch' else .7) if threshold is None else threshold
+    if not np.isfinite(threshold) or not 0 < threshold <= 1:
+        raise ValueError('bounded positive threshold required')
+    model = Birch(threshold=threshold, branching_factor=64, n_clusters=None) if tree is None else None
     ordered = [identities[i] for i in indices]
     samples = []
     start, cpu = time.perf_counter(), time.process_time()
@@ -89,7 +92,7 @@ def fit(identities, matrix, indices, method):
                'insert_p95_ms': float(np.percentile(samples, 95)), 'insert_ms': samples}
     if tree is not None:
         tree.validate()
-        clusters = [sorted(ordered[i] for i in members) for members in tree.cut(.7)]
+        clusters = [sorted(ordered[i] for i in members) for members in tree.cut(threshold)]
     else:
         # Final nearest-CF prediction is not the insertion-time membership.
         with threadpool_limits(limits=1):
