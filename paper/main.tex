@@ -2188,6 +2188,102 @@ and \path{46a903d0adad9cf00a6a6c8c5623cb4cbddf911a910612b099e93886d5b6e8e2}.
 Bead \texttt{mash-c0d.19.2.31} tracks the next specificity-preserving context controls;
 complete ingestion, calibrated evaluation and Python/Rust parity gates remain open.
 
+\subsection{Frozen multi-view and token-count context controls}
+The within-service failure motivates three preregistered development controls
+alongside unchanged current/mean/joined baselines, using the same frozen vectors,
+206 common model-support anchors, 12,341 cross-dialogue pairs and 1,000 archived
+whole-dialogue resamples. This follow-up comes after exposed development outcomes,
+not independent confirmation. No new inference or annotation-dependent features
+are introduced. Prior neural topic work combines complementary embedding views
+\cite{multiviewtopics}; our fixed cosine controls do not replicate that learned
+model or its performance.
+
+For separately normalized current vector $u$ and joined-context vector $v$, compare
+$\operatorname{norm}[\sqrt{w}u,\sqrt{1-w}v]$ at frozen current weights $w=0.5$
+and $w=0.75$. Keeping the views in separate coordinates yields 768 dimensions;
+cosine is their corresponding weighted cosine sum up to roundoff, rather than
+averaging the views in 384 dimensions. A third control uses joined context only
+when the original current tokenizer count is at most ten including special tokens,
+otherwise current text. Each endpoint is gated independently, so mixed pairs
+compare current against joined in the original 384-dimensional space. All
+controls remain restricted to original common support; no root fallback occurs.
+
+The feature constructor receives only pinned vectors and original token counts,
+never domain/intent annotations or approval phrases. Freeze both weights and the
+length boundary before new outcomes, with no tuning or test-data reads. Require
+complete source/input/pair revalidation, identical old baseline metrics and every
+archived baseline paired replicate delta. Primary outcomes are service, intent
+and within-service AP/AUC; domain point scores are secondary. Reuse the exact
+draws, multiplicity-product weights and no-same-original-source rule. Resampling
+coverage remains uncalibrated. Concatenation doubles vector storage/dot-product
+dimensions and does not eliminate contextual inference cost in production;
+cached-vector evaluation with zero new calls is not an ingestion-cost proof.
+
+All original baseline metrics and every archived paired replicate delta remain
+exactly unchanged. The length gate selects joined context for 35 of 206 anchors
+and current text for 171. Primary point outcomes are:
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Control & Service AP & Intent AP & Within AP & Within AUC \\
+\midrule
+Current & 0.464235 & 0.399102 & 0.802038 & 0.583550 \\
+Mean & 0.534925 & 0.415504 & 0.752176 & 0.512996 \\
+Joined & 0.555472 & 0.417893 & 0.737828 & 0.490344 \\
+Equal two-view & 0.548260 & 0.453731 & 0.782023 & 0.544571 \\
+75\% current & 0.506202 & 0.429569 & 0.794722 & 0.567061 \\
+Short gate & 0.500671 & 0.416599 & 0.787152 & 0.563922 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Empirical paired service AP ranges versus current are [0.052826, 0.113489] for
+equal two-view, [0.027509, 0.055349] for current-dominant and [0.014504, 0.063744]
+for short gate. Intent AP ranges are [0.023029, 0.086973], [0.015439, 0.045708]
+and [$-0.003382$, 0.042159]. Within-service AP ranges are
+[$-0.033345$, $-0.002413$], [$-0.013612$, 0.001444] and
+[$-0.037355$, 0.006607] respectively; AUC ranges are
+[$-0.071408$, 0.002277], [$-0.033069$, 0.003730] and
+[$-0.064634$, 0.024293]. All 1,000 draws retain both classes in every primary slice.
+These are uncalibrated empirical resampling ranges, not formal significance or
+noninferiority tests. Within-service positive prevalence remains 72.16\%.
+
+Per-domain point AP remains uneven, on unchanged supports:
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Domain & Current & Joined & Equal & 75\% current & Short \\
+\midrule
+Attraction & 0.223221 & 0.226880 & 0.236796 & 0.231332 & 0.238883 \\
+Hotel & 0.281696 & 0.381683 & 0.358152 & 0.317853 & 0.303645 \\
+Restaurant & 0.155075 & 0.232215 & 0.191747 & 0.168462 & 0.160521 \\
+Train & 0.489262 & 0.566958 & 0.598126 & 0.548905 & 0.554680 \\
+\bottomrule
+\end{tabular}
+\end{center}
+No new per-domain bootstrap is computed. All candidates reduce the fine-intent
+loss relative to full joined context but remain below current text on the
+within-service point score. None demonstrates broad improvement with strict
+within-service nondegradation; do not invent an acceptable loss after observing
+results or treat a range crossing zero as proof of noninferiority.
+No method is promoted. The length gate is not general reference resolution.
+Next evaluate finer lexical/aspect evidence or separate broad/fine discovery
+views, with independent coding-session label/hierarchy/guided-search evidence.
+
+Two fresh analyses match exactly on all non-timing fields, including candidate
+vectors, gate choices, complete pair scores/truth and every bootstrap result.
+All 176 isolated research tests pass. NumPy 2.4.6/scikit-learn 1.9.1 versions
+are checked against the archived analysis before execution. Derived features
+for 206 anchors/three candidates take 18.54/18.60 ms; 37,023 candidate pair dots
+take 49.63/48.71 ms. Complete analysis after imports costs 83.71/83.18 s,
+including source/capture validation and 18,000 resampled method evaluations,
+plus baseline/domain point evaluations, excluding serialization. These are
+cached-vector descriptive costs, not search latency or ingestion overhead.
+No model initialization, new inference, memory/performance or Rust-parity
+gate occurs. Capture SHA256 values for \path{multiview-first.json} and
+\path{multiview-second.json} are
+\path{b5e373e3f18d8b4d94921755119b9e050dbd8b6e56f5725163e0568d9705c34f}
+and \path{bf2ed9bb3322b113c098e3f635f35b40aacdfe1af8d42be33ace7097972cadc5}.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

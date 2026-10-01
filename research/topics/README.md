@@ -881,6 +881,11 @@ uses `external_analysis.py` to revalidate archived vectors and compute paired
 whole-dialogue resampling ranges without inference. Context hurts find/book
 separation within shared services; broad-domain gains alone cannot select a
 topic representation. Declared intent labels remain evaluation-only.
+The [multi-view/length-gate experiment](../../benchmarks/2026-10-01-multiview-context.md)
+uses `multiview.py` and the same archived vectors/draws. Fixed concatenations and
+token-count gating reduce fine-intent loss but do not eliminate it; no method is
+promoted. The shared evaluation summary accepts explicit controls and verifies
+every original baseline metric/paired replicate without new inference.
 
 Run lab input-boundary tests:
 

@@ -108,6 +108,10 @@ env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_T
 
 The runner refuses to overwrite captures. Require fresh-run equality of every
 non-timing field, including all resampling draws and per-replicate deltas.
+Reproduce that exact original code-pinned repeat at commit `b85cd38`. The
+[multi-view follow-up](2026-10-01-multiview-context.md) extends the shared summarizer
+with explicit controls, while requiring every original metric and paired delta
+to remain unchanged; old captures retain their original hashes.
 Two fresh runs pass this exact equality check. Capture SHA256 values:
 
 - `intent-bootstrap-first.json`:

@@ -91,6 +91,16 @@ that preserve specificity while admitting context. The source loader now retains
 declared intent pairs and detects alias conflicts within a service; old inference
 captures retain their historical code pins, reproducible at commit `1ba0bca`.
 
+The [frozen multi-view controls](../../benchmarks/2026-10-01-multiview-context.md)
+reuse those vectors and archived group-resampling draws. Equal and 75%-current
+768-dimensional concatenations plus a token-count gate reduce the within-service
+loss relative to joined context, but none matches current-only fine-intent AP.
+75%-current service/within-service AP is 0.5062/0.7947 versus current 0.4642/0.8020.
+No post-hoc noninferiority tolerance or production promotion. The length gate is
+not general context resolution; vector duplication/contextual inference costs
+remain relevant. Original intent-analysis code is reproducible at `b85cd38`;
+the reusable summarizer now accepts explicit controls with unchanged defaults.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.

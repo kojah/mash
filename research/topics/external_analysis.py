@@ -100,21 +100,23 @@ def pair_weights(rows, counts):
     return np.asarray([counts[r['groups'][0]] * counts[r['groups'][1]] for r in rows], dtype=np.int64)
 
 
-def summarize(rows, gold_key, draws):
+def summarize(rows, gold_key, draws, controls=tuple(Control), baseline=Control.CURRENT):
+    if not controls or len(set(controls)) != len(controls) or baseline not in controls:
+        raise ValueError('unique controls and an included baseline are required')
     gold = np.asarray([r[gold_key] for r in rows], dtype=bool)
-    scores = {c: np.asarray([r['scores'][c] for r in rows]) for c in Control}
-    base = {c: weighted_metrics(gold, scores[c], np.ones(len(rows))) for c in Control}
+    scores = {c: np.asarray([r['scores'][c] for r in rows]) for c in controls}
+    base = {c: weighted_metrics(gold, scores[c], np.ones(len(rows))) for c in controls}
     repeats, unsupported = [], 0
     for counts in draws:
         weights = pair_weights(rows, counts)
-        values = {c: weighted_metrics(gold, scores[c], weights) for c in Control}
-        if values[Control.CURRENT] is None:
+        values = {c: weighted_metrics(gold, scores[c], weights) for c in controls}
+        if values[baseline] is None:
             unsupported += 1
             continue
-        repeats.append({c: {m: values[c][m] - values[Control.CURRENT][m] for m in ('ap', 'auc')}
-                        for c in (Control.MEAN, Control.JOINED)})
+        repeats.append({c: {m: values[c][m] - values[baseline][m] for m in ('ap', 'auc')}
+                        for c in controls if c != baseline})
     intervals = {c: {m: np.percentile([r[c][m] for r in repeats], [2.5, 50, 97.5]).tolist() if repeats else None
-                      for m in ('ap', 'auc')} for c in (Control.MEAN, Control.JOINED)}
+                      for m in ('ap', 'auc')} for c in controls if c != baseline}
     return {'pairs': len(rows), 'positive': int(gold.sum()), 'negative': int((~gold).sum()),
             'groups': len({g for r in rows for g in r['groups']}), 'metrics': base,
             'replicates': len(draws), 'one_class_replicates': unsupported,
