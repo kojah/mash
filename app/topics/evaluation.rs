@@ -35,12 +35,13 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
          CREATE TABLE message_embeddings(message_id TEXT,vector BLOB,generation TEXT);
          INSERT INTO conversations VALUES ('a','codex',NULL),('b','claude-code','title'),('c','codex',NULL);
          INSERT INTO messages VALUES ('a1','a',0,'database',NULL,'user'),
-             ('a2','a',1,'hidden','database','user'),('b1','b',0,'database',NULL,'assistant'),('c1','c',0,'Hello!',NULL,'user');",
+             ('a2','a',1,'hidden','database','user'),('b1','b',0,'database',NULL,'assistant'),('c1','c',0,'Hello!',NULL,'user'),
+             ('a3','a',2,'<task-notification><task-id>fixture</task-id><summary>background event</summary></task-notification>',NULL,'user');",
         )
         .unwrap();
     let mut vector = vec![0_u8; 384];
     vector[0] = 127;
-    for id in ["a1", "a2", "b1", "c1"] {
+    for id in ["a1", "a2", "b1", "c1", "a3"] {
         connection
             .execute(
                 "INSERT INTO message_embeddings VALUES (?1,?2,'model-v1')",
@@ -52,13 +53,20 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
     let (threads, generation) = corpus(&path);
     assert_eq!(generation, "model-v1");
     assert_eq!(threads.len(), 3);
-    assert_eq!(threads["a"].vectors.len(), 1);
+    assert_eq!(threads["a"].vectors.len(), 2);
     assert_eq!(threads["b"].vectors.len(), 1);
     assert_eq!(threads["a"].provider, Provider::Codex);
     assert_eq!(threads["b"].provider, Provider::ClaudeCode);
     assert_eq!(threads["a"].words["database"], 1);
     assert!(!threads["a"].words.contains_key("hidden"));
     assert_eq!(threads["a"].user_messages.len(), 1);
+    assert_eq!(threads["a"].ignored_user_messages, 1);
+    assert!(threads["a"].words.contains_key("notification")); // canonical baseline retained
+    assert!(
+        !threads["a"].user_messages[0]
+            .words
+            .contains_key("notification")
+    );
     assert!(threads["b"].user_messages.is_empty());
     assert!(threads["c"].user_messages.is_empty());
     assert_eq!(threads["c"].ignored_user_messages, 1);
