@@ -80,6 +80,764 @@ impl<'a> CountsBuilder<'a, ()> {
         Counts {}
     }
 }
+pub struct ListThreadsRow {
+    pub id: String,
+    pub provider: String,
+    pub title: Option<String>,
+    pub project: Option<String>,
+    pub repository: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+}
+impl ListThreadsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            provider: row.get(1)?,
+            title: row.get(2)?,
+            project: row.get(3)?,
+            repository: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+        })
+    }
+}
+pub struct ListThreads<'a> {
+    page_offset: i64,
+    page_size: i64,
+    all_providers: i64,
+    providers_json: &'a str,
+    title_contains: Option<&'a str>,
+    after_ms: Option<i64>,
+    before_ms: Option<i64>,
+    sort_key: &'a str,
+    descending: i64,
+}
+impl<'a> ListThreads<'a> {
+    pub const QUERY: &'static str = r"WITH scope AS (SELECT
+    CAST(?3 AS INTEGER) AS all_providers,
+    CAST(?4 AS TEXT) AS providers_json,
+    CAST(?5 AS TEXT) AS title_contains,
+    CAST(?6 AS INTEGER) AS after_ms,
+    CAST(?7 AS INTEGER) AS before_ms,
+    CAST(?8 AS TEXT) AS sort_key,
+    CAST(?9 AS INTEGER) AS descending)
+SELECT c.id,c.provider,c.title,c.project,c.repository,c.created_at,c.updated_at
+FROM conversations c CROSS JOIN scope s
+WHERE (s.all_providers = 1 OR c.provider IN (
+    SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
+))
+AND (s.title_contains IS NULL OR instr(lower(c.title),lower(s.title_contains)) > 0)
+AND (s.after_ms IS NULL OR c.updated_at >= s.after_ms)
+AND (s.before_ms IS NULL OR c.updated_at < s.before_ms)
+ORDER BY
+CASE s.sort_key
+    WHEN 'title' THEN c.title IS NULL
+    WHEN 'created_at' THEN c.created_at IS NULL
+    ELSE c.updated_at IS NULL END ASC,
+CASE WHEN s.sort_key = 'title' AND s.descending = 0 THEN c.title END COLLATE BINARY ASC,
+CASE WHEN s.sort_key = 'title' AND s.descending = 1 THEN c.title END COLLATE BINARY DESC,
+CASE WHEN s.sort_key = 'created_at' AND s.descending = 0 THEN c.created_at END ASC,
+CASE WHEN s.sort_key = 'created_at' AND s.descending = 1 THEN c.created_at END DESC,
+CASE WHEN s.sort_key = 'updated_at' AND s.descending = 0 THEN c.updated_at END ASC,
+CASE WHEN s.sort_key = 'updated_at' AND s.descending = 1 THEN c.updated_at END DESC,
+c.provider COLLATE BINARY ASC,c.id COLLATE BINARY ASC
+LIMIT ?2 OFFSET ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ListThreads<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ListThreadsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ListThreadsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.page_offset,
+            self.page_size,
+            self.all_providers,
+            self.providers_json,
+            self.title_contains,
+            self.after_ms,
+            self.before_ms,
+            self.sort_key,
+            self.descending,
+        )
+    }
+}
+impl<'a> ListThreads<'a> {
+    pub const fn builder() -> ListThreadsBuilder<'a, ((), (), (), (), (), (), (), (), ())> {
+        ListThreadsBuilder {
+            fields: ((), (), (), (), (), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ListThreadsBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<
+    'a,
+    PageSize,
+    AllProviders,
+    ProvidersJson,
+    TitleContains,
+    AfterMs,
+    BeforeMs,
+    SortKey,
+    Descending,
+>
+    ListThreadsBuilder<
+        'a,
+        (
+            (),
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    >
+{
+    pub fn page_offset(
+        self,
+        page_offset: i64,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            i64,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    > {
+        let (
+            (),
+            page_size,
+            all_providers,
+            providers_json,
+            title_contains,
+            after_ms,
+            before_ms,
+            sort_key,
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    PageOffset,
+    AllProviders,
+    ProvidersJson,
+    TitleContains,
+    AfterMs,
+    BeforeMs,
+    SortKey,
+    Descending,
+>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            (),
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    >
+{
+    pub fn page_size(
+        self,
+        page_size: i64,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            i64,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    > {
+        let (
+            page_offset,
+            (),
+            all_providers,
+            providers_json,
+            title_contains,
+            after_ms,
+            before_ms,
+            sort_key,
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, PageOffset, PageSize, ProvidersJson, TitleContains, AfterMs, BeforeMs, SortKey, Descending>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            (),
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    >
+{
+    pub fn all_providers(
+        self,
+        all_providers: i64,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            i64,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    > {
+        let (
+            page_offset,
+            page_size,
+            (),
+            providers_json,
+            title_contains,
+            after_ms,
+            before_ms,
+            sort_key,
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, PageOffset, PageSize, AllProviders, TitleContains, AfterMs, BeforeMs, SortKey, Descending>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            (),
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    >
+{
+    pub fn providers_json(
+        self,
+        providers_json: &'a str,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            &'a str,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    > {
+        let (
+            page_offset,
+            page_size,
+            all_providers,
+            (),
+            title_contains,
+            after_ms,
+            before_ms,
+            sort_key,
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, PageOffset, PageSize, AllProviders, ProvidersJson, AfterMs, BeforeMs, SortKey, Descending>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            (),
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    >
+{
+    pub fn title_contains(
+        self,
+        title_contains: Option<&'a str>,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            Option<&'a str>,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    > {
+        let (
+            page_offset,
+            page_size,
+            all_providers,
+            providers_json,
+            (),
+            after_ms,
+            before_ms,
+            sort_key,
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    PageOffset,
+    PageSize,
+    AllProviders,
+    ProvidersJson,
+    TitleContains,
+    BeforeMs,
+    SortKey,
+    Descending,
+>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            (),
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    >
+{
+    pub fn after_ms(
+        self,
+        after_ms: Option<i64>,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            Option<i64>,
+            BeforeMs,
+            SortKey,
+            Descending,
+        ),
+    > {
+        let (
+            page_offset,
+            page_size,
+            all_providers,
+            providers_json,
+            title_contains,
+            (),
+            before_ms,
+            sort_key,
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    PageOffset,
+    PageSize,
+    AllProviders,
+    ProvidersJson,
+    TitleContains,
+    AfterMs,
+    SortKey,
+    Descending,
+>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            (),
+            SortKey,
+            Descending,
+        ),
+    >
+{
+    pub fn before_ms(
+        self,
+        before_ms: Option<i64>,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            Option<i64>,
+            SortKey,
+            Descending,
+        ),
+    > {
+        let (
+            page_offset,
+            page_size,
+            all_providers,
+            providers_json,
+            title_contains,
+            after_ms,
+            (),
+            sort_key,
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    PageOffset,
+    PageSize,
+    AllProviders,
+    ProvidersJson,
+    TitleContains,
+    AfterMs,
+    BeforeMs,
+    Descending,
+>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            (),
+            Descending,
+        ),
+    >
+{
+    pub fn sort_key(
+        self,
+        sort_key: &'a str,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            &'a str,
+            Descending,
+        ),
+    > {
+        let (
+            page_offset,
+            page_size,
+            all_providers,
+            providers_json,
+            title_contains,
+            after_ms,
+            before_ms,
+            (),
+            descending,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    PageOffset,
+    PageSize,
+    AllProviders,
+    ProvidersJson,
+    TitleContains,
+    AfterMs,
+    BeforeMs,
+    SortKey,
+>
+    ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            (),
+        ),
+    >
+{
+    pub fn descending(
+        self,
+        descending: i64,
+    ) -> ListThreadsBuilder<
+        'a,
+        (
+            PageOffset,
+            PageSize,
+            AllProviders,
+            ProvidersJson,
+            TitleContains,
+            AfterMs,
+            BeforeMs,
+            SortKey,
+            i64,
+        ),
+    > {
+        let (
+            page_offset,
+            page_size,
+            all_providers,
+            providers_json,
+            title_contains,
+            after_ms,
+            before_ms,
+            sort_key,
+            (),
+        ) = self.fields;
+        let _phantom = self._phantom;
+        ListThreadsBuilder {
+            fields: (
+                page_offset,
+                page_size,
+                all_providers,
+                providers_json,
+                title_contains,
+                after_ms,
+                before_ms,
+                sort_key,
+                descending,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a>
+    ListThreadsBuilder<
+        'a,
+        (
+            i64,
+            i64,
+            i64,
+            &'a str,
+            Option<&'a str>,
+            Option<i64>,
+            Option<i64>,
+            &'a str,
+            i64,
+        ),
+    >
+{
+    pub fn build(self) -> ListThreads<'a> {
+        let (
+            page_offset,
+            page_size,
+            all_providers,
+            providers_json,
+            title_contains,
+            after_ms,
+            before_ms,
+            sort_key,
+            descending,
+        ) = self.fields;
+        ListThreads {
+            page_offset,
+            page_size,
+            all_providers,
+            providers_json,
+            title_contains,
+            after_ms,
+            before_ms,
+            sort_key,
+            descending,
+        }
+    }
+}
 pub struct ConversationMessageStateRow {
     pub id: String,
     pub fingerprint: String,

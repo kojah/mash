@@ -53,3 +53,4 @@ mod indexing;
 mod schema;
 mod semantic;
 mod staging;
+mod threads;

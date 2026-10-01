@@ -4,6 +4,39 @@ SELECT (SELECT count(*) FROM conversations) AS conversations,
 (SELECT count(*) FROM messages WHERE COALESCE(search_projection,content)<>'') AS searchable_messages,
 (SELECT count(*) FROM message_embeddings) AS embeddings;
 
+-- name: ListThreads :many
+-- Activity filters apply to recorded thread updated_at, not individual messages.
+-- Null sort keys are always last; identity breaks ties in either direction.
+WITH scope AS (SELECT
+    CAST(sqlc.arg(all_providers) AS INTEGER) AS all_providers,
+    CAST(sqlc.arg(providers_json) AS TEXT) AS providers_json,
+    CAST(sqlc.narg(title_contains) AS TEXT) AS title_contains,
+    CAST(sqlc.narg(after_ms) AS INTEGER) AS after_ms,
+    CAST(sqlc.narg(before_ms) AS INTEGER) AS before_ms,
+    CAST(sqlc.arg(sort_key) AS TEXT) AS sort_key,
+    CAST(sqlc.arg(descending) AS INTEGER) AS descending)
+SELECT c.id,c.provider,c.title,c.project,c.repository,c.created_at,c.updated_at
+FROM conversations c CROSS JOIN scope s
+WHERE (s.all_providers = 1 OR c.provider IN (
+    SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
+))
+AND (s.title_contains IS NULL OR instr(lower(c.title),lower(s.title_contains)) > 0)
+AND (s.after_ms IS NULL OR c.updated_at >= s.after_ms)
+AND (s.before_ms IS NULL OR c.updated_at < s.before_ms)
+ORDER BY
+CASE s.sort_key
+    WHEN 'title' THEN c.title IS NULL
+    WHEN 'created_at' THEN c.created_at IS NULL
+    ELSE c.updated_at IS NULL END ASC,
+CASE WHEN s.sort_key = 'title' AND s.descending = 0 THEN c.title END COLLATE BINARY ASC,
+CASE WHEN s.sort_key = 'title' AND s.descending = 1 THEN c.title END COLLATE BINARY DESC,
+CASE WHEN s.sort_key = 'created_at' AND s.descending = 0 THEN c.created_at END ASC,
+CASE WHEN s.sort_key = 'created_at' AND s.descending = 1 THEN c.created_at END DESC,
+CASE WHEN s.sort_key = 'updated_at' AND s.descending = 0 THEN c.updated_at END ASC,
+CASE WHEN s.sort_key = 'updated_at' AND s.descending = 1 THEN c.updated_at END DESC,
+c.provider COLLATE BINARY ASC,c.id COLLATE BINARY ASC
+LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
+
 -- name: ConversationMessageState :many
 SELECT id,fingerprint,ordinal,COALESCE(search_projection,content) AS search_text FROM messages WHERE conversation_id=sqlc.arg(conversation_id);
 
