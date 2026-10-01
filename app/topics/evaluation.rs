@@ -1,17 +1,22 @@
 //! Read-only real-history diagnostic; private reports never enter stdout/traces.
+mod assignments;
+use super::segments::{Builder, Segment};
 use super::{AssignmentModel, Settings, TopicId, birch::Tree, labels, normalize};
 use crate::provider::Provider;
+use crate::role::Role;
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::time::Instant;
 
+#[derive(Clone)]
 struct Thread {
     provider: Provider,
     title: String,
     vectors: Vec<Vec<f64>>,
     words: labels::Terms,
+    user_messages: Vec<Segment>,
 }
 
 #[test]
@@ -23,11 +28,11 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
         .execute_batch(
             "CREATE TABLE conversations(id TEXT,provider TEXT,title TEXT);
          CREATE TABLE messages(id TEXT,conversation_id TEXT,ordinal INTEGER,
-             content TEXT,search_projection TEXT);
+             content TEXT,search_projection TEXT,role TEXT);
          CREATE TABLE message_embeddings(message_id TEXT,vector BLOB,generation TEXT);
          INSERT INTO conversations VALUES ('a','codex',NULL),('b','claude-code','title');
-         INSERT INTO messages VALUES ('a1','a',0,'database',NULL),
-             ('a2','a',1,'hidden','database'),('b1','b',0,'database',NULL);",
+         INSERT INTO messages VALUES ('a1','a',0,'database',NULL,'user'),
+             ('a2','a',1,'hidden','database','user'),('b1','b',0,'database',NULL,'assistant');",
         )
         .unwrap();
     let mut vector = vec![0_u8; 384];
@@ -50,11 +55,13 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
     assert_eq!(threads["b"].provider, Provider::ClaudeCode);
     assert_eq!(threads["a"].words["database"], 1);
     assert!(!threads["a"].words.contains_key("hidden"));
+    assert_eq!(threads["a"].user_messages.len(), 1);
+    assert!(threads["b"].user_messages.is_empty());
 }
 
 fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-    let mut statement = connection.prepare("SELECT c.id,c.provider,c.title,e.vector,e.generation,COALESCE(m.search_projection,m.content) FROM message_embeddings e JOIN messages m ON m.id=e.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY c.id,m.ordinal,m.id").unwrap();
+    let mut statement = connection.prepare("SELECT c.id,c.provider,c.title,e.vector,e.generation,COALESCE(m.search_projection,m.content),m.role FROM message_embeddings e JOIN messages m ON m.id=e.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY c.id,m.ordinal,m.id").unwrap();
     let mut rows = statement.query([]).unwrap();
     let mut threads: BTreeMap<String, Thread> = BTreeMap::new();
     let mut generations = BTreeSet::new();
@@ -70,9 +77,10 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
         let raw: Vec<u8> = row.get(3).unwrap();
         let generation: String = row.get(4).unwrap();
         let text: String = row.get(5).unwrap();
+        let role: Role = row.get(6).unwrap();
         generations.insert(generation);
         let fingerprint = *blake3::hash(text.as_bytes()).as_bytes();
-        if !seen.insert((id.clone(), fingerprint)) {
+        if !seen.insert((id.clone(), role.as_str().to_owned(), fingerprint)) {
             continue;
         }
         let vector = normalize(
@@ -87,7 +95,15 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
             title: title.unwrap_or_default(),
             vectors: Vec::new(),
             words: labels::Terms::new(),
+            user_messages: Vec::new(),
         });
+        if role == Role::User {
+            thread.user_messages.push(Segment {
+                vector: vector.clone(),
+                words: labels::terms(&text),
+                messages: 1,
+            });
+        }
         thread.vectors.push(vector);
         for word in labels::terms(&text).into_keys() {
             thread.words.insert(word, 1);
@@ -102,6 +118,59 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
 enum Mode {
     ThreadMean,
     Segments,
+    UserMean,
+    UserSegments,
+}
+
+fn thread_samples(thread: &Thread, mode: Mode) -> Vec<Segment> {
+    match mode {
+        Mode::ThreadMean => vec![Segment {
+            vector: mean(&thread.vectors),
+            words: thread.words.clone(),
+            messages: thread.vectors.len(),
+        }],
+        Mode::Segments => thread
+            .vectors
+            .iter()
+            .map(|vector| Segment {
+                vector: vector.clone(),
+                words: labels::Terms::new(),
+                messages: 1,
+            })
+            .collect(),
+        Mode::UserMean => {
+            if thread.user_messages.is_empty() {
+                return Vec::new();
+            }
+            let vectors: Vec<_> = thread
+                .user_messages
+                .iter()
+                .map(|m| m.vector.clone())
+                .collect();
+            let mut words = labels::Terms::new();
+            for message in &thread.user_messages {
+                for word in message.words.keys() {
+                    words.insert(word.clone(), 1);
+                }
+            }
+            vec![Segment {
+                vector: mean(&vectors),
+                words,
+                messages: vectors.len(),
+            }]
+        }
+        Mode::UserSegments => {
+            let mut builder = Builder::new(384, 8, 0.75).unwrap();
+            let mut output = Vec::new();
+            for message in &thread.user_messages {
+                if let Some(segment) = builder.push(&message.vector, &message.words).unwrap() {
+                    output.push(segment);
+                }
+            }
+            output.extend(builder.finish().unwrap());
+            output
+        }
+    }
 }
 fn mean(vectors: &[Vec<f64>]) -> Vec<f64> {
     let mut sum = vec![0.0; 384];
@@ -111,6 +180,49 @@ fn mean(vectors: &[Vec<f64>]) -> Vec<f64> {
         }
     }
     normalize(&sum, 384).unwrap()
+}
+
+/// Keep exact user-vector sequences on the same side of the split, rather than
+/// leaking identical copied threads through an ID-based train/test partition.
+fn held_out(thread: &Thread) -> bool {
+    let mut hash = blake3::Hasher::new();
+    for message in &thread.user_messages {
+        for value in &message.vector {
+            hash.update(&value.to_le_bytes());
+        }
+    }
+    hash.finalize().as_bytes()[0].is_multiple_of(5)
+}
+
+#[test]
+fn held_out_copied_threads_do_not_train_the_discovery_model() {
+    let thread = (0..384)
+        .map(|axis| {
+            let mut vector = vec![0.0; 384];
+            vector[axis] = 1.0;
+            Thread {
+                provider: Provider::Codex,
+                title: String::new(),
+                vectors: vec![vector.clone()],
+                words: labels::terms("database"),
+                user_messages: vec![Segment {
+                    vector,
+                    words: labels::terms("database"),
+                    messages: 1,
+                }],
+            }
+        })
+        .find(held_out)
+        .unwrap();
+    let threads = BTreeMap::from([("first".into(), thread.clone()), ("copy".into(), thread)]);
+    let held = run(&threads, "model-v1", Mode::UserMean, 0.4, false, true).unwrap();
+    assert_eq!(held.held_out_threads, 2);
+    assert_eq!(held.samples, 0);
+    assert_eq!(held.topics, 0);
+    assert_eq!(held.held_out_assigned_threads, 0);
+    let trained = run(&threads, "model-v1", Mode::UserMean, 0.4, false, false).unwrap();
+    assert_eq!(trained.samples, 1);
+    assert_eq!(trained.assigned_threads, 2);
 }
 
 #[derive(Serialize)]
@@ -129,6 +241,9 @@ struct Report {
     reversed: bool,
     generation: String,
     dimensions: usize,
+    held_out: bool,
+    held_out_threads: usize,
+    held_out_assigned_threads: usize,
     threads: usize,
     samples: usize,
     duplicates_across_threads: usize,
@@ -156,19 +271,15 @@ fn label_clusters(
     threads: &BTreeMap<String, Thread>,
     memberships: &BTreeMap<String, BTreeSet<TopicId>>,
     leaves: &[(TopicId, Vec<f64>, u64)],
+    classes: &BTreeMap<TopicId, labels::Terms>,
 ) -> Vec<Cluster> {
-    let mut classes = BTreeMap::new();
     let mut members: BTreeMap<TopicId, Vec<&Thread>> = BTreeMap::new();
     for (id, topics) in memberships {
         for topic in topics {
-            let words = classes.entry(*topic).or_insert_with(labels::Terms::new);
-            for word in threads[id].words.keys() {
-                *words.entry(word.clone()).or_default() += 1;
-            }
             members.entry(*topic).or_default().push(&threads[id]);
         }
     }
-    let mut labels = labels::labels(&classes, 8);
+    let mut labels = labels::labels(classes, 8);
     leaves
         .iter()
         .map(|(id, _, count)| {
@@ -195,6 +306,7 @@ fn run(
     mode: Mode,
     radius: f64,
     reversed: bool,
+    holdout: bool,
 ) -> Result<Report, crate::AppError> {
     let mut order: Vec<_> = threads.iter().collect();
     if reversed {
@@ -211,11 +323,11 @@ fn run(
     let mut duplicates = 0;
     let start = Instant::now();
     for (_, thread) in &order {
-        let vectors = match mode {
-            Mode::ThreadMean => vec![mean(&thread.vectors)],
-            Mode::Segments => thread.vectors.clone(),
-        };
-        for vector in vectors {
+        if holdout && held_out(thread) {
+            continue;
+        }
+        for segment in thread_samples(thread, mode) {
+            let vector = segment.vector;
             let mut hash = blake3::Hasher::new();
             for value in &vector {
                 hash.update(&value.to_le_bytes());
@@ -235,26 +347,13 @@ fn run(
         leaves.iter().map(|(id, v, _)| (*id, v.clone())).collect(),
     )?;
     let start = Instant::now();
-    let mut memberships = BTreeMap::new();
-    for (id, thread) in threads {
-        let vectors = match mode {
-            Mode::ThreadMean => vec![mean(&thread.vectors)],
-            Mode::Segments => thread.vectors.clone(),
-        };
-        let mut topics = BTreeSet::new();
-        for vector in vectors {
-            topics.extend(
-                model
-                    .assign(&vector, 0.55, 0.9)?
-                    .into_iter()
-                    .map(|a| a.topic),
-            );
-        }
-        memberships.insert(id.clone(), topics);
-    }
+    let assignments::Assignments {
+        memberships,
+        classes,
+    } = assignments::assign(threads, &model, mode)?;
     let assignment_ms = start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
-    let clusters = label_clusters(threads, &memberships, &leaves);
+    let clusters = label_clusters(threads, &memberships, &leaves, &classes);
     let label_ms = start.elapsed().as_secs_f64() * 1000.0;
     Ok(Report {
         mode,
@@ -262,6 +361,12 @@ fn run(
         reversed,
         generation: generation.into(),
         dimensions: 384,
+        held_out: holdout,
+        held_out_threads: threads.values().filter(|t| holdout && held_out(t)).count(),
+        held_out_assigned_threads: memberships
+            .iter()
+            .filter(|(id, topics)| holdout && held_out(&threads[*id]) && !topics.is_empty())
+            .count(),
         threads: threads.len(),
         samples,
         duplicates_across_threads: duplicates,
@@ -289,11 +394,17 @@ fn benchmark_topic_discovery() {
     std::fs::create_dir_all(&output).unwrap();
     let (threads, generation) = corpus(&database);
     assert!(!threads.is_empty());
-    for mode in [Mode::ThreadMean, Mode::Segments] {
+    let holdout = std::env::var_os("MASH_TEST_TOPIC_HOLDOUT").is_some();
+    let modes: &[Mode] = if std::env::var_os("MASH_TEST_TOPIC_BASELINES").is_some() {
+        &[Mode::ThreadMean, Mode::Segments]
+    } else {
+        &[Mode::UserMean, Mode::UserSegments]
+    };
+    for &mode in modes {
         for radius in [0.4, 0.6] {
             for reversed in [false, true] {
                 let path = output.join(format!("{mode:?}-{radius}-{reversed}.json"));
-                let report = match run(&threads, &generation, mode, radius, reversed) {
+                let report = match run(&threads, &generation, mode, radius, reversed, holdout) {
                     Ok(report) => report,
                     Err(error) => {
                         let rejected = RejectedRun {

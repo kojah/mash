@@ -3,6 +3,7 @@ mod birch;
 #[cfg(test)]
 mod evaluation;
 mod labels;
+mod segments;
 #[cfg(test)]
 mod tests;
 

@@ -13,15 +13,26 @@ pub(super) fn terms(text: &str) -> Terms {
     let mut counts = Terms::new();
     for word in text.split(|c: char| !c.is_alphanumeric()) {
         let word = word.to_lowercase();
-        if word.len() >= 3
-            && word.len() <= 64
-            && !word.bytes().all(|x| x.is_ascii_digit())
+        if (3..=64).contains(&word.len())
+            && word.chars().next().is_some_and(char::is_alphabetic)
+            && !(word.len() >= 12 && word.bytes().all(|x| x.is_ascii_hexdigit()))
             && !STOP.contains(&word.as_str())
         {
             *counts.entry(word).or_default() += 1;
         }
     }
     counts
+}
+
+#[test]
+fn label_candidates_exclude_timestamp_and_digest_noise_but_keep_technical_names() {
+    let terms = terms(
+        "00z 10t00 12345 90e14213b066b7bc38fe4a02946b16d027fc9d84cb8ab7a3367a32dbe1362a70 abcdefabcdefabcdef pgvector cbioportal gpt4 bm25 x86",
+    );
+    assert_eq!(
+        terms.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["bm25", "cbioportal", "gpt4", "pgvector", "x86"]
+    );
 }
 const STOP: &[&str] = &[
     "the", "and", "for", "that", "this", "with", "from", "you", "your", "are", "was", "were",
