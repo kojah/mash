@@ -76,6 +76,40 @@ judged changes. The negative result is in the paper; thresholds/annotations were
 not adjusted to improve it. The lab's signed-byte decoding was checked against
 Rust, with exact reconstructed norm parity on all 6,714 stored user vectors.
 
+## Re-embedded text context control
+
+`text_context.py` uses explicitly supplied installed MiniLM ONNX/tokenizer assets,
+without model downloads. It re-embeds each user turn individually as an inference
+control, then compares disjoint blocks of up to two user turns joined by two
+newlines. Singleton CPU inference uses one thread, attended-token mean pooling and
+Rust-compatible symmetric signed-byte rounding. Inputs over 512 tokens are
+rejected, never silently truncated. A bounded 1,024-input cache avoids repeating
+identical work within the run. Every context records its component message IDs.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 \
+OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/text_context.py \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --annotations "$PRIVATE_ANNOTATIONS" --snapshot "$INSTALLED_MODEL_SNAPSHOT" \
+  --output "$PRIVATE_REPORT"
+```
+
+The installed snapshot must contain `onnx/model_quantized.onnx` and
+`tokenizer.json`. Reports pin their SHA256s, code/lock hashes, runtime versions,
+source/annotation fingerprints, stored-versus-re-embedded drift, inference/token
+cost, elapsed time and peak process RSS. These are private reports; source texts
+are not committed. This is an offline development comparison of linear user
+contexts with one-user lookahead, not native branch resolution or assistant-context
+selection. Re-embedded nonempty unembedded turns can also differ from stored-vector
+coverage; report that when extending the cohort.
+
+On the existing four-thread pilot, re-embedded single turns yield six detected
+changes and 15 false splits; concatenated blocks yield six and 17. This does not
+improve boundaries at the fixed 0.55 threshold. The re-embedded singleton control
+differs from stored vectors and is essential to interpretation. Results, costs
+and limitations are recorded in the living paper.
+
 ## Initial controls
 
 `run.py` reads an existing consistent SQLite snapshot in read-only mode. It uses

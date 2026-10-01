@@ -260,6 +260,50 @@ The next annotation protocol is documented in
 source/context scope, secondary subjects, ancestors and disagreement handling.
 It does not retroactively alter these exploratory judgments.
 
+\subsection{Re-embedded text context control}
+We next compare actual text concatenation with vector pooling, using the
+explicitly installed MiniLM ONNX graph and tokenizer. The Python lab adds locked
+ONNX Runtime 1.30.0 and Tokenizers 0.23.2 dependencies; it does not download
+models. Inference/session and tokenizer APIs follow their official documentation
+\cite{onnxruntime,tokenizers}. Singleton CPU inference uses one intra-/inter-op thread, token-mean
+pooling with all singleton tokens attended, and per-vector symmetric signed-byte
+rounding (ties away from zero). We reject inputs exceeding 512 tokens. A bounded
+cache avoids repeated identical texts within the run. Disjoint blocks contain
+up to two user turns joined by two newlines and need one-user lookahead. This
+does not resolve references through assistant answers or native branches.
+
+We retain the same source/annotation fingerprints and cutoff 0.55. A re-embedded
+single-turn control detects six changes with fifteen false positives (precision
+0.286). Re-embedded text blocks detect six with seventeen false positives
+(precision 0.261): every judged continuation is split. Both have recall 1.000
+without abstentions on judged boundaries. These results do not demonstrate an
+improvement; concatenation alone is not a validated dialogue representation.
+
+Across the 33 single turns, stored/re-embedded cosine ranges from 0.9654 to 0.9946
+(median 0.9888). The extra false positive in the singleton control shows that
+runtime/batch/input-policy differences can affect a fixed cutoff. We do not claim
+byte-identical parity with historical Rust inference. The installed asset hashes
+are \path{afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1}
+for the ONNX graph and
+\path{da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0}
+for the tokenizer. Generation identity still does not prove historical model
+bytes or a fully reproduced embedding procedure.
+
+The exploratory run made 62 unique singleton inference calls and 87 cache hits;
+maximum input length was 55 tokens, so no truncation occurred. Inference took
+120.5 ms, tokenization 7.7 ms, and measured elapsed loading/experiment time
+662.1 ms; process peak RSS was 751.2 MiB. Elapsed time begins after Python imports,
+while RSS includes them. These single-run values are not latency distributions,
+an optimized online implementation, or measurements of the Rust local worker.
+The experimental report is \path{text-context-results.json} in the private
+boundary-pilot artifact directory. Subsequent reports also pin source/lock hashes.
+An independent fresh-process repeat reproduced predictions, drift values,
+fingerprints and inference/cache counts exactly, excluding time/RSS measurements;
+every compared context had disjoint component message IDs.
+The re-embedded controls strengthen the negative result at this cutoff but do
+not establish whether learned dialogue coherence, calibrated boundaries or
+source-grounded assistant context will perform better.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background
