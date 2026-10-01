@@ -3,12 +3,13 @@ mod ancestry;
 mod anchored;
 mod anchors;
 mod assignments;
+mod discovery;
 mod input;
 mod names;
 mod partition;
 mod provenance;
 use super::segments::{Builder, Segment};
-use super::{AssignmentModel, Settings, TopicId, birch::Tree, labels, normalize};
+use super::{AssignmentModel, TopicId, labels, normalize};
 use crate::provider::Provider;
 use crate::role::Role;
 use partition::held_out;
@@ -316,6 +317,7 @@ struct Report {
     mode: Mode,
     radius: f64,
     routing: super::birch::Routing,
+    assignment_weighting: assignments::Weighting,
     reversed: bool,
     generation: String,
     dimensions: usize,
@@ -353,6 +355,7 @@ struct RejectedRun {
     mode: Mode,
     radius: f64,
     routing: super::birch::Routing,
+    assignment_weighting: assignments::Weighting,
     reversed: bool,
     error: crate::AppError,
 }
@@ -400,41 +403,13 @@ fn run(
     holdout: bool,
     evidence_selection: Option<&provenance::Selection>,
 ) -> Result<Report, crate::AppError> {
-    let mut order: Vec<_> = threads.iter().collect();
-    if reversed {
-        order.reverse();
-    }
-    let routing = routing();
-    let mut tree = Tree::new(Settings {
-        dimensions: 384,
-        radius,
-        branching: 32,
-        max_topics: 8192,
+    let discovery::Fit {
+        tree,
         routing,
-    })?;
-    let mut seen = BTreeSet::new();
-    let mut samples = 0;
-    let mut duplicates = 0;
-    let start = Instant::now();
-    for (_, thread) in &order {
-        if holdout && held_out(thread) {
-            continue;
-        }
-        for segment in anchors::discovery_samples(thread, mode)? {
-            let vector = segment.vector;
-            let mut hash = blake3::Hasher::new();
-            for value in &vector {
-                hash.update(&value.to_le_bytes());
-            }
-            if !seen.insert(*hash.finalize().as_bytes()) {
-                duplicates += 1;
-                continue;
-            }
-            tree.insert(&vector)?;
-            samples += 1;
-        }
-    }
-    let fit_ms = start.elapsed().as_secs_f64() * 1000.0;
+        samples,
+        duplicates,
+        elapsed_ms: fit_ms,
+    } = discovery::fit(threads, mode, radius, reversed, holdout)?;
     let leaves = tree.leaves();
     let microtopics = leaves.len();
     let group_similarity = mode.group_similarity();
@@ -449,6 +424,7 @@ fn run(
         leaves.iter().map(|(id, v, _)| (*id, v.clone())).collect(),
     )?;
     let start = Instant::now();
+    let assignment_weighting = assignments::weighting(mode);
     let assignments::Assignments {
         memberships,
         classes,
@@ -458,6 +434,7 @@ fn run(
         threads,
         &model,
         mode,
+        assignment_weighting,
         evidence_selection.map(|s| provenance::Collector::new(s, mode)),
     )?;
     let assignment_ms = start.elapsed().as_secs_f64() * 1000.0;
@@ -468,6 +445,7 @@ fn run(
         mode,
         radius,
         routing,
+        assignment_weighting,
         reversed,
         generation: generation.into(),
         dimensions: 384,
@@ -594,6 +572,7 @@ fn benchmark_topic_discovery() {
                             mode,
                             radius,
                             routing: routing(),
+                            assignment_weighting: assignments::weighting(mode),
                             reversed,
                             error,
                         };

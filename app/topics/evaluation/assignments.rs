@@ -1,6 +1,35 @@
 //! Keep labels tied to supporting segments, with one word contribution per thread.
 use super::{AssignmentModel, BTreeMap, BTreeSet, Mode, Thread, TopicId, labels, thread_samples};
 use crate::AppError;
+use serde::Serialize;
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum Weighting {
+    Independent,
+    Conserved,
+}
+
+pub(super) fn weighting(mode: Mode) -> Weighting {
+    if mode.segmented() && std::env::var_os("MASH_TEST_TOPIC_CONSERVED_SUPPORT").is_some() {
+        Weighting::Conserved
+    } else {
+        Weighting::Independent
+    }
+}
+
+impl Weighting {
+    fn factor(self, hits: &[crate::topics::Assignment]) -> f64 {
+        match self {
+            Self::Independent => 1.0,
+            Self::Conserved => {
+                let total = hits.iter().map(|hit| hit.cosine).sum::<f64>();
+                let best = hits.iter().map(|hit| hit.cosine).fold(0.0, f64::max);
+                if total > 0.0 { best / total } else { 1.0 }
+            }
+        }
+    }
+}
 
 #[derive(Default)]
 struct Evidence {
@@ -19,6 +48,7 @@ fn evidence(
     thread: &Thread,
     model: &AssignmentModel,
     mode: Mode,
+    weighting: Weighting,
     capture: bool,
 ) -> Result<BTreeMap<TopicId, Evidence>, AppError> {
     if capture {
@@ -38,18 +68,23 @@ fn evidence(
                 "topic evidence segment exceeds source range",
             ));
         }
-        for hit in model.assign(&segment.vector, minimum, relative)? {
+        let hits = model.assign(&segment.vector, minimum, relative)?;
+        // Conserved weighting limits total confidence mass to the message count.
+        // Keep overlapping matches, but do not multiply their support
+        // merely because many centroids match the same ambiguous request.
+        let weight = weighting.factor(&hits);
+        for hit in hits {
             let entry = evidence.entry(hit.topic).or_default();
             #[allow(clippy::cast_precision_loss)]
             {
-                let support = hit.cosine * segment.messages as f64;
+                let support = hit.cosine * segment.messages as f64 * weight;
                 entry.support += support;
                 if capture {
                     entry
                         .scores
                         .get_or_insert_with(super::provenance::Scores::default)
                         .add(super::provenance::SegmentScore::new(
-                            index, offset, end, hit.cosine, support,
+                            index, offset, end, hit.cosine, support, weight,
                         ));
                 }
             }
@@ -83,6 +118,7 @@ pub(super) fn assign(
     threads: &BTreeMap<String, Thread>,
     model: &AssignmentModel,
     mode: Mode,
+    weighting: Weighting,
     mut collector: Option<super::provenance::Collector<'_>>,
 ) -> Result<Assignments, AppError> {
     let mut memberships = BTreeMap::new();
@@ -94,7 +130,7 @@ pub(super) fn assign(
         let mut words = BTreeMap::new();
         let selected = collector.as_ref().is_some_and(|c| c.selected(id));
         let mut scores = Vec::new();
-        for (topic, entry) in evidence(thread, model, mode, selected)? {
+        for (topic, entry) in evidence(thread, model, mode, weighting, selected)? {
             topics.insert(topic);
             if capture {
                 words.insert(topic, entry.words.clone());
@@ -162,7 +198,14 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
         (0..3).map(|i| (TopicId(i as u64), vector(i))).collect(),
     )
     .unwrap();
-    let result = assign(&threads, &model, Mode::UserSegments, None).unwrap();
+    let result = assign(
+        &threads,
+        &model,
+        Mode::UserSegments,
+        Weighting::Independent,
+        None,
+    )
+    .unwrap();
     assert_eq!(
         result.memberships["thread"],
         BTreeSet::from([TopicId(0), TopicId(1)])
@@ -175,6 +218,7 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
         &threads,
         &model,
         Mode::UserSegments,
+        Weighting::Independent,
         Some(super::provenance::Collector::new(
             &selection,
             Mode::UserSegments,
@@ -187,3 +231,6 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
         [TopicId(0), TopicId(1)]
     );
 }
+
+#[cfg(test)]
+mod tests;

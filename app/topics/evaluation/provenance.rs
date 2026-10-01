@@ -68,6 +68,7 @@ pub(super) struct SegmentScore {
     end: usize,
     cosine: f64,
     support: f64,
+    weight: f64,
 }
 impl SegmentScore {
     pub(super) fn new(
@@ -76,6 +77,7 @@ impl SegmentScore {
         end: usize,
         cosine: f64,
         support: f64,
+        weight: f64,
     ) -> Self {
         Self {
             segment_index,
@@ -83,6 +85,7 @@ impl SegmentScore {
             end,
             cosine,
             support,
+            weight,
         }
     }
 }
@@ -186,7 +189,7 @@ impl<'a> Collector<'a> {
             text_remaining: MAXIMUM_TEXT_BYTES,
             refs_remaining: MAXIMUM_REFERENCES,
             report: Report {
-                schema_version: 1,
+                schema_version: 2,
                 state: if supported {
                     State::UserEvidence
                 } else {

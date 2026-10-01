@@ -101,6 +101,7 @@ fn captured_evidence_preserves_assignments_and_points_to_retained_sources() {
     assert_eq!(db.samples[0].score.start, 0);
     assert_eq!(db.samples[0].score.end, 2);
     assert_eq!(db.samples[0].score.support, 2.0);
+    assert_eq!(db.samples[0].score.weight, 1.0);
     assert!(db.samples[0].complete_derived_text);
     assert!(db.samples[0].complete_canonical_references);
     assert!(matches!(
@@ -136,7 +137,7 @@ fn source_budgets_unicode_prefixes_and_missing_grounding_are_explicit() {
     let mut thread = super::super::anchored::thread(&[0, 1]);
     thread.user_sources = vec![stored("é😀remaining", 0), "synthetic".into()];
     let mut scores = Scores::default();
-    scores.add(SegmentScore::new(0, 0, 2, 0.8, 1.6));
+    scores.add(SegmentScore::new(0, 0, 2, 0.8, 1.6, 1.0));
     collector.record("thread", &thread, vec![(TopicId(0), 1.6, scores)]);
     let report = collector.finish();
     let evidence = &report.threads["thread"];
@@ -157,7 +158,7 @@ fn source_budgets_unicode_prefixes_and_missing_grounding_are_explicit() {
 fn retained_score_sampling_and_selection_fail_closed() {
     let mut scores = Scores::default();
     for index in 0..10 {
-        scores.add(SegmentScore::new(index, index, index + 1, 0.9, 0.9));
+        scores.add(SegmentScore::new(index, index, index + 1, 0.9, 0.9, 1.0));
     }
     assert_eq!(scores.segments, 10);
     assert_eq!(scores.messages, 10);
@@ -193,7 +194,7 @@ fn topic_cap_and_segment_sampling_report_what_was_omitted() {
         .map(|topic| {
             let mut scores = Scores::default();
             for index in 0..10 {
-                scores.add(SegmentScore::new(index, index, index + 1, 0.9, 0.9));
+                scores.add(SegmentScore::new(index, index, index + 1, 0.9, 0.9, 1.0));
             }
             (TopicId(topic), 9.0, scores)
         })
