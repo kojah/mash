@@ -977,6 +977,16 @@ All source counts, partitions, scores, labels and repeat outcomes are verified;
 252 tests pass. Label work dominates small tree fits in these controls. Full
 ingestion and Rust/Python parity gates remain open; no method is selected.
 
+The [label-ranking optimization](../../benchmarks/2026-10-02-label-ranking-performance.md)
+profiles the frozen baseline before changing `subject_labels.ranked_terms`.
+Positive-only bounded top-k selection preserves all original term/score outputs;
+diversity pruning still scans all positive candidates. The explicit
+`label_ranking_benchmark.py` audit reads the pinned committed reference function,
+validates source/count contracts, and compares 40 frozen workloads. Matched
+count/scoring/ranking work is about 7.5 times faster; this is not production
+search or complete ingestion. Older capture guards stay strict. All 255 lab
+tests pass; semantic quality and Rust parity remain open.
+
 Run lab input-boundary tests:
 
 ```bash

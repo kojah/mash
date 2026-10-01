@@ -6,7 +6,7 @@
 \setlength{\emergencystretch}{2em}
 \title{Multi-topic Modelling of LLM Chat Sessions for Guided Agent Search}
 \author{Authorship to be finalized}
-\date{Living research draft --- 1 October 2026}
+\date{Living research draft --- 2 October 2026}
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -3559,6 +3559,70 @@ Label-balance first/repeat SHA256:
 Next optimize label work under exact output parity and evaluate target-representation
 calibration on genuinely new groups with independent aspect/ancestor judgments.
 No method is selected for Rust or MCP promotion.
+
+\subsection{Output-preserving lexical label ranking}
+Profile the frozen label-mass experiment before optimization. At baseline commit
+\path{d06475dce0dc93596541f0b21f0a313646030967}, cProfile records 21.652 seconds
+including imports, 18.007 seconds in the experiment and 15.405 seconds cumulative
+in 4,008 rank calls, with 32,833,536 full-vocabulary sort-key evaluations.
+The profiled run preserves the original non-timing outcomes; profiling overhead
+precludes comparison against unprofiled optimized times.
+
+Retain all validation, formulas and lexical score ties. Filter zero-score
+candidates and select ordinary top-k using a bounded heap. Zero scores did not
+produce labels previously. Avoid unused containment sets on the ordinary path.
+Diversity pruning still sorts all positive candidates, because it can reject
+arbitrarily many candidates before filling the budget. No count, vocabulary,
+source, background, membership or label-budget change is permitted.
+
+The explicit audit retrieves only the original ranking-function AST from the
+pinned Git source, verifies its source hash, and checks all unrelated code pins.
+Rebuild source features and all count hashes, then compare exact topic/parent
+terms and scores to frozen captured outputs. Do not create a compatibility copy
+or relax older experiment guards. Execute 40 workloads (24 raw-count partitions
+and 16 fractional label controls), totaling 10,024 rank calls per method pass,
+in baseline/optimized/optimized/baseline order.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrrr}
+\toprule
+Trial & Full sort wall/CPU (s) & Positive top-k wall/CPU (s) & Wall speedup\\
+\midrule
+0 & 26.798/25.400 & 3.599/3.571 & $7.45\times$\\
+1 & 25.172/23.749 & 3.309/3.304 & $7.61\times$\\
+\bottomrule
+\end{tabular}
+\caption{Matched unprofiled label-stage audit. Every emitted term/score matches
+the original frozen outputs; topic quality and full ingestion are unchanged.}
+\end{table}
+
+Time count reconstruction/hash checks, scoring, ranking and parent aggregation.
+Aggregate wall/CPU includes exact output comparison and hashing; per-workload
+timers stop before those two checks. Imports, feature construction, source-support
+review, final JSON writing, inference and full ingestion are excluded. Two trials
+are descriptive measurements, not confidence intervals or service latency.
+Both policies share the same interpreter/features. A fresh-process repeat under
+the 20 ms Linux target-process memory observer provides separate research memory
+evidence; sampled maxima are lower bounds, shared across both policies and not
+attributable method peaks. Monitoring can perturb timing; no ingestion/RSS gate
+follows. All 255 lab tests pass, including dense/sparse/tied/zero scores, empty
+vocabularies, large budgets, vocabulary permutations and diversity rejection
+beyond the initial top-k. This is Python optimization parity, not Rust differential
+CI or evidence that fragmented topics are useful. The second process repeats all
+non-timing fields exactly. Its 2,103 samples observe maximum RSS 255,836 KiB and
+PSS 247,910 KiB over the shared research process, not per-method attributed
+peaks. A further successful same-Python-image audit repeats all non-timing fields,
+retaining rusage maxrss 254,556 KiB and 1,892 external samples with observed RSS
+255,288 KiB/PSS 247,433 KiB. These counter conventions differ; do not subtract
+peaks or attribute them to a policy. Its first wrapper failed before benchmarking
+because the lab module path was missing; preserve and exclude that failed probe,
+then supply the explicit path. Independent AST comparison confirms unchanged
+scoring and input validation. First/second capture SHA256:
+\path{fd8df2dd5c74c8b9e4864c391ee3e7af6200893c1e4c743e56814a262ebeb8d0}.
+\path{bd92f69336b11008096d91b2853027d2f32397cca3c8e3fecb8bc968e61555d4}.
+Keep independent aspect/ancestor quality, fresh calibration and the full initial/
+incremental ingestion gate as prerequisites for Rust/MCP method promotion.
 
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation

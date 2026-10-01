@@ -1,5 +1,6 @@
 """Label-only source controls with oracle subject support; no discovery or inference."""
 import argparse
+import heapq
 import json
 from pathlib import Path
 import time
@@ -31,14 +32,17 @@ def ranked_terms(scores: np.ndarray, terms: list[str], *, diverse: bool = False,
     if limit < 1 or not np.isfinite(scores).all() or np.any(scores < 0):
         raise ValueError("invalid label ranking bounds or scores")
     result, selected = [], []
-    # Lexical tie-break makes output independent of vocabulary column order.
-    for index in sorted(range(len(terms)), key=lambda i: (-scores[i], terms[i])):
-        if scores[index] <= 0:
-            continue
-        atoms = frozenset(terms[index].split())
-        if diverse and any(atoms <= prior or prior <= atoms for prior in selected):
-            continue
-        selected.append(atoms)
+    candidates = np.flatnonzero(scores > 0)
+    # Preserve lexical ties. Diversity can reject arbitrarily many candidates;
+    # only the ordinary path may stop selection at the requested top-k budget.
+    key = lambda i: (-scores[i], terms[i])
+    ordered = sorted(candidates, key=key) if diverse else heapq.nsmallest(limit, candidates, key=key)
+    for index in ordered:
+        if diverse:
+            atoms = frozenset(terms[index].split())
+            if any(atoms <= prior or prior <= atoms for prior in selected):
+                continue
+            selected.append(atoms)
         result.append({"term": terms[index], "score": float(scores[index])})
         if len(result) == limit:
             break
