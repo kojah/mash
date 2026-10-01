@@ -3088,6 +3088,121 @@ repeat \path{100eb33027d221d414fb14be6b23a6d206a9affea5d5a2784effdf01c728c8fe}.
 Private captures reside under \path{topic-public-stackoverflow-20261002}.
 No Rust method, semantic ancestry or guided-search gain is selected.
 
+\subsection{Source-grounded bodies and fixed lexical representation controls}
+The next development diagnostic uses complete question bodies alongside the
+title/text separation motivated by multilabel question tagging~\cite{mehta2015tagger}
+and the previously fixed lexical weighting policy~\cite{tfidf}. Preregister
+extraction/views before body/model outcomes. Both 64-question phases, including
+the phase named reserved-source, are already exposed development data; 72 questions
+remain disjoint lexical background. No new independent outcome claim.
+
+\path{question_html.py} uses standard HTML events to retain data, code,
+whitespace and decoded entities, adding only block-boundary newline separators.
+Markup/attributes/comments are explicit exclusions, with no filler removal or
+semantic rewriting. Unsupported active/style/declaration layouts reject rather
+than partially succeed. Caps are 512 KiB raw source, 65536 rendered bytes and 4096
+pieces. Each piece carries source/displayed code-point and UTF-8 intervals and
+hashes; non-separator source spans cover every original character exactly once.
+Separator provenance may refer to already-accounted markup. All 200 bodies render:
+23107 pieces, comprising 10286 data/6700 entities/5101 markup/1020 separators.
+No comments occur in the capture, but exclusion is tested. Maximum rendered
+size 24674 bytes, 1388 pieces. Before outcomes, tests caught a base-parser attribute
+name collision and an incorrect test expectation for literal unterminated entity
+suffixes; fix the method name/test without corpus-based rule changes.
+This is a declared text projection, not browser rendering; image/attribute/link
+context and table-cell layout require separate validation before broader reuse.
+
+\path{question_representations.py} requires the frozen title-capture SHA and
+its full source/code/dependency contract. All 128 original vectors, pair scores
+and metrics must remain exact. Join title, two newlines and complete displayed
+body, using the unchanged installed pinned singleton MiniLM encoder and a
+128-unique-input cap. Explicit 2--512-token support, no padding/truncation;
+exact cross-phase joined inputs are excluded. All 128 sparse vectors are nonzero.
+Fit the existing word uni/bigram TF-IDF policy (min DF 2, max 8192, smooth/sublinear,
+L2, no stoplist) on 72 disjoint background joined texts; exact selected-string and
+duplicate exclusions are both zero. Vocabulary 1725, background 7619 nonzeros;
+tags/scores/ownership never enter features.
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Development phase & Original & Joined & Window misses & Pairs & Shared tags \\
+\midrule
+Calibration-source & 64 & 39 & 25 & 741 & 26 \\
+Former reserved-source & 64 & 38 & 26 & 703 & 9 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Joined retains 60.2\% of questions but only 26.8\%/17.6\% of original 97/51
+positive pairs. No extraction failure/zero lexical vector contributes to the loss.
+Compare saved title, joined title/body, full-question lexical and fixed 75/25
+dense/lexical fusions on common support. No clustering/cuts or method selection.
+Other columns below denote the former reserved-source development phase.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+View & Cal AP & Cal AUC & Other AP & Other AUC \\
+\midrule
+Title & .1018 & .6375 & .1608 & .8807 \\
+Title+body & .1118 & .7824 & .2031 & .8599 \\
+Lexical & .0581 & .5893 & .0419 & .7858 \\
+Title75/lexical25 & .0993 & .6515 & .2330 & .8905 \\
+Joined75/lexical25 & .1090 & .7832 & .2125 & .8705 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Joined AP improves but former-reserved AUC falls; title fusion has a calibration
+AP loss. Lexical alone is weaker. These sparse dependent comparisons cannot
+establish significance, whole-corpus or semantic topic quality. Whole-cohort
+original title AP stays exactly .1166/.1898 and cannot be directly compared
+with the changed common support. Whole-body embedding loses too much coverage
+to adopt from these results.
+
+After observing the window loss, perform a separately disclosed post-hoc
+full-support audit with \path{question_body_support.py}, using saved sparse/title
+features without refitting, parameter changes or inference. All 64 questions and
+2016 pairs per phase remain, with the same 75/25 title-fusion rule:
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Full-support view & Cal AP & Cal AUC & Other AP & Other AUC \\
+\midrule
+Original title & .1166 & .6429 & .1898 & .7415 \\
+Lexical & .1601 & .6604 & .1192 & .7182 \\
+Title75/lexical25 & .1262 & .6685 & .2038 & .7546 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Small fusion gains preserve coverage but require newly reserved confirmation;
+the audit is post-hoc and both phases exposed. No winner is selected. Next test
+bounded source-grounded units with complete coverage, preferentially reusing
+compatible existing vectors. Additional encoder work needs justified quality
+benefits and complete ingestion measurements.
+
+Two runs total 3.057/2.425 seconds: rendering 432.17/309.49 milliseconds,
+lexical 78.45/55.64, extra body inference 2046.55/1673.99. There are 77 unique calls,
+zero cache hits, maximum 501 supported tokens. Totals include model construction,
+source/contract validation and scoring; serialization is outside the timer.
+Fragment hashing/offsets are lab diagnostics with measured cost, not a production
+representation. No RSS audit, initial/incremental throughput, lifecycle, 10\%
+overhead gate or speedup is established.
+
+Body repeats match every non-timing field. Separate reconstruction from original
+HTML checks all 200 complete source/displayed/UTF8 coordinates, hashes and input
+identities/background isolation. Independently recompute all 10 matched AP/AUC
+values with tie-aware score blocks and validate all pair truths/original title
+baselines. Full-support audit repeats byte-for-byte. The lab passes 224 tests for
+Unicode/CRLF/combining marks/entities, exclusions, caps, source-pinned inputs,
+fixed weights and capture-hash guards. Body first 9613714 bytes, SHA256
+\path{057763eb18aea347ad3740495e1e8c368fab2172f016868cbe9c69fc19f87f7f};
+repeat \path{1846fe1015426f8021680be0c420a5bb44776123d3733094a0b99064b7115877}.
+Full-support audit/repeat SHA256
+\path{8505f3d437bd63f74715e349637d6859c32707c2772974a531709166e4a1e31c}.
+Captures remain outside Git under \path{topic-public-stackoverflow-20261002}.
+No overlapping membership, labels, ancestors, guided search, persisted tree or
+Rust parity gate is demonstrated.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

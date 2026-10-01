@@ -935,6 +935,15 @@ outcomes. Both fragment badly despite raw cosine ranking signal; singleton-heavy
 ARI and three-match perfect precision do not justify promotion. Bodies/answers
 are unused; question tags are not full agent-session topic gold. Repeats and all
 pair/count/ranking invariants are verified; source/captures stay outside Git.
+The [source-grounded body comparison](../../benchmarks/2026-10-02-question-body-representations.md)
+uses `question_html.py` for complete source/UTF-8/displayed-text provenance and
+`question_representations.py` for full-body and fixed lexical/fusion controls.
+All200 bodies extract, but51/128 selected joined inputs exceed the model window;
+small matched ranking gains cannot establish whole-cohort quality. The separately
+disclosed post-hoc `question_body_support.py` reuses saved sparse/title features
+on all64 questions per phase without inference or refitting. Fusion gains are
+small development evidence; no method is selected. Bounded units, compatible
+vector reuse, fresh outcomes and full ingestion/semantic-quality gates remain.
 
 Run lab input-boundary tests:
 

@@ -158,6 +158,14 @@ singletons: average finds3/51 shared-tag pairs, centroid zero. This rejects cut
 transfer, not online topic modeling generally. Body/answer/context and complete
 agent-session gold remain absent; edits, unknown license metadata and source
 survivorship are disclosed. No model choice, generative calls or production gate.
+The [displayed-body follow-up](../../benchmarks/2026-10-02-question-body-representations.md)
+keeps all source/offset provenance and code while excluding markup attributes.
+Both programming samples are already exposed development data. Whole-body
+embedding drops51/128 questions and most positive pairs; fixed lexical/fusion
+controls on common support have mixed gains. A post-hoc full-support fusion audit
+uses no extra inference/refitting and gives small AP gains, requiring fresh
+confirmation. No body-unit strategy, labels, semantic tree or ingestion gate is
+selected. Codepoint/UTF8 fixtures are research-stage evidence, not Rust parity CI.
 
 Pinned raw SHA256:
 
