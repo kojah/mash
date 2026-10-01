@@ -16,6 +16,12 @@ pub(super) fn thread(axes: &[usize]) -> Thread {
         })
         .collect();
     Thread {
+        source_id: super::partition::identity(
+            &axes
+                .iter()
+                .map(|a| format!("subject {a}"))
+                .collect::<Vec<_>>(),
+        ),
         provider: Provider::Codex,
         title: String::new(),
         vectors: user_messages.iter().map(|m| m.vector.clone()).collect(),

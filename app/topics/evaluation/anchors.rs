@@ -1,6 +1,20 @@
 //! Bounded discovery representatives for threads containing several subjects.
-use super::{Segment, normalize};
+use super::{Mode, Segment, Thread, normalize, thread_samples};
 use crate::AppError;
+
+pub(super) fn discovery_samples(thread: &Thread, mode: Mode) -> Result<Vec<Segment>, AppError> {
+    let discovery_mode = if matches!(mode, Mode::UserAnchored) {
+        Mode::UserMean
+    } else {
+        mode
+    };
+    let segments = thread_samples(thread, discovery_mode);
+    if matches!(mode, Mode::UserRepresentatives) {
+        select(&segments, 384, 4, 0.65)
+    } else {
+        Ok(segments)
+    }
+}
 
 /// Prefer supported segments, then supported novelty. Keep at most `maximum`
 /// representatives and stop when every remaining segment is already similar

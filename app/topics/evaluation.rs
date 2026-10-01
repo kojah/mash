@@ -5,10 +5,12 @@ mod anchors;
 mod assignments;
 mod input;
 mod names;
+mod partition;
 use super::segments::{Builder, Segment};
 use super::{AssignmentModel, Settings, TopicId, birch::Tree, labels, normalize};
 use crate::provider::Provider;
 use crate::role::Role;
+use partition::held_out;
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,6 +19,7 @@ use std::time::Instant;
 
 #[derive(Clone)]
 struct Thread {
+    source_id: Option<partition::SourceId>,
     provider: Provider,
     title: String,
     vectors: Vec<Vec<f64>>,
@@ -53,6 +56,12 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
             )
             .unwrap();
     }
+    connection
+        .execute(
+            "INSERT INTO messages VALUES ('a4','a',3,'unembedded request',NULL,'user')",
+            [],
+        )
+        .unwrap();
     drop(connection);
     let (threads, generation) = corpus(&path);
     assert_eq!(generation, "model-v1");
@@ -60,6 +69,12 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
     assert_eq!(threads["a"].vectors.len(), 2);
     assert_eq!(threads["b"].vectors.len(), 1);
     assert_eq!(threads["a"].provider, Provider::Codex);
+    assert_eq!(threads["b"].source_id, None);
+    assert_eq!(threads["a"].source_id, partition::identity(&[
+        "database".into(), "hidden".into(),
+        "<task-notification><task-id>fixture</task-id><summary>background event</summary></task-notification>".into(),
+        "unembedded request".into(),
+    ]));
     assert_eq!(threads["b"].provider, Provider::ClaudeCode);
     assert_eq!(threads["a"].words["database"], 1);
     assert!(!threads["a"].words.contains_key("hidden"));
@@ -110,6 +125,7 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
         )
         .unwrap();
         let thread = threads.entry(id).or_insert_with(|| Thread {
+            source_id: None,
             provider,
             title: title.unwrap_or_default(),
             vectors: Vec::new(),
@@ -137,6 +153,7 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
             thread.words.insert(word, 1);
         }
     }
+    partition::capture(&connection, &mut threads);
     assert_eq!(generations.len(), 1, "do not mix embedding generations");
     (threads, generations.into_iter().next().unwrap())
 }
@@ -238,18 +255,6 @@ fn mean(vectors: &[Vec<f64>]) -> Vec<f64> {
     normalize(&sum, 384).unwrap()
 }
 
-/// Keep exact user-vector sequences on the same side of the split, rather than
-/// leaking identical copied threads through an ID-based train/test partition.
-fn held_out(thread: &Thread) -> bool {
-    let mut hash = blake3::Hasher::new();
-    for message in &thread.user_messages {
-        for value in &message.vector {
-            hash.update(&value.to_le_bytes());
-        }
-    }
-    hash.finalize().as_bytes()[0].is_multiple_of(5)
-}
-
 #[test]
 fn held_out_copied_threads_do_not_train_the_discovery_model() {
     let thread = (0..384)
@@ -257,6 +262,7 @@ fn held_out_copied_threads_do_not_train_the_discovery_model() {
             let mut vector = vec![0.0; 384];
             vector[axis] = 1.0;
             Thread {
+                source_id: partition::identity(&[format!("database source {axis}")]),
                 provider: Provider::Codex,
                 title: String::new(),
                 vectors: vec![vector.clone()],
@@ -301,6 +307,7 @@ struct Report {
     generation: String,
     dimensions: usize,
     held_out: bool,
+    partition: partition::Summary,
     held_out_threads: usize,
     held_out_assigned_threads: usize,
     threads: usize,
@@ -394,18 +401,7 @@ fn run(
         if holdout && held_out(thread) {
             continue;
         }
-        let discovery_mode = if matches!(mode, Mode::UserAnchored) {
-            Mode::UserMean
-        } else {
-            mode
-        };
-        let segments = thread_samples(thread, discovery_mode);
-        let segments = if matches!(mode, Mode::UserRepresentatives) {
-            anchors::select(&segments, 384, 4, 0.65)?
-        } else {
-            segments
-        };
-        for segment in segments {
+        for segment in anchors::discovery_samples(thread, mode)? {
             let vector = segment.vector;
             let mut hash = blake3::Hasher::new();
             for value in &vector {
@@ -450,6 +446,7 @@ fn run(
         generation: generation.into(),
         dimensions: 384,
         held_out: holdout,
+        partition: partition::summarize(threads, &memberships, mode, holdout),
         held_out_threads: threads.values().filter(|t| holdout && held_out(t)).count(),
         held_out_assigned_threads: memberships
             .iter()

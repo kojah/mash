@@ -109,6 +109,7 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
     let threads = BTreeMap::from([(
         "thread".into(),
         Thread {
+            source_id: super::partition::identity(&["database frontend incidental".into()]),
             provider: Provider::Codex,
             title: String::new(),
             vectors: Vec::new(),
