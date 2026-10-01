@@ -36,11 +36,14 @@ class Statistics:
 
 class Tree:
     """Insert-only prototype; float64, stable arrival-order ties, no ANN/caps."""
-    def __init__(self, mode: Mode, maximum_leaves: int = 2000):
+    def __init__(self, mode: Mode, maximum_leaves: int = 2000, maximum_dimensions: int = 1024):
         if maximum_leaves < 1:
             raise ValueError("positive research leaf bound required")
+        if type(maximum_dimensions) is not int or not 1 <= maximum_dimensions <= 8192:
+            raise ValueError("bounded positive research dimension limit required")
         self.mode = Mode(mode)
         self.maximum_leaves = maximum_leaves
+        self.maximum_dimensions = maximum_dimensions
         self.root: Node | None = None
         self.nodes: dict[int, Node] = {}
         self.leaves: list[Node] = []
@@ -200,7 +203,7 @@ class Tree:
         if len(self.leaves) >= self.maximum_leaves:
             raise ValueError("research leaf bound exceeded")
         vector = np.asarray(vector, dtype=np.float64)
-        if vector.ndim != 1 or not 1 <= len(vector) <= 1024:
+        if vector.ndim != 1 or not 1 <= len(vector) <= self.maximum_dimensions:
             raise ValueError("invalid vector dimensions")
         vector = normalized(vector).copy()
         if self.matrix is None:

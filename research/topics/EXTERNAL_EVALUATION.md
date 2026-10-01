@@ -110,6 +110,16 @@ Joined fusion retains a substantial finer-intent loss. These exposed state proxi
 support further lexical/separate-view testing, not production selection or robust
 coding-topic/label claims. Online vocabulary/IDF compatibility remains unresolved.
 
+The [actual online clustering diagnostic](../../benchmarks/2026-10-01-external-online-clustering.md)
+fits all206 supported anchors without annotation-driven admission, using five
+frozen views, BIRCH/GRINCH-style controls and three arrival orders. Existing
+uncalibrated thresholds yield mostly singletons and at most3.94% cross-dialogue
+intent recall; some perfectly stable partitions barely merge anything. This
+exposes the need for representation-specific granularity calibration rather
+than promotion from pair-ranking gains. Fresh repeats match all non-timing fields.
+No useful semantic hierarchy, overlapping tags, labels or guided-search gain
+is demonstrated, and no production ingestion/parity gate is satisfied.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.

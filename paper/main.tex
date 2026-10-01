@@ -2394,6 +2394,93 @@ The preserved initial capture hash is
 \path{85608d4295bf72f31abe6965ca6b201cf347097a90061ca9ea22304b1931f626};
 its decoded non-code/non-timing fields agree with the final first capture.
 
+\subsection{Frozen actual online grouping and arrival-order diagnostics}
+The prior cosine-ranking gains do not establish useful topic groups. We freeze
+five representations and existing uncalibrated operating points before running
+\path{research/topics/external_clustering.py}: current and joined dense (384D),
+lexical (3783D), and their fixed 75/25 dense/lexical concatenations (4167D).
+Concatenating separately unit-normalized views with square-root weights reproduces
+the earlier fused cosine exactly. Reuse the pinned captures and unchanged 206
+supported USER anchors from 32 development dialogue groups; no refit, new model
+calls, dimensionality reduction or annotations in fitting. Corpus-wide background
+statistics are fixed, not updated online. Lexical coordinates are materialized
+dense for this small experiment; costs do not represent optimized sparse execution.
+
+BIRCH\cite{birch} receives singleton \texttt{partial\_fit} calls, radius .4,
+branching factor64 and no global cluster count. Final nearest-CF \texttt{predict}
+groups are evaluated, not recorded insertion-time memberships. The existing
+independent GRINCH-style prototype\cite{grinch} uses exact leaf neighbors and
+its all-internal-cosines-at-least .7 cut. This is not author-code parity; the two
+methods' different uncalibrated operating points are not matched recall or
+complexity settings. Sorted source identity, reverse and seed17 permutation
+provide arrival sensitivity controls, not timestamp-ordered ingestion.
+
+Fit every supported anchor, including those with unknown/inactive proxy labels.
+After fit, evaluate co-clustering on the unchanged 12,341 cross-original-dialogue
+pairs: service3448/8893 positives/negatives, intent2488/9853, and within-service
+intent2488/960. Save all confusion counts, precision, recall and F1; undefined
+precision remains null. These declared service/find/book proxies are coarse
+diagnostics, not independent coding-topic gold or a claim that every same-intent
+pair belongs to one coherent topic. ARI compares complete partitions over206
+anchors, including those excluded from pair evaluation. No uncertainty estimate.
+
+\begin{center}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+View & Method & Groups & Singletons & Service F1 & Fine F1 \\
+\midrule
+Current & BIRCH & 170 & 140 & .0104 & .0136 \\
+Current & Tree & 144 & 123 & .0520 & .0705 \\
+Joined & BIRCH & 173 & 141 & .0087 & .0112 \\
+Joined & Tree & 156 & 131 & .0618 & .0754 \\
+Lexical & BIRCH & 202 & 198 & .0012 & .0016 \\
+Lexical & Tree & 203 & 200 & .0006 & .0008 \\
+Current75+lexical25 & BIRCH & 191 & 178 & .0052 & .0064 \\
+Current75+lexical25 & Tree & 189 & 177 & .0069 & .0088 \\
+Joined75+lexical25 & BIRCH & 204 & 202 & .0000 & .0000 \\
+Joined75+lexical25 & Tree & 205 & 204 & .0000 & .0000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Forward arrival only; Fine F1 is within-service intent. Across all30 runs,
+service recall is at most .0319 and intent recall at most .0394. High precision
+among very few merges does not demonstrate useful grouping. Reverse/shuffled
+forward-relative ARI: current BIRCH .468/.635, current tree .754/.767;
+joined BIRCH .563/.647, joined tree .697/.662. Current fusion BIRCH .909/.689,
+tree1/1; lexical and joined fusion1/1 for both methods, with almost all anchors
+singletons. Some merges occur only within one source dialogue and are excluded
+from cross-dialogue evaluation. Perfect stability can therefore accompany almost
+no useful grouping. Neither semantic parent relationships nor overlapping tags
+are validated by these flat cuts.
+
+The initial attempt stopped without output at the prototype's1024D guardrail.
+An explicit dimension-limit option now permits at most8192D while retaining
+the default1024; the experiment sizes the leaf buffer to206. A regression test
+checks default rejection, explicit admission and invalid bounds. Preserve the
+failed log and use fresh final captures; historical captures keep their code
+pins. Two fresh final runs agree exactly on all non-timing fields, including
+partitions, arrival orders, tree statistics, confusion counts and ARI. Independent
+checks recompute every confusion count and all12,341 fused pair scores.
+All186 isolated research tests pass. Total fit time for30 controls is
+6.968/7.455 s, per-control69.04--524.48/65.42--570.99 ms and insertion-p95
+.444--7.119/.371--7.847 ms, with one-thread BLAS/fit. Captured CPU/insertion
+samples exclude final prediction, validation, cuts, metrics and serialization;
+wall fits include thread-limit setup. No complete-ingestion/RSS/performance gate.
+Artifact SHA256 values for \path{clustering-final-first.json} and
+\path{clustering-final-second.json} are
+\path{95e89471135cf7f9984fad0feb156f341a61467c78329d789b08b646c5b273c3}
+and \path{bb8072788bb30d2c543e7b78794ddb1404834fca71f0794d1085e8c09300d201}.
+
+These results expose a threshold-transfer problem, not inherent failure of BIRCH
+or GRINCH: adding lexical coordinates can lower absolute cosines while improving
+rankings. Next calibrate granularity using separate development groups, freeze
+settings before reserved evaluation, and evaluate hierarchy and multi-membership,
+labels, rare-topic coverage and fragmentation. No threshold sweep or production
+selection follows from the present exposed sample. Coding/provider evidence,
+independent judgments, guided search and lifecycle/ingestion/parity gates remain
+required.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

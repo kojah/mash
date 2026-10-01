@@ -891,6 +891,13 @@ uses `lexical_context.py` with disjoint unlabelled development background and
 frozen TF-IDF/current/joined cosine fusion. Current fusion improves the fine-intent
 point score slightly but broad/fine tradeoffs remain; no production method is
 selected. Background text/group exclusions, sparse features and IDF are captured.
+The [actual online grouping diagnostic](../../benchmarks/2026-10-01-external-online-clustering.md)
+uses `external_clustering.py` with five frozen representations, singleton BIRCH
+and GRINCH-style insertion, and three arrival orders. Existing uncalibrated cuts
+produce mostly singletons and very low cross-dialogue proxy recall; perfect order
+stability in some views is therefore weak evidence. No method is selected.
+The tree retains its default1024D cap and permits an explicit bounded8192D setting
+for these lexical controls. Production sparse costs and lifecycle remain untested.
 
 Run lab input-boundary tests:
 
