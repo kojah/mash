@@ -870,8 +870,12 @@ included-unit counts from20named target aspects. Both section controls cover8/20
 but distribute coverage differently and miss all10reorganization contracts.
 No selector is promoted. [External evaluation preparation](EXTERNAL_EVALUATION.md)
 pins a MultiWOZ development shard and records metadata/provenance traps before
-using its state/service annotations as explicit proxies. No external quality
-results or selected method exist yet.
+using its state/service annotations as explicit proxies. The
+[external context comparison](../../benchmarks/2026-10-01-external-dialogue-context.md)
+uses `multiwoz.py` and `external_context.py` for exact typed source validation,
+label-separated inputs and repeatable cross-dialogue service-proxy evaluation.
+Bounded preceding context improves proxy AP on common support; topic-label quality,
+semantic hierarchy and production performance remain unverified.
 
 Run lab input-boundary tests:
 

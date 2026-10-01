@@ -2009,14 +2009,88 @@ every domain is active. Among 30,760 user frames, 27,036 have no active intent a
 in 6,036 frames and may be cumulative. None of these metadata views is automatically
 current-utterance topic gold, and metadata must not leak into model text.
 
-No external quality scores, model outputs or selected method exist. No train/test
-shard is downloaded or inspected, and no utterance values are used for model inputs;
-zero inference calls occur. Next build an executable source/metadata-separated loader,
+At this preparation stage, no external quality scores, model outputs or selected
+method existed. No train/test shard was downloaded or inspected, and no utterance
+values were used for model inputs; zero inference calls occurred. The next step
+was an executable source/metadata-separated loader,
 define explicit label proxies, preserve splits/aliases, freeze development controls
 and reserve test data until selection. External proxy evaluation cannot replace real
 agent histories, full-ingestion or Rust-parity gates. Private source manifest/inventory
 are under \path{topic-public-multiwoz-20261001}; development source SHA256 is
 \path{e7ddb563e4da5766ea820cc826dead77e7ca219c19b761e218d62d9c999a252e}.
+
+\subsection{Frozen external dialogue context comparison}
+The subsequent typed loader validates all 512 dialogues, 7,690 alternating turns,
+1,401 exact Unicode value spans with corresponding UTF-8 coordinates, and 95
+copy annotations. Eight copied-value lists differ from source-slot alias lists;
+preserve these differences without normalization. The source schema declares
+\texttt{book\_taxi}, whereas 248 frames use \texttt{find\_taxi}; retain unknown raw
+values and exclude affected turns from primary proxy evaluation, rather than
+guess an alias. Noncategorical schema slots may omit possible-value lists, while
+categorical slots must declare them. Source metadata and exact original turns
+are separate typed objects, with synthetic leakage/corruption tests.
+
+Before inspecting model outputs, freeze 32 complete role/utterance-content groups
+using hash seed \texttt{mash-topic-multiwoz-v1-20261001}, without service
+stratification, model-driven sampling or resampling. All 512 source groups are
+unique. Compare exact current USER text, a normalized sum of separately normalized
+current USER/immediately preceding SYSTEM vectors (equal weights), and exact
+SYSTEM text followed by two newlines and USER text. Contextual controls abstain
+at roots. Require 2--512 tokens with no padding or truncation and preflight the
+whole selection against the encoder's 1,024-unique-input cap. No state, intent,
+slot value, schema description or source identity enters model text.
+
+The evaluation proxy is the set of schema-declared non-NONE active services.
+Pairs are cross-dialogue only, with nonempty supported proxies; positives share
+at least one active service and negatives are disjoint. Unknown intents and
+no-active states are excluded. This proxy is not current-utterance topic gold:
+intent/state semantics can remain cumulative. No threshold selection, topic
+clustering, label generation or tuning occurs in this experiment.
+
+There are 238 USER anchors: 14 have unknown intents, 43 have no declared active
+service (categories can overlap), and 191 support nonempty known proxies.
+Supported service counts are restaurant 47, hotel 57, train 54 and attraction 48;
+taxi/hospital/bus/police quality is not evaluated by this sample. Common model
+support has 206 anchors after excluding 32 roots, with no window exclusions;
+maximum input length is 80 tokens. Common evaluation contains 12,341 pairs,
+3,448 positive and 8,893 negative.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Control & Common AP & Common AUC & Own pairs & Own AP \\
+\midrule
+Current & 0.464235 & 0.645505 & 17,606 & 0.494045 \\
+Mean & 0.534925 & 0.710532 & 12,341 & 0.534925 \\
+Joined & 0.555472 & 0.720130 & 12,341 & 0.555472 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Bounded context improves broad active-service separation on matched support.
+Current own-support results are not a matched comparator. Pairs share dialogue
+anchors and are dependent; pair count is not an independent sample size. No
+confidence intervals, statistical significance, granular-topic/label improvement
+or coding-session transfer is established. Model pretraining overlap is unknown.
+
+Two fresh runs using the installed quantized MiniLM assets and CPU singleton
+inference with one intra/inter-op thread reproduce vectors, complete own/common
+pair grids, scores, supports, pins and counts exactly, excluding explicit timings.
+Each uses 650 unique local calls and 206 cache hits. Inference takes
+1.29--1.42 s, tokenization 74.63--86.12 ms and experiment wall time after imports
+2.26--2.50 s, including source validation/model initialization/preflight/evaluation
+but excluding capture serialization. These descriptive costs do not establish
+complete-ingestion throughput, p95 or externally measured memory gates. There
+are no downloads, generative calls or paid inference. Python repeatability is not
+Rust parity. All 165 isolated lab tests pass. Artifacts are under
+\path{topic-public-multiwoz-20261001}; first/second capture SHA256 values are
+\path{62eff98049bd418f359500c5c2d7b9c4bab2f879d48b639dcb3e6dd8e8f74b0c}
+and \path{9b66c60ae87d2b1210bce36d5cef56f8a923710884e914bde4e133fbacc3ac1e}.
+These are fresh final captures after adding explicit missing-nonroot-context
+rejection. The initial pair is preserved with its original code pins; vectors,
+pair scores and metrics agree, rather than rewriting historical captures.
+Bounded context remains a candidate, not a selected production method. Episode,
+granular-aspect, label and independently judged coding-session evaluations remain
+necessary before reserved-test evaluation and full performance/parity gates.
 
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
