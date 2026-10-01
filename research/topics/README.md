@@ -863,6 +863,16 @@ budgets. Included-unit counts improve for current-user queries but greedy expans
 loses other requested aspects and sometimes retrieves generic criteria. Wider
 coverage and section-diverse allocation remain open; no production method is promoted.
 
+The [section-allocation/target-coverage diagnostic](../../benchmarks/2026-10-01-section-target-coverage.md)
+adds opt-in `section_experiment.py --one-child` and evaluation-only
+`target_coverage.py`. It preserves exact original controls and distinguishes
+included-unit counts from20named target aspects. Both section controls cover8/20,
+but distribute coverage differently and miss all10reorganization contracts.
+No selector is promoted. [External evaluation preparation](EXTERNAL_EVALUATION.md)
+pins a MultiWOZ development shard and records metadata/provenance traps before
+using its state/service annotations as explicit proxies. No external quality
+results or selected method exist yet.
+
 Run lab input-boundary tests:
 
 ```bash

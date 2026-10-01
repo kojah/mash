@@ -9,7 +9,7 @@ from compare_passage_ranking import METHODS, compare as compare_baselines
 from passage_ranking import counts
 from passage_scope import capture, validate
 from reference_review import digest
-from section_links import sections, select
+from section_links import Allocation, sections, select
 
 
 CONTROLS = ('standalone', 'section-child')
@@ -24,7 +24,7 @@ def stable(value):
     return value
 
 
-def run(context, manifest, judgments, baseline):
+def run(context, manifest, judgments, baseline, *, one_child=False):
     contexts = {(c['thread'], x['anchor']['ordinal']): x for c in context['cases']
                 for x in c['controls']['raw64']['contexts']}
     labels = {(j.thread, j.anchor, j.source, j.index): j for j in judgments}
@@ -48,14 +48,15 @@ def run(context, manifest, judgments, baseline):
     for original in baseline['reports']:
         key = (original['thread'], original['anchor']['ordinal'])
         controls = {}
-        for control in CONTROLS:
+        for control in (*CONTROLS, *(['section-one-child'] if one_child else [])):
             methods = {}
             for name in sorted(METHODS):
                 method = original['methods'][name]
                 selected = {}
                 if method['status'] == 'ranked':
                     for budget in (1, 3):
-                        chosen, visited = select(method['ranking'], links[key] if control == 'section-child' else {}, budget)
+                        chosen, visited = select(method['ranking'], links[key] if control != 'standalone' else {}, budget,
+                                                 allocation=Allocation.ONE_CHILD if control == 'section-one-child' else Allocation.GREEDY)
                         selected_labels = [labels[*key, c['unit']['source_ordinal'], c['unit']['index']] for c in chosen]
                         measured = counts(range(len(chosen)), selected_labels)
                         if control == 'standalone' and measured != method['topk'][str(budget)]:
@@ -70,11 +71,14 @@ def run(context, manifest, judgments, baseline):
 
 def summarize(report):
     rows = report['reports']
+    controls = tuple(rows[0]['controls'])
+    if any(set(r['controls']) != set(controls) for r in rows):
+        raise ValueError('incomplete section control grid')
     common = [r for r in rows if all(m['status'] == 'ranked' for m in r['controls']['standalone'].values())]
 
     def totals(values):
         result = {}
-        for control in CONTROLS:
+        for control in controls:
             result[control] = {}
             for name in sorted(METHODS):
                 supported = [r['controls'][control][name] for r in values if r['controls'][control][name]['status'] == 'ranked']
@@ -95,6 +99,7 @@ def main():
         parser.add_argument(f'--{name}', type=Path, required=True)
     parser.add_argument('--repeat', type=Path)
     parser.add_argument('--summary', type=Path)
+    parser.add_argument('--one-child', action='store_true', help='also test one child per ranked hit')
     args = parser.parse_args()
     if args.summary and not args.repeat:
         raise ValueError('repeat capture required for summary')
@@ -120,12 +125,12 @@ def main():
     if capture(context, pairs) != manifest['rows']:
         raise ValueError('source units or causal scope changed')
     judgments = validate(json.loads(raw['annotations']), raw['manifest'])
-    result = run(context, manifest, judgments, first)
+    result = run(context, manifest, judgments, first, one_child=args.one_child)
     report = {'schema_version': 1, 'scope': 'development-bounded-section-association-control',
               'input_sha256': {k: digest(v) for k, v in raw.items()},
               'code_sha256': {n: digest(Path(__file__).with_name(n).read_bytes()) for n in
                               ('section_links.py', 'section_experiment.py', 'compare_passage_ranking.py')},
-              'parameters': {'controls': CONTROLS, 'budgets': [1, 3], 'maximum_children': 4,
+              'parameters': {'controls': (*CONTROLS, *(['section-one-child'] if args.one_child else [])), 'budgets': [1, 3], 'maximum_children': 4,
                              'candidate_scope': 'unchanged-post-ranking-oracle-source-pairs',
                              'no_recursive_expansion': True},
               'inference_calls': 0, **result, 'elapsed_ms_after_imports': (time.perf_counter() - started) * 1000}

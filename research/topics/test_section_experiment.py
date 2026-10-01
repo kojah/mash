@@ -65,3 +65,10 @@ class SectionExperimentTests(unittest.TestCase):
             else: row['controls'].pop('standalone')
             self.assertNotEqual(stable(result), stable(changed))
         self.assertEqual(stable(result), stable(json.loads(json.dumps(result))))
+
+    def test_optional_control_preserves_original_selections(self):
+        original = run(*self.fixture())
+        added = run(*self.fixture(), one_child=True)
+        self.assertIn('section-one-child', summarize(added)['own_support'])
+        for a, b in zip(original['reports'], added['reports'], strict=True):
+            self.assertEqual(a['controls'], {k: v for k, v in b['controls'].items() if k != 'section-one-child'})

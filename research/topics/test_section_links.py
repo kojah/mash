@@ -1,7 +1,7 @@
 import unittest
 
 from passage_scope import intervals
-from section_links import sections, select
+from section_links import Allocation, sections, select
 
 
 class SectionTests(unittest.TestCase):
@@ -35,3 +35,12 @@ class SectionTests(unittest.TestCase):
                         {('a', 0): (('a', 1), ('a', 1))}, {('missing', 0): (('a', 1),)}):
             with self.assertRaises(ValueError): select(ranking, invalid, 1)
         with self.assertRaises(ValueError): select(ranking * 2, links, 1)
+
+    def test_one_child_keeps_another_ranked_hit_in_the_budget(self):
+        ranking = [{'source_id': 'a', 'index': i} for i in (0, 4, 1, 2, 3)]
+        links = {('a', 0): (('a', 1), ('a', 2), ('a', 3))}
+        greedy, _ = select(ranking, links, 3)
+        other, _ = select(ranking, links, 3, allocation=Allocation.ONE_CHILD)
+        self.assertEqual([c['unit']['index'] for c in greedy], [1, 2, 3])
+        self.assertEqual([c['unit']['index'] for c in other], [1, 4, 2])
+        with self.assertRaises(ValueError): select(ranking, links, 3, allocation='unknown')

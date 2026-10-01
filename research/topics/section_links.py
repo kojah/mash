@@ -1,5 +1,6 @@
 """Bounded layout associations, independent of topics, queries and judgments."""
 from dataclasses import dataclass
+from enum import StrEnum
 import re
 
 from passage_scope import intervals
@@ -11,6 +12,11 @@ class Section:
     head: int
     children: tuple[int, ...]
     total_children: int
+
+
+class Allocation(StrEnum):
+    GREEDY = 'greedy'
+    ONE_CHILD = 'one-child-per-hit'
 
 
 def sections(text, units, maximum_children=4):
@@ -37,10 +43,11 @@ def sections(text, units, maximum_children=4):
     return tuple(result)
 
 
-def select(ranking, links, budget):
+def select(ranking, links, budget, *, allocation=Allocation.GREEDY):
     """Replace an intro hit by its original children; keep a fixed unique-unit budget."""
     if type(budget) is not int or not 1 <= budget <= 16:
         raise ValueError('bounded positive unit budget required')
+    allocation = Allocation(allocation)
     available = {(entry['source_id'], entry['index']): entry for entry in ranking}
     if len(available) != len(ranking):
         raise ValueError('duplicate ranking identity')
@@ -54,7 +61,8 @@ def select(ranking, links, budget):
     for entry in ranking:
         visited += 1
         identity = (entry['source_id'], entry['index'])
-        for child in links.get(identity, (identity,)):
+        children = links.get(identity, (identity,))
+        for child in children[:1] if allocation == Allocation.ONE_CHILD else children:
             if child not in seen:
                 seen.add(child)
                 chosen.append({'unit': available[child], 'via': {'source_id': identity[0], 'index': identity[1]},
