@@ -91,7 +91,11 @@ fn parse_jsonl(
             continue;
         }
         clean_projection(&mut extracted);
-        capture_session(provider, &mut session_id, extracted.session_id.take())?;
+        if provider == Provider::ClaudeCode {
+            claude_identity.capture_session(extracted.session_id.take())?;
+        } else if session_id.is_none() {
+            session_id = extracted.session_id.take();
+        }
         let ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("conversation contains too many messages"))?;
         if provider == Provider::ClaudeCode {
@@ -147,27 +151,6 @@ fn parse_jsonl(
         }),
         malformed_records,
     })
-}
-
-fn capture_session(
-    provider: Provider,
-    session: &mut Option<String>,
-    next: Option<String>,
-) -> Result<(), AppError> {
-    if provider == Provider::ClaudeCode
-        && session
-            .as_ref()
-            .zip(next.as_ref())
-            .is_some_and(|(a, b)| a != b)
-    {
-        return Err(AppError::configuration(
-            "Claude transcript contains multiple session identities",
-        ));
-    }
-    if session.is_none() {
-        *session = next;
-    }
-    Ok(())
 }
 
 fn clean_projection(message: &mut ExtractedMessage) {

@@ -190,7 +190,11 @@ emptying, or deleting one copy removes only that copy's contribution. Conflictin
 payloads or ancestry for the same native message UUID fail transactionally.
 Repeated metadata events with conflicting parents are ignored when no retained
 dialogue depends on them; ambiguous events in a message's parent chain still fail.
-Records
+Native forks may retain the original session ID on their copied history. When
+the new session's dialogue explicitly links into that history, the whole copied
+transcript belongs to the fork's native session; the original remains a separate
+thread. Nested forks follow the same rule. Unlinked transitions and interleaved
+session IDs fail rather than silently combining unrelated histories. Records
 without a UUID retain path-based fallback identity.
 
 Normal and independently routed shared publication use this same reconciliation.

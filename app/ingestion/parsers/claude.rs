@@ -12,12 +12,22 @@ pub(super) struct Identity {
     parents: BTreeMap<String, Ancestry>,
     pub(super) keys: Vec<Option<String>>,
     agent: Option<String>,
+    session: Option<String>,
+    sessions: BTreeSet<String>,
+    transitions: BTreeSet<usize>,
 }
 
 #[derive(PartialEq, Eq)]
 enum Ancestry {
     Known(ParentLink),
     Ambiguous,
+}
+
+#[derive(Clone)]
+struct MessageIdentity {
+    id: String,
+    // Unknown external ancestors have no position in this physical transcript.
+    position: Option<usize>,
 }
 
 impl Identity {
@@ -48,7 +58,27 @@ impl Identity {
         Ok(())
     }
 
-    pub(super) fn thread_id(&self, session: &str) -> String {
+    pub(super) fn capture_session(&mut self, next: Option<String>) -> Result<(), AppError> {
+        let Some(next) = next else {
+            return Ok(());
+        };
+        if self.session.as_ref() == Some(&next) {
+            return Ok(());
+        }
+        if !self.sessions.insert(next.clone()) {
+            return Err(AppError::configuration(
+                "Claude transcript interleaves session identities",
+            ));
+        }
+        if self.session.is_some() {
+            self.transitions.insert(self.keys.len());
+        }
+        self.session = Some(next);
+        Ok(())
+    }
+
+    pub(super) fn thread_id(&self, fallback: &str) -> String {
+        let session = self.session.as_deref().unwrap_or(fallback);
         self.agent.as_ref().map_or_else(
             || session.to_owned(),
             |agent| stable_id("claude-agent", &[session, agent]),
@@ -60,7 +90,13 @@ impl Identity {
         thread: &str,
         messages: Messages,
     ) -> Result<(Messages, Lineage), AppError> {
-        normalize(thread, messages, self.keys, &self.parents)
+        normalize(
+            thread,
+            messages,
+            self.keys,
+            &self.parents,
+            &self.transitions,
+        )
     }
 }
 
@@ -69,45 +105,81 @@ fn normalize(
     messages: Messages,
     keys: Vec<Option<String>>,
     parents: &BTreeMap<String, Ancestry>,
+    transitions: &BTreeSet<usize>,
 ) -> Result<(Messages, Lineage), AppError> {
     if messages.len() != keys.len() {
         return Err(AppError::internal(
             "Claude message identities are incomplete",
         ));
     }
-    let identities = keys
-        .iter()
-        .flatten()
-        .map(|key| (key.clone(), stable_id("claude-message", &[thread, key])))
-        .collect::<BTreeMap<_, _>>();
+    let mut identities = BTreeMap::new();
+    for (position, key) in keys.iter().enumerate() {
+        if let Some(key) = key {
+            identities
+                .entry(key.clone())
+                .or_insert_with(|| MessageIdentity {
+                    id: stable_id("claude-message", &[thread, key]),
+                    position: Some(position),
+                });
+        }
+    }
     let mut previous = None;
-    let contributions = messages.into_rows()?.zip(keys).map(|(message, key)| {
-        let mut message = message?;
-        let parent = if let Some(key) = key {
-            message.id.clone_from(&identities[&key]);
-            match parents.get(&key) {
-                None | Some(Ancestry::Known(ParentLink::Missing)) => previous.clone(),
-                Some(Ancestry::Known(ParentLink::Root)) => None,
-                Some(Ancestry::Known(ParentLink::Parent(parent))) => {
-                    resolve_parent(thread, parent, &identities, parents)?
+    let contributions =
+        messages
+            .into_rows()?
+            .zip(keys)
+            .enumerate()
+            .map(|(ordinal, (message, key))| {
+                let mut message = message?;
+                let transition = transitions.contains(&ordinal);
+                let explicit_parent = key.as_ref().is_some_and(|key| {
+                    matches!(
+                        parents.get(key),
+                        Some(Ancestry::Known(ParentLink::Parent(_)))
+                    )
+                });
+                let parent = if let Some(key) = key {
+                    message.id.clone_from(&identities[&key].id);
+                    match parents.get(&key) {
+                        None | Some(Ancestry::Known(ParentLink::Missing)) => previous.clone(),
+                        Some(Ancestry::Known(ParentLink::Root)) => None,
+                        Some(Ancestry::Known(ParentLink::Parent(parent))) => {
+                            resolve_parent(thread, parent, &identities, parents)?
+                        }
+                        Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry()),
+                    }
+                } else {
+                    previous.clone()
+                };
+                // A native fork copies history under its original session ID before
+                // writing the new session's dialogue. Only explicit ancestry into that
+                // retained prefix proves this is a fork, rather than concatenated logs.
+                if transition
+                    && (!explicit_parent
+                        || parent
+                            .as_ref()
+                            .and_then(|parent| parent.position)
+                            .is_none_or(|position| position >= ordinal))
+                {
+                    return Err(AppError::configuration(
+                        "Claude session transition is not linked to inherited dialogue",
+                    ));
                 }
-                Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry()),
-            }
-        } else {
-            previous.clone()
-        };
-        previous = Some(message.id.clone());
-        Ok((message, parent))
-    });
+                previous = Some(MessageIdentity {
+                    id: message.id.clone(),
+                    position: Some(ordinal),
+                });
+                Ok((message, parent.map(|parent| parent.id)))
+            });
     reconcile(contributions)
 }
 
 fn resolve_parent(
     thread: &str,
     parent: &str,
-    identities: &BTreeMap<String, String>,
+    identities: &BTreeMap<String, MessageIdentity>,
     parents: &BTreeMap<String, Ancestry>,
-) -> Result<Option<String>, AppError> {
+) -> Result<Option<MessageIdentity>, AppError> {
     let mut current = parent;
     let mut visited = BTreeSet::new();
     loop {
@@ -123,7 +195,12 @@ fn resolve_parent(
             Some(Ancestry::Known(ParentLink::Parent(parent))) => current = parent,
             Some(Ancestry::Known(ParentLink::Root | ParentLink::Missing)) => return Ok(None),
             Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry()),
-            None => return Ok(Some(stable_id("claude-message", &[thread, current]))),
+            None => {
+                return Ok(Some(MessageIdentity {
+                    id: stable_id("claude-message", &[thread, current]),
+                    position: None,
+                }));
+            }
         }
     }
 }

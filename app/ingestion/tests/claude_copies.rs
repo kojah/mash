@@ -4,6 +4,7 @@ use crate::message_context::MessageContext;
 mod handoff;
 mod lifecycle;
 mod metadata;
+mod sessions;
 
 fn transcript(path: &Path, rows: &[(&str, Option<&str>, &str)]) {
     let records = rows
