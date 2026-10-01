@@ -13,7 +13,8 @@ results as well as improvements. Authorship and submission venue remain open.
 
 The draft contains twelve Python geometry controls, the initial user-only boundary
 pilot, an expanded eight-conversation review, bounded preceding-context packets
-and a native-record identity/content audit.
+and a native-record identity/content audit, followed by lightweight lexical/dense
+boundary-ranking controls.
 It is a research record, not a completed
 paper or evidence of production topic quality. Full model/hardware provenance,
 independent annotations, quality/online lifecycle gates and guided-agent retrieval

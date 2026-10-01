@@ -484,6 +484,82 @@ SHA256 \path{b34464f13ef99d326e482daa58a89d802c788f9d4ac94664f7cf83c5bf0b360e}.
 Source-supported chained-reference judgments and production admission rules
 remain unresolved; no topic-quality or downstream retrieval gain is claimed.
 
+\subsection{Lightweight lexical boundary rankings}
+Lexical cohesion motivates a cheap, non-generative comparison before additional
+context inference. TextTiling studies lexical structure in document segmentation
+\cite{texttiling}; our turn/block controls are not a reproduction of its token
+sequences, smoothing, depth scores or paragraph policy. We compare five fixed
+rankings: adjacent dense cosine, disjoint two-turn dense means, adjacent word
+TF-IDF cosine, disjoint two-turn lexical means and an equal-weight adjacent
+dense/lexical combination. Scores are one minus cosine, or one minus the mean
+of both cosines. We do not select a cutoff from these results.
+
+The frozen admission sidecar is an oracle diagnostic: its 39 content and 29
+referential records enter lexical fitting; 13 protocol, two attachment and one
+sensitive-value record do not. Every sidecar source ID, ordinal and text hash
+must match. Original boundary positions remain intact; an inadmissible block
+member, missing vector or cancelling mean causes abstention rather than bridging
+excluded framing. Vocabulary and IDF are fitted transductively to these 68
+development records, with lowercase unigrams/bigrams, sublinear TF, smooth IDF,
+L2 normalization, no stopword list, a technical-token regex and an 8,192-feature
+cap \cite{tfidf}. The resulting vocabulary contains 2,002 features. This is not
+an incremental IDF-coordinate policy, production admission classifier or
+reserved-set evaluation. Blocks contain up to two turns per side, clipped at
+thread edges, and use one future user turn; no native
+branch resolution or additional model inference is performed.
+
+We report threshold-free average precision (AP) and ROC AUC with changes positive,
+coverage and prevalence. Thirty-six uncertain boundaries remain excluded.
+The five methods share 33 known boundaries with ten changes (prevalence 0.303);
+Table~\ref{tab:lexical-rank} compares only this common support, preventing
+abstention from changing the comparison's population.
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Ranking & AP & ROC AUC\\
+\midrule
+Adjacent dense &0.545&0.696\\
+Disjoint dense means &0.425&0.643\\
+Adjacent TF-IDF &0.333&0.543\\
+Disjoint TF-IDF means &0.424&0.596\\
+Equal adjacent combination &0.552&0.704\\
+\bottomrule
+\end{tabular}
+\caption{Development rankings with frozen oracle admission on common support.
+These are diagnostics, not calibrated boundary predictions or topic-quality scores.}
+\label{tab:lexical-rank}
+\end{table}
+
+Across all 40 known boundaries, adjacent dense scores all 40 (AP 0.594,
+AUC 0.714); adjacent lexical and the combination score 39, dense blocks 34
+and lexical blocks 33. Fifteen known adjacent lexical scores have no shared
+terms, tying at maximal dissimilarity. Lexical overlap alone therefore poorly
+distinguishes a continuation from a subject change here. The combination's
+0.007 AP difference on common support is too small and weakly evaluated to
+establish a reliable gain. Dense rankings retain signal despite the earlier
+poor fixed-cutoff precision; a separate group-aware calibration experiment is
+warranted before concluding that a costlier representation is necessary.
+Provider-specific common support is only ten Claude boundaries with two changes
+and 23 Codex boundaries with eight, limiting subgroup conclusions.
+
+One CPU-thread-limited run fits TF-IDF in 6.8\,ms; scoring all 76 positions costs
+1.4--2.8\,ms per method with already materialized features. These timings exclude
+full ingestion, label maintenance, writes and interpreter imports. Elapsed time
+after imports is 461.4\,ms, including frozen-data loading; peak process RSS is
+751.2\,MiB, including the full snapshot loader and scientific libraries, not
+incremental topic-engine memory. No LLM or model-inference call occurs.
+A fresh repeat reproduces all non-measurement fields exactly. Thirty-five lab
+tests pass, including pinned admission, no barrier bridging, bounded lookahead,
+missing/cancelling-vector abstention and tied-score behavior. The implementation
+is \path{research/topics/lexical_boundaries.py}; private report
+\path{lexical-boundaries.json} in the expanded-review directory has SHA256
+\path{4911d3609b4cc529757e0c63be1ce0e61602e4a54424653e5ee959dbc35cf848}.
+Single-assistant labels, prior development exposure, transductive vocabulary and
+small common support prevent generalization or semantic-quality claims.
+The complete-ingestion overhead gate remains unmeasured; no Rust method is
+selected or promoted.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

@@ -223,6 +223,42 @@ existing admission and boundary judgments remain unchanged. Full preceding-chain
 content verification, source-supported referent resolution and production
 eligibility rules remain subsequent work, tracked in Beads and the paper.
 
+## Lexical boundary ranking control
+
+`lexical_boundaries.py` compares adjacent dense cosine, disjoint two-turn dense
+means, adjacent word TF-IDF cosine, disjoint two-turn lexical means and a fixed
+equal dense/lexical adjacent combination. Scores are dissimilarities; higher
+means a more likely change. It does not tune a decision threshold or emit topic
+tags. The lexical-cohesion motivation is related to TextTiling, but these controls
+do not reproduce its token-sequence, smoothing, depth-score or paragraph policy.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/lexical_boundaries.py \
+  --database "$FROZEN_DATABASE" --partition-report "$FROZEN_PARTITION_REPORT" \
+  --annotations "$PRIVATE_ANNOTATIONS" --source-review "$PRIVATE_SOURCE_REVIEW" \
+  --output "$PRIVATE_LEXICAL_REPORT"
+```
+
+Frozen source-reviewed admission is an **oracle diagnostic**, not a production
+classifier: only content/referential records enter TF-IDF fitting. All original
+boundary positions remain; an inadmissible block member or missing/cancelling
+vector causes abstention rather than bridging framing. The sidecar must match
+every source ID, ordinal and text hash. TF-IDF is fitted transductively to the 68
+admitted development records with unigrams/bigrams, lowercase, sublinear TF,
+smooth IDF, L2 normalization, no stopword list, an explicit technical-token regex
+and an 8,192-feature cap. This is not a safe incremental IDF-coordinate policy.
+
+Reports give non-interpolated average precision, ROC AUC, prevalence and coverage
+on known boundaries, plus common-support and provider breakdowns. Uncertain
+judgments are excluded; abstentions are counted explicitly. Common support avoids
+comparing rankings over different scored subsets. Two-turn blocks use one future
+user turn and are user-only linear representations, not native-branch context.
+No LLM or model inference is invoked. Source/annotation/code/lock/feature hashes
+are pinned; vocabulary/source text is withheld. Fit/scoring costs and full-process
+RSS do not measure complete ingestion overhead. Results and limitations are in
+the living paper; no production method is selected from this small diagnostic.
+
 ## Initial controls
 
 `run.py` reads an existing consistent SQLite snapshot in read-only mode. It uses
