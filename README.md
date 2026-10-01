@@ -1109,8 +1109,8 @@ PostgreSQL supplies these timestamps, which commit atomically with the node's
 data. Failed or rolled-back uploads leave them unchanged. They describe received
 index data, not the newest source message's timestamp or proof that a node is
 currently online. Older nodes can have null timestamps until they publish with
-this version. Shared-only status includes this information automatically;
-ordinary local/both status remains usable offline. Freshness inspection is
+this version. Use `mash status --shared` to include shared-index freshness;
+ordinary status remains usable offline. Freshness inspection is
 read-only; the service adds missing metadata tables during startup migration.
 
 ## MCP
@@ -1127,6 +1127,11 @@ configuration and paths, dispatches the request and wraps the result once.
 Indexing owns per-index provider routing, progress and watcher target selection;
 inspection owns read-only status and canonical views. Parsing, SQLite and local
 inference run on blocking workers, while shared HTTP operations remain asynchronous.
+
+`app/config.rs` owns the typed node settings and status models. Its private
+`document` module decodes strict TOML and validates provider routing, roots,
+identifiers and endpoints; `loading` handles bounded file reads and platform
+defaults. CLI, MCP, watcher and worker operations use the same resolved settings.
 
 `app/shared.rs` is the typed shared-index facade. Its private `client` module
 owns pooled HTTP requests, authentication, deadlines and response decoding;
