@@ -1,4 +1,5 @@
 //! Public, synthetic relevance judgments exercised through the typed core.
+mod cleanup;
 use crate::core::{IndexRequest, Operation, Paths, Request, Response};
 use crate::search_results::{Results, SearchUnit};
 use serde::{Deserialize, Serialize};
