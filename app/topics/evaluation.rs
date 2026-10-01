@@ -1,4 +1,5 @@
 //! Read-only real-history diagnostic; private reports never enter stdout/traces.
+mod ancestry;
 mod anchored;
 mod anchors;
 mod assignments;
@@ -319,6 +320,7 @@ struct Report {
     assignment_ms: f64,
     label_ms: f64,
     semantic_labels: Option<names::Summary>,
+    ancestry: Option<ancestry::Report>,
     assigned_threads: usize,
     overlapping_threads: usize,
     maximum_topics_per_thread: usize,
@@ -470,6 +472,7 @@ fn run(
         assignment_ms,
         label_ms,
         semantic_labels: None,
+        ancestry: None,
         assigned_threads: memberships.values().filter(|t| !t.is_empty()).count(),
         overlapping_threads: memberships.values().filter(|t| t.len() > 1).count(),
         maximum_topics_per_thread: memberships.values().map(BTreeSet::len).max().unwrap_or(0),
@@ -533,6 +536,18 @@ fn benchmark_topic_discovery() {
                 };
                 if let Some(labeler) = &mut labeler {
                     report.semantic_labels = Some(labeler.apply(&mut report.clusters).unwrap());
+                }
+                if std::env::var_os("MASH_TEST_TOPIC_HIERARCHY").is_some() {
+                    let ancestry =
+                        ancestry::build(&threads, &report.clusters, &report.memberships).unwrap();
+                    println!(
+                        "hierarchy groups={} depth={} build_ms={:.1} inherit_ms={:.1}",
+                        ancestry.groups,
+                        ancestry.maximum_depth,
+                        ancestry.build_ms,
+                        ancestry.inheritance_ms
+                    );
+                    report.ancestry = Some(ancestry);
                 }
                 std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
                 println!(

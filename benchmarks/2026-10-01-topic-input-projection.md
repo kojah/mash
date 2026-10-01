@@ -44,16 +44,18 @@ All eight radius/order/mode runs pass without exhausting prototype leaf or cache
 bounds. Counts use all corpus threads, including threads without eligible user-topic
 evidence; coverage is not a relevance score.
 
-| Radius-0.4 mode / order | Centroids | Active labeled topics | Assigned threads | P95 tags | Maximum tags | Assignment ms |
+| Radius-0.4 mode / order | Centroids | Named / active topics | Assigned threads | P95 tags | Maximum tags | Assignment ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Representatives / forward | 405 | 398 | 778 | 5 | 44 | 783 |
-| Representatives / reverse | 391 | 384 | 778 | 5 | 40 | 759 |
-| Whole mean / forward | 149 | 117 | 750 | 3 | 17 | 448 |
-| Whole mean / reverse | 150 | 118 | 751 | 3 | 17 | 413 |
+| Representatives / forward | 405 | 398 / 399 | 778 | 5 | 44 | 783 |
+| Representatives / reverse | 391 | 384 / 385 | 778 | 5 | 40 | 759 |
+| Whole mean / forward | 149 | 117 / 118 | 750 | 3 | 17 | 448 |
+| Whole mean / reverse | 150 | 118 / 118 | 751 | 3 | 17 | 413 |
 
 Representatives retain broader coverage than whole means. First-pass topic naming
-embeds 8,054 candidates in 1,892 ms; reverse order adds 1,046 in 296 ms. All active
-topics have names. The eight-run process takes 11.50 seconds after compilation.
+embeds 8,054 candidates in 1,892 ms; reverse order adds 1,046 in 296 ms. One active
+topic lacks a usable name in each representative run and the forward whole-mean
+run; the original statement that every active topic was named was incorrect.
+The eight-run process takes 11.50 seconds after compilation.
 These timings concern the complete diagnostic corpus, not a search request; later
 configurations reuse the phrase cache. No isolated indexing-throughput claim follows.
 
