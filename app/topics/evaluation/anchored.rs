@@ -39,7 +39,16 @@ fn thread_discovery_with_segment_assignment_preserves_secondary_topic_matches() 
         ("frontend".into(), thread(&[1])),
         ("mixed".into(), thread(&[0, 1])),
     ]);
-    let report = run(&threads, "model-v1", Mode::UserAnchored, 0.2, false, false).unwrap();
+    let report = run(
+        &threads,
+        "model-v1",
+        Mode::UserAnchored,
+        0.2,
+        false,
+        false,
+        None,
+    )
+    .unwrap();
     assert_eq!(report.samples, 3); // includes mixed thread's mean, not two repeated messages
     assert_eq!(report.memberships["database"].len(), 1);
     assert_eq!(report.memberships["frontend"].len(), 1);
@@ -87,6 +96,7 @@ fn representative_discovery_covers_a_mixed_thread_without_single_topic_founders(
         0.2,
         false,
         false,
+        None,
     )
     .unwrap();
     assert_eq!(report.samples, 2);
@@ -94,7 +104,16 @@ fn representative_discovery_covers_a_mixed_thread_without_single_topic_founders(
     // A whole-thread mean is below the assignment threshold of either subject
     // when the mixed thread covers four unrelated axes.
     let threads = BTreeMap::from([("mixed".into(), thread(&[0, 1, 2, 3]))]);
-    let anchored = run(&threads, "model-v1", Mode::UserAnchored, 0.2, false, false).unwrap();
+    let anchored = run(
+        &threads,
+        "model-v1",
+        Mode::UserAnchored,
+        0.2,
+        false,
+        false,
+        None,
+    )
+    .unwrap();
     assert!(anchored.memberships["mixed"].is_empty());
     let representatives = run(
         &threads,
@@ -103,6 +122,7 @@ fn representative_discovery_covers_a_mixed_thread_without_single_topic_founders(
         0.2,
         false,
         false,
+        None,
     )
     .unwrap();
     assert_eq!(representatives.memberships["mixed"].len(), 4);

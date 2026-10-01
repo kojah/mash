@@ -208,7 +208,7 @@ pub(super) struct Summary {
 struct Plan {
     thread: String,
     messages: Vec<super::Segment>,
-    sources: Vec<String>,
+    sources: Vec<super::provenance::Source>,
     projected: Vec<(usize, usize)>,
     omitted: usize,
     deduplicated: usize,
@@ -238,7 +238,7 @@ fn prepare(threads: &BTreeMap<String, Thread>) -> Result<Preparation, AppError> 
         };
         let mut sources_seen = BTreeSet::new();
         for (source, message) in thread.user_sources.iter().zip(&thread.user_messages) {
-            match project(source) {
+            match project(&source.text) {
                 Projection::Omit => plan.omitted += 1,
                 Projection::Keep(text) => {
                     if !sources_seen.insert(text.to_owned()) {
@@ -246,7 +246,7 @@ fn prepare(threads: &BTreeMap<String, Thread>) -> Result<Preparation, AppError> 
                         continue;
                     }
                     plan.messages.push(message.clone());
-                    plan.sources.push(text.to_owned());
+                    plan.sources.push(source.clone());
                 }
                 Projection::Replace(text) => {
                     if !sources_seen.insert(text.clone()) {
@@ -271,7 +271,7 @@ fn prepare(threads: &BTreeMap<String, Thread>) -> Result<Preparation, AppError> 
                         },
                         messages: message.messages,
                     });
-                    plan.sources.push(text);
+                    plan.sources.push(source.projected(text));
                 }
             }
         }
@@ -367,7 +367,11 @@ fn changed_topic_text_cannot_silently_reuse_stored_vectors() {
     let mut threads = BTreeMap::from([("thread".into(), thread)]);
     assert!(clean(&mut threads, None).is_err());
     assert_eq!(threads["thread"].user_messages[0].vector[0], 1.0);
-    assert!(threads["thread"].user_sources[0].contains("<INSTRUCTIONS>"));
+    assert!(
+        threads["thread"].user_sources[0]
+            .text
+            .contains("<INSTRUCTIONS>")
+    );
 }
 
 #[test]
@@ -408,7 +412,7 @@ fn derived_omissions_and_dedup_leave_canonical_vectors_available() {
     assert_eq!(summary.deduplicated_messages, 1);
     assert_eq!(summary.projected_messages, 0);
     assert_eq!(threads["thread"].user_messages.len(), 1);
-    assert_eq!(threads["thread"].user_sources, ["database frontend"]);
+    assert_eq!(threads["thread"].user_sources[0].text, "database frontend");
     assert_eq!(threads["thread"].vectors.len(), 3);
     assert_eq!(threads["thread"].ignored_user_messages, 2);
 }

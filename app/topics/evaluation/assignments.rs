@@ -6,30 +6,52 @@ use crate::AppError;
 struct Evidence {
     support: f64,
     words: labels::Terms,
+    scores: Option<super::provenance::Scores>,
 }
 pub(super) struct Assignments {
     pub(super) memberships: BTreeMap<String, BTreeSet<TopicId>>,
     pub(super) classes: BTreeMap<TopicId, labels::Terms>,
     pub(super) supporting_words: BTreeMap<String, BTreeMap<TopicId, labels::Terms>>,
+    pub(super) assignment_evidence: Option<super::provenance::Report>,
 }
 
 fn evidence(
     thread: &Thread,
     model: &AssignmentModel,
     mode: Mode,
+    capture: bool,
 ) -> Result<BTreeMap<TopicId, Evidence>, AppError> {
+    if capture {
+        super::provenance::Collector::validate(thread)?;
+    }
     let mut evidence: BTreeMap<TopicId, Evidence> = BTreeMap::new();
     let (minimum, relative) = if mode.segmented() {
         (0.65, 0.92)
     } else {
         (0.55, 0.9)
     };
-    for segment in thread_samples(thread, mode) {
+    let mut offset = 0;
+    for (index, segment) in thread_samples(thread, mode).into_iter().enumerate() {
+        let end = offset + segment.messages;
+        if capture && end > thread.user_sources.len() {
+            return Err(AppError::usage(
+                "topic evidence segment exceeds source range",
+            ));
+        }
         for hit in model.assign(&segment.vector, minimum, relative)? {
             let entry = evidence.entry(hit.topic).or_default();
             #[allow(clippy::cast_precision_loss)]
             {
-                entry.support += hit.cosine * segment.messages as f64;
+                let support = hit.cosine * segment.messages as f64;
+                entry.support += support;
+                if capture {
+                    entry
+                        .scores
+                        .get_or_insert_with(super::provenance::Scores::default)
+                        .add(super::provenance::SegmentScore::new(
+                            index, offset, end, hit.cosine, support,
+                        ));
+                }
             }
             let words = if matches!(mode, Mode::Segments) {
                 &thread.words
@@ -40,6 +62,12 @@ fn evidence(
                 entry.words.insert(word.clone(), 1);
             }
         }
+        offset = end;
+    }
+    if capture && offset != thread.user_sources.len() {
+        return Err(AppError::usage(
+            "topic evidence does not cover source sequence",
+        ));
     }
     let best = evidence
         .values()
@@ -55,6 +83,7 @@ pub(super) fn assign(
     threads: &BTreeMap<String, Thread>,
     model: &AssignmentModel,
     mode: Mode,
+    mut collector: Option<super::provenance::Collector<'_>>,
 ) -> Result<Assignments, AppError> {
     let mut memberships = BTreeMap::new();
     let mut classes = BTreeMap::new();
@@ -63,15 +92,23 @@ pub(super) fn assign(
     for (id, thread) in threads {
         let mut topics = BTreeSet::new();
         let mut words = BTreeMap::new();
-        for (topic, entry) in evidence(thread, model, mode)? {
+        let selected = collector.as_ref().is_some_and(|c| c.selected(id));
+        let mut scores = Vec::new();
+        for (topic, entry) in evidence(thread, model, mode, selected)? {
             topics.insert(topic);
             if capture {
                 words.insert(topic, entry.words.clone());
+            }
+            if let Some(review) = entry.scores {
+                scores.push((topic, entry.support, review));
             }
             let class = classes.entry(topic).or_insert_with(labels::Terms::new);
             for word in entry.words.into_keys() {
                 *class.entry(word).or_default() += 1;
             }
+        }
+        if selected {
+            collector.as_mut().unwrap().record(id, thread, scores);
         }
         memberships.insert(id.clone(), topics);
         if capture {
@@ -82,6 +119,7 @@ pub(super) fn assign(
         memberships,
         classes,
         supporting_words,
+        assignment_evidence: collector.map(super::provenance::Collector::finish),
     })
 }
 
@@ -115,7 +153,7 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
             vectors: Vec::new(),
             words: labels::Terms::new(),
             user_messages,
-            user_sources: Vec::new(),
+            user_sources: (0..15).map(|_| "fixture".into()).collect(),
             ignored_user_messages: 0,
         },
     )]);
@@ -124,7 +162,7 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
         (0..3).map(|i| (TopicId(i as u64), vector(i))).collect(),
     )
     .unwrap();
-    let result = assign(&threads, &model, Mode::UserSegments).unwrap();
+    let result = assign(&threads, &model, Mode::UserSegments, None).unwrap();
     assert_eq!(
         result.memberships["thread"],
         BTreeSet::from([TopicId(0), TopicId(1)])
@@ -132,4 +170,20 @@ fn segment_labels_exclude_unrelated_terms_and_weak_incidental_topics() {
     assert_eq!(result.classes[&TopicId(0)], labels::terms("database"));
     assert_eq!(result.classes[&TopicId(1)], labels::terms("frontend"));
     assert!(!result.classes.contains_key(&TopicId(2)));
+    let selection = super::provenance::Selection::parse("threads=['thread']").unwrap();
+    let captured = assign(
+        &threads,
+        &model,
+        Mode::UserSegments,
+        Some(super::provenance::Collector::new(
+            &selection,
+            Mode::UserSegments,
+        )),
+    )
+    .unwrap();
+    assert_eq!(captured.memberships, result.memberships);
+    assert_eq!(
+        captured.assignment_evidence.unwrap().topic_ids("thread"),
+        [TopicId(0), TopicId(1)]
+    );
 }

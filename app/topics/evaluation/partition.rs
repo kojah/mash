@@ -165,14 +165,32 @@ fn projection_and_empty_evidence_do_not_change_partition_or_hide_denominators() 
         threads.values().map(|t| t.source_id).collect::<Vec<_>>()
     );
     assert!(threads.values().all(held_out));
-    let report = super::run(&threads, "generation", Mode::UserMean, 0.4, false, true).unwrap();
+    let report = super::run(
+        &threads,
+        "generation",
+        Mode::UserMean,
+        0.4,
+        false,
+        true,
+        None,
+    )
+    .unwrap();
     assert_eq!(report.held_out_threads, 2);
     assert_eq!(report.partition.source_groups, 1);
     assert_eq!(report.partition.held_out_source_groups, 1);
     assert_eq!(report.partition.eligible_threads, 0);
     assert_eq!(report.partition.held_out_eligible_threads, 0);
     assert_eq!(report.samples, 0);
-    let baseline = super::run(&threads, "generation", Mode::ThreadMean, 0.4, false, false).unwrap();
+    let baseline = super::run(
+        &threads,
+        "generation",
+        Mode::ThreadMean,
+        0.4,
+        false,
+        false,
+        None,
+    )
+    .unwrap();
     assert_eq!(baseline.partition.eligible_threads, 2);
     assert_eq!(baseline.partition.assigned_eligible_threads, 2);
 }

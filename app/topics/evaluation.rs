@@ -6,6 +6,7 @@ mod assignments;
 mod input;
 mod names;
 mod partition;
+mod provenance;
 use super::segments::{Builder, Segment};
 use super::{AssignmentModel, Settings, TopicId, birch::Tree, labels, normalize};
 use crate::provider::Provider;
@@ -25,7 +26,7 @@ struct Thread {
     vectors: Vec<Vec<f64>>,
     words: labels::Terms,
     user_messages: Vec<Segment>,
-    user_sources: Vec<String>,
+    user_sources: Vec<provenance::Source>,
     ignored_user_messages: usize,
 }
 
@@ -94,7 +95,7 @@ fn corpus_reads_canonical_fallback_and_deduplicates_within_threads() {
 
 fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-    let mut statement = connection.prepare("SELECT c.id,c.provider,c.title,e.vector,e.generation,COALESCE(m.search_projection,m.content),m.role FROM message_embeddings e JOIN messages m ON m.id=e.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY c.id,m.ordinal,m.id").unwrap();
+    let mut statement = connection.prepare("SELECT c.id,c.provider,c.title,e.vector,e.generation,COALESCE(m.search_projection,m.content),m.role,m.id AS message_id,m.ordinal,m.content AS canonical_content,m.search_projection IS NOT NULL AS stored_projection FROM message_embeddings e JOIN messages m ON m.id=e.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY c.id,m.ordinal,m.id").unwrap();
     let mut rows = statement.query([]).unwrap();
     let mut threads: BTreeMap<String, Thread> = BTreeMap::new();
     let mut generations = BTreeSet::new();
@@ -137,7 +138,9 @@ fn corpus(path: &std::path::Path) -> (BTreeMap<String, Thread>, String) {
         if role == Role::User && !labels::substantive(&text) {
             thread.ignored_user_messages += 1;
         } else if role == Role::User {
-            thread.user_sources.push(text.clone());
+            thread
+                .user_sources
+                .push(provenance::Source::stored(row, text.clone()).unwrap());
             thread.user_messages.push(Segment {
                 vector: vector.clone(),
                 words: if phrases {
@@ -279,12 +282,21 @@ fn held_out_copied_threads_do_not_train_the_discovery_model() {
         .find(held_out)
         .unwrap();
     let threads = BTreeMap::from([("first".into(), thread.clone()), ("copy".into(), thread)]);
-    let held = run(&threads, "model-v1", Mode::UserMean, 0.4, false, true).unwrap();
+    let held = run(&threads, "model-v1", Mode::UserMean, 0.4, false, true, None).unwrap();
     assert_eq!(held.held_out_threads, 2);
     assert_eq!(held.samples, 0);
     assert_eq!(held.topics, 0);
     assert_eq!(held.held_out_assigned_threads, 0);
-    let trained = run(&threads, "model-v1", Mode::UserMean, 0.4, false, false).unwrap();
+    let trained = run(
+        &threads,
+        "model-v1",
+        Mode::UserMean,
+        0.4,
+        false,
+        false,
+        None,
+    )
+    .unwrap();
     assert_eq!(trained.samples, 1);
     assert_eq!(trained.assigned_threads, 2);
 }
@@ -324,6 +336,8 @@ struct Report {
     label_ms: f64,
     semantic_labels: Option<names::Summary>,
     ancestry: Option<ancestry::Report>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assignment_evidence: Option<provenance::Report>,
     assigned_threads: usize,
     overlapping_threads: usize,
     maximum_topics_per_thread: usize,
@@ -382,6 +396,7 @@ fn run(
     radius: f64,
     reversed: bool,
     holdout: bool,
+    evidence_selection: Option<&provenance::Selection>,
 ) -> Result<Report, crate::AppError> {
     let mut order: Vec<_> = threads.iter().collect();
     if reversed {
@@ -434,7 +449,13 @@ fn run(
         memberships,
         classes,
         supporting_words,
-    } = assignments::assign(threads, &model, mode)?;
+        assignment_evidence,
+    } = assignments::assign(
+        threads,
+        &model,
+        mode,
+        evidence_selection.map(|s| provenance::Collector::new(s, mode)),
+    )?;
     let assignment_ms = start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
     let clusters = label_clusters(threads, &memberships, &leaves, &classes);
@@ -466,6 +487,7 @@ fn run(
         label_ms,
         semantic_labels: None,
         ancestry: None,
+        assignment_evidence,
         assigned_threads: memberships.values().filter(|t| !t.is_empty()).count(),
         overlapping_threads: memberships.values().filter(|t| t.len() > 1).count(),
         maximum_topics_per_thread: memberships.values().map(BTreeSet::len).max().unwrap_or(0),
@@ -514,6 +536,10 @@ fn benchmark_topic_discovery() {
     );
     std::fs::create_dir_all(&output).unwrap();
     let (mut threads, generation) = corpus(&database);
+    let evidence_selection = provenance::Selection::load().unwrap();
+    if let Some(selection) = &evidence_selection {
+        selection.validate(&threads).unwrap();
+    }
     let mut labeler = names::Labeler::load(&generation).unwrap();
     if std::env::var_os("MASH_TEST_TOPIC_CLEAN_INPUT").is_some() {
         let summary = input::clean(&mut threads, labeler.as_mut()).unwrap();
@@ -540,7 +566,15 @@ fn benchmark_topic_discovery() {
         for radius in [0.4, 0.6] {
             for reversed in [false, true] {
                 let path = output.join(format!("{mode:?}-{radius}-{reversed}.json"));
-                let mut report = match run(&threads, &generation, mode, radius, reversed, holdout) {
+                let mut report = match run(
+                    &threads,
+                    &generation,
+                    mode,
+                    radius,
+                    reversed,
+                    holdout,
+                    evidence_selection.as_ref(),
+                ) {
                     Ok(report) => report,
                     Err(error) => {
                         let rejected = RejectedRun {
