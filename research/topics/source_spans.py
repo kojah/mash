@@ -102,17 +102,12 @@ def structural_spans(text: str) -> tuple[Span, ...]:
     return tuple(result)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("database", "partition-report", "annotations", "source-review", "contexts", "reference-review", "output"):
-        parser.add_argument(f"--{name}", type=Path, required=True)
-    args = parser.parse_args()
-    if args.output.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
-        raise ValueError("private source-span reports must remain outside Git")
-    started = time.perf_counter()
-    fingerprint, cases = read_cases(args.database, args.partition_report, args.annotations)
-    admitted = admissions(cases, args.source_review)
-    context_bytes, review_bytes, reference_bytes = (p.read_bytes() for p in (args.contexts, args.source_review, args.reference_review))
+def load_documents(database: Path, partition: Path, annotations: Path, source_review: Path,
+                   contexts_path: Path, reference_review: Path) -> tuple[str, dict]:
+    """Shared frozen source boundary for captures and unit-grouping experiments."""
+    fingerprint, cases = read_cases(database, partition, annotations)
+    admitted = admissions(cases, source_review)
+    context_bytes, review_bytes, reference_bytes = (p.read_bytes() for p in (contexts_path, source_review, reference_review))
     judgments = validate(context_bytes, review_bytes, json.loads(reference_bytes))
     context_report = json.loads(context_bytes)
     if context_report["dataset_fingerprint"] != fingerprint:
@@ -137,6 +132,19 @@ def main() -> None:
             if key in documents and documents[key] != value:
                 raise ValueError("conflicting source identity")
             documents[key] = value
+    return fingerprint, documents
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("database", "partition-report", "annotations", "source-review", "contexts", "reference-review", "output"):
+        parser.add_argument(f"--{name}", type=Path, required=True)
+    args = parser.parse_args()
+    if args.output.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
+        raise ValueError("private source-span reports must remain outside Git")
+    started = time.perf_counter()
+    fingerprint, documents = load_documents(args.database, args.partition_report, args.annotations,
+                                           args.source_review, args.contexts, args.reference_review)
     start = time.perf_counter()
     rows = []
     for (thread, ordinal), (identity, text) in sorted(documents.items()):

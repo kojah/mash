@@ -1193,6 +1193,134 @@ validation. Source-supported units and unresolved reference chains still need
 review; neither complete-ingestion overhead nor useful online topic hierarchies
 are demonstrated.
 
+\subsection{Matched source-unit grouping and lexical geometry}
+We next test exact structural spans against record and thread pooling while
+holding source support fixed. The frozen oracle scope contains 91 records
+(68 user anchors and 23 intact assistant evidence records), with 257 original
+spans. Admission and reference selection remain oracle controls; metadata,
+procedural language and rejected proposals are not automatically removed.
+Original Unicode offsets, identities, body hashes and the complete record scope
+are reconstructed before inference. No reviewer names or rationales enter features.
+
+Before predictions, an exposed coding assistant records 50 source-pinned pairs:
+14 overlapping fine task aspects, 33 distinct and three uncertain. The sample
+contains all 36 comparisons between two responses describing six fix families,
+six family-to-multi-aspect-summary comparisons, legacy-import counterparts and
+five cross-case contrasts. Shared broad ancestors do not imply fine-aspect
+overlap; topical mention does not imply endorsement. These correlated,
+purposive judgments are development diagnostics, not independent or
+representative truth. The three uncertain pairs are excluded.
+
+Installed offline quantized MiniLM encodes all 257 spans without truncation;
+maximum length is 439 tokens, within the 512-token preflight. There are 256
+unique inference calls and one cache hit. Eight spans have zero lexical
+features. All three geometries use the same remaining 249 spans, represented
+individually or as normalized span-direction means for 86 records or eight
+threads. These pooled directions are not whole-text embeddings or current Rust
+representations. Dense vectors have 384 dimensions; lexical vectors use fixed
+nonnegative 512-column hashing of source-adjacent unigrams/bigrams with English
+stopwords; hybrid vectors concatenate equally weighted normalized directions,
+giving 896 dimensions. Stateless hashing has no fitted vocabulary or IDF and
+permits fixed streaming coordinates~\cite{hashingvectorizer}; collisions with
+this small feature budget remain a limitation. Source-preserving c-TF-IDF
+labels use their separate explicit vocabulary, not hash inversion.
+
+The frozen grid is three geometries, three representations, four methods and
+forward/reverse order: 72 controls per process. BIRCH uses batch
+\texttt{fit\_predict}, radius 0.4, branching 64 and no final global clustering.
+GRINCH-style uses exact leaf neighbors and the previously tested all-internal-
+merger cosine 0.7 cut. Average linkage uses cosine distance threshold 0.3;
+HDBSCAN uses Euclidean distance, minimum cluster size/sample count five and EOM.
+These native cuts are different uncalibrated criteria and are not retuned.
+Two fresh processes agree on every nonmeasurement field, including source/code
+hashes, coverage, encoder calls, pair scores, memberships and candidate keywords.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Representation &Dense AP/AUC&Lexical AP/AUC&Hybrid AP/AUC\\
+\midrule
+Exact spans &0.855/0.918&0.753/0.797&0.831/0.885\\
+Record means &0.305/0.515&0.305/0.515&0.305/0.515\\
+Thread means &0.333/0.576&0.333/0.576&0.429/0.636\\
+\bottomrule
+\end{tabular}
+\caption{Raw similarity ranking on 47 exposed reviewed aspect pairs. AP is
+average precision, AUC is ROC area; neither measures validated topic quality.
+Scores are independent of grouping method/order.}
+\end{table}
+
+Fine units distinguish the reviewed aspects better than coarse pooling, which
+necessarily gives different aspects from one source the same representation.
+The review intentionally stresses this failure, so the improvement cannot be
+generalized to arbitrary conversations. Equal lexical fusion does not improve
+dense ranking on this sample and is not promoted. Native fine-span cuts remain
+unsatisfactory, as the following table shows.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Geometry/method &Clusters&Noise&TP/FP\\
+\midrule
+Dense BIRCH &228--229&0&3/0\\
+Dense GRINCH-style &227&0&3/0\\
+Dense average &228&0&3/0\\
+Dense HDBSCAN &4&169&6/4\\
+Lexical BIRCH/GRINCH/average &238&0&0/0\\
+Lexical HDBSCAN &2&188&0/0\\
+Hybrid BIRCH &239--240&0&0/0\\
+Hybrid GRINCH/average &242&0&0/0\\
+Hybrid HDBSCAN &2&138&7/9\\
+\bottomrule
+\end{tabular}
+\caption{Native coassignment on 14 positive and 33 negative reviewed pairs;
+counts span both arrival orders. Noise label $-1$ never counts as a shared topic.}
+\end{table}
+
+Dense GRINCH-style recovers three of six repeated detailed families; the other
+three score 0.652--0.675, below its cut. All six summary-to-family pairs score
+only 0.361--0.487; both native assignment and the diagnostic shared-centroid
+cosine $\geq0.7$ rule miss them. The two legacy counterparts score 0.520 and
+0.288. Lowering a threshold on these exposed cases would not establish a robust
+fix. Multi-affiliation alone does not recover aspects absent from a pooled
+direction. Dense HDBSCAN's centroid diagnostic yields TP/FP 4/2 forward and 1/1
+reverse despite native counts 6/4 in both orders. This diagnostic is not
+HDBSCAN prediction or calibrated confidence. Coarse record/thread controls often
+conflate 28 of 33 distinct pairs even with numerous singleton coarse clusters.
+
+Candidate labels remain imperfect: an inspected compression cluster ranks
+\texttt{output}, \texttt{deliberately} and \texttt{obligations} before
+\texttt{compression}; a SQL-related singleton yields \texttt{complete iteration}
+and \texttt{owning transaction}. Exact source support prevents invented phrases,
+but does not establish specificity or a quantified label-quality score.
+No semantic ancestor interpretation is justified.
+
+On Xenia with the pinned Python/scientific runtime and one numerical/encoder
+CPU thread, encoding takes 846--863\,ms, including preflight/cache handling;
+inference alone takes 723--734\,ms. Lexical/hybrid construction takes
+7.7--7.9\,ms. Dense fine-span grouping takes BIRCH 11--27\,ms,
+GRINCH-style 186--259\,ms, average 8--37\,ms and HDBSCAN 31--35\,ms.
+Grouping includes tree validation and cut extraction where applicable, unlike
+the earlier insertion-only benchmark. Ranges cover two orders and two processes,
+not confidence intervals. Each shared-cache 72-control process takes
+10.2--10.7 seconds after imports and peaks at 956\,MiB RSS including source
+loading/scientific runtime. These are not standalone method costs or production
+ingestion overhead; the full-ingestion gate remains unverified.
+
+The runner is \path{research/topics/span_grouping.py}; exact source reconstruction,
+review validation, grouping and repeat verification are separate modules.
+Private captures in \path{span-grouping-20261001} have SHA256
+\path{658d15eea10022a74a4b1470bb1875430cc7a4266444901d00f0c586e56400d9}
+and \path{812d14d459c1dbebe3b0edfc9b23cb3fc7710465791fb2857a10208f35fe16e3}.
+The review SHA256 is
+\path{c075848ed114e1d621e4013ee3ea5eb47885abccb12e15d30fdfa0c2f301889d}.
+An earlier exploratory capture predates explicit HDBSCAN \texttt{copy=False}
+and code-format cleanup and is excluded from final paired verification.
+The evidence favors testing bounded within-paragraph multi-aspect source units
+and group-separated operating points next, not promoting a clustering swap.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

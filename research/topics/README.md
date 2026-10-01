@@ -773,6 +773,16 @@ a winner; independently reviewed dialogue units and topic labels come next.
 
 Run lab input-boundary tests:
 
+The [matched source-unit experiment](../../benchmarks/2026-10-01-matched-source-unit-grouping.md)
+compares exact spans with pooled record/thread directions across dense, fixed
+lexical and hybrid geometry. `span_grouping.py` requires explicit frozen database,
+partition, annotation, source-review, context, reference-review, structural-span,
+pair-review and installed snapshot paths, plus a fresh private output path.
+`compare_spans.py --first ... --second ... --output ...` verifies the complete
+72-control grid and every nonmeasurement field. Reviewer text never enters
+features. This is exposed development evidence; fixed clustering cuts still
+miss most reviewed overlaps and no method is promoted.
+
 ```bash
 PYTHONDONTWRITEBYTECODE=1 \
 /home/james/scratch/mash-artifacts/topic-python-env/bin/python \
