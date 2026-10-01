@@ -8,6 +8,7 @@ use std::time::Instant;
 
 #[derive(Serialize)]
 pub(super) struct Summary {
+    inference: Inference,
     unique_candidates: usize,
     newly_embedded: usize,
     cached_candidates: usize,
@@ -18,6 +19,14 @@ pub(super) struct Summary {
 pub(super) struct Labeler {
     pool: EmbeddingPool,
     cache: BTreeMap<String, Vec<f64>>,
+    inference: Inference,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Inference {
+    Batched,
+    Singleton,
 }
 
 #[derive(Serialize)]
@@ -72,6 +81,11 @@ impl Labeler {
         Ok(Some(Self {
             pool,
             cache: BTreeMap::new(),
+            inference: if std::env::var_os("MASH_TEST_TOPIC_SINGLETON_LABELS").is_some() {
+                Inference::Singleton
+            } else {
+                Inference::Batched
+            },
         }))
     }
 
@@ -93,7 +107,10 @@ impl Labeler {
         }
         for batch in missing.chunks(64) {
             let texts: Vec<_> = batch.iter().map(String::as_str).collect();
-            let vectors = self.pool.shared_vectors(&texts)?;
+            let vectors = match self.inference {
+                Inference::Batched => self.pool.shared_vectors(&texts),
+                Inference::Singleton => self.pool.singleton_label_vectors(&texts),
+            }?;
             if vectors.len() != batch.len() {
                 return Err(AppError::model("unexpected topic label embedding count"));
             }
@@ -109,6 +126,7 @@ impl Labeler {
             cluster.semantic_terms = Some(terms);
         }
         Ok(Summary {
+            inference: self.inference,
             unique_candidates: unique.len(),
             newly_embedded: missing.len(),
             cached_candidates: self.cache.len(),

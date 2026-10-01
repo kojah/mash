@@ -27,12 +27,28 @@ pub(crate) fn embed_wave(
     workers: &mut [TextEmbedding],
     groups: &[EmbeddingGroup],
 ) -> Result<Vec<Vec<f32>>, AppError> {
+    embed_batches(workers, groups, EMBEDDING_BATCH_SIZE)
+}
+
+#[cfg(test)]
+pub(super) fn embed_singletons(
+    workers: &mut [TextEmbedding],
+    groups: &[EmbeddingGroup],
+) -> Result<Vec<Vec<f32>>, AppError> {
+    embed_batches(workers, groups, 1)
+}
+
+fn embed_batches(
+    workers: &mut [TextEmbedding],
+    groups: &[EmbeddingGroup],
+    batch_size: usize,
+) -> Result<Vec<Vec<f32>>, AppError> {
     if workers.len() != EMBEDDING_WORKERS {
         return Err(AppError::internal("unexpected CPU embedding worker count"));
     }
     let mut jobs = (0..workers.len()).map(|_| Vec::new()).collect::<Vec<_>>();
     let (mut short, mut long) = (0, 0);
-    for (index, batch) in groups.chunks(EMBEDDING_BATCH_SIZE).enumerate() {
+    for (index, batch) in groups.chunks(batch_size).enumerate() {
         let worker = if is_short_batch(&workers[0], batch)? {
             let worker = (LONG_WORKERS + short) % workers.len();
             short += 1;
@@ -160,3 +176,6 @@ mod tests {
         assert!(embed_wave(&mut models[..2], &groups).is_err());
     }
 }
+
+#[cfg(test)]
+mod sensitivity;

@@ -70,6 +70,7 @@ struct Capture {
     generation: String,
     label_text: labels::TextMode,
     label_shortlist: labels::shortlist::Policy,
+    labeling: names::Summary,
     mode: Mode,
     radius: f64,
     reversed: bool,
@@ -83,6 +84,7 @@ fn capture(
     selection: &provenance::Selection,
     probes: &Probes,
     labeler: &names::Labeler,
+    labeling: names::Summary,
 ) -> Result<Capture, AppError> {
     if report.supporting_words.len() != report.memberships.len() {
         return Err(AppError::usage(
@@ -157,10 +159,11 @@ fn capture(
         });
     }
     Ok(Capture {
-        schema_version: 1,
+        schema_version: 2,
         generation: report.generation.clone(),
         label_text: labels::text_mode(),
         label_shortlist: labels::shortlist::policy(),
+        labeling,
         mode: report.mode,
         radius: report.radius,
         reversed: report.reversed,
@@ -198,8 +201,8 @@ fn benchmark_label_candidates() {
         )
         .unwrap();
         let mut names: Vec<_> = report.clusters.iter_mut().map(|c| &mut c.name).collect();
-        labeler.apply(&mut names).unwrap();
-        let capture = capture(&report, &selection, &probes, &labeler).unwrap();
+        let labeling = labeler.apply(&mut names).unwrap();
+        let capture = capture(&report, &selection, &probes, &labeler, labeling).unwrap();
         std::fs::write(
             output.join(format!("label-review-{reversed}.json")),
             serde_json::to_vec_pretty(&capture).unwrap(),

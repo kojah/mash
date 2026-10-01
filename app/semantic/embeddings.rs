@@ -65,6 +65,40 @@ pub(crate) struct EmbeddingProgress {
 }
 
 impl EmbeddingPool {
+    /// Offline label experiment: retain document batches, isolate label inputs.
+    #[cfg(test)]
+    pub(crate) fn singleton_label_vectors(
+        &mut self,
+        texts: &[&str],
+    ) -> Result<Vec<Vec<f64>>, AppError> {
+        if texts.len() > 64 {
+            return Err(AppError::usage("singleton label batch cap exceeded"));
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        if let EmbeddingPoolBackend::Cpu(workers) = &mut self.backend {
+            let groups = texts
+                .iter()
+                .map(|text| EmbeddingGroup {
+                    content: (*text).to_owned(),
+                    message_ids: Vec::new(),
+                })
+                .collect::<Vec<_>>();
+            return Ok(cpu::embed_singletons(workers, &groups)?
+                .iter()
+                .map(|vector| {
+                    quantize_vector(vector)
+                        .values
+                        .into_iter()
+                        .map(|value| f64::from(value.cast_signed()))
+                        .collect()
+                })
+                .collect());
+        }
+        Err(AppError::usage(
+            "singleton label experiment requires the local CPU backend",
+        ))
+    }
+
     pub(crate) fn shared_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
         let groups = texts
             .iter()
