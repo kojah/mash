@@ -457,6 +457,41 @@ after imports is 527 ms for all four controls, including corpus load. No inferen
 occurs and the ingestion overhead gate remains unmeasured. Seventy-one lab tests
 pass, including correction anchor preservation and contraction/identifier matching.
 
+## Exact source structural spans
+
+`source_spans.py` captures offset-based units for the 68 admitted user anchors and
+the original reference review's intact preceding evidence. Identities are merged
+by thread/ordinal only when hashes and text agree. The frozen scope contains
+91 records: 68 users and 23 assistants. The report stores source identities,
+Unicode code-point offsets, kinds and exact UTF-8 substring hashes, without
+duplicating source bodies. No text is rewritten or interpreted as a topic.
+
+The fixed structural splitter emits paragraphs, list items, Markdown table body
+rows and headings. Table headers/separators are framing. Fenced code, including
+an unclosed fence, remains a distinct indivisible block, so table/list syntax
+inside code does not create false units. Boundary whitespace is trimmed with
+offsets preserved. This is a limited structural splitter, not general Markdown
+parsing or semantic segmentation: list continuations can remain separate prose,
+inline lists/sentences are not split, and related units may need grouping.
+
+Run with database, partition, boundary/source-review, contexts and reference-review
+inputs as above. The 91 records produce 257 candidates: 166 paragraphs, 66 list
+items, 18 table rows, 4 code blocks and 3 headings. In the accepted six-family fix
+proposal, all six table rows are distinct candidates; the legacy-import proposal
+has six paragraphs plus two list items. The wrong-project response has three
+paragraphs, separating the project statement from session/access metadata. Its
+project statement still contains the rejected entity: structural narrowing alone
+does not establish endorsement or remove that contamination. These are integrity
+and structural observations, not independent topic-quality measurements.
+
+Two fresh captures reproduce all non-timing fields. Segmentation plus span hashes
+and metadata take 4.4–4.6 ms; final elapsed after imports is 481 ms including corpus
+loading. No inference occurs, and ingestion overhead remains unmeasured.
+Seventy-six lab tests pass, including Unicode/CRLF offsets, table framing,
+non-overlap, empty input and fenced-code preservation. Next annotate source-span
+relevance/endorsement separately and test automatic selection and grouping before
+any production topic promotion.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current

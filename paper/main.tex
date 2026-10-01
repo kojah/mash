@@ -892,6 +892,45 @@ including preservation of the correction anchor and contraction/identifier
 matching. The private report \path{contextual-labels-veto.json} has SHA256
 \path{6716b06846e64ca639d98c7aeea7731cd463efd5109903916fd06620fe799f94}.
 
+\subsection{Exact source structural spans}
+We construct smaller source units without generative rewriting or automatic
+endorsement claims. The capture includes the 68 admitted user anchors and intact
+preceding evidence from the frozen reference review, merging repeated
+thread/ordinal identities only when text and hashes agree. There are 91 records:
+68 users and 23 assistants. The report stores exact Unicode code-point offsets,
+unit kinds and UTF-8 substring hashes without copying source bodies. Existing
+source/context fingerprints and local code/lock hashes pin the capture.
+
+The fixed splitter emits paragraphs, list items, Markdown table body rows and
+headings; table headers and separator rows are excluded as framing. Fenced code,
+including an unclosed fence, stays an indivisible distinct block, preventing
+table/list syntax inside it from creating pseudo-units. Boundary whitespace is
+trimmed with source offsets preserved. This is limited structural splitting,
+not general Markdown parsing or semantic segmentation: wrapped list continuations
+can remain separate prose, inline lists/sentences are not split, and related
+units can require grouping.
+
+The capture contains 257 candidates: 166 paragraphs, 66 list items, 18 table rows,
+four code blocks and three headings. The accepted six-family fix proposal yields
+six separate table-row candidates; the legacy-import proposal yields six
+paragraphs plus two list items. The wrong-project response yields three paragraphs,
+separating the project statement from session/access metadata. The rejected
+entity remains within the project paragraph. Structural narrowing therefore
+does not establish endorsement or eliminate that contamination. These integrity
+and structural observations are not independent topic-quality measurements or
+evidence that each unit corresponds to a semantic topic.
+
+Two fresh captures reproduce every non-timing field. Segmentation, substring
+hashes and metadata take 4.4--4.6\,ms; final elapsed time after imports is
+481\,ms including frozen corpus loading. No inference occurs and the ingestion
+overhead gate remains unmeasured. Seventy-six lab tests pass, including Unicode
+and CRLF offsets, table framing, non-overlap, empty input and fenced-code
+preservation. The implementation is \path{research/topics/source_spans.py};
+private \path{source-spans-final.json} has SHA256
+\path{52d857979929c42202e8bcfa784b73a63faf887fc46eccd02ab37e9073bce8d8}.
+Source-span relevance/endorsement needs separate annotation; automatic selection
+and grouping require evaluation before production promotion.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training
