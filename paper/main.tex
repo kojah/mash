@@ -1737,6 +1737,59 @@ reference-review SHA256 is
 Only two Codex source groups contain these references. No provider-general quality,
 semantic hierarchy, guided-search gain or production method is selected.
 
+\subsection{Stored-vector reference-record selection}
+Before ranking, freeze five controls on the same raw64 contexts and twenty-one
+anchors: all-source recency, recency restricted to full token-window support,
+and cosine queries from the current user, preceding user, or normalized captured
+user-chain mean. Inventory 119 unique records (35 user/84 assistant); every record
+has a compatible stored vector. Validate canonical source identities/content,
+generation, dimensions and norms. Count full source tokens without truncation.
+Three assistant records and one user exceed 512 tokens; FastEmbed 6.0.1's default
+truncation/main-encoding path means these vectors cannot represent complete-source
+evidence. These checks do not prove historical inference input/model-byte parity.
+
+Full-window cosine candidates are intact displayed assistant records with 2--512
+tokens. Missing, redacted, omitted, oversized or canceling query support abstains.
+Normalize stored directions in float64; score ties use ascending source ordinal/id.
+Recency uses descending ordinal then ascending id. No new inference or LLM calls
+occur. Reviewer judgments enter evaluation only, after rankings are fixed.
+
+The metric is any manually cited assistant identity retrieved at rank one/three,
+not accepted-passage precision. Three references cite oversized records; query
+support further changes denominators. The common thirteen-anchor cohort supports
+all five controls:
+\begin{center}
+\begin{tabular}{lrrr}
+\hline
+Control & Own support & Common hit@1 & Common hit@3 \\
+\hline
+All-source recency & 20 & 12/13 & 13/13 \\
+Full-window recency & 17 & 12/13 & 13/13 \\
+Current-user cosine & 17 & 6/13 & 11/13 \\
+Preceding-user cosine & 14 & 7/13 & 10/13 \\
+User-chain cosine & 13 & 5/13 & 11/13 \\
+\hline
+\end{tabular}
+\end{center}
+On their own support, respective hit@1/hit@3 counts are 18/19, 16/17, 8/15,
+7/11 and 5/11. Recency wins this diagnostic but selects a broad fix-all
+interpretation for a narrowed request and an installation update for deferred
+reorganization. Retrieving a cited compatibility proposal also does not imply
+acceptance when the user rejects it. Fine accepted/background/rejected source-unit
+judgments remain necessary; no production selector is promoted.
+
+Two fresh captures match every nonmeasurement field, including scores and input
+hashes. Five-control selection across twenty-one anchors takes 2.64--2.67 ms;
+tokenizer preflight 21.34--26.20 ms; complete validation/loading/ranking
+601.42--626.89 ms, excluding imports. These are descriptive batch measurements,
+not ingestion or production latency gates. The 140-test lab covers support,
+ties/cancellation, causal eligibility and complete repeat validation.
+Only two exposed Codex groups and single coding-assistant source judgments are
+used; independent semantic quality and guided-search benefit remain unmeasured.
+Private final capture hashes are
+\path{ccccc17d0ef89b04a0da8d49f50ebaf053ee816ac54c8ac3f67209d3e5fbcf92}
+and \path{34b34ccc0ad3c7bd46a364ee664068d87684abd8df6d7fc450d4511f99caa120}.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

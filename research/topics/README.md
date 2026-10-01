@@ -839,6 +839,13 @@ All20 reviewed task references already have cited evidence in raw64; the larger
 window adds65% displayed bytes without an oracle evidence-availability gain.
 Do not promote it as better topic quality. Automatic source selection is next.
 
+The [stored-vector record-selection diagnostic](../../benchmarks/2026-10-01-stored-reference-record-selection.md)
+uses `record_selection.py` and `compare_record_selection.py` to compare recency
+with three cosine query controls on unchanged raw64 contexts, without inference.
+Token-window support and abstentions are explicit. Recency wins cited-record
+retrieval but fails some narrowing/deferred references; retrieving a rejected
+proposal is not endorsement. Fine accepted-passage selection remains unimplemented.
+
 Run lab input-boundary tests:
 
 ```bash
