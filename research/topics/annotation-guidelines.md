@@ -41,6 +41,23 @@ that context precedes or follows the turn, and whether it introduces subjects th
 user did not endorse. Native ancestry establishes provenance, not semantic
 relevance. Following replies require an online publication/update policy.
 
+For bounded preceding-reference reviews, preserve original admission and boundary
+judgments and create a separate source-pinned sidecar. Classify each originally
+referential anchor as `resolved-task`, `resolved-metadata`, `interaction-only`,
+or `unresolved-reference`. A task resolution must identify an actual discussed
+task; metadata resolution includes counts and session selectors, whose names do
+not establish current substantive topics. Attention prompts need not inherit
+the preceding assistant's subjects. Abstain when the specific referent is unclear,
+even if the conversation's broad subject is known.
+
+Pin exact anchor identity, context hash, source-review hash and minimal supporting
+preceding record identities/hashes. Resolved cases require intact, unredacted,
+displayed evidence on the captured causal path. Never infer assent to every
+assistant proposal from a correction, question or selective approval. Record
+known omissions, source limitations and reviewer exposure. These judgments are
+evaluation labels, not an automatic resolver; rationales or reviewer-written
+summaries must never be substituted for source text in model inputs.
+
 Annotate semantic parent relationships separately from cluster topology. Check
 that a parent expresses an actual broader subject of each child, rather than a
 concatenation of child names or an incidental project/provider. Multiple leaf

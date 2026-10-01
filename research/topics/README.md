@@ -203,6 +203,35 @@ Separate source-pinned reference judgments are still required before contextual
 embedding experiments. Do not turn reviewer-written interpretations into model
 inputs or change the frozen user-only judgments.
 
+## Source-backed reference judgments
+
+`reference_review.py` validates a separate private annotation sidecar against the
+exact chained-context and original source-review bytes. It requires every one of
+the originally referential anchors exactly once, preserves anchor/source hashes,
+uses a closed resolution enum and requires source evidence for resolved cases.
+Evidence must match intact, unredacted display text and an identity on the
+captured causal path. Sibling/future/absent evidence, omissions, edited hashes,
+duplicates and incomplete annotation sets fail validation. The command prints
+only aggregate counts; it does not generate representations or topic labels.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+/home/james/scratch/mash-artifacts/topic-python-env/bin/python research/topics/reference_review.py \
+  --contexts "$PRIVATE_CHAINED_CONTEXT" --source-review "$PRIVATE_SOURCE_REVIEW" \
+  --annotations "$PRIVATE_REFERENCE_REVIEW"
+```
+
+Focused source review classifies the 29 referential anchors as 20 resolved tasks,
+three resolved metadata references, four interaction prompts and two unresolved
+references. A reported number denotes a count of unresolved findings rather than
+an issue identifier; named old sessions are selectors rather than evidence that
+their topics are currently discussed. Corrections must not inherit rejected
+entities or all assistant proposals. This provides evaluation targets for later
+context selection, not measured topic improvement. The single coding-assistant
+reviewer had prior source, method and prediction exposure; these are exploratory
+judgments, not independent human truth. Preceding bodies use stored projections,
+not comprehensive native verification. Original user-only judgments remain frozen.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current

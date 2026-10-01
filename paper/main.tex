@@ -583,6 +583,38 @@ necessary; reviewer interpretations must not become embedding inputs. No
 boundary labels, inference calls, production topic behavior or quality claims
 change in this capture experiment.
 
+\subsection{Source-backed reference review}
+We retain the original user-only admission and boundary annotations and create a
+separate private sidecar for all 29 originally referential anchors. A single
+coding-assistant reviewer inspects focused preceding source evidence, with prior
+corpus, method and prediction exposure. Each judgment pins the exact anchor,
+context and original source-review hashes, plus supporting preceding record
+identities and searchable hashes. A strict validator requires complete unique
+coverage and intact unredacted evidence on the captured causal path for resolved
+cases. Reviewer rationales are evaluation metadata, never embedding inputs.
+
+The exploratory review yields 20 resolved-task cases, three resolved-metadata
+cases, four interaction-only prompts and two unresolved references. These
+categories separate semantic task continuation from metadata selection and
+response prompting. For example, a number previously interpreted uncertainly as
+an issue identifier is a count of unresolved findings in the preceding source.
+Names of old sessions select sessions to resume; they do not establish current
+discussion of the subjects in their titles. A correction rejects the assistant's
+chosen project, while a selective approval does not endorse every proposed
+action. Conversely, accepting several concrete fixes can support multiple
+technical subjects. Unclear repair prompts remain unresolved despite broad
+conversation context.
+
+The validator is \path{research/topics/reference_review.py}; the private sidecar
+\path{reference-review.json} has SHA256
+\path{43580209022098ecd482bcbe59e601c34ced01167412ca41b6c0e628f42b5137}.
+Forty-nine lab tests pass, including source-edit rejection, complete coverage,
+causal evidence integrity, omission/redaction rejection and explicit abstention.
+These counts are neither independent human agreement nor automatic resolution
+accuracy, semantic topic quality or guided-search gains. Not every preceding
+body is native-verified; the bounded view can omit necessary context. Original
+judgments remain unchanged, and no algorithm receives reviewer-written text.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training
