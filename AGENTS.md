@@ -10,10 +10,10 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
 - Use an authenticated Axum HTTP API backed by PostgreSQL/pgvector (tokio-postgres)
-  or Redis Search for one shared index per configured
+  or Redis Search or Qdrant for one shared index per configured
   node group. Support local-only, shared-only without SQLite, and both indexing,
   with independent provider allowlists. Keep local operations offline-capable.
-  Only the HTTP service accesses PostgreSQL or Redis. Never restore SSH query fan-out.
+  Only the HTTP service accesses PostgreSQL, Redis, or Qdrant. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
   Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;
   MCP must not construct CLI arguments or call CLI handlers.
@@ -23,6 +23,10 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 - Redis vector retrieval defaults to exact FLAT and supports opt-in HNSW through
   typed server configuration. Preserve filter/ownership/deletion correctness and
   validate existing schemas without automatically dropping or rebuilding indexes.
+- Qdrant uses the existing reqwest client and typed REST models, named dense/sparse
+  vectors, and conditional node-head publication on Qdrant 1.19+. Default to exact
+  vector retrieval; permit explicit HNSW. Keep immutable staging invisible, enforce
+  revisions across API processes, and fail closed on incompatible existing schemas.
 - Do not add provider traits, registries, installed daemons, compatibility
   shims, alternate output modes, a TUI, export, or analytics.
 - CLI searches may share an on-demand, per-user local worker. It must exit after

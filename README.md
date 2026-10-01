@@ -485,7 +485,7 @@ cross-version validation gates. These limits do not establish aggregate RSS.
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
-reranking follows the same rule on SQLite, PostgreSQL and Redis. Linear histories
+reranking follows the same rule on SQLite, PostgreSQL, Redis and Qdrant. Linear histories
 keep their existing ordinal neighbourhoods. SQLite schema 32 and shared PostgreSQL
 schema 15 preserve existing messages and vectors. Update the shared service before
 publishing Pi, Copilot, Gemini, Cline, Cursor, Windsurf or Antigravity histories from upgraded nodes.
@@ -656,10 +656,10 @@ embeddings and invalidate local ingestion checkpoints, allowing the next
 `mash index` to capture metadata from source files. Independently routed shared
 ingestion also refreshes its source checkpoints when upgrading metadata support.
 
-## Shared PostgreSQL index
+## Shared index
 
 Nodes access the shared index through an authenticated Axum HTTP service. Only
-that service connects to PostgreSQL, using async `tokio-postgres` and a bounded
+that service connects to Redis, Qdrant, or PostgreSQL. PostgreSQL uses async `tokio-postgres` and a bounded
 `deadpool-postgres` connection pool (16 connections by default). There is one
 joint index per group, with node ownership enforced by the service.
 
@@ -795,7 +795,8 @@ PostgreSQL/pgvector. Node configuration and MCP tools
 stay the same; nodes still use an API URL and their node token. One service uses
 one storage backend for all its groups. Changing the backend creates a separate
 index: reindex from node histories to populate it; mash does not automatically
-copy data between PostgreSQL and Redis.
+copy data between backends.
+
 
 ```toml
 version = 1
@@ -1044,6 +1045,70 @@ HNSW as described above; its filtered policy can still choose exact scoring.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
 recall tradeoffs before choosing approximate retrieval.
 
+### Qdrant backend (optional)
+
+Select `backend = "qdrant"` on the HTTP service. Nodes continue using the same
+API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
+required for conditional node publication; older versions are rejected before
+creating collections. Redis remains the default pending an end-to-end evaluation.
+
+```toml
+version = 1
+listen = "127.0.0.1:8787"
+backend = "qdrant"
+qdrant_url_env = "MASH_QDRANT_URL"
+# Optional for an authenticated Qdrant service:
+# qdrant_api_key_env = "MASH_QDRANT_API_KEY"
+qdrant_max_node_mib = 64
+
+[[nodes]]
+group_id = "personal"
+node_id = "xenia"
+token_env = "MASH_XENIA_TOKEN"
+
+[qdrant_vector_index]
+algorithm = "exact"
+# To opt into approximate retrieval instead:
+# algorithm = "hnsw"
+# ef_runtime = 200
+```
+
+```bash
+docker run --name mash-qdrant -p 127.0.0.1:6333:6333 \
+  -v mash-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1
+export MASH_QDRANT_URL='http://127.0.0.1:6333/'
+# Set MASH_XENIA_TOKEN to the node's existing API token.
+mash serve --server-config /absolute/path/to/qdrant-server.toml
+```
+
+Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
+contain credentials, paths, queries or fragments; redirects are disabled so keys
+are not forwarded elsewhere. Qdrant credentials belong only on the HTTP server.
+Changing backends requires an explicit `mash index` from each publishing node.
+
+Each group has an isolated message collection with named cosine dense vectors
+and IDF-weighted sparse lexical vectors, plus a metadata collection for canonical
+snapshots, checkpoints, tombstones, and thread catalogs. Lexical retrieval uses
+lowercase alphanumeric tokens, hashed sparse term IDs, saturated term frequency,
+and a fixed 256-token length reference; exact token predicates prevent hash
+collisions from producing false lexical matches. This is a backend-specific
+lexical ranking function, not identical to Redis or PostgreSQL BM25/term ranking.
+The existing application core still fuses, reranks, and groups message candidates.
+All expressive filters apply inside Qdrant before candidate limits. HNSW is
+approximate; exact mode stays available without rebuilding the collection.
+Quantization is disabled. Existing incompatible dimensions, vector configuration,
+or payload index types are rejected without deleting data.
+
+Uploads stage immutable versions and atomically publish one node-head point with
+an expected-version condition. Competing stale writers receive a conflict; retries
+and ownership rules match the other backends. Reads only admit active versions
+and verify their heads before returning. Canonical snapshots are checksummed and
+chunked; thread listing reads metadata without message bodies or vectors. The
+64 MiB limit applies to incoming uploads and each canonical node snapshot and is
+configurable. Keep Qdrant storage persistent and backed up. Obsolete versions are
+removed after publication; failed cleanup or a server crash can leave hidden
+staging data on disk, which does not appear in search results.
+
 ## Remote embeddings
 
 Local FastEmbed inference remains the default. Add `embeddings` to the node
@@ -1240,7 +1305,9 @@ modules are grouped by responsibility:
   `app/ingestion.rs` coordinates ingestion and checkpoints.
 - `app/semantic/`: model installation/cache, embedding batches, Core ML, remote
   embeddings, and hybrid retrieval.
-- `app/shared/redis_index/`: canonical upload validation, atomic publication,
+- `app/shared/snapshot/`: backend-independent canonical upload validation.
+- `app/shared/qdrant_index/`: typed REST, conditional publication, and dense/sparse retrieval.
+- `app/shared/redis_index/`: atomic publication,
   and read queries; the parent module handles connections and schema setup.
 - `app/tests/`: CLI contract tests grouped by behavior, with common setup in
   `support.rs`. CLI and MCP share marker fixtures from `app/test_support.rs`.
@@ -1308,6 +1375,10 @@ MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
 MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
   MASH_TEST_REDIS_URL='redis://localhost:6379/' \
   cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(redis)'
+
+MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
+  MASH_TEST_QDRANT_URL='http://localhost:6333/' \
+  cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
 ```
 
 The real-model integration tests are ignored by default and require
@@ -1318,8 +1389,8 @@ are missing; `--no-tests fail` rejects an accidentally empty selection.
 
 For an instrumented coverage report, install
 [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/releases/tag/v0.9.1)
-and the toolchain's `llvm-tools-preview` component. Set all three test variables
-above to installed models and disposable services, then run:
+and the toolchain's `llvm-tools-preview` component. Set the model directory and
+all three backend test URLs above to installed models and disposable services, then run:
 
 ```bash
 rustup component add llvm-tools-preview
@@ -1327,7 +1398,7 @@ make coverage
 ```
 
 This runs every test except the manual benchmarks, including the installed
-model and both shared-backend contracts. It writes LLVM JSON coverage to
+model and all three shared-backend contracts. It writes LLVM JSON coverage to
 `target/llvm-cov/coverage.json`; set `COVERAGE_OUTPUT` to choose another location.
 The coverage task cleans workspace coverage artifacts before execution so older
 binaries cannot contribute obsolete source mappings in a persistent target.

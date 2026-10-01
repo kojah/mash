@@ -2,7 +2,7 @@
 use super::Identity;
 use super::configuration::{BackendChoice, Configuration, env_name};
 use crate::AppError;
-use crate::shared::{Freshness, backend, protocol, redis_index};
+use crate::shared::{Freshness, backend, protocol, qdrant_index, redis_index};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -12,18 +12,21 @@ use std::time::Duration;
 pub(super) enum Store {
     Postgres(Pool),
     Redis(redis_index::Store),
+    Qdrant(qdrant_index::Store),
 }
 impl Store {
     fn label(&self) -> &'static str {
         match self {
             Self::Postgres(_) => "postgres",
             Self::Redis(_) => "redis",
+            Self::Qdrant(_) => "qdrant",
         }
     }
     pub(super) async fn freshness(&self, id: &Identity) -> Result<Freshness, AppError> {
         match self {
             Self::Postgres(pool) => backend::freshness(pool, id).await,
             Self::Redis(store) => store.freshness(id).await,
+            Self::Qdrant(store) => store.freshness(id).await,
         }
     }
     #[tracing::instrument(name = "backend_list_threads", skip_all, fields(backend = self.label()))]
@@ -35,18 +38,21 @@ impl Store {
         match self {
             Self::Postgres(pool) => backend::list_threads(pool, id, input).await,
             Self::Redis(store) => store.list_threads(id, input).await,
+            Self::Qdrant(store) => store.list_threads(id, input).await,
         }
     }
     pub(super) async fn status(&self, id: &Identity) -> Result<crate::storage::Counts, AppError> {
         match self {
             Self::Postgres(pool) => backend::status(pool, id).await,
             Self::Redis(store) => store.status(id).await,
+            Self::Qdrant(store) => store.status(id).await,
         }
     }
     pub(super) async fn state(&self, id: &Identity) -> Result<protocol::NodeState, AppError> {
         match self {
             Self::Postgres(pool) => backend::state(pool, id).await,
             Self::Redis(store) => store.state(id).await,
+            Self::Qdrant(store) => store.state(id).await,
         }
     }
     #[tracing::instrument(name = "backend_search", skip_all, fields(backend = self.label()))]
@@ -58,6 +64,7 @@ impl Store {
         match self {
             Self::Postgres(pool) => backend::search(pool, id, input).await,
             Self::Redis(store) => store.search(id, input).await,
+            Self::Qdrant(store) => store.search(id, input).await,
         }
     }
     #[tracing::instrument(name = "backend_view", skip_all, fields(backend = self.label()))]
@@ -79,6 +86,7 @@ impl Store {
                 .await
             }
             Self::Redis(store) => store.view(id, input).await,
+            Self::Qdrant(store) => store.view(id, input).await,
         }
     }
     pub(super) async fn forget(
@@ -89,6 +97,7 @@ impl Store {
         match self {
             Self::Postgres(pool) => backend::forget(pool, id, input).await,
             Self::Redis(store) => store.forget(id, input).await,
+            Self::Qdrant(store) => store.forget(id, input).await,
         }
     }
     #[tracing::instrument(name = "backend_index", skip_all, fields(backend = self.label()))]
@@ -100,6 +109,7 @@ impl Store {
         match self {
             Self::Postgres(pool) => backend::index(pool, id, input).await,
             Self::Redis(store) => store.index(id, input).await,
+            Self::Qdrant(store) => store.index(id, input).await,
         }
     }
 }
@@ -156,6 +166,44 @@ pub(super) async fn initialize(
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
     let groups = groups.into_iter().collect::<Vec<_>>();
     let store = match config.backend {
+        BackendChoice::Qdrant => {
+            let name = config
+                .qdrant_url_env
+                .as_ref()
+                .ok_or_else(|| AppError::configuration("Qdrant requires qdrant_url_env"))?;
+            env_name(name)?;
+            let url = std::env::var(name).map_err(|_| {
+                AppError::configuration(format!("set {name} to the Qdrant HTTP endpoint"))
+            })?;
+            let key = config
+                .qdrant_api_key_env
+                .as_ref()
+                .map(|name| {
+                    env_name(name)?;
+                    std::env::var(name).map_err(|_| {
+                        AppError::configuration(format!("set {name} to the Qdrant API key"))
+                    })
+                })
+                .transpose()?;
+            Store::Qdrant(
+                qdrant_index::Store::connect(
+                    &url,
+                    key.as_deref(),
+                    &groups,
+                    config.embeddings.dimensions,
+                    config
+                        .qdrant_max_node_mib
+                        .checked_mul(1024 * 1024)
+                        .ok_or_else(|| {
+                            AppError::configuration(
+                                "Qdrant snapshot limit exceeds platform capacity",
+                            )
+                        })?,
+                    config.qdrant_vector_index,
+                )
+                .await?,
+            )
+        }
         BackendChoice::Postgres => {
             if config.redis_url_env.is_some() {
                 return Err(AppError::configuration(

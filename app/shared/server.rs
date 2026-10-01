@@ -222,6 +222,7 @@ async fn index(
     let max_bytes = match &app.store {
         Store::Postgres(_) => 8 * 1024 * 1024 * 1024,
         Store::Redis(store) => store.max_node_bytes(),
+        Store::Qdrant(store) => store.max_node_bytes(),
     };
     let file = spool(request.into_body(), max_bytes).await?;
     Ok(Json(app.store.index(&id, file).await?))

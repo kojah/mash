@@ -1,5 +1,16 @@
 //! Exercise the real application facade, HTTP client, authorization and both stores.
 use super::*;
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_core_thread_catalog_dedup_replacement_delete_and_forget() {
+    let token = std::env::var("PATH").unwrap();
+    contract(
+        Service::with_backend(false, TestBackend::Qdrant, 384, 64 * 1024 * 1024, &token).await,
+        &token,
+    )
+    .await;
+}
 use crate::core::{self, Operation, Paths};
 use crate::provider::Provider;
 use crate::storage::Storage;

@@ -23,6 +23,7 @@ coverage:
 	@test -n "$${MASH_TEST_MODELS_DIR}" || (echo 'Set MASH_TEST_MODELS_DIR to explicitly installed test models'; exit 1)
 	@test -n "$${MASH_TEST_PG_URL}" || (echo 'Set MASH_TEST_PG_URL to disposable PostgreSQL with pgvector'; exit 1)
 	@test -n "$${MASH_TEST_REDIS_URL}" || (echo 'Set MASH_TEST_REDIS_URL to disposable Redis Search'; exit 1)
+	@test -n "$${MASH_TEST_QDRANT_URL}" || (echo 'Set MASH_TEST_QDRANT_URL to disposable Qdrant 1.19+'; exit 1)
 	# Persistent targets can retain old binaries and mix obsolete source mappings.
 	python3 tools/wait-coverage-workers.py
 	cargo llvm-cov clean --workspace

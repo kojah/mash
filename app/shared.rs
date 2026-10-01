@@ -6,9 +6,11 @@ mod client;
 pub(crate) mod direct;
 pub(crate) mod protocol;
 mod publication;
+mod qdrant_index;
 mod redis_index;
 mod retrieval;
 pub(crate) mod server;
+mod snapshot;
 
 pub(crate) use client::{freshness, list_threads, view};
 pub(crate) use publication::{forget_routed, publish, publish_routed, routed_status, status};

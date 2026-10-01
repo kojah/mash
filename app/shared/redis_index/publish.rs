@@ -1,11 +1,11 @@
 //! Stage and atomically commit bounded shared-index publications.
-use super::canonical::{forget, plan};
 use super::fields;
 use super::{
     AppError, CANONICAL_CHUNK_BYTES, CanonicalManifest, Data, Forget, Forgotten, Head, Identity,
     Indexed, Plan, STAGE_TTL, Store, catalog_key, conflict, data_key, document_key, encode, prefix,
     redis_error, state_key, valid_id, vector_bytes,
 };
+use crate::shared::snapshot::{forget, plan};
 impl Store {
     async fn stage_json(
         &self,

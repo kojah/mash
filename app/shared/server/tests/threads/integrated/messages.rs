@@ -1,4 +1,14 @@
 use super::*;
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL and installed MASH_TEST_MODELS_DIR"]
+async fn qdrant_core_scoped_message_search_uses_thread_discovery() {
+    let token = std::env::var("PATH").unwrap();
+    contract(
+        Service::with_backend(false, TestBackend::Qdrant, 384, 64 * 1024 * 1024, &token).await,
+    )
+    .await;
+}
 use crate::ingestion::{Conversation, NormalizedMessage, SourceIdentity};
 use crate::search_filter::Selection;
 use crate::search_results::{Results, SearchUnit};

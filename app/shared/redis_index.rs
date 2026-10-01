@@ -1,5 +1,4 @@
 //! Redis connection/schema setup and internal snapshot representation.
-mod canonical;
 mod catalog;
 mod fields;
 mod metadata;
@@ -19,7 +18,6 @@ mod catalog_tests;
 mod vector_index_tests;
 
 use crate::provider::Provider;
-use std::collections::BTreeMap;
 use std::time::Duration;
 
 use redis::aio::ConnectionManager;
@@ -27,13 +25,15 @@ use serde::{Deserialize, Serialize};
 
 use super::backend::{conflict, valid_id};
 use super::protocol::{
-    self, Batch, Checkpoint, ConversationRecord, Event, Forget, Forgotten, Indexed, MessageRecord,
-    NodeState, Search, Start, Tombstone,
+    self, ConversationRecord, Forget, Forgotten, Indexed, MessageRecord, NodeState, Search,
 };
 use super::server::Identity;
+use super::snapshot::{Data, Head, Loaded, Plan};
 use super::{Freshness, NodeFreshness};
+use crate::AppError;
+#[cfg(test)]
+use crate::semantic;
 use crate::storage::{Counts, Message, SearchHit};
-use crate::{AppError, semantic};
 
 // Bound uploads and canonical node snapshots to the configured memory budget.
 const STAGE_TTL: u32 = 600;
@@ -60,40 +60,6 @@ pub(super) struct Store {
     connection: ConnectionManager,
     max_node_bytes: usize,
     vector_index: VectorIndex,
-}
-#[derive(Clone, Deserialize, Serialize)]
-struct Head {
-    instance: String,
-    generation: String,
-    revision: i64,
-    version: String,
-    counts: Counts,
-    last_synced_at: Option<String>,
-    last_updated_at: Option<String>,
-    #[serde(default)]
-    metadata_ready: bool,
-    #[serde(default)]
-    catalog_ready: bool,
-}
-#[derive(Default, Deserialize, Serialize)]
-struct Data {
-    conversations: BTreeMap<String, ConversationRecord>,
-    messages: BTreeMap<String, MessageRecord>,
-    sources: BTreeMap<String, Checkpoint>,
-    tombstones: BTreeMap<String, Tombstone>,
-}
-struct Loaded {
-    digest: Option<String>,
-    head: Option<Head>,
-    expected: String,
-    data: Data,
-}
-struct Plan {
-    loaded: Loaded,
-    revision: i64,
-    changed: bool,
-    removed: u64,
-    purged: u64,
 }
 async fn extend_metadata_schema(
     connection: &mut ConnectionManager,
@@ -180,9 +146,6 @@ fn data_key(group: &str, version: &str) -> String {
 }
 fn catalog_key(group: &str, version: &str) -> String {
     format!("{}stage:{version}:catalog", prefix(group))
-}
-fn identity_key(provider: Provider, id: &str) -> String {
-    format!("{provider}\0{id}")
 }
 fn encode(value: &impl Serialize) -> Result<String, AppError> {
     serde_json::to_string(value).map_err(|_| AppError::internal("serialize Redis index data"))

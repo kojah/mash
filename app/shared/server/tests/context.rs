@@ -1,5 +1,11 @@
-//! The same branch contract must hold through both shared HTTP backends.
+//! The same branch contract must hold through every shared HTTP backend.
 use super::*;
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_context_preserves_branches_and_rejects_broken_publications() {
+    contract(Service::qdrant(384).await).await;
+}
 use crate::{
     message_context::MessageContext,
     shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start, View},

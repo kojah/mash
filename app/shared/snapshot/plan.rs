@@ -5,7 +5,7 @@ use super::{
 };
 use std::collections::{HashMap, HashSet};
 impl Data {
-    pub(super) fn counts(&self, identity: &Identity) -> Counts {
+    pub(in crate::shared) fn counts(&self, identity: &Identity) -> Counts {
         Counts {
             conversations: self.conversations.len() as u64,
             messages: self.messages.len() as u64,
@@ -27,7 +27,7 @@ impl Data {
                 .count() as u64,
         }
     }
-    pub(super) fn state(&self, identity: &Identity) -> NodeState {
+    pub(in crate::shared) fn state(&self, identity: &Identity) -> NodeState {
         let incompatible: HashSet<_> = self
             .messages
             .values()
@@ -59,7 +59,7 @@ impl Data {
             tombstones: self.tombstones.values().cloned().collect(),
         }
     }
-    pub(super) fn remove(&mut self, id: &str) -> (u64, u64) {
+    pub(in crate::shared) fn remove(&mut self, id: &str) -> (u64, u64) {
         let before = self.messages.len();
         self.messages.retain(|_, m| m.conversation_id != id);
         (
@@ -68,7 +68,7 @@ impl Data {
         )
     }
 }
-pub(super) fn forget(data: &mut Data, id: &str) -> Result<bool, AppError> {
+pub(in crate::shared) fn forget(data: &mut Data, id: &str) -> Result<bool, AppError> {
     valid_id(id)?;
     let providers = data
         .conversations
@@ -86,7 +86,10 @@ pub(super) fn forget(data: &mut Data, id: &str) -> Result<bool, AppError> {
     }
     Ok(removed > 0)
 }
-pub(super) fn start(loaded: &mut Loaded, input: &Start) -> Result<(i64, bool), AppError> {
+pub(in crate::shared) fn start(
+    loaded: &mut Loaded,
+    input: &Start,
+) -> Result<(i64, bool), AppError> {
     valid_id(&input.instance)?;
     if input.revision.is_some_and(|r| r < 1)
         || input.base_revision.is_some_and(|r| r < 0)
@@ -142,9 +145,9 @@ pub(super) fn start(loaded: &mut Loaded, input: &Start) -> Result<(i64, bool), A
 }
 #[allow(
     clippy::too_many_lines,
-    reason = "validate the complete upload before staging any Redis data"
+    reason = "validate the complete upload before staging any shared data"
 )]
-pub(super) fn plan(
+pub(in crate::shared) fn plan(
     file: &tempfile::NamedTempFile,
     mut loaded: Loaded,
     dimensions: usize,

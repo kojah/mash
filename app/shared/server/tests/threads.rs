@@ -1,4 +1,10 @@
 use super::*;
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_thread_catalog_http_filter_sort_page_and_group_contract() {
+    contract(Service::qdrant(384).await).await;
+}
 use crate::thread_catalog::{Direction, Page, Request, Sort};
 
 mod integrated;

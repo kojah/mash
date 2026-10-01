@@ -596,6 +596,42 @@ impl Drop for Service {
         self.task.abort();
     }
 }
+enum TestBackend {
+    Postgres,
+    Redis,
+    Qdrant,
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+async fn qdrant_publication_http_authorization_vectors_groups_rollback_and_retry() {
+    http_storage_contract(Service::qdrant(384).await).await;
+}
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+async fn qdrant_publication_rich_filters_apply_before_ranking() {
+    rich_filter_contract(Service::qdrant(384).await).await;
+}
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+async fn qdrant_publication_excludes_own_node_before_candidate_limit_and_readiness() {
+    exclude_own_contract(Service::qdrant(384).await).await;
+}
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+async fn qdrant_round_trips_every_supported_provider_with_filters() {
+    provider_contract(Service::qdrant(384).await).await;
+}
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+async fn qdrant_round_trips_native_session_wal_fingerprints() {
+    wal_checkpoint_contract(Service::qdrant(384).await).await;
+}
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
+async fn qdrant_publication_remote_model_space_supports_1024_dimensions() {
+    remote_space_contract(Service::qdrant(1024).await).await;
+}
 impl Service {
     async fn new(database: bool) -> Self {
         Self::new_backend(database, false).await
@@ -615,9 +651,45 @@ impl Service {
         Self::with_token(database, redis, dimensions, max_node_bytes, FIRST).await
     }
 
+    async fn qdrant(dimensions: usize) -> Self {
+        Self::with_backend(
+            false,
+            TestBackend::Qdrant,
+            dimensions,
+            64 * 1024 * 1024,
+            FIRST,
+        )
+        .await
+    }
+
     async fn with_token(
         database: bool,
         redis: bool,
+        dimensions: usize,
+        max_node_bytes: usize,
+        first_token: &str,
+    ) -> Self {
+        Self::with_backend(
+            database,
+            if redis {
+                TestBackend::Redis
+            } else {
+                TestBackend::Postgres
+            },
+            dimensions,
+            max_node_bytes,
+            first_token,
+        )
+        .await
+    }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "shared fixture wires the same identities and HTTP server for each concrete backend"
+    )]
+    async fn with_backend(
+        database: bool,
+        backend: TestBackend,
         dimensions: usize,
         max_node_bytes: usize,
         first_token: &str,
@@ -678,7 +750,20 @@ impl Service {
         ]));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let store = if redis {
+        let store = if matches!(backend, TestBackend::Qdrant) {
+            Store::Qdrant(
+                super::super::qdrant_index::Store::connect(
+                    &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
+                    None,
+                    &[group.clone(), format!("{group}-other")],
+                    dimensions,
+                    max_node_bytes,
+                    super::super::qdrant_index::VectorIndex::default(),
+                )
+                .await
+                .unwrap(),
+            )
+        } else if matches!(backend, TestBackend::Redis) {
             Store::Redis(
                 super::super::redis_index::Store::connect(
                     &std::env::var("MASH_TEST_REDIS_URL").unwrap(),
@@ -742,6 +827,23 @@ impl Service {
     }
     async fn cleanup(&self) {
         match &self.store {
+            Store::Qdrant(_) => {
+                for group in [&self.group, &format!("{}-other", self.group)] {
+                    for suffix in ["state", "messages"] {
+                        reqwest::Client::new()
+                            .delete(format!(
+                                "{}/collections/mash_q_{}_{suffix}",
+                                std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
+                                blake3::hash(group.as_bytes()).to_hex()
+                            ))
+                            .send()
+                            .await
+                            .unwrap()
+                            .error_for_status()
+                            .unwrap();
+                    }
+                }
+            }
             Store::Postgres(pool) => {
                 let client = pool.get().await.unwrap();
                 for group in [&self.group, &format!("{}-other", self.group)] {

@@ -1,7 +1,7 @@
 //! Strict server settings, bounded loading and configured node identities.
 use super::Identity;
 use crate::AppError;
-use crate::shared::redis_index;
+use crate::shared::{qdrant_index, redis_index};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -27,6 +27,12 @@ pub(super) struct Configuration {
     pub(super) backend: BackendChoice,
     pub(super) database_url_env: Option<String>,
     pub(super) redis_url_env: Option<String>,
+    pub(super) qdrant_url_env: Option<String>,
+    pub(super) qdrant_api_key_env: Option<String>,
+    #[serde(default = "default_redis_node_mib")]
+    pub(super) qdrant_max_node_mib: usize,
+    #[serde(default)]
+    pub(super) qdrant_vector_index: qdrant_index::VectorIndex,
     #[serde(default = "default_connections")]
     pub(super) max_connections: usize,
     #[serde(default = "default_redis_node_mib")]
@@ -58,6 +64,7 @@ pub(super) enum BackendChoice {
     Postgres,
     #[default]
     Redis,
+    Qdrant,
 }
 
 fn default_redis_node_mib() -> usize {
@@ -90,11 +97,33 @@ pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
     config.redis_vector_index.validate()?;
-    if matches!(config.backend, BackendChoice::Postgres)
+    config.qdrant_vector_index.validate()?;
+    if !matches!(config.backend, BackendChoice::Redis)
         && config.redis_vector_index != (redis_index::VectorIndex::Exact {})
     {
         return Err(AppError::configuration(
             "redis_vector_index HNSW settings require backend=redis",
+        ));
+    }
+    if !matches!(config.backend, BackendChoice::Qdrant)
+        && (config.qdrant_url_env.is_some()
+            || config.qdrant_api_key_env.is_some()
+            || config.qdrant_vector_index != qdrant_index::VectorIndex::default())
+    {
+        return Err(AppError::configuration(
+            "Qdrant settings require backend=qdrant",
+        ));
+    }
+    if matches!(config.backend, BackendChoice::Qdrant)
+        && (config.database_url_env.is_some() || config.redis_url_env.is_some())
+    {
+        return Err(AppError::configuration(
+            "Qdrant backend does not accept database_url_env or redis_url_env",
+        ));
+    }
+    if !(1..=4096).contains(&config.qdrant_max_node_mib) {
+        return Err(AppError::configuration(
+            "qdrant_max_node_mib must be between 1 and 4096",
         ));
     }
     if !(1..=16).contains(&config.max_concurrent_uploads) {

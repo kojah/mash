@@ -29,6 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
+      qdrant:
+        image: qdrant/qdrant:v1.19.1
+        ports:
+          - 6333:6333
       redis:
         image: redis:8.2
         ports:
@@ -123,6 +127,10 @@ jobs:
         env:
           MASH_TEST_REDIS_URL: redis://localhost:6379/
       - run: cargo test --doc
+      - name: Verify shared Qdrant publication and retrieval
+        run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
+        env:
+          MASH_TEST_QDRANT_URL: http://localhost:6333
       - run: sccache --show-stats
       - name: Save verified installed test models
         if: success() && steps.model-cache.outputs.cache-hit != 'true'

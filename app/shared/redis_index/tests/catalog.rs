@@ -1,4 +1,7 @@
 use super::*;
+use crate::provider::Provider;
+use crate::shared::protocol::{Batch, Event, Start};
+use std::collections::BTreeMap;
 use std::io::Write;
 
 pub(super) struct Fixture {

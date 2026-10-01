@@ -329,3 +329,48 @@ fn server_rejects_backend_credential_configuration_mixups() {
         );
     }
 }
+
+#[test]
+fn qdrant_server_rejects_incompatible_settings_before_network_access() {
+    for (settings, message) in [
+        (
+            "qdrant_url_env = 'MASH_QDRANT_URL'",
+            "require backend=qdrant",
+        ),
+        ("backend = 'qdrant'", "Qdrant requires qdrant_url_env"),
+        (
+            "backend = 'qdrant'\nredis_url_env = 'MASH_REDIS_URL'",
+            "does not accept",
+        ),
+        (
+            "backend = 'qdrant'\ndatabase_url_env = 'MASH_DATABASE_URL'",
+            "does not accept",
+        ),
+        (
+            "backend = 'qdrant'\nqdrant_url_env = '1INVALID'",
+            "invalid credential",
+        ),
+        (
+            "backend = 'qdrant'\nqdrant_max_node_mib = 0",
+            "qdrant_max_node_mib",
+        ),
+        (
+            "backend = 'qdrant'\n[qdrant_vector_index]\nalgorithm = 'hnsw'\nef_runtime = 0",
+            "ef_runtime",
+        ),
+        (
+            "backend = 'qdrant'\n[qdrant_vector_index]\nalgorithm = 'exact'\nef_runtime = 20",
+            "invalid server configuration",
+        ),
+        (
+            "backend = 'qdrant'\n[redis_vector_index]\nalgorithm = 'hnsw'",
+            "require backend=redis",
+        ),
+    ] {
+        assert_startup_rejected(
+            format!("version = 1\n{settings}{STARTUP_NODE}").as_bytes(),
+            &[("MASH_STARTUP_TOKEN_A", STARTUP_TOKEN)],
+            message,
+        );
+    }
+}
