@@ -427,6 +427,36 @@ including corpus load. These measurements do not establish ingestion overhead
 or automatic semantic quality. Sixty-nine lab tests pass, including metadata
 exclusion, source preservation, framing exclusion and incomplete-context abstention.
 
+## Conservative lexical borrowing veto
+
+The fourth `contextual_labels.py` control retains the current user anchor and
+borrows no preceding text when an oracle-resolved task reference contains a
+whole-word `no`, `not`, `never`, `instead`, `rather`, or an ASCII/curly `n't`
+contraction. Matching is case-insensitive; identifier substrings such as `NoSQL`
+or `notebook` do not trigger it. The marker set is a fixed exploratory control
+with prior failure exposure, not a correction classifier. Other controls and
+their keyword outputs remain unchanged. No phrase-specific continuation exception
+is added after inspecting outcomes.
+
+Two of 20 resolved-task anchors trigger the veto: one known project correction,
+and one valid continuation beginning with `no`. The rejected project disappears
+from that topic's top keywords, but the rule also withholds useful proposal
+context from the continuation. Three annotated preceding evidence records are
+not borrowed at the two anchors; this counts per-anchor selection, not loss of
+all topic evidence, since another supporting anchor can retain a record. The
+guard keeps 58 anchors, with 82 unique units including 24 assistants, versus
+86/28 without it. Vocabulary falls from 2,094 to 2,029; both controls emit 139
+keywords. Lexical polarity cannot establish which proposition the user rejects.
+The rule is rejected as a robust endorsement solution; it is not promoted or
+retuned around these examples. These exposed observations do not estimate
+independent correction precision or downstream topic quality.
+
+The private `contextual-labels-veto.json` capture reproduces all non-timing fields.
+In the first run the guard's selection/fitting/labeling takes 20 ms; total elapsed
+after imports is 527 ms for all four controls, including corpus load. No inference
+occurs and the ingestion overhead gate remains unmeasured. Seventy-one lab tests
+pass, including correction anchor preservation and contraction/identifier matching.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current

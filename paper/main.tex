@@ -861,6 +861,37 @@ The implementation is \path{research/topics/contextual_labels.py}; private
 \path{contextual-labels.json} has SHA256
 \path{71e0fb0c9d4204664288269b6a4642af69f7631a3f4e477701f82254ecffbac4}.
 
+\subsection{Conservative lexical borrowing veto}
+We test one fixed conservative extension to the oracle task-reference label
+control: retain the user anchor but borrow no preceding text when its words
+contain ``no'', ``not'', ``never'', ``instead'', ``rather'', or an ASCII/curly
+negative contraction. Matching is case-insensitive and whole-word-based rather
+than an identifier substring match. This exploratory marker set has prior failure
+exposure; it is not a learned correction classifier or proof of endorsement.
+Other controls reproduce their previous keywords exactly. We add no
+phrase-specific continuation exceptions after observing the result.
+
+The veto triggers on two of 20 resolved-task anchors: the known project correction
+and a valid continuation beginning with ``no''. It removes the rejected project
+from that topic's top keywords but also withholds useful proposal context from
+the continuation. Three annotated preceding evidence records are not borrowed
+at these anchors. This counts per-anchor selection, not total loss of topic
+evidence, since other supporting anchors can independently retain a record.
+The control keeps 58 anchors with 82 unique source units including 24 assistants,
+versus 86 units and 28 assistants without the veto. Vocabulary decreases from
+2,094 to 2,029; both emit 139 keywords. Lexical polarity cannot identify which
+proposition a user rejects. We reject the rule as a robust endorsement solution,
+without promotion or example-specific retuning. These exposed observations do
+not estimate independent correction precision or semantic topic quality.
+
+A fresh capture reproduces all non-timing fields. Selection, fitting and labeling
+for the veto control take 20\,ms in the first run; elapsed time after imports for
+all four controls is 527\,ms including frozen corpus loading. No inference occurs;
+the ingestion-overhead gate remains unmeasured. Seventy-one lab tests pass,
+including preservation of the correction anchor and contraction/identifier
+matching. The private report \path{contextual-labels-veto.json} has SHA256
+\path{6716b06846e64ca639d98c7aeea7731cd463efd5109903916fd06620fe799f94}.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training

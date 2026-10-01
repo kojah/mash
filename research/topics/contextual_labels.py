@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import json
 from pathlib import Path
+import re
 import time
 
 import numpy as np
@@ -21,6 +22,16 @@ class Mode(StrEnum):
     ALL = "all-admitted-user-support"
     CONTENT = "content-only-support"
     CONTEXT = "content-plus-resolved-task-exchange"
+    GUARDED = "content-plus-task-exchange-negation-veto"
+
+
+NEGATION_MARKERS = frozenset({"no", "not", "never", "instead", "rather"})
+WORDS = re.compile(r"(?u)\b\w+(?:['’]\w+)?\b")
+
+
+def negation_veto(text: str) -> bool:
+    words = WORDS.findall(text.casefold())
+    return any(word in NEGATION_MARKERS or word.endswith(("n't", "n’t")) for word in words)
 
 
 @dataclass(frozen=True)
@@ -37,6 +48,8 @@ def units(ordinal: int, text: str, kind: str, resolution: Resolution | None,
         return (anchor,)
     if mode == Mode.CONTENT or resolution != Resolution.TASK:
         return ()
+    if mode == Mode.GUARDED and negation_veto(text):
+        return (anchor,)
     entries = bounded_exchange(context)
     if not entries:
         return ()
@@ -69,7 +82,7 @@ def main() -> None:
     reports = []
     for mode in Mode:
         start = time.perf_counter()
-        selected, all_units = {}, {}
+        selected, all_units, vetoed = {}, {}, []
         for case in cases:
             kinds = {j["ordinal"]: j["kind"] for j in by_source[case.thread]["admission_judgments"]}
             for turn in case.turns:
@@ -79,6 +92,12 @@ def main() -> None:
                 if context["anchor"]["id"] != turn.id or context["anchor"]["searchable_sha256"] != digest(turn.text.encode()):
                     raise ValueError("context anchor changed")
                 documents = units(turn.ordinal, turn.text, kinds[turn.ordinal], resolutions.get((case.thread, turn.ordinal)), context, mode, kinds)
+                if (mode == Mode.GUARDED and kinds[turn.ordinal] == "referential"
+                        and resolutions.get((case.thread, turn.ordinal)) == Resolution.TASK
+                        and negation_veto(turn.text)):
+                    required = next(j.evidence_ordinals for j in judgments if j.thread == case.thread and j.ordinal == turn.ordinal)
+                    vetoed.append({"thread": case.thread, "ordinal": turn.ordinal,
+                                   "required_evidence_records_not_borrowed": len(required)})
                 selected[(case.thread, turn.ordinal)] = documents
                 for unit in documents:
                     key = (case.thread, unit.ordinal)
@@ -113,14 +132,19 @@ def main() -> None:
         reports.append({"mode": mode, "background_units": len(keys), "assistant_units": sum(u.role == "assistant" for u in all_units.values()),
                         "vocabulary": len(terms), "eligible_anchors": len(selected),
                         "retained_anchors": sum(bool(v) for v in selected.values()), "subjects": specs,
+                        "vetoed_references": vetoed,
                         "fit_label_ms": (time.perf_counter() - start) * 1000})
     report = {"schema_version": 1, "scope": "development-oracle-resolution-label-inputs", "dataset_fingerprint": fingerprint,
               "input_sha256": {name: digest(getattr(args, name).read_bytes()) for name in ("annotations", "source_review", "contexts", "reference_review")},
               "source_sha256": {name: digest(Path(__file__).with_name(name).read_bytes()) for name in
                                  ("contextual_labels.py", "context_selection.py", "phrase_labels.py", "subject_labels.py", "reference_review.py", "lexical_boundaries.py", "episodes.py", "data.py", "uv.lock")},
               "reports": reports, "elapsed_ms_after_imports": (time.perf_counter() - started) * 1000, "inference_calls": 0,
+              "negation_veto_policy": {"markers": sorted(NEGATION_MARKERS), "contractions": ["n't", "n’t"],
+                                       "action": "retain user anchor, borrow no preceding text",
+                                       "scope": "oracle original referential resolved-task anchors"},
               "limitations": ["oracle admission, subject supports and resolution labels; not automatic classification",
                               "preceding assistant proposals can include rejected or unendorsed entities",
+                              "negation veto is an exposed fixed lexical control, not correction understanding",
                               "no reviewer-written names or rationales enter label inputs",
                               "source-preserving c-TF-IDF only; no semantic topic accuracy or tree evaluation",
                               "transductive vocabulary and class statistics; not online ingestion cost"]}

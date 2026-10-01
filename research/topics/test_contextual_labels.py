@@ -1,6 +1,6 @@
 import unittest
 
-from contextual_labels import Mode, units
+from contextual_labels import Mode, negation_veto, units
 from reference_review import Resolution
 
 
@@ -28,3 +28,17 @@ class ContextualLabelTests(unittest.TestCase):
         for resolution in Resolution:
             result = units(2, "yes", "referential", resolution, self.context, Mode.ALL, {})
             self.assertEqual([u.text for u in result], ["yes"])
+
+    def test_negation_guard_preserves_anchor_without_borrowing(self):
+        result = units(2, "No, use the other project", "referential", Resolution.TASK,
+                       self.context, Mode.GUARDED, {0: "content"})
+        self.assertEqual([u.text for u in result], ["No, use the other project"])
+        result = units(2, "proceed", "referential", Resolution.TASK,
+                       self.context, Mode.GUARDED, {0: "content"})
+        self.assertEqual([u.ordinal for u in result], [0, 1, 2])
+
+    def test_guard_matches_words_and_contractions_not_identifier_substrings(self):
+        for text in ("not that", "NEVER", "do this instead", "rather use that", "don't", "isn’t"):
+            self.assertTrue(negation_veto(text))
+        for text in ("NoSQL", "notebook", "Notion", "another option"):
+            self.assertFalse(negation_veto(text))
