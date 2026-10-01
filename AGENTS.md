@@ -152,6 +152,12 @@ target, not a demonstrated result. Do not promote a method using clustering-only
 timings or quality alone.
 Keep exploratory development distinct from held-out evaluation; do not claim
 semantic quality, novelty or guided-search gains without corresponding evidence.
+Before promoting a selected Python topic method to Rust, require the executable
+reference and shared stage fixtures described in `research/topics/PORT_CONTRACT.md`.
+Freeze source/offset, numerical, tie and lifecycle semantics; test fixed-vector
+algorithm parity separately from full inference, and enforce differential CI
+before shipping the Rust implementation. Parity does not replace semantic
+quality or complete-ingestion performance gates.
 Build the living manuscript using `paper/build.py` with output outside Git.
 
 Use Beads (`bd`) for substantive work and discovered follow-ups. On a fresh clone,

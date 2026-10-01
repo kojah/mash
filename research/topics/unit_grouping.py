@@ -128,6 +128,12 @@ def evaluate(pairs: tuple[Pair, ...], points: tuple[Point, ...], labels: np.ndar
                      "cosine": float(np.clip(points[left].vector @ points[right].vector, -1, 1)) if available else None,
                      "native_coassigned": bool(labels[left] >= 0 and labels[left] == labels[right]) if available else None,
                      "centroid07_shared": bool(memberships[left] & memberships[right]) if available else None})
+    return {"metrics": pair_metrics(rows), "rows": rows,
+            "centroid07_policy": "shared diagnostic cosine>=0.7 affiliations; not HDBSCAN prediction or calibrated confidence"}
+
+
+def pair_metrics(rows: list[dict]) -> dict:
+    """Shared reviewed-pair accounting for single- and multi-vector controls."""
     known = [r for r in rows if r["relation"] != Relation.UNCERTAIN]
     ranked = [r for r in known if r["cosine"] is not None]
     expected = [r["relation"] == Relation.OVERLAP for r in ranked]
@@ -142,8 +148,7 @@ def evaluate(pairs: tuple[Pair, ...], points: tuple[Point, ...], labels: np.ndar
                            "false_negative": sum(r["relation"] == Relation.OVERLAP and not r[method] for r in actual),
                            "true_negative": sum(r["relation"] == Relation.DISTINCT and not r[method] for r in actual),
                            "abstentions": len(known) - len(actual)}
-    return {"metrics": metrics, "rows": rows,
-            "centroid07_policy": "shared diagnostic cosine>=0.7 affiliations; not HDBSCAN prediction or calibrated confidence"}
+    return metrics
 
 
 def keywords(units: tuple[Unit, ...], points: tuple[Point, ...], labels: np.ndarray) -> list[dict]:

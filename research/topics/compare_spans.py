@@ -9,7 +9,7 @@ from unit_grouping import Geometry, Method, Representation
 
 MEASUREMENTS = frozenset({"encoding_ms", "feature_ms", "pooling_ms", "grouping_ms", "labeling_ms",
                           "evaluation_ms", "elapsed_ms_after_imports", "peak_rss_mib",
-                          "inference_ms", "tokenization_ms"})
+                          "inference_ms", "tokenization_ms", "encoding_p95_ms", "cpu_ms", "segmentation_ms"})
 
 
 def stable(value):

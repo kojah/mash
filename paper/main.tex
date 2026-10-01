@@ -1321,6 +1321,130 @@ and code-format cleanup and is excluded from final paired verification.
 The evidence favors testing bounded within-paragraph multi-aspect source units
 and group-separated operating points next, not promoting a clustering swap.
 
+\subsection{Bounded within-span fragments and multiple-vector aspects}
+Following the preceding negative summary-to-family matches, we compare original
+structural spans with bounded mechanical subunits. These are diagnostic controls,
+not semantic segmentation such as TextTiling~\cite{texttiling}. Before new
+predictions, freeze two alternatives: sentence/semicolon pieces and overlapping
+16-word source windows with four-word overlap. Sentence boundaries are terminal
+punctuation followed by whitespace and uppercase/digit, or semicolon followed
+by whitespace. Paired inline backticks/double quotes and unmatched opener suffixes
+are protected. Both alternatives permit at most eight fragments per original
+span. Excess sentence pieces are merged into balanced contiguous groups; window
+width expands deterministically for long text so no tail is discarded.
+Words here mean non-whitespace runs. Code blocks and headings stay intact.
+Original Unicode offsets and source hashes bind every fragment to its parent.
+
+The 91-record/257-span oracle source scope and 50 exposed source-pinned judgments
+are reused. This is not a fresh blind or representative annotation. An inspected
+known summary uses inline arrows; we disclose that exposure and add no
+comma/arrow special case. No rewriting, topic-name features, approval recognizers
+or negation stripping occurs. Preserved source text does not resolve grammatical
+negation scope, references or endorsement. All three dense-only modes retain
+all 257 parents, including the eight zero-lexical spans excluded from the previous
+249-span intersection. Installed quantized MiniLM inference remains offline,
+CPU one thread, strict 512-token preflight with no truncation.
+
+Each original pair receives maximum cosine across its child vectors. Native
+coassignment means any shared nonnoise cluster; a separate diagnostic means
+any shared centroid cosine $\geq0.7$ affiliation. Maximum-of-many scoring can
+inflate unrelated matches. All four clustering methods retain the preceding
+fixed parameters and run forward/reverse: 24 controls per process. Two fresh
+processes reproduce every nonmeasurement field, including exact fragment
+coverage, assets/code/input hashes, model calls, rankings, labels and memberships.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Mode &Vectors&AP/AUC&GRINCH TP/FP&HDBSCAN TP/FP\\
+\midrule
+Original &257&0.855/0.918&3/0&13/28\\
+Sentence/semicolon &407&0.803/0.877&3/0&8/13\\
+Word windows &471&0.792/0.883&2/0&14/33\\
+\bottomrule
+\end{tabular}
+\caption{Maximum child-pair ranking and native coassignment on 14 positive/33
+negative exposed aspect pairs. Three uncertain pairs are excluded. These are
+development diagnostics, not validated topic accuracy.}
+\end{table}
+
+Mechanical splitting lowers overall ranking. Neither method recovers any of
+the six summary-to-family overlaps under GRINCH-style/native or diagnostic
+centroid assignment. Their cosine ranges are 0.361--0.487 original,
+0.401--0.479 sentence/semicolon and 0.434--0.548 windows. Some individual scores
+improve, but none meets the fixed cutoff. The legacy counterparts rise from
+0.520/0.288 to 0.606/0.331 and 0.688/0.330 respectively, also missed.
+Lowering a threshold on the same exposed cases would not establish robustness.
+
+BIRCH TP/FP is 3/0 in original/sentence modes, and 3/0 forward versus 1/0
+reverse with windows. Average linkage matches GRINCH-style counts in all modes.
+Sentence BIRCH forms 360--364 clusters, GRINCH-style 356--357; windows form
+434 and 427 respectively, so predominantly singleton grouping persists.
+HDBSCAN window partitions conflate all 33 distinct pairs. Its original result
+here, 13TP/28FP, differs sharply from 6TP/4FP on the preceding 249-span
+intersection under otherwise fixed dense settings. That changed-scope comparison
+flags sensitivity to short/noisy inputs; it is not a dedicated removal ablation
+or independent robustness study. Noise $-1$ never counts as a shared topic;
+missing evidence abstains, although all reviewed pairs are represented here.
+
+HDBSCAN's centroid diagnostic produces 0TP/0FP in every mode, unlike its native
+partitions. Window BIRCH's diagnostic gives 3TP/0FP forward and 2TP/0FP reverse;
+other BIRCH/GRINCH/average diagnostic counts match their native counts.
+The rule is not calibrated confidence. Labels remain source-supported candidates
+without independent specificity judgments; overlapping windows duplicate source
+counts, so frequency changes do not establish label-quality gains. Only three
+threads appear in reviewed pairs, with cross-thread dependence and concentrated
+family/summary judgments. Robust group-separated operating-point calibration is
+explicitly not performed; more independent reviewed units are required, and the
+reserved groups are not consumed for fitting.
+
+Across all modes there are 811 unique inference calls and 324 cache hits,
+maximum 439 tokens. Marginal encoding takes original 1346--1518\,ms,
+sentences 692--719\,ms and windows 819--919\,ms, including preflight/cache
+handling. Respective request p95 ranges are 11.1--16.1, 4.4--4.5 and
+3.5--4.1\,ms, including cache hits, not cold-update/full-ingestion p95.
+New calls/cache hits are 256/1, 232/175 and 323/148. Segmentation takes
+1.0--1.9, 3.9--4.2 and 2.6--2.8\,ms; GRINCH-style grouping including
+validation/cuts takes 265--316, 547--791 and 766--887\,ms. The encoder cache
+is shared, so deltas are marginal rather than standalone costs. Complete process
+wall time is 15.7--16.5 seconds, CPU 15.1--15.9 seconds and peak RSS
+956\,MiB including source loading/scientific runtime. Ranges cover two
+processes/orders, not uncertainty intervals. Full-ingestion overhead remains
+unverified; no mechanical splitter is promoted.
+
+The implementation separates \path{fragments.py}, \path{fragment_metrics.py},
+\path{fragment_experiment.py} and \path{compare_fragments.py}, reusing exact
+source validation and pair accounting. Private final captures in
+\path{fragment-aspects-20261001} have SHA256
+\path{86d7e33f99b76976814a0760f1102767f31f7568c6951154e97601f2062c49f0}
+and \path{3a4709c756966f072a6e742fabe344d2e7971ce782f202198be183670b2d144e}.
+An exploratory capture before CPU/p95/version instrumentation is excluded from
+paired verification. Wider source-backed review and context-sensitive unit/label
+validation are necessary; more fragments alone are not supported as a remedy.
+
+\subsection{Executable reference as a future port gate}
+Before a selected method is ported to Rust, freeze its executable Python reference,
+dependencies, parameters and shared per-stage fixture schema. The required
+contract is \path{research/topics/PORT_CONTRACT.md}, not a current winner or an
+implemented production differential CI gate. Test exact identities/text/offsets
+and source-based context decisions; define conversion between Python Unicode
+code points and Rust UTF-8 byte offsets explicitly. Frozen input vectors isolate
+normalization, precision, cutoff/tie rules, insertion decisions, labels,
+multi-topic membership and inherited ancestry from inference variation.
+Separately test pinned full-path inference with measured numeric tolerance and
+explicit downstream-decision checks, including near-threshold cases.
+
+Both runners should emit the same stage schema and report the first divergent
+stage. Compare canonical source memberships rather than incidental cluster
+numbers, without masking different ancestry. Synthetic golden and deterministic
+generated fixtures must exercise empty, duplicate, zero/canceling, malformed,
+near-threshold and reordered inputs; edits/deletes/restart recovery require their
+lifecycle contract before shipping. CI must reject fixture/schema/source drift
+and unexplained differential results. Python remains development-only. Parity,
+independent semantic quality and complete-ingestion performance are separate
+promotion gates: faithfully reproducing a weak candidate is insufficient.
+
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context
 selection, holding discovery fixed; then label-only contrastive training-background

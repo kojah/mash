@@ -771,8 +771,6 @@ The first twelve controls and their limitations are recorded in the
 [results](../../benchmarks/2026-10-01-python-topic-controls.md). They do not select
 a winner; independently reviewed dialogue units and topic labels come next.
 
-Run lab input-boundary tests:
-
 The [matched source-unit experiment](../../benchmarks/2026-10-01-matched-source-unit-grouping.md)
 compares exact spans with pooled record/thread directions across dense, fixed
 lexical and hybrid geometry. `span_grouping.py` requires explicit frozen database,
@@ -782,6 +780,19 @@ pair-review and installed snapshot paths, plus a fresh private output path.
 72-control grid and every nonmeasurement field. Reviewer text never enters
 features. This is exposed development evidence; fixed clustering cuts still
 miss most reviewed overlaps and no method is promoted.
+
+The [bounded-fragment experiment](../../benchmarks/2026-10-01-bounded-fragment-aspects.md)
+uses the same source/pair inputs in `fragment_experiment.py` to compare original,
+sentence/semicolon and overlapping-window vectors. `compare_fragments.py` verifies
+all24 controls and nonmeasurement fields in two fresh captures. Mechanical
+splitting lowers pair-ranking quality and is not promoted. Offset-preserving
+fragments do not infer endorsement or grammatical negation scope.
+
+The [Rust port contract](PORT_CONTRACT.md) defines the required reference/parity
+gates before implementation. A candidate has not been selected, and the
+production differential CI gate is not implemented yet.
+
+Run lab input-boundary tests:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 \

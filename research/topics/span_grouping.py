@@ -17,17 +17,8 @@ from span_units import reconstruct
 from unit_grouping import Geometry, Method, Representation, cluster, evaluate, geometries, keywords, points
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("database", "partition-report", "annotations", "source-review", "contexts",
-                 "reference-review", "spans", "pair-review", "snapshot", "output"):
-        parser.add_argument(f"--{name}", type=Path, required=True)
-    args = parser.parse_args()
-    if args.output.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
-        raise ValueError("private source labels and memberships must remain outside Git")
-    if args.output.exists():
-        raise ValueError("use a fresh output path")
-    started = time.perf_counter()
+def load_scope(args):
+    """Shared exact-source validation, performed before inference or discovery."""
     fingerprint, documents = load_documents(args.database, args.partition_report, args.annotations,
                                            args.source_review, args.contexts, args.reference_review)
     spans_bytes, review_bytes = args.spans.read_bytes(), args.pair_review.read_bytes()
@@ -39,6 +30,21 @@ def main() -> None:
             raise ValueError("captured source inputs changed")
     units = reconstruct(documents, source_report)
     pairs = validate_pairs(json.loads(review_bytes), spans_bytes)
+    return fingerprint, documents, units, pairs
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("database", "partition-report", "annotations", "source-review", "contexts",
+                 "reference-review", "spans", "pair-review", "snapshot", "output"):
+        parser.add_argument(f"--{name}", type=Path, required=True)
+    args = parser.parse_args()
+    if args.output.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
+        raise ValueError("private source labels and memberships must remain outside Git")
+    if args.output.exists():
+        raise ValueError("use a fresh output path")
+    started = time.perf_counter()
+    fingerprint, documents, units, pairs = load_scope(args)
     encoder = Encoder(args.snapshot)
     encode_started = time.perf_counter()
     vectors, coverage = {}, []
