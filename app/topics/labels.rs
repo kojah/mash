@@ -37,6 +37,7 @@ fn label_text(text: &str) -> Cow<'_, str> {
 pub(super) struct Term {
     pub(super) text: String,
     pub(super) score: f64,
+    pub(super) support: u64,
 }
 pub(super) fn terms(text: &str) -> Terms {
     let mut counts = Terms::new();
@@ -276,6 +277,7 @@ pub(super) fn labels<Id: Copy + Ord>(
                 .map(|(word, count)| Term {
                     text: word.clone(),
                     score: *count as f64 / total * (1.0 + average / global[word] as f64).ln(),
+                    support: *count,
                 })
                 .collect::<Vec<_>>();
             terms.sort_by(|a, b| b.score.total_cmp(&a.score).then(a.text.cmp(&b.text)));

@@ -9,6 +9,7 @@ use std::time::Instant;
 #[derive(Serialize)]
 pub(super) struct Summary {
     inference: Inference,
+    scoring: labels::ranking::Weights,
     unique_candidates: usize,
     newly_embedded: usize,
     cached_candidates: usize,
@@ -127,6 +128,7 @@ impl Labeler {
         }
         Ok(Summary {
             inference: self.inference,
+            scoring: labels::ranking::weights(labels::shortlist::policy()),
             unique_candidates: unique.len(),
             newly_embedded: missing.len(),
             cached_candidates: self.cache.len(),

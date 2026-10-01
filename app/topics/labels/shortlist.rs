@@ -8,10 +8,13 @@ use std::collections::BTreeSet;
 pub(in crate::topics) enum Policy {
     Tfidf,
     Balanced,
+    Supported,
 }
 
 pub(in crate::topics) fn policy() -> Policy {
-    if std::env::var_os("MASH_TEST_TOPIC_BALANCED_LABELS").is_some() {
+    if std::env::var_os("MASH_TEST_TOPIC_SUPPORTED_LABELS").is_some() {
+        Policy::Supported
+    } else if std::env::var_os("MASH_TEST_TOPIC_BALANCED_LABELS").is_some() {
         Policy::Balanced
     } else {
         Policy::Tfidf
@@ -30,6 +33,9 @@ pub(super) fn select(
     limit: usize,
     policy: Policy,
 ) -> Vec<Term> {
+    if matches!(policy, Policy::Supported) {
+        return supported(terms, limit);
+    }
     if matches!(policy, Policy::Tfidf) {
         terms.truncate(limit);
         return terms;
@@ -78,22 +84,53 @@ pub(super) fn select(
         .collect()
 }
 
+/// A repeated subject can survive a long tail of unique phrases. Keep the
+/// original c-TF-IDF for semantic ranking and expose support independently.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "bounded prototype term counters"
+)]
+fn supported(mut terms: Vec<Term>, limit: usize) -> Vec<Term> {
+    terms.retain(|t| t.support > 0 && !super::discourse::only(&t.text));
+    let maximum = terms.iter().map(|t| t.score).fold(0.0, f64::max);
+    let support = terms.iter().map(|t| t.support).max().unwrap_or(1) as f64;
+    let score = |t: &Term| {
+        let relative = if maximum > 0.0 {
+            t.score / maximum
+        } else {
+            0.0
+        };
+        0.3 * relative + 0.7 * (t.support as f64 / support)
+    };
+    terms.sort_by(|a, b| {
+        score(b)
+            .total_cmp(&score(a))
+            .then(b.score.total_cmp(&a.score))
+            .then(a.text.cmp(&b.text))
+    });
+    terms.truncate(limit);
+    terms
+}
+
 #[test]
 fn repeated_core_terms_survive_rare_phrase_saturation() {
     let mut terms: Vec<_> = (0..80)
         .map(|i| Term {
             text: format!("rare phrase {i}"),
             score: 1.0,
+            support: 1,
         })
         .collect();
     terms.extend([
         Term {
             text: "deadlock".into(),
             score: 0.1,
+            support: 2,
         },
         Term {
             text: "runtime".into(),
             score: 0.09,
+            support: 2,
         },
     ]);
     let mut counts: Terms = terms.iter().map(|t| (t.text.clone(), 1)).collect();
@@ -120,6 +157,7 @@ fn diverse_phrases_leave_space_for_other_subjects_and_small_vocabularies() {
     .map(|text| Term {
         text: text.into(),
         score: 1.0,
+        support: 1,
     })
     .collect();
     let counts = terms.iter().map(|t| (t.text.clone(), 1)).collect();
@@ -129,4 +167,55 @@ fn diverse_phrases_leave_space_for_other_subjects_and_small_vocabularies() {
         ["database connection pool", "frontend layout", "postgres"]
     );
     assert_eq!(select(terms, &counts, 64, Policy::Balanced).len(), 5);
+}
+
+#[test]
+fn support_admits_repeated_subjects_without_erasing_rare_topics_or_named_greetings() {
+    let mut terms = (0..80)
+        .map(|i| Term {
+            text: format!("incidental phrase {i}"),
+            score: 1.0,
+            support: 1,
+        })
+        .collect::<Vec<_>>();
+    terms.extend([
+        Term {
+            text: "database".into(),
+            score: 0.1,
+            support: 2,
+        },
+        Term {
+            text: "hey".into(),
+            score: 2.0,
+            support: 2,
+        },
+        Term {
+            text: "sounds good".into(),
+            score: 2.0,
+            support: 2,
+        },
+    ]);
+    let counts = terms.iter().map(|t| (t.text.clone(), t.support)).collect();
+    let selected = select(terms, &counts, 64, Policy::Supported);
+    assert_eq!(selected.len(), 64);
+    assert_eq!(selected[0].text, "database");
+    assert!(
+        !selected
+            .iter()
+            .any(|t| matches!(t.text.as_str(), "hey" | "sounds good"))
+    );
+    let rare = ["sqlite vec", "hello world", "go language"]
+        .into_iter()
+        .map(|text| Term {
+            text: text.into(),
+            score: 1.0,
+            support: 1,
+        })
+        .collect::<Vec<_>>();
+    let counts = rare.iter().map(|t| (t.text.clone(), t.support)).collect();
+    assert_eq!(
+        select(rare.clone(), &counts, 64, Policy::Supported).len(),
+        rare.len()
+    );
+    assert_eq!(select(rare, &counts, 0, Policy::Supported).len(), 0);
 }
