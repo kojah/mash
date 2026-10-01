@@ -6,6 +6,7 @@ fn settings() -> Settings {
         radius: 0.05,
         branching: 2,
         max_topics: 64,
+        routing: super::birch::Routing::BranchCentroid,
     }
 }
 

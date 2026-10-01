@@ -22,6 +22,7 @@ struct Settings {
     radius: f64,
     branching: usize,
     max_topics: usize,
+    routing: birch::Routing,
 }
 impl Settings {
     fn validate(self) -> Result<(), AppError> {

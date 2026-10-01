@@ -2,6 +2,13 @@
 use super::{Settings, TopicId, normalize};
 use crate::AppError;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum Routing {
+    BranchCentroid,
+    ExactLeaf,
+}
+
 #[derive(Clone)]
 struct Feature {
     count: u64,
@@ -88,7 +95,9 @@ impl Node {
                     let id = *id;
                     let mut combined = self.entries[i].feature.clone();
                     combined.add(point);
-                    if combined.radius_squared() <= settings.radius.powi(2) {
+                    if settings.routing == Routing::BranchCentroid
+                        && combined.radius_squared() <= settings.radius.powi(2)
+                    {
                         self.entries[i].feature = combined;
                         id
                     } else {
@@ -101,6 +110,46 @@ impl Node {
         };
         let split = (self.entries.len() > settings.branching).then(|| self.split());
         Ok((id, split))
+    }
+
+    fn nearest_leaf(&self, point: &Feature, best: &mut Option<(TopicId, f64)>) {
+        for entry in &self.entries {
+            match &entry.kind {
+                Kind::Branch(child) => child.nearest_leaf(point, best),
+                Kind::Leaf(id) => {
+                    let score = distance(&entry.feature, point);
+                    if best.is_none_or(|(previous, distance)| {
+                        score.total_cmp(&distance).then(id.cmp(&previous)).is_lt()
+                    }) {
+                        *best = Some((*id, score));
+                    }
+                }
+            }
+        }
+    }
+
+    fn merge_leaf(&mut self, topic: TopicId, point: &Feature, radius: f64) -> bool {
+        for entry in &mut self.entries {
+            match &mut entry.kind {
+                Kind::Leaf(id) if *id == topic => {
+                    let mut combined = entry.feature.clone();
+                    combined.add(point);
+                    if combined.radius_squared() > radius.powi(2) {
+                        return false;
+                    }
+                    entry.feature = combined;
+                    return true;
+                }
+                Kind::Branch(child) => {
+                    if child.merge_leaf(topic, point, radius) {
+                        entry.feature.add(point);
+                        return true;
+                    }
+                }
+                Kind::Leaf(_) => {}
+            }
+        }
+        false
     }
     fn new_leaf(
         &mut self,
@@ -207,9 +256,18 @@ impl Tree {
                 "experimental topic sample capacity reached",
             ));
         }
-        let (id, split) =
-            self.root
-                .insert(&Feature::point(&vector), self.settings, &mut self.next)?;
+        let point = Feature::point(&vector);
+        if self.settings.routing == Routing::ExactLeaf {
+            let mut nearest = None;
+            self.root.nearest_leaf(&point, &mut nearest);
+            if let Some((topic, _)) = nearest
+                && self.root.merge_leaf(topic, &point, self.settings.radius)
+            {
+                self.samples += 1;
+                return Ok(topic);
+            }
+        }
+        let (id, split) = self.root.insert(&point, self.settings, &mut self.next)?;
         if let Some(split) = split {
             let old = std::mem::replace(
                 &mut self.root,
@@ -232,3 +290,6 @@ impl Tree {
         self.root.depth()
     }
 }
+
+#[cfg(test)]
+mod tests;

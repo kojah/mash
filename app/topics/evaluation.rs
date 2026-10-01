@@ -315,6 +315,7 @@ struct Cluster {
 struct Report {
     mode: Mode,
     radius: f64,
+    routing: super::birch::Routing,
     reversed: bool,
     generation: String,
     dimensions: usize,
@@ -351,6 +352,7 @@ struct Report {
 struct RejectedRun {
     mode: Mode,
     radius: f64,
+    routing: super::birch::Routing,
     reversed: bool,
     error: crate::AppError,
 }
@@ -402,11 +404,13 @@ fn run(
     if reversed {
         order.reverse();
     }
+    let routing = routing();
     let mut tree = Tree::new(Settings {
         dimensions: 384,
         radius,
         branching: 32,
         max_topics: 8192,
+        routing,
     })?;
     let mut seen = BTreeSet::new();
     let mut samples = 0;
@@ -463,6 +467,7 @@ fn run(
     Ok(Report {
         mode,
         radius,
+        routing,
         reversed,
         generation: generation.into(),
         dimensions: 384,
@@ -495,6 +500,14 @@ fn run(
         memberships,
         supporting_words,
     })
+}
+
+fn routing() -> super::birch::Routing {
+    if std::env::var_os("MASH_TEST_TOPIC_EXACT_ROUTING").is_some() {
+        super::birch::Routing::ExactLeaf
+    } else {
+        super::birch::Routing::BranchCentroid
+    }
 }
 
 fn enrich(
@@ -580,6 +593,7 @@ fn benchmark_topic_discovery() {
                         let rejected = RejectedRun {
                             mode,
                             radius,
+                            routing: routing(),
                             reversed,
                             error,
                         };
