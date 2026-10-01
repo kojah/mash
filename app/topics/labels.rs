@@ -2,6 +2,7 @@
 mod discourse;
 mod links;
 pub(super) mod ranking;
+pub(super) mod shortlist;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -278,7 +279,7 @@ pub(super) fn labels<Id: Copy + Ord>(
                 })
                 .collect::<Vec<_>>();
             terms.sort_by(|a, b| b.score.total_cmp(&a.score).then(a.text.cmp(&b.text)));
-            terms.truncate(limit);
+            let terms = shortlist::select(terms, words, limit, shortlist::policy());
             (*id, terms)
         })
         .collect()

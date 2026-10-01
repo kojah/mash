@@ -9,6 +9,7 @@ mod input;
 mod names;
 mod partition;
 mod provenance;
+mod review;
 use super::segments::{Builder, Segment};
 use super::{AssignmentModel, TopicId, labels, normalize};
 use crate::provider::Provider;
@@ -317,6 +318,7 @@ struct Cluster {
 struct Report {
     mode: Mode,
     label_text: labels::TextMode,
+    label_shortlist: labels::shortlist::Policy,
     radius: f64,
     routing: super::birch::Routing,
     assignment_weighting: assignments::Weighting,
@@ -356,6 +358,7 @@ struct Report {
 struct RejectedRun {
     mode: Mode,
     label_text: labels::TextMode,
+    label_shortlist: labels::shortlist::Policy,
     radius: f64,
     routing: super::birch::Routing,
     assignment_weighting: assignments::Weighting,
@@ -446,6 +449,7 @@ fn run(
     let label_ms = start.elapsed().as_secs_f64() * 1000.0;
     Ok(Report {
         label_text: labels::text_mode(),
+        label_shortlist: labels::shortlist::policy(),
         mode,
         radius,
         routing,
@@ -529,28 +533,10 @@ fn benchmark_topic_discovery() {
     let output = PathBuf::from(
         std::env::var_os("MASH_TEST_TOPIC_REPORT_DIR").expect("private report directory"),
     );
-    std::fs::create_dir_all(&output).unwrap();
-    let (mut threads, generation) = corpus(&database);
+    let (threads, generation, mut labeler) = prepare(&database, &output);
     let evidence_selection = provenance::Selection::load().unwrap();
     if let Some(selection) = &evidence_selection {
         selection.validate(&threads).unwrap();
-    }
-    let mut labeler = names::Labeler::load(&generation).unwrap();
-    if std::env::var_os("MASH_TEST_TOPIC_CLEAN_INPUT").is_some() {
-        let summary = input::clean(&mut threads, labeler.as_mut()).unwrap();
-        std::fs::write(
-            output.join("input-summary.json"),
-            serde_json::to_vec_pretty(&summary).unwrap(),
-        )
-        .unwrap();
-    }
-    if std::env::var_os("MASH_TEST_TOPIC_CONTEXT").is_some() {
-        let summary = context::enrich(&database, &mut threads, labeler.as_mut()).unwrap();
-        std::fs::write(
-            output.join("context-summary.json"),
-            serde_json::to_vec_pretty(&summary).unwrap(),
-        )
-        .unwrap();
     }
     assert!(!threads.is_empty());
     let holdout = std::env::var_os("MASH_TEST_TOPIC_HOLDOUT").is_some();
@@ -582,6 +568,7 @@ fn benchmark_topic_discovery() {
                     Err(error) => {
                         let rejected = RejectedRun {
                             label_text: labels::text_mode(),
+                            label_shortlist: labels::shortlist::policy(),
                             mode,
                             radius,
                             routing: routing(),
@@ -611,4 +598,30 @@ fn benchmark_topic_discovery() {
             }
         }
     }
+}
+
+fn prepare(
+    database: &std::path::Path,
+    output: &std::path::Path,
+) -> (BTreeMap<String, Thread>, String, Option<names::Labeler>) {
+    std::fs::create_dir_all(output).unwrap();
+    let (mut threads, generation) = corpus(database);
+    let mut labeler = names::Labeler::load(&generation).unwrap();
+    if std::env::var_os("MASH_TEST_TOPIC_CLEAN_INPUT").is_some() {
+        let summary = input::clean(&mut threads, labeler.as_mut()).unwrap();
+        std::fs::write(
+            output.join("input-summary.json"),
+            serde_json::to_vec_pretty(&summary).unwrap(),
+        )
+        .unwrap();
+    }
+    if std::env::var_os("MASH_TEST_TOPIC_CONTEXT").is_some() {
+        let summary = context::enrich(database, &mut threads, labeler.as_mut()).unwrap();
+        std::fs::write(
+            output.join("context-summary.json"),
+            serde_json::to_vec_pretty(&summary).unwrap(),
+        )
+        .unwrap();
+    }
+    (threads, generation, labeler)
 }

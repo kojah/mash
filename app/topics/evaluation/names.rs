@@ -40,6 +40,13 @@ impl Name {
     }
 }
 impl Labeler {
+    pub(super) fn inspect(
+        &self,
+        name: &Name,
+    ) -> Result<Vec<labels::ranking::SemanticTerm>, AppError> {
+        labels::ranking::inspect(&name.center, &name.candidates, &self.cache)
+    }
+
     pub(super) fn project_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
         if texts.len() > 64 {
             return Err(AppError::usage("topic projection batch cap exceeded"));
