@@ -84,6 +84,7 @@ fn claude_referenced_metadata_conflicts_and_dialogue_conflicts_still_fail_closed
         let error = parse_claude(&path).err().unwrap();
         assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
         assert!(error.error.message.contains("conflicting ancestry"));
+        assert!(error.error.message.contains("fallback"));
     }
     transcript(
         &path,

@@ -71,6 +71,7 @@ fn parse_jsonl(
             raw
         } else {
             malformed_records += 1;
+            claude_identity.break_replay();
             continue;
         };
         capture_metadata(&raw, &mut project, &mut repository);

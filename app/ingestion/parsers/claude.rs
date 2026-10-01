@@ -7,6 +7,8 @@ use super::super::messages::Messages;
 use super::stable_id;
 use crate::AppError;
 
+mod replay;
+
 #[derive(Default)]
 pub(super) struct Identity {
     parents: BTreeMap<String, Ancestry>,
@@ -15,6 +17,7 @@ pub(super) struct Identity {
     session: Option<String>,
     sessions: BTreeSet<String>,
     transitions: BTreeSet<usize>,
+    replay: replay::Replay,
 }
 
 #[derive(PartialEq, Eq)]
@@ -44,18 +47,12 @@ impl Identity {
             }
             self.agent = Some(agent.clone());
         }
-        if let Some(uuid) = record.uuid.as_ref() {
-            let parent = Ancestry::Known(record.parent.clone());
-            self.parents
-                .entry(uuid.clone())
-                .and_modify(|known| {
-                    if *known != parent {
-                        *known = Ancestry::Ambiguous;
-                    }
-                })
-                .or_insert(parent);
-        }
+        self.replay.observe(record, &mut self.parents);
         Ok(())
+    }
+
+    pub(super) fn break_replay(&mut self) {
+        self.replay.clear();
     }
 
     pub(super) fn capture_session(&mut self, next: Option<String>) -> Result<(), AppError> {
@@ -146,7 +143,7 @@ fn normalize(
                         Some(Ancestry::Known(ParentLink::Parent(parent))) => {
                             resolve_parent(thread, parent, &identities, parents)?
                         }
-                        Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry()),
+                        Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry(&key)),
                     }
                 } else {
                     previous.clone()
@@ -194,7 +191,7 @@ fn resolve_parent(
         match parents.get(current) {
             Some(Ancestry::Known(ParentLink::Parent(parent))) => current = parent,
             Some(Ancestry::Known(ParentLink::Root | ParentLink::Missing)) => return Ok(None),
-            Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry()),
+            Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry(current)),
             None => {
                 return Ok(Some(MessageIdentity {
                     id: stable_id("claude-message", &[thread, current]),
@@ -205,9 +202,11 @@ fn resolve_parent(
     }
 }
 
-fn ambiguous_ancestry() -> AppError {
+fn ambiguous_ancestry(uuid: &str) -> AppError {
     // Native metadata events can be repeated and reparented without being part
     // of dialogue ancestry. Reject ambiguity only if a retained message or its
     // parent chain depends on it; never choose an arbitrary first/last parent.
-    AppError::configuration("Claude native message has conflicting ancestry")
+    AppError::configuration(format!(
+        "Claude native message {uuid} has conflicting ancestry"
+    ))
 }

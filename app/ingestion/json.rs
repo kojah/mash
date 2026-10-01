@@ -7,6 +7,7 @@ use serde_json::Value;
 pub(super) enum Kind {
     User,
     Assistant,
+    System,
     Text,
     ResponseItem,
     EventMsg,
@@ -44,12 +45,14 @@ impl Kind {
                 | Self::TaskStarted
                 | Self::TaskComplete
                 | Self::Unknown
+                | Self::System
         )
     }
     pub(super) const fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",
             Self::Assistant => "assistant",
+            Self::System => "system",
             Self::Text => "text",
             Self::ResponseItem => "response_item",
             Self::EventMsg => "event_msg",
@@ -85,10 +88,36 @@ pub(super) struct Record {
     pub agent_id: Option<String>,
     #[serde(rename = "parentUuid", default, deserialize_with = "parent_link")]
     pub parent: ParentLink,
+    pub subtype: Option<SystemSubtype>,
+    #[serde(rename = "logicalParentUuid")]
+    pub logical_parent: Option<String>,
+    #[serde(rename = "compactMetadata")]
+    pub compact_metadata: Option<CompactMetadata>,
     pub message: Option<Payload>,
     pub payload: Option<Payload>,
     #[serde(flatten)]
     pub metadata: Metadata,
+}
+
+#[derive(Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum SystemSubtype {
+    CompactBoundary,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Deserialize)]
+pub(super) struct CompactMetadata {
+    #[serde(rename = "preservedSegment")]
+    pub preserved_segment: Option<PreservedSegment>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct PreservedSegment {
+    #[serde(rename = "tailUuid")]
+    pub tail: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

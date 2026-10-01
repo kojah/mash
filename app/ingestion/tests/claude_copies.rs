@@ -4,6 +4,7 @@ use crate::message_context::MessageContext;
 mod handoff;
 mod lifecycle;
 mod metadata;
+mod replay;
 mod sessions;
 
 fn transcript(path: &Path, rows: &[(&str, Option<&str>, &str)]) {
