@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Vector-only Redis FLAT/HNSW pilot; never point this at production Redis.
 
-Uses existing quantized embeddings as held-out document queries, not user-query
+Uses existing document vectors with self-matches removed, not user-query
 inference. No history text is exported. Artifacts contain sensitive embeddings.
 """
 
@@ -94,16 +94,20 @@ def freeze(source, destination):
     return rows
 
 
-def search(redis, index, vector, ordinal, predicate, k, ef=None):
+def query_arguments(vector, predicate, k, ef):
     # Request one extra neighbor and discard the source document after retrieval.
     # A numeric exclusion would turn even unfiltered queries into hybrid queries
     # and allow Redis's adaptive planner to select a brute-force filter strategy.
     expression = (f"({predicate})" if predicate else "*") + f"=>[KNN {k + 1} @vector $v AS distance]"
     if ef is not None:
         expression += "=>{$EF_RUNTIME: " + str(ef) + "}"
+    return (expression, "PARAMS", 2, "v", vector, "SORTBY", "distance",
+            "RETURN", 1, "distance", "LIMIT", 0, k + 1, "DIALECT", 2)
+
+
+def search(redis, index, vector, ordinal, predicate, k, ef=None):
     started = time.perf_counter()
-    reply = redis.call("FT.SEARCH", index, expression, "PARAMS", 2, "v", vector,
-                       "SORTBY", "distance", "RETURN", 1, "distance", "LIMIT", 0, k + 1, "DIALECT", 2)
+    reply = redis.call("FT.SEARCH", index, *query_arguments(vector, predicate, k, ef))
     elapsed = (time.perf_counter() - started) * 1000
     found = {reply[i].decode(): float(pairs(reply[i + 1])["distance"])
              for i in range(1, len(reply), 2)
@@ -114,7 +118,15 @@ def search(redis, index, vector, ordinal, predicate, k, ef=None):
     return elapsed, found
 
 
-def evaluate(redis, rows, size, queries, k):
+def json_value(value):
+    if isinstance(value, bytes):
+        return value.decode()
+    if isinstance(value, list):
+        return [json_value(item) for item in value]
+    return value
+
+
+def evaluate(redis, rows, size, queries, k, profiles=False):
     prefix = "mash-vector-pilot:" + uuid.uuid4().hex + ":"
     dimensions = rows[0][1]
     documents = []
@@ -180,6 +192,10 @@ def evaluate(redis, rows, size, queries, k):
                         latency_ms=percentiles(timings),
                         recall_mean=round(sum(recalls)/len(recalls), 5), recall_min=min(recalls),
                         boundary_recall_mean=round(sum(boundary_recalls)/len(boundary_recalls), 5)))
+                    if profiles:
+                        profile = redis.call("FT.PROFILE", index, "SEARCH", "LIMITED", "QUERY",
+                            *query_arguments(documents[selected[0]][1], predicate, k, ef))
+                        report[-1]["execution_profile"] = json_value(profile[1])
         return report
     finally:
         for index in indexes:
@@ -198,6 +214,8 @@ def main():
     parser.add_argument("--sizes", type=int, nargs="+", default=[1000, 10000])
     parser.add_argument("--queries", type=int, default=100)
     parser.add_argument("--k", type=int, default=20)
+    parser.add_argument("--profiles", action="store_true",
+                        help="capture one FT.PROFILE per scenario after timing")
     args = parser.parse_args()
     args.artifacts.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.artifacts.stat().st_mode & 0o077:
@@ -222,7 +240,7 @@ def main():
                       host_load=Path("/proc/loadavg").read_text().strip(),
                       measurements=[])
         for size in args.sizes:
-            result["measurements"].extend(evaluate(redis, rows, size, args.queries, args.k))
+            result["measurements"].extend(evaluate(redis, rows, size, args.queries, args.k, args.profiles))
             (args.artifacts / "report.json").write_text(json.dumps(result, indent=2) + "\n")
             print(f"completed {size} vectors", flush=True)
     finally:

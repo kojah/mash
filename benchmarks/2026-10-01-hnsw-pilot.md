@@ -16,6 +16,9 @@ text. It contains one embedding generation; its SQLite SHA-256 is
 Each scenario uses 100 fixed-seed document-vector queries. Retrieval requests 21
 neighbors and removes the source document before measuring recall at 20 (or the
 available filtered population). Exact Redis `FLAT` results are the reference.
+The query document remains in the graph: removing its returned match does not
+make this an out-of-sample query evaluation, and can make ANN recall look better
+than it would for actual user queries.
 HNSW uses `M=16`, `EF_CONSTRUCTION=200`, and runtime breadth 10/50/200. Vector
 values are the stored signed bytes converted to float32, with cosine distance.
 
@@ -54,10 +57,22 @@ was 8.662/14.683 ms; HNSW with runtime breadth 200 was **14.614/16.892 ms**, wit
 were 0.496 ms for FLAT and 0.451 ms for HNSW/200, but p95 rose from 0.751 to
 1.787 ms. HNSW was therefore not consistently faster for filtered searches.
 
-Redis chooses hybrid filtering strategies automatically; this pilot did not
-capture execution profiles, so it cannot identify the cause of that regression.
+Redis chooses hybrid filtering strategies automatically. A subsequent diagnostic
+run on the same frozen 100k corpus captured `FT.PROFILE` after each scenario
+(20 document queries per scenario, independent timing run). Unfiltered retrieval
+used `STANDARD_KNN`; both FLAT and HNSW provider/time-filtered probes used
+**`HYBRID_ADHOC_BF`**, with 32,140 TAG entries or 1,001 NUMERIC entries read.
+The HNSW filter path therefore scored the matching vectors directly instead of
+using approximate graph traversal. This explains the lost graph-search advantage
+and the filtered probes' exact recall. It does not isolate the remaining
+HNSW-versus-FLAT overhead or prove that every possible query selects this policy.
+
 See the official [vector-search documentation](https://redis.io/docs/latest/develop/ai/search-and-query/vectors/)
-for algorithm parameters and filter policies.
+for graph parameters, adaptive filter policies and their accuracy tradeoffs.
+The diagnostic report is
+`/home/james/scratch/mash-artifacts/hnsw-profile-20261001/report.json`; add
+`--profiles` to the harness to capture these iterator profiles. Explicitly forced
+batch policies, actual user queries and concurrent updates remain unevaluated.
 
 Building indexes over already loaded 100k hashes took 3.227 seconds for FLAT and
 53.907 seconds for HNSW. Vector-index allocations were 151.65 and 180.77 MiB
@@ -90,4 +105,5 @@ instead of `--source`, writing to a new private report directory. Frozen vectors
 remain sensitive artifacts and must stay outside Git. The full report for this
 run is `/home/james/scratch/mash-artifacts/hnsw-pilot-20261001-final/report.json`.
 
-Tracking: `mash-c0d.11.1` (this pilot), `mash-c0d.11` (remaining algorithm evaluation).
+Tracking: `mash-c0d.11.1` (this pilot), `mash-c0d.11.2` (filter profiling),
+`mash-c0d.11` (remaining algorithm evaluation).
