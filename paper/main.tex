@@ -730,6 +730,53 @@ The implementation is \path{research/topics/context_embeddings.py}; private
 Independent full-dialogue semantic evaluation and complete ingestion costs remain
 required before Rust or production promotion.
 
+\subsection{Oracle-subject label controls}
+We isolate representation quality from discovery by supplying the 18
+non-uncertain reviewed subjects' source-support ordinals. Subject names and
+reviewer rationales are never vocabulary inputs. Each of the 68 admitted
+development user records is counted once in the background; separately counted
+supporting records are summed per subject. This avoids fabricated bigrams across
+message boundaries. Subjects overlap, so a record can contribute to multiple
+class counts. Three uncertain subjects are excluded, not silently resolved.
+
+Fixed English-stopword-filtered technical unigrams/bigrams with an 8,192-feature
+cap yield 1,279 features. We compare top-eight baseline c-TF-IDF keywords using
+the earlier formula, that score multiplied by smoothed source-record IDF
+\begin{equation}
+ s'_{t,c}=s_{t,c}\left[1+\log\frac{1+N}{1+\mathrm{df}_t}\right],
+\end{equation}
+and a lexical containment control that greedily skips a term whose token set
+contains or is contained by a previously selected term. Here $N$ is the number
+of background user records and $\mathrm{df}_t$ their term document frequency.
+This is a label-only comparison related to c-TF-IDF \cite{bertopic}, not semantic
+MMR, learned phrase extraction or a validated naming method. The background and
+vocabulary are transductive development statistics, not an online policy.
+
+Baseline extraction yields 138 keywords across the 18 subjects. Multiplying by
+corpus IDF changes the top-eight set for only three subjects and its order for
+four. Containment pruning yields 126 keywords but can remove useful compounds:
+it drops ``remote control'' after selecting the constituent words. Conversational
+phrases such as ``accept suggestions'' persist. Two distinct reference subjects
+that share one source record receive identical labels. These exposed
+single-reviewer observations show unresolved failure modes, not independent
+semantic precision estimates. Rarity cannot by itself distinguish domain terms
+from conversational debris; weighting cannot separate multiple subjects represented
+by an identical undivided text unit. Neither adjustment is promoted as a quality
+fix. English stopwords can additionally suppress domain terms.
+
+Two fresh runs reproduce all non-timing fields. Vocabulary fitting and labeling
+take 20--22\,ms, with 462\,ms elapsed after imports in the final run, including
+frozen corpus loading. There are no inference calls. These timings exclude
+production ingestion, persistence and online vocabulary/label maintenance.
+Sixty-two lab tests pass, including background frequency weighting, deterministic
+ties, containment behavior and invalid/empty count handling. The implementation
+is \path{research/topics/subject_labels.py}; private \path{subject-labels-final.json}
+has SHA256
+\path{b4ae8d355bd478d5c88610f6c1eed2b316dc7caccf4ccce0de1e16456e0119db}.
+Oracle supports and prior reviewer exposure prevent discovery or generalization
+claims. Contextual/episode representations and phrase quality require testing
+before further filtering or discovery-method selection.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training

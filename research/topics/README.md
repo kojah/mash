@@ -311,6 +311,42 @@ means may permit reuse of compatible existing vectors later; that reuse is not
 implemented or verified here. Fifty-seven lab tests pass, including rejection
 before inference, context integrity and cancellation abstention.
 
+## Oracle-subject label controls
+
+`subject_labels.py` isolates label extraction using the 18 non-uncertain reviewed
+subjects and their source-support ordinals. Subject names and reviewer rationales
+never enter the vocabulary. This is oracle overlapping support, not clustering,
+assignment quality or a production topic-name generator. The background is the
+same 68 admitted development user records, each counted once. Supporting records
+are counted separately and summed per subject, avoiding invented bigrams across
+message boundaries. Overlapping subjects can count a record in multiple classes.
+
+The fixed controls use English-stopword-filtered technical unigrams/bigrams,
+an 8,192-feature cap and top-eight keywords. Baseline c-TF-IDF uses the earlier
+formula. The second control multiplies by smoothed source-record IDF,
+`1 + log((1 + N) / (1 + df))`; the third greedily skips keywords whose token sets
+contain or are contained by an already selected keyword. This lexical control
+does not implement semantic MMR, typo correction or noun-phrase extraction.
+
+Run with the database/partition/boundary/source-review arguments used above and
+a fresh private output. The 1,279-feature vocabulary produces 138 baseline
+keywords across 18 subjects. Corpus IDF changes the top-eight set for only three
+subjects and order for four. Containment pruning reduces the output to 126
+keywords but drops useful compounds such as `remote control` after retaining
+its individual words. Conversational labels such as `accept suggestions` persist;
+two distinct subjects sharing the same source record have identical labels.
+These are exposed single-reviewer qualitative failure observations, not measured
+semantic precision or independent review. Rarity alone does not identify useful
+domain terms, and statistical weighting cannot separate subjects represented by
+the same undivided source record. Neither adjustment is promoted.
+
+Two fresh runs reproduce all non-timing fields. Fit and labeling take 20–22 ms;
+the final elapsed time after imports is 462 ms, including frozen corpus loading.
+No inference calls occur. These timings do not measure ingestion or online
+vocabulary/label maintenance. English stopwords can also suppress domain terms.
+Next test source-supported contextual/episode representations and phrase quality
+before adding noise filters or selecting a discovery method.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current
