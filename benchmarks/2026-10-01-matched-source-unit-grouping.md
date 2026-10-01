@@ -106,8 +106,10 @@ takes BIRCH 11–27 ms, GRINCH-style 186–259 ms, average 8–37 ms and HDBSCAN
 31–35 ms, including validation/cut extraction where applicable. These ranges
 cover two orders and two fresh processes, not confidence intervals.
 
-Each complete 72-control process takes 10.2–10.7 seconds after imports and peaks
-at 956 MiB RSS, including source loading and the scientific runtime. Shared
+Each complete 72-control process takes 10.2–10.7 seconds after imports and reports
+rusage956MiB. The [memory audit](2026-10-01-topic-memory-accounting.md) identifies
+pre-exec peak contamination; attribution to this workload is withdrawn pending
+remeasurement. Shared
 encoding/cache and sequential controls prevent interpreting these as standalone
 method memory/cost or production ingestion overhead. The ≤10% ingestion target,
 edits/deletes, persistence and guided-search gain remain unverified.

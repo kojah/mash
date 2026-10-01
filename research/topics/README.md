@@ -814,6 +814,12 @@ exposed schema; feedback-only loses target referents. This is not independent
 semantic-quality evidence. Captures retain both Linux VmHWM and OS rusage peaks
 because the counters disagree in this environment; historical rusage-only
 memory attribution requires remeasurement before a performance gate.
+The [memory audit](../../benchmarks/2026-10-01-topic-memory-accounting.md)
+reproduces pre-exec rusage retention and externally remeasures field/payload
+experiments without changing algorithm outputs. Run `memory_audit.py --output
+PRIVATE.json -- PYTHON research/topics/RUNNER.py ...` for Linux target-only
+20 ms RSS/PSS sampling. Sampled peaks are lower bounds; timings may be perturbed.
+This does not replace complete-ingestion or child-process measurements.
 
 Run lab input-boundary tests:
 

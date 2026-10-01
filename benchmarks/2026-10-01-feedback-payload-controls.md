@@ -89,8 +89,10 @@ Source selection takes0.11–0.12ms per representation. These ranges cover two
 fresh processes, not uncertainty intervals or a general speedup claim.
 
 GRINCH grouping including validation/cuts takes5.1–12.1ms intact and6.3–8.2ms
-payload. Complete16-control wall1.39–2.14s, CPU1.23–1.43s, peakRSS956MiB
-including full frozen-corpus validation/loading and the scientific runtime.
+payload. Complete16-control wall1.39–2.14s, CPU1.23–1.43s, reported rusage956MiB.
+The [memory audit](2026-10-01-topic-memory-accounting.md) withdraws attribution
+of956MiB to the workload and externally remeasures approximately305–308MiB,
+including imports/corpus/model, without changing any nonmeasurement output.
 This tiny, oracle-filtered pilot is not production ingestion overhead; initial,
 incremental, edit/delete/persistence and guided-search gates remain unverified.
 

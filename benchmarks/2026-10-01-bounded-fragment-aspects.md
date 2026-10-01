@@ -96,7 +96,9 @@ Segmentation costs1.0–1.9ms original,3.9–4.2ms sentences,2.6–2.8ms windows
 Encoding includes preflight/cache handling; p95 includes cache hits and is not
 cold-update/full-ingestion p95. One shared cache makes mode costs marginal,
 not standalone. Grouping includes validation/cuts. Complete24-control process
-wall15.7–16.5s, CPU15.1–15.9s, peakRSS956MiB including corpus/scientific runtime.
+wall15.7–16.5s, CPU15.1–15.9s, reported rusage956MiB.
+The [memory audit](2026-10-01-topic-memory-accounting.md) identifies pre-exec
+peak contamination; attribution to this workload is withdrawn until remeasured.
 Ranges cover two processes/orders, not uncertainty intervals. The ≤10% full
 production-ingestion gate remains unverified.
 

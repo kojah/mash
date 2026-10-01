@@ -158,6 +158,13 @@ Freeze source/offset, numerical, tie and lifecycle semantics; test fixed-vector
 algorithm parity separately from full inference, and enforce differential CI
 before shipping the Rust implementation. Parity does not replace semantic
 quality or complete-ingestion performance gates.
+For Linux topic memory measurements, retain rusage and per-program-image counters
+and use `research/topics/memory_audit.py` for external RSS/PSS evidence before a
+performance gate. Rusage can preserve pre-exec launcher peaks; do not attribute
+them to the workload or subtract peaks. Status counters are approximate and
+externally sampled maxima are lower bounds. Define target/child scope and account
+for monitoring overhead; these research audits are not production ingestion
+measurements.
 Build the living manuscript using `paper/build.py` with output outside Git.
 
 Use Beads (`bd`) for substantive work and discovered follow-ups. On a fresh clone,

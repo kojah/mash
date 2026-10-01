@@ -1305,8 +1305,10 @@ GRINCH-style 186--259\,ms, average 8--37\,ms and HDBSCAN 31--35\,ms.
 Grouping includes tree validation and cut extraction where applicable, unlike
 the earlier insertion-only benchmark. Ranges cover two orders and two processes,
 not confidence intervals. Each shared-cache 72-control process takes
-10.2--10.7 seconds after imports and peaks at 956\,MiB RSS including source
-loading/scientific runtime. These are not standalone method costs or production
+10.2--10.7 seconds after imports and reports rusage maximum 956\,MiB.
+This counter can retain pre-exec launcher peaks (Section~\ref{sec:memoryaudit});
+workload-image memory for this experiment needs remeasurement.
+These are not standalone method costs or production
 ingestion overhead; the full-ingestion gate remains unverified.
 
 The runner is \path{research/topics/span_grouping.py}; exact source reconstruction,
@@ -1408,8 +1410,9 @@ New calls/cache hits are 256/1, 232/175 and 323/148. Segmentation takes
 1.0--1.9, 3.9--4.2 and 2.6--2.8\,ms; GRINCH-style grouping including
 validation/cuts takes 265--316, 547--791 and 766--887\,ms. The encoder cache
 is shared, so deltas are marginal rather than standalone costs. Complete process
-wall time is 15.7--16.5 seconds, CPU 15.1--15.9 seconds and peak RSS
-956\,MiB including source loading/scientific runtime. Ranges cover two
+wall time is 15.7--16.5 seconds, CPU 15.1--15.9 seconds and reported rusage
+maximum 956\,MiB. Workload memory attribution is withdrawn pending external
+remeasurement (Section~\ref{sec:memoryaudit}). Ranges cover two
 processes/orders, not uncertainty intervals. Full-ingestion overhead remains
 unverified; no mechanical splitter is promoted.
 
@@ -1532,8 +1535,9 @@ cache hits. Encoding including preflight takes 295--395\,ms intact and
 Selection takes 0.11--0.12\,ms per representation. GRINCH-style grouping
 including validation/cuts takes 5.1--12.1\,ms and 6.3--8.2\,ms respectively.
 Complete 16-control wall time is 1.39--2.14 seconds, CPU 1.23--1.43 seconds and
-peak RSS 956\,MiB including full frozen-corpus validation/loading and scientific
-runtime. Ranges cover two fresh processes, not uncertainty intervals or a
+reported rusage maximum 956\,MiB. The follow-up audit in
+Section~\ref{sec:memoryaudit} finds this value contaminated by launch history.
+Ranges cover two fresh processes, not uncertainty intervals or a
 general speedup claim. Full-ingestion performance remains unverified.
 
 The 117-test lab suite covers bounded sampling, exclusion unions/aliases,
@@ -1599,8 +1603,8 @@ for full payload, 2.24--2.44 ms target-inclusive and 1.60--1.87 ms feedback-only
 After-import wall time is 16.39--18.72 ms and CPU 16.29--17.77 ms, with zero
 model calls. Linux process-image VmHWM is 132.24--132.63 MiB including imports,
 while simultaneous rusage reports 955.94 MiB. Preserve both counters: their
-disagreement's cause is unestablished, and prior rusage-only memory attribution
-needs remeasurement before gating. These are label-only batch costs, not complete
+disagreement was initially unexplained; Section~\ref{sec:memoryaudit} investigates
+pre-exec accounting and remeasures representative workloads. These are label-only batch costs, not complete
 ingestion costs or online-maintenance evidence.
 
 \path{field_labels.py} and \path{compare_field_labels.py} pin and verify complete
@@ -1609,6 +1613,42 @@ are \path{6c87f1b8d1819404a9332f8bf5779eeab20fb244f25ad25602ce6e8d6aa5013c}
 and \path{0eba3f439c20e76681e0b37f514b68d5ff69faa4b58d826d9f165f330f62c313}.
 Next obtain independent judgments and wider format/context coverage, and measure
 stable online backgrounds and complete ingestion before Rust promotion.
+
+\subsection{Memory-accounting correction and external controls}\label{sec:memoryaudit}
+The launcher ancestor's VmHWM exactly equals the repeated historical rusage value,
+978884 KiB. Linux preserves resource-usage statistics across execution while
+replacing mappings \cite{linuxgetrusage,linuxexecve}. A single-threaded forced-fork
+control compares clean Python with an image reached after touching 64 MiB and
+executing Python again. Two captures yield clean rusage 14.48--14.63 MiB and
+VmHWM 14.54--14.63 MiB, versus seeded rusage 76.76--76.98 MiB but post-exec
+VmHWM 14.42--14.48 MiB. This reproduces the contamination mechanism; ancestor
+equality supports its application to our launches without instrumenting the
+launcher implementation itself.
+
+An external, shell-free observer samples target-PID status and smaps-rollup RSS/PSS
+every 20 ms, preserving exit status and recording complete samples. It handles
+address-space teardown before zombie state. Status counters are approximate;
+smaps snapshots are more precise \cite{linuxproc}. Sampled maxima are lower bounds
+and observation may perturb time; children and observer memory are excluded.
+Two fresh field-label runs have sampled RSS maxima 132.71/133.74 MiB and rusage
+132.58/132.56 MiB. Two complete payload runs have sampled RSS 307.76/304.85 MiB
+and rusage 307.59/304.79 MiB, including scientific imports, corpus validation and
+local inference. Concurrent independent processes can affect shared-mapping PSS
+and timings; these runs are memory audits, not new speed measurements.
+
+Both nine-control field and sixteen-control payload captures exactly match
+their originals and each other in every nonmeasurement field. Historical raw
+captures remain immutable. Their 956 MiB values must not be attributed as
+workload-image peaks; other affected workloads need independent remeasurement.
+128 lab tests pass, including a touched allocation, failing target and exit race.
+The scripts \path{memory_audit.py} and \path{memory_exec_control.py} use only the
+standard library. Private final audits and summaries reside under
+\path{topic-python-review-v3-20261001}; sampler SHA256 is
+\path{2cdee7bf1fdd4bcf6309f0ab3ecd8c1c0a9f5d031022fa95bff0f74c2657e538}.
+Future complete-ingestion gates require explicit program/child scope, phase and
+sampling provenance, and uncertainty about missed transient peaks. Do not subtract
+pre-exec peaks. Production topic ingestion, lifecycle and throughput gates remain
+unverified; this correction changes no algorithm or selection result.
 
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context

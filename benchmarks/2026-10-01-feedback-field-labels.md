@@ -73,6 +73,10 @@ after imports and 132 MiB after actual input validation/labels. The two memory
 counters disagree for the captured launches; preserve both rather than attribute
 956 MiB to this workload. The cause is not established. Earlier captures only
 recorded rusage, so their memory attribution needs remeasurement before a gate.
+Follow-up: the [memory audit](2026-10-01-topic-memory-accounting.md) reproduces
+pre-exec rusage retention and externally confirms approximately 133 MiB for this
+workload, with every nonmeasurement output unchanged. Original counters above
+remain preserved; they are not both workload-image peak estimates.
 
 ## Reproduction and next evidence
 
