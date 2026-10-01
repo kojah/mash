@@ -3456,6 +3456,110 @@ aspect quality; do not increase apparent coverage by embedding excluded provider
 records indiscriminately. Initial-index readiness and lifecycle/performance remain
 separate gates.
 
+\subsection{Complete-unit topic memberships and fixed-membership label salience}
+Reuse the complete 128-question unit capture without new inference. Before
+outcomes, freeze the transferred average-cosine cut .4 and centroid cut .6.
+Compare one normalized unit mean per question with distinct original unit
+directions, allowing each question the union of its units' direct native topics.
+Forward, reverse and seed-17 shuffled arrivals produce 24 trees. Source-only
+vocabulary includes selected and 72 disjoint background questions, capped at
+8,192 technical unigrams/adjacent bigrams: 128 title, 484 body-unit and 144
+background source rows. Count titles once per parent per topic rather than once
+per injected model input. Reset bigrams at source boundaries and background DF
+votes per question. Tags remain evaluation-only. The previously exposed phase
+names do not imply fresh held-out evaluation. Our GRINCH-style control does not
+establish equivalence to author-reference GRINCH.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{llrrrr}
+\toprule
+Phase & View/linkage & Topics & Single-parent & TP/FP & Recall\\
+\midrule
+Calibration & Mean/average & 56 & 49 & 1/8 & .0103\\
+Calibration & Mean/centroid & 64 & 64 & 0/0 & .0000\\
+Calibration & Units/average & 58 & 52 & 0/6 & .0000\\
+Calibration & Units/centroid & 65 & 65 & 0/0 & .0000\\
+Reserved & Mean/average & 58 & 53 & 4/3 & .0784\\
+Reserved & Mean/centroid & 64 & 64 & 0/0 & .0000\\
+Reserved & Units/average & 59 & 53 & 3/3 & .0588\\
+Reserved & Units/centroid & 66 & 65 & 1/0 & .0196\\
+\bottomrule
+\end{tabular}
+\caption{Forward fixed-cut question grouping. Each phase has 2,016 pairs,
+with 97/51 positive shared-tag pairs. Unit union does not remedy fragmentation.}
+\end{table}
+
+The 95th percentile question has one topic in every forward run; maxima are one
+or two. Means reproduce all orders. Unit-average alternative-order point ARI is
+.9919--.9990/.9729--.9899 across the two phases, while positive question-pair
+Jaccard falls to .5714/.8333. Empty positive-pair sets yield undefined agreement,
+not perfect agreement. Singletons can inflate stability; one-match precision
+1.0 is not robust quality. No semantic ancestor or useful multi-topic tree is
+established.
+
+Rank top-eight terms using frozen c-TF-IDF and smooth disjoint-background IDF.
+Also match a total-eight-term question budget using maximum scores across its
+assigned topics. Only 78/208 and 95/204 reference tags occur in their own bounded
+candidate bags (173/412 total). A post-hoc complete-source audit finds 204 exact
+source-supported tags; the whole-record analyzer retains 183, and the vocabulary
+cap removes another ten. No further tag loss is attributable to unit boundaries
+in this inventory. Exact community names are incomplete lexical references, not
+semantic label precision or independent agent-session topic gold.
+
+After the grouping outcomes, preregister a label-only follow-up on the eight
+frozen forward partitions: title-only normalized bags, and equal title/body mass.
+L1-normalize each parent's title and sum of assigned distinct body bags
+separately, average nonempty components, then sum parent contributions per topic.
+Vectors, vocabulary, background, memberships and top-eight ranking rules remain
+fixed; all 16 controls add zero inference. The scorer retains row-length and
+corpus-term-frequency floors of one, which affect fractional normalized counts;
+this is not an unclipped fractional c-TF-IDF formula. Title-only is not a general
+chat coverage policy.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{llrrr}
+\toprule
+Phase & View & Raw & Title-only & Equal mass\\
+\midrule
+Calibration & Mean/average & 27/28 & 35/39 & 38/40\\
+Calibration & Units/average & 28/29 & 35/39 & 38/40\\
+Reserved & Mean/average & 34/33 & 57/59 & 60/60\\
+Reserved & Units/average & 34/33 & 57/59 & 60/60\\
+\bottomrule
+\end{tabular}
+\caption{Matched top-eight exact tag hits: c-TF-IDF/background-IDF. Equal mass
+improves naming salience, without changing the poor topic memberships.}
+\end{table}
+
+Raw/equal-mass controls emit 512 terms per phase; title-only emits 434--447.
+Topic unions with larger label budgets are recorded separately. Background IDF
+alone has counterexamples, including losses on reserved raw counts. Labels under
+largely single-question topics can improve independently of useful clustering;
+do not infer an overlapping taxonomy or semantic tree from naming gains.
+
+Fresh-process topic repeats take 15.531/18.768 seconds after imports; label-only
+repeats take 9.079/9.333 seconds. First-run forward tree fits are roughly
+18--26 ms for means and 81--151 ms for units, while label work takes
+495--602 ms/control, including source checks and ranking. These small research
+fits do not measure full ingestion, persistence, RSS or production update p95.
+The prior 407 additional model calls and approximately 4.7 seconds of inference
+remain charged to the unit representation. Independent reconstruction checks
+all 756 sparse source records, 24 complete partitions, 48,384 pair decisions,
+native memberships, count hashes, scoring/ties, both label budgets, naming totals
+and whole-parent source support. Both repeats match every non-timing field;
+252 lab tests pass. Rust differential CI and quality/full-ingestion gates remain
+open. Topic first/repeat SHA256:
+\path{de9b34a307d358c0458c1d55899c18cffedd9ea23f9e97d3dcea00751026898a},
+\path{9289d186e1f5b30475353764f60c1ebc89ebf1e7557a4e57edf80bab6a7169d7}.
+Label-balance first/repeat SHA256:
+\path{6f9a46d7d0f9f1d58fed4bc37725c16e4af01b59e14676b6d9706e945918db4f},
+\path{ca7c12cea3a5a458c49d5a88289026e4339b262e801cc124f5b42138121de578}.
+Next optimize label work under exact output parity and evaluate target-representation
+calibration on genuinely new groups with independent aspect/ancestor judgments.
+No method is selected for Rust or MCP promotion.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

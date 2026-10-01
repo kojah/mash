@@ -965,6 +965,18 @@ canonical user-role counts include thousands of Claude tool results. Separate
 `projection_coverage.py` ledger and `native_projection_audit.py` corroboration
 retain exclusions and readiness state without source text output or index mutation.
 
+The [complete-unit topic and label diagnostic](../../benchmarks/2026-10-02-question-unit-topics.md)
+uses `question_topics.py` and `question_topic_labels.py` to compare saved unit
+means with native multi-unit topic unions, using fixed transferred cuts and no
+new inference. All 24 trees still fragment; overlapping thread memberships and
+semantic ancestors are not established. A preregistered post-hoc
+`question_label_balance.py` control fixes memberships and compares title-only
+versus equal title/body label mass. Exact tag naming improves under a matched
+eight-term budget, but is candidate-limited and not semantic label precision.
+All source counts, partitions, scores, labels and repeat outcomes are verified;
+252 tests pass. Label work dominates small tree fits in these controls. Full
+ingestion and Rust/Python parity gates remain open; no method is selected.
+
 Run lab input-boundary tests:
 
 ```bash

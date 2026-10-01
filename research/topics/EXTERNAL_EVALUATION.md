@@ -186,6 +186,15 @@ records include provider tool outputs. The 20.8% ratio is not an inference-failu
 rate or human-topic recall. Readiness remains unverified; native source
 corroboration is limited to the selected Claude exclusions.
 
+The [fixed-unit grouping and label continuation](../../benchmarks/2026-10-02-question-unit-topics.md)
+keeps the same exposed questions and transferred cuts. Unit union fails to
+produce useful shared-tag recall or substantial multi-topic memberships. A
+separate label-only title/body mass control improves exact tag naming with
+memberships fixed. Candidate availability is only 173/412 tags; these symbolic
+references do not establish semantic label precision or agent-session quality.
+Both comparisons repeat all non-timing fields, with independent source/score
+reconstruction. No new held-out split or production method is claimed.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.
