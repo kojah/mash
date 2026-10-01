@@ -1,6 +1,7 @@
 use super::*;
 use crate::message_context::MessageContext;
 
+mod handoff;
 mod lifecycle;
 
 fn transcript(path: &Path, rows: &[(&str, Option<&str>, &str)]) {
