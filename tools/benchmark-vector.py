@@ -94,20 +94,29 @@ def freeze(source, destination):
     return rows
 
 
-def query_arguments(vector, predicate, k, ef):
+def query_arguments(vector, predicate, k, ef, policy=None, batch_size=None):
     # Request one extra neighbor and discard the source document after retrieval.
     # A numeric exclusion would turn even unfiltered queries into hybrid queries
     # and allow Redis's adaptive planner to select a brute-force filter strategy.
-    expression = (f"({predicate})" if predicate else "*") + f"=>[KNN {k + 1} @vector $v AS distance]"
+    options = ""
+    if policy is not None:
+        if not predicate or policy not in {"BATCHES", "ADHOC_BF"}:
+            raise ValueError("hybrid policy requires a filter and a supported policy")
+        options += f" HYBRID_POLICY {policy}"
+    if batch_size is not None:
+        if policy != "BATCHES" or batch_size < 1:
+            raise ValueError("positive batch size requires BATCHES")
+        options += f" BATCH_SIZE {batch_size}"
+    expression = (f"({predicate})" if predicate else "*") + f"=>[KNN {k + 1} @vector $v{options} AS distance]"
     if ef is not None:
         expression += "=>{$EF_RUNTIME: " + str(ef) + "}"
     return (expression, "PARAMS", 2, "v", vector, "SORTBY", "distance",
             "RETURN", 1, "distance", "LIMIT", 0, k + 1, "DIALECT", 2)
 
 
-def search(redis, index, vector, ordinal, predicate, k, ef=None):
+def search(redis, index, vector, ordinal, predicate, k, ef=None, policy=None, batch_size=None):
     started = time.perf_counter()
-    reply = redis.call("FT.SEARCH", index, *query_arguments(vector, predicate, k, ef))
+    reply = redis.call("FT.SEARCH", index, *query_arguments(vector, predicate, k, ef, policy, batch_size))
     elapsed = (time.perf_counter() - started) * 1000
     found = {reply[i].decode(): float(pairs(reply[i + 1])["distance"])
              for i in range(1, len(reply), 2)
@@ -126,7 +135,7 @@ def json_value(value):
     return value
 
 
-def evaluate(redis, rows, size, queries, k, profiles=False):
+def evaluate(redis, rows, size, queries, k, profiles=False, filtered_policies=False):
     prefix = "mash-vector-pilot:" + uuid.uuid4().hex + ":"
     dimensions = rows[0][1]
     documents = []
@@ -147,6 +156,20 @@ def evaluate(redis, rows, size, queries, k, profiles=False):
         escaped_provider = "".join(c if c.isalnum() else "\\" + c for c in provider)
         filters = {"all": "", "provider": "@provider:{" + escaped_provider + "}",
                    "recent_1pct": f"@time:[{latest} +inf]"}
+        thresholds = {"recent_1pct": latest}
+        if filtered_policies:
+            for fraction in [.5, .1]:
+                name = f"recent_{round(fraction * 100)}pct"
+                thresholds[name] = sorted(row[3] for row in documents)[int((size - 1) * (1 - fraction))]
+                filters[name] = f"@time:[{thresholds[name]} +inf]"
+
+        def matches(name, document):
+            if name == "all":
+                return True
+            if name == "provider":
+                return document[2] == provider
+            return document[3] >= thresholds[name]
+
         selected = random.Random(731).sample(range(size), min(queries, size))
         ground_truth = {}
         for algorithm in ["FLAT", "HNSW"]:
@@ -170,38 +193,65 @@ def evaluate(redis, rows, size, queries, k, profiles=False):
             build_ms = (time.perf_counter() - started) * 1000
             for ef in ([None] if algorithm == "FLAT" else [10, 50, 200]):
                 for name, predicate in filters.items():
-                    timings, recalls, boundary_recalls = [], [], []
-                    for ordinal in selected:
-                        vector = documents[ordinal][1]
-                        elapsed, found = search(redis, index, vector, ordinal, predicate, k, ef)
-                        if algorithm == "FLAT":
-                            ground_truth[name, ordinal] = found
-                        truth = ground_truth[name, ordinal]
-                        if not truth or len(found) != len(truth):
-                            raise RuntimeError("empty or incomplete filtered neighbors")
-                        recalls.append(len(set(found) & set(truth)) / len(truth))
-                        boundary = max(truth.values()) + 1e-6
-                        boundary_recalls.append(sum(value <= boundary for value in found.values()) / len(truth))
-                        timings.append(elapsed)
-                    report.append(dict(size=size, algorithm=algorithm, ef_runtime=ef,
-                        filter=name, filter_matches=sum(
-                            name == "all" or name == "provider" and row[2] == provider
-                            or name == "recent_1pct" and row[3] >= latest for row in documents),
-                        queries=len(selected), k=k, build_ms=round(build_ms, 2),
-                        vector_index_mb=float(info["vector_index_sz_mb"]),
-                        latency_ms=percentiles(timings),
-                        recall_mean=round(sum(recalls)/len(recalls), 5), recall_min=min(recalls),
-                        boundary_recall_mean=round(sum(boundary_recalls)/len(boundary_recalls), 5)))
-                    if profiles:
-                        profile = redis.call("FT.PROFILE", index, "SEARCH", "LIMITED", "QUERY",
-                            *query_arguments(documents[selected[0]][1], predicate, k, ef))
-                        report[-1]["execution_profile"] = json_value(profile[1])
+                    policies = [(None, None)]
+                    if filtered_policies and algorithm == "HNSW" and predicate:
+                        # Explicit brute force rejects EF_RUNTIME as irrelevant.
+                        if ef == 10:
+                            policies += [("ADHOC_BF", None)]
+                        policies += [("BATCHES", None)]
+                        policies += [("BATCHES", batch) for batch in [32, 128, 512]]
+                    for policy, batch_size in policies:
+                        report.append(measure(redis, index, documents, selected, name, predicate,
+                            matches, ground_truth, algorithm,
+                            None if policy == "ADHOC_BF" else ef, policy, batch_size, k,
+                            size, build_ms, info, profiles))
         return report
     finally:
         for index in indexes:
             redis.call("FT.DROPINDEX", index)
         for start in range(0, len(documents), 512):
             redis.call("UNLINK", *[row[0] for row in documents[start:start+512]])
+
+
+def measure(redis, index, documents, selected, name, predicate, matches, ground_truth,
+            algorithm, ef, policy, batch_size, k, size, build_ms, info, profiles):
+    timings, recalls, boundary_recalls = [], [], []
+    per_query = []
+    for ordinal in selected:
+        vector = documents[ordinal][1]
+        elapsed, found = search(redis, index, vector, ordinal, predicate, k, ef, policy, batch_size)
+        for key in found:
+            returned = int(key.rsplit(":", 1)[1])
+            if not 0 <= returned < size or not matches(name, documents[returned]):
+                raise RuntimeError("vector retrieval violated filter or corpus bounds")
+        if algorithm == "FLAT":
+            ground_truth[name, ordinal] = found
+        truth = ground_truth[name, ordinal]
+        if not truth or len(found) > len(truth):
+            raise RuntimeError("invalid reference or result population")
+        recalls.append(len(set(found) & set(truth)) / len(truth))
+        boundary = max(truth.values()) + 1e-6
+        boundary_recalls.append(sum(value <= boundary for value in found.values()) / len(truth))
+        timings.append(elapsed)
+        per_query.append(dict(query_ordinal=ordinal, latency_ms=round(elapsed, 4),
+            returned=len(found), expected=len(truth), exact_id_recall=recalls[-1],
+            boundary_recall=boundary_recalls[-1]))
+    result = dict(size=size, algorithm=algorithm, ef_runtime=ef,
+        hybrid_policy=policy or "AUTO", batch_size=batch_size,
+        filter=name, filter_matches=sum(matches(name, row) for row in documents),
+        queries=len(selected), k=k, build_ms=round(build_ms, 2),
+        vector_index_mb=float(info["vector_index_sz_mb"]),
+        latency_ms=percentiles(timings),
+        recall_mean=round(sum(recalls)/len(recalls), 5), recall_min=min(recalls),
+        boundary_recall_mean=round(sum(boundary_recalls)/len(boundary_recalls), 5),
+        boundary_recall_min=min(boundary_recalls),
+        incomplete_queries=sum(query["returned"] < query["expected"] for query in per_query),
+        per_query=per_query)
+    if profiles:
+        profile = redis.call("FT.PROFILE", index, "SEARCH", "LIMITED", "QUERY",
+            *query_arguments(documents[selected[0]][1], predicate, k, ef, policy, batch_size))
+        result["execution_profile"] = json_value(profile[1])
+    return result
 
 
 def main():
@@ -216,6 +266,8 @@ def main():
     parser.add_argument("--k", type=int, default=20)
     parser.add_argument("--profiles", action="store_true",
                         help="capture one FT.PROFILE per scenario after timing")
+    parser.add_argument("--filtered-policies", action="store_true",
+                        help="compare automatic, brute-force and batch policies across filter selectivities")
     args = parser.parse_args()
     args.artifacts.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.artifacts.stat().st_mode & 0o077:
@@ -240,7 +292,8 @@ def main():
                       host_load=Path("/proc/loadavg").read_text().strip(),
                       measurements=[])
         for size in args.sizes:
-            result["measurements"].extend(evaluate(redis, rows, size, args.queries, args.k, args.profiles))
+            result["measurements"].extend(evaluate(redis, rows, size, args.queries, args.k,
+                                                 args.profiles, args.filtered_policies))
             (args.artifacts / "report.json").write_text(json.dumps(result, indent=2) + "\n")
             print(f"completed {size} vectors", flush=True)
     finally:

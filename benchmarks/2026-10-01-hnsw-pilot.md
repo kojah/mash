@@ -107,3 +107,7 @@ run is `/home/james/scratch/mash-artifacts/hnsw-pilot-20261001-final/report.json
 
 Tracking: `mash-c0d.11.1` (this pilot), `mash-c0d.11.2` (filter profiling),
 `mash-c0d.11` (remaining algorithm evaluation).
+
+The subsequent [filtered-policy comparison](2026-10-01-filtered-hnsw.md)
+measures forced graph traversal, per-query recall/counts and selective-filter
+latency tails. Its results supplement this initial automatic-policy pilot.
