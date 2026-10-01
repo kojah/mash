@@ -101,6 +101,8 @@ completed local index.
 Malformed JSONL sources contribute no readable fragments to the index. Their
 last complete messages, vectors and checkpoint remain intact until a clean
 retry; healthy sources in the same run can still advance.
+After a malformed JSONL record, decoding continues to count further failures,
+but normalization stops so broken fragment ancestry cannot hide that diagnostic.
 For malformed Claude Code and Codex JSONL, `record_diagnostics` in the final
 CLI/MCP result contains the first rejected record per source: provider, path,
 one-based physical line, byte column, and `syntax`, `data`, or `unexpected-eof`

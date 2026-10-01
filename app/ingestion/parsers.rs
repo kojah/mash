@@ -70,9 +70,14 @@ fn parse_jsonl(
             continue;
         }
         let Some(raw) = rejected.decode(path, provider, number, &line) else {
-            claude_identity.break_replay();
             continue;
         };
+        // Once any record is corrupt, this source cannot establish a snapshot.
+        // Continue decoding for diagnostics, but do not normalize fragments:
+        // their ancestry/identity may depend on the rejected record.
+        if rejected.count != 0 {
+            continue;
+        }
         capture_metadata(&raw, &mut project, &mut repository);
         if provider == Provider::ClaudeCode {
             claude_identity.observe(&raw)?;
@@ -115,7 +120,7 @@ fn parse_jsonl(
             created_at: extracted.created_at,
         })?;
     }
-    if messages.len() == 0 {
+    if rejected.count != 0 || messages.len() == 0 {
         return Ok(ParsedFile {
             conversation: None,
             malformed_records: rejected.count,

@@ -110,6 +110,33 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
 }
 
 #[test]
+fn malformed_jsonl_cannot_be_masked_by_fragment_ancestry_or_identity_errors() {
+    let source = tempfile::NamedTempFile::new().unwrap();
+    let prefix = r#"{"type":"user","uuid":"root","sessionId":"original","message":{"content":"original request"}}"#;
+    for suffix in [
+        r#"{"type":"user","uuid":"child","sessionId":"original","parentUuid":"missing-parent","message":{"content":"orphan fragment"}}"#,
+        r#"{"type":"user","uuid":"child","sessionId":"different","message":{"content":"different session fragment"}}"#,
+        r#"{"type":"user","uuid":"root","sessionId":"original","parentUuid":"conflicting-parent","message":{"content":"conflicting replay fragment"}}"#,
+    ] {
+        let input = format!("{prefix}\n{{broken\n{suffix}\n{{\"sessionId\":[]}}\n");
+        fs::write(source.path(), &input).unwrap();
+        let parsed = parse_claude(source.path()).unwrap();
+        assert!(
+            parsed.conversation.is_none(),
+            "an incomplete source exposes no normalized fragments"
+        );
+        assert_eq!(
+            parsed.malformed_records, 2,
+            "later decode failures are still counted"
+        );
+        let issue = parsed.first_record_issue.unwrap();
+        assert_eq!(issue.line, 2);
+        assert_eq!(issue.category, diagnostics::Category::Syntax);
+        assert_eq!(fs::read_to_string(source.path()).unwrap(), input);
+    }
+}
+
+#[test]
 fn session_metadata_keeps_first_project_and_logged_repository() {
     let mut project = None;
     let mut repository = None;
@@ -170,18 +197,16 @@ fn claude_agent_identity_uses_native_session_and_agent_not_file_location() {
 }
 
 #[test]
-fn claude_parser_skips_malformed_lines_and_keeps_messages() {
+fn claude_parser_reports_malformed_lines_without_normalized_fragments() {
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(file, "not-json").expect("malformed line");
     writeln!(file, r#"{{"type":"user","sessionId":"s1","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{{"role":"user","content":"hello"}}}}"#).expect("user line");
     writeln!(file, r#"{{"type":"assistant","sessionId":"s1","uuid":"a1","message":{{"role":"assistant","content":[{{"type":"text","text":"world"}}]}}}}"#).expect("assistant line");
 
     let parsed = parse_claude(file.path()).expect("parse Claude history");
-    let conversation = parsed.conversation.expect("conversation");
+    assert!(parsed.conversation.is_none());
     assert_eq!(parsed.malformed_records, 1);
-    assert_eq!(conversation.id, "s1");
-    assert_eq!(conversation.messages.len(), 2);
-    assert_eq!(conversation.messages.inline()[1].content, "world");
+    assert_eq!(parsed.first_record_issue.unwrap().line, 1);
 }
 
 #[test]

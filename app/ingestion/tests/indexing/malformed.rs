@@ -1,5 +1,8 @@
 use super::*;
 
+// A duplicate native UUID with a changed parent must never be normalized after corruption.
+const CONFLICTING_REPLAY: &str = r#"{"type":"user","sessionId":"retained-session","uuid":"first","parentUuid":"missing-parent","message":{"role":"user","content":"uncommitted third sentinel"}}"#;
+
 fn record(id: &str, content: &str) -> String {
     serde_json::to_string(&serde_json::json!({
         "type":"user", "sessionId":"retained-session", "uuid":id,
@@ -75,7 +78,7 @@ fn malformed_refresh_retains_canonical_messages_vectors_and_checkpoint_while_oth
         format!(
             "{}\n{{\"sessionId\":[\"PRIVATE-TRACE-RECORD-CANARY\"]}}\n{}\n",
             record("first", "damaged fragment sentinel"),
-            record("third", "uncommitted third sentinel")
+            CONFLICTING_REPLAY
         ),
     )
     .unwrap();

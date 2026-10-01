@@ -51,10 +51,6 @@ impl Identity {
         Ok(())
     }
 
-    pub(super) fn break_replay(&mut self) {
-        self.replay.clear();
-    }
-
     pub(super) fn capture_session(&mut self, next: Option<String>) -> Result<(), AppError> {
         let Some(next) = next else {
             return Ok(());

@@ -100,7 +100,6 @@ fn claude_replay_requires_uninterrupted_native_boundary_and_matching_tail() {
         (Some("missing"), "missing", None),
         (Some("tail"), "wrong", None),
         (Some("root"), "root", None),
-        (Some("tail"), "tail", Some("{broken")),
         (
             Some("tail"),
             "tail",
@@ -123,6 +122,18 @@ fn claude_replay_requires_uninterrupted_native_boundary_and_matching_tail() {
                 .contains("conflicting ancestry")
         );
     }
+    original(&path);
+    append_replay(&path, Some("tail"), "tail", Some("{broken"));
+    let incomplete = parse_claude(&path).unwrap();
+    assert!(
+        incomplete.conversation.is_none(),
+        "corruption cannot prove replay ancestry"
+    );
+    assert_eq!(incomplete.malformed_records, 1);
+    assert_eq!(
+        incomplete.first_record_issue.unwrap().category,
+        crate::ingestion::diagnostics::Category::Syntax
+    );
     original(&path);
     append_replay(&path, Some("tail"), "tail", None);
     let rows = fs::read_to_string(&path).unwrap();
