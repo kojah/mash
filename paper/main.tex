@@ -101,11 +101,18 @@ Stored vectors are 384-dimensional signed-byte representations. Each vector is
 converted to floating point and normalized; each thread is represented by the
 normalized mean of its unique user vectors. No model inference occurs in these
 controls. The loader rejects incompatible dimensions/generations, missing groups,
-invalid vectors and a live SQLite WAL. It opens the snapshot read-only and hashes
+invalid vectors, inconsistent persisted norms and a live SQLite WAL. It opens the snapshot read-only and hashes
 the source fields, vector bytes, generation and exact partition report for
-comparison integrity. A complete published embedding-model provenance and
-quantization specification remains a reproducibility task; generation identity
-alone is insufficient for an external researcher to regenerate the vectors.
+comparison integrity. The generation digest matches the BLAKE3 of the Rust CPU
+specification: FastEmbed 6.0.1, AllMiniLML6V2Q, batch size 8, eight workers with
+two threads each, per-vector symmetric signed-byte quantization and schema 3.
+Rust scales each float vector's maximum absolute component to 127, rounds and
+clamps components to $[-127,127]$, and stores their byte bit patterns and norm.
+Python interprets these as signed bytes. Reconstructing the float32 norms matches
+all 6,714 stored user norms exactly. Installed associated ONNX/tokenizer artifacts
+were also hashed privately, but the generation specification does not hash model
+bytes or prove historical asset identity. Complete model provenance and external
+vector regeneration remain reproducibility tasks.
 
 Runs use Python 3.11.15, NumPy 2.4.6 and scikit-learn 1.9.1 on the Linux Xenia
 host (KVM guest, 16 visible vCPUs, AMD EPYC 9645 reported by \texttt{lscpu},
@@ -225,6 +232,33 @@ continuations. This motivates context-aware episode representations and boundary
 evaluation; it does not prove a learned segmentation method is better or justify
 a threshold selected on these examples. Label granularity itself needs clearer
 guidelines and independent review before scaling the study.
+
+\subsection{Bounded contextual boundary comparison}
+This development comparison holds the existing annotations and cosine
+threshold fixed. It compares adjacent vectors against two disjoint blocks of up
+to two user turns on either side of each boundary, normalizing each block mean.
+The right block uses at most one future user turn; decisions therefore require
+bounded lookahead or provisional online publication. Blocks share no user turn:
+shared-input smoothing could otherwise inflate similarity by construction.
+If any vector in either block is missing, or a block mean cancels to numerical
+zero, the method abstains. At thread edges,
+available shorter blocks are used. This pooling control does not re-embed context,
+resolve pronouns, inspect native branches or incorporate assistant text.
+Its hypothesis is reduced spurious splitting at the risk of merging genuine
+subject changes. On the same 23 judged boundaries, it detects all six changes
+with sixteen false positives (precision 0.273, recall 1.000), compared with
+fourteen false positives for adjacent/segment-centroid controls. No judged
+boundary requires abstention in this pilot. Pooling therefore does not improve
+boundary precision at this fixed threshold. We did not tune the threshold or
+change annotations in response. Baseline results and input/annotation hashes
+were verified unchanged. These fixed development choices are not a preregistered
+independent evaluation; this negative result motivates testing genuinely
+context-aware representations rather than assuming vector averaging resolves
+referential replies.
+The next annotation protocol is documented in
+\path{research/topics/annotation-guidelines.md}; it specifies episode granularity,
+source/context scope, secondary subjects, ancestors and disagreement handling.
+It does not retroactively alter these exploratory judgments.
 
 \section{Planned evaluation and unresolved requirements}
 Next experiments will compare bounded dialogue units and source-grounded context

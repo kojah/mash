@@ -25,6 +25,9 @@ breakdowns, not just a single coherence score.
 Record assignment precision, secondary-topic recall, label specificity, intrusion
 judgments, unassigned coverage, ancestor correctness and insertion-order stability.
 Record wall time, peak process RSS, inference calls, and incremental update cost.
+The [annotation protocol](annotation-guidelines.md) defines source/context scope,
+episode granularity, overlap, ancestors, uncertainty and independent review for
+the next dataset; it does not retroactively alter the initial pilot.
 Automatic coherence is a diagnostic, not a replacement for source review.
 Select an approach only after reviewing these tradeoffs against a frozen baseline;
 no numeric quality acceptance threshold has yet been justified by annotations.
@@ -45,7 +48,11 @@ and full searchable text using compact UTF-8 JSON. Every boundary must be presen
 including uncertain ones. Reserved groups are rejected for this development pilot.
 
 The controls are windows of three turns, adjacent cosine below 0.55 and current
-segment-centroid cosine below 0.55. Nonempty unembedded turns remain in sequence;
+segment-centroid cosine below 0.55, plus disjoint two-turn block means at the same
+threshold. Blocks use one future user turn, never share input across the boundary,
+and abstain on missing vectors or numerical cancellation. This needs bounded
+lookahead/provisional decisions for an online implementation; it does not re-embed
+context or resolve references. Nonempty unembedded turns remain in sequence;
 cosine predictors abstain on adjacent boundaries and reset rather than silently
 bridging missing evidence. Uncertain judgments are excluded from scoring;
 abstention does not earn positive recall. This is user-only linear presentation,
@@ -63,6 +70,11 @@ threads, 29 boundaries, six uncertain. One coding assistant reviewed user texts
 before these predictions, with prior corpus exposure; this is not blind human
 ground truth. All controls need a broader independently annotated test set before
 method selection or threshold tuning can establish quality.
+
+The block comparison increased false splits from 14 to 16 while retaining all six
+judged changes. The negative result is in the paper; thresholds/annotations were
+not adjusted to improve it. The lab's signed-byte decoding was checked against
+Rust, with exact reconstructed norm parity on all 6,714 stored user vectors.
 
 ## Initial controls
 

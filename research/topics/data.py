@@ -37,6 +37,17 @@ def normalized(vector: NDArray[np.float64]) -> NDArray[np.float64]:
     return vector / norm
 
 
+def decode_vector(raw: bytes, dimensions: int, stored_norm: float) -> NDArray[np.float64]:
+    """Rust's symmetric signed-byte encoding, with persisted metadata checks."""
+    if dimensions != 384 or len(raw) != 384:
+        raise ValueError("vector dimension mismatch")
+    integers = np.frombuffer(raw, dtype=np.int8).astype(np.int32)
+    expected = float(np.sqrt(np.float32(integers @ integers)))
+    if np.any(integers < -127) or expected <= 0 or not np.isfinite(stored_norm) or not np.isclose(stored_norm, expected, rtol=1e-6, atol=0):
+        raise ValueError("invalid signed-byte vector or stored norm")
+    return normalized(integers.astype(np.float64))
+
+
 def load(database: Path, partition_report: Path) -> Dataset:
     if not database.is_file():
         raise ValueError("frozen database is missing")
@@ -76,17 +87,18 @@ def load(database: Path, partition_report: Path) -> Dataset:
         connection.execute("BEGIN")
         rows = connection.execute(
             "SELECT c.id,c.provider,m.id,m.content,COALESCE(m.search_projection,m.content),"
-            "e.vector,e.generation FROM message_embeddings e JOIN messages m ON m.id=e.message_id "
+            "e.vector,e.generation,e.dimensions,e.norm FROM message_embeddings e JOIN messages m ON m.id=e.message_id "
             "JOIN conversations c ON c.id=m.conversation_id WHERE m.role='user' "
             "ORDER BY c.id,m.ordinal,m.id"
         )
         text_bytes = 0
-        for thread, provider, message, canonical, text, raw, space in rows:
+        for thread, provider, message, canonical, text, raw, space, dimensions, stored_norm in rows:
             total += 1
             if total > 100_000 or len(raw) != 384 or space != generation:
                 raise ValueError("vector dimension, count or generation mismatch")
             if provider not in ("codex", "claude-code"):
                 raise ValueError("initial experiment covers only the frozen two-provider cohort")
+            vector = decode_vector(raw, dimensions, stored_norm)
             if thread not in groups:
                 raise ValueError("thread missing from frozen canonical partition")
             for value in (thread.encode(), provider.encode(), message.encode(), canonical.encode(), text.encode(), raw):
@@ -101,7 +113,6 @@ def load(database: Path, partition_report: Path) -> Dataset:
                 duplicates += 1
                 continue
             seen.add(key)
-            vector = normalized(np.frombuffer(raw, dtype=np.int8).astype(np.float64))
             pending.setdefault(thread, []).append((provider, text, vector))
     threads = []
     used_groups = set()

@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from data import load
+from data import decode_vector, load
 
 
 class FrozenInputFixture(unittest.TestCase):
@@ -25,7 +25,8 @@ class FrozenInputFixture(unittest.TestCase):
                 CREATE TABLE conversations(id TEXT PRIMARY KEY, provider TEXT);
                 CREATE TABLE messages(id TEXT PRIMARY KEY, conversation_id TEXT,
                     role TEXT, ordinal INTEGER, content TEXT, search_projection TEXT);
-                CREATE TABLE message_embeddings(message_id TEXT, vector BLOB, generation TEXT);
+                CREATE TABLE message_embeddings(message_id TEXT, vector BLOB, generation TEXT,
+                    dimensions INTEGER, norm REAL);
             """)
             for thread in ("a", "alias", "b"):
                 db.execute("INSERT INTO conversations VALUES (?, 'codex')", (thread,))
@@ -33,7 +34,8 @@ class FrozenInputFixture(unittest.TestCase):
                     message = f"{thread}-{ordinal}"
                     db.execute("INSERT INTO messages VALUES (?,?,'user',?,'source','topic input')",
                                (message, thread, ordinal))
-                    db.execute("INSERT INTO message_embeddings VALUES (?,?,'frozen')", (message, vector))
+                    db.execute("INSERT INTO message_embeddings VALUES (?,?,'frozen',384,?)",
+                               (message, vector, float(np.sqrt(np.float32(384)))))
 
 
 class FrozenInputTests(FrozenInputFixture):
@@ -65,6 +67,19 @@ class FrozenInputTests(FrozenInputFixture):
         self.partition.write_text(json.dumps(report))
         with self.assertRaisesRegex(ValueError, "missing"):
             load(self.db, self.partition)
+
+    def test_corrupt_stored_norm_fails(self):
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE message_embeddings SET norm=0 WHERE message_id='a-0'")
+        with self.assertRaisesRegex(ValueError, "stored norm"):
+            load(self.db, self.partition)
+
+    def test_signed_byte_encoding_preserves_negative_direction(self):
+        values = np.zeros(384, dtype=np.int8)
+        values[:2] = (127, -127)
+        vector = decode_vector(values.tobytes(), 384, float(np.sqrt(np.float32(2 * 127 * 127))))
+        self.assertAlmostEqual(vector[0], 1 / np.sqrt(2))
+        self.assertAlmostEqual(vector[1], -1 / np.sqrt(2))
 
 
 if __name__ == "__main__":

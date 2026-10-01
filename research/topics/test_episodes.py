@@ -30,6 +30,26 @@ class EpisodeTests(unittest.TestCase):
         self.assertEqual(metrics["recall_including_abstentions"], 0)
         self.assertIsNone(metrics["precision"])
 
+    def test_context_blocks_are_disjoint_and_have_bounded_lookahead(self):
+        x, y = np.eye(2)
+        turns = tuple(Turn(str(i), i, str(i), vector) for i, vector in enumerate((x, x, y, y, x)))
+        choices = predictions(turns, Method.BLOCKS)
+        self.assertTrue(choices[1])
+        # Editing a turn beyond this boundary's one-user lookahead cannot affect it.
+        edited = (*turns[:4], Turn("4", 4, "edited", y))
+        self.assertEqual(predictions(edited, Method.BLOCKS)[1], choices[1])
+
+    def test_context_blocks_abstain_on_unembedded_context(self):
+        x, y = np.eye(2)
+        turns = (Turn("a", 0, "alpha", x), Turn("b", 1, "alpha", x),
+                 Turn("c", 2, "beta", y), Turn("d", 3, "unembedded", None))
+        self.assertIsNone(predictions(turns, Method.BLOCKS)[1])
+
+    def test_context_blocks_abstain_on_cancelling_vectors(self):
+        x, y = np.eye(2)
+        turns = tuple(Turn(str(i), i, str(i), vector) for i, vector in enumerate((x, -x, y, y)))
+        self.assertIsNone(predictions(turns, Method.BLOCKS)[1])
+
 
 class AnnotationInputTests(FrozenInputFixture):
     def annotations(self, thread):

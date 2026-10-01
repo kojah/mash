@@ -10,7 +10,7 @@ import tomllib
 
 import numpy as np
 
-from data import load, normalized
+from data import decode_vector, load, normalized
 
 
 class Judgment(StrEnum):
@@ -23,6 +23,7 @@ class Method(StrEnum):
     WINDOW = "window3"
     ADJACENT = "adjacent055"
     CENTROID = "centroid055"
+    BLOCKS = "disjoint_blocks2_055"
 
 
 @dataclass(frozen=True)
@@ -57,16 +58,16 @@ def source_hash(turns: tuple[Turn, ...]) -> str:
 
 def read_turns(connection: sqlite3.Connection, thread: str, generation: str) -> tuple[Turn, ...]:
     rows = connection.execute(
-        "SELECT m.id,m.ordinal,COALESCE(m.search_projection,m.content),e.vector,e.generation "
+        "SELECT m.id,m.ordinal,COALESCE(m.search_projection,m.content),e.vector,e.generation,e.dimensions,e.norm "
         "FROM messages m LEFT JOIN message_embeddings e ON e.message_id=m.id "
         "WHERE m.conversation_id=? AND m.role='user' ORDER BY m.ordinal,m.id", (thread,))
     turns = []
-    for identity, ordinal, text, raw, space in rows:
+    for identity, ordinal, text, raw, space, dimensions, stored_norm in rows:
         if not text.strip():
             continue
         if raw is not None and (space != generation or len(raw) != 384):
             raise ValueError("incompatible episode vector")
-        vector = normalized(np.frombuffer(raw, dtype=np.int8).astype(np.float64)) if raw is not None else None
+        vector = decode_vector(raw, dimensions, stored_norm) if raw is not None else None
         turns.append(Turn(identity, ordinal, text, vector))
     if len(turns) < 2 or len({t.ordinal for t in turns}) != len(turns):
         raise ValueError("invalid or ambiguous user-turn sequence")
@@ -108,6 +109,8 @@ def read_cases(database: Path, partition: Path, annotations: Path) -> tuple[str,
 
 
 def predictions(turns: tuple[Turn, ...], method: Method) -> tuple[bool | None, ...]:
+    if method == Method.BLOCKS:
+        return block_predictions(turns)
     result = []
     pending = []
     for i, turn in enumerate(turns):
@@ -128,6 +131,22 @@ def predictions(turns: tuple[Turn, ...], method: Method) -> tuple[bool | None, .
             pending = []
         if turn.vector is not None:
             pending.append(turn.vector)
+    return tuple(result)
+
+
+def block_predictions(turns: tuple[Turn, ...]) -> tuple[bool | None, ...]:
+    result = []
+    for i in range(1, len(turns)):
+        # Disjoint input and one-turn lookahead, without accumulating a segment.
+        left, right = turns[max(0, i - 2):i], turns[i:i + 2]
+        if any(t.vector is None for t in (*left, *right)):
+            result.append(None)
+            continue
+        means = [np.mean([t.vector for t in block], axis=0) for block in (left, right)]
+        if any(np.linalg.norm(mean) <= np.finfo(np.float64).eps for mean in means):
+            result.append(None)
+        else:
+            result.append(bool(normalized(means[0]) @ normalized(means[1]) < 0.55))
     return tuple(result)
 
 
