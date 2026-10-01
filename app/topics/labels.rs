@@ -1,4 +1,5 @@
 //! Class-normalized TF-IDF labels; memberships may contribute to several topics.
+mod discourse;
 pub(super) mod ranking;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -81,30 +82,7 @@ pub(super) fn substantive(text: &str) -> bool {
         .map(str::to_lowercase)
         .collect::<Vec<_>>()
         .join(" ");
-    !normalized.is_empty()
-        && ![
-            "hello",
-            "hi",
-            "hey",
-            "thanks",
-            "thank you",
-            "yes",
-            "no",
-            "ok",
-            "okay",
-            "alright",
-            "sounds good",
-            "sure",
-            "fine",
-            "keep going",
-            "continue",
-            "go ahead",
-            "alright sounds good",
-            "sure sounds good",
-            "request interrupted",
-            "request interrupted by user",
-        ]
-        .contains(&normalized.as_str())
+    !normalized.is_empty() && !discourse::only(&normalized)
 }
 
 /// Provider-delivered background events can occupy a user-role record. Exclude
