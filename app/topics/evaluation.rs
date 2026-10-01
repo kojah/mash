@@ -318,6 +318,7 @@ struct Cluster {
 struct Report {
     mode: Mode,
     label_text: labels::TextMode,
+    label_discourse: labels::DiscourseMode,
     label_shortlist: labels::shortlist::Policy,
     radius: f64,
     routing: super::birch::Routing,
@@ -358,6 +359,7 @@ struct Report {
 struct RejectedRun {
     mode: Mode,
     label_text: labels::TextMode,
+    label_discourse: labels::DiscourseMode,
     label_shortlist: labels::shortlist::Policy,
     radius: f64,
     routing: super::birch::Routing,
@@ -449,6 +451,7 @@ fn run(
     let label_ms = start.elapsed().as_secs_f64() * 1000.0;
     Ok(Report {
         label_text: labels::text_mode(),
+        label_discourse: labels::discourse_mode(),
         label_shortlist: labels::shortlist::policy(),
         mode,
         radius,
@@ -568,6 +571,7 @@ fn benchmark_topic_discovery() {
                     Err(error) => {
                         let rejected = RejectedRun {
                             label_text: labels::text_mode(),
+                            label_discourse: labels::discourse_mode(),
                             label_shortlist: labels::shortlist::policy(),
                             mode,
                             radius,

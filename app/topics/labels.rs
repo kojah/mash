@@ -1,6 +1,7 @@
 //! Class-normalized TF-IDF labels; memberships may contribute to several topics.
 mod discourse;
 mod links;
+mod projection;
 pub(super) mod ranking;
 pub(super) mod shortlist;
 use serde::Serialize;
@@ -8,6 +9,21 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 pub(super) type Terms = BTreeMap<String, u64>;
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum DiscourseMode {
+    Raw,
+    MaskContinuations,
+}
+
+pub(super) fn discourse_mode() -> DiscourseMode {
+    if std::env::var_os("MASH_TEST_TOPIC_LABEL_DISCOURSE").is_some() {
+        DiscourseMode::MaskContinuations
+    } else {
+        DiscourseMode::Raw
+    }
+}
 
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -25,11 +41,18 @@ pub(super) fn text_mode() -> TextMode {
 }
 
 fn label_text(text: &str) -> Cow<'_, str> {
-    match text_mode() {
+    let visible = match text_mode() {
         TextMode::Raw => Cow::Borrowed(text),
         TextMode::VisibleLinks => {
             let prefix: String = text.chars().take(4096).collect();
             Cow::Owned(links::visible(&prefix))
+        }
+    };
+    match discourse_mode() {
+        DiscourseMode::Raw => visible,
+        DiscourseMode::MaskContinuations => {
+            let prefix: String = visible.chars().take(4096).collect();
+            Cow::Owned(projection::mask(&prefix))
         }
     }
 }
