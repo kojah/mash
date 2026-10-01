@@ -1,13 +1,17 @@
 use super::*;
 use std::io::Write;
 
-struct Fixture {
-    store: Store,
-    identity: Identity,
+pub(super) struct Fixture {
+    pub(super) store: Store,
+    pub(super) identity: Identity,
 }
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_vector_index(VectorIndex::default()).await
+    }
+
+    pub(super) async fn with_vector_index(vector_index: VectorIndex) -> Self {
         let mut random = [0; 16];
         getrandom::fill(&mut random).unwrap();
         let group = format!("catalog-test-{}", blake3::hash(&random).to_hex());
@@ -16,6 +20,7 @@ impl Fixture {
             std::slice::from_ref(&group),
             384,
             32 * 1024 * 1024,
+            vector_index,
         )
         .await
         .unwrap();
@@ -28,7 +33,7 @@ impl Fixture {
         Self { store, identity }
     }
 
-    async fn upload(&self, revision: i64, title: &str) -> Result<Indexed, AppError> {
+    pub(super) async fn upload(&self, revision: i64, title: &str) -> Result<Indexed, AppError> {
         let mut vector = vec![0.0; 384];
         vector[0] = 127.0;
         let events = [
@@ -108,7 +113,7 @@ impl Fixture {
         (head, decode(&text).unwrap())
     }
 
-    async fn cleanup(self) {
+    pub(super) async fn cleanup(self) {
         let keys: Vec<String> = redis::cmd("KEYS")
             .arg(format!("{}*", prefix(&self.identity.group_id)))
             .query_async(&mut self.store.connection.clone())

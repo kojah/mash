@@ -150,6 +150,7 @@ impl Store {
                 ""
             })
             .arg(input.unit.candidate_limit())
+            .arg(self.vector_index.query_attributes())
             .query_async(&mut self.connection.clone())
             .await
             .map_err(redis_error)?;

@@ -809,6 +809,43 @@ node_id = "xenia"
 token_env = "MASH_XENIA_TOKEN"
 ```
 
+Exact cosine retrieval (Redis FLAT) is the default. To opt into approximate
+HNSW retrieval, add this table to the **server** configuration, before `[[nodes]]`:
+
+```toml
+[redis_vector_index]
+algorithm = "hnsw"
+m = 16
+ef_construction = 200
+ef_runtime = 200
+filter_policy = "auto"
+```
+
+Use `algorithm = "exact"` without HNSW parameters to retain exact retrieval.
+The setting applies to every group served by that process; node, CLI and MCP
+configuration stay the same. Local SQLite and PostgreSQL retrieval remain exact.
+`m` (2..128) and `ef_construction` (4..4096) control graph construction.
+`ef_runtime` (1..4096) controls query effort: higher values can improve recall
+at the cost of latency. These bounds limit configuration, not total memory.
+
+`filter_policy = "auto"` lets Redis choose graph batches or exact scoring of
+the filtered population. `"exact"` forces exact filtered scoring even with an
+HNSW index. `"batches"` forces graph traversal; only that policy accepts optional
+`batch_size` (1..4096). Omitting batch size lets Redis choose it dynamically.
+Our [filtered benchmark](benchmarks/2026-10-01-filtered-hnsw.md) found speedups
+for broad filters but recall losses and severe latency tails for other filters.
+Approximate retrieval always respects filters; it may miss closer qualifying
+neighbors or return fewer candidates. Lexical retrieval, fusion and reranking
+retain their existing behavior.
+
+Changing the algorithm, `m`, `ef_construction`, or dimensions of an existing
+group is rejected at startup, preserving its stored data. Restore its matching
+settings or configure a new `group_id` on the server and publishing nodes, then
+run explicit indexing to populate that group. mash does not automatically drop
+or rebuild existing indexes. Runtime effort and filter policy can change on
+restart without republishing. Startup verifies the actual installed schema and
+waits up to five minutes for background index initialization before listening.
+
 Use Redis with Search support, such as Redis 8 or Redis Stack, rather than a
 key-value-only Redis installation. A local development instance can run with:
 
@@ -826,8 +863,8 @@ network. Keep database credentials on the service. Configure persistence and
 This implementation targets a single Redis instance; it does not configure a
 Redis Cluster deployment.
 
-Each group gets a separate full-text/vector index. Redis uses exact `FLAT` cosine
-search over the same 384-dimensional quantized embeddings, followed by node-side
+Each group gets a separate full-text/vector index. Redis defaults to exact `FLAT`
+cosine search with opt-in HNSW over the configured embeddings, followed by node-side
 RRF and reranking. Provider/age filters, context-only tool output, per-node
 ownership, checkpoints, tombstones, and freshness are supported. Its lexical
 retrieval uses Redis token matching and ranking; PostgreSQL web-search operators
@@ -1002,9 +1039,10 @@ Other platforms retain atomic activation without these Unix flush barriers.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
-exact cosine scans the shared corpus. There is no ANN index or automatic shared service deployment. The API keeps the
-current exact retrieval behavior; add approximate indexing only after measuring
-the corpus size, latency, and recall tradeoffs.
+exact retrieval scores the matching shared vectors. Redis also supports opt-in
+HNSW as described above; its filtered policy can still choose exact scoring.
+Shared-service provisioning remains explicit. Measure corpus size, latency and
+recall tradeoffs before choosing approximate retrieval.
 
 ## Remote embeddings
 

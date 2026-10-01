@@ -18,7 +18,7 @@ if ARGV[1] ~= '' then
         'WITHSCORES', 'VERBATIM', 'NOSTOPWORDS', 'RETURN', 5, 'record', 'node_id', 'provider', 'projection', 'conversation_record',
         'LIMIT', 0, tonumber(ARGV[6]), 'TIMEOUT', 30000, 'DIALECT', 2)
 end
-local query = '(' .. active .. ' @searchable:[1 1]' .. ARGV[2] .. ')=>[KNN ' .. ARGV[6] .. ' @vector $BLOB AS distance]'
+local query = '(' .. active .. ' @searchable:[1 1]' .. ARGV[2] .. ')=>[KNN ' .. ARGV[6] .. ' @vector $BLOB AS distance]' .. ARGV[7]
 local semantic = redis.call('FT.SEARCH', KEYS[2], query, 'WITHSCORES',
     'RETURN', 6, 'record', 'node_id', 'provider', 'projection', 'distance', 'conversation_record',
     'SORTBY', 'distance', 'ASC', 'LIMIT', 0, tonumber(ARGV[6]), 'TIMEOUT', 30000,

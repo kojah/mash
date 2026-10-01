@@ -682,6 +682,7 @@ impl Service {
                     &[group.clone(), format!("{group}-other")],
                     dimensions,
                     max_node_bytes,
+                    super::super::redis_index::VectorIndex::default(),
                 )
                 .await
                 .unwrap(),

@@ -52,6 +52,8 @@ struct Configuration {
     max_connections: usize,
     #[serde(default = "default_redis_node_mib")]
     redis_max_node_mib: usize,
+    #[serde(default)]
+    redis_vector_index: super::redis_index::VectorIndex,
     #[serde(default = "default_uploads")]
     max_concurrent_uploads: usize,
     nodes: Vec<AuthorizedNode>,
@@ -234,6 +236,14 @@ fn env_name(name: &str) -> Result<(), AppError> {
     Ok(())
 }
 fn identities(config: &Configuration) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
+    config.redis_vector_index.validate()?;
+    if matches!(config.backend, BackendChoice::Postgres)
+        && config.redis_vector_index != (super::redis_index::VectorIndex::Exact {})
+    {
+        return Err(AppError::configuration(
+            "redis_vector_index HNSW settings require backend=redis",
+        ));
+    }
     if !(1..=16).contains(&config.max_concurrent_uploads) {
         return Err(AppError::configuration(
             "max_concurrent_uploads must be between 1 and 16",
@@ -628,6 +638,7 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
                                 "Redis snapshot limit exceeds platform capacity",
                             )
                         })?,
+                    config.redis_vector_index,
                 )
                 .await?,
             )

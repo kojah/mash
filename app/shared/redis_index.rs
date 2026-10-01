@@ -7,10 +7,16 @@ mod payload;
 mod publish;
 mod read;
 mod response;
+mod vector_index;
+
+pub(super) use vector_index::VectorIndex;
 
 #[cfg(test)]
 #[path = "redis_index/tests/catalog.rs"]
 mod catalog_tests;
+#[cfg(test)]
+#[path = "redis_index/tests/vector_index.rs"]
+mod vector_index_tests;
 
 use crate::provider::Provider;
 use std::collections::BTreeMap;
@@ -53,6 +59,7 @@ struct CanonicalManifest {
 pub(super) struct Store {
     connection: ConnectionManager,
     max_node_bytes: usize,
+    vector_index: VectorIndex,
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Head {
@@ -220,12 +227,15 @@ fn timestamp(value: Option<String>) -> Result<Option<String>, AppError> {
         .transpose()
 }
 impl Store {
+    #[tracing::instrument(name = "redis_index_initialize", skip_all, fields(vector_algorithm = vector_index.algorithm()))]
     pub(super) async fn connect(
         url: &str,
         groups: &[String],
         dimensions: usize,
         max_node_bytes: usize,
+        vector_index: VectorIndex,
     ) -> Result<Self, AppError> {
+        vector_index.validate()?;
         let client = redis::Client::open(url)
             .map_err(|_| AppError::configuration("invalid server Redis connection string"))?;
         let config = redis::aio::ConnectionManagerConfig::new()
@@ -271,43 +281,8 @@ impl Store {
                 ));
             }
             if !exists.contains(&name) {
-                let created: Result<(), _> = redis::cmd("FT.CREATE")
-                    .arg(&name)
-                    .arg("ON")
-                    .arg("HASH")
-                    .arg("PREFIX")
-                    .arg(1)
-                    .arg(document_prefix(group))
-                    .arg("STOPWORDS")
-                    .arg(0)
-                    .arg("SCHEMA")
-                    .arg(fields::VERSION)
-                    .arg("TAG")
-                    .arg(fields::CONVERSATION)
-                    .arg("TAG")
-                    .arg(fields::PROVIDER_TAG)
-                    .arg("TAG")
-                    .arg(fields::ORDINAL)
-                    .arg("NUMERIC")
-                    .arg("SORTABLE")
-                    .arg(fields::CREATED_AT)
-                    .arg("NUMERIC")
-                    .arg(fields::SEARCHABLE)
-                    .arg("NUMERIC")
-                    .arg(fields::PROJECTION)
-                    .arg("TEXT")
-                    .arg("NOSTEM")
-                    .arg(fields::VECTOR)
-                    .arg("VECTOR")
-                    .arg("FLAT")
-                    .arg(6)
-                    .arg("TYPE")
-                    .arg("FLOAT32")
-                    .arg("DIM")
-                    .arg(dimensions)
-                    .arg("DISTANCE_METRIC")
-                    .arg("COSINE")
-                    .query_async(&mut connection)
+                let created = vector_index
+                    .create(&mut connection, &name, &document_prefix(group), dimensions)
                     .await;
                 if created.is_err() {
                     let exists: Vec<String> = redis::cmd("FT._LIST")
@@ -319,11 +294,15 @@ impl Store {
                     }
                 }
             }
+            vector_index
+                .wait_until_ready(&mut connection, &name, dimensions)
+                .await?;
             extend_metadata_schema(&mut connection, &name).await?;
         }
         Ok(Self {
             connection,
             max_node_bytes,
+            vector_index,
         })
     }
 

@@ -20,7 +20,10 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 - Keep concrete local FastEmbed and remote HTTP embedding options with exact
   cosine search, RRF, and bounded local reranking. Support Voyage and the
   OpenAI-compatible embeddings API without provider traits or registries.
-- Do not add provider traits, registries, installed daemons, ANN indexes, compatibility
+- Redis vector retrieval defaults to exact FLAT and supports opt-in HNSW through
+  typed server configuration. Preserve filter/ownership/deletion correctness and
+  validate existing schemas without automatically dropping or rebuilding indexes.
+- Do not add provider traits, registries, installed daemons, compatibility
   shims, alternate output modes, a TUI, export, or analytics.
 - CLI searches may share an on-demand, per-user local worker. It must exit after
   60 seconds of inactivity, accept only searches, and preserve direct execution

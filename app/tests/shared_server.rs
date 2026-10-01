@@ -12,12 +12,18 @@ pub struct Server {
 }
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, false)
+        Self::start(root, group, nodes, false, None)
     }
     pub fn redis(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, true)
+        Self::start(root, group, nodes, true, None)
     }
-    fn start(root: &Path, group: &str, nodes: &[&str], redis: bool) -> Self {
+    fn start(
+        root: &Path,
+        group: &str,
+        nodes: &[&str],
+        redis: bool,
+        vector_index: Option<toml::Table>,
+    ) -> Self {
         let path = root.join("server.toml");
         let credentials: Vec<_> = nodes
             .iter()
@@ -30,7 +36,7 @@ impl Server {
                 }
             })
             .collect();
-        let config = if redis {
+        let mut config = if redis {
             toml::toml! {
                 version = 1
                 listen = "127.0.0.1:0"
@@ -46,6 +52,9 @@ impl Server {
                 nodes = (credentials.clone())
             }
         };
+        if let Some(index) = vector_index {
+            config.insert("redis_vector_index".into(), toml::Value::Table(index));
+        }
         std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
         let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
         command
@@ -116,6 +125,91 @@ fn assert_startup_rejected(config: &[u8], tokens: &[(&str, &str)], message: &str
 
 const STARTUP_NODE: &str = "\n[[nodes]]\ngroup_id = 'test-group'\nnode_id = 'test-node'\ntoken_env = 'MASH_STARTUP_TOKEN_A'\n";
 const STARTUP_TOKEN: &str = "startup-test-credential-with-32-bytes";
+
+#[test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+fn redis_hnsw_server_configuration_creates_the_selected_index() {
+    let root = tempfile::tempdir().unwrap();
+    let group = format!(
+        "hnsw-startup-{}",
+        root.path().file_name().unwrap().to_string_lossy()
+    );
+    let server = Server::start(
+        root.path(),
+        &group,
+        &["node"],
+        true,
+        Some(toml::toml! {
+            algorithm = "hnsw"
+            filter_policy = "batches"
+            batch_size = 128
+        }),
+    );
+    let prefix = format!("mash:r:{}:", blake3::hash(group.as_bytes()).to_hex());
+    let client = redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
+    let mut connection = client.get_connection().unwrap();
+    let info: Vec<redis::Value> = redis::cmd("FT.INFO")
+        .arg(format!("{prefix}index"))
+        .query(&mut connection)
+        .unwrap();
+    let attributes = info
+        .windows(2)
+        .find(|pair| {
+            redis::from_redis_value::<String>(pair[0].clone())
+                .is_ok_and(|name| name == "attributes")
+        })
+        .unwrap();
+    let attributes: Vec<Vec<redis::Value>> =
+        redis::from_redis_value(attributes[1].clone()).unwrap();
+    assert!(
+        attributes
+            .iter()
+            .any(|fields| fields.windows(2).any(|pair| {
+                redis::from_redis_value::<String>(pair[0].clone())
+                    .is_ok_and(|name| name == "algorithm")
+                    && redis::from_redis_value::<String>(pair[1].clone())
+                        .is_ok_and(|value| value == "HNSW")
+            }))
+    );
+    drop(server);
+    redis::cmd("FT.DROPINDEX")
+        .arg(format!("{prefix}index"))
+        .query::<()>(&mut connection)
+        .unwrap();
+    redis::cmd("UNLINK")
+        .arg(format!("{prefix}dimensions"))
+        .query::<i64>(&mut connection)
+        .unwrap();
+}
+
+#[test]
+fn server_rejects_invalid_vector_index_before_network_or_credentials() {
+    for (settings, message) in [
+        (
+            "backend = 'postgres'\n[redis_vector_index]\nalgorithm = 'hnsw'",
+            "require backend=redis",
+        ),
+        (
+            "[redis_vector_index]\nalgorithm = 'hnsw'\nm = 0",
+            "m=2..128",
+        ),
+        (
+            "[redis_vector_index]\nalgorithm = 'hnsw'\nbatch_size = 128",
+            "batch_size requires",
+        ),
+        (
+            "[redis_vector_index]\nalgorithm = 'exact'\nef_runtime = 100",
+            "invalid server configuration",
+        ),
+        (
+            "[redis_vector_index]\nalgorithm = 'hnsw'\nfilter_policy = 'unknown'",
+            "invalid server configuration",
+        ),
+    ] {
+        let document = format!("version = 1\n{settings}{STARTUP_NODE}");
+        assert_startup_rejected(document.as_bytes(), &[], message);
+    }
+}
 
 #[test]
 fn server_rejects_invalid_configuration_before_connecting() {
