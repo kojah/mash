@@ -108,6 +108,46 @@ fn routed_claude_plan_reconciles_changed_deleted_and_checkpointed_copies() {
 }
 
 #[test]
+fn routed_claude_publication_rejects_malformed_refresh_until_clean_retry() {
+    let fixture = Fixture::new();
+    let revision = fixture.refresh();
+    let baseline = plan(&fixture.database, revision, &fixture.scan(None), &[], false).unwrap();
+    let source = fixture.root.join("b.jsonl");
+    let original = std::fs::read_to_string(&source).unwrap();
+    std::fs::write(&source, format!("{original}\nnot-json\n")).unwrap();
+    let revision = fixture.refresh();
+    assert_eq!(
+        fixture.messages(&baseline),
+        ["common sentinel", "tail sentinel"]
+    );
+    let error = plan(
+        &fixture.database,
+        revision,
+        &fixture.scan(None),
+        &baseline.checkpoints,
+        false,
+    )
+    .err()
+    .unwrap();
+    assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
+
+    std::fs::write(&source, original).unwrap();
+    let revision = fixture.refresh();
+    let repaired = plan(
+        &fixture.database,
+        revision,
+        &fixture.scan(None),
+        &baseline.checkpoints,
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        fixture.messages(&repaired),
+        ["common sentinel", "tail sentinel"]
+    );
+}
+
+#[test]
 fn routed_claude_plan_rejects_stale_database_revision_and_source_content() {
     let fixture = Fixture::new();
     let revision = fixture.refresh();

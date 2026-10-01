@@ -1,5 +1,7 @@
 use super::*;
 
+mod malformed;
+
 #[test]
 fn identity_migration_reparses_checkpointed_claude_parent_and_agent() {
     let directory = tempfile::tempdir().unwrap();

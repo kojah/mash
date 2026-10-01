@@ -97,6 +97,9 @@ the structured partial counts. Correct the source or publication failure and run
 A partial initial run remains unready for search until a clean indexing attempt
 finishes. Malformed input alone does not invalidate an unchanged, previously
 completed local index.
+Malformed JSONL sources contribute no readable fragments to the index. Their
+last complete messages, vectors and checkpoint remain intact until a clean
+retry; healthy sources in the same run can still advance.
 Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
 newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
 The final command response stays JSON on stdout. Watching remains opt-in with

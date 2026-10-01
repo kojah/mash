@@ -576,21 +576,23 @@ fn apply_parsed_source(
         )?;
     }
     summary.malformed_records += parsed.malformed_records;
+    // Readable fragments cannot establish a complete source snapshot. Applying
+    // them would replace prior messages and vectors while retaining an old
+    // checkpoint, so leave the entire contribution untouched until a clean retry.
+    if parsed.malformed_records != 0 {
+        return Ok(false);
+    }
     if let Some(conversation) = parsed.conversation {
         apply_conversation(storage, &conversation, summary)?;
-    } else if parsed.malformed_records == 0
-        && storage.remove_source(provider, &result.source.history.identity)?
-    {
+    } else if storage.remove_source(provider, &result.source.history.identity)? {
         summary.purged_conversations += 1;
     }
-    if parsed.malformed_records == 0 {
-        storage.record_source_checkpoint(
-            provider,
-            &result.source.history.identity,
-            &result.source.stamp,
-        )?;
-    }
-    Ok(parsed.malformed_records == 0)
+    storage.record_source_checkpoint(
+        provider,
+        &result.source.history.identity,
+        &result.source.stamp,
+    )?;
+    Ok(true)
 }
 
 impl IndexProgress {
