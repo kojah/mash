@@ -10,18 +10,24 @@ pub struct Server {
     child: Child,
     pub url: String,
 }
+#[derive(Clone, Copy)]
+enum Backend {
+    Postgres,
+    Redis,
+    Default,
+}
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, false, None)
+        Self::start(root, group, nodes, Backend::Postgres, None)
     }
     pub fn redis(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, true, None)
+        Self::start(root, group, nodes, Backend::Redis, None)
     }
     fn start(
         root: &Path,
         group: &str,
         nodes: &[&str],
-        redis: bool,
+        backend: Backend,
         vector_index: Option<toml::Table>,
     ) -> Self {
         let path = root.join("server.toml");
@@ -36,21 +42,27 @@ impl Server {
                 }
             })
             .collect();
-        let mut config = if redis {
-            toml::toml! {
+        let mut config = match backend {
+            Backend::Redis => toml::toml! {
                 version = 1
                 listen = "127.0.0.1:0"
+                backend = "redis"
                 redis_url_env = "MASH_TEST_REDIS_URL"
                 nodes = (credentials.clone())
-            }
-        } else {
-            toml::toml! {
+            },
+            Backend::Postgres => toml::toml! {
                 version = 1
                 listen = "127.0.0.1:0"
                 backend = "postgres"
                 database_url_env = "MASH_TEST_PG_URL"
                 nodes = (credentials.clone())
-            }
+            },
+            Backend::Default => toml::toml! {
+                version = 1
+                listen = "127.0.0.1:0"
+                qdrant_url_env = "MASH_TEST_QDRANT_URL"
+                nodes = (credentials.clone())
+            },
         };
         if let Some(index) = vector_index {
             config.insert("redis_vector_index".into(), toml::Value::Table(index));
@@ -126,6 +138,43 @@ fn assert_startup_rejected(config: &[u8], tokens: &[(&str, &str)], message: &str
 const STARTUP_NODE: &str = "\n[[nodes]]\ngroup_id = 'test-group'\nnode_id = 'test-node'\ntoken_env = 'MASH_STARTUP_TOKEN_A'\n";
 const STARTUP_TOKEN: &str = "startup-test-credential-with-32-bytes";
 
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_default_server_configuration_starts_and_creates_group_collections() {
+    let root = tempfile::tempdir().unwrap();
+    let group = format!(
+        "default-startup-{}",
+        root.path().file_name().unwrap().to_string_lossy()
+    );
+    let server = Server::start(root.path(), &group, &["node"], Backend::Default, None);
+    let document = std::fs::read_to_string(root.path().join("server.toml")).unwrap();
+    assert!(!document.contains("backend"));
+    let origin = std::env::var("MASH_TEST_QDRANT_URL").unwrap();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let mut statuses = Vec::new();
+    for kind in ["state", "messages"] {
+        let collection = format!(
+            "mash_q_{}_{}",
+            blake3::hash(group.as_bytes()).to_hex(),
+            kind
+        );
+        let url = format!("{}/collections/{collection}", origin.trim_end_matches('/'));
+        statuses.push(client.get(&url).send().await.unwrap().status());
+        client
+            .delete(&url)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+    }
+    drop(server);
+    assert!(statuses.iter().all(reqwest::StatusCode::is_success));
+}
+
 #[test]
 #[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
 fn redis_hnsw_server_configuration_creates_the_selected_index() {
@@ -138,7 +187,7 @@ fn redis_hnsw_server_configuration_creates_the_selected_index() {
         root.path(),
         &group,
         &["node"],
-        true,
+        Backend::Redis,
         Some(toml::toml! {
             algorithm = "hnsw"
             filter_policy = "batches"
@@ -304,9 +353,18 @@ fn server_rejects_missing_invalid_and_duplicate_credentials() {
 #[test]
 fn server_rejects_backend_credential_configuration_mixups() {
     for (setting, message) in [
-        ("", "Redis requires redis_url_env"),
+        ("", "Qdrant requires qdrant_url_env"),
         (
             "database_url_env = 'MASH_UNUSED_DATABASE'",
+            "Qdrant backend does not accept database_url_env",
+        ),
+        (
+            "redis_url_env = 'MASH_UNUSED_REDIS'",
+            "Qdrant backend does not accept database_url_env or redis_url_env",
+        ),
+        ("backend = 'redis'", "Redis requires redis_url_env"),
+        (
+            "backend = 'redis'\ndatabase_url_env = 'MASH_UNUSED_DATABASE'",
             "Redis backend does not accept database_url_env",
         ),
         (
@@ -318,7 +376,7 @@ fn server_rejects_backend_credential_configuration_mixups() {
             "PostgreSQL backend does not accept redis_url_env",
         ),
         (
-            "redis_url_env = '1INVALID'",
+            "backend = 'redis'\nredis_url_env = '1INVALID'",
             "invalid credential environment variable name",
         ),
     ] {
@@ -334,7 +392,7 @@ fn server_rejects_backend_credential_configuration_mixups() {
 fn qdrant_server_rejects_incompatible_settings_before_network_access() {
     for (settings, message) in [
         (
-            "qdrant_url_env = 'MASH_QDRANT_URL'",
+            "backend = 'redis'\nqdrant_url_env = 'MASH_QDRANT_URL'",
             "require backend=qdrant",
         ),
         ("backend = 'qdrant'", "Qdrant requires qdrant_url_env"),

@@ -62,8 +62,8 @@ impl Default for EmbeddingSpace {
 #[serde(rename_all = "lowercase")]
 pub(super) enum BackendChoice {
     Postgres,
-    #[default]
     Redis,
+    #[default]
     Qdrant,
 }
 

@@ -393,31 +393,27 @@ impl Client {
             .await
             .map_err(|_| failure())?;
         if exists.status() == StatusCode::NOT_FOUND {
-            let vectors = dimensions
-                .map(|size| {
-                    BTreeMap::from([(
-                        "dense".into(),
-                        DenseConfig {
-                            size,
-                            distance: "Cosine".into(),
-                            quantization_config: None,
-                            hnsw_config: None,
-                            multivector_config: None,
-                            datatype: None,
-                        },
-                    )])
-                })
-                .unwrap_or_default();
-            let sparse_vectors = dimensions
-                .map(|_| {
-                    BTreeMap::from([(
-                        "lexical".into(),
-                        SparseConfig {
-                            modifier: "idf".into(),
-                        },
-                    )])
-                })
-                .unwrap_or_default();
+            let vectors = dimensions.map_or_else(BTreeMap::new, |size| {
+                BTreeMap::from([(
+                    "dense".into(),
+                    DenseConfig {
+                        size,
+                        distance: "Cosine".into(),
+                        quantization_config: None,
+                        hnsw_config: None,
+                        multivector_config: None,
+                        datatype: None,
+                    },
+                )])
+            });
+            let sparse_vectors = dimensions.map_or_else(BTreeMap::new, |_| {
+                BTreeMap::from([(
+                    "lexical".into(),
+                    SparseConfig {
+                        modifier: "idf".into(),
+                    },
+                )])
+            });
             let create = Create {
                 vectors,
                 sparse_vectors,

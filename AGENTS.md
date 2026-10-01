@@ -10,7 +10,7 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
 - Use an authenticated Axum HTTP API backed by PostgreSQL/pgvector (tokio-postgres)
-  or Redis Search or Qdrant for one shared index per configured
+  or Redis Search or Qdrant (the default) for one shared index per configured
   node group. Support local-only, shared-only without SQLite, and both indexing,
   with independent provider allowlists. Keep local operations offline-capable.
   Only the HTTP service accesses PostgreSQL, Redis, or Qdrant. Never restore SSH query fan-out.

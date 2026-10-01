@@ -13,7 +13,7 @@ SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
 cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
-The service uses Redis Search by default, with PostgreSQL + pgvector as an alternative.
+The service uses Qdrant by default, with Redis Search and PostgreSQL + pgvector as alternatives.
 
 ## Commands
 
@@ -708,6 +708,18 @@ mash list-threads --provider codex --title-contains cbioportal --limit 10
 mash search 'database migration' --unit messages --provider codex --conversation THREAD_ID
 ```
 
+The shared HTTP service defaults to [Qdrant](#qdrant-backend-default). Configure
+`qdrant_url_env` and omit `backend`, or explicitly select `backend = "qdrant"`.
+Redis Search and PostgreSQL/pgvector remain available with an explicit backend.
+One service uses one backend for all its groups. Changing backends creates a
+separate index: run `mash index` on each publishing node to populate it. Existing
+Redis configurations that omitted `backend` must add `backend = "redis"` before
+upgrading; mash rejects their Redis credentials under the Qdrant default rather
+than silently selecting another database. An explicit backend selection preserves
+the current index.
+
+### PostgreSQL backend (optional)
+
 Provision PostgreSQL with the pgvector extension installed. For local development:
 
 ```bash
@@ -787,10 +799,9 @@ request; ordinary JSON requests are limited to 64 KiB. Request timeouts and pool
 limits bound work. Source checkpoints use revisions to reject concurrent stale
 uploads; retry indexing after a conflict. Full snapshot retries are idempotent.
 
-### Redis backend (default)
+### Redis backend (optional)
 
-Redis is the default HTTP service backend. Set `redis_url_env` and omit `backend`,
-or select `backend = "redis"` explicitly. Select `backend = "postgres"` for
+Set `redis_url_env` and select `backend = "redis"` explicitly. Select `backend = "postgres"` for
 PostgreSQL/pgvector. Node configuration and MCP tools
 stay the same; nodes still use an API URL and their node token. One service uses
 one storage backend for all its groups. Changing the backend creates a separate
@@ -1045,12 +1056,12 @@ HNSW as described above; its filtered policy can still choose exact scoring.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
 recall tradeoffs before choosing approximate retrieval.
 
-### Qdrant backend (optional)
+### Qdrant backend (default)
 
-Select `backend = "qdrant"` on the HTTP service. Nodes continue using the same
+Omit `backend` or select `backend = "qdrant"` on the HTTP service. Nodes continue using the same
 API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
 required for conditional node publication; older versions are rejected before
-creating collections. Redis remains the default pending an end-to-end evaluation.
+creating collections. Exact vector retrieval remains the default; HNSW is opt-in.
 
 ```toml
 version = 1
