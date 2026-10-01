@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+#[cfg(test)]
+#[path = "remote/tests/faults.rs"]
+mod faults;
+
 #[derive(Serialize)]
 #[serde(untagged)]
 enum Request<'a> {

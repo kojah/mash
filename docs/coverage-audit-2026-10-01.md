@@ -78,3 +78,15 @@ This measurement and worker-profile fix are tracked by `mash-c0d.8.16` and
 `mash-c0d.8.17`. The broader audit (`mash-c0d.8`), live-provider compatibility,
 labeled relevance evaluation, fleet latency goals and exact-revision deployment
 verification remain open.
+
+## Remote embedding HTTP faults
+
+Follow-up `mash-c0d.8.18` exercises a real chunked HTTP response exceeding 2 MiB
+and a connection closed before its declared body length. Both produce sanitized
+typed inference errors: oversized bodies are nonretryable and interrupted bodies
+are retryable. Core indexing contracts verify no vectors or readiness marker are
+published after either fault, then complete indexing using a healthy endpoint
+without installing local models. Parsed history may remain as resumable work;
+the test does not claim whole-index rollback or shared-server publication.
+
+These additional regressions are not part of the instrumented counts above.
