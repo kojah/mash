@@ -10,6 +10,21 @@ pub(super) fn only(normalized: &str) -> bool {
         "continue from where you left off",
         "continue where you left off",
         "pick up where you left off",
+        "let s tackle those next items then",
+        "let s go ahead and implement then",
+        "let s do all of em then",
+        "let s do that instead then",
+        "let s optimize it then",
+        "let s fix all of these",
+        "let s fix all of em",
+        "let s keep going then",
+        "let s continue then",
+        "let s do that then",
+        "let s do it then",
+        "actually nvm just fix em",
+        "nvm just fix em",
+        "can we keep investigating",
+        "keep investigating",
         "let s keep going",
         "let s go ahead",
         "let s continue",
@@ -35,6 +50,9 @@ pub(super) fn only(normalized: &str) -> bool {
         "sure",
         "fine",
         "great",
+        "very nice",
+        "nice",
+        "i agree",
         "continue",
         "please",
     ];
@@ -59,6 +77,12 @@ fn complete_continuations_are_not_new_topic_evidence() {
         "continue from where you left off",
         "please try again",
         "request interrupted by user for tool use",
+        "sounds good let s do it then",
+        "sure let s tackle those next items then",
+        "sounds good let s do all of em then",
+        "actually nvm just fix em",
+        "nice nice nice let s do it",
+        "sounds good let s optimize it then",
     ] {
         assert!(only(text), "{text}");
     }
@@ -71,6 +95,13 @@ fn complete_continuations_are_not_new_topic_evidence() {
         "hello world",
         "surely",
         "request interrupted by user for tool use explain why",
+        "let s fix all of these redis indexes",
+        "nvm just fix em by batching sqlite writes",
+        "keep investigating the race issue",
+        "nice tracing policy",
+        "let s do it then measure latency",
+        "yes let s do a and b",
+        "nvm",
     ] {
         assert!(!only(text), "{text}");
     }

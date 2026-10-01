@@ -76,7 +76,17 @@ pub(super) fn substantive(text: &str) -> bool {
     if text.chars().count() > 256 {
         return true;
     }
-    let normalized = text
+    // Some saved prose contains literal HTML spacing. Decode only known space
+    // entities for complete-continuation recognition; never rewrite evidence,
+    // decode arbitrary HTML, or interpret unknown entities as punctuation.
+    let spaced = text
+        .replace("&#x20;", " ")
+        .replace("&#32;", " ")
+        .replace("&#xa0;", " ")
+        .replace("&#xA0;", " ")
+        .replace("&#160;", " ")
+        .replace("&nbsp;", " ");
+    let normalized = spaced
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .map(str::to_lowercase)
@@ -149,6 +159,10 @@ fn topic_input_filter_omits_only_short_exact_acknowledgments() {
         "sounds good.",
         "OK",
         "[Request interrupted by user]",
+        "sounds good, let’s do it then!",
+        "yes, sounds good.&#x20;\n",
+        "keep going&#x20;\n",
+        "sure&nbsp;let’s&#32;do&#160;it&#xa0;then&#xA0;",
         "",
     ] {
         assert!(!substantive(text));
@@ -159,6 +173,13 @@ fn topic_input_filter_omits_only_short_exact_acknowledgments() {
         "hello world",
         "Redis",
         "hi there is a bug",
+        "yes, sounds good.&#x20;Please fix PostgreSQL.",
+        "encode &#x20; in HTML",
+        "sounds good &future;",
+        "yes, sounds good.&#x20",
+        "yes, sounds good.&#x21;",
+        "sounds good let's do (A)",
+        "NVM",
     ] {
         assert!(substantive(text));
     }
