@@ -3685,6 +3685,72 @@ No setting is promoted or receives confirmatory inference from this calibration.
 Next compare substantially different source-grounded multi-topic representations/
 discovery with independent semantic judgments and genuinely new groups.
 
+\subsection{Overlapping lexical discovery and a literal source-term control}
+Review primary-source alternatives before a graph prototype. TopicMapping
+filters a frequency-aware word co-occurrence network, applies Infomap and then
+refines nonexclusive memberships with a PLSA-like model\cite{topicmapping};
+hard word communities alone omit that refinement. Hierarchical SBM uses a
+document--word bipartite count network with hierarchical/overlapping memberships
+and graph-tool inference\cite{networktopics}. Online LDA supplies stochastic
+count-mixture updates with fixed K\cite{onlinelda}. These provide different
+comparators; published results do not establish coding-session quality, ingestion
+cost, stable topic IDs or edit/delete behavior for Mash. No generative LLM calls
+are required for these statistical count models. None is implemented here.
+
+Preregister a cheaper literal source-term membership control on only the exposed
+64 calibration questions and 2,016 natural pairs. Retain the old source-only
+8,192-term vocabulary (transductive 128 selected plus 72 background sources),
+title-once/distinct-body counts and equal title/body mass. Verify original score
+AST and frozen singleton outputs. One DF vote/question; eligible terms have DF
+at least 2/3 and at most .20/.40 of 64, with one alphabetic code point. This
+numeric-only exclusion is exploratory and can omit meaningful error codes;
+retain original text. Rank source-supported positive c-TF-IDF/background-IDF
+scores with lexical ties and assign 1/3/8 terms per question. Literal shared
+terms predict pair links. All 24 settings preserve the .70 precision/20-link
+gate and explicit no-winner result. References never enter features or seeds.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+Budget & Best eligible-count precision & TP/FP & Recall & Topics\\
+\midrule
+1 & No setting with 20 links & --- & --- & 54--60\\
+3 & .200 & 9/36 & .0928 & 158\\
+8 & .111 & 25/200 & .2577 & 352\\
+\bottomrule
+\end{tabular}
+\caption{Rejected literal source-term controls. Budgets three/eight show the
+best precision with sufficient predicted links, not selected winners.}
+\end{table}
+
+No setting passes. All questions receive memberships, but coverage does not
+prove relevance. Budget one predicts only 5--13 links. Best rows use DF2 and
+background IDF, with maximum fractions .40/.20; they emit 192/512 memberships
+and match 16/22 of 33 eligible exact source tags (208 total reference tags).
+DF3 has only 20 eligible reference tags. DF2 candidate sizes are 649/671,
+DF3 315/337. Source DF differs from the number of questions selecting a term.
+Common emitted words include content, div, const and getting; literal presence
+does not establish a selective concrete subject. Synonyms separate and senses
+conflate, while one-source aspects cannot become eligible seeds. Community tags
+remain incomplete lexical proxies, not full semantic equivalence. This control
+does not test graph communities or probabilistic refinement and creates no
+semantic ancestor hierarchy. Avoid adding example-specific stopwords after
+observing failures.
+
+Fresh processes repeat all non-timing fields. Diagnostic work takes 1.143/1.065
+seconds; total after imports is 1.862/1.661 seconds, zero new inference. The
+prior unit inference remains charged. Independent sparse-count reconstruction
+verifies raw/equal-mass hashes, DF, score formulas, masks, full-sort labels,
+whole-original-source support, memberships/maps, all 48,384 pair decisions and
+metrics/naming counts. All 263 lab tests pass. No full-ingestion, memory, lifecycle
+or Rust parity gate follows. First/repeat capture SHA256:
+\path{b5b399caad99c1b7d077521c6918d55623f6aee8e1142f1c9e23d20e353ceeb9},
+\path{05e1ed2fdde0b67c697ff834b7260f988115023ac8acbdcdcb3a75e55d935ecd}.
+Next freeze a graph-based mixed-membership comparison with independent semantic
+judgments, genuinely new evaluation groups and measured graph/statistics refresh
+costs. Literal count updates alone do not establish cheap, stable topic updates.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

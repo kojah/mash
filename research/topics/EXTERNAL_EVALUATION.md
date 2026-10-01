@@ -202,6 +202,13 @@ grid. No cutoff is relaxed and no fallback receives evaluation on already
 exposed reserved outcomes. A post-hoc reference-only feasibility check is an
 oracle sanity bound, never source features or a production topic method.
 
+The [literal lexical multi-membership control](../../benchmarks/2026-10-02-overlapping-lexical-topics.md)
+also uses only the exposed calibration cohort and the old transductive source
+vocabulary. None of its 24 frozen settings passes; broader membership budgets
+increase shared-tag recall and false links together. Exact names, source DF and
+assigned-topic support are distinct. This does not evaluate TopicMapping, hSBM
+or independent semantic ancestors; no production method is selected.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.

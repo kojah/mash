@@ -996,6 +996,15 @@ Source/lexical/unit reconstruction, all pair counts, exact repeats and 259 tests
 pass. This negative development calibration motivates a different representation
 or discovery approach; it does not establish semantic quality or select a method.
 
+The [overlapping lexical research and control](../../benchmarks/2026-10-02-overlapping-lexical-topics.md)
+reviews TopicMapping, hierarchical document-word SBM and online LDA as distinct
+non-LLM candidates. `lexical_memberships.py` tests literal source-term memberships
+before graph inference: 24 frozen configurations fail the unchanged shared-tag
+gate. Sources/counts/formulas, all pair decisions and exact repeats are verified;
+263 tests pass. This baseline is not a paper-method replication, semantic
+hierarchy or production online contract. Graph/mixed-membership discovery needs
+its own experiment and independent semantic evaluation in `mash-c0d.19.2.35`.
+
 Run lab input-boundary tests:
 
 ```bash
