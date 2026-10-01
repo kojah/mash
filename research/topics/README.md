@@ -386,6 +386,47 @@ pass, including stopword/punctuation boundaries, identifiers and source-support
 checks that cannot combine records or skip words. Next improve source topical
 units and metadata/endorsement handling before evaluating automatic discovery.
 
+## Oracle resolution-aware label inputs
+
+`contextual_labels.py` holds the source-adjacent c-TF-IDF extractor and 18 reviewed
+subject supports fixed while comparing all admitted user supports, content-only
+supports, and content plus bounded exchanges for oracle-resolved task references.
+Metadata selectors, interaction prompts and unresolved references are excluded
+from the last control. Previous user framing and referential records do not enter
+its label units; intact preceding assistant prose does. The current task-reference
+anchor remains present, preserving corrections rather than deleting their text.
+Sources are deduplicated by thread/ordinal within subjects and in each background.
+The shared `bounded_exchange` helper preserves the embedding control's whole
+exchange/omission/record-cap behavior. There are no model calls.
+
+Run with database, partition, boundary/source-review, contexts and reference-review
+inputs as above and a fresh output. Oracle resolution labels gate source selection
+in this diagnostic; no automatic classifier is claimed. Reviewer names/rationales
+never become label text. The all-user baseline reproduces the preceding
+source-adjacent labels and scores exactly.
+
+| Label inputs | Retained anchors / 68 | Unique source units | Assistant units | Vocabulary | Keywords |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| All admitted user support | 68 | 68 | 0 | 796 | 135 |
+| Content only | 39 | 39 | 0 | 761 | 129 |
+| Content plus resolved-task exchange | 58 | 86 | 28 | 2,094 | 139 |
+
+Content-only changes five top-eight keyword sets; task context changes nine.
+Focused qualitative review finds useful recovery of witness persistence,
+cleanup/acquisition evidence and package-evaluation terms. It also imports a
+rejected project name into the remote-control topic despite keeping the user's
+correction. Some controls still return broad or conversational terms. Oracle task
+resolution establishes a referent, not endorsement of all preceding text. No
+method is selected or promoted; topical spans and endorsement/correction handling
+remain necessary. Shared undivided support still cannot distinguish two subjects
+within one source record.
+
+Repeated non-timing fields are identical. Selection, fitting and labels take
+roughly 7–21 ms per control in the first run; elapsed after imports is 517 ms,
+including corpus load. These measurements do not establish ingestion overhead
+or automatic semantic quality. Sixty-nine lab tests pass, including metadata
+exclusion, source preservation, framing exclusion and incomplete-context abstention.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current

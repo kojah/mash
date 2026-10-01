@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from context_selection import Selector, select
+from context_selection import bounded_exchange
 from episodes import read_cases, score
 from lexical_boundaries import admissions, direction, metrics
 from local_embeddings import Encoder
@@ -26,15 +26,8 @@ class Representation(StrEnum):
 def inputs(text: str, context: dict, referential: bool, method: Representation) -> tuple[str, ...]:
     if not referential or method == Representation.USER:
         return (text,)
-    entries = select(context, Selector.EXCHANGE)
-    # Do not silently turn an incomplete/missing display into a shorter exchange.
-    interval = []
-    for entry in reversed(context["display"]):
-        interval.append(entry)
-        if entry["role"] == "user":
-            break
-    if (not entries or len(entries) != len(interval) or len(entries) > 4
-            or (context["stop"] == "record-limit" and not any(e["role"] == "user" for e in interval))):
+    entries = bounded_exchange(context)
+    if not entries:
         return ()
     texts = tuple(e["text"] for e in entries) + (text,)
     return ("\n\n".join(texts),) if method == Representation.JOINED else texts

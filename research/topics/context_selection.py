@@ -32,6 +32,22 @@ def select(context: dict, method: Selector) -> tuple[dict, ...]:
     return tuple(reversed(candidates))
 
 
+def bounded_exchange(context: dict, maximum_records: int = 4) -> tuple[dict, ...]:
+    """Return the whole intact exchange, or abstain; never shorten around a gap."""
+    if maximum_records < 1:
+        raise ValueError("exchange record bound must be positive")
+    entries = select(context, Selector.EXCHANGE)
+    interval = []
+    for entry in reversed(context["display"]):
+        interval.append(entry)
+        if entry["role"] == "user":
+            break
+    if (not entries or len(entries) != len(interval) or len(entries) > maximum_records
+            or (context["stop"] == "record-limit" and not any(e["role"] == "user" for e in interval))):
+        return ()
+    return entries
+
+
 def evaluate(contexts: dict, judgments: tuple) -> dict:
     by_anchor = {(case["thread"], c["anchor"]["ordinal"]): c
                  for case in contexts["cases"] for c in case["contexts"]}

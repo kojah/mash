@@ -822,6 +822,45 @@ words. The implementation is \path{research/topics/phrase_labels.py}; private
 and has SHA256
 \path{0660d3825689e7f2c9fd8aa85a9b949502b1b501e5e8f78cb603a07832f9527c}.
 
+\subsection{Oracle resolution-aware label inputs}
+We hold source-adjacent c-TF-IDF extraction and the 18 reviewed subject supports
+fixed while changing label units: all admitted user support, content-only support,
+or content plus bounded exchanges for oracle-resolved task references. The last
+control excludes metadata selectors, interaction prompts and unresolved references.
+It retains intact preceding assistant prose but excludes prior user framing and
+referential records; the current task-reference anchor remains, including its
+corrections. Units are deduplicated by thread/ordinal within each subject and
+background. The shared bounded-exchange helper preserves omission, completeness
+and four-record caps from the embedding control. No model calls occur.
+
+This uses oracle resolution judgments to gate source selection; it does not
+evaluate or propose an automatic classifier. Reviewer names and rationales never
+enter label text. The all-user baseline reproduces the preceding source-adjacent
+keyword outputs and scores exactly. The three controls retain respectively
+68, 39 and 58 of 68 eligible anchors, producing 68, 39 and 86 unique source units.
+The contextual control includes 28 assistant units. Vocabularies contain
+796, 761 and 2,094 features; keyword counts are 135, 129 and 139.
+
+Content-only changes five top-eight keyword sets; task context changes nine.
+Focused exposed review finds more concrete witness-persistence,
+cleanup/acquisition-evidence and package-evaluation terms. However, the contextual
+control also imports a project name explicitly rejected by the user into the
+remote-control topic, despite retaining the correction. Broad and conversational
+terms remain. Resolving a task referent does not establish endorsement of every
+preceding proposal. These observations do not measure independent semantic
+precision or justify method promotion. Undivided identical support also leaves
+two distinct subjects indistinguishable. Source topical spans and
+endorsement/correction handling require further evaluation.
+
+A fresh repeat reproduces all non-timing fields. Selection, fitting and labels
+take approximately 7--21\,ms per control in the first run; elapsed after imports
+is 517\,ms including frozen corpus loading. These are not full-ingestion or
+online-maintenance costs. Sixty-nine lab tests pass, including metadata exclusion,
+source preservation, framing exclusion and incomplete-context abstention.
+The implementation is \path{research/topics/contextual_labels.py}; private
+\path{contextual-labels.json} has SHA256
+\path{71e0fb0c9d4204664288269b6a4642af69f7631a3f4e477701f82254ecffbac4}.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training
