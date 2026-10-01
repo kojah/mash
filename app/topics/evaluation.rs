@@ -289,12 +289,8 @@ struct Cluster {
     samples: u64,
     threads: usize,
     providers: BTreeMap<Provider, usize>,
-    terms: Vec<labels::Term>,
-    semantic_terms: Option<Vec<labels::ranking::SemanticTerm>>,
-    #[serde(skip)]
-    candidates: Vec<labels::Term>,
-    #[serde(skip)]
-    center: Vec<f64>,
+    #[serde(flatten)]
+    name: names::Name,
     examples: Vec<String>,
 }
 #[derive(Serialize)]
@@ -326,6 +322,8 @@ struct Report {
     maximum_topics_per_thread: usize,
     clusters: Vec<Cluster>,
     memberships: BTreeMap<String, BTreeSet<TopicId>>,
+    #[serde(skip)]
+    supporting_words: BTreeMap<String, BTreeMap<TopicId, labels::Terms>>,
 }
 
 #[derive(Serialize)]
@@ -363,10 +361,7 @@ fn label_clusters(
                 samples: *count,
                 threads: members.len(),
                 providers,
-                terms: candidates.iter().take(8).cloned().collect(),
-                semantic_terms: None,
-                candidates,
-                center: center.clone(),
+                name: names::Name::new(center.clone(), candidates),
                 examples: members.iter().take(6).map(|t| t.title.clone()).collect(),
             }
         })
@@ -442,6 +437,7 @@ fn run(
     let assignments::Assignments {
         memberships,
         classes,
+        supporting_words,
     } = assignments::assign(threads, &model, mode)?;
     let assignment_ms = start.elapsed().as_secs_f64() * 1000.0;
     let start = Instant::now();
@@ -478,7 +474,37 @@ fn run(
         maximum_topics_per_thread: memberships.values().map(BTreeSet::len).max().unwrap_or(0),
         clusters,
         memberships,
+        supporting_words,
     })
+}
+
+fn enrich(
+    report: &mut Report,
+    threads: &BTreeMap<String, Thread>,
+    mut labeler: Option<&mut names::Labeler>,
+) -> Result<(), crate::AppError> {
+    if let Some(labeler) = labeler.as_mut() {
+        let mut names: Vec<_> = report.clusters.iter_mut().map(|c| &mut c.name).collect();
+        report.semantic_labels = Some(labeler.apply(&mut names)?);
+    }
+    if std::env::var_os("MASH_TEST_TOPIC_HIERARCHY").is_some() {
+        let mut ancestry = ancestry::build(
+            threads,
+            &report.clusters,
+            &report.memberships,
+            &report.supporting_words,
+        )?;
+        report.supporting_words.clear();
+        if let Some(labeler) = labeler {
+            ancestry.label(labeler)?;
+        }
+        println!(
+            "hierarchy groups={} depth={} build_ms={:.1} inherit_ms={:.1}",
+            ancestry.groups, ancestry.maximum_depth, ancestry.build_ms, ancestry.inheritance_ms
+        );
+        report.ancestry = Some(ancestry);
+    }
+    Ok(())
 }
 
 #[test]
@@ -534,21 +560,7 @@ fn benchmark_topic_discovery() {
                         continue;
                     }
                 };
-                if let Some(labeler) = &mut labeler {
-                    report.semantic_labels = Some(labeler.apply(&mut report.clusters).unwrap());
-                }
-                if std::env::var_os("MASH_TEST_TOPIC_HIERARCHY").is_some() {
-                    let ancestry =
-                        ancestry::build(&threads, &report.clusters, &report.memberships).unwrap();
-                    println!(
-                        "hierarchy groups={} depth={} build_ms={:.1} inherit_ms={:.1}",
-                        ancestry.groups,
-                        ancestry.maximum_depth,
-                        ancestry.build_ms,
-                        ancestry.inheritance_ms
-                    );
-                    report.ancestry = Some(ancestry);
-                }
+                enrich(&mut report, &threads, labeler.as_mut()).unwrap();
                 std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
                 println!(
                     "{mode:?} radius={radius} reversed={reversed} threads={} samples={} topics={} fit_ms={:.1} assignment_ms={:.1} overlap={}",

@@ -1,6 +1,5 @@
 //! Class-normalized TF-IDF labels; memberships may contribute to several topics.
 pub(super) mod ranking;
-use super::TopicId;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -226,10 +225,10 @@ const STOP: &[&str] = &[
     clippy::cast_precision_loss,
     reason = "bounded prototype corpus term counters become floating-point TF-IDF weights"
 )]
-pub(super) fn labels(
-    classes: &BTreeMap<TopicId, Terms>,
+pub(super) fn labels<Id: Copy + Ord>(
+    classes: &BTreeMap<Id, Terms>,
     limit: usize,
-) -> BTreeMap<TopicId, Vec<Term>> {
+) -> BTreeMap<Id, Vec<Term>> {
     let mut global = Terms::new();
     let mut totals = BTreeMap::new();
     for (id, words) in classes {

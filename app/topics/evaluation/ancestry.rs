@@ -5,12 +5,19 @@ use crate::provider::Provider;
 use crate::topics::hierarchy::{GroupId, Hierarchy, NodeId};
 use serde::Serialize;
 use std::time::Instant;
+mod names;
+use super::{
+    labels,
+    names::{Labeler, Name, Summary},
+};
 
 #[derive(Serialize)]
 pub(super) struct GroupStats {
     id: GroupId,
     threads: usize,
     providers: BTreeMap<Provider, usize>,
+    #[serde(flatten)]
+    name: Name,
 }
 
 #[derive(Serialize)]
@@ -25,18 +32,58 @@ pub(super) struct Report {
     graph: Hierarchy,
     memberships: BTreeMap<String, BTreeSet<GroupId>>,
     stats: Vec<GroupStats>,
+    parent_label_ms: f64,
+    semantic_labels: Option<Summary>,
+}
+
+impl Report {
+    pub(super) fn label(&mut self, labeler: &mut Labeler) -> Result<(), AppError> {
+        let mut names: Vec<_> = self.stats.iter_mut().map(|g| &mut g.name).collect();
+        self.semantic_labels = Some(labeler.apply(&mut names)?);
+        Ok(())
+    }
+}
+
+fn group_names(
+    graph: &Hierarchy,
+    ancestors: &BTreeMap<TopicId, BTreeSet<GroupId>>,
+    direct: &BTreeMap<String, BTreeSet<TopicId>>,
+    evidence: &BTreeMap<String, BTreeMap<TopicId, labels::Terms>>,
+) -> Result<BTreeMap<GroupId, GroupStats>, AppError> {
+    let classes = names::classes(ancestors, direct, evidence)?;
+    let mut candidates = labels::labels(&classes, 64);
+    Ok(graph
+        .nodes
+        .iter()
+        .filter_map(|node| match node.id {
+            NodeId::Group(id) => Some((
+                id,
+                GroupStats {
+                    id,
+                    threads: 0,
+                    providers: BTreeMap::new(),
+                    name: Name::new(
+                        node.center.clone(),
+                        candidates.remove(&id).unwrap_or_default(),
+                    ),
+                },
+            )),
+            NodeId::Topic(_) => None,
+        })
+        .collect())
 }
 
 pub(super) fn build(
     threads: &BTreeMap<String, Thread>,
     clusters: &[Cluster],
     direct: &BTreeMap<String, BTreeSet<TopicId>>,
+    evidence: &BTreeMap<String, BTreeMap<TopicId, labels::Terms>>,
 ) -> Result<Report, AppError> {
     let start = Instant::now();
     let topics: Vec<_> = clusters
         .iter()
         .filter(|c| c.threads > 0)
-        .map(|c| (c.id, c.center.clone()))
+        .map(|c| (c.id, c.name.center.clone()))
         .collect();
     let graph = Hierarchy::new(384, &topics, &[0.75, 0.6, 0.45])?;
     let build_ms = start.elapsed().as_secs_f64() * 1000.0;
@@ -51,7 +98,9 @@ pub(super) fn build(
         }
     }
     let mut memberships = BTreeMap::new();
-    let mut stats: BTreeMap<GroupId, GroupStats> = BTreeMap::new();
+    let named_start = Instant::now();
+    let mut stats = group_names(&graph, &ancestors, direct, evidence)?;
+    let parent_label_ms = named_start.elapsed().as_secs_f64() * 1000.0;
     let mut deduplicated = 0;
     for (thread_id, topics) in direct {
         let thread = threads
@@ -68,11 +117,7 @@ pub(super) fn build(
         }
         deduplicated += contributions - inherited.len();
         for id in &inherited {
-            let entry = stats.entry(*id).or_insert_with(|| GroupStats {
-                id: *id,
-                threads: 0,
-                providers: BTreeMap::new(),
-            });
+            let entry = stats.get_mut(id).expect("ancestor groups were prepared");
             entry.threads += 1;
             *entry.providers.entry(thread.provider).or_default() += 1;
         }
@@ -80,7 +125,7 @@ pub(super) fn build(
     }
     Ok(Report {
         build_ms,
-        inheritance_ms: start.elapsed().as_secs_f64() * 1000.0,
+        inheritance_ms: (start.elapsed().as_secs_f64() * 1000.0 - parent_label_ms).max(0.0),
         groups: graph
             .nodes
             .iter()
@@ -93,6 +138,8 @@ pub(super) fn build(
         graph,
         memberships,
         stats: stats.into_values().collect(),
+        parent_label_ms,
+        semantic_labels: None,
     })
 }
 
@@ -109,10 +156,7 @@ fn inherited_counts_use_distinct_threads_across_overlapping_direct_tags() {
                 samples: 1,
                 threads: 1,
                 providers: BTreeMap::new(),
-                terms: Vec::new(),
-                semantic_terms: None,
-                candidates: Vec::new(),
-                center,
+                name: Name::new(center, Vec::new()),
                 examples: Vec::new(),
             }
         })
@@ -121,11 +165,23 @@ fn inherited_counts_use_distinct_threads_across_overlapping_direct_tags() {
     let mut second = super::anchored::thread(&[0]);
     second.provider = Provider::ClaudeCode;
     let threads = BTreeMap::from([("a".into(), first), ("b".into(), second)]);
-    let direct = BTreeMap::from([
+    let direct: BTreeMap<String, BTreeSet<TopicId>> = BTreeMap::from([
         ("a".into(), BTreeSet::from([TopicId(0), TopicId(1)])),
         ("b".into(), BTreeSet::from([TopicId(2)])),
     ]);
-    let report = build(&threads, &topics, &direct).unwrap();
+    let evidence = direct
+        .iter()
+        .map(|(thread, topics)| {
+            (
+                thread.clone(),
+                topics
+                    .iter()
+                    .map(|id| (*id, labels::terms("database")))
+                    .collect(),
+            )
+        })
+        .collect();
+    let report = build(&threads, &topics, &direct, &evidence).unwrap();
     assert_eq!(report.maximum_depth, 2);
     assert_eq!(report.maximum_inherited_tags, 2);
     assert_eq!(report.deduplicated_ancestor_contributions, 2);
@@ -141,5 +197,5 @@ fn inherited_counts_use_distinct_threads_across_overlapping_direct_tags() {
             .providers[&Provider::Codex],
         1
     );
-    assert!(build(&BTreeMap::new(), &topics, &direct).is_err());
+    assert!(build(&BTreeMap::new(), &topics, &direct, &evidence).is_err());
 }

@@ -10,6 +10,7 @@ struct Evidence {
 pub(super) struct Assignments {
     pub(super) memberships: BTreeMap<String, BTreeSet<TopicId>>,
     pub(super) classes: BTreeMap<TopicId, labels::Terms>,
+    pub(super) supporting_words: BTreeMap<String, BTreeMap<TopicId, labels::Terms>>,
 }
 
 fn evidence(
@@ -57,20 +58,30 @@ pub(super) fn assign(
 ) -> Result<Assignments, AppError> {
     let mut memberships = BTreeMap::new();
     let mut classes = BTreeMap::new();
+    let mut supporting_words = BTreeMap::new();
+    let capture = std::env::var_os("MASH_TEST_TOPIC_HIERARCHY").is_some();
     for (id, thread) in threads {
         let mut topics = BTreeSet::new();
+        let mut words = BTreeMap::new();
         for (topic, entry) in evidence(thread, model, mode)? {
             topics.insert(topic);
+            if capture {
+                words.insert(topic, entry.words.clone());
+            }
             let class = classes.entry(topic).or_insert_with(labels::Terms::new);
             for word in entry.words.into_keys() {
                 *class.entry(word).or_default() += 1;
             }
         }
         memberships.insert(id.clone(), topics);
+        if capture {
+            supporting_words.insert(id.clone(), words);
+        }
     }
     Ok(Assignments {
         memberships,
         classes,
+        supporting_words,
     })
 }
 

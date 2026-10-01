@@ -55,8 +55,20 @@ fn thread_discovery_with_segment_assignment_preserves_secondary_topic_matches() 
         .find(|cluster| &cluster.id == database_id)
         .unwrap();
     assert_eq!(database.threads, 2);
-    assert!(database.terms.iter().any(|term| term.text == "database"));
-    assert!(!database.terms.iter().any(|term| term.text == "frontend"));
+    assert!(
+        database
+            .name
+            .terms
+            .iter()
+            .any(|term| term.text == "database")
+    );
+    assert!(
+        !database
+            .name
+            .terms
+            .iter()
+            .any(|term| term.text == "frontend")
+    );
 }
 
 #[test]

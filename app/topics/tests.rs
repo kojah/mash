@@ -187,6 +187,6 @@ fn class_tfidf_labels_promote_specific_terms_and_keep_deterministic_ties() {
     let result = labels::labels(&classes, 3);
     assert_eq!(result[&TopicId(0)][0].text, "database");
     assert_eq!(result[&TopicId(1)][0].text, "frontend");
-    assert!(labels::labels(&std::collections::BTreeMap::new(), 5).is_empty());
+    assert!(labels::labels::<TopicId>(&std::collections::BTreeMap::new(), 5).is_empty());
     assert!(result.values().flatten().all(|term| term.score.is_finite()));
 }

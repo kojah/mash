@@ -1,5 +1,5 @@
 //! Explicit offline label experiment with bounded, generation-scoped vector reuse.
-use super::{Cluster, labels};
+use super::labels;
 use crate::AppError;
 use crate::semantic::{EmbeddingPool, Models};
 use serde::Serialize;
@@ -18,6 +18,26 @@ pub(super) struct Summary {
 pub(super) struct Labeler {
     pool: EmbeddingPool,
     cache: BTreeMap<String, Vec<f64>>,
+}
+
+#[derive(Serialize)]
+pub(super) struct Name {
+    pub(super) terms: Vec<labels::Term>,
+    pub(super) semantic_terms: Option<Vec<labels::ranking::SemanticTerm>>,
+    #[serde(skip)]
+    pub(super) candidates: Vec<labels::Term>,
+    #[serde(skip)]
+    pub(super) center: Vec<f64>,
+}
+impl Name {
+    pub(super) fn new(center: Vec<f64>, candidates: Vec<labels::Term>) -> Self {
+        Self {
+            terms: candidates.iter().take(8).cloned().collect(),
+            semantic_terms: None,
+            candidates,
+            center,
+        }
+    }
 }
 impl Labeler {
     pub(super) fn project_vectors(&mut self, texts: &[&str]) -> Result<Vec<Vec<f64>>, AppError> {
@@ -48,9 +68,9 @@ impl Labeler {
         }))
     }
 
-    pub(super) fn apply(&mut self, clusters: &mut [Cluster]) -> Result<Summary, AppError> {
+    pub(super) fn apply(&mut self, names: &mut [&mut Name]) -> Result<Summary, AppError> {
         let started = Instant::now();
-        let unique: BTreeSet<_> = clusters
+        let unique: BTreeSet<_> = names
             .iter()
             .flat_map(|c| c.candidates.iter().map(|t| t.text.clone()))
             .collect();
@@ -75,7 +95,7 @@ impl Labeler {
             }
         }
         let mut labeled = 0;
-        for cluster in clusters {
+        for cluster in names {
             let terms =
                 labels::ranking::rank(&cluster.center, &cluster.candidates, &self.cache, 8)?;
             labeled += usize::from(!terms.is_empty());
