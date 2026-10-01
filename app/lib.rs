@@ -23,6 +23,8 @@ mod storage;
 #[cfg(test)]
 mod test_support;
 mod thread_catalog;
+#[cfg(test)]
+mod topics;
 mod watch;
 #[cfg(unix)]
 mod worker;
