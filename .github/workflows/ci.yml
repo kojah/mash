@@ -76,10 +76,18 @@ jobs:
       - run: cargo fmt --check
       - name: Verify deployment gate
         run: python3 .github/scripts/test-deploy-gate.py
-      - uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
-        with:
-          tool: sqlc@1.31.1
-          fallback: none
+      - name: Install pinned sqlc release
+        run: |
+          mkdir -p "$RUNNER_TEMP/mash-sqlc"
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/sqlc-dev/sqlc/releases/download/v1.31.1/sqlc_1.31.1_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/mash-sqlc/sqlc.tar.gz"
+          printf '%s  %s\n' \
+            497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354 \
+            "$RUNNER_TEMP/mash-sqlc/sqlc.tar.gz" | sha256sum --check
+          tar --no-same-owner -xzf "$RUNNER_TEMP/mash-sqlc/sqlc.tar.gz" -C "$RUNNER_TEMP/mash-sqlc"
+          echo "$RUNNER_TEMP/mash-sqlc" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/mash-sqlc/sqlc" version
       - name: Install PostgreSQL query generator
         run: cargo install cornucopia --version 1.0.1 --locked
       - name: Verify generated database queries
