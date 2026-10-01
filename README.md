@@ -1343,6 +1343,11 @@ need neither this repository nor a Rust toolchain.
 
 Deployment requires `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`,
 `DEPLOY_SSH_PRIVATE_KEY`, and `DEPLOY_SSH_KNOWN_HOSTS` repository secrets.
+After the current-main check, a preflight verifies that all four are populated
+before starting either platform build. Missing credentials fail deployment with
+the missing secret names; credential values are never printed by this check.
+Successful CI alone does not confirm that any machine was updated: verify the
+deployment job and destination smoke checks too.
 
 ## License
 

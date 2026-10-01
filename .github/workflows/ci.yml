@@ -74,7 +74,9 @@ jobs:
           fallback: none
       - run: cargo fmt --check
       - name: Verify deployment gate
-        run: python3 .github/scripts/test-deploy-gate.py
+        run: |
+          python3 .github/scripts/test-deploy-gate.py
+          python3 .github/scripts/test-deploy-credentials.py
       - name: Install pinned sqlc release
         run: |
           mkdir -p "$RUNNER_TEMP/mash-sqlc"
