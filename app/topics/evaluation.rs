@@ -317,6 +317,11 @@ struct Cluster {
 }
 #[derive(Serialize)]
 struct Report {
+    discovery_algorithm: discovery::Algorithm,
+    discovery_input_fingerprint: String,
+    extraction_ms: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grinch: Option<super::grinch::topology::Snapshot>,
     mode: Mode,
     label_representation_policy: representatives::Policy,
     label_text: labels::TextMode,
@@ -359,6 +364,7 @@ struct Report {
 
 #[derive(Serialize)]
 struct RejectedRun {
+    discovery_algorithm: discovery::Algorithm,
     mode: Mode,
     label_representation_policy: representatives::Policy,
     label_text: labels::TextMode,
@@ -415,13 +421,17 @@ fn run(
     evidence_selection: Option<&provenance::Selection>,
 ) -> Result<Report, crate::AppError> {
     let discovery::Fit {
-        tree,
+        leaves,
+        depth,
+        grinch,
+        algorithm,
+        input_fingerprint,
+        extraction_ms,
         routing,
         samples,
         duplicates,
         elapsed_ms: fit_ms,
     } = discovery::fit(threads, mode, radius, reversed, holdout)?;
-    let leaves = tree.leaves();
     let microtopics = leaves.len();
     let group_similarity = mode.group_similarity();
     let start = Instant::now();
@@ -457,6 +467,10 @@ fn run(
     }
     let label_ms = start.elapsed().as_secs_f64() * 1000.0;
     Ok(Report {
+        discovery_algorithm: algorithm,
+        discovery_input_fingerprint: input_fingerprint,
+        extraction_ms,
+        grinch,
         label_representation_policy: representatives::policy(),
         label_text: labels::text_mode(),
         label_discourse: labels::discourse_mode(),
@@ -483,7 +497,7 @@ fn run(
         microtopics,
         group_similarity,
         grouping_ms,
-        cf_depth: tree.depth(),
+        cf_depth: depth,
         fit_ms,
         assignment_ms,
         label_ms,
@@ -578,6 +592,7 @@ fn benchmark_topic_discovery() {
                     Ok(report) => report,
                     Err(error) => {
                         let rejected = RejectedRun {
+                            discovery_algorithm: discovery::algorithm(),
                             label_representation_policy: representatives::policy(),
                             label_text: labels::text_mode(),
                             label_discourse: labels::discourse_mode(),

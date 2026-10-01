@@ -2,6 +2,8 @@
 mod birch;
 #[cfg(test)]
 mod evaluation;
+#[cfg(test)]
+mod grinch;
 mod grouping;
 mod hierarchy;
 mod labels;
