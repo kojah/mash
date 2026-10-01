@@ -3280,6 +3280,97 @@ and \path{2f6275cb4cc4cbf5b2016c34c452216f2e16348327cf63c8aadd9bb84e1e2fe2}.
 Independent agent-session/topic/ancestor judgments, persisted online lifecycle
 and guided-search evaluation remain required.
 
+\subsection{Zero-inference stored-vector reuse and recurring-input frequency}
+To complement public questions with actual coding histories, preregister a
+stored-vector diagnostic before outcomes. Open the original frozen SQLite
+snapshot read-only, verify generation/fingerprint/canonical partition, and
+exclude all 16 original/v2/v3 reviewed groups including aliases. Verify stored
+384D signed-byte dimensions, norms and generation; retain source identities,
+ordinals, exact projection hashes and raw vector hashes. Deduplicate identical
+within-thread inputs and reject conflicting vectors. This is frozen-direction
+validation, not full Python/Rust inference parity or upstream admission validation.
+Earlier geometry studies already exposed this corpus; results are development.
+
+Select 128 of 161 canonical threads with 2--128 distinct nonempty stored user
+projections using SHA256(seed \texttt{mash-stored-vector-reuse-v1-20261002} plus
+group bytes), without metadata or judgments. Only afterward read exact nonempty
+project identity as an ancillary reference, abstaining on missing values without
+resampling or path normalization. No project-name features, new inference,
+clustering or cutoff selection. The sample has 90 Codex/38 Claude Code threads,
+26 project identities, 1,812 distinct directions plus 38 duplicate occurrences,
+versus 8,888 original user records: only 20.8\% stored occurrence coverage.
+All 8,128 pairs have references, with 1,289 same-project positives, prevalence
+.15859. Same project is not semantic overlap; different projects can share topics.
+No private message/project strings are published.
+
+Compare normalized message-mean cosine, maximum cross-message cosine and the
+mean of both directional nearest-message cosine averages. The maximum is
+confounded by recurring inputs: 400 positive and 873 negative pairs share an
+identical projection; 401 positive and 876 negative pairs score at least
+$1-10^{-12}$. Some near-unit scores therefore lack exact input equality.
+No independent judgment establishes that repeated strings are filler.
+
+After observing this mechanism, freeze a separate post-hoc frequency control.
+Require the original capture/code hashes and count each exact input SHA once
+per thread, without reference metadata. With $N=128$ and input frequency $df$,
+set $w=[1+\log((N+1)/(df+1))]/[1+\log((N+1)/2)]$. Preserve every input/vector.
+Compare cosine of the normalized weighted sum and maximum cross-message cosine
+multiplied by both weights. The 1,642 unique inputs have $df=1$--47 and weights
+.38489--1. No thresholds, word labels, common-input removal or generative calls.
+This is whole-input frequency, not word IDF or semantic filler recognition.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrr}
+\toprule
+View & AP & AUC\\
+\midrule
+Message mean & .31535 & .58795\\
+Message maximum & .33121 & .60300\\
+Bidirectional nearest mean & .30906 & .54586\\
+Frequency-weighted mean & .33197 & .59783\\
+Frequency-weighted maximum & .36408 & .68657\\
+\bottomrule
+\end{tabular}
+\caption{Zero-inference ranking on an exposed incomplete coding-history sample.
+Exact project identity is an ancillary scope proxy, not semantic topic gold.
+Frequency controls are separately disclosed post-hoc diagnostics.}
+\end{table}
+
+Weighted maximum gains .03287 AP/.08357 AUC over unweighted maximum; weighted
+mean gains .01662 AP/.00988 AUC. This supports further frequency-aware reuse
+testing, without selecting a topic method. Rare noise and secondary-topic loss
+remain possible; reducing negative cosine magnitude also changes ordering.
+DF is transductive on these source threads: arrivals, edits and deletions change
+weights and old ranks. Define and measure online maintenance/reassignment before
+using it with persistent topic identities. No semantic labels/ancestors or
+guided-retrieval benefit is demonstrated.
+
+Two stored-vector runs take 3.235/2.172 seconds after imports, including full
+corpus/partition validation, collection 737.89/390.44 milliseconds and scoring
+1283.78/1150.34 over 1,582,677 cross-message comparisons. Frequency-control runs
+take .417/.347 seconds, weighting 16.42/15.31 milliseconds, scoring 188.01/140.95.
+Different loading/validation scopes prevent treating totals as an algorithm
+speed comparison; output serialization is excluded. No model is loaded or
+called. No CPU/RSS/p95, complete ingestion, lifecycle or 10\% overhead gate.
+
+Both stages repeat every non-timing field. Independent SQLite reconstruction
+checks source-only selection/exclusions, all 1,812 vectors/input/raw hashes,
+source counts, all 8,128 reference truths and five score grids, all frequencies/
+weights and five tie-aware AP/AUC results. The 236-test lab covers competing
+secondary matches, invalid/cancelled vectors, duplicate conflicts, generation
+drift and per-thread frequency invariance. An initial invocation failed before
+outcomes because the v3 review has a JSON packet rather than a TOML annotation;
+use the actual source-pinned packet for exclusions without conversion.
+Private captures remain outside Git under \path{topic-stored-vector-reuse-20261002}.
+Stored first/repeat SHA256:
+\path{270fdf50405136931791905b8555f5e4d7a35cb5a5fd935c4a201fd72b618167},
+\path{583a3b223e20a355ab04f81c4d9cb2c30571127bb632245099851eaab566976e}.
+Frequency first SHA256:
+\path{c8722463953eae559510328446f50469877c12b7096cadf32a5b9dceadf52a1a}.
+Complete source coverage, independent aspect/ancestor judgments and newly
+reserved outcomes remain prerequisites for method selection and Rust promotion.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

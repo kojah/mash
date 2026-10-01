@@ -952,6 +952,14 @@ are mixed against cheap lexical fusion and require 407 additional calls.
 Repeats and complete source/schema checks pass; no production method is selected.
 Additional inference must earn its cost on fresh outcomes and full ingestion.
 
+The [zero-inference stored-vector diagnostic](../../benchmarks/2026-10-02-stored-vector-reuse.md)
+uses `stored_vector_reuse.py` on 128 actual coding threads with source-only
+selection and a separate project-scope proxy. Recurring identical messages
+confound maximum matching. A disclosed post-hoc `stored_frequency.py` control
+penalizes exact-input document frequency without dropping source records and
+improves exploratory ranking. Coverage is only 20.8% of original user records;
+no independent semantic topic quality or production ingestion gate is established.
+
 Run lab input-boundary tests:
 
 ```bash

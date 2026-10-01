@@ -174,6 +174,13 @@ but fixed lexical fusion has mixed marginal gains and inference cost remains
 substantial. These are exposed ranking diagnostics, not independently annotated
 agent episodes, semantic tree quality or an ingestion gate. No method is selected.
 
+The [stored-vector complement](../../benchmarks/2026-10-02-stored-vector-reuse.md)
+uses actual coding histories with zero new inference and an exact-project proxy
+read after source-only selection. It is private, exposed and incomplete (20.8%
+stored-message coverage), not external independent topic gold. Source-only input
+frequency weights improve a post-hoc fixed maximum-match control, but cannot
+prove overlapping semantic tags, secondary aspects or ancestor/guided-search quality.
+
 Pinned raw SHA256:
 
 - README: `a9b2c9bb4ca61fdf1eb64a3c5d421271b14ffcc45029852fd26c71ca32302c9e`.
