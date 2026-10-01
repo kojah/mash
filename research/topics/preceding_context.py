@@ -50,9 +50,10 @@ def identity(message: Message) -> dict:
 
 
 def preceding(messages: tuple[Message, ...], anchor: int, *, maximum_records: int = 64,
-              maximum_message_bytes: int = 16384, maximum_display_bytes: int = 32768) -> dict:
+              maximum_message_bytes: int = 16384, maximum_display_bytes: int = 32768,
+              maximum_users: int = 1) -> dict:
     """Follow only causal predecessors; never replace a broken native edge by order."""
-    if min(maximum_records, maximum_message_bytes, maximum_display_bytes) < 1:
+    if min(maximum_records, maximum_message_bytes, maximum_display_bytes, maximum_users) < 1:
         raise ValueError("context bounds must be positive")
     by_ordinal = {m.ordinal: m for m in messages}
     if len(by_ordinal) != len(messages) or len({m.id for m in messages}) != len(messages):
@@ -68,6 +69,7 @@ def preceding(messages: tuple[Message, ...], anchor: int, *, maximum_records: in
     traversed, displayed = [], []
     used = 0
     omitted = 0
+    users = 0
     for _ in range(maximum_records):
         if mode == Mode.NATIVE:
             parent = current.parent
@@ -105,13 +107,17 @@ def preceding(messages: tuple[Message, ...], anchor: int, *, maximum_records: in
                 entry.update(text=text, display_status="redacted" if redacted else "included")
             displayed.append(entry)
             if current.role == "user":
-                stop = Stop.USER
-                break
+                users += 1
+                if users == maximum_users:
+                    stop = Stop.USER
+                    break
     else:
         stop = Stop.LIMIT
     displayed.reverse()
     pin = {"anchor": identity(by_ordinal[anchor]), "mode": mode, "traversed": traversed,
            "stop": stop, "bounds": [maximum_records, maximum_message_bytes, maximum_display_bytes]}
+    if maximum_users != 1:
+        pin["maximum_users"] = maximum_users
     return {**pin, "context_sha256": sha(json.dumps(pin, sort_keys=True, separators=(",", ":"))),
             "display": displayed, "omitted_records": omitted,
             "display_bytes": used, "bounded_interval_complete": stop != Stop.LIMIT,
@@ -122,6 +128,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("database", "partition-report", "annotations", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
+    parser.add_argument("--maximum-users", type=int, choices=(1, 3), default=1)
     args = parser.parse_args()
     if args.output.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
         raise ValueError("private packets must stay outside the repository")
@@ -139,8 +146,9 @@ def main() -> None:
                 raise ValueError("annotation source changed before context capture")
             packets.append({"thread": case.thread, "provider": case.provider,
                             "source_sha256": case.source_sha256,
-                            "contexts": [preceding(messages, turn.ordinal) for turn in case.turns]})
-    report = {"schema_version": 1, "scope": "preceding_interval_to_previous_visible_user_or_root",
+                            "contexts": [preceding(messages, turn.ordinal, maximum_users=args.maximum_users) for turn in case.turns]})
+    scope = "preceding_interval_to_previous_visible_user_or_root" if args.maximum_users == 1 else "preceding_chain_up_to_three_visible_users_or_root"
+    report = {"schema_version": 1, "scope": scope,
               "limitations": ["stored ancestry, not independent native-log verification",
                               "linear histories may contain compaction or inherited context",
                               "display guard is not a general secret scanner",

@@ -188,6 +188,21 @@ not comprehensive secret scanning, so do not print entire packets. Keep existing
 user-only judgments frozen; any full-context judgments need their own evidence
 scope. No topic/search input or production admission behavior changes here.
 
+For chained replies, `--maximum-users 3` follows up to three preceding searchable
+user records along the same causal path. The 64-record traversal and display
+budgets apply to the entire walk, not separately to each interval. The default
+one-user context pins remain unchanged. Three-user pins include the user limit;
+neither mode treats a reached user bound as semantic reference resolution.
+
+The expanded development capture contains 84 contexts: 56 reach the three-user
+bound, 22 reach a root and six exhaust the raw-record budget. There are no display
+omissions; the largest display is 11,727 UTF-8 bytes. A fresh capture reproduces
+the packet exactly. This is stored-projection context: the earlier native audit
+verified anchors and Claude anchor edges, not every preceding message body.
+Separate source-pinned reference judgments are still required before contextual
+embedding experiments. Do not turn reviewer-written interpretations into model
+inputs or change the frozen user-only judgments.
+
 ## Native source fidelity audit
 
 `native_audit.py` checks the same frozen development anchors against their current

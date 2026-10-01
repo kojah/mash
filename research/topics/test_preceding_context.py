@@ -60,3 +60,19 @@ class PrecedingTests(unittest.TestCase):
         self.assertTrue(result["bounded_interval_complete"])
         self.assertIsNone(result["display"][0]["text"])
         self.assertEqual(result["display"][1]["text"], "a useful answer")
+
+    def test_chained_context_keeps_total_record_budget_and_excludes_siblings(self):
+        records = (message(0, "user", "task", -1), message(1, "assistant", "proposal", 0),
+                   message(2, "user", "yes", 1), message(3, "assistant", "answer", 2),
+                   message(4, "user", "go", 3), message(5, "assistant", "sibling", 2),
+                   message(6, "user", "again", 4))
+        full = preceding(records, 6, maximum_users=3)
+        self.assertEqual([m["ordinal"] for m in full["display"]], [0, 1, 2, 3, 4])
+        self.assertEqual(full["stop"], "preceding-visible-user")
+        limited = preceding(records, 6, maximum_users=3, maximum_records=3)
+        self.assertEqual(len(limited["traversed"]), 3)
+        self.assertEqual(limited["stop"], "record-limit")
+
+    def test_one_user_default_context_pin_is_preserved(self):
+        records = (message(0, "user", "task"), message(1, "user", "yes"))
+        self.assertEqual(preceding(records, 1), preceding(records, 1, maximum_users=1))

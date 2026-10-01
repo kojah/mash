@@ -560,6 +560,29 @@ small common support prevent generalization or semantic-quality claims.
 The complete-ingestion overhead gate remains unmeasured; no Rust method is
 selected or promoted.
 
+\subsection{Bounded chained-context capture}
+The immediate preceding user can itself be referential. We therefore extend the
+private review capture to at most three preceding searchable user records on the
+same causal path, retaining the total 64-record traversal, 16\,KiB per-record and
+32\,KiB display budgets. This is a capture control, not a referent resolver or a
+production context-selection algorithm. Default one-user context pins are
+preserved; extended pins additionally identify the user bound.
+
+Across the same 84 development anchors, 56 walks reach the three-user bound,
+22 reach a root and six exhaust the raw-record budget. No display is omitted;
+the largest contains 11,727 UTF-8 bytes. A fresh capture reproduces the full
+report exactly. The private artifact \path{chained-context.json} has SHA256
+\path{8c1cd5aa52e701728cab15dd088f1b1244930827cdc614cf923e025116493e2a}.
+Forty-one lab tests pass, including sibling exclusion, a total traversal budget
+across multiple user intervals and preservation of default context pins.
+
+The native audit above verifies anchors and Claude anchor links, not every
+preceding body in these extended packets. Reaching a bound does not establish
+semantic sufficiency. Separate source-pinned contextual judgments remain
+necessary; reviewer interpretations must not become embedding inputs. No
+boundary labels, inference calls, production topic behavior or quality claims
+change in this capture experiment.
+
 \subsection{Out-of-group cutoff calibration}
 We test whether poor fixed-cutoff performance can be repaired without new
 inference. Before predictions, we fix one operating rule: maximize training
