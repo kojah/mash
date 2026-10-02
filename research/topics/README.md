@@ -1,5 +1,13 @@
 # Topic methodology lab
 
+The [source token-boundary audit](../../benchmarks/2026-10-02-topic-token-boundaries.md)
+uses `token_boundaries.py`/`token_audit.py` to preserve and inspect all 200
+title/prose/code inventories. It exposes punctuation/identifier collisions and
+stopword/vocabulary exclusions without changing old tokenization or claiming
+semantic quality. Maximal diagnostic spans are not a selected replacement
+tokenizer. Use the standard fresh-output/repeat arguments; original capture
+guards and production search remain unchanged.
+
 The [fixed-K online LDA control](../../benchmarks/2026-10-02-online-lda-topics.md)
 uses `online_lda.py`/`lda_questions.py` with pinned sklearn partial-fit updates,
 18 fits and 108 exposed settings. None qualifies; arrival-order predictions

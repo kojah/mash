@@ -4168,6 +4168,48 @@ First/repeat hashes:
 \path{9b6fae52558214924a50dcdbd51f0c7893b4de629f98c5affc5e09348cee2000},
 \path{5251a5410d48286d7904471c86e57cea82a61f201f7ab9d83dae4194c4ccc1fb}.
 
+\subsection{Technical token boundary and eligibility audit}
+After the negative discovery controls, inspect source representation without
+changing its immutable tokenizer. The same 200 observed programming questions
+retain complete title/displayed-body hashes, prose/code run identities and
+original matches. Compare the old word-boundary regex against maximal Unicode
+alphanumeric/underscore/combining-mark runs with dot, plus, colon, slash, hash
+and hyphen. These are diagnostic spans, not meaningful-token gold or a selected
+replacement; ordinary sentence punctuation and operators can also extend them.
+Pure punctuation runs are excluded from the diagnostic inventory, not deleted
+from sources. Preserve code-point and UTF-8 byte offsets for every span/match.
+
+The audit finds 47,731 diagnostic runs and 47,789 original matches: 2,112 title,
+21,564 prose and 24,113 block-code occurrences. Boundaries differ on 4,181 runs;
+55 yield multiple matches. Of 212 runs containing plus/hash, 199 differ. A total
+of 1,107 normalized terms have multiple diagnostic forms. For example,
+\texttt{C++} and \texttt{C\#} become \texttt{c}; its observed forms also include
+\texttt{-c}, \texttt{c.} and \texttt{c:}. Hash-bearing identifiers split, and
+leading path/flag punctuation and decomposed marks can disappear. This proves
+non-injective normalization, not the semantic importance of each distinction.
+Many differences are ordinary punctuation; 199/200 sources have a difference,
+so indiscriminately retaining punctuation would introduce its own noise.
+
+The existing stoplist excludes 14,354 matches; 3,227 are outside the original
+8,192 feature vocabulary, 16,939 additionally outside the 629 graph inventory,
+and 13,269 graph-retained. Counts span all 200 sources rather than the 64-source
+fit population. Excluded words include ``name'' (140), ``where'' (44), ``call''
+(17) and ``system'' (14); incidence does not justify per-example stoplist repairs
+or establish their topical importance. No reference outcomes or extra model
+calls enter this audit.
+
+Two processes repeat all nontiming fields in 2.505/2.216 seconds after imports.
+A separate scalar audit reconstructs every span/match, full field/run coverage,
+offset, state and collision; it shares the original HTML renderer and stopword
+library, not independent browser semantics or stoplist suitability. Six new
+tests/all 318 lab tests pass. No topic-quality or complete-ingestion gate follows.
+This concerns Python topic features, not the embedding tokenizer or production
+SQLite/remote lexical search. A future candidate must preserve useful distinctions
+without promoting operators/sentence punctuation to topics, with preregistered
+rules, independent judgments and new groups before selection. First/repeat hashes:
+\path{8f48c259f8e15b1dda2353af947fb448e246c4bfd19fde46a4a979409c0a41cc},
+\path{7777fa67bf52aab251131aadab24b457b764fc5380b7c50c942298c2bc3cb3e9}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
