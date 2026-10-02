@@ -68,6 +68,15 @@ method selection or promotion.
 | Labels | c-TF-IDF; contrastive training-background weights; representative phrases/MMR | Preserve technical and secondary subjects while reducing conversational labels. |
 | Hierarchy | Independently reviewed semantic parents and overlapping leaves | Tree topology alone does not establish ancestor correctness. |
 
+The [Links primary-source assessment](../../benchmarks/2026-10-02-links-assessment.md)
+adds a bounded reference trial to the online shortlist. Its graph repair is
+relevant to measured centroid drift, but indivisible subclusters, calibration,
+dynamic identity/publication and deletion/replay remain concerns. Connected
+components are not semantic ancestors. `links_thresholds.py`/`links_preflight.py`
+verify the pinned author formulas and frozen candidate-only geometry; exact
+repeats and independent reductions pass. No full Links clustering, topic quality
+or performance is established, and the reference defaults are not product defaults.
+
 Freeze native source-group splits before fitting or label selection. Annotate
 primary and secondary subjects, irrelevant/context-only text, episode boundaries,
 and parent relationships independently of algorithm outputs. Review full sources
@@ -1204,7 +1213,7 @@ no semantic hierarchy or multi-topic quality. Use verified semantic directories,
 fresh `--output-directory`, repeat `--compare FIRST_DIRECTORY/results.json`,
 single-thread CPU settings and the external memory monitor.
 
-The full suite with the extra runs 374 tests; without it the two Infomap/runner
+The full suite with the extra runs 378 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
