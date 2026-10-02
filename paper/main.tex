@@ -4365,6 +4365,55 @@ controlled performance comparison. Environment is Linux x86-64 on AMD EPYC
 with one OpenMP/OpenBLAS/MKL thread. Neither scalar fidelity nor exact repeats
 establish Rust parity, semantic labels or useful production topic navigation.
 
+\subsection{Complete semantic windows and quantized batching fidelity}
+Before semantic retrieval outcomes, preflight the complete candidate corpus and
+64 development queries with installed MiniLM assets. The model card documents
+a 256-wordpiece default and Stack Exchange training data\cite{minilmcard};
+unknown pretraining overlap prevents a zero-shot claim. Disable saved tokenizer
+padding/truncation before any measurement. Preserve contiguous original text
+at whole-word boundaries with at most 254 payload tokens and two special tokens;
+record Unicode/UTF-8 spans, source hashes and complete input IDs.
+
+Of 32,176 bodies, 9,818 exceed 256 tokens and 2,295 exceed 512 (maximum 7,996).
+Bodies require 45,739 windows, at most 32 per source. All 32,176 titles and 64
+queries fit one window each, giving 77,979 windows and 7,758,581 payload tokens.
+Whole-source coverage does not prove semantic episode boundaries or recover
+all cross-window context. An independent audit caught saved padding inflating
+the first title's diagnostic count from 9 to 128 despite exact self-repeats.
+Initialization and its regression test are repaired; original window inputs
+remain unchanged. An earlier process was deliberately terminated after finding
+repeated offset/word-ID list copying; cached lists preserve the boundary policy.
+Corrected first preflight costs 92.087 seconds after imports, excluding output
+writing. This is research preparation, not a complete ingestion gate.
+Corrected fresh captures agree on all nontiming fields in 92.087/85.061 seconds.
+An independent audit verifies all 64,416 corpus fields and 64 development
+queries: original hashes, complete adjacent Unicode/UTF-8 spans, re-encoded
+token/type IDs and concatenated payload IDs equal to whole-source tokenization.
+It shares the pinned tokenizer/source loader and does not validate semantic
+episode boundaries or implement an independent tokenizer.
+
+Hash-select four corpus windows in each 2--32/33--64/65--128/129--256 token
+stratum before inference. All 16 window singletons match the existing executable
+reference exactly. A mixed padded batch changes all 16 directions: minimum
+cosine .9871904276, largest direction-component drift .02708835 and pooled
+component drift .16068052. Padding is excluded from float32 pooling. Dynamic
+activation quantization or kernel changes are plausible, not isolated causes
+\cite{ortquantization}. Use singleton CPU inference for the first semantic
+comparison rather than declaring batching equivalent with a permissive epsilon.
+Fresh probe repeats agree on all nontiming fields, including full pooled and
+quantized vectors.
+The probe does not establish Rust parity or downstream near-threshold decisions.
+
+Seven window/pooling tests, a saved-tokenizer regression, signed-score-domain
+checks and field-aggregation/fusion tests bring the research suite to 348 passing
+tests. No production topic method or semantic retrieval result is selected.
+Preregister title-only, normalized equal-title/body directions and fixed RRF60
+with BM25 complete ranks; aggregate units within fields by payload-token weight.
+Full-corpus inference, ranking, exact repeats and independent score audits remain
+pending. Details: \path{benchmarks/2026-10-02-semantic-window-fidelity.md}.
+Corrected preflight SHA256:
+\path{85d35491d209b95b9a6a385d8c8b4dd2d325e305e5f7cf85bb32468c44a87d0a}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

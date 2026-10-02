@@ -13,6 +13,11 @@ class Method(StrEnum):
     BM25 = 'word-bm25'
 
 
+class ScoreKind(StrEnum):
+    NONNEGATIVE = 'nonnegative'
+    COSINE = 'cosine'
+
+
 @dataclass
 class Index:
     method: Method
@@ -72,10 +77,13 @@ def fit(texts, method):
     return Index(method, vectorizer, counts, weights.tocsr(), transformer, lengths, idf)
 
 
-def evaluate(scores, document_ids, relevant):
+def evaluate(scores, document_ids, relevant, *, score_kind=ScoreKind.NONNEGATIVE):
     scores = np.asarray(scores, dtype=np.float64)
     if (scores.ndim != 1 or scores.shape != (len(document_ids),) or not np.isfinite(scores).all()
-            or (scores < 0).any() or not document_ids or document_ids != sorted(set(document_ids))
+            or not isinstance(score_kind, ScoreKind)
+            or (score_kind == ScoreKind.NONNEGATIVE and (scores < 0).any())
+            or (score_kind == ScoreKind.COSINE and (np.abs(scores) > 1 + 1e-12).any())
+            or not document_ids or document_ids != sorted(set(document_ids))
             or not relevant or not set(relevant) <= set(document_ids)):
         raise ValueError('aligned complete sorted identities, finite scores and explicit references required')
     # Stable sort preserves the prespecified lexical-ID tie order.
@@ -93,6 +101,6 @@ def evaluate(scores, document_ids, relevant):
                     'recall100': sum(r <= 100 for r in relevant_ranks.values()) / len(relevant)},
         'first_relevant_rank': first,
         'relevant_ranks': relevant_ranks,
-        'positive_score_documents': int(np.count_nonzero(scores)),
+        'positive_score_documents': int(np.count_nonzero(scores > 0)),
         'top100': [{'id': document_ids[i], 'score': float(scores[i])} for i in order[:100]],
     }

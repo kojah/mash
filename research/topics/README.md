@@ -1109,7 +1109,15 @@ are captured outside Git. None establishes semantic topic quality or a selected
 production method. Use the runner's fresh `--output-directory` and repeat with
 `--compare FIRST_DIRECTORY/results.json`.
 
-The full suite with the extra runs 336 tests; without it the two Infomap/runner
+The [semantic window/fidelity prerequisite](../../benchmarks/2026-10-02-semantic-window-fidelity.md)
+uses `embedding_windows.py`, `cqadup_window_preflight.py`, `window_inference.py`
+and `cqadup_batch_probe.py` to preserve complete source/token coverage and compare
+singleton/batch inference. Mixed quantized batches differ from singleton input
+directions; no equivalence is assumed. `cqadup_semantic.py` prepares singleton
+full-corpus title/balanced/fixed-RRF controls, with signed score domains and
+explicit complete-vector captures. Semantic ranking outcomes remain pending.
+
+The full suite with the extra runs 348 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

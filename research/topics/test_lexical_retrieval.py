@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 
-from lexical_retrieval import Method, evaluate, fit
+from lexical_retrieval import Method, ScoreKind, evaluate, fit
 
 
 class LexicalRetrievalTests(unittest.TestCase):
@@ -55,6 +55,16 @@ class LexicalRetrievalTests(unittest.TestCase):
             with self.assertRaises(ValueError): evaluate(scores, ids, refs)
         for texts, method in [([], Method.WORD), (['x','x'], 'invalid'), (['x'*65538,'word'], Method.WORD)]:
             with self.assertRaises(ValueError): fit(texts, method)
+
+    def test_signed_cosine_preserves_scores_order_and_strict_domain(self):
+        result = evaluate([-.5, .2, -.1], ['a','b','c'], {'c'}, score_kind=ScoreKind.COSINE)
+        self.assertEqual(result['first_relevant_rank'], 2)
+        self.assertEqual([r['score'] for r in result['top100']], [.2,-.1,-.5])
+        self.assertEqual(result['positive_score_documents'], 1)
+        with self.assertRaises(ValueError):
+            evaluate([-1.1], ['a'], {'a'}, score_kind=ScoreKind.COSINE)
+        with self.assertRaises(ValueError):
+            evaluate([.5], ['a'], {'a'}, score_kind='cosine')
 
 
 if __name__ == '__main__':
