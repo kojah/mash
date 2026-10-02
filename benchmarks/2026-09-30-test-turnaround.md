@@ -75,3 +75,9 @@ reports are in the persistent target's `cargo-timings` directory.
 Bead `mash-c0d.12` remains in progress. Native Mac measurements, reproducible
 cold/warm repetitions, per-test critical paths, model/service setup, parallel
 resource limits, and full-suite/CI optimization still require evaluation.
+
+The [2026-10-03 incremental-toggle control](2026-10-03-test-iteration-toggle.md)
+checks the later 592-case codebase: completion builds retained the recorded
+incremental graphs, and warmed diagnostic-string edits built in roughly 12s.
+Those observations do not replace this earlier baseline or establish a general
+speed guarantee for larger code changes.
