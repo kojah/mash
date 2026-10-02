@@ -47,6 +47,13 @@ complete-ingestion cost. Do not choose a marginal proxy improvement that misses
 an acceptance gate. No hierarchy, LLM-generated labels, fine-tuning or unlimited
 quality optimization is needed for this milestone.
 
+The [declared review scorer](TOPIC_QUALITY_REVIEW.md) makes these numeric targets
+executable while keeping provenance/independence unverified. Every emitted tag
+needs a judgment, and certain subjects use distinct useful source-compatible
+tag matches. At least20 threads must actually contain certain subjects; empty
+threads cannot pad the scope quota. No actual acceptance result follows from
+synthetic fixtures or self-reported review declarations.
+
 ## Stop optimizing after acceptance
 
 Freeze the chosen method and implement it in Rust using PORT_CONTRACT.md. Ship

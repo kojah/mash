@@ -8878,6 +8878,50 @@ references. No independent factor-solver/lifecycle audit, semantic acceptance,
 full-ingestion budget or selected Rust parity is claimed. Detailed protocol,
 artifact hashes and results: \path{benchmarks/2026-10-02-incremental-nmf-topics.md}.
 
+\section{Executable declared-review target scoring}
+Make the finite semantic targets numerically executable without treating
+self-reports as verified gold. \path{research/topics/topic_quality.py} uses frozen
+typed models for providers, exposure states, subject importance, tags, subjects,
+threads and reviews, together with the
+existing bounded duplicate-key-rejecting JSON helpers. Validate complete declared
+emitted-tag judgments, literal booleans, known scopes/providers, hash formats,
+distinct subject-to-tag matches and original evidence IDs scoped to each thread.
+A useful tag requires declared accuracy, specificity and source support; a
+certain subject match additionally needs shared source evidence. This checks
+declared structural compatibility, not semantic equivalence or actual quotes.
+Record the submitted review's actual SHA256 alongside declared packet/candidate
+pins so scores are traceable without claiming those external pins verified.
+Keep every emitted tag in precision; null certain-subject matches count as
+misses. Uncertain subjects stay explicitly unmatched and separately reported.
+At least 20 threads must contain certain subjects. Empty threads or those with
+only uncertain subjects cannot pad the quota of 20 threads, 60 certain subjects,
+20 primary subjects, 20 secondary subjects and two providers.
+
+Use exact rational targets $17/20$, $4/5$, $3/5$; undefined ratios are null and fail.
+Report numerators, denominators, ambiguity counts and seeded718 thread-cluster
+bootstrap intervals: 5000 resamples of canonically ordered threads, empirical
+floor/ceil 2.5/97.5 percentile ranks among defined ratios, with valid and total
+draw counts. These are
+sample-dependent descriptive intervals, not population guarantees. Separate
+numerical targets, scope and declared reviewer eligibility. Even all passing
+leave source provenance, independence, semantic quality and production selection
+explicitly unverified. The scorer cannot authenticate source/candidate hash
+claims, metadata, pre-output subject annotation, reviewer identity or blinding.
+Those require the original immutable artifacts and an independent audit; the
+existing development quote validator does not turn its packet into held-out gold.
+Lifecycle/ownership, ingestion budget, search safety and selected reference/Rust
+parity remain separate gates.
+
+Seven standard-library synthetic fixtures cover exact boundaries, abstentions,
+scope padding, exposure and ambiguity, complete scoped distinct judgments,
+bootstrap determinism and undefined draws, larger original source rosters and
+actionable CLI errors without private fragments. All 677 research tests pass in
+5.085s with author
+references supplied. The seven fixtures join CI; no real review is generated,
+filled or scored, and no algorithm/parameter experiment is added. Procedures and
+schema: \path{research/topics/TOPIC_QUALITY_REVIEW.md}. Numeric pass flags must
+never automatically select the topic method.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

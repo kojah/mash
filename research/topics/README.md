@@ -35,6 +35,13 @@ source-aware phrases, with broad forward/reverse dominant-membership ARI .585--.
 Reject this configuration without additional parameter sweeps. Retain source-aware
 phrases for independent review; no semantic acceptance or Rust integration follows.
 
+The [declared semantic-review scorer](TOPIC_QUALITY_REVIEW.md) validates typed,
+complete scoped tag/subject judgments and exact85/80/60 targets with deterministic
+thread bootstrap intervals. Numerical targets, review scope and declared reviewer
+eligibility are separate; even a passing declaration never establishes independent
+gold, original provenance, semantic quality or production selection. Its CI fixtures
+are synthetic; no actual held-out topic review has been generated or scored.
+
 On 2026-10-02 the user dropped the hierarchy requirement. The first milestone
 is useful **flat topics**, with multiple independently supported tags per thread,
 topic browsing and composable topic filters. Semantic parent/child links, ancestor
