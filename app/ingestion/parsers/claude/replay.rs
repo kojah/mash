@@ -1,6 +1,4 @@
 //! Compaction can append a reduced representation of already archived history.
-use std::collections::{BTreeMap, BTreeSet};
-
 use super::Ancestry;
 use super::parents::Parents;
 use crate::AppError;
@@ -9,15 +7,24 @@ use crate::ingestion::json::{Kind, ParentLink, Record, SystemSubtype};
 #[derive(Default)]
 pub(super) struct Replay {
     anchor: Option<String>,
-    duplicates: BTreeSet<String>,
-    changes: BTreeMap<String, ParentLink>,
+    // Ambiguous marks a duplicate without saved changes; Known stores the first
+    // original parent to restore only after a proven native replay boundary.
+    // Both membership and changes share bounded inline/private disk storage.
+    duplicates: Parents,
 }
 
 impl Replay {
+    #[cfg(test)]
+    pub(super) fn with_limit(limit: usize) -> Self {
+        Self {
+            duplicates: Parents::with_limit(limit),
+            ..Self::default()
+        }
+    }
+
     pub(super) fn clear(&mut self) {
         self.anchor = None;
         self.duplicates.clear();
-        self.changes.clear();
     }
 
     pub(super) fn observe(
@@ -36,14 +43,16 @@ impl Replay {
             return Ok(());
         };
         if let Some(known) = parents.get(uuid)? {
-            self.duplicates.insert(uuid.clone());
+            let saved = self.duplicates.get(uuid)?;
             if let Ancestry::Known(previous) = known
                 && previous != parent
             {
-                self.changes
-                    .entry(uuid.clone())
-                    .or_insert_with(|| previous.clone());
+                if !matches!(saved, Some(Ancestry::Known(_))) {
+                    self.duplicates.insert(uuid, Ancestry::Known(previous))?;
+                }
                 parents.insert(uuid, Ancestry::Ambiguous)?;
+            } else if saved.is_none() {
+                self.duplicates.insert(uuid, Ancestry::Ambiguous)?;
             }
             return Ok(());
         }
@@ -51,20 +60,24 @@ impl Replay {
         // proves this whole duplicate block is a compaction replay. Its logical
         // parent and preserved tail must both identify the preceding new event,
         // outside the replay. Payload equality is still checked by reconcile.
-        let proven = boundary
-            && self.anchor.as_ref().is_some_and(|anchor| {
-                record.logical_parent.as_ref() == Some(anchor)
-                    && !self.duplicates.contains(anchor)
-                    && record
-                        .compact_metadata
-                        .as_ref()
-                        .and_then(|metadata| metadata.preserved_segment.as_ref())
-                        .is_some_and(|segment| segment.tail == *anchor)
-            });
+        let proven = if boundary && let Some(anchor) = self.anchor.as_ref() {
+            record.logical_parent.as_ref() == Some(anchor)
+                && self.duplicates.get(anchor)?.is_none()
+                && record
+                    .compact_metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.preserved_segment.as_ref())
+                    .is_some_and(|segment| segment.tail == *anchor)
+        } else {
+            false
+        };
         if proven {
-            for (key, original) in &self.changes {
-                parents.insert(key, Ancestry::Known(original.clone()))?;
-            }
+            self.duplicates.visit(|key, original| {
+                if let Ancestry::Known(_) = original {
+                    parents.insert(key, original)?;
+                }
+                Ok(())
+            })?;
         }
         self.clear();
         self.anchor = Some(uuid.clone());
@@ -72,3 +85,6 @@ impl Replay {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

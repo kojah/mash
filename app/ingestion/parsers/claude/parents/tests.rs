@@ -128,16 +128,92 @@ fn damaged_disk_rows_and_read_failures_cannot_be_missing_ancestry() {
         )
         .unwrap();
     assert!(parents.get("first").is_err());
+    assert!(parents.visit(|_, _| Ok(())).is_err());
     store(&parents)
         .connection
         .execute_batch("UPDATE parents SET state=2,parent=x'ff'")
         .unwrap();
     assert!(parents.get("first").is_err());
+    assert!(parents.visit(|_, _| Ok(())).is_err());
     store(&parents)
         .connection
         .execute_batch("DROP TABLE parents")
         .unwrap();
     assert!(parents.get("absent").is_err());
+    assert!(parents.visit(|_, _| Ok(())).is_err());
+}
+
+#[test]
+fn visitation_rejects_non_utf8_staged_identity() {
+    let mut parents = disk();
+    parents
+        .insert("first", Ancestry::Known(ParentLink::Root))
+        .unwrap();
+    store(&parents)
+        .connection
+        .execute_batch("UPDATE parents SET id=x'ff'")
+        .unwrap();
+    assert!(parents.visit(|_, _| Ok(())).is_err());
+}
+
+#[test]
+fn staged_visitation_is_exact_short_circuits_and_clear_removes_scratch() {
+    for limit in [0, INLINE_BYTES] {
+        let mut parents = Parents::with_limit(limit);
+        for key in ["é", "x\0", "X", ""] {
+            parents
+                .insert(key, Ancestry::Known(ParentLink::Root))
+                .unwrap();
+        }
+        let mut visited = Vec::new();
+        parents
+            .visit(|key, value| {
+                visited.push((key.to_owned(), value));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            visited
+                .iter()
+                .map(|(key, _)| key.as_str())
+                .collect::<Vec<_>>(),
+            ["", "X", "x\0", "é"]
+        );
+        assert!(
+            visited
+                .iter()
+                .all(|(_, value)| *value == Ancestry::Known(ParentLink::Root))
+        );
+        let mut count = 0;
+        assert!(
+            parents
+                .visit(|_, _| {
+                    count += 1;
+                    Err(AppError::internal("visitor failed"))
+                })
+                .is_err()
+        );
+        assert_eq!(count, 1);
+        let directory = match &parents.state {
+            State::Disk(store) => Some(
+                std::path::Path::new(store.connection.path().unwrap())
+                    .parent()
+                    .unwrap()
+                    .to_owned(),
+            ),
+            _ => None,
+        };
+        parents.clear();
+        assert_eq!(parents.get("X").unwrap(), None);
+        assert!(directory.is_none_or(|directory| !directory.exists()));
+        parents
+            .insert("again", Ancestry::Known(ParentLink::Missing))
+            .unwrap();
+        assert_eq!(
+            parents.get("again").unwrap(),
+            Some(Ancestry::Known(ParentLink::Missing))
+        );
+    }
 }
 
 #[test]
@@ -150,7 +226,7 @@ fn compaction_restores_only_proven_replay_in_inline_and_disk_stores() {
                 limit,
                 ..Parents::default()
             };
-            let mut replay = Replay::default();
+            let mut replay = Replay::with_limit(limit);
             let records = [
                 r#"{"type":"user","uuid":"root","parentUuid":null}"#,
                 r#"{"type":"user","uuid":"answer","parentUuid":"root"}"#,

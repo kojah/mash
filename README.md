@@ -185,11 +185,16 @@ for the measured memory and disk-I/O tradeoff.
 Claude native ancestry spills to private scratch SQLite above a 2 MiB inline
 accounting budget; parent-chain cycle detection retains only two UUIDs. Exact
 parent states and compaction replay behavior are preserved, and scratch failures
-abort ingestion of that source. Ancestry-map RAM stops growing with record count;
-dialogue identities, replay metadata, model workspaces and other adapters still
-have separate memory costs.
+abort ingestion of that source. Compaction duplicate membership and saved original
+parents share a separate store with the same 2 MiB inline accounting budget;
+restoration streams one entry at a time, and each finished or interrupted replay
+block releases its scratch store. These budgets are accounting thresholds, not
+process RSS limits. Dialogue identities, reconciliation lineage, model workspaces
+and other adapters still have separate memory costs.
 The [ancestry staging measurement](benchmarks/2026-10-02-claude-ancestry-staging.md)
 records the whole-index memory reduction and indexing-time tradeoff.
+The [replay staging diagnostic](benchmarks/2026-10-03-claude-replay-staging.md)
+separately compares large compaction metadata with its previous in-memory rules.
 
 Without a configuration file, mash indexes these built-in roots when present:
 

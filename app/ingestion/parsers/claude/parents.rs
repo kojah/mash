@@ -51,6 +51,38 @@ fn retained(key: &str, value: &Ancestry) -> usize {
 }
 
 impl Parents {
+    pub(super) fn clear(&mut self) {
+        self.state = State::Inline {
+            values: BTreeMap::new(),
+            bytes: 0,
+        };
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_limit(limit: usize) -> Self {
+        Self {
+            limit,
+            ..Self::default()
+        }
+    }
+
+    /// Visit one entry at a time; disk overflow must not be collected back into RAM.
+    pub(super) fn visit(
+        &self,
+        mut visitor: impl FnMut(&str, Ancestry) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        match &self.state {
+            State::Inline { values, .. } => {
+                for (key, value) in values {
+                    visitor(key, value.clone())?;
+                }
+                Ok(())
+            }
+            State::Disk(store) => store.visit(visitor),
+            State::Failed => Err(AppError::internal("ancestry staging previously failed")),
+        }
+    }
+
     pub(super) fn get(&self, key: &str) -> Result<Option<Ancestry>, AppError> {
         match &self.state {
             State::Inline { values, .. } => Ok(values.get(key).cloned()),
@@ -106,6 +138,29 @@ impl Parents {
 }
 
 impl Store {
+    fn visit(
+        &self,
+        mut visitor: impl FnMut(&str, Ancestry) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT id,state,parent FROM parents ORDER BY id")
+            .map_err(AppError::database)?;
+        let mut rows = statement.query([]).map_err(AppError::database)?;
+        while let Some(row) = rows.next().map_err(AppError::database)? {
+            let key: Vec<u8> = row.get("id").map_err(AppError::database)?;
+            let key = String::from_utf8(key).map_err(|error| {
+                AppError::database(rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Blob,
+                    Box::new(error),
+                ))
+            })?;
+            visitor(&key, decode(row).map_err(AppError::database)?)?;
+        }
+        Ok(())
+    }
+
     fn new() -> Result<Self, AppError> {
         let directory = crate::scratch::directory("mash-ancestry-")?;
         let connection = crate::scratch::sqlite(&directory.path().join("parents.sqlite3"))?;

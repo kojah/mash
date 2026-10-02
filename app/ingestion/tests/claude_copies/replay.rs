@@ -67,7 +67,30 @@ fn spilled_native_ancestry_preserves_compaction_context_and_restart_checkpoint()
         .unwrap();
         parent = uuid;
     }
+    writeln!(
+        file,
+        "{}",
+        serde_json::json!({
+            "type":"user", "uuid":"retained-anchor", "parentUuid":parent,
+            "sessionId":"copied-thread", "message":{"role":"user", "content":"anchor sentinel"},
+        })
+    )
+    .unwrap();
+    // Replay bookkeeping itself now exceeds its production inline budget.
+    // Changed operational parents must be restored before resolving this anchor.
+    for index in 0..20_000 {
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "type":"progress", "uuid":format!("operational-{index}"),
+                "parentUuid":null, "sessionId":"copied-thread",
+            })
+        )
+        .unwrap();
+    }
     drop(file);
+    parent = "retained-anchor".to_owned();
     append_replay(&current, Some(&parent), &parent, None);
     let database = directory.path().join("index.sqlite3");
     let tail = stable_id("claude-message", &["copied-thread", "tail"]);
@@ -76,7 +99,23 @@ fn spilled_native_ancestry_preserves_compaction_context_and_restart_checkpoint()
         let summary = index(&mut storage, &options(&root)).unwrap();
         assert_eq!(summary.checkpoint_skipped_sources, u64::from(restart));
         storage.commit_writer().unwrap();
-        assert_eq!(storage.counts().unwrap().messages, 5);
+        assert_eq!(storage.counts().unwrap().messages, 6);
+        let anchor = stable_id("claude-message", &["copied-thread", "retained-anchor"]);
+        assert_eq!(
+            storage
+                .view(&anchor, 10)
+                .unwrap()
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "root sentinel",
+                "omitted sentinel",
+                "answer sentinel",
+                "tail sentinel",
+                "anchor sentinel"
+            ]
+        );
         assert_eq!(
             storage
                 .view(&tail, 10)
@@ -88,7 +127,8 @@ fn spilled_native_ancestry_preserves_compaction_context_and_restart_checkpoint()
                 "root sentinel",
                 "omitted sentinel",
                 "answer sentinel",
-                "tail sentinel"
+                "tail sentinel",
+                "anchor sentinel"
             ]
         );
     }
