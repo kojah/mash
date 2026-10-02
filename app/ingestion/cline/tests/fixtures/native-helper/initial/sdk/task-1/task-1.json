@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "session_id": "task-1",
+  "source": "vscode",
+  "pid": 1,
+  "started_at": "2023-11-14T22:13:20.000Z",
+  "status": "completed",
+  "interactive": true,
+  "provider": "offline-control",
+  "model": "not-called",
+  "cwd": "/work/cline-control",
+  "workspace_root": "/work/cline-control",
+  "enable_tools": false,
+  "enable_spawn": false,
+  "enable_teams": false
+}

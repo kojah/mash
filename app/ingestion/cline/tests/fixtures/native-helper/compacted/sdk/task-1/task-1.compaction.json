@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "updated_at": "2026-09-30T10:00:00.000Z",
+  "source_message_count": 9,
+  "source_prefix_hash": "sha256:2df5e9888150cf4eac18c40c8f0a111147072bfd6fb661e6c42e571bcfc23046",
+  "source_last_message_key": "content:assistant:\"Stale revisions were rejected after recovery.\"",
+  "messages": [
+    {
+      "role": "user",
+      "content": "compaction-only-canary"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "scope": "cline-first-party-helper-control-v1",
+  "commit": "3435f72fcf4cb843bee946b8f9e981683564c9e3",
+  "bun": "1.4.2",
+  "runtime_sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+  "dependency_sha256": {
+    "zod": "0526b21ef3376b63ed8ea1d20d95808ac82e087631fa91a056f31b04d8a983f4",
+    "nanoid": "440de053adb7ff4104759117bb4f9028c73883b38b2fee91d372c484c8111eb9"
+  },
+  "dependencies": {
+    "zod": "4.3.6",
+    "nanoid": "5.1.7"
+  },
+  "catalog_adapter": "in-memory test double; manifest fallback uses upstream code",
+  "sdk_display": "controlled input; full SDK-to-UI translator not executed",
+  "compaction_input": "fixed offline projection; no inference executed",
+  "source_sha256": {
+    "apps/vscode/src/sdk/legacy-task-handling.ts": "ff3faefb4721298ef4acc1fd0877654ba7b6d2b0c5882e0066eb78acf061eaaf",
+    "apps/vscode/src/sdk/initial-message-sanitizer.ts": "8d5f031e4890731d8e8810fd4a86c5bdb39241866c8baecc653e70ac2e8f1819",
+    "sdk/packages/core/src/session/stores/session-manifest-store.ts": "f9b5dba785d49b4f5033629c87af9950d07eb5e90f7a24c8a8f9e72d8c9560aa",
+    "sdk/packages/core/src/services/session-data.ts": "f79295eefdb725ee5dfcbac424791e52166dd6b09c44cd4f9eed1ae0071dfa4a",
+    "sdk/packages/core/src/services/session-artifacts.ts": "05e3c2d12253312cd5c6ecb0df3f6751db09dcd111f9193be8f85a9e0ae77dd9",
+    "sdk/packages/core/src/session/models/session-compaction.ts": "108a35918630b49a83bfb15b0d30c5c5c051b00fa28539187fc0eaf118f87adb",
+    "sdk/packages/core/src/session/models/session-manifest.ts": "6aa6126b55a48b19957fc2c05a1faa9329d5ebced98771e34cf3be97ab4bb7d4",
+    "sdk/packages/shared/src/prompt/format.ts": "b3c42f8ce922be1a504bf52a6620488fbb735af311a49cc2874e6fc6fa601955"
+  },
+  "artifact_sha256": {
+    "initial/legacy/tasks/task-1/ui_messages.json": "b547d0af2cf3f3ada76ffad0d05124babad4cf57056c432fb0f5fab6fae23f89",
+    "initial/sdk/task-1/task-1.json": "625be31a0c2c1c90961435ccdcbdfb0d8e1b47b7c9ba8b7c683735d5303ff85c",
+    "initial/sdk/task-1/task-1.messages.json": "e016eda4b8b45a3e86d8d9f5925a3acc5598c95ef38ea091f2d4cb8f1444a3c1",
+    "compacted/legacy/tasks/task-1/ui_messages.json": "b547d0af2cf3f3ada76ffad0d05124babad4cf57056c432fb0f5fab6fae23f89",
+    "compacted/sdk/task-1/task-1.json": "e737aad43a6deea492cdb23505c266060adaeb09b6c4e50b57ad45bcecf519b6",
+    "compacted/sdk/task-1/task-1.messages.json": "cb127909443992ce00825b725a3f3395a5843f7cd1094a2eadd5b2d69208acf7",
+    "compacted/sdk/task-1/task-1.compaction.json": "4615109ef458475517b30629d6a8caccd07cb460603b243989ed4d93e645a423",
+    "regenerated/legacy/tasks/task-1/ui_messages.json": "b547d0af2cf3f3ada76ffad0d05124babad4cf57056c432fb0f5fab6fae23f89",
+    "regenerated/sdk/task-1/task-1.json": "5e0344f5fabc67a09ed95528fb0ff7d00d5a7d36ea9be15beb35fc9848c23222",
+    "regenerated/sdk/task-1/task-1.messages.json": "19566c026471ab2b041df533fec91dfb209df409e4d63453005f8969a1b48274",
+    "regenerated/sdk/task-1/task-1.compaction.json": "23934f74b8e2d8ccd46c190f0c4a44aa45bfc89ea3b1f5c3a91da6cf3f9c05ae"
+  },
+  "expected_contents": [
+    "Configure the shared search service.",
+    "Use an authenticated HTTP service.",
+    "Preserve archived conversation metadata.",
+    "The catalog keeps project and provider metadata.",
+    "Verify node-group isolation.",
+    "Each node group has an independent index.",
+    "Run the Qdrant recovery checks again.",
+    "The acknowledged snapshots survived a database process restart.",
+    "Run the Qdrant recovery checks again.",
+    "Stale revisions were rejected after recovery."
+  ]
+}

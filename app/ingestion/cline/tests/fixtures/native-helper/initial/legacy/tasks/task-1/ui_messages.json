@@ -1,0 +1,38 @@
+[
+  {
+    "ts": 1700000000000,
+    "type": "say",
+    "say": "task",
+    "text": "Configure the shared search service."
+  },
+  {
+    "ts": 1700000000001,
+    "type": "say",
+    "say": "text",
+    "text": "Use an authenticated HTTP service."
+  },
+  {
+    "ts": 1700000000002,
+    "type": "say",
+    "say": "user_feedback",
+    "text": "Preserve archived conversation metadata."
+  },
+  {
+    "ts": 1700000000003,
+    "type": "say",
+    "say": "text",
+    "text": "The catalog keeps project and provider metadata."
+  },
+  {
+    "ts": 1700000000004,
+    "type": "say",
+    "say": "user_feedback",
+    "text": "Verify node-group isolation."
+  },
+  {
+    "ts": 1700000000005,
+    "type": "say",
+    "say": "text",
+    "text": "Each node group has an independent index."
+  }
+]

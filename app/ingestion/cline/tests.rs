@@ -1,5 +1,6 @@
 use super::*;
 mod migration;
+mod native_capture;
 use crate::{
     ingestion::{IndexOptions, direct_scans, index},
     storage::Storage,

@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-02T19:47:44.090Z",
+  "agent": "lead",
+  "sessionId": "task-1",
+  "origin": {
+    "source": "vscode",
+    "mode": "user",
+    "sessionId": "task-1"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Configure the shared search service.",
+      "id": "regenerated-0",
+      "ts": 1700000090000
+    },
+    {
+      "role": "assistant",
+      "content": "Use an authenticated HTTP service.",
+      "id": "regenerated-1",
+      "ts": 1700000090001
+    },
+    {
+      "role": "user",
+      "content": "Verify node-group isolation.",
+      "id": "regenerated-2",
+      "ts": 1700000090002
+    },
+    {
+      "role": "assistant",
+      "content": "Each node group has an independent index.",
+      "metrics": {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "cost": 0
+      },
+      "id": "regenerated-3",
+      "ts": 1700000090003
+    },
+    {
+      "role": "user",
+      "content": "Warning: this is a legacy conversation, which means tool names may have changed. Please use the most up-to-date tools you are aware of.",
+      "id": "regenerated-4",
+      "ts": 1700000090004
+    },
+    {
+      "role": "user",
+      "content": "<user_input mode=\"act\">Run the Qdrant recovery checks again.</user_input>",
+      "id": "regenerated-5",
+      "ts": 1700000090005
+    },
+    {
+      "role": "assistant",
+      "content": "The acknowledged snapshots survived a database process restart.",
+      "id": "regenerated-6",
+      "ts": 1700000090006
+    },
+    {
+      "role": "user",
+      "content": "<user_input mode=\"act\">Run the Qdrant recovery checks again.</user_input>",
+      "id": "regenerated-7",
+      "ts": 1700000090007
+    },
+    {
+      "role": "assistant",
+      "content": "Stale revisions were rejected after recovery.",
+      "id": "regenerated-8",
+      "ts": 1700000090008
+    }
+  ]
+}
