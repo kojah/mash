@@ -8657,6 +8657,67 @@ children/observer prevent isolated worker attribution. Complete ingestion,
 independent label/multitag usefulness and selected Rust parity remain unproven.
 No method is promoted. Procedures: \path{benchmarks/2026-10-02-phrase-phatic-candidates.md}.
 
+\section{General-English background weighting: mixed evidence}
+Use wordfreq3.1.1~\cite{wordfreq} as external lexical background, crediting
+Robyn Speer and the underlying SUBTLEX work by Marc Brysbaert et al.; SUBTLEX
+is freely available data. This mixed-source frequency snapshot is not a current
+technical dictionary or a conversation model. Pin the 321180-entry large English
+asset and installed API source. Before outcomes, fix exact scanner-atom lookup,
+no library tokenization, and factor
+$\max(1,\min(9,-\log_{10}(\max(p,10^{-9}))))/9$.
+Multiply the original thread phrase score by the mean atom factor, caching
+atom values once per refresh. Absent atoms have $p=0$, hence capped maximum
+weight: identifiers and debris can both benefit. Preserve vocabulary, DF,
+top-two source shortlist, half score/coverage utility, ties, eight-tag cap and
+original evidence. Background and phatic exclusions are separate controls.
+Scores explicitly include the new factor only in the background arm.
+No LLM, embedding inference, model download or paid call occurs.
+
+On the same exposed eight-thread/68-record oracle review and separate
+128-thread/1850-record cohort, all three prior snapshots/metrics/lifecycle
+controls stay exact. Versus unfiltered coverage, primary evidence recall changes
+.986111 to 1.0 and primary best support F1 .734512 to .720370. Secondary
+recall declines .796296 to .740741, while best support F1 improves .559788 to
+.589418. Primary/secondary name-atom hits change three/five to three/four of
+nine; one secondary subject still has no evidence. Referential-only topics
+increase ten to eleven. Reviewed topics/tags are 50/50. Broad topics/tags
+change 442/720 to 430/725; recurring/provisional topics 291/151 to 273/157,
+evidence-covered sources 1081 to 1028. Topic-ID lists change in all eight
+reviewed and 124/128 broad threads. Entirely out-of-dictionary topic atoms
+increase six to fifteen reviewed and 83 to 180 broad. These are not confirmed
+errors: absent identifiers can be meaningful. The mixed evidence proxies do
+not demonstrate semantic quality or guided search and do not justify promotion
+or further bound tuning on this exposed dependent review.
+
+Two runs repeat every non-runtime field. Producer duplicate/cleanup/delete/
+deleted-restart/reinsert/refreshed-restart/reverse checks pass. Callers reload
+the identified dictionary; source checkpoints do not serialize it. A no-producer-
+import auditor independently decodes the gzipped cB/msgpack buckets, reconstructs
+probabilities and verifies original SQLite/review sources and all eight snapshots.
+All 3379 selected scalar scores/ranks agree exactly; support F1 error is
+$1.11\times10^{-16}$. Frequency data, declared formula, static stoplist and
+review inputs are shared. Independent native parsing, lifecycle replay,
+semantic gold, full ingestion and selected Rust parity remain open.
+The 658-test suite passes in 4.017s, with fake frames requiring no frequency
+assets. No production method is selected.
+
+Frequency loading is 444.18/1492.05ms; reviewed background refresh/evaluation
+25.33/15.97ms, broad background refresh 3.364/3.928s versus coverage
+3.394/5.362s. Entire four-arm/lifecycle experiment is 95.331/129.276s wall,
+94.469/106.758s CPU, including frequency/broad loading but excluding imports,
+initial reviewed loading, output/comparison and final asset recheck. Sampled
+RSS/status HWM is 228716/230904 KiB, PSS 218611/219754 KiB and
+pre-serialization rusage 228448/227468 KiB; 3352/4239 samples, one/two vanished
+reads, maximum gaps 58.85/111.79ms. Sampling lower bounds, approximate status,
+intrusive observer, host scheduling, launcher history and excluded observer/
+children prevent worker attribution or a complete-ingestion overhead claim.
+The actual scientific environment remains Python3.11.15/NumPy2.4.6/
+SciPy1.17.1/sklearn1.9.1, unlike the pre-existing general lock's
+NumPy2.5.3/SciPy1.18.1. New wordfreq dependencies match lock entries. Record
+this discrepancy and reconcile executable environments in a separate bead;
+do not silently replace original captures. Details and identities:
+\path{benchmarks/2026-10-02-phrase-background-weighting.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

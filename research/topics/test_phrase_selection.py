@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import hashlib
+from topic_background import EnglishBackground
 
 
 class PhraseSelectionTests(TestCase):
@@ -62,9 +63,19 @@ class PhraseSelectionTests(TestCase):
         for row in rows:store.upsert(row)
         ledger=[dict(id=row.id,thread=row.thread,provider=row.provider,text=row.text) for row in rows]
         for mode in Selection:
-            snapshot=store.snapshot(mode)
-            self.assertEqual(audit_snapshot(ledger,snapshot)['maximum_score_error'],0.)
+            background=EnglishBackground({'redis':1e-6,'schemas':1e-4},'0'*64) if mode==Selection.BACKGROUND_COVERAGE else None
+            snapshot=store.snapshot(mode,background)
+            probabilities=background.frequencies if background else None
+            self.assertEqual(audit_snapshot(ledger,snapshot,probabilities)['maximum_score_error'],0.)
             corrupt=deepcopy(snapshot);corrupt['threads'][0]['tags'][0]['score']+=.1
-            with self.assertRaises(AssertionError):audit_snapshot(ledger,corrupt)
+            with self.assertRaises(AssertionError):audit_snapshot(ledger,corrupt,probabilities)
             corrupt=deepcopy(snapshot);corrupt['memberships']['a']=[]
-            with self.assertRaises(AssertionError):audit_snapshot(ledger,corrupt)
+            with self.assertRaises(AssertionError):audit_snapshot(ledger,corrupt,probabilities)
+
+    def test_background_information_is_bounded_and_phrase_mean_is_explicit(self):
+        frame=EnglishBackground({'generic':.01,'technical':1e-7},'0'*64)
+        weights=frame.factors(['generic','technical','generic technical','unknown'])
+        self.assertAlmostEqual(weights['generic'],2/9);self.assertAlmostEqual(weights['technical'],7/9)
+        self.assertAlmostEqual(weights['generic technical'],.5);self.assertEqual(weights['unknown'],1.)
+        with self.assertRaises(ValueError):EnglishBackground({'bad':float('nan')},'0'*64).factors(['bad'])
+        with self.assertRaises(ValueError):PhraseStore('fixture').snapshot(Selection.BACKGROUND_COVERAGE)

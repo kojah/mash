@@ -27,8 +27,8 @@ class PhraseStore:
         if source is None:return False
         self.text_bytes-=len(source.text.encode());del self.versions[identity];self.revision+=1;return True
 
-    def snapshot(self,selection=Selection.WHOLE_THREAD):
-        result=discover([self.records[key] for key in sorted(self.records)],self.namespace,selection=selection)
+    def snapshot(self,selection=Selection.WHOLE_THREAD,background=None):
+        result=discover([self.records[key] for key in sorted(self.records)],self.namespace,selection=selection,background=background)
         return {**result,'revision':self.revision,'versions':dict(sorted(self.versions.items()))}
 
     def checkpoint(self):

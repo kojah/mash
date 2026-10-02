@@ -8,6 +8,7 @@ import numpy as np
 from subject_labels import ranked_terms
 from topic_features import terms
 from phrase_selection import Selection,select_source_coverage,PHATIC_ATOMS
+from topic_background import EnglishBackground
 
 
 class Support(StrEnum):
@@ -23,9 +24,12 @@ class PhraseSource:
     text: str
 
 
-def discover(sources,namespace,maximum_tags=8,selection=Selection.WHOLE_THREAD):
+def discover(sources,namespace,maximum_tags=8,selection=Selection.WHOLE_THREAD,background=None):
     if type(maximum_tags) is not int or not 1<=maximum_tags<=8:raise ValueError('bounded thread tag selection required')
     if not isinstance(selection,Selection):raise ValueError('typed phrase selection policy required')
+    if selection==Selection.BACKGROUND_COVERAGE:
+        if not isinstance(background,EnglishBackground):raise ValueError('explicit English background frame required')
+    elif background is not None:raise ValueError('background supplied for another policy')
     threads=defaultdict(list);tokens={};providers={}
     for source in sources:
         if source.thread in providers and providers[source.thread]!=source.provider:raise ValueError('thread provider scope differs')
@@ -51,13 +55,14 @@ def discover(sources,namespace,maximum_tags=8,selection=Selection.WHOLE_THREAD):
     lengths={thread:sum(pool.values()) for thread,pool in weighted.items()}
     mean=sum(lengths.values())/len(lengths) if lengths else 0.
     topic_map={};thread_rows=[];memberships={source.id:[] for source in sources}
+    factors=background.factors(vocabulary) if background is not None else {}
     for thread,rows in sorted(threads.items()):
         pool=weighted[thread];values=[]
         for term in vocabulary:
             df=len(term_threads[term]);allowed=any(c.isalpha() for c in term) and (len(threads)<3 or df<=.4*len(threads))
             score=(pool.get(term,0)/max(lengths[thread],1)*math.log1p(mean/max(frequency[term],1))
                    *(math.log((1+len(threads))/(1+df))+1)) if allowed else 0.
-            values.append(score)
+            values.append(score*factors.get(term,1.))
         if selection!=Selection.WHOLE_THREAD:selected=select_source_coverage(values,vocabulary,rows,tokens,maximum_tags,selection)
         else:selected=ranked_terms(np.array(values),vocabulary,diverse=True,limit=maximum_tags) if vocabulary else []
         tags=[]
@@ -90,4 +95,8 @@ def discover(sources,namespace,maximum_tags=8,selection=Selection.WHOLE_THREAD):
             'coverage_units':'distinct exact inputs; supports top-two eligible local candidates'})
     if selection==Selection.PHATIC_COVERAGE:
         result['parameters']['candidate_atom_exclusions']=sorted(PHATIC_ATOMS)
+    if selection==Selection.BACKGROUND_COVERAGE:
+        result['parameters']['background']={'asset_sha256':background.asset_sha256,'language':'en','wordlist':'large',
+            'factor':'mean_atom_clamped_negative_log10_probability_divided_by_9','minimum_information':1.,'maximum_information':9.,'probability_floor':1e-9}
+        result['score_kind']='thread_sublinear_ctfidf_times_thread_idf_times_background_information'
     return result

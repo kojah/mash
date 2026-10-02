@@ -10,7 +10,7 @@ from topic_capacity_audit import counts
 PHATIC=set('yes no thanks thank please hello hi hey greetings bye sorry actually basically anyway anyways lol lmao alright okok kk uhh umm hmmm'.split())
 
 
-def audit_snapshot(rows,forward):
+def audit_snapshot(rows,forward,background=None):
     rows=sorted(rows,key=lambda row:row['id']);source={row['id']:row for row in rows};words={sid:counts(row['text']) for sid,row in source.items()}
     threads=defaultdict(list);inputs=defaultdict(set);support=defaultdict(set)
     for row in rows:
@@ -37,6 +37,14 @@ def audit_snapshot(rows,forward):
             if not any(c.isalpha() for c in term) or (len(threads)>=3 and df>.4*len(threads)):continue
             tf=weighted[thread].get(term,0.)
             score=tf/max(lengths[thread],1)*math.log1p(mean/max(frequency[term],1))*(math.log((1+len(threads))/(1+df))+1)
+            if forward['parameters'].get('selection')=='english_background_candidate_coverage':
+                assert background is not None
+                atoms=term.split();weights=[]
+                for atom in atoms:
+                    probability=background.get(atom,0.)
+                    assert math.isfinite(probability) and 0<=probability<=1
+                    weights.append(min(9.,max(1.,-math.log10(max(1e-9,probability))))/9)
+                score*=sum(weights)/len(weights)
             if score>0:ranked.append((score,term))
         selected=[];atoms=[]
         for score,term in sorted(ranked,key=lambda item:(-item[0],item[1])):
@@ -45,7 +53,7 @@ def audit_snapshot(rows,forward):
             atoms.append(parts);selected.append((score,term))
             if len(selected)==8:break
         policy=forward['parameters'].get('selection')
-        if policy in {'source_unit_candidate_coverage','phatic_filtered_candidate_coverage'}:
+        if policy in {'source_unit_candidate_coverage','phatic_filtered_candidate_coverage','english_background_candidate_coverage'}:
             if policy=='phatic_filtered_candidate_coverage':
                 assert forward['parameters']['candidate_atom_exclusions']==sorted(PHATIC)
                 ranked=[(score,term) for score,term in ranked if not set(term.split())&PHATIC]

@@ -8,6 +8,7 @@ class Selection(StrEnum):
     WHOLE_THREAD='whole_thread_weight'
     SOURCE_COVERAGE='source_unit_candidate_coverage'
     PHATIC_COVERAGE='phatic_filtered_candidate_coverage'
+    BACKGROUND_COVERAGE='english_background_candidate_coverage'
 
 
 # Candidate-only language scaffolding; original text and scoring frame survive.
@@ -16,7 +17,7 @@ PHATIC_ATOMS=frozenset('yes no thanks thank please hello hi hey greetings bye so
 
 
 def select_source_coverage(values,vocabulary,rows,tokens,limit,selection=Selection.SOURCE_COVERAGE):
-    if selection not in {Selection.SOURCE_COVERAGE,Selection.PHATIC_COVERAGE}:raise ValueError('coverage policy required')
+    if selection not in {Selection.SOURCE_COVERAGE,Selection.PHATIC_COVERAGE,Selection.BACKGROUND_COVERAGE}:raise ValueError('coverage policy required')
     scores={term:float(value) for term,value in zip(vocabulary,values) if value>0
         and (selection!=Selection.PHATIC_COVERAGE or not (set(term.split())&PHATIC_ATOMS))}
     # One candidate vote per distinct exact input, independent of message IDs.

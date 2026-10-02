@@ -81,6 +81,17 @@ Do not grow a conversation-specific stoplist to fit these outputs. Next evaluate
 general-background lexical specificity and preserve technical/secondary subjects;
 independent quality, full ingestion and selected Rust parity gates stay open.
 
+The [general-English background control](../../benchmarks/2026-10-02-phrase-background-weighting.md)
+uses pinned wordfreq3.1.1 exact-atom probabilities and bounded mean information
+weights. The three previous controls stay exact. Secondary evidence recall
+declines .796 to .741, while support F1 improves .560 to .589; referential-only
+topics rise to eleven and broad all-unknown-atom topics rise 83 to 180.
+Repeat and independent raw-frequency/source/scalar audit pass, as do 658 tests.
+This mixed evidence does not justify promotion or output-driven bound tuning.
+The actual scientific NumPy/SciPy versions differ from the pre-existing general
+research lock; follow-up mash-c0d.19.2.39 tracks reproducible environment
+reconciliation. No production topic method or Rust port is selected.
+
 The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
 recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
 granularity/labels and budgeted publication over further hierarchy experiments.
