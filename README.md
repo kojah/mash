@@ -243,15 +243,22 @@ reranking. Use `MASH_TRACE=1 mash mcp` for repeated requests or
 worker suppresses its own stderr to preserve detached execution. With tracing
 enabled, its reply carries a validated opaque `trace_id`, worker process ID,
 execution milliseconds (excluding connection/queue wait), and outcome. The CLI
-emits these as a `worker reply` event inside its `worker_search` span. Use
-`--no-worker` or MCP to inspect individual inference stages. Request IDs are
+emits these as a `worker reply` event inside its `worker_search` span. The reply
+also carries up to 15 fixed search-stage summaries, emitted as `worker stage`
+events with the same trace ID. Each reports `calls`, `total_us` and `max_us` for
+model loading, embedding, lexical/vector retrieval and scoring, shared HTTP,
+and reranking when those stages run. These are inclusive span lifetimes, not
+CPU time; nested and concurrent timings must not be added together. Summaries
+arrive with the final reply. Use `--no-worker` or MCP for full span events.
+Tracing is selected per worker request and untraced requests omit diagnostics.
+Request IDs are
 local to a process, paired with process IDs. With tracing enabled, each shared
 HTTP call sends an opaque `x-mash-trace-id`; its `shared_http_request` client
 span and the server's `http_request` span record the same `trace_id`. Enable
 tracing on both processes and match that field to correlate status and timing.
 The server replaces missing, malformed or duplicate IDs with a fresh local ID;
 client tracing disabled sends no correlation header or worker diagnostics request.
-Detailed worker stage streaming and fleet overhead measurements remain planned.
+Live worker stage streaming and fleet overhead measurements remain planned.
 
 Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`
 or an explicit Markdown history file. Directory roots discover only

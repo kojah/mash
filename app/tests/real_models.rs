@@ -77,6 +77,105 @@ fn real_models_index_and_run_hybrid_search() {
 
     assert_scoped_message_search(&config, &database, model_arg);
     assert_thread_search_and_view(&config, &database, model_arg);
+    #[cfg(unix)]
+    assert_worker_stage_diagnostics(&config, &database, model_arg);
+}
+
+#[cfg(unix)]
+fn assert_worker_stage_diagnostics(config: &Path, database: &Path, models: &str) {
+    let mut previous = None;
+    let mut worker = None;
+    for traced in [true, true, false] {
+        let mut command = Command::cargo_bin("mash").unwrap();
+        if traced {
+            command.env("MASH_TRACE", "1");
+        } else {
+            command.env_remove("MASH_TRACE");
+        }
+        let output = command
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                models,
+                "search",
+                "--local",
+                "--unit",
+                "messages",
+                "authentication",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let found: Value = serde_json::from_slice(&output.stdout).unwrap();
+        if let Some(previous) = &previous {
+            assert_eq!(&found, previous);
+        }
+        previous = Some(found);
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        if !traced {
+            assert_eq!(stderr, "");
+            continue;
+        }
+        for sensitive in [
+            "authentication",
+            "private-output-marker",
+            config.to_str().unwrap(),
+            database.to_str().unwrap(),
+            models,
+        ] {
+            assert!(
+                !stderr.contains(sensitive),
+                "private data in worker diagnostics"
+            );
+        }
+        let events: Vec<Value> = stderr
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let reply = events
+            .iter()
+            .find(|event| event["fields"]["message"] == "worker reply")
+            .unwrap();
+        let pid = reply["fields"]["worker_process_id"].as_u64().unwrap();
+        if let Some(worker) = worker {
+            assert_eq!(pid, worker, "same cached worker");
+        }
+        worker = Some(pid);
+        let stages: Vec<_> = events
+            .iter()
+            .filter(|event| event["fields"]["message"] == "worker stage")
+            .collect();
+        assert!(stages.len() <= 15);
+        for name in [
+            "search",
+            "local_search",
+            "load_search_models",
+            "embed",
+            "hybrid_search",
+            "lexical_candidates",
+            "load_vectors",
+            "score_vectors",
+            "rerank_inference",
+        ] {
+            let stage = stages
+                .iter()
+                .find(|event| event["fields"]["stage"] == name)
+                .unwrap_or_else(|| panic!("missing worker stage {name}"));
+            assert!(stage["fields"]["calls"].as_u64().unwrap() > 0);
+            assert!(
+                stage["fields"]["total_us"].as_u64().unwrap()
+                    >= stage["fields"]["max_us"].as_u64().unwrap()
+            );
+            assert_eq!(stage["fields"]["trace_id"], reply["fields"]["trace_id"]);
+        }
+    }
 }
 
 fn assert_scoped_message_search(config: &Path, database: &Path, model_arg: &str) {

@@ -9,11 +9,11 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tracing::Instrument;
 
 use crate::AppError;
 use crate::core::{Request, SearchResponse};
 use crate::observability::http::TraceId;
+use crate::observability::stages;
 
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_REQUEST: usize = 1024 * 1024;
@@ -31,6 +31,7 @@ struct Diagnostics {
     trace_id: TraceId,
     process_id: u32,
     elapsed_ms: u64,
+    stages: Vec<stages::Timing>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -130,6 +131,9 @@ async fn start_or_connect(path: &Path, owner: u32) -> std::io::Result<UnixStream
             let child = Command::new(std::env::current_exe()?)
                 .arg("--internal-search-worker")
                 .arg(path)
+                // Worker tracing is selected per request. Its stderr is discarded,
+                // and a traced starter must not enable formatting for later callers.
+                .env_remove("MASH_TRACE")
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -210,7 +214,9 @@ pub(crate) async fn search(
 
 fn report_diagnostics(reply: &Reply, expected: Option<&TraceId>) -> bool {
     match (&reply.diagnostics, expected) {
-        (Some(diagnostics), Some(expected)) if diagnostics.trace_id == *expected => {
+        (Some(diagnostics), Some(expected))
+            if diagnostics.trace_id == *expected && stages::valid(&diagnostics.stages) =>
+        {
             tracing::info!(
                 trace_id = diagnostics.trace_id.as_str(),
                 worker_process_id = diagnostics.process_id,
@@ -218,6 +224,17 @@ fn report_diagnostics(reply: &Reply, expected: Option<&TraceId>) -> bool {
                 outcome = if reply.result.is_ok() { "ok" } else { "error" },
                 "worker reply"
             );
+            for timing in &diagnostics.stages {
+                tracing::info!(
+                    trace_id = diagnostics.trace_id.as_str(),
+                    worker_process_id = diagnostics.process_id,
+                    stage = timing.stage.name(),
+                    calls = timing.calls,
+                    total_us = timing.total_us,
+                    max_us = timing.max_us,
+                    "worker stage"
+                );
+            }
             true
         }
         (None, None) => true,
@@ -226,26 +243,34 @@ fn report_diagnostics(reply: &Reply, expected: Option<&TraceId>) -> bool {
 }
 
 async fn execute_request(bytes: &[u8]) -> Reply {
+    use tracing::instrument::WithSubscriber;
     let started = std::time::Instant::now();
-    let (result, trace_id) = match serde_json::from_slice::<WorkerRequest>(bytes) {
+    let (result, trace_id, stages) = match serde_json::from_slice::<WorkerRequest>(bytes) {
         Ok(WorkerRequest { request, trace_id }) => {
-            let span = tracing::info_span!(
-                "worker_execute",
-                trace_id = trace_id.as_ref().map(TraceId::as_str),
-                process_id = std::process::id()
-            );
-            (
-                crate::core::worker_search(request).instrument(span).await,
-                trace_id,
-            )
+            if trace_id.is_some() {
+                // A request-local subscriber captures only static stage lifetimes;
+                // detached stderr is discarded and span/event fields are never copied.
+                let capture = stages::Capture::default();
+                let result = crate::core::worker_search(request)
+                    .with_subscriber(capture.dispatch())
+                    .await;
+                (result, trace_id, capture.finish())
+            } else {
+                (crate::core::worker_search(request).await, None, Vec::new())
+            }
         }
-        Err(_) => (Err(AppError::usage("invalid search worker request")), None),
+        Err(_) => (
+            Err(AppError::usage("invalid search worker request")),
+            None,
+            Vec::new(),
+        ),
     };
     let code = result.as_ref().err().map_or(0, |error| error.code);
     let diagnostics = trace_id.map(|trace_id| Diagnostics {
         trace_id,
         process_id: std::process::id(),
         elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        stages,
     });
     Reply {
         code,

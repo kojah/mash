@@ -4,6 +4,8 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 pub(crate) mod http;
+#[cfg(unix)]
+pub(crate) mod stages;
 
 pub(crate) fn initialize() {
     if std::env::var_os("MASH_TRACE").as_deref() != Some(std::ffi::OsStr::new("1")) {

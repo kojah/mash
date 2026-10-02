@@ -44,11 +44,43 @@ async fn worker_diagnostics_correlate_rejected_mutations_without_payloads() {
     });
     let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
     assert!(output.contains(trace_id.as_str()));
-    assert!(output.contains("worker_execute"));
     assert!(output.contains("worker_elapsed_ms"));
     assert!(output.contains("\"outcome\":\"error\""));
     assert!(!output.contains("private-history-canary"));
     assert_eq!(output.matches("worker reply").count(), 1);
+}
+
+#[test]
+fn malformed_stage_summaries_are_rejected_before_logging() {
+    let trace_id = TraceId::generate().unwrap();
+    let timing = stages::Timing {
+        stage: stages::Stage::Embed,
+        calls: 1,
+        total_us: 7,
+        max_us: 7,
+    };
+    let mut reply = Reply {
+        code: 2,
+        result: Err(AppError::usage("invalid search worker request")),
+        diagnostics: Some(Diagnostics {
+            trace_id: trace_id.clone(),
+            process_id: 1,
+            elapsed_ms: 1,
+            stages: vec![timing.clone()],
+        }),
+    };
+    assert!(report_diagnostics(&reply, Some(&trace_id)));
+    let diagnostics = reply.diagnostics.as_mut().unwrap();
+    diagnostics.stages.push(timing);
+    assert!(!report_diagnostics(&reply, Some(&trace_id)));
+    let diagnostics = reply.diagnostics.as_mut().unwrap();
+    diagnostics.stages.truncate(1);
+    diagnostics.stages[0].calls = 0;
+    assert!(!report_diagnostics(&reply, Some(&trace_id)));
+    let diagnostics = reply.diagnostics.as_mut().unwrap();
+    diagnostics.stages[0].calls = 1;
+    diagnostics.stages[0].max_us = 8;
+    assert!(!report_diagnostics(&reply, Some(&trace_id)));
 }
 
 #[tokio::test]
