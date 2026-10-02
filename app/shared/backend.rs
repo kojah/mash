@@ -12,6 +12,7 @@ use mash_postgres::queries::index as pg;
 use std::collections::HashMap;
 use tokio::io::AsyncBufReadExt;
 use tokio_postgres::Row;
+mod pool_error;
 pub(super) fn conflict(message: &str) -> AppError {
     let mut error = AppError::shared(message);
     error.error.kind = crate::ErrorKind::Conflict;
@@ -453,9 +454,7 @@ async fn transaction<'a>(
     Ok(tx)
 }
 async fn connection(pool: &Pool) -> Result<deadpool_postgres::Object, AppError> {
-    pool.get()
-        .await
-        .map_err(|_| AppError::shared("shared database pool is unavailable"))
+    pool.get().await.map_err(pool_error::diagnostic)
 }
 pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), AppError> {
     let mut client = connection(pool).await?;

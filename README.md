@@ -813,6 +813,14 @@ at startup. Its database role needs extension/schema creation and table-write
 privileges; alternatively an administrator can preinstall pgvector. Existing
 array-based shared indexes migrate to `vector(384)` without dropping history.
 Incomplete old vectors become NULL and require reindexing by their source nodes.
+
+PostgreSQL connection failures include safe configuration hints when the driver
+provides structured evidence: authentication, database name, connection capacity,
+permissions, network errors and pool timeout stages. With tracing enabled, the
+`postgres_pool_failure` event records only a bounded cause category. Credentials,
+connection strings and raw database error messages are never included. Errors
+without a typed cause retain a general health/credentials/TLS hint; this includes
+some TLS failures, so a generic hint does not identify the underlying cause.
 Old node configuration containing `database_url_env` is rejected: replace it
 with `api_url` and `token_env`; retain database credentials only on the service.
 
