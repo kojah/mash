@@ -60,6 +60,32 @@ not inferred from correctness fixtures.
 
 ## Remaining work
 
+The complete study runner is now `research/topics/qmsum_numeric_guidance.py`.
+It uses the frozen thread-context control SHA256
+`1d23e6af3bc94373b47ebb3900eb913fe974a6a8efae9815528059f7428f1dd4`,
+reconstructs identical source/topic/thread features, replays all exact-control
+records, then compares numeric direct/topic/thread arms in both scopes for all
+1,095 queries. Retain complete positive pools; all changed orders, added/removed
+IDs, ordinal ranks, exact rational weights, original metrics and eligibility
+checks are captured. Known-meeting thread results must equal quantized direct
+order/metrics. Record setup/projection/replay/per-arm retrieval-plus-metric
+costs, CPU/rusage and external one-target memory samples. A separate auditor
+reconstructs count pooling, query/spans, nearest-even bins using Fraction rounding,
+exact rank weights, selection, drift summaries and metrics without producer
+imports. NumPy/SciPy score projection and standard-library Fraction arithmetic
+remain shared dependencies; no Rust equivalence or independent scalar winner
+proof follows.
+
+Two additional scientific-environment fixtures verify exact numerator/denominator
+weights, integer keys/ranks and absent-parent metadata survive JSON round trips.
+The full enabled suite now passes 581 tests (3.023s). These fixtures overlap
+the first corpus run briefly, as does the manuscript build; no corpus result, cost, repeat or audit pass is
+claimed while that run is live. Do not restart on observation timeout. The
+first/repeat/audit artifacts belong outside Git under the
+`topic-qmsum-numeric-guidance-*-20261002` prefix. No new model work or held-out
+read. This complete study may disqualify the scalar reference on cost even if
+its numeric decisions are useful.
+
 Keep the bead open for full paired direct/topic/thread corpus comparison,
 retaining changed IDs/ranks and all original query/span denominators, exact
 repeat and independent audit plus scope costs/external memory evidence. Freeze
