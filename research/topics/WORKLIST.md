@@ -55,6 +55,15 @@ are historical hypotheses rather than the current execution queue.
 | Flat MCP integration | Conditional on selection and Rust validation. Shared core supplies flat topic browsing/detail, thread metadata tags, and composable any/all topic filters. Search remains available without topics; topic metadata cannot silently discard direct search candidates. |
 | Guided retrieval and paper | `mash-afc.1` and `mash-afc` stay open. Record reviewed retrieval/no-regression evidence and actual procedures/results/limits before claiming guided-search gains in the manuscript. |
 
+The predefined [captured publication control](../../benchmarks/2026-10-03-topic-publication.md)
+now publishes intermediate snapshots with one job and one pending revision, and
+drains to the unchanged phrase baseline exactly. At 100 arrivals/second on 1850
+captured sources, p95 publication lag is 5.887/6.005s and final drain 4.781/4.544s.
+This finite replay is useful publication evidence; it does not pass indefinite
+streaming, complete native ingestion, search isolation, semantic quality or
+production lifecycle gates. Snapshots still recompute lexical corpus statistics,
+and the reference has a 2048-source/8MiB capacity. No new algorithm was selected.
+
 ## Finite execution rule
 
 The method comparison is finished. There are no automatically queued new

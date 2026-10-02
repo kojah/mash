@@ -8975,6 +8975,54 @@ rejected for code drift during execution. Preserve both failed logs, use the
 unchanged final captures, and do not count guardrail failures as algorithm runs.
 Protocol: \path{research/topics/ENSEMBLE_PROTOCOL.md}; no production selection.
 
+\section{Bounded publication during captured source arrivals}
+We froze a publication control before implementation, without changing the
+source-aware phrase method, lexical scoring or identities. One parent ledger,
+one spawned snapshot process and one pending latest revision replace a queue of
+per-arrival jobs. Publish each completed captured revision, then submit the
+newest checkpoint if dirty; errors preserve the last publication and require
+explicit retry. Labels retain the earlier class-based lexical representation
+related to BERTopic~\cite{bertopic}. This scheduling check is not a new topic
+method or a semantic evaluation.
+
+Replay the same exposed 128-thread/1850-source capture in checkpoint order at
+100 arrivals/second, polling every 5ms. Verify all original represented-text hashes
+and frozen input/code pins. No embeddings are recomputed. The captured ledger
+contains 1527917 text bytes within the existing 2048-source/8MiB capacity.
+The first and repeated controls admit sources in 18.497/18.491s, drain after the
+last arrival in 4.781/4.544s, and take 25.163/25.006s overall, including JSON load,
+process startup, draining/shutdown, rechecks and sampling before serialization.
+Parent CPU 7.323/7.206s and exited-child CPU 23.039/22.579s have separate scopes.
+Publication lag p95 is 5.887/6.005s, maximum 6.437/6.900s, with nearest-rank p95.
+Maximum unreflected revisions 607/531; one in-flight job and one pending marker
+do not imply only one source revision of staleness.
+
+Both runs publish 11 snapshots. The first captured revision contains two phrases
+after 1.277/1.197s, while 128/120 sources have arrived. These phrases are not
+independently judged useful. Timing changes intermediate revisions; the exact
+final checkpoint/discovery fields agree, ending at revision 1850 with 442 topics
+and the unchanged source memberships. Six controlled fixtures cover coalescing,
+edits/deletes/new subjects, idempotence, failures, revision/scope rejection,
+explicit retry and a real spawned worker. Real replay arrivals do not include
+edits, native parsing, model inference or database writes.
+All 689 local research tests pass in 12.044s with author references supplied;
+this is not a claim that GitHub CI or production deployment passed.
+
+Streaming sample maxima are parent RSS 195480/194144KiB and worker
+RSS 163196/163232KiB, separately scoped; worker samples start only after its first
+result supplies a PID. A separate 20ms observer on the repeat captures the parent
+JSON-load phase: RSS 399288KiB/PSS 391766KiB, 977 samples. It excludes the worker
+and itself and can perturb timing. Sample maxima are lower bounds and must not
+be added as simultaneous peaks. Worker rusage 404900/403992KiB is consistent
+with the launcher's retained pre-exec high-water mark; its own approximate VmHWM
+is 163196/163232KiB. Do not attribute that counter to computation or subtract
+unpaired peaks. The finite 18.5s arrival burst and unchanged whole-corpus lexical
+refresh do not prove indefinitely sustainable online discovery. Complete native
+ingestion, application search isolation, independent semantic quality, production
+persistence and selected Rust parity remain open.
+Protocol and capture details: \path{research/topics/PUBLICATION_PROTOCOL.md}
+and \path{benchmarks/2026-10-03-topic-publication.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
