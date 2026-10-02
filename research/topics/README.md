@@ -1032,7 +1032,16 @@ correlated windows do not create independent evidence. No inference occurs.
 Run `window_questions.py` with the same `--root`, fresh `--output` and repeat
 `--compare` arguments. This is not semantic episode segmentation or WNTM.
 
-The full suite with the extra runs 278 tests; without it the two Infomap/runner
+The [distinct-parent graph control](../../benchmarks/2026-10-02-replicated-topic-edges.md)
+uses `parent_support.py` to deduplicate local-pair evidence within a question;
+`replicated_questions.py` requires two distinct supporting parents and compares
+original window weights against capped parent votes. All 432 frozen settings
+fail the unchanged gate. Repeated runs, all support/weight/pair audits and six
+independent dense-mixture replays agree; coverage loss is substantial. Run it
+with the same fresh-output/repeat arguments. This is an exposed representation
+diagnostic, not a production rare-topic exclusion rule or a new statistical null.
+
+The full suite with the extra runs 282 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
