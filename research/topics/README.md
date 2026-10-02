@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 520 tests.
+The full suite with the extras and explicit author references runs 526 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1480,6 +1480,22 @@ Exact representative IDs replay shared CSR-layout/mean-vector operations;
 so chosen Rust parity must freeze layout/reduction/ties. No semantic/global
 lifecycle/full-ingestion or production gate. Beads tracks bounded frozen
 calibration weighting and evidence-based cuts as the next experiment.
+
+Bounded calibration candidate: `calibrated_frame.py`, `calibration_metrics.py`,
+`qmsum_calibration.py`, [protocol](CALIBRATION_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-frozen-calibration.md).
+One forward-first32-block DF model across all meetings, fixed smoothed IDF and
+unseen DF0; canonical sparse rows and immutable generation fingerprints.
+Post-bootstrap pairs keep original full-source LCA denominators. The first
+result still fails the necessary recurring target in both orders; no selection.
+Original repeat was rejected after an unused-import edit changed a code pin.
+Two fresh final runs pass begin/end source pins and complete non-timing
+comparison. Independent audit verifies1868302 coordinates,1296 trees plus
+matched controls,542871217 full/post source-pair contributions and69179 label
+terms. Filtered hashed recurring .601627/.646421 still fails the forward gate;
+first display has a generic61-block group and tiny/empty groups. Reject this
+bootstrap policy for promotion. Semantic cuts/lifecycle/full ingestion/Rust
+remain open, not skipped; next P0 bead addresses source-supported topic cuts.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference

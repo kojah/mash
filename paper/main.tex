@@ -7059,6 +7059,108 @@ complete-ingestion$\leq10\%$ loss, independent coding multitag/ancestor/guided-s
 quality and selected Python/Rust differential CI remain required. Production
 method remains unselected.
 
+\section{Bounded frozen prefix calibration}
+Freeze \path{research/topics/CALIBRATION_PROTOCOL.md} before outcomes. One
+32-block initial-index warm-up in forward captured meeting/source order; used
+term document frequency counts each term once per block. Fixed generation
+$\mathrm{IDF}(t)=\ln(33/(1+\mathrm{DF}(t)))+1$, unseen DF0. Freeze original seed
+identities/count digest and encoding/policy/DF table; subsequent arrivals do not
+change old weights or coordinates. Scalar $(1+\ln n)\mathrm{IDF}$ per term before
+positive SHA25616,384 bucket collision coalescing, fsum L2 normalization, ascending
+unique CSR indices. Raw/static-filter controls preserve empty/fallback ownership.
+Same single source-only model across all162 meetings; identity oracle has no
+future learned weights. No window grid, heldout/LLM/new inference or Rust change.
+Reverse insertion uses the same forward calibration: order robustness after
+bootstrap, not reverse causal chronology. Captured archive order is reproducible
+but arbitrary, not verified production node-group timestamp order.
+
+All88,336 source turns,84,434 ready,77,892 singleton-known and8,196 physical blocks
+retained. Full all/far/crossspan support7,978,214 /7,923,483 /84,323. Additional
+post-bootstrap pairs require both blocks outside first32; every LCA denominator
+still counts all original singleton-known sources, including bootstrap. Matched
+offline/fixed-TF reference trees use the same support. Post support7,958,914 /
+7,904,344 /84,323; recurring support unchanged because bootstrap meeting contributes
+no cross-span positives, not held-out evaluation. Loader validates frozen
+embedding/IDF metadata for source/count lineage but does not use future IDF or
+embeddings as candidate features; this affects research setup and memory.
+
+\begin{center}\begin{tabular}{lrr}
+Calibrated frame & All forward/reverse & Recurring forward/reverse \\
+Raw hashed & .511644/.517417 & .624879/.597167 \\
+Raw identity & .519277/.524224 & .615330/.598770 \\
+Filtered hashed & .539608/.527573 & .601627/.646421 \\
+Filtered identity & .538813/.527926 & .598151/.646276
+\end{tabular}\end{center}
+Offline reference all.554138, recurring.622208. Every frame fails necessary
+recurring loss$\leq.02$ both orders: raw hash$-.002671/.025041$, raw identity
+.006878/.023438, filtered hash.020581/$-.024213$, filtered identity.024057/$-.024068$.
+Do not sweep seed size or reinterpret the small.000581 excess as statistical
+significance. Calibration improves several scores relative to no-IDF TF, but
+filtered reverse broad losses.026565/.026212 and raw.029914--.042495 remain;
+filtered forward broad loss.014531/.015326 does not establish robustness.
+Post all/far scores slightly differ; recurring scores identical on identical
+positive support. Existing eight-group diagnostic/c-TF-IDF labels\cite{bertopic}
+remain unchanged; semantic topic-cut quality is a separate open task.
+
+Six new fixtures cover immutable source DF/unseen weights, future arrivals,
+fallback/empty identity, seed/kind fingerprints, post-bootstrap full-denominator
+accounting and zero-bootstrap parity. Enabled526-test suite passes2.366s before
+corpus runs; no application/Rust validation claim. Original
+first run reached terminal zero, but an unused-import edit during that job and
+restoration changed its helper code pin. Second run correctly rejected full
+repeat; saved matrix files identical but complete repeat unproven. Preserve both
+attempts. New driver snapshots pins before main experiment and rejects changes
+at its end. Two fresh frozen-source runs reach terminal zero, all nontiming
+fields and matrix files match. No provenance/quality waiver; validation guard
+changes no weights/thresholds. Tables508 raw/368 filtered terms. Across246,924
+distinct block pairs, mean absolute hash error.002780/.001675, maximum.306739/.392058.
+First filtered hashed forward display contains61-block generic group with
+\texttt{just,gap,think,right,say,like,remote,don}; four-block
+\texttt{believe,point,blank,euros,percent,leave,long,gonna} group, singleton
+\texttt{consumerism}, two-block \texttt{screen,bigger,dial,make}, three empty-label
+groups. Calibration does not fix the semantic cut/label evidence problem.
+
+Independent audit terminal zero:1,868,302 coordinates,1,296 calibrated trees
+plus1,458 matched control trees,542,871,217 pair-scope contributions across
+full/post,69,179 terms,10,368 representatives. Reconstruct seed DF/count digest,
+scalar weights/hash coordinates, native source membership/LCAs and original
+denominators, post masks, matched controls/summaries and label formula/ranking.
+Coordinate errors bounded$10^{-12}$; maximum other numeric discrepancy
+$2.91\times10^{-11}$ is an accumulated pair sum within declared sum tolerance,
+not relaxed cosine accuracy. Exact representative IDs replay shared frozen mean
+operation with separate pairwise score/max check;415 reassociation winner
+differences, maximumgap$2.11\times10^{-15}$. Shares frozen counts/NumPy/SciPy/static
+stoplist; no independent tokenizer/rotation choices or aggregate-fingerprint
+audit, semantic quality or selected Rust parity.
+
+Final first/repeat after-import wall182.689/175.714s, CPU155.407/157.178s,
+setup15.339/14.824s. Two model builds12.077/11.614ms; four banks encoding/persistence
+wall13.448/20.545s, CPU13.416/16.036s. Raw hash fit CPU9.912/9.835s forward/reverse
+first,9.805/9.755s repeat; p95wall2.721/2.722ms and2.641/2.515ms. Filtered hash
+CPU8.481/8.526s and8.557/8.588s; p95wall2.040/1.987ms and2.108/2.157ms.
+Batched completed-tree labels1.807--2.062s first,1.673--1.726s repeat per full
+hashed frame/order; not online maintenance. Target includes imports/large source,
+count/label/control ledgers, frozen embedding validation, four banks, states,
+evaluation/labels/final JSON/repeat comparison. Main timer excludes imports/final
+JSON/repeat comparison. Rusage2,354,308 /2,354,496 KiB; first sampled RSS2,355,596,
+PSS2,347,615, status HWM2,355,596 KiB; repeat RSS2,355,128, PSS2,343,905, status
+HWM2,355,128 KiB. Samples4,271 /4,222, vanished1 /0, median/max gaps39.296 /220.248
+and40.540 /169.107ms. Target excludes children/observer; intrusive sampled lower
+bounds/status approximate/launcher high water possible/no subtraction or model-
+worker/topic-state attribution. Verified benchmark pair sequential, uncontrolled
+host load, no variation speed claim. Original two attempts preserved separately;
+final costs reflect verified pair, not concealment of extra run cost. No complete
+ingestion/persistence/lifecycle gate.
+
+No production method selected. Bootstrap requires warm-up; coordinated shared
+group generations/order, calibration privacy/forget, edits/deletes/restart and
+bounded global costs remain unimplemented. Weight changes require explicit
+generation/rebuild/publication, not mutable subtree reweighting. Independent
+coding labels/multi-tags/semantic ancestors/guided search, semantic cuts,
+complete-ingestion$\leq10\%$ throughput loss and selected Python/Rust differential
+CI remain promotion requirements. Procedures/current results in
+\path{benchmarks/2026-10-02-frozen-calibration.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
