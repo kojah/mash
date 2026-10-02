@@ -3751,6 +3751,89 @@ Next freeze a graph-based mixed-membership comparison with independent semantic
 judgments, genuinely new evaluation groups and measured graph/statistics refresh
 costs. Literal count updates alone do not establish cheap, stable topic updates.
 
+\section{Word communities and sparse mixed memberships}
+The next prospective comparator implements actual word-graph discovery and
+nonexclusive refinement, motivated by TopicMapping~\cite{topicmapping},
+Infomap~\cite{infomap2008} and PLSI~\cite{plsi1999}. This is a diagnostic
+adaptation, not replication: a binary fixed-document-frequency hypergeometric
+null replaces TopicMapping's count/Poisson null, and fractional balanced counts
+define a weighted likelihood. Ordinary EM is used, not tempered EM.
+
+Reconstruct pinned source counts and equal title/body mass from the original
+captures. Use only the original exposed 64 calibration questions. The unchanged
+source vocabulary is transductive over 128 question sources plus 72 background
+questions; reserved text contributes vocabulary, but reserved references and
+outcomes do not enter selection. Source unigram terms containing an alphabetic
+codepoint with parent DF at least two and at most .40 admit 629 words. A 1,024
+word cap fails rather than truncates. Numerical-only terms and phrases are
+excluded. One vote per parent gives 197,506 unordered tests; no self-edge.
+Compare upper-tail $p\le .05$ against Benjamini--Hochberg $q=.05$~\cite{bh1995}
+over all tests, including zero-co-occurrence $p=1$. Dependent words, varying
+document lengths and mixed subjects prevent a demonstrated corpus FDR guarantee.
+
+Admitted edges carry observed parent co-occurrence weights. Infomap 2.15.1 uses
+undirected flow, two levels, ten trials, one thread and seeds 17/29/101.
+Canonical groups preserve actual partitions; isolates produce no singleton
+topics. Hard memberships divide community source mass by all eligible-word
+mass, including isolates. PLSA word distributions initialize from community
+source mass, with $.001$ smoothing at initialization only. Fifty sparse EM
+updates bound responsibilities by $\mathrm{nnz}\,K\le2{,}000{,}000$; zero-evidence
+documents and collapsed topics stay zero. Record 51 likelihood values, including
+the final parameters, rejecting material decreases. Mixture scores multiply
+document topic proportions by graph-covered mass fraction. Thresholds
+.10/.20/.30, relative threshold .5 of best, and budgets 3/8 yield 72 settings.
+Six matched unigram literal controls use both frozen scorers and budgets 1/3/8.
+Selection requires precision at least .70 and at least 20 links in every seed,
+then maximizes worst recall, worst precision and deterministic key. The natural
+2,016 pair proxy has 97 positives; no semantic acceptance follows from this gate.
+
+\begin{center}\small
+\begin{tabular}{lrrl}\toprule
+Filter & Edges & Covered / isolated & Topics: seeds 17 / 29 / 101\\\midrule
+Uncorrected .05 & 2,787 & 592 / 37 & 37 / 35 / 36\\
+BH .05 & 0 & 0 / 629 & 0 / 0 / 0\\\bottomrule
+\end{tabular}\end{center}
+The corrected graph explicitly has no supported model and all questions abstain.
+Among settings predicting at least 20 links, best observed hard precision is
+$7/48=.146$, recall .072 (seed29, threshold.30, budget3). Best mixture precision
+is $8/31=.258$, recall .082 (seed101, threshold.30, budget3), with 23 false
+positives, one unassigned question and 64 memberships. These descriptive maxima
+are not winners: the selector returns null. Matched literal background-IDF
+budget3 has 8 TP/36 FP, precision .182 and recall .082; budget8 has 26 TP/240 FP,
+precision .098 and recall .268. Restriction to unigrams differs from the previous
+literal experiment. Do not interpret this as a pure algorithm ablation.
+
+Qualitative inspection finds communities mixing generic code terms, such as
+\texttt{class}, \texttt{content}, \texttt{div} and \texttt{button}. No independent
+intrusion judgments were obtained. Whole-parent co-occurrence connects incidental
+implementation details; an empty corrected graph in a small sparse cohort does
+not refute graph discovery on larger corpora. Do not tune stopwords or relax
+thresholds after these outcomes. Higher likelihood is not topic quality.
+
+The optional graph lab dependency leaves original science package records
+unchanged, including multiple Python-version resolutions. The new runner
+verifies archived baseline lock SHA at \texttt{65ea577}, source pins, score AST
+and installed package versions. Older runners retain strict lock guards and
+require their recorded revisions. An initial run stopped before outcomes because
+a dictionary keyed only by package name selected the wrong Python-version lock
+record; grouping all records fixed validation without changing the method.
+Two fresh successful processes repeat all non-timing output. Independent
+combinatorial tails verify 395,012 probability tests; dense EM replays verify all
+three nonempty models, count conservation, likelihoods and final distributions.
+Independent memberships and confusion counts verify 157,248 pair decisions.
+All 273 lab tests pass with the extra (two integration tests explicitly skip
+without it). Total after imports is 1.652/1.637 seconds, filtering .211--.265
+seconds per policy, communities plus EM .139--.157 seconds per supported seed.
+No additional inference occurs; earlier unit inference remains charged. These
+times exclude imports, output serialization and complete ingestion; memory,
+update/delete/restart, p95 and the throughput gate remain unverified.
+First/repeat SHA256:
+\path{a37376e6d9c34e24f24ec5eb9d7aad3664887193fb063b9a6be0362ffb43a0a6},
+\path{341be97e57c6e8fd2d7fefb82f294c308a711c2afc349cad092aa5a9439cffcc}.
+Next compare source-supported local episode/window evidence against whole-parent
+co-occurrence with prospective settings. These flat communities supply no
+semantic ancestors, cheap online maintenance contract, Rust parity or MCP feature.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

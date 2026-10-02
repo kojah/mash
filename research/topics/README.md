@@ -1007,6 +1007,23 @@ its own experiment and independent semantic evaluation in `mash-c0d.19.2.35`.
 
 Run lab input-boundary tests:
 
+The [word-graph/mixture comparison](../../benchmarks/2026-10-02-word-graph-topics.md)
+implements hypergeometric edge filtering, actual Infomap word communities and
+bounded sparse PLSA refinement in `word_graph.py`/`graph_questions.py`. All 72
+frozen settings fail the exposed calibration gate. Two processes repeat exactly
+apart from timing; combinatorial probability and dense EM audits agree. This is
+not TopicMapping replication, validated semantic hierarchy or an online contract.
+Install its optional isolated research extra with `uv sync --frozen --extra graph
+--project research/topics`, setting `UV_PROJECT_ENVIRONMENT` outside the repo.
+Run `graph_questions.py --root ARTIFACT_ROOT --output FRESH_OUTSIDE_GIT_JSON`,
+then repeat with `--compare FIRST_JSON`. Older experiments keep strict original
+lock pins and require their recorded Git revisions. The new runner verifies the
+archived baseline lock plus unchanged science packages; it does not relax those
+older guards. No additional model inference occurs.
+
+The full suite with the extra runs 273 tests; without it the two Infomap/runner
+tests explicitly skip while mathematical and sparse-update tests still run.
+
 ```bash
 PYTHONDONTWRITEBYTECODE=1 \
 /home/james/scratch/mash-artifacts/topic-python-env/bin/python \

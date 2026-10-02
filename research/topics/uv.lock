@@ -248,6 +248,34 @@ wheels = [
 ]
 
 [[package]]
+name = "infomap"
+version = "2.15.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/01/0b2e524e9d50b3eb3fa59bbc0ce28397401a857648557d9c42baa29db19b/infomap-2.15.1.tar.gz", hash = "sha256:fc5e702130609a08bc903707f0fca3b8f585ba4b16ef730ee93c7bb9e2d80c66", size = 756560, upload-time = "2026-08-04T09:04:20.679Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/50/062f085aa07a0a57cb62c8c54eb62914ede728c5608ae4fd425455f7e546/infomap-2.15.1-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:90237dd16cbe679c8b05589c7552a04ff2c4b512f83772c0f7d71e72da7f25ab", size = 1377005, upload-time = "2026-08-04T09:03:41.174Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/15/c9a2e55341a6bf817c8cd05f781fb9344e5510ae3df884ca580effe5c378/infomap-2.15.1-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:746ae618a63745d5af321dd29861cef950f9b67b0916ad3ab5aecac443e8fb9b", size = 20299933, upload-time = "2026-08-04T09:03:43.399Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/d1/e2ed3df05c03ce85a7c87b8fade8a23148cc56de07c378f7696b742f2702/infomap-2.15.1-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:edfb8c05a930d402ac35c55c6ae26663549f6dba8a4bf7ea46fb4c0151dc2493", size = 20822551, upload-time = "2026-08-04T09:03:45.827Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/77/bbde329fc0b55ee4d4f9a43d6d3cb04809e6db2b25595831a869ff5cf9e0/infomap-2.15.1-cp311-cp311-win32.whl", hash = "sha256:56d1bf3998c13c5583a104016ceae60b1fc5870ab46492b2a1d95a187c13e124", size = 1006700, upload-time = "2026-08-04T09:03:48.39Z" },
+    { url = "https://files.pythonhosted.org/packages/04/23/ce997fdb494cff4561e8539d41a63099d87380f290183787ed1cc5b5c49c/infomap-2.15.1-cp311-cp311-win_amd64.whl", hash = "sha256:7ed0496a4eaf9008a0451497882b232524a62c5ba657d7f27dc95d4e4bb18a2c", size = 1136105, upload-time = "2026-08-04T09:03:49.926Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/fa/a7681bc070273d189024207ab95fef1d4446aa06bedac79c437151450a2c/infomap-2.15.1-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:55111d9a7fa338d32b0d03584d9d88808a4f5a4faaecdb25ffa3d4785db37bc9", size = 1377888, upload-time = "2026-08-04T09:03:51.601Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/dd/ac5bcf6c1897ba00a9157a51b6722909956ff8cf70f5d6017c392f250c09/infomap-2.15.1-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ad2c8b848225a1e86ec94f96f7c59b0246bb695f62c1c9a1e7dd2fe09242b419", size = 20316667, upload-time = "2026-08-04T09:03:53.376Z" },
+    { url = "https://files.pythonhosted.org/packages/18/48/b8ba078212686304aedc637a5b597efbcd69f668bba6c067c4f40453128c/infomap-2.15.1-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b730414edd66168ea9041d64a03997e0b84ee397b8278967a2851fccf3589a31", size = 20861105, upload-time = "2026-08-04T09:03:55.71Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/fe/0d1a9953a7d3f8fc6fc84006eeab4b6a5f85fa6885252520bd356879d210/infomap-2.15.1-cp312-cp312-win32.whl", hash = "sha256:4adeb1ffbbf71a23c939d66fde1167396d31762910ba3e1359ec838de77983a3", size = 1008318, upload-time = "2026-08-04T09:03:57.854Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/2f/e343b47c6e328471eb4aece98eefe9ed1d99aa540e23f7fac03d9a58e779/infomap-2.15.1-cp312-cp312-win_amd64.whl", hash = "sha256:527218338276649b573e2b4658dc210bb22066009915adee26e460502292d4f0", size = 1137257, upload-time = "2026-08-04T09:03:59.505Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/c4/3887ffa996d56050efb0a93cb8c633f68f4fb28285fe079f5ba9e772e2cf/infomap-2.15.1-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:c394b982bb2dec79071cc7771fcfbc6df0c0948f54255e892ee8c15a935891be", size = 1377608, upload-time = "2026-08-04T09:04:01.136Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/cd/4222503bf7704aaa374dc57498248158c0de60562b9e5214412d6484f1ee/infomap-2.15.1-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:da7a37752efb0986db8a701f75f8bfaa85fbd579d9fdacd818a7e36ef14cc977", size = 20319958, upload-time = "2026-08-04T09:04:02.809Z" },
+    { url = "https://files.pythonhosted.org/packages/42/59/b04dd8ac91faa4f955201a9333e7b611510f052b5783259f92ecf685abc6/infomap-2.15.1-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bb9a87a787b35f20446fab6168d606b00d4801dc212de6c0365628ebde09b24f", size = 20863400, upload-time = "2026-08-04T09:04:05.581Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/87/037b7b31b68191a89b7e0d1a8c2462ff5c4e17b7ed14683044861480de1e/infomap-2.15.1-cp313-cp313-win32.whl", hash = "sha256:2d0b4dc6999d7d5677ad87ebb8567d387df47012dc6236cfd6ceeaf91ffc5ac6", size = 1007464, upload-time = "2026-08-04T09:04:07.638Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/03/3970c27d914411c82b36d6a477aaba4f0d97082325dd4a4e4e98dcb6da68/infomap-2.15.1-cp313-cp313-win_amd64.whl", hash = "sha256:fe23e0ea87b27e45f69467e370676287321ff07ace1b4d90ce2052357c78cb67", size = 1136958, upload-time = "2026-08-04T09:04:09.276Z" },
+    { url = "https://files.pythonhosted.org/packages/60/0d/69d339abbc25c17a5e55203385f7ddb82ce5321b96223509925a9c7131ba/infomap-2.15.1-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:efebbcae09aec4b1dba5b51fbefd0f05e98c5428b2cddf06e6cdcd4aa0129b11", size = 1377894, upload-time = "2026-08-04T09:04:10.841Z" },
+    { url = "https://files.pythonhosted.org/packages/34/a4/790a87cd790253ab35b11e560e4d938e214acf8226e76a7a58843c444f00/infomap-2.15.1-cp314-cp314-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:679c7bc208220ca2a651dceaf536fe632231e6776639312faeee7f791b5e3e70", size = 20314012, upload-time = "2026-08-04T09:04:12.786Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/ef/a5631b57c930b6d41fe9bd0c40985a8a14c5fbab804cdcc51ce8229cac78/infomap-2.15.1-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d9dee7a8c789bfb8f1dd7ca704b5850d381fb2be3e207df0910d4afed0f089ee", size = 20850503, upload-time = "2026-08-04T09:04:15.192Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/df/fdb0e2c421b65d9fd3d41553e5bcbbc289b1a78a3e105496eeaa48254903/infomap-2.15.1-cp314-cp314-win32.whl", hash = "sha256:3b45fb6d4f57bfe37a234280944a28712a81bab48b5dcadfee9170d5824d6e54", size = 1026074, upload-time = "2026-08-04T09:04:17.393Z" },
+    { url = "https://files.pythonhosted.org/packages/72/ac/e323df9c65fbfaf988f19725d2cf3cd784f7567314273bffad308dd8b940/infomap-2.15.1-cp314-cp314-win_amd64.whl", hash = "sha256:ec10d9e297bf51a550f5cc235e0e0e19261912b9599354667c12efbb6db72d1e", size = 1164035, upload-time = "2026-08-04T09:04:18.961Z" },
+]
+
+[[package]]
 name = "jellyfish"
 version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -329,15 +357,22 @@ dependencies = [
     { name = "yake" },
 ]
 
+[package.optional-dependencies]
+graph = [
+    { name = "infomap" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "blake3", specifier = ">=1,<2" },
+    { name = "infomap", marker = "extra == 'graph'", specifier = "==2.15.1" },
     { name = "numpy", specifier = ">=2,<3" },
     { name = "onnxruntime", specifier = ">=1.22,<2" },
     { name = "scikit-learn", specifier = ">=1.5,<2" },
     { name = "tokenizers", specifier = ">=0.21,<1" },
     { name = "yake", specifier = "==0.7.3" },
 ]
+provides-extras = ["graph"]
 
 [[package]]
 name = "narwhals"
