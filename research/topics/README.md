@@ -1366,7 +1366,19 @@ block. Complete fresh repeat and independent source/block/cosine/ranking/summary
 audit pass; do not promote until unique-block evaluation. Internal54/108 partition
 is explored, not pristine heldout. Pool .312s is stage-only, not ingestion overhead.
 
-The full suite with the extras and explicit author reference runs 476 tests.
+`block_ranking.py` and `qmsum_unique_blocks.py` now freeze one result/vote per
+physical block for all branches, with max eligible passage scores, positive-score
+round12 ties, branch deduplication before RRF60, binary return and conditional
+known-member linear NDCG10. [Complete follow-up](../../benchmarks/2026-10-02-qmsum-unique-blocks.md):
+lexical-block MAP/Hit10/NDCG .444/.950/.407 versus raw-dense .410/.869/.365;
+dense pooling is mixed. Granularity/relevance counts changed, so do not directly
+compare AP to message-expanded scores. Whole repeat and independent source/group/
+branch/rank/grade audits pass. Post-hoc paired meeting intervals for average/graded
+lexical gains include zero;21 supported meetings29 topics, internal partitions
+already explored. Prioritize lexical-block macro discovery with dense/temporal
+controls; no production topic/label/ancestor or ingestion/Rust gate passes.
+
+The full suite with the extras and explicit author reference runs 480 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

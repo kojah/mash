@@ -6390,6 +6390,92 @@ Focused study \texttt{mash-c0d.19.2.20.8.3.3.2.1} complete; parent active with
 unique-block evaluation \texttt{mash-c0d.19.2.20.8.3.3.2.2}. No production
 method/semantic-label/lifecycle/namespace/Rust parity gate passes.
 
+\section{Unique-block return geometry before macro discovery}
+Freeze the source block/evidence/query/candidate support from the previous control,
+then return one result per physical block for every branch. Stable identity is the
+earliest eligible source ordinal, not a promised best-passage display. Branch
+scores are maxima over eligible source scores; pooled branches share the block's
+vector. Positive-only round12 descending ranks then identity ties; deduplicate
+dense/lexical branches before RRF60 so each block gets one vote per branch.
+No new fit, grid, inference, LLM, download or author held-out source. Query vectors
+remain final closed-block snapshots, potentially including later turns, not online
+draft/causal initial-turn quality. Same previously explored internal54/108 partition
+and full-training IDF: no pristine held-out selection or calibration.
+
+Binary relevance is any eligible known source matching the target return topic.
+For graded evaluation\cite{jarvelin2002}, define each block's conditional gain
+$g_b=n_{b,\mathrm{relevant}}/n_{b,\mathrm{known}}$, using only eligible known
+sources, not labeling unknown/multi sources irrelevant. Our explicit linear-gain
+variant uses $\mathrm{DCG}_{10}=\sum_{r=1}^{10}g_{b_r}/\log_2(r+1)$ and ideal
+top10 normalization. Unretrieved relevant blocks remain in AP and ideal DCG.
+Unknown/multi sources still contribute to representations. Changed result
+granularity/relevance counts make AP incomparable to the message-expanded scores.
+
+Same 162 meetings/88,336 turns/8,196 blocks and 2,410 return queries across 29
+native topics/21 meetings. Query-summed 657,019 eligible source entries collapse
+to 77,689 block entries; 168,646 positive source entries become 22,454 positive
+blocks, 4,834 mixed-target known memberships. These are repeated query references,
+not unique global objects; original eligibility and source support are unchanged.
+
+\begin{center}\small
+\begin{tabular}{lrrrrr}
+Branch & MAP & MRR & Hit10 & NDCG10 & Topic-macro AP \\\hline
+Raw dense & .409942 & .518856 & .868880 & .364970 & .359529 \\
+Causal-five dense & .415841 & .524765 & .876763 & .371095 & .366333 \\
+Block dense & .414960 & .534932 & .904979 & .364722 & .409335 \\
+Raw lexical & .344398 & .490227 & .845228 & .340797 & .310253 \\
+Block lexical & .444324 & .544308 & .950207 & .406822 & .444490 \\
+Raw RRF60 & .410183 & .516931 & .865560 & .362721 & .364554 \\
+Block RRF60 & .434942 & .560762 & .951037 & .394485 & .438835 \\
+Chronological distance & .325771 & .184808 & .512033 & .186933 & .285844
+\end{tabular}\end{center}
+
+Raw lexical has 30 zero-result queries. Reserved703 queries/11 topics/9 meetings:
+raw-dense MAP/Hit10/NDCG .373289/.908962/.346211; block-dense
+.373231/.923186/.336840; lexical .423489/.943101/.399059 and block-RRF
+.405174/.960171/.375114. Dense pooling is mixed, lexical blocks promising
+experimental evidence; fusion is not a clear average/graded relevance winner.
+Return retrieval does not establish good discovered topics, labels, ancestors or
+guided-search gain on coding sessions.
+
+Explicitly post-hoc, 2,000 paired meeting bootstrap resamples of all 162 meetings,
+seed 20261002, retain full correlated query clusters/query weighting. Chosen-after-
+outcome contrasts and sparse 21-meeting support forbid a preregistered winner
+claim. Lexical minus raw-dense MAP $+.034381$, percentile95 interval
+$[-.010033,.080861]$; NDCG $+.041852$ $[-.021012,.105168]$;
+Hit10 $+.081328$ $[.003090,.200573]$. Dense pooling MAP $+.005018$
+$[-.009300,.023823]$, NDCG $-.000248$ $[-.018688,.021878]$,
+Hit10 $+.036100$ $[.015990,.057955]$. Block-RRF minus lexical MAP
+$-.009381$ $[-.035121,.016919]$, NDCG $-.012337$ $[-.049645,.024772]$,
+Hit10 $+.000830$ $[-.035220,.044053]$. Average/graded intervals include zero;
+these are descriptive exploratory uncertainty, not unseen-corpus generalization.
+Prioritize a lexical-block macro-discovery pilot with dense/chronological controls,
+without production promotion.
+
+Four new ownership/gain/abstention/fusion/tie fixtures and enabled lab suite pass
+480 tests. Full fresh repeat matches every nontiming field, group/count/gain/rank
+hash and source/protocol/code pin. Separate original-source/group/branch-max/
+Python-sort/fusion/scalar-grade/AP audit verifies all 2,410 queries, 77,689 groups,
+19,280 rankings and 24 summaries; integer/rank/top10/hash identities exact, maximum
+metric error $3.33\times10^{-16}$. NumPy/SciPy and original block/count/inference
+audits remain shared prerequisites; no independent encoder or Rust parity follows.
+Pins/procedures in \path{benchmarks/2026-10-02-qmsum-unique-blocks.md}.
+
+Offline after-import wall/CPU first 20.466/16.583 s, setup 14.427; repeat
+18.835/15.697 s, setup 13.232. Scoring .677/.660 and grouping/evaluation
+3.289/2.975 s: scientific evaluation totals, not ingestion or production query
+latency. Imports/final JSON/comparison outside stage timer, inside external scope;
+first briefly overlaps validation startup, no speed claim from variation.
+Rusage 2048304/2048476 KiB; sampled RSS/PSS/status first
+2049192/2041354/2049192, repeat2048992/2041155/2048992 KiB,
+632/619 samples, one vanished each, median/max gaps33.69/83.39 and34.11/70.34 ms.
+Scientific imports/full capture/ledger loading are not model-worker memory.
+Observer/children excluded, monitoring intrusive, sampled maxima lower bounds,
+status approximate, launcher high water may persist, no subtraction/full-ingestion
+gate. Study \texttt{mash-c0d.19.2.20.8.3.3.2.2} complete, P0 macro-discovery
+\texttt{mash-c0d.19.2.20.8.3.3.3} next. Stable feature frames, source labels/
+multi-tags/ancestors, group/provider namespaces, lifecycle and chosen Rust CI remain.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
