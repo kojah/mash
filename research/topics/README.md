@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 547 tests.
+The full suite with the extras and explicit author references runs 552 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1532,6 +1532,15 @@ candidate. Exact repeat/reference replay and independent scalar feature,
 original-source LCA/global-minimum audit pass. Zero rows273/5/0 remain owned.
 This does not rehabilitate the failed coherence cut or prove online IDF,
 semantic labels/ancestors, coding multitag/guided search or production readiness.
+`qmsum_label_relevance.py` keeps lexical-average groups/candidates fixed and
+tests LDAvis-inspired0.6 probability/lift relevance against corpus-IDF cTF labels.
+[Protocol](LABEL_RELEVANCE_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-label-relevance.md).
+Exact repeat/scalar original-count/formula/support/name-proxy audit passes.
+Name-token rate .278334→.226403, with unchanged588 empty/693 weak groups;
+do not promote from this weak proxy. 516 single-block groups are necessarily
+empty under the2-block support rule,359 despite multiple original ready sources.
+P0 follow-up separates source-label evidence from pooled clustering granularity.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference

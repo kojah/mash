@@ -7337,6 +7337,60 @@ complete-ingestion overhead. No topic algorithm is selected. Independent coding
 labels/multitag/ancestors/guided-search, shared namespace, bounded lifecycle,
 full ingestion and selected executable Python/Rust parity remain promotion gates.
 
+\section{Fixed-group contrastive label relevance}
+LDAvis relevance balances within-topic probability and corpus-relative lift
+\cite{ldavisrelevance}. Adapt its published 0.6 interpretation-study weighting
+to hard source-count groups, rather than fit LDA:
+\[
+r(t,g)=0.6\log p(t\mid g)+0.4\log\frac{p(t\mid g)}{p(t)}.
+\]
+This is not a reproduction of that user study or evidence that the weighting
+transfers to agent chats. Freeze it before outcomes, without a lambda sweep.
+Keep the audited lexical-average trees and fixed-eight display groups,
+static stoplist, letter rule, at-least-two member-block support and at-most 40\%
+corpus block DF unchanged. Compare original c-TF-IDF times corpus IDF with
+adapted relevance; retain valid signed ranks, top 8 and lexical ties. No new
+inference, model/LLM/download, gold feature or held-out source. Original blocks
+and words supply corpus probabilities; fallback blocks grant no label evidence.
+
+Native topic names enter only after all ranks are fixed. The conditional proxy
+asks whether each singleton-known ready source's group label words overlap
+its native name tokens. Paraphrases can miss and generic words can falsely hit;
+this is not semantic label accuracy or coding/multitag/ancestor gold.
+\begin{center}
+\begin{tabular}{lrrrr}
+Method & Hits/77,892 & Rate & Empty groups & Groups$<2$ terms\\
+\hline
+Corpus-IDF c-TF-IDF & 21,680 & .278334 & 588 & 693\\
+Relevance 0.6 & 17,635 & .226403 & 588 & 693\\
+\end{tabular}
+\end{center}
+Both methods output 4,183 terms across 1,296 unchanged groups; 6,542 unknown/mixed
+ready sources remain explicit and no native-name token set is empty. The
+adaptation does not improve the proxy or availability. Do not promote it; a
+weak proxy alone cannot prove semantic inferiority. First meeting's 57-block
+group swaps baseline l\_c\_d\_/colour/display for stolen/lotta/ugly alongside
+shared yellow/gap/bright/criteria/say. Rarity can emphasize anecdotes or style.
+
+The eligibility boundary is separate: 516 single-block groups necessarily have
+no labels under the two-block rule, 359 despite multiple original ready sources.
+Next compare unique original-source support independently of pooled clustering
+units, under fixed scoring and groups. This is not permission to count context
+copies as independent evidence or to waive semantic quality checks.
+
+Complete non-timing repeat and independent scalar original-count/formula/rank/
+support/cut/name-annotation audit pass: 8,366 label terms, 8,366 source-support
+examples and 168,868 source-proxy checks, maximum numeric discrepancy
+8.88$\times10^{-16}$. Shared frozen count ledger/NumPy/SciPy/sklearn stoplist;
+source tokenizer previously audited. First/repeat research wall 48.106/31.113s,
+CPU 17.048/16.188s, mostly validation/setup and uncontrolled host load. These
+are not speed wins or complete-ingestion/persistence costs. Procedures, exact
+fingerprints, costs and scope limitations in
+\path{benchmarks/2026-10-02-label-relevance.md}. No production method selected;
+independent semantic/coding labels, multitag/ancestor/guided-search checks,
+global online lifecycle, full ingestion and selected Python/Rust parity remain
+promotion requirements.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
