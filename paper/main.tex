@@ -8417,6 +8417,74 @@ no counter subtraction or isolated worker attribution is valid. Sampling is a
 lower bound, monitoring intrusive, observer/children excluded. Detailed report:
 \path{benchmarks/2026-10-02-flat-lexical-fusion.md}.
 
+\section{Phrase-centered subject pilot}
+We evaluated literal phrase subjects as a flat alternative to naming each small
+message-centroid group. Reuse all 1850 admitted occurrences in the frozen,
+exposed 128-thread cohort and retain 7038 exclusions. No inference, LLM,
+download, paid call, resampling or source removal occurs. This is development,
+not held-out semantic evaluation. The scanner extracts technical unigrams and
+contiguous whitespace bigrams; it is not an entity/POS model or synonym merger.
+
+Pool exact duplicate inputs once per thread while retaining all evidence IDs.
+Cap vocabulary at 8192 by raw deduplicated frequency/lexical tie. Apply sublinear
+thread TF, normalized class length, c-TF-IDF-style class-frequency weighting
+\cite{bertopic} and thread IDF. Alphabetic terms with thread DF above .4 are
+excluded after three threads. Select at most eight positive terms per thread,
+with lexical ties and atom-contained phrase pruning. This new cap prevents
+attributing lower subject counts entirely to better discovery. IDs hash namespace
+and normalized phrase. Recurring status requires two corpus threads and two
+distinct full inputs; other subjects remain provisional. Corpus mentions and
+selected-thread support are different. Source tags require literal selected-phrase
+evidence; weights are neither cosine nor probabilities.
+
+The pilot finds 618 subjects, 309 corpus-recurring and 309 provisional. All
+128 threads have tags, 1007 total (7.87/thread). Only 111 subjects are selected
+in multiple threads, while 507 are selected in one; 223 corpus-recurring subjects
+are selected in just one thread. Literal evidence covers 574/1850 sources
+(31.03\%); 1276 lack selected-phrase evidence and 326 match multiple phrases.
+Corpus-recurring subjects have evidence on 375 sources. The dense baseline's
+870 topics/11.52 thread tags use different assignment and budget rules. No
+semantic superiority follows from these counts.
+
+The typed bounded source ledger supports idempotence, provider/thread scope,
+atomic replacement validation, deletion and strict checkpoint/restart. Corpus
+statistics are recomputed at snapshot refresh; a production publication/frame
+policy is not selected. Two runs match non-runtime results and forward/reverse
+final semantics match apart from arrival counters. Insert 128 exact duplicates
+with new identities: IDs, thread ranks/scores, support and original memberships
+stay unchanged; evidence identities expand. Cleanup recovers initial semantics.
+Real source deletion removes evidence; deleted restart and original reinsertion
+pass. Replacement is a synthetic fixture; native histories remain untouched.
+
+A no-producer-import auditor reconstructs all token counts, duplicate rules,
+vocabulary, full scores/rankings and containment pruning, phrase IDs and scoped
+source/thread unions: 1850 sources, 128 threads, 618 subjects and 1007 selected
+scores/ranks pass with zero score error. The static English stoplist is shared
+through an independent scanner. Lifecycle is not independently replayed; native
+parsing, semantic labels and agent usefulness remain unverified. Four fixtures
+cover duplicates/provisional status, boundaries/namespace/multiple tags,
+edit/delete/restart/atomic rejection and escaped inspection. The 648-test
+research suite passes in 4.455s. The private source-linked offline view is review
+preparation, not independent judgments.
+
+Initial ledger ingestion is 149.21/124.90ms and full refresh 4105.61/2833.67ms.
+Whole lifecycle/duplicate/reverse experiments take 82.229/25.639s wall and
+32.385/25.386s CPU after load, before serialization/comparison. Host variation,
+corpus recomputation and monitoring limit conclusions; full ingestion and the
+ten-percent gate remain open. Sampled target RSS is 206396/204336 KiB and
+PSS 195344/193348 KiB; approximate status HWM 206396/206352 KiB and
+pre-serialization rusage 205912/206016 KiB. These include prior artifacts,
+loading, repeated snapshots/checkpoints/lifecycle and serialization/comparison;
+no subtraction or isolated worker attribution is valid. Sampling is a lower
+bound, observer/children excluded, launcher history and intrusion disclosed.
+
+Phrase identity/evidence correctness does not establish topic quality. Literal
+matching, short referential replies, unmerged synonyms, provisional phrases and
+the selection cap remain unresolved. Next assess specificity and major/secondary
+subjects against original coding conversations; no method, Rust or MCP/default
+promotion is selected. Detailed procedures:
+\path{benchmarks/2026-10-02-phrase-subject-pilot.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

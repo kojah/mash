@@ -37,6 +37,17 @@ production streaming contract. Audit verifies source/label math and pair density
 not independent routing or semantic usefulness. These settings do not fix
 fragmentation. Next test phrase-centered flat topic seeds with original evidence,
 not further tree construction or output-driven threshold tuning.
+
+The [phrase-centered pilot](../../benchmarks/2026-10-02-phrase-subject-pilot.md)
+now evaluates source-grounded literal subject facets with distinct-input/thread
+support and stable phrase IDs. It finds 618 subjects and selects tags for all
+128 threads, but only 111 subjects are selected by multiple threads and literal
+evidence covers 574/1,850 sources. The eight-term/thread cap and different
+assignment contract prevent claiming a granularity or semantic-quality win.
+Duplicates, deletion/reinsertion, restart and reverse final semantics pass;
+independent full rankings/source-support audit and exact repeat pass. Private
+source-rich inspection is available. No method is selected; next assess label
+specificity and major/secondary subjects against original coding conversations.
 The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
 recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
 granularity/labels and budgeted publication over further hierarchy experiments.
