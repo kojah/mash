@@ -8485,6 +8485,58 @@ subjects against original coding conversations; no method, Rust or MCP/default
 promotion is selected. Detailed procedures:
 \path{benchmarks/2026-10-02-phrase-subject-pilot.md}.
 
+\section{Existing reviewed subjects expose missing secondary evidence}
+The existing eight-thread source review has no overlap with the 128-thread phrase
+pilot. We used it as a separate conditional development diagnostic: one coding
+assistant familiar with the corpus, not independent human gold. Original 84
+records include 39 content, 29 referential, 13 protocol, two attachment and one
+sensitive. Oracle reviewed admission retains 68, not a production filter. Three
+uncertain subjects are omitted, leaving nine primary/nine secondary subjects and
+original support ordinals. Names do not enter discovery. No new judgment,
+inference, LLM, download, resampling or paid call occurs.
+
+An initial run correctly stopped on a hash mismatch but the loader incorrectly
+expected original text in a deliberately redacted sensitive display. Preserve
+that failure. The corrected boundary rehashes every unredacted record, verifies
+identity/ordinal/hash metadata, and permits redaction only for excluded sensitive
+records. Its opaque original text is not claimed rehashed. Packet/review bytes
+are pinned; a fixture rejects redacted content admission. Keep the original
+phrase method and eight-term cap unchanged, fitting its frame on admitted
+threads. This is transductive and conditional on an exposed dependent review.
+
+Measure any-phrase recall over each subject's support records, maximum local
+single-phrase support-set F1, and subject-name atom overlap after discovery.
+These are literal/evidence diagnostics: an unrelated phrase on a multi-topic
+support record can count toward recall; F1 is not semantic label accuracy and
+atom overlap handles neither synonyms nor morphology. Primary/secondary means
+are .928571/.481481 recall and .734512/.385714 best support F1; name atom
+hits are five/three of nine. Four secondary subjects have no literal evidence,
+versus zero primary. The snapshot has 63 subjects (six corpus-recurring,
+57 provisional), vocabulary 791, all eight threads tagged and 33/68 sources
+with evidence, 26 with multiple matches. Complete thread-tag coverage conceals
+missing secondary subjects. Whole-thread ranking can starve brief subjects;
+these numbers do not isolate the cap as the sole cause or prove other labels
+are useful. Next compare bounded source-unit candidate selection against this
+frozen control, excluding names from discovery and unrelated context borrowing.
+
+Two verified runs match non-runtime fields. A no-producer-import audit checks
+admitted hashes, literal memberships, 18 original subject sets, recall, maximum
+support F1 and summary arithmetic within $10^{-12}$. It shares the static
+English stoplist through an independent scanner, and the review remains a
+shared input. Rankings, lifecycle, native parsing and semantics are not
+independently verified. Three fixtures cover local support arithmetic and opaque
+sensitive rejection. The 651-test research suite passes in 4.623s.
+
+After-load discovery/evaluation is 46.03/18.80ms wall and 20.11/18.76ms CPU,
+excluding imports/loading and serialization/comparison. This small workload
+cannot estimate full ingestion. Sampled target RSS is 120556/120548 KiB,
+PSS 110550/107010 KiB, approximate status HWM 120556/120548 KiB and
+pre-serialization rusage 119952/120432 KiB. Sampling is a lower bound;
+imports/loading, launcher history and intrusive observer limit attribution.
+No subtraction/isolated worker claim or production/Rust promotion is justified.
+Independent coding quality and matched full-ingestion gates remain open.
+Detailed procedures: \path{benchmarks/2026-10-02-phrase-reviewed-support.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

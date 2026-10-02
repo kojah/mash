@@ -48,6 +48,16 @@ Duplicates, deletion/reinsertion, restart and reverse final semantics pass;
 independent full rankings/source-support audit and exact repeat pass. Private
 source-rich inspection is available. No method is selected; next assess label
 specificity and major/secondary subjects against original coding conversations.
+
+The [existing-review support diagnostic](../../benchmarks/2026-10-02-phrase-reviewed-support.md)
+uses eight different, already exposed threads with nine primary/nine secondary
+subjects from a single familiar coding-assistant review. Oracle admission retains
+68 records, not a production filter; there is no overlap with the 128-thread pilot.
+Primary/secondary any-phrase support recall is .929/.481; four secondary subjects
+have no literal selected-phrase evidence. Repeat and independent support-metric
+arithmetic checks pass, but this is not semantic accuracy or independent human
+quality. Next compare bounded source-unit selection to whole-thread ranking;
+keep names out of discovery and preserve this control unchanged.
 The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
 recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
 granularity/labels and budgeted publication over further hierarchy experiments.
