@@ -151,11 +151,15 @@ taxonomy synthesis or paid topic-inference calls. Prefer reusing existing local
 embeddings with lightweight online clustering and lexical labels. Any additional
 non-generative model work must be measured, bounded and justified by quality.
 Measure complete ingestion with topics enabled versus disabled, including context
-processing, clustering, label maintenance and persistence. A provisional engineering
-target is at most 10% throughput loss on matched workloads; report initial indexing,
-incremental edits/deletes, p95 update latency, CPU and peak RSS. This is an unverified
-target, not a demonstrated result. Do not promote a method using clustering-only
-timings or quality alone.
+processing, clustering, label maintenance and persistence, including draining
+asynchronous topic work. Following the user's generous performance budget, there
+is no fixed percentage overhead rejection gate. Prioritize topic quality and
+genuine online discovery, and disclose the measured quality/cost tradeoff. Report
+initial indexing, incremental edits/deletes, p95 update latency, CPU, peak RSS,
+publication lag and sustained-arrival backlog on supported node classes. Topic
+work must not block ordinary search or accumulate an indefinitely growing backlog.
+Follow `research/topics/SELECTION_CRITERIA.md`; do not promote a method using
+clustering-only timings or quality alone.
 Keep exploratory development distinct from held-out evaluation; do not claim
 semantic quality, novelty or guided-search gains without corresponding evidence.
 Before promoting a selected Python topic method to Rust, require the executable
