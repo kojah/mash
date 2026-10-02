@@ -5237,6 +5237,88 @@ overlap, semantic ancestry and agent navigation still need independent coding
 evidence. Reproduction pins are in
 \path{benchmarks/2026-10-02-tiage-boundary-preflight.md}.
 
+\subsection{Training-only boundary calibration and frozen development evaluation}
+Using the pinned TIAGE source \cite{xie2021tiage}, freeze two label-free online
+features: adjacent-turn cosine and normalized mean of the previous at most two
+turn directions versus the incoming response. Original text remains complete;
+no future response, annotation feature, rewriting, model download or generative
+call enters inference. Context norm at most $10^{-12}$ abstains. Preflight limits
+all unique inputs to 5,000, 2--256 tokens and 64 KiB before model initialization.
+The installed singleton encoder uses unpadded float32 mean pooling, round-away
+int8 scaling and float64 normalization; this is not the earlier unquantized
+question direction stage or evidence of native Rust inference parity.
+
+For strict cosine less than cutoff, evaluate all distinct supported training
+scores plus \texttt{nextafter(max,+inf)}, retaining none/all endpoints and
+complete confusion counts. Maximize exact rational training micro-F1; ties prefer
+fewer changes, lexical method ID and smaller cutoff. Seal all training artifacts,
+code and array hashes before the separate module permits development download.
+Development applies frozen per-method cutoffs without fitting; the global winner
+remains training-selected. Test and weak-supervision data remain undownloaded.
+
+Training covers 300 dialogues, 4,692 turns and all 4,392 boundaries with no
+abstentions. First-occurrence exact-text inference reuse preserves all sources:
+4,613 calls, 79 reused occurrences, maximum 27 tokens, four bounded-cache clears
+and one model initialization. Python 3.11.15, NumPy 2.4.6, sklearn 1.9.1,
+ONNX Runtime 1.30.0 and tokenizers .23.2 run single-threaded on Xenia with the
+previously pinned model/tokenizer. There are 4,386 adjacent and 4,393 previous-two
+candidate cutoffs. Training chooses adjacent cutoff .2196514282107352, with
+TP/FP/FN/TN 511/949/376/2556 and F1 .4354. Previous-two cutoff
+.2896496928416871 gives 583/1248/304/2257 and F1 .4290; all-change F1 is .3360.
+Labels never enter the score function.
+
+\begin{center}\begin{tabular}{lrrrrr}\toprule
+Frozen development rule & Precision & Recall & F1 & AP & AUC\\\midrule
+Adjacent, training winner & .3416 & .5756 & .4287 & .3549 & .6873\\
+Previous-two mean & .3123 & .6367 & .4190 & .3484 & .6713\\
+All change & .2151 & 1.0000 & .3540 & -- & --\\
+No change & undefined & .0000 & .0000 & -- & --\\\bottomrule
+\end{tabular}\end{center}
+Development covers all 100 dialogues, 1,546 turns and 1,446 boundaries, including
+311 changes. All are supported without abstention; 1,532 unique model calls,
+maximum 26 tokens and one cache clear. Adjacent TP/FP/FN/TN is 179/345/132/790;
+previous-two 198/436/113/699. No exact training dialogue repeats, so prespecified
+dialogue-disjoint and inclusive slices coincide. Nineteen unique turn strings
+and 30 occurrences overlap training and remain included. Unknown model pretraining
+overlap prevents a zero-shot claim. Gold annotation lookahead differs from online
+feature availability; open-domain boundaries do not establish coding topics.
+
+One thousand fixed seed-20261002 dialogue-clustered draws yield adjacent F1
+percentiles .3882/.4284/.4702 and previous-two .3823/.4195/.4556. Paired
+F1-minus-all-change ranges are [.0393,.1106] and [.0327,.0959], descriptive
+rather than calibrated significance. Training ranges retain selection optimism.
+The baseline improvement does not establish robust episode extraction: around
+two false boundaries occur per correct adjacent boundary. Simple mean context
+does not improve this control. Neither method is promoted, and exposed development
+outcomes must not drive a new cutoff sweep.
+
+Fresh full-inference repeats match all nontiming fields and three arrays per
+phase. Independent direct-source/frozen-vector audits check every turn/boundary,
+8,779 brute-force training candidates, 2,892 fixed development predictions,
+source overlap, confusion counts, frozen winners, independently computed AP/AUC
+and complete bootstrap arrays. Maximum geometry differences are
+$1.55\times10^{-15}/1.33\times10^{-15}$; ranking differences
+$1.11\times10^{-16}/1.67\times10^{-16}$. Ten new synthetic tests exercise
+prefix-only inputs, cancellation, generated score ties, near-threshold strict
+ordering, conservative/lexical selection, provenance-before-network and paired
+resampling. The enabled lab suite passes 416 tests. This is wrapper/frozen-vector
+evidence, not independent inference implementation or Rust parity.
+
+After-import training totals are 6.854/35.849 s, CPU 6.764/13.740 s, encoding
+6.372/34.506 s and ONNX calls 5.624/28.438 s; calibration/bootstrap .069/.216 s.
+Development totals are 12.624/5.710 s, CPU 4.735/3.635 s, encoding 10.717/4.944 s
+and ONNX calls 8.701/4.142 s. Final JSON output is outside those timers. Shared-host
+timing varies widely; monitoring interferes and no controlled speed comparison,
+production latency or complete-ingestion overhead follows.
+Rusage peaks train 263,604/264,468 and dev 230,548/227,468 KiB; external smaps RSS
+264,108/271,136 and 231,636/228,900 KiB, PSS 256,596/263,102 and
+223,296/221,160 KiB. Samples 318/873/425/242, vanished reads 1/6/2/1,
+maximum gaps 48.08/227.82/125.35/63.96 ms under requested 20 ms sleep.
+All monitored processes exit zero. Sampled maxima are lower bounds and status
+counters approximate; target-only imports/assets/state/output scope excludes
+children/observer. These are not deployed worker memory or the ingestion gate.
+Full setup, pins and limits: \path{benchmarks/2026-10-02-tiage-boundary-calibration.md}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

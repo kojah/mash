@@ -2,6 +2,8 @@
 
 Bead `mash-c0d.19.2.20.1`. This establishes a verified source for the next
 episode experiment, not a segmentation result or a selected topic method.
+This source-only stage preceded the separately sealed
+[training/development experiment](2026-10-02-tiage-boundary-calibration.md).
 
 ## Source choice and semantics
 

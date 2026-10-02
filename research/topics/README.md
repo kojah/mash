@@ -1,11 +1,21 @@
 # Topic methodology lab
 
+The [TIAGE training/development boundary experiment](../../benchmarks/2026-10-02-tiage-boundary-calibration.md)
+uses `boundary_scoring.py`, `tiage_calibration.py` and `tiage_development.py`.
+Training-only exact-F1 cutoff selection is sealed before development capture;
+no development recalibration or test download occurs. Adjacent development F1
+.4287 retains low precision .3416; previous-two averaging is weaker. Full source
+coverage, inference repeats and independent score/threshold/prediction/bootstrap
+audits pass, but this does not select episode extraction or topic modeling.
+Use pinned inputs, explicit installed assets, fresh output/repeat arguments and
+the external memory monitor. Wide timing variation is not production performance.
+
 The [TIAGE boundary preflight](../../benchmarks/2026-10-02-tiage-boundary-preflight.md)
 pins the author's human-annotated training data without downloading development,
 test or weak-supervision text. `tiage_capture.py`/`tiage.py` preserve all original
 turns, labels, sentinel semantics and source hashes; typed parsing, exact repeats
-and an independent every-row audit pass. No inference or boundary metrics have
-run. These are independent open-domain boundary annotations, not coding-topic
+and an independent every-row audit pass. The preflight itself runs no inference
+or boundary metrics. These are independent open-domain boundary annotations, not coding-topic
 labels or ancestor gold. Freeze calibration/evaluation rules before the next run.
 
 The [stage comparator](STAGE_PARITY.md) prepares the future Rust/Python parity
@@ -1246,7 +1256,7 @@ No new inference occurs. Use verified semantic/source directories, complete
 `--preflight`, fresh `--output-directory`, repeat `--compare FIRST_RESULTS_JSON`,
 single-thread CPU settings and the external memory monitor.
 
-The full suite with the extras and explicit author reference runs 406 tests.
+The full suite with the extras and explicit author reference runs 416 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
