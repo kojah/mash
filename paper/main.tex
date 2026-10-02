@@ -8040,7 +8040,11 @@ clustering because four Claude Code groups were requested but only three
 qualified. Eligibility was preserved and the shortfall recorded, rather than
 relaxing the source criteria. This availability-selected cohort is already
 exposed, not held-out or evidence of native history completeness.
-Of 149 messages, 74 had existing embeddings and 75 did not. Forward routing
+Of 149 canonical user-role records, 74 had existing embeddings and 75 did not.
+All 75 have explicit empty search projections: admitted-text embedding coverage
+is 74/74, not unfinished indexing. Provider user roles do not establish human
+requests; earlier projection audits already demonstrated this distinction.
+Forward routing
 yielded 57 leaves, including 45 single-member leaves; 47 leaves lacked two
 supported label terms. Only two messages received multiple tags. Reversing
 arrival order yielded one multi-tag message and leaf co-membership pair
@@ -8103,13 +8107,15 @@ used. Routing averages existing unit vectors; deferred memberships, centroids
 and lexical support retain original-source vectors and text rather than
 duplicating pooled vectors across members.
 
-On the same 149-source cohort with 74 stored vectors and 75 missing vectors,
+On the same 149-source cohort with 74 stored vectors and 75 excluded empty
+projections,
 only three multi-turn units formed: five accepted joins, 144 units total,
 maximum four turns and minimum accepted cosine .706452. Both arrival-order
 co-membership pair sets matched the raw-message prototype, retaining 57 leaves
 and order Jaccard .710526. Reversing preformed units does not reverse native
 unit formation. This sparse-geometry control yields no fragmentation benefit;
-it does not disprove segmentation on completely embedded sessions.
+it does not disprove segmentation over admitted user-text sequences. Empty
+projections are exclusions, not an incomplete model job.
 
 Two runs matched non-runtime results. Scoped scalar checks verified source
 conservation, unit order/bounds and accepted joins, but not every rejected join
@@ -8117,10 +8123,48 @@ or original routing. Five fixtures and the 629-test research suite passed.
 Pooling, routing and both deferred refreshes took 697.52/684.56 ms, excluding
 initial input loading. External sampled target RSS was 138136/136196 KiB and
 PSS 130379/128448 KiB. Imports, both orders, intrusive monitoring and sampling
-limit interpretation; these are not full-ingestion gates. A complete local
-embedding control on these same sources is needed before stronger conclusions.
+limit interpretation; these are not full-ingestion gates. A complete-window
+local representation control on the same admitted texts follows below.
 Procedures are recorded in
 \path{benchmarks/2026-10-02-causal-topic-units.md}.
+
+\section{Complete admitted-text windows and corrected coverage}
+We correct an interpretation error in the preceding prototype work: all 75
+absent-vector records have empty search projections, while 74/74 admitted texts
+are already embedded. The earlier full-corpus audit established this boundary.
+Excluded canonical tool/context records must not be embedded merely to improve
+a misleading denominator. We retained those records without geometry and
+compared first-window versus complete-window representations of the same 74
+admitted texts using pinned, installed MiniLM assets. No downloads, LLM or paid
+calls were used; production and the original baseline remain unchanged.
+
+Singleton CPU inference uses contiguous whole-word windows of at most 256
+tokens including special tokens. Full representations payload-weight raw
+float32 attended-token means before final quantization; this is not cross-window
+attention. Nine texts require multiple windows (maximum 12); 129 actual window
+calls cover all 63732 admitted bytes. First windows cover only 15072 bytes.
+The first-window control is not proof of production's truncation policy.
+
+First/full controls produce 59/58 leaves, 46/45 singleton leaves and 48/47
+weak-label leaves. Forward/reverse co-membership pairs are 23/22 and 25/26,
+with Jaccard .875000/.961538 versus the historical baseline's .710526.
+The changing small pair universes and persistent fragmentation preclude a
+semantic-quality claim. Raw and causal-unit pair sets remain identical within
+each control. Two final runs match all non-runtime fields. A tuple-versus-JSON
+comparison defect caused an earlier false rejection and was fixed with a
+regression fixture; failed artifacts remain recorded.
+
+An independent no-producer-import auditor verifies all source hashes, contiguous
+character/byte coverage, exact whole-source tokenizer payload equality, unit
+vector normalization and exclusion conservation, sharing only the compiled
+tokenizer. It does not reconstruct inference, routing, labels or semantics.
+The 633-test suite passes. Final controls take 5.075/5.527s after input loading,
+with 1.734/1.818s actual inference. External sampled target RSS is
+230472/232256 KiB, PSS 222564/224067 KiB; rusage is retained separately.
+Imports, multiple controls/orders, intrusive monitoring and lower-bound sampling
+prevent interpretation as complete-ingestion or Rust-parity gates.
+Procedures and preserved failed/final artifacts are documented in
+\path{benchmarks/2026-10-02-complete-topic-windows.md}.
 
 \bibliographystyle{plain}
 \bibliography{references}

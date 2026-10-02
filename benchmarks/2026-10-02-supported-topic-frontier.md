@@ -1,7 +1,10 @@
 # Supported/cohesive consolidation does not resolve topic fragmentation
 
 This experiment reuses the frozen deferred prototype's 149 sources, including
-74 stored embeddings and 75 missing vectors. It changes no source units,
+74 stored embeddings and 75 absent vectors. All 75 have explicit empty search
+projections, so admitted-text coverage is complete (74/74); they must not be
+treated as unfinished embeddings. See the [projection audit](2026-10-02-projection-coverage.md).
+It changes no source units,
 embeddings, routing, hierarchy or labels, and makes no model calls. Production
 is unchanged. This is exploratory development, not held-out quality evidence.
 

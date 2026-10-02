@@ -39,7 +39,13 @@ visible. Checkpoints retain exact numerical state for restart.
 
 ## Observations
 
-149 messages had 74 stored vectors and 75 missing vectors. Forward routing
+149 canonical user-role records had 74 stored vectors and 75 absent vectors.
+Subsequent inspection established that all 75 absent-vector records have
+explicit empty search projections: coverage is 74/74 admitted texts, not an
+unfinished embedding job. Provider user-role records are not necessarily human
+requests; see the earlier [projection audit](2026-10-02-projection-coverage.md).
+The generic prototype `missing_vectors` diagnostic does not encode that distinction.
+Forward routing
 produced 57 leaves and 113 total tree nodes; 45 leaves had one member and 47
 leaves lacked two supported label terms. Two messages had multiple tags.
 Reversed arrival produced one multi-tag message. Leaf co-membership pair

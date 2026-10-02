@@ -1,7 +1,12 @@
 # Causal adjacent-turn pooling on incomplete stored vectors
 
 This controlled exploratory experiment uses the same frozen 149-message coding
-cohort as the deferred prototype, with 74 stored vectors and 75 missing vectors.
+cohort as the deferred prototype, with 74 stored vectors and 75 absent vectors.
+Correction from subsequent source inspection: all 75 absent-vector records have
+explicit empty search projections; admitted-text coverage is 74/74, not incomplete.
+These provider user-role records are not necessarily human requests. Their
+presence interrupts this canonical-turn pooling policy, but that does not justify
+embedding excluded context. See the earlier [projection audit](2026-10-02-projection-coverage.md).
 It does not change eligibility, source text, embeddings, labels, cosine threshold
 or production behavior. No inference, downloads, paid calls or LLM are used.
 
@@ -58,8 +63,9 @@ gate. Stable outputs pin the baseline, method and direct dependency hashes.
 
 Private first/repeat outputs and external memory sidecars have prefix
 `topic-unit-pooling-*-20261002` under mash-artifacts. The original baseline
-remains unchanged. Next perform a separately pinned complete-local-embedding
-control on the SAME sources, using already installed assets and explicit model
-window coverage, measuring all additional inference. Do not silently fill or
-overwrite the missing-vector baseline. Independent coding-session judgments,
+remains unchanged. Next perform a separately pinned complete-window-embedding
+control on the SAME admitted texts, using already installed assets and explicit
+window coverage, measuring all additional inference. Excluded empty projections
+remain without vectors; do not silently embed their canonical tool/context text.
+Independent coding-session judgments,
 complete-ingestion performance and selected-method Rust parity remain open.
