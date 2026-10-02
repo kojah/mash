@@ -1133,7 +1133,18 @@ fresh captures match all nontiming fields. The prepared routing/label helpers
 are tested research controls, not selected production behavior. Separate CF
 compression from semantic topic grouping before another candidate.
 
-The full suite with the extra runs 355 tests; without it the two Infomap/runner
+The [fixed-bootstrap PCA25 control](../../benchmarks/2026-10-02-fixed-pca-topic-routing.md)
+uses `topic_geometry.py` and `cqadup_topics.py --geometry fixed-bootstrap-pca25`.
+It freezes candidate-only bootstrap coordinates before complete insertion,
+separates raw radius geometry from normalized assignment and original-vector
+reranking, and preserves zero-projection abstention. All 32,176 sources fit,
+but forward/reverse produce 20/11 CF groups and routed Recall@100 .14–.24
+versus direct semantic .74. Exact repeats and independent stage audits pass;
+the configuration fails promotion on relevance/order quality. Posthoc diagnostics
+separate topic-admission and candidate-packing losses without repairing settings.
+This is neither a selected online startup policy nor Rust parity evidence.
+
+The full suite with the extra runs 358 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

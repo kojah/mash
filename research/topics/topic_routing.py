@@ -12,6 +12,11 @@ class Membership(StrEnum):
     OVERLAP = 'overlap-max-window'
 
 
+class Geometry(StrEnum):
+    UNIT = 'original-unit'
+    PCA = 'fixed-bootstrap-pca25'
+
+
 @dataclass(frozen=True)
 class Match:
     topic: int
@@ -34,8 +39,16 @@ def unit_matrix(values):
     return values
 
 
-def discover(vectors, reverse=False, maximum=8192):
-    vectors = unit_matrix(vectors)
+def discover(vectors, reverse=False, maximum=8192, *, geometry=Geometry.UNIT):
+    if not isinstance(geometry,Geometry):
+        raise ValueError('explicit typed geometry required')
+    if geometry == Geometry.UNIT:
+        vectors = unit_matrix(vectors)
+    else:
+        vectors=np.asarray(vectors,dtype=np.float64)
+        if (vectors.ndim != 2 or not len(vectors) or not 1 <= vectors.shape[1] <= 25
+                or not np.isfinite(vectors).all() or (np.linalg.norm(vectors,axis=1)>2+1e-12).any()):
+            raise ValueError('bounded raw projected coordinates required')
     if len(vectors) > 100000 or type(reverse) is not bool or type(maximum) is not int or not 1 <= maximum <= 8192:
         raise ValueError('bounded complete arrival stream required')
     model = Birch(threshold=.55, branching_factor=50, n_clusters=None, compute_labels=False)
@@ -79,8 +92,21 @@ def merge_top(left, right):
     return tuple(Match(i, score) for i, score in sorted(scores.items(), key=lambda pair: (-pair[1], pair[0]))[:3])
 
 
+def unit_or_zero(values):
+    values=np.asarray(values,dtype=np.float64)
+    if values.ndim != 2 or not len(values) or not 1 <= values.shape[1] <= 1024 or not np.isfinite(values).all():
+        raise ValueError('finite directions or explicit zero abstentions required')
+    lengths=np.linalg.norm(values,axis=1)
+    valid=lengths!=0
+    if not np.allclose(lengths[valid],1,atol=1e-12,rtol=0):
+        raise ValueError('unit directions or exact zero abstentions required')
+    return values,valid
+
+
 def memberships(vectors, centers, units, owners):
-    vectors, centers, units = map(unit_matrix, (vectors, centers, units))
+    vectors,valid=unit_or_zero(vectors)
+    centers=unit_matrix(centers)
+    units,valid_units=unit_or_zero(units)
     owners = np.asarray(owners)
     if (vectors.shape[1] != centers.shape[1] or units.shape[1] != centers.shape[1]
             or len(centers) > 8192 or owners.shape != (len(units),) or owners.dtype.kind not in 'iu'
@@ -90,12 +116,13 @@ def memberships(vectors, centers, units, owners):
     hard = []
     for start in range(0, len(vectors), 128):
         scores = vectors[start:start+128] @ centers.T
-        hard.extend(select(row, overlap=False) for row in scores)
+        hard.extend(select(row, overlap=False) if present else () for row,present in zip(scores,valid[start:start+128]))
     maximum = [() for _ in vectors]
     for start in range(0, len(units), 128):
         scores = units[start:start+128] @ centers.T
         order = np.argsort(-scores, axis=1, kind='stable')[:, :3]
-        for row, selected, owner in zip(scores, order, owners[start:start+128]):
+        for row, selected, owner, present in zip(scores, order, owners[start:start+128],valid_units[start:start+128]):
+            if not present: continue
             maximum[owner] = merge_top(maximum[owner], tuple(Match(int(i), float(row[i])) for i in selected))
     overlap = [tuple(m for m in matches if m.score >= .55 and m.score >= .85*matches[0].score)
                if matches and matches[0].score >= .55 else () for matches in maximum]
@@ -118,7 +145,7 @@ def posting_lists(members, topics):
 
 def route(query, centers, postings, budget=1000):
     centers = unit_matrix(centers)
-    query = unit_matrix(np.asarray(query).reshape(1, -1))[0]
+    query = unit_or_zero(np.asarray(query).reshape(1, -1))[0][0]
     if len(postings) != len(centers) or type(budget) is not int or not 1 <= budget <= 1000:
         raise ValueError('aligned postings and bounded routing budget required')
     topics = select(centers @ query)

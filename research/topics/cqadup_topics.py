@@ -17,7 +17,8 @@ from cqadup_semantic import digest
 from cqadup_source import load
 from external_context import compare
 from topic_labels import classes, labels, support, vocabulary
-from topic_routing import DiscoveryBudget, Membership, discover, memberships, posting_lists, route, routed_metrics
+from topic_geometry import SEED as BOOTSTRAP_SEED, bootstrap, diagnostics, directions
+from topic_routing import DiscoveryBudget, Geometry, Membership, discover, memberships, posting_lists, route, routed_metrics
 
 
 SEMANTIC = 'd6fec0c4f7fba4023487e2fc217cdf25820ea79d480bced0c370371bef350fb3'
@@ -62,7 +63,9 @@ def source_support(terms, counts, descriptions, members, documents):
     return result
 
 
-def experiment(root, semantic, repeat, preflight_path, destination):
+def experiment(root, semantic, repeat, preflight_path, destination, geometry=Geometry.UNIT):
+    if not isinstance(geometry,Geometry):
+        raise ValueError('explicit typed topic geometry required')
     started = time.perf_counter()
     if (digest(semantic/'results.json') != SEMANTIC or digest(repeat/'results.json') != REPEAT
             or digest(preflight_path) != PREFLIGHT):
@@ -105,12 +108,43 @@ def experiment(root, semantic, repeat, preflight_path, destination):
     files = {}
     count_shape = save_sparse(counts, 'source-counts', destination, files)
     sample = sorted(range(len(ids)), key=lambda i: hashlib.sha256((SAMPLE_SEED+'\0'+ids[i]).encode()).hexdigest())[:512]
+    discovery_vectors,assignment_vectors,assignment_units,routing_queries=vectors,vectors,corpus_units,query_vectors
+    geometry_report={'mode':str(geometry)}
+    projection_ms=0
+    if geometry == Geometry.PCA:
+        begin=time.perf_counter()
+        projection=bootstrap(vectors,ids)
+        projected=projection.transform(vectors)
+        assignment_vectors,valid_docs,norms=directions(projected)
+        projected_units=projection.transform(corpus_units)
+        assignment_units,valid_units,unit_norms=directions(projected_units)
+        projected_queries=projection.transform(query_vectors)
+        routing_queries,valid_queries,query_norms=directions(projected_queries)
+        discovery_vectors=projected
+        for suffix,matrix in [('mean',projection.mean),('components',projection.components),
+                              ('variance-ratio',projection.variance_ratio),('document-coordinates',projected),
+                              ('document-directions',assignment_vectors),('window-coordinates',projected_units),
+                              ('window-directions',assignment_units),('query-coordinates',projected_queries),
+                              ('query-directions',routing_queries)]:
+            path=destination/('projection-'+suffix+'.npy')
+            np.save(path,matrix,allow_pickle=False);files[path.name]=digest(path)
+        geometry_report.update(bootstrap_seed=BOOTSTRAP_SEED,bootstrap_ids=[ids[i] for i in projection.bootstrap],
+                               components=25,solver='full-SVD',whiten=False,
+                               explained_variance_ratio_sum=float(projection.variance_ratio.sum()),
+                               document_norm_p50=float(np.median(norms)),document_norm_p95=float(np.percentile(norms,95)),
+                               document_norm_min=float(norms.min()),document_norm_max=float(norms.max()),
+                               document_mean_squared_norm=float(np.mean(norms**2)),
+                               zero_document_ids=[ids[i] for i in np.flatnonzero(~valid_docs)],
+                               zero_window_rows=np.flatnonzero(~valid_units).tolist(),
+                               zero_query_ids=[reference['query_ids'][i] for i in np.flatnonzero(~valid_queries)],
+                               pair_distortion=diagnostics(vectors,projected,assignment_vectors,sample))
+        projection_ms=(time.perf_counter()-begin)*1000
     captures, order_members, timings = [], [], {}
     for reverse in (False, True):
         name = 'reverse' if reverse else 'forward'
         begin = time.perf_counter()
         try:
-            raw, centers, topic_ids, trace = discover(vectors, reverse=reverse)
+            raw, centers, topic_ids, trace = discover(discovery_vectors, reverse=reverse,geometry=geometry)
         except DiscoveryBudget as failure:
             timings[name] = {'fit_ms': (time.perf_counter()-begin)*1000}
             captures.append({'order': name, 'status': 'discovery-budget-exceeded',
@@ -126,7 +160,7 @@ def experiment(root, semantic, repeat, preflight_path, destination):
             path = destination/(name+'-'+suffix+'.npy')
             np.save(path, matrix, allow_pickle=False); files[path.name] = digest(path)
         begin = time.perf_counter()
-        members = memberships(vectors, centers, corpus_units, np.asarray(owners, dtype=np.int64))
+        members = memberships(assignment_vectors, centers, assignment_units, np.asarray(owners, dtype=np.int64))
         assignment_ms = (time.perf_counter()-begin)*1000
         order_members.append(members)
         modes = {}
@@ -143,7 +177,7 @@ def experiment(root, semantic, repeat, preflight_path, destination):
             records, latencies = {}, []
             for qi, q in enumerate(reference['query_ids']):
                 begin = time.perf_counter()
-                topics, candidates, union, visits = route(query_vectors[qi], centers, posts)
+                topics, candidates, union, visits = route(routing_queries[qi], centers, posts)
                 chosen = [i for i, _ in candidates]
                 scores = vectors[chosen] @ query_vectors[qi]
                 record = routed_metrics(candidates, scores, ids, relevant[q])
@@ -180,7 +214,7 @@ def experiment(root, semantic, repeat, preflight_path, destination):
                                 'coassignment_jaccard': intersection/union if union else None,
                                 'different_pair_decisions': disagree}
         if mode == Membership.HARD:
-            stability[str(mode)]['full_corpus_adjusted_rand'] = float(adjusted_rand_score([row[0].topic for row in a],[row[0].topic for row in b]))
+            stability[str(mode)]['full_corpus_adjusted_rand'] = float(adjusted_rand_score([row[0].topic if row else -1 for row in a],[row[0].topic if row else -1 for row in b]))
     controls = {}
     lexical = json.loads((root.parent/'topic-cqadup-retrieval-first-20261002/results.json').read_text())
     if digest(root.parent/'topic-cqadup-retrieval-first-20261002/results.json') != reference['lexical_sha256']:
@@ -189,12 +223,13 @@ def experiment(root, semantic, repeat, preflight_path, destination):
         records = source['results'][method]['records']
         controls[method] = {'metrics': source['results'][method]['metrics'],
                             'candidate_recall1000': float(np.mean([sum(rank<=1000 for rank in records[q]['relevant_ranks'].values())/len(records[q]['relevant_ranks']) for q in reference['query_ids']]))}
-    timings.update(setup_ms=setup_ms, label_vocabulary_ms=label_vocabulary_ms,
+    timings.update(setup_ms=setup_ms, label_vocabulary_ms=label_vocabulary_ms,projection_ms=projection_ms,
                    total_ms=(time.perf_counter()-started)*1000,
                    peak_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     return {'schema_version': 1, 'scope': 'development-complete-corpus-automatic-topic-routing-not-agent-navigation',
             'semantic_sha256': SEMANTIC, 'repeat_sha256': REPEAT, 'preflight_sha256': PREFLIGHT,
             'source_capture_sha256': reference['capture_sha256'], 'cohort_sha256': reference['cohort_sha256'],
+            'geometry':geometry_report,
             'document_ids': ids, 'query_ids': reference['query_ids'], 'reserved_queries_scored': 0, 'inference_calls': 0,
             'parameters': {'radius': .55,'branching_factor':50,'partial_fit_batch':256,'centroid_cap':8192,
                            'absolute_cosine':.55,'relative_best':.85,'topic_budget':3,'candidate_budget':1000,
@@ -202,7 +237,7 @@ def experiment(root, semantic, repeat, preflight_path, destination):
                            'class_weight':'equal document mass across retained memberships','ctfidf_average':'all topic rows including empty'},
             'python': platform.python_version(), 'versions': {name: importlib.metadata.version(name) for name in ('numpy','scipy','scikit-learn')},
             'code_pins': {name: digest(Path(__file__).with_name(name)) for name in
-                          ('cqadup_topics.py','topic_routing.py','topic_labels.py','subject_labels.py','cqadup_source.py',
+                          ('cqadup_topics.py','topic_routing.py','topic_geometry.py','topic_labels.py','subject_labels.py','cqadup_source.py',
                            'cqadup_semantic.py','external_context.py','uv.lock')},
             'vocabulary': terms, 'source_counts_shape': count_shape, 'source_counts_nnz': counts.nnz,
             'files': files, 'order_sample_ids': [ids[i] for i in sample], 'order_stability': stability,
@@ -214,11 +249,12 @@ def main():
     for name in ('root','semantic','repeat','preflight','output-directory'):
         parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--compare',type=Path)
+    parser.add_argument('--geometry',choices=list(Geometry),type=Geometry,default=Geometry.UNIT)
     args = parser.parse_args()
     if args.output_directory.exists() or args.output_directory.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
         raise ValueError('fresh outside-Git topic capture required')
     args.output_directory.mkdir()
-    result = experiment(args.root,args.semantic,args.repeat,args.preflight,args.output_directory)
+    result = experiment(args.root,args.semantic,args.repeat,args.preflight,args.output_directory,args.geometry)
     # Validate the emitted schema's actual JSON round trip before comparing.
     result = json.loads(json.dumps(result,allow_nan=False))
     if args.compare: compare(json.loads(args.compare.read_text()),result)

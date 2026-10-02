@@ -4573,6 +4573,97 @@ alternative. Increasing the cap/radius alone would not establish meaningful
 topics, semantic ancestors or agent-search gains. Full independent quality,
 lifecycle/ingestion and Rust-parity requirements remain open.
 
+\section{Fixed-bootstrap PCA: complete discovery, weak routing}
+After the unprojected budget failure, prospectively freeze a candidate-only
+bootstrap geometry: SHA256 seed \texttt{mash-topic-bootstrap-pca25-v1-20261002}
+plus NUL plus source ID, take 1,024 sources, fit 25-component float64 full-SVD
+PCA without whitening\cite{pcareference}. Freeze and persist the mean,
+components and bootstrap IDs. Do not move coordinates beneath accumulated CF
+statistics. This offline hash bootstrap assumes candidate IDs are available,
+not a demonstrated online cold-start policy. All 32,176 raw projected vectors
+enter the unchanged BIRCH radius .55/branch50/batch256/8,192-cap control.
+Normalize projected documents/windows/queries separately for assignment;
+rerank selected candidates with original 384D vectors. No new inference,
+model download, generative or paid call occurs; reserved queries stay unscored.
+No zero projection occurs, but explicit abstention is tested without source loss.
+
+Retained bootstrap variance is .441658. Projected norm median/p95 is
+.602866/.710653, range .275140--.810707. On 130,816 fixed source pairs,
+absolute cosine change median/p95/max is .136967/.354308/.694226, and raw
+distance ratio median/p95 .633205/.744119. Radius scale is changed, not
+equivalent to original unit geometry. All sources insert; forward/reverse have
+20/11 CF summaries, largest native sizes 3,011/5,448 and maximum squared radii
+.251653/.292653. Cosine reassignment differs from native Euclidean CF partition.
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+Control & Assigned & Multi-tag & nDCG@10 & Recall@100\\
+\midrule
+Forward hard & 32,176 & 0 & .108054 & .238021\\
+Forward overlap & 24,704 & 5,121 & .124828 & .230729\\
+Reverse hard & 32,176 & 0 & .050521 & .140625\\
+Reverse overlap & 18,649 & 1,761 & .073755 & .153646\\
+Direct balanced & -- & -- & .351858 & .739676\\
+Direct BM25 & -- & -- & .252525 & .502471\\
+\bottomrule
+\end{tabular}\end{center}
+All 64 development queries remain in denominators. Hard full-corpus arrival
+ARI is .444678; fixed-pair positive coassignment Jaccard .317158 hard/.420380
+overlap. Fewer CF summaries do not establish semantic topic quality or ancestry.
+
+Posthoc diagnostics locate separate losses. Forward/reverse query-topic
+abstentions are 27/39 of 64. In forward hard/overlap and reverse hard/overlap,
+posting-union reference coverage is .397396/.376563/.341146/.286458;
+after centrality-based 1,000-candidate packing it is
+.305729/.282813/.187500/.184896. Ranking stored full semantic scores inside
+those admitted unions gives oracle Recall@100 .314063/.308854/.276042/.223958.
+These are posthoc archived-score diagnostics, not a new executed method,
+equal-work timing or agent-navigation result. Better packing cannot retrieve
+references outside admitted topics. Separate geometry, discovery, topic admission
+and query-relevant retrieval controls before causal attribution or threshold repair.
+
+Inspect the three largest topics by assigned count and index in every mode.
+Corpus-IDF makes some descriptors more specific: a forward 2,399-document hard
+group changes from \texttt{team, we, project, you, work, time, development, they}
+to \texttt{team, agile, scrum, project, we, sprint, work, development}.
+Class/interface terms remain recognizable, but another group retains
+\texttt{function, why, int, variable, x, c, 0, name}; reverse has broad
+data/database/web and numeric/code-token groups. Containment diversity leaves
+these inspected top-eight corpus-IDF lists unchanged. Source supports prove
+occurrence, not label coherence; this is assistant inspection, not independent
+gold or label intrusion testing. Do not patch outcome-specific stopwords.
+
+Fresh captures match every decoded nontiming field and array hash. Independent
+reduction verifies 2,753,875 projected coordinates (maximum error
+$1.06\times10^{-15}$), covariance/orthonormality, CF counts/radii/traces,
+115,273 memberships, 256 query-control records, 1,488 labels and 721 source
+supports. Maximum count/label/score errors are
+$1.14\times10^{-13}$/$5.56\times10^{-17}$/$6.67\times10^{-16}$.
+The BIRCH replay uses the same pinned library; this is not independent
+implementation or Rust parity. Source counts match the independently audited
+baseline; archived verified scores preserve rankings without cross-platform tie proof.
+
+First/repeat wall time after imports is 40.527/38.412 s, setup 9.586/8.121 s,
+vocabulary 17.290/16.881 s, projection including arrays/diagnostics .482/.521 s.
+Forward/reverse fits .208/.201 s first, .196/.189 s repeat; assignment
+1.649/1.913 s first, 1.750/1.900 s repeat; label/support passes .775--1.266 s.
+External 1,176/1,170 samples show RSS maxima 1,506,988/1,507,080 KiB,
+PSS 1,497,192/1,499,272 KiB; separate rusage 1,505,768/1,506,484 KiB.
+Requested sample sleep is 20 ms; actual median/max gaps are 36.31/78.48 and
+35.39/60.78 ms, with two/zero vanished reads.
+Status is approximate, sampled maxima lower bounds, target-only scope excludes
+children/observer, monitoring and retained arrays contribute. These are not
+production memory, query end-to-end or complete-ingestion overhead measurements.
+Environment matches the prior study; 358 research tests pass.
+
+Reject this complete PCA25 plus frozen routing configuration for promotion,
+without rejecting all PCA/BIRCH methods. Query-topic admission and centrality
+packing need separate prospective controls. Robust tags, semantic parents,
+independent quality, online lifecycle, ingestion and Rust parity remain open.
+Details: \path{benchmarks/2026-10-02-fixed-pca-topic-routing.md}; first result
+SHA256 \path{ee0f9aa1fe26857ed3fdab10d6ca92d27fa1e8fbc1ccc820f26efe43cfeccaa4}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
