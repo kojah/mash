@@ -5810,6 +5810,79 @@ comparator is outside monitored workload scope. No ingestion gate follows.
 Lifecycle, multi-tags, semantic ancestry, independent coding-topic quality and
 selected-method Rust parity remain unverified.
 
+\section{Source-preserving label cleanup at fixed memberships}
+Keep the four rejected seed partitions fixed and isolate three label-count
+policies before outputs: raw counts; subtraction of exact case-sensitive braced
+\texttt{disfmarker}/\texttt{vocalsound} occurrences; and that subtraction plus
+scikit-learn 1.9.1 English stopwords and frozen acknowledgements
+\texttt{yeah/okay/ok/uh/um/erm/hmm/mm/oh}. The union contains 327 terms.
+Recompute class lengths/frequencies but preserve the original source IDF,
+vocabulary, scoring formula, top-eight budget and lexical ties. Raw labels must
+match the previous capture exactly. Preserve all source text, character/UTF-8
+offsets, embeddings, memberships and empty groups; no inferred source rewriting,
+gold-guided terms, LLM, new inference, downloads or held-out data.
+
+All 88,336 sources remain accounted for. Raw/exact-marker/broad-filter count mass
+is 1,217,662/1,167,534/448,965; nonempty rows 88,049/84,234/60,157. Exact braced
+lowercase spans total 50,128 (33,979 \texttt{disfmarker}, 16,149
+\texttt{vocalsound}); the earlier case-insensitive token-context scan was
+33,979/16,301. Plain mentions/case variants are not silently removable markup.
+
+\begin{center}
+\begin{tabular}{llrrr}
+Discovery & Labels & Empty groups & Raw-name & Content-name$^*$\\\hline
+Original forward & Raw & 0 & .015927 & .009667\\
+ & Markers & 9 & .016430 & .009635\\
+ & Markers+vocabulary & 3113 & .008170 & .010851\\
+Original reverse & Raw & 0 & .015864 & .009656\\
+ & Markers & 3 & .016118 & .009624\\
+ & Markers+vocabulary & 3061 & .008190 & .010866\\
+Context forward & Raw & 0 & .017147 & .018845\\
+ & Markers & 128 & .017335 & .018728\\
+ & Markers+vocabulary & 1193 & .015496 & .020834\\
+Context reverse & Raw & 0 & .017054 & .018707\\
+ & Markers & 55 & .017172 & .018609\\
+ & Markers+vocabulary & 634 & .015559 & .020798
+\end{tabular}
+\end{center}
+Raw-name overlap uses unchanged reference tokens across 82,231 source/topic
+incidences per policy. $^*$Content-name overlap is explicitly post hoc: after
+observing lower raw overlap, remove the same frozen label vocabulary from
+reference name tokens only, with no refit or label change. No reference becomes
+empty here. Raw overlap rewards function words such as \texttt{the/and/of};
+its decline is not semantic degradation. Both proxies are surface overlap with
+broad meeting names, not independent coding-topic/label quality.
+
+Marker descriptors disappear; broad filtering removes excluded-vocabulary
+descriptors by construction, not independent quality evidence. Original-forward
+descriptor count drops from 349,902 raw to 341,716 marker-only and 221,903 broad.
+The broad policy improves the post-hoc content proxy but leaves thousands of
+groups unlabeled. These may be appropriate low-information abstentions; that
+behavior requires validation before adoption. Known-markup removal remains a
+source-preserving candidate, while broad filtering is not selected using these
+proxies. Neither repairs failed discovery or establishes embedding improvement.
+
+Exact fresh repeats match every nontiming field and sparse-array hash.
+Independent original-text audit reconstructs all 88,336 source count rows,
+50,128 literal-search character/byte spans, 1,944 label runs and 2,859,357 scalar
+descriptor scores with zero error, including ownership and coverage/proxies.
+Four new edge tests bring the full enabled suite to 453. These arithmetic audits
+do not supply semantic review, inference or Rust parity. Procedures, artifacts
+and pins are in \path{benchmarks/2026-10-02-qmsum-label-cleanup.md}.
+
+After-import setup first/repeat 4.804/4.550\,s; count cleanup .405/.374\,s;
+whole offline twelve-policy/partition comparison 36.022/34.002\,s, CPU
+33.220/32.001\,s. Timers exclude imports, repeat comparison, final JSON and
+post-hoc proxy; repeat overlaps an independent auditor. Rusage
+1537584/1537280\,KiB contrasts with external target RSS1537944/2895424\,KiB,
+PSS1530160/2886035\,KiB, status high water1537896/2895140\,KiB. Repeat loads
+another complete ledger after the timer. Sampling has 1387/1784 observations,
+zero/one vanished reads, median/max gaps35.49/57.30 and35.53/82.69\,ms.
+External scope includes imports/comparison/JSON and excludes observer/auditor/proxy
+memory. Sampled peaks are lower bounds, status approximate, monitoring intrusive,
+launcher peaks may persist; no subtraction or production-memory/ingestion gate.
+Representation cleanup/refitting and independent semantic evaluation remain open.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

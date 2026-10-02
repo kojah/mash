@@ -1304,7 +1304,14 @@ multi-topic hierarchy. Context reduces singleton groups but fragments recurring
 topics; known transcript markup and acknowledgements remain common descriptors.
 Retrieval gains do not establish discovery or label quality.
 
-The full suite with the extras and explicit author reference runs 449 tests.
+The [source-preserving fixed-membership label cleanup](../../benchmarks/2026-10-02-qmsum-label-cleanup.md)
+isolates exact-marker subtraction and a separate broad label vocabulary filter.
+It retains raw text, offsets, memberships, embeddings and empty groups. Marker
+descriptors disappear; broad filtering improves a post-hoc content-word proxy
+but changes coverage substantially. Raw-name overlap rewards function words,
+so neither proxy establishes semantic quality or embedding/discovery improvement.
+
+The full suite with the extras and explicit author reference runs 453 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
