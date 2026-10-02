@@ -1,5 +1,15 @@
 # Topic methodology lab
 
+The [chat submission validator](../../benchmarks/2026-10-02-chat-review-validation.md)
+parses known review schemas into typed models using only Python's standard library.
+Run `chat_review.py --packet PRIVATE/review.json --answers PRIVATE/completed.json`.
+Complete coverage, literal decisions/enums, exact unredacted same-chat quotes,
+timestamps and explicit metadata gaps are required; blanks fail. Outputs contain
+aggregate counts only and never imply independent human gold or semantic/agent
+quality. Thirteen adversarial synthetic fixtures run in CI without model assets.
+The actual7-chat/281-turn packet loads and its blank answers are rejected; no
+actual reviews were generated. See [contract](CHAT_REVIEW_SUBMISSION.md).
+
 The [coding-chat source pilot](../../benchmarks/2026-10-02-coding-chat-review-pilot.md)
 prepares actual Claude Code/Codex indexed histories rather than question proxies.
 `chat_review_packet.py` deterministically samples source groups with explicit

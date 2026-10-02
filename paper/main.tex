@@ -7998,6 +7998,31 @@ rendering, not controlled ingestion/application performance. Procedures/pins in
 \path{benchmarks/2026-10-02-coding-chat-review-pilot.md}. Topic taxonomy and
 browsing usefulness remain distinct from automatic ranking. No method selected.
 
+\section{Typed coding-chat judgment boundary}
+Implement an executable standard-library-only review validator, parsing known
+packet/reviewer/subject/task/evidence/constraint schemas into frozen typed models
+and enums. Require literal declarations, complete source identities, original
+turn hashes/order, exact unredacted same-document quotes, known alternatives and
+valid timezone/range semantics. Canonicalize review row order. Blank/null answers
+fail rather than becoming uncertainty; explicit empty/context-insufficient
+judgments require notes, and insufficient context forbids answerable tasks.
+Duplicate/malformed/nonfinite/deep JSON and unexpected fields fail under byte,
+depth and structure bounds. Scoped requests require unavailable metadata because
+the blind packet lacks authenticated provider/time/node facts. They cannot
+silently become scored tasks. No generated judgments or model calls.
+
+The actual pinned seven-chat/281-turn packet loads and blank answers are rejected.
+Thirteen synthetic fixtures test adversarial provenance/schema/scope boundaries
+and aggregate-only CLI errors/results; these are not human annotations.
+Enabled610-test research suite passes; stdlib fixtures added to CI without private
+data/models, remote run not verified. Human/exposure declarations self-reported,
+not independent gold. Quote provenance is not semantic interpretation; aggregate
+output always leaves semantic quality/agent utility unproven. Free-text topic
+names require alignment/adjudication before agreement claims. Actual reviews,
+fresh tasks, online/ingestion gates and selected Rust parity remain open.
+Contract/procedures in \path{research/topics/CHAT_REVIEW_SUBMISSION.md} and
+\path{benchmarks/2026-10-02-chat-review-validation.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
