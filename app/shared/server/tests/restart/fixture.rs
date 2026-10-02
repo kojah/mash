@@ -168,6 +168,20 @@ impl Database {
         assert!(result.status.success(), "restart {:?}", self.backend);
         self.ready().await;
     }
+
+    pub(super) async fn crash_and_restart(&self) {
+        let result = docker(&["kill", "--signal", "KILL", &self.name], 10);
+        assert!(result.status.success(), "kill {:?}", self.backend);
+        let state = docker(
+            &["inspect", "--format", "{{.State.Running}}", &self.name],
+            5,
+        );
+        assert!(state.status.success(), "inspect crashed {:?}", self.backend);
+        assert_eq!(state.stdout, b"false\n", "database must be stopped");
+        let result = docker(&["start", &self.name], 20);
+        assert!(result.status.success(), "start crashed {:?}", self.backend);
+        self.ready().await;
+    }
 }
 impl Drop for Database {
     fn drop(&mut self) {

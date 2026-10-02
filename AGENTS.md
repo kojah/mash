@@ -111,8 +111,9 @@ same images used by CI and set `MASH_TEST_SERVER_BINARY` to the built mash binar
 set `MASH_TEST_DOCKER_SG=1` on Xenia for Docker group access. It rediscovers host
 ports after database restarts and never restarts the externally supplied test
 services. CI also removes fixtures with its exact run-owner label if the test
-fails or times out. This verifies acknowledged writes and graceful database
-restart, not power-loss durability or failover.
+fails or times out. This verifies acknowledged writes after graceful database
+restart and SIGKILL process termination using the same persisted host storage,
+not power-loss durability or failover.
 
 Use `cargo build-clif`, `cargo run-clif`, and `cargo test-clif` for development
 iteration. Retain Clippy, formatting, and doctest validation. On the installed
