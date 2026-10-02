@@ -1390,7 +1390,20 @@ online frames/compression, coding labels/multi-tags/ancestors and full-ingestion
 gate remain. Fixed an initial JSON numeric/string node-key comparison failure;
 preserved original capture and bridged every scientific field unchanged.
 
-The full suite with the extras and explicit author reference runs 486 tests.
+`compressed_macro.py` and `qmsum_compressed_macro.py` now test the existing
+singleton BIRCH radius.4/branch64 as compression of fixed lexical blocks, followed
+by separate population-weighted average linkage on unrenormalized group means.
+[Full control](../../benchmarks/2026-10-02-qmsum-compressed-macro.md):8196 units
+become8179/8180 groups; less than.21% compression, virtually unchanged quality.
+Reject that operating point as useful compression, without dismissing BIRCH at
+other geometries/calibrations. Final predictions are snapshot ownership, physical
+CF trees and source-balanced diagnostic lifting are not semantic ancestry.
+Whole fresh repeat and independent direct-CF/source/pair/weighted-macro/lifting/
+scalar-ARI audits pass. High mean order ARI is largely trivial near singleton
+partitions; no online frame/lifecycle/full-ingestion or production method gate.
+Greedy Python macro reference is unoptimized/cubic; no optimized fit-speed claim.
+
+The full suite with the extras and explicit author reference runs 491 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
