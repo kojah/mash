@@ -5,8 +5,11 @@ prepares 32 source-grounded pairs with predictions/tags kept in a separate
 manifest. Use `blind_topic_packet.py` and the
 [review rubric](blind-topic-review-rubric.md) for reproduction. Answer fields
 remain unanswered; no independent human judgments or semantic quality claim
-follow from packet preparation. Annotation validation and agreement analysis
-remain follow-up work.
+follow from packet preparation. `topic_review.py --packet review.json --answers
+completed.json` validates complete submissions. Add `--second other.json
+--manifest unblinded.json` for separate per-stratum categorical agreement.
+Reviewer declarations are self-reports; agreement is not accuracy or independently
+verified gold. Free-text topic labels and semantic ancestry are not scored.
 
 Topic modeling is the first priority. The agreed sequence is research compilation,
 approach selection, Python experiments with recorded results, and Rust

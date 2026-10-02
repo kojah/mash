@@ -42,7 +42,9 @@ A separate verifier reconstructs sampling, identities/order, source contents,
 hashes and null answers; its source rendering shares the existing renderer,
 so it is not an independent browser-security audit.
 
-Annotation validation/agreement analysis remain unimplemented. Independent human
+At preparation, annotation validation/agreement analysis were unimplemented;
+the [subsequent tooling](2026-10-02-topic-review-validation.md) adds validation
+and categorical agreement without supplying judgments. Independent human
 reviews and new source groups are required before promotion. Exposed programming
 questions cannot establish agent-session topic quality, semantic ancestry,
 guided-search utility, lifecycle correctness or ingestion performance. Rust/Python
