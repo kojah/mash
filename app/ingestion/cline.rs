@@ -9,6 +9,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+pub(crate) use text::visible_projection;
 
 mod discovery;
 mod migration;
@@ -201,7 +202,7 @@ fn ui(path: &Path) -> Result<(Session, Vec<NormalizedMessage>), AppError> {
             continue;
         }
         let projection = if visible {
-            crate::search_text::project(&role, &content).into_owned()
+            visible_projection(&role, &content)
         } else {
             String::new()
         };

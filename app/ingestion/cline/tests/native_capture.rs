@@ -13,6 +13,32 @@ struct Capture {
 }
 
 impl Capture {
+    fn assert_native_display(&self, root: &Path) {
+        let rendered = parsed(&root.join("display-merged/tasks/task-1/ui_messages.json"));
+        assert_eq!(rendered.messages.len(), 10);
+        assert_eq!(
+            rendered
+                .messages
+                .inline()
+                .iter()
+                .map(|message| message.search_projection.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            self.expected_contents
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            rendered.messages.inline()[6]
+                .content
+                .contains("<user_input")
+        );
+        assert_ne!(
+            rendered.messages.inline()[6].id,
+            rendered.messages.inline()[8].id
+        );
+    }
+
     fn install_phase(&self, fixtures: &Path, root: &Path, phase: &str) -> IndexOptions {
         for (file, expected_hash) in &self.artifact_sha256 {
             let Ok(relative) = Path::new(file).strip_prefix(phase) else {
@@ -38,13 +64,14 @@ fn first_party_migration_artifacts_preserve_projection_and_persisted_ids_after_c
         .join("app/ingestion/cline/tests/fixtures/native-helper");
     let capture: Capture =
         serde_json::from_slice(&std::fs::read(fixtures.join("capture.json")).unwrap()).unwrap();
-    assert_eq!(capture.scope, "cline-first-party-helper-control-v1");
+    assert_eq!(capture.scope, "cline-first-party-helper-control-v2");
     assert_eq!(capture.commit, "3435f72fcf4cb843bee946b8f9e981683564c9e3");
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("mash.sqlite3");
     let mut previous = None;
     for phase in ["initial", "compacted", "regenerated"] {
         let options = capture.install_phase(&fixtures, directory.path(), phase);
+        capture.assert_native_display(directory.path());
         let scans = direct_scans(&options).unwrap();
         assert_eq!(scans.len(), 1);
         assert_eq!(scans[0].sources.len(), 1);

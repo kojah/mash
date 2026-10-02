@@ -1,6 +1,7 @@
 use super::*;
 
 use rusqlite::params;
+mod cline;
 
 #[test]
 fn identity_only_migration_preserves_readiness_vectors_and_unrelated_checkpoints() {

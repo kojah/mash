@@ -124,6 +124,16 @@ pub(super) fn sdk_text(content: Content, role: &Role, questions: &mut HashSet<St
             }
         }
     }
+    projection = visible_projection(role, &projection);
+    Text {
+        canonical,
+        projection,
+        interactive_reply,
+    }
+}
+
+pub(crate) fn visible_projection(role: &Role, text: &str) -> String {
+    let mut projection = text.to_owned();
     if *role == Role::User {
         projection = strip_envelope(&projection);
         if projection.starts_with("[TASK RESUMPTION]")
@@ -135,10 +145,5 @@ pub(super) fn sdk_text(content: Content, role: &Role, questions: &mut HashSet<St
             projection.clear();
         }
     }
-    projection = crate::search_text::project(role, &projection).into_owned();
-    Text {
-        canonical,
-        projection,
-        interactive_reply,
-    }
+    crate::search_text::project(role, &projection).into_owned()
 }

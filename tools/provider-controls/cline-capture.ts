@@ -42,22 +42,53 @@ for (const [name, version] of [["zod", "4.3.6"], ["nanoid", "5.1.7"]]) {
 }
 mkdirSync(output, { recursive: false });
 process.chdir(output);
+const facades = join(output, "facades");
+mkdirSync(facades);
+for (const [name, modules] of Object.entries({
+    shared: ["sdk/packages/shared/src/prompt/format.ts", "sdk/packages/shared/src/llms/tools.ts", "sdk/packages/shared/src/session/records.ts"],
+    core: ["sdk/packages/core/src/session/display-messages.ts", "sdk/packages/core/src/session/user-run-messages.ts",
+        "sdk/packages/core/src/extensions/tools/executors/apply-patch-parser.ts", "sdk/packages/core/src/extensions/tools/executors/output-limits.ts"],
+})) {
+    writeFileSync(join(facades, `${name}.ts`), modules.map(file => `export * from ${JSON.stringify(join(checkout, file))};`).join("\n"));
+}
+writeFileSync(join(facades, "error.ts"), 'export const CLINE_FREE_PROMOTION_ENDED_ERROR_CODE = "cline_free_promotion_ended"; export function isClineFreePromotionEndedMessage() { throw new Error("unexercised error port"); }');
+for (const [name, symbol] of [["host", "HostProvider"], ["workspace", "workspaceResolver"]]) {
+    writeFileSync(join(facades, `${name}.ts`), `export const ${symbol} = new Proxy({}, { get() { throw new Error("unexercised host port"); } });`);
+}
 
 // Resolve only the upstream exports required by these helpers, without building
 // unrelated provider/model/extension entry points. These are original modules,
 // not substitute implementations. The catalog adapter below is a test double.
-await Bun.plugin({
+const resolver = {
     name: "pinned-cline-helper-imports",
     setup(builder) {
-        builder.onResolve({ filter: /^@cline\/shared$/ }, () => ({ path: join(checkout, "sdk/packages/shared/src/prompt/format.ts") }));
+        builder.onResolve({ filter: /^@cline\/(shared|core)$/ }, ({ path }) => ({ path: join(facades, path.slice(7) + ".ts") }));
+        builder.onResolve({ filter: /^@shared\// }, ({ path }) => ({ path: join(checkout, "apps/vscode/src/shared", path.slice(8)) + ".ts" }));
+        builder.onResolve({ filter: /^@\// }, ({ path }) => {
+            if (path === "@/hosts/host-provider") return { path: join(facades, "host.ts") };
+            return { path: join(checkout, "apps/vscode/src", path.slice(2)) + ".ts" };
+        });
+        builder.onResolve({ filter: /^@core\/workspace$/ }, () => ({ path: join(facades, "workspace.ts") }));
+        builder.onResolve({ filter: /\/services\/error\/ClineError$/ }, () => ({ path: join(facades, "error.ts") }));
+        // These extension-host/error ports are outside plaintext replay. Fail
+        // closed if touched; do not emulate VS Code, tool paths or model errors.
         builder.onResolve({ filter: /^@cline\/shared\/storage$/ }, () => ({ path: join(checkout, "sdk/packages/shared/src/storage/index.ts") }));
         builder.onResolve({ filter: /^(zod|nanoid)$/ }, ({ path }) => ({ path: Bun.resolveSync(path, dependencies) }));
     },
-});
-const migration = await import(join(checkout, "apps/vscode/src/sdk/legacy-task-handling.ts"));
-const { SessionManifestStore } = await import(join(checkout, "sdk/packages/core/src/session/stores/session-manifest-store.ts"));
-const { createSessionCompactionState, projectSessionCompactionState } = await import(join(checkout, "sdk/packages/core/src/session/models/session-compaction.ts"));
-const { formatUserInputBlock } = await import(join(checkout, "sdk/packages/shared/src/prompt/format.ts"));
+};
+const exports = [
+    ["legacyApiHistoryToSdkMessages, mergeLegacyUiMessagesWithResumedSdkMessages", "apps/vscode/src/sdk/legacy-task-handling.ts"],
+    ["sdkMessagesToClineMessages", "apps/vscode/src/sdk/message-translator.ts"],
+    ["SessionManifestStore", "sdk/packages/core/src/session/stores/session-manifest-store.ts"],
+    ["createSessionCompactionState, projectSessionCompactionState", "sdk/packages/core/src/session/models/session-compaction.ts"],
+    ["formatUserInputBlock", "sdk/packages/shared/src/prompt/format.ts"],
+];
+const entry = join(facades, "helpers.ts");
+writeFileSync(entry, exports.map(([names, file]) => `export { ${names} } from ${JSON.stringify(join(checkout, file))};`).join("\n"));
+const build = await Bun.build({ entrypoints: [entry], target: "bun", outdir: join(output, "bundle"), plugins: [resolver] });
+assert(build.success, build.logs.map(String).join("\n"));
+const migration = await import(build.outputs[0].path);
+const { sdkMessagesToClineMessages, SessionManifestStore, createSessionCompactionState, projectSessionCompactionState, formatUserInputBlock } = migration;
 
 type Message = { role: "user" | "assistant"; content: string; id?: string; ts?: number };
 type Ui = { ts: number; type: "say"; say: "task" | "text" | "user_feedback"; text: string };
@@ -77,11 +108,9 @@ const suffix: Message[] = [
     { role: "assistant", content: "Stale revisions were rejected after recovery." },
 ];
 const canonical: Message[] = [...imported, ...suffix];
-// Exercise the actual legacy UI merge with controlled display messages. SDK-to-UI
-// translation itself is outside this control's scope and is not substituted here.
-const sdkDisplay: Ui[] = canonical.map((message, index) => ({ ts: 1700000010000 + index, type: "say", say: message.role === "user" ? "user_feedback" : "text", text: message.content }));
+const sdkDisplay = sdkMessagesToClineMessages(canonical);
 const merged: Ui[] = migration.mergeLegacyUiMessagesWithResumedSdkMessages(legacy, sdkDisplay);
-assert.equal(merged.length, legacy.length + suffix.length);
+assert.equal(merged.filter(message => message.text?.trim()).length, legacy.length + suffix.length);
 assert.deepEqual(merged.slice(0, legacy.length), legacy);
 const expected = [...originals, "Run the Qdrant recovery checks again.", suffix[1].content, "Run the Qdrant recovery checks again.", suffix[3].content];
 const sources = [
@@ -93,6 +122,11 @@ const sources = [
     "sdk/packages/core/src/session/models/session-compaction.ts",
     "sdk/packages/core/src/session/models/session-manifest.ts",
     "sdk/packages/shared/src/prompt/format.ts",
+    "apps/vscode/src/sdk/message-translator.ts",
+    "apps/vscode/src/sdk/message-id-minter.ts",
+    "apps/vscode/src/sdk/sdk-user-message-mapping.ts",
+    "sdk/packages/core/src/session/display-messages.ts",
+    "sdk/packages/core/src/session/user-run-messages.ts",
 ];
 const hashes: Record<string, string> = {};
 for (const phase of ["initial", "compacted", "regenerated"] as const) {
@@ -119,6 +153,15 @@ for (const phase of ["initial", "compacted", "regenerated"] as const) {
     });
     const messages = phase === "regenerated" ? canonical.map((message, index) => ({ ...message, id: `regenerated-${index}`, ts: 1700000090000 + index })) : canonical;
     await store.persistSessionMessages("task-1", messages);
+    const translated = sdkMessagesToClineMessages(messages);
+    const visible = migration.mergeLegacyUiMessagesWithResumedSdkMessages(legacy, translated);
+    assert.deepEqual(visible.filter((message: Ui) => message.text?.trim()).map((message: Ui) => message.text), [...originals, ...suffix.map(message => message.content)]);
+    const displayFiles = [["display-sdk", translated], ["display-merged", visible]].map(([name, values]) => {
+        const path = join(root, name as string, "tasks", "task-1", "ui_messages.json");
+        mkdirSync(join(root, name as string, "tasks", "task-1"), { recursive: true });
+        writeFileSync(path, JSON.stringify(values, null, 2) + "\n");
+        return path;
+    });
     const persistedPath = store.artifacts.sessionMessagesPath("task-1");
     const before = readFileSync(persistedPath);
     if (phase !== "initial") {
@@ -128,18 +171,21 @@ for (const phase of ["initial", "compacted", "regenerated"] as const) {
         assert.deepEqual(projectSessionCompactionState(restored, messages), state.messages);
         assert.deepEqual(readFileSync(persistedPath), before, "compaction must not rewrite canonical history");
     }
-    for (const file of [join(ui, "ui_messages.json"), manifestPath, persistedPath, ...(phase === "initial" ? [] : [store.artifacts.sessionCompactionPath("task-1")])]) {
+    for (const file of [join(ui, "ui_messages.json"), manifestPath, persistedPath, ...displayFiles, ...(phase === "initial" ? [] : [store.artifacts.sessionCompactionPath("task-1")])]) {
         hashes[resolve(file).slice(output.length + 1)] = sha256(readFileSync(file));
     }
 }
 writeFileSync(join(output, "capture.json"), JSON.stringify({
-    scope: "cline-first-party-helper-control-v1", commit: COMMIT, bun: Bun.version,
+    scope: "cline-first-party-helper-control-v2", commit: COMMIT, bun: Bun.version,
     runtime_sha256, dependency_sha256,
     dependencies: { zod: "4.3.6", nanoid: "5.1.7" },
     catalog_adapter: "in-memory test double; manifest fallback uses upstream code",
-    sdk_display: "controlled input; full SDK-to-UI translator not executed",
+    sdk_display: "native sdkMessagesToClineMessages plaintext replay and native legacy UI merge",
+    unexercised_ports: "extension host/workspace and model-error classification guarded to throw; not native UI/session execution",
     compaction_input: "fixed offline projection; no inference executed",
     source_sha256: Object.fromEntries(sources.map(path => [path, sha256(readFileSync(join(checkout, path)))])),
+    harness_sha256: sha256(readFileSync(Bun.argv[1])),
+    bundle_sha256: sha256(readFileSync(build.outputs[0].path)),
     artifact_sha256: hashes, expected_contents: expected,
 }, null, 2) + "\n");
 console.log(JSON.stringify({ output, phases: 3, visible_messages: expected.length, artifacts: Object.keys(hashes).length }));

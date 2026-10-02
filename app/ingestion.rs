@@ -12,6 +12,7 @@ mod antigravity;
 mod benchmarks;
 pub(crate) mod claude;
 mod cline;
+pub(crate) use cline::visible_projection as cline_search_projection;
 mod copilot;
 mod cursor;
 pub(crate) mod diagnostics;

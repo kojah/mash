@@ -456,6 +456,11 @@ is authoritative. Ambiguous multiple histories of the same kind are rejected.
 See the source-linked [Cline contract](docs/cline-ingestion-contract.md) for
 verified schemas and remaining validation gates.
 
+UI and SDK user-input envelopes are retained in canonical viewing and removed
+from search projections. Schema 35 repairs older Cline projections; run explicit
+`mash index` to rebuild any changed vectors before searching. Unchanged vectors
+are preserved; search never performs the upgrade itself.
+
 Cursor Agent is opt-in through `[providers.cursor]`. Configure its native `chats`
 directory or an explicit `store.db`. Its config root is `CURSOR_CONFIG_DIR`, then
 `$XDG_CONFIG_HOME/cursor`, then `~/.cursor`; chat databases are below

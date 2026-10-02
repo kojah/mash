@@ -3,7 +3,8 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 34;
+pub(super) const SCHEMA_VERSION: i64 = 35;
+mod cline;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -23,8 +24,8 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if matches!(version, 32 | 33) {
-        return migrate_claude_identity(connection);
+    if matches!(version, 32..=34) {
+        return migrate_current_projections(connection, version);
     }
 
     connection
@@ -86,6 +87,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         backfill_pending_embeddings(&transaction)?;
     }
     install_publication_triggers(&transaction)?;
+    cline::migrate(&transaction)?;
     // Every earlier schema may retain the old projection. Invalidate after
     // legacy backfills so no migration can accidentally restore readiness.
     transaction.execute_batch(
@@ -101,7 +103,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         .map_err(AppError::database)
 }
 
-fn migrate_claude_identity(connection: &Connection) -> Result<(), AppError> {
+fn migrate_current_projections(connection: &Connection, version: i64) -> Result<(), AppError> {
     // Claude provenance requires explicit replay, not rebuilding unrelated text.
     let transaction = connection
         .unchecked_transaction()
@@ -109,12 +111,15 @@ fn migrate_claude_identity(connection: &Connection) -> Result<(), AppError> {
     transaction
         .execute_batch(SCHEMA)
         .map_err(AppError::database)?;
-    transaction
-        .execute(
-            "DELETE FROM source_checkpoints WHERE provider = ?1",
-            [crate::provider::Provider::ClaudeCode],
-        )
-        .map_err(AppError::database)?;
+    cline::migrate(&transaction)?;
+    if version < 34 {
+        transaction
+            .execute(
+                "DELETE FROM source_checkpoints WHERE provider = ?1",
+                [crate::provider::Provider::ClaudeCode],
+            )
+            .map_err(AppError::database)?;
+    }
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(AppError::database)?;
