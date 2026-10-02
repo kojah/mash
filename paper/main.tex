@@ -7520,6 +7520,73 @@ coding/semantic labels, multitag/ancestor quality, held-out guided-search
 utility, global online lifecycle, full-ingestion performance and selected
 executable Python/Rust parity remain promotion gates.
 
+\section{Nonexclusive full-topic parent-rank guidance}
+The preceding hard gates discard relevant sources. Freeze a comparison that
+preserves every direct positive-score candidate and instead adds a parent-rank
+bonus. Use unchanged counts, static stoplist, full-snapshot TF/IDF, source
+eligibility, groups, 1,095 specific training queries/1,206 spans and top-20
+result budget. Both meeting-conditioned and global scopes retain all original
+reference identities and unsupported denominators. No displayed-label gate,
+top-group cutoff, fallback, gold feature, answer, new inference/LLM/download,
+weight grid or held-out source.
+
+Adapt reciprocal rank fusion \cite{rrf2009}, fixing its published constant
+60 before outcomes. For each direct positive source $d$ and its parent $g$:
+\[
+s(d)=\frac{1}{60+r_{\mathrm{source}}(d)}+
+\begin{cases}\frac{1}{60+r_{\mathrm{group}}(g)},&\text{positive group cosine},\\
+0,&\text{otherwise}.\end{cases}
+\]
+Ranks start at one; exact score/global-ID ties are fixed. Unlike ordinary
+same-document rank permutations, a parent rank is broadcast to several
+sources. This is an adaptation, not reproduction of that experiment; group
+size and repeated broad vocabulary can bias the bonus. No zero-source-score
+candidate enters. Keep full source/group rank pools without candidate pruning.
+
+\begin{center}
+\begin{tabular}{llrrrr}
+Scope & Retrieval & Recall@20 & MRR & NDCG@20 & Zero results\\
+\hline
+Meeting & Direct & .193067 & .537946 & .276575 & 13\\
+Meeting & Parent bonus & .195939 & .542060 & .280952 & 13\\
+Global & Direct & .050725 & .153729 & .060144 & 0\\
+Global & Parent bonus & .078522 & .197217 & .090787 & 0\\
+\end{tabular}
+\end{center}
+Recall improves/declines/ties on 45/12/1,038 meeting queries and 238/13/844
+global queries. Direct ranks/scores/metrics exactly replay the preceding
+control. Each query keeps its result count and zero behavior, with unchanged
+ready-candidate reference coverage .951957. All 56,494 repeated original
+reference contributions remain, including 2,803 unsupported ones. No
+significance or held-out coding/agent-utility claim. Global groups remain a
+union of meeting-local inventories, and other-meeting hits are unjudged.
+Retain nonexclusive full-group guidance as a candidate for held-out and
+bounded-cost validation. Do not promote from these training gains or infer
+semantic label, multitag, ancestor or clustering quality.
+
+Complete non-timing repeat and independent original count/query/span/ownership/
+formula/rank/metric audit pass: 1,095 queries, 4,380 cases and 81,008 selected
+source records. Scalar TF/IDF/fsum-normalized geometry checks 568,026 feature
+coordinates with maximum discrepancy 2.22$\times10^{-16}$. Exact rank/selection
+uses separate formula replay sharing NumPy/SciPy IEEE kernels, not independent
+scalar equivalence of tie winners. Frozen counts/IDF/groups and sklearn
+stoplist are shared; source tokenizer previously audited. Tiny reassociation
+differences can alter rank contributions: freeze a robust cross-language
+tie contract before porting. Four new fixtures bring the enabled lab suite
+to 564 tests. Procedures/pins appear in
+\path{benchmarks/2026-10-02-soft-topic-guidance.md}.
+
+First/repeat wall 97.973/92.608 seconds after imports, CPU 92.879/88.428;
+feature construction 65.324/73.407 milliseconds. Parent bonus plus evaluation
+median/p95 is .208/.436 and .205/.409 milliseconds within a meeting, versus
+47.382/81.317 and 45.669/77.119 globally. The Python global prototype sorts
+all positive sources and constructs per-source records; this is not a bounded
+production query or complete request latency. Large setup validates unused
+embedding/context ledgers; actual model/HTTP/backend/reranking/persistence is
+absent and host load uncontrolled. Independent coding/semantic label and
+multitag/ancestor quality, held-out guided search, bounded costs, shared online
+lifecycle, complete ingestion and selected Python/Rust parity remain gates.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

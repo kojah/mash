@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 560 tests.
+The full suite with the extras and explicit author references runs 564 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1561,6 +1561,17 @@ query/span/score/rank/metric audit pass. Reject these labels as mandatory
 automatic gates; evaluate nonexclusive full-group guidance next. Global
 results have incomplete cross-meeting judgments; this is not mash hybrid
 search, semantic-label truth or selected production topic modeling.
+`qmsum_soft_topic_guidance.py` keeps all direct positive source candidates and
+adds a fixed adapted parent-rank RRF bonus using full group words.
+[Protocol](SOFT_TOPIC_GUIDANCE_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-soft-topic-guidance.md).
+Meeting recall .193067 to .195939, global .050725 to .078522, with unchanged
+result counts/zero cases. Exact repeat and original count/query/span/formula/
+metric audit pass; scalar features checked separately from shared IEEE-kernel
+rank replay. Retain as a candidate, not a production choice. Full-pool global
+Python sorting costs about46--47ms median; bounded cost, held-out/coding
+quality and robust cross-language near-ties remain necessary alongside prior
+semantic/global-lifecycle/full-ingestion gates.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
