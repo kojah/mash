@@ -1344,7 +1344,18 @@ long spans. Neither operating point is selected; cut-free broader hierarchy and
 macro-granularity evaluation is next. Final geometry is not semantic ancestry
 and no production/Rust gate passes.
 
-The full suite with the extras and explicit author reference runs 467 tests.
+`captured_hierarchy.py` and `qmsum_hierarchy.py` now evaluate the complete audited
+final topology without selecting a cut. Conditional dendrogram purity uses only
+singleton-known labels, with all/gap>4/disjoint-native-span scopes; unknown/multi
+leaves stay in geometry. Fixed chronological balanced/combs and root-only baselines
+receive no gold splits. [Complete report](../../benchmarks/2026-10-02-qmsum-hierarchy.md):
+GRINCH-style all purity .459/.446 versus balanced .829; sparse returns .552/.543
+versus root .530. Full byte-identical repeat, independent direct-pair/source and
+aggregate audits pass. Do not promote a frontier from these trees; evaluate
+bounded source-only episode geometry before separate macro-topic discovery.
+Neither this conditional score nor tree shape validates coding labels/ancestors.
+
+The full suite with the extras and explicit author reference runs 472 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

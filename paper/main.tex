@@ -6223,6 +6223,82 @@ study \texttt{mash-c0d.19.2.20.8.3.2} is complete; P0 follow-up
 \texttt{mash-c0d.19.2.20.8.3.3} compares cut-free broader hierarchy against
 root-only/temporal baselines before calibrated frontier or bounded macro discovery.
 
+\section{Cut-free hierarchy quality before frontier selection}
+Poor flat cuts do not establish poor hierarchy. Before further cutoff tuning,
+freeze the complete audited GRINCH-style final topology and both insertion orders
+from the previous experiment. All 162 original QMSum training meetings, 88,336
+turns, 84,434 ready leaves and 77,892 singleton-known leaves remain unchanged.
+No new fitting, cut, inference, LLM, download or held-out source is used.
+This is exploratory adjacent meeting evidence, not coding-session selection.
+
+Adapt dendrogram purity\cite{grinch} to conditional singleton-known evaluation.
+Let $K$ be known singleton-labeled leaves, $C_t\subseteq K$ the native topic class,
+$L(v)$ the leaves under node $v$, and $P_S$ the eligible same-topic distinct pairs
+in scope $S$. Measure
+\[
+ D_S = \frac{1}{|P_S|}\sum_{(i,j)\in P_S}
+ \frac{|L(\operatorname{LCA}(i,j))\cap C_{t(i)}|}
+ {|L(\operatorname{LCA}(i,j))\cap K|}.
+\]
+Unknown/multi-annotated sources remain in actual geometry but outside this
+conditional denominator, unlike fully labeled standard purity. Prespecify all
+pairs, original-distance greater than four, and distance greater than four plus
+distinct merged native spans. The prior post-hoc span definition is frozen before
+these outcomes. Topic names never drive topology. Compare source-only recursive
+floor-midpoint balanced trees, forward/reverse successive-join combs, and root-only
+per-meeting topic prevalence. Their topology is independent of model arrival and
+gold labels. Structural ancestor nodes are not semantic parent labels.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+Hierarchy & All purity & Gap $>4$ & Crossspan \\\hline
+GRINCH-style forward & .458737 & .451224 & .552117 \\
+GRINCH-style reverse & .445872 & .438348 & .543249 \\
+Root-only & .383562 & .385738 & .529642 \\
+Chronological balanced & .829216 & .823855 & .557285 \\
+Forward comb & .526075 & .529036 & .561211 \\
+Reverse comb & .571680 & .575283 & .543966
+\end{tabular}\end{center}
+
+Eligible positives number 8,455,716/8,162,992/84,350; supported topics
+722/706/30 of 725. The 33 original multi-span topics yield only 30 supported
+return topics across 22 meetings. Zero-pair support remains explicit.
+All-pair topic-macro purity .406168/.413153 versus balanced .806953;
+crossspan .360514/.351384 versus balanced .393958 and combs .373845/.345206.
+These are descriptive corpus outcomes, not independent pair confidence claims.
+Changed scope prevalence makes absolute scores between scopes incomparable;
+root-only return purity .529642 already reflects topic imbalance.
+All-pair mean LCA known size 542.66/546.86 versus balanced 313.24;
+return sizes 257.98/258.30 versus 316.45. Return root-LCA fractions
+2.01\%/1.15\% versus balanced 73.61\% show lower nodes alone do not establish
+useful topics: those nodes add little class purity above background.
+
+Both model orders underperform all three temporal baselines on broad all/far
+purity; sparse returns modestly improve on root-only prevalence. Contiguous gold
+spans partly explain strong chronological results; chronology is not a selected
+topic algorithm. This does not universally reject GRINCH, alternative linkage or
+representation, or BIRCH compression. It argues against optimizing a frontier of
+the current topology. Prioritize bounded source-only episode geometry with
+dense/lexical and duration/adjacency controls before separate macro discovery.
+Semantic labels, multi-tags, ancestors and guided-search gains remain unverified.
+
+Five fixtures and the enabled lab suite pass 472 tests. First repeat comparison
+failed because the reused comparator required a timing envelope absent here;
+no partial repeat was published. Fix only whole-JSON comparison and unused
+dependency provenance, then run two fresh complete final captures: byte-identical
+SHA256 \path{39a2b42f48c1d17ff7ba7a0483ae301e04e6383e658f54cfdf8faec9cf325de3}.
+Original capture remains preserved. Separate original-source direct cross-child
+pair-mask audit verifies all 1,296 cases, 1,349,648 nodes and 17,400 topic/scope
+metrics; integer counts exact, maximum numeric error $2.91\times10^{-11}$.
+Separate aggregate audit checks all 24 summary scopes, maximum error
+$5.55\times10^{-17}$, and verifies only comparator provenance changed: all
+algorithm/helper/source/protocol/metric fields match the independently audited
+original. Shared topology/numeric engines remain; no independent graft replay or
+author Scala parity follows. Procedures/pins are in
+\path{benchmarks/2026-10-02-qmsum-hierarchy.md}. No runtime or full-ingestion gate
+passes here. Study \texttt{mash-c0d.19.2.20.8.3.3.1} is complete; parent remains
+active, with episode-geometry follow-up \texttt{mash-c0d.19.2.20.8.3.3.2}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
