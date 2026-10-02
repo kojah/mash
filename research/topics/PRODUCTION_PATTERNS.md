@@ -50,3 +50,16 @@ bounded source-evidence representation against message-only evidence with
 clustering held fixed, using the QMSum membership/recurrence source audit and
 separate technical-session evidence. This is a concrete next comparison, not
 permission to use gold topic names/answers as representation inputs.
+
+## Updated experimental evidence
+
+The audited frozen coherence-cut factorial (2026-10-02) does not rescue the
+existing physical-block trees: distinctive usable-topic broad pair recall is
+4.6–5.5%, coverage37–39%, and conversational labels remain despite source
+support and corpus IDF. The unchanged physical blocks are ownership controls,
+not validated topical episodes. The next comparison should therefore change
+the evidence unit with clustering and label controls fixed, rather than tune
+the coherence threshold or bootstrap window. Track it in P0 bead
+`mash-c0d.19.2.20.8.3.3.3.9`; retain the rejected control and full source/pair
+support. This supports investigating a scheduling/evidence change, not claiming
+that a particular periodic taxonomy algorithm has already won.

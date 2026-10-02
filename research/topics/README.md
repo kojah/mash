@@ -1503,6 +1503,14 @@ It preserves all original positive-pair denominators and reports proposed and
 usable assignment coverage separately. `audit_semantic_cut_geometry.py` is an
 independent direct-pair geometry/cut audit only; it does not verify source-pair
 metrics, label counts/rankings, representatives or semantic usefulness.
+`audit_semantic_cut_sources.py` subsequently verifies original annotations,
+5,184 proposed/usable metric cases, 102,635 scalar label terms, 17,448 source
+representatives and complete summaries. Mean-operation replay matches exact
+representative IDs; direct-pair reassociation yields 2,446 nearly tied alternative
+winners (maximum gap1.67e-15), retained for future numerical parity decisions.
+The cut's precision increase accompanies broad pair recall only4.6–5.5% and
+coverage37–39%; reject promotion. Next P0 work changes evidence units rather
+than tuning this threshold. See [report](../../benchmarks/2026-10-02-semantic-topic-cuts.md).
 No production method is selected, and no new embedding inference is performed.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;

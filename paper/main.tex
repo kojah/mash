@@ -7213,10 +7213,20 @@ tuning this threshold or adding example-specific stopwords. The first target
 takes 58.642 seconds after imports including setup, CPU 50.177 seconds;
 these are research diagnostics, not complete-ingestion costs.
 
-Full non-timing repeat and scoped geometry audit are recorded separately in
-\path{benchmarks/2026-10-02-semantic-topic-cuts.md}. Source-pair and label
-oracles, representative/summary auditing, independent coding multitag and
-semantic ancestry evaluation, guided-search gains, global online state,
+Full non-timing repeat and scoped geometry audit pass. A subsequent independent
+source audit reconstructs original topic/span memberships, word counts,
+member/corpus document frequencies and scalar label ranking. It verifies
+5,184 proposed/usable metric cases, 102,635 label terms, 17,448 representatives
+and complete summaries; maximum numeric discrepancy is
+$8.88\times10^{-16}$. The 2,323,840,384 eligible pair-scope contributions repeat
+across controls/phases/scopes and are not unique pairs. Exact representative
+IDs replay the frozen mean-vector operation; separate direct-pair averaging
+finds 2,446 reassociation winner differences, maximum gap
+$1.67\times10^{-15}$. These audits share frozen source counts, NumPy/SciPy
+and the static stoplist; they do not independently fit trees or infer vectors.
+Artifacts and fingerprints are recorded in
+\path{benchmarks/2026-10-02-semantic-topic-cuts.md}. Independent coding multitag
+and semantic ancestry evaluation, guided-search gains, global online state,
 edits/deletes/restart, ingestion overhead and selected Python/Rust differential
 CI remain unverified. The unchanged uncut hierarchy gates remain failed.
 

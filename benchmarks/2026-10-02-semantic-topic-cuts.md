@@ -2,8 +2,10 @@
 
 Exploratory training-corpus diagnostic, not a selected production method.
 Protocol: [SEMANTIC_CUT_PROTOCOL.md](../research/topics/SEMANTIC_CUT_PROTOCOL.md).
-Bead `mash-c0d.19.2.20.8.3.3.3.8.2` remains open for the full source-pair,
-label, representative and summary audit. The geometry audit below is narrower.
+Bead `mash-c0d.19.2.20.8.3.3.3.8.2` completes this rejected candidate's
+diagnostic and corpus audit. The geometry-only audit remains narrower;
+the source audit described below completes label/pair/representative/summary
+validation without establishing semantic quality or production readiness.
 
 ## Setup
 
@@ -75,7 +77,22 @@ Artifacts under `/home/james/scratch/mash-artifacts`:
   This shares frozen vectors/NumPy dots and does **not** verify source-pair
   metrics, label counts/ranks, representatives, summaries or tree construction.
 - Full enabled lab suite: 538 tests pass in 2.444 seconds. Scalar label-score
-  and aggregation fixtures pass; these do not replace the missing corpus oracle.
+  and aggregation fixtures pass; these do not replace the corpus oracle.
+- `topic-qmsum-semantic-cut-source-audit-20261002.json` SHA256
+  `caeb33147200eecc6c0b5f6b4811b834e2bd944d5ef707df8b972b2ebe099007`.
+  Auditor source SHA256
+  `cb32dad9318ff6b0a36ecfae92ce2e72c4763a0da02115d572424b47819ba1c4`.
+  Reconstructs singleton-known membership/native spans from original QMSum
+  annotations, source word counts from the frozen ledger, corpus/member DF,
+  scalar c-TF-IDF/IDF ranking, fixed-eight membership and label-support state.
+  Verifies 5,184 proposed/usable metric cases, 2,323,840,384 eligible pair-scope
+  contributions (repeated across controls/phases/scopes, not unique pairs),
+  102,635 label terms, 17,448 representatives and every aggregate summary.
+  Maximum numeric discrepancy 8.881784197001252e-16. Exact representative IDs
+  replay the frozen mean-vector arithmetic; a separate direct-pair mean check
+  finds 2,446 reassociation winner differences, max gap1.6653345369377348e-15.
+  This audit shares pinned word counts, NumPy/SciPy and the static stoplist;
+  it does not independently infer embeddings, tokenize or fit the source trees.
 
 Use the scientific Python environment with one BLAS/OpenMP thread:
 
@@ -90,6 +107,8 @@ Use `--compare /path/to/first.json` for a full non-timing repeat and
 `memory_audit.py --output /outside/git/fresh-memory.json -- COMMAND` for Linux
 target-process RSS/PSS sampling. The audit accepts `--artifacts`, `--capture`
 and fresh `--output` paths.
+`audit_semantic_cut_sources.py` accepts the same audit arguments and invokes
+the geometry audit before independently checking source/label/pair evidence.
 
 ## Costs and limits
 
@@ -111,8 +130,11 @@ approximate. Rusage may retain launcher high water; no subtraction or worker
 attribution. Runs are sequential; a brief first-result inspection overlaps
 repeat setup. Host load is uncontrolled; this is not a timing comparison.
 
-Full corpus label/pair/representative/summary audit remains open, as do
+The corpus label/pair/representative/summary audit passes. Still open:
 independent coding label/multitag/ancestor/guided-search evaluation, global
 online identities/bounded state, edits/deletes/restart, complete ingestion
 overhead and selected Python/Rust differential CI. No Rust/application or
 deployment behavior changes in this experiment.
+The next P0 bead `mash-c0d.19.2.20.8.3.3.3.9` changes the evidence-unit
+comparison and evaluates the separation of online assignment from discovery;
+it does not promote a new algorithm or reopen a threshold/window sweep.
