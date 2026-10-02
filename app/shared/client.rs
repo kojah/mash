@@ -91,7 +91,7 @@ pub(super) fn request(
         .headers(headers)
         .timeout(endpoint.timeout()))
 }
-pub(super) async fn response<T: serde::de::DeserializeOwned>(
+pub(super) async fn response<T: serde::de::DeserializeOwned + Send + 'static>(
     mut request: reqwest::RequestBuilder,
 ) -> Result<T, AppError> {
     use tracing::Instrument;
@@ -120,7 +120,7 @@ pub(super) async fn response<T: serde::de::DeserializeOwned>(
     .await
 }
 
-async fn response_inner<T: serde::de::DeserializeOwned>(
+async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
     request: reqwest::RequestBuilder,
 ) -> Result<T, AppError> {
     let response = request.send().await.map_err(|error| {
@@ -147,18 +147,34 @@ async fn response_inner<T: serde::de::DeserializeOwned>(
         error.error.retryable = !matches!(status.as_u16(), 400 | 401 | 403 | 413 | 422);
         return Err(error);
     }
-    response
-        .json()
+    let bytes = response
+        .bytes()
         .await
-        .map_err(|_| AppError::shared("invalid shared index HTTP response"))
+        .map_err(|_| AppError::shared("invalid shared index HTTP response"))?;
+    // Node state and candidate/context responses can be large. Network I/O
+    // stays async; typed decoding must not occupy a runtime worker alongside
+    // unrelated MCP reads, watch refreshes and publication heartbeats.
+    crate::blocking(move || {
+        let span = tracing::info_span!(
+            "shared_http_decode",
+            bytes = bytes.len(),
+            outcome = tracing::field::Empty,
+        );
+        let _guard = span.enter();
+        let result = serde_json::from_slice(&bytes)
+            .map_err(|_| AppError::shared("invalid shared index HTTP response"));
+        span.record("outcome", if result.is_ok() { "success" } else { "error" });
+        result
+    })
+    .await
 }
-pub(super) async fn get<T: serde::de::DeserializeOwned>(
+pub(super) async fn get<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,
     endpoint: Endpoint,
 ) -> Result<T, AppError> {
     response(request(config, reqwest::Method::GET, endpoint)?).await
 }
-pub(super) async fn post<T: serde::de::DeserializeOwned>(
+pub(super) async fn post<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,
     endpoint: Endpoint,
     body: &impl Serialize,

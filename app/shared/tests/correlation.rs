@@ -7,6 +7,7 @@ use tracing::instrument::WithSubscriber;
 struct TraceEvent {
     fields: TraceFields,
     span: Option<TraceSpan>,
+    spans: Option<Vec<TraceSpan>>,
 }
 #[derive(Deserialize)]
 struct TraceFields {
@@ -18,6 +19,7 @@ struct TraceSpan {
     trace_id: Option<String>,
     status: Option<u16>,
     outcome: Option<String>,
+    bytes: Option<usize>,
 }
 
 #[tokio::test]
@@ -75,11 +77,18 @@ async fn client_success_and_decode_failure_correlate_but_disabled_tracing_sends_
     let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
     assert!(!output.contains("response-secret-canary"));
     assert!(!output.contains(&url));
-    let spans: Vec<_> = output
+    assert_correlated_spans(&output, wire);
+}
+
+fn assert_correlated_spans(output: &str, wire: &str) {
+    let closed: Vec<_> = output
         .lines()
         .map(|line| serde_json::from_str::<TraceEvent>(line).unwrap())
         .filter(|event| event.fields.message == "close")
-        .filter_map(|event| event.span)
+        .collect();
+    let spans: Vec<_> = closed
+        .iter()
+        .filter_map(|event| event.span.as_ref())
         .filter(|span| span.name == "shared_http_request")
         .collect();
     assert_eq!(spans.len(), 2);
@@ -88,4 +97,40 @@ async fn client_success_and_decode_failure_correlate_but_disabled_tracing_sends_
     assert_eq!(spans[0].outcome.as_deref(), Some("success"));
     assert_eq!(spans[1].outcome.as_deref(), Some("error"));
     assert!(spans.iter().all(|span| span.status == Some(200)));
+    let decoded: Vec<_> = closed
+        .iter()
+        .filter(|event| {
+            event
+                .span
+                .as_ref()
+                .is_some_and(|span| span.name == "shared_http_decode")
+        })
+        .collect();
+    assert_eq!(decoded.len(), 2);
+    assert!(decoded.iter().all(|event| {
+        event
+            .span
+            .as_ref()
+            .unwrap()
+            .bytes
+            .is_some_and(|bytes| bytes > 0)
+    }));
+    assert_eq!(
+        decoded[0].span.as_ref().unwrap().outcome.as_deref(),
+        Some("success")
+    );
+    assert_eq!(
+        decoded[1].span.as_ref().unwrap().outcome.as_deref(),
+        Some("error")
+    );
+    for (event, request) in decoded.iter().zip(spans) {
+        let parent = event
+            .spans
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|span| span.name == "shared_http_request")
+            .unwrap();
+        assert_eq!(parent.trace_id, request.trace_id);
+    }
 }

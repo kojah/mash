@@ -285,6 +285,13 @@ span and the server's `http_request` span record the same `trace_id`. Enable
 tracing on both processes and match that field to correlate status and timing.
 The server replaces missing, malformed or duplicate IDs with a fresh local ID;
 client tracing disabled sends no correlation header or worker diagnostics request.
+Successful shared response bodies are decoded into typed models on blocking
+workers so large JSON responses do not occupy an async runtime worker. The
+`shared_http_decode` child span records byte count and success/error, with the
+same request ancestry and no response contents. HTTP request timing includes
+network I/O, blocking-worker queueing and decoding; the child measures decoding.
+See the [response decoding checks](benchmarks/2026-10-03-shared-response-decoding.md)
+for concurrency and relevance verification.
 Live worker stage streaming and fleet overhead measurements remain planned.
 
 Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`

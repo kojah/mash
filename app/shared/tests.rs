@@ -12,6 +12,7 @@ use std::path::Path;
 use std::time::Duration;
 
 mod correlation;
+mod decoding;
 mod selections;
 
 #[tokio::test]
