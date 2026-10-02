@@ -8092,6 +8092,36 @@ monitoring limit interpretation; these are not complete-ingestion gates.
 Procedures and private artifacts are documented in
 \path{benchmarks/2026-10-02-supported-topic-frontier.md}.
 
+\section{Causal adjacent-turn units on sparse stored geometry}
+Motivated by dialogue segmentation~\cite{texttiling}, we tested a lightweight
+causal pooling control, not an implementation of TextTiling. Adjacent same-thread
+user turns join when cosine with the prior unit centroid reaches the existing
+.55 threshold. Missing geometry ends a unit; units cap at eight turns and
+8192 represented UTF-8 bytes, while oversized original turns stay intact as
+singletons. No new inference, assistant-context borrowing, rewrites or LLM was
+used. Routing averages existing unit vectors; deferred memberships, centroids
+and lexical support retain original-source vectors and text rather than
+duplicating pooled vectors across members.
+
+On the same 149-source cohort with 74 stored vectors and 75 missing vectors,
+only three multi-turn units formed: five accepted joins, 144 units total,
+maximum four turns and minimum accepted cosine .706452. Both arrival-order
+co-membership pair sets matched the raw-message prototype, retaining 57 leaves
+and order Jaccard .710526. Reversing preformed units does not reverse native
+unit formation. This sparse-geometry control yields no fragmentation benefit;
+it does not disprove segmentation on completely embedded sessions.
+
+Two runs matched non-runtime results. Scoped scalar checks verified source
+conservation, unit order/bounds and accepted joins, but not every rejected join
+or original routing. Five fixtures and the 629-test research suite passed.
+Pooling, routing and both deferred refreshes took 697.52/684.56 ms, excluding
+initial input loading. External sampled target RSS was 138136/136196 KiB and
+PSS 130379/128448 KiB. Imports, both orders, intrusive monitoring and sampling
+limit interpretation; these are not full-ingestion gates. A complete local
+embedding control on these same sources is needed before stronger conclusions.
+Procedures are recorded in
+\path{benchmarks/2026-10-02-causal-topic-units.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
