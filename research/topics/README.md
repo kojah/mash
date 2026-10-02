@@ -1094,7 +1094,14 @@ Run it with the same fresh-output/repeat arguments. Source separation is useful
 provenance but has not established useful topics. Prioritize independent topic
 judgments/proxy validity before extending graph tuning.
 
-The full suite with the extra runs 293 tests; without it the two Infomap/runner
+The [duplicate retrieval preparation](../../benchmarks/2026-10-02-duplicate-retrieval-preparation.md)
+adds `cqadup_capture.py`, `cqadup_source.py` and `cqadup_prepare.py` for bounded
+official BEIR programmers capture and prospective duplicate-family cohorts.
+Strict source/reference separation excludes opaque metadata from features.
+Complete SHA/CRC audits and independent BFS grouping agree; no retrieval or
+topic-quality outcomes have been measured. Raw sources stay outside Git.
+
+The full suite with the extra runs 331 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

@@ -4259,6 +4259,46 @@ judgments, new groups and guided-search gains remain unmeasured. First/repeat ha
 \path{4e1a0e51e3d71835b3aee507dda528f8e4d5a37be987b560081a5992e6d14666},
 \path{cd7b3e8c70e90c159f431ca8f1b63af8d27c5af7512e9b73919e775de2095e2d}.
 
+\section{Independent duplicate-retrieval benchmark preparation}
+After the exposed shared-tag controls, we prepare a different retrieval signal
+from CQADupStack\cite{cqadup2015}, using BEIR packaging\cite{beir2021}.
+Community duplicate links can be incomplete and point to broad answer hubs
+\cite{cqadupquality2016}; they do not establish semantic equivalence, multi-topic
+tags or ancestry. This single programming forum is not an agent-dialogue gold set.
+No ranking results or model inference are generated in this preparation.
+
+The official programmers members contain 32,176 candidate questions, 876 queries
+and 1,675 explicit positive links. Conditional exact HTTP ranges preserve all
+selected bytes from the 5.34 GB archive, transferring 292,668,346 bytes.
+Member CRCs, sizes and SHA256s are verified; the whole-archive MD5 is not.
+The 774,354,135-byte query file contains repeated opaque metadata; declared
+query text totals only 48,345 bytes, with maximum 149 bytes. Features exclude
+metadata and preserve only declared corpus title/text and query text.
+
+Before ranking, seed \path{mash-cqadup-programmers-v1-20261002} selects 64
+development and 64 reserved query-bearing components, leaving 748 unused.
+Components join explicit links, identical source IDs and exact content solely
+for leakage control; relevance is never expanded through graph closure.
+Retain the full original candidate corpus without gold-based negative sampling.
+These are prospective research cohorts, not the original chronological split.
+All queries have references; the benchmark does not test no-match abstention.
+
+Fresh-process preparations agree on all nontiming fields in 5.522/4.564 seconds
+after imports. An independent adjacency/BFS audit verifies the union-find
+partition and complete member integrity. There is no exact content overlap with
+the prior 200 sources; near-duplicate and pretraining overlap remain unknown.
+The largest reserved component has 150 nodes but one query: this is not a
+validated semantic clique. Eight synthetic tests bring the research suite to
+331 passing tests. These preparation costs are not ingestion or query latency.
+Raw sources stay outside Git; redistribution permissions remain unestablished.
+Details are in \path{benchmarks/2026-10-02-duplicate-retrieval-preparation.md}.
+Capture SHA256 is
+\path{6ed3409aaeb3734e5fd2c89d6d7d0412dca45ca0828f7f7ea654450bd513782f};
+first cohort SHA256 is
+\path{1f190cfcc154af6881f9b115a69d8ed9a0fc01ba93961c44be4f7ce25b8e9fbf}.
+Reserved retrieval outcomes remain unopened. Independent dialogue/topic judgments
+and matched performance measurements remain necessary for production selection.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
