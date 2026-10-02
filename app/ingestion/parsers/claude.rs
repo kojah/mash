@@ -7,11 +7,13 @@ use super::super::messages::Messages;
 use super::stable_id;
 use crate::AppError;
 
+mod parents;
 mod replay;
+use parents::Parents;
 
 #[derive(Default)]
 pub(super) struct Identity {
-    parents: BTreeMap<String, Ancestry>,
+    parents: Parents,
     pub(super) keys: Vec<Option<String>>,
     agent: Option<String>,
     session: Option<String>,
@@ -20,7 +22,7 @@ pub(super) struct Identity {
     replay: replay::Replay,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Ancestry {
     Known(ParentLink),
     Ambiguous,
@@ -47,7 +49,7 @@ impl Identity {
             }
             self.agent = Some(agent.clone());
         }
-        self.replay.observe(record, &mut self.parents);
+        self.replay.observe(record, &mut self.parents)?;
         Ok(())
     }
 
@@ -97,7 +99,7 @@ fn normalize(
     thread: &str,
     messages: Messages,
     keys: Vec<Option<String>>,
-    parents: &BTreeMap<String, Ancestry>,
+    parents: &Parents,
     transitions: &BTreeSet<usize>,
 ) -> Result<(Messages, Lineage), AppError> {
     if messages.len() != keys.len() {
@@ -125,19 +127,20 @@ fn normalize(
             .map(|(ordinal, (message, key))| {
                 let mut message = message?;
                 let transition = transitions.contains(&ordinal);
-                let explicit_parent = key.as_ref().is_some_and(|key| {
-                    matches!(
-                        parents.get(key),
-                        Some(Ancestry::Known(ParentLink::Parent(_)))
-                    )
-                });
+                let ancestry = key
+                    .as_ref()
+                    .map(|key| parents.get(key))
+                    .transpose()?
+                    .flatten();
+                let explicit_parent = key.is_some()
+                    && matches!(ancestry, Some(Ancestry::Known(ParentLink::Parent(_))));
                 let parent = if let Some(key) = key {
                     message.id.clone_from(&identities[&key].id);
-                    match parents.get(&key) {
+                    match ancestry {
                         None | Some(Ancestry::Known(ParentLink::Missing)) => previous.clone(),
                         Some(Ancestry::Known(ParentLink::Root)) => None,
                         Some(Ancestry::Known(ParentLink::Parent(parent))) => {
-                            resolve_parent(thread, parent, &identities, parents)?
+                            resolve_parent(thread, &parent, &identities, parents)?
                         }
                         Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry(&key)),
                     }
@@ -171,29 +174,40 @@ fn resolve_parent(
     thread: &str,
     parent: &str,
     identities: &BTreeMap<String, MessageIdentity>,
-    parents: &BTreeMap<String, Ancestry>,
+    parents: &Parents,
 ) -> Result<Option<MessageIdentity>, AppError> {
-    let mut current = parent;
-    let mut visited = BTreeSet::new();
+    let mut current = parent.to_owned();
+    // Brent cycle detection: retain only the current UUID and a checkpoint,
+    // rather than every operational event traversed. Walk the same parent path
+    // in order, still stopping on dialogue, unknown, root or ambiguous ancestry.
+    let mut checkpoint = current.clone();
+    let mut power = 1_usize;
+    let mut distance = 0_usize;
     loop {
-        if let Some(id) = identities.get(current) {
+        if let Some(id) = identities.get(&current) {
             return Ok(Some(id.clone()));
         }
-        if !visited.insert(current) {
+        match parents.get(&current)? {
+            Some(Ancestry::Known(ParentLink::Parent(parent))) => current = parent,
+            Some(Ancestry::Known(ParentLink::Root | ParentLink::Missing)) => return Ok(None),
+            Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry(&current)),
+            None => {
+                return Ok(Some(MessageIdentity {
+                    id: stable_id("claude-message", &[thread, &current]),
+                    position: None,
+                }));
+            }
+        }
+        distance = distance.saturating_add(1);
+        if current == checkpoint {
             return Err(AppError::configuration(
                 "Claude message ancestry contains a cycle",
             ));
         }
-        match parents.get(current) {
-            Some(Ancestry::Known(ParentLink::Parent(parent))) => current = parent,
-            Some(Ancestry::Known(ParentLink::Root | ParentLink::Missing)) => return Ok(None),
-            Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry(current)),
-            None => {
-                return Ok(Some(MessageIdentity {
-                    id: stable_id("claude-message", &[thread, current]),
-                    position: None,
-                }));
-            }
+        if distance == power {
+            checkpoint.clone_from(&current);
+            power = power.saturating_mul(2);
+            distance = 0;
         }
     }
 }
@@ -206,3 +220,6 @@ fn ambiguous_ancestry(uuid: &str) -> AppError {
         "Claude native message {uuid} has conflicting ancestry"
     ))
 }
+
+#[cfg(test)]
+mod traversal_tests;

@@ -2,6 +2,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::Ancestry;
+use super::parents::Parents;
+use crate::AppError;
 use crate::ingestion::json::{Kind, ParentLink, Record, SystemSubtype};
 
 #[derive(Default)]
@@ -18,7 +20,11 @@ impl Replay {
         self.changes.clear();
     }
 
-    pub(super) fn observe(&mut self, record: &Record, parents: &mut BTreeMap<String, Ancestry>) {
+    pub(super) fn observe(
+        &mut self,
+        record: &Record,
+        parents: &mut Parents,
+    ) -> Result<(), AppError> {
         let boundary = record.kind == Kind::System
             && record.subtype == Some(SystemSubtype::CompactBoundary)
             && record.parent == ParentLink::Root;
@@ -27,19 +33,19 @@ impl Replay {
             if matches!(record.kind, Kind::User | Kind::Assistant) {
                 self.clear();
             }
-            return;
+            return Ok(());
         };
-        if let Some(known) = parents.get_mut(uuid) {
+        if let Some(known) = parents.get(uuid)? {
             self.duplicates.insert(uuid.clone());
             if let Ancestry::Known(previous) = known
-                && *previous != parent
+                && previous != parent
             {
                 self.changes
                     .entry(uuid.clone())
                     .or_insert_with(|| previous.clone());
-                *known = Ancestry::Ambiguous;
+                parents.insert(uuid, Ancestry::Ambiguous)?;
             }
-            return;
+            return Ok(());
         }
         // Preserve original archived ancestry only when the native boundary
         // proves this whole duplicate block is a compaction replay. Its logical
@@ -57,11 +63,12 @@ impl Replay {
             });
         if proven {
             for (key, original) in &self.changes {
-                parents.insert(key.clone(), Ancestry::Known(original.clone()));
+                parents.insert(key, Ancestry::Known(original.clone()))?;
             }
         }
         self.clear();
         self.anchor = Some(uuid.clone());
-        parents.insert(uuid.clone(), Ancestry::Known(parent));
+        parents.insert(uuid, Ancestry::Known(parent))?;
+        Ok(())
     }
 }

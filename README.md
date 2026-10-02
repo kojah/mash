@@ -180,6 +180,15 @@ message count, and some native adapters buffer their input before normalization.
 See the [large-history staging measurement](benchmarks/2026-10-01-normalized-message-staging.md)
 for the measured memory and disk-I/O tradeoff.
 
+Claude native ancestry spills to private scratch SQLite above a 2 MiB inline
+accounting budget; parent-chain cycle detection retains only two UUIDs. Exact
+parent states and compaction replay behavior are preserved, and scratch failures
+abort ingestion of that source. Ancestry-map RAM stops growing with record count;
+dialogue identities, replay metadata, model workspaces and other adapters still
+have separate memory costs.
+The [ancestry staging measurement](benchmarks/2026-10-02-claude-ancestry-staging.md)
+records the whole-index memory reduction and indexing-time tradeoff.
+
 Without a configuration file, mash indexes these built-in roots when present:
 
 - Claude Code: `~/.claude/projects`, `~/.config/claude/projects`

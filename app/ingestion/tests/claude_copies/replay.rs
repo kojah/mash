@@ -43,6 +43,58 @@ fn original(path: &Path) {
 }
 
 #[test]
+fn spilled_native_ancestry_preserves_compaction_context_and_restart_checkpoint() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("sources");
+    fs::create_dir(&root).unwrap();
+    let current = root.join("current.jsonl");
+    original(&current);
+    // More than the production inline budget; keep the real native replay
+    // linked to operational ancestry, rather than injecting a test-only store.
+    let mut file = fs::OpenOptions::new().append(true).open(&current).unwrap();
+    let mut parent = "tail".to_owned();
+    writeln!(file).unwrap();
+    for index in 0..20_000 {
+        let uuid = format!("operational-{index}");
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "type":"progress", "uuid":uuid, "parentUuid":parent,
+                "sessionId":"copied-thread",
+            })
+        )
+        .unwrap();
+        parent = uuid;
+    }
+    drop(file);
+    append_replay(&current, Some(&parent), &parent, None);
+    let database = directory.path().join("index.sqlite3");
+    let tail = stable_id("claude-message", &["copied-thread", "tail"]);
+    for restart in [false, true] {
+        let mut storage = Storage::open_writer(&database).unwrap();
+        let summary = index(&mut storage, &options(&root)).unwrap();
+        assert_eq!(summary.checkpoint_skipped_sources, u64::from(restart));
+        storage.commit_writer().unwrap();
+        assert_eq!(storage.counts().unwrap().messages, 5);
+        assert_eq!(
+            storage
+                .view(&tail, 10)
+                .unwrap()
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "root sentinel",
+                "omitted sentinel",
+                "answer sentinel",
+                "tail sentinel"
+            ]
+        );
+    }
+}
+
+#[test]
 fn claude_compaction_replay_keeps_archived_context_copies_and_checkpointed_survivors() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("sources");
