@@ -7713,6 +7713,52 @@ guided-agent utility, bounded shared online lifecycle/edit/delete/restart,
 complete ingestion overhead and selected executable Python/Rust parity remain
 necessary. Training meetings alone cannot settle these questions.
 
+\section{A candidate transitive numerical ranking contract}
+Scalar geometry agreement does not prove identical near-tie rank winners.
+Pairwise epsilon equality is not transitive; it is unsuitable as a sorting
+comparator. Define a separate candidate reference before held-out outcomes:
+convert each finite binary64 score to its exact rational value, multiply by
+fixed integer $10^{12}$ and round by integer division/remainder to nearest,
+ties even. Rank eligible scores by descending integer key then ascending
+unique global ID. Preserve original $s>0$ eligibility independently of keys;
+the smallest positive binary64 remains eligible even when its key is zero.
+Ranks are ordinal. Compute the fixed k=60 source/positive-parent reciprocal
+sum as exact reduced rational values; compare fractions then global ID,
+retaining complete pools and at most20 outputs. Typed reference records retain
+raw scores, keys/ranks, ownership and exact rational weights.
+
+This changes near-tie decisions versus the historical exact-float reference;
+neither prior captures nor production ranking are modified. The $10^{-12}$
+width is an engineering candidate, not a measured universal error bound,
+tuned optimum or selected topic method. Arbitrarily close values can straddle
+a bin boundary. Given an independently justified absolute score error bound,
+check exact lower/upper endpoints for integer-key and positive-eligibility
+invariance. Crossing a boundary reports instability, not successful parity.
+The diagnostic neither establishes the bound nor proves complete-platform
+inference/ranking equivalence.
+
+Nine standard-library fixtures pass: representable even/odd half bins,
+negative values/signed zero/tiny positives, one-ULP boundary instability,
+permutation-invariant ordering of an epsilon chain, exact fusion ties,
+sole-parent quantized-direct invariance, empty/full-positive budgets and
+malformed-input rejection. A generated differential fixture compares
+200 deterministic inventories with separately assembled ranks and rational
+fusion using the standard library's Fraction rounding oracle. Conversion/
+fraction arithmetic remain shared dependencies; no Rust differential gate is
+claimed. Enabled research suite reaches 579 tests; numeric fixtures added to
+the existing CI fixture step, remote execution not yet verified.
+
+No new inference/LLM/download or corpus/held-out read, grid or production
+change. Corpus quality/cost and numerical decision drift remain unmeasured;
+the scalar exact reference is not production performance evidence. Require
+paired complete-source direct/topic/thread comparison, retained changed ranks
+and original query/span denominators, repeat/audit/cost/memory evidence before
+adoption. Held-out/coding semantic quality, multitag/ancestors, guided-agent
+utility, online lifecycle and complete ingestion plus selected Python/Rust
+parity remain independent gates. Procedures in
+\path{benchmarks/2026-10-02-numeric-guidance-contract.md} and
+\path{research/topics/NUMERIC_GUIDANCE_PROTOCOL.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

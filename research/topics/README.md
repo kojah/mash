@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 570 tests.
+The full suite with the extras and explicit author references runs 579 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1590,6 +1590,17 @@ Complete repeat, source pins and independent count/query/span/rank/metric audit
 pass (6,570 cases, 702,141 feature coordinates). Context explains substantial gains;
 mixed outcomes do not select production discovery or establish semantic topics.
 Keep this simpler baseline for held-out quality/utility work.
+`numeric_guidance.py` is a separate candidate numerical reference, preserving
+positive eligibility while ranking exact binary64-to-integer nearest-even bins
+and fusing ordinal ranks as exact rationals.
+[Protocol](NUMERIC_GUIDANCE_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-numeric-guidance-contract.md).
+Nine standard-library fixtures, including 200 seeded rational-oracle cases,
+pass locally and are included in the existing CI fixture step. A one-ULP bin
+boundary fixture deliberately reports instability. This changes near-tie
+decisions and is not applied to prior captures or production. Paired corpus
+quality/cost, justified platform score bounds and selected Rust parity remain
+unverified; the issue stays open.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
