@@ -4664,6 +4664,66 @@ independent quality, online lifecycle, ingestion and Rust parity remain open.
 Details: \path{benchmarks/2026-10-02-fixed-pca-topic-routing.md}; first result
 SHA256 \path{ee0f9aa1fe26857ed3fdab10d6ca92d27fa1e8fbc1ccc820f26efe43cfeccaa4}.
 
+\section{Query-relevant retrieval within fixed topic filters}
+Preregister a packing-only control: preserve the full PCA25 discovery, memberships,
+labels and query-topic admission. Verify both topic/semantic repeats and every
+captured array. Reconstruct complete admitted unions with original source IDs,
+score only those vectors in original 384D cosine, chunks 256, work cap 8,192
+and candidate cap 1,000. Fail on overflow rather than truncate; none occurs.
+Rank signed cosine then original ID. No outside-union fallback, inference,
+downloads, generative/paid calls, query/reference fitting or reserved outcomes.
+Reexecute centrality candidates and verify original ranks/metrics/scores.
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+Control & Central nDCG & Union nDCG & Central R100 & Union R100\\
+\midrule
+Forward hard & .108054 & .148504 & .238021 & .314063\\
+Forward overlap & .124828 & .140620 & .230729 & .308854\\
+Reverse hard & .050521 & .124535 & .140625 & .276042\\
+Reverse overlap & .073755 & .101680 & .153646 & .223958\\
+\bottomrule
+\end{tabular}\end{center}
+The 256 actual retrieval records reproduce the earlier stored-score union
+oracle Recall@100, without references selecting candidates. Candidate recall
+is .397396/.376563/.341146/.286458, equal to admitted-union coverage on this
+cohort, not a general guarantee that every admitted reference ranks top 1,000.
+All queries and unchanged 27/39 abstentions remain in macro denominators.
+Direct semantic nDCG@10/Recall@100 .351858/.739676 remains much better.
+This diagnoses centrality packing loss, not improved discovery or labels.
+
+Union vector work is 73,868/71,416/84,267/57,397 across the four sets of 64
+queries, versus centrality 37,000/36,841/25,000/25,000: total 286,948 versus
+123,841, about 2.32 times. This is not equal-work performance. Independent
+membership-loop reconstruction verifies every union and visit count; alternate
+elementwise reduction verifies all 110,188,032 component products, maximum
+score error $4.44\times10^{-16}$. All candidate/top-100 sorting, reference
+ranks, metrics and macro means agree. Minimum observed top-1,000 cutoff gap
+is $5.09\times10^{-7}$, not proof of all close ties or cross-platform parity.
+Two fresh captures match every nontiming field. 360 research tests pass,
+including work overflow, overlaps, signed ties/chunk boundaries and no fallback.
+
+First/repeat after-import wall times 20.171/13.700 s, setup 2.786/3.246 s;
+repeat overlaps its independent audit, so warming/concurrent work prevent speed
+claims. Repeat union p50/p95 milliseconds are 17.87/28.91, 19.05/46.94,
+13.57/34.11, 14.02/40.30; centrality 13.73/31.58, 14.87/42.97,
+12.04/32.78, 13.00/34.46. Research metrics/validation are timed, baseline
+packing regeneration is excluded, and no query inference/storage/API is measured.
+External 529/492 samples show RSS 394,048/393,744 KiB and PSS
+386,207/385,554 KiB; approximate status VmHWM 393,788/393,744 KiB,
+separate rusage 392,476/391,900 KiB. Requested sleep 20 ms, actual median/max
+gaps 38.71/162.12 and 32.65/102.06 ms, two/zero vanished reads. Sampled maxima
+are lower bounds, target-only scope excludes children/observer, and snapshot
+reuse is not production ingestion or the overhead gate. Environment matches
+the preceding study. Details: \path{benchmarks/2026-10-02-topic-filtered-retrieval.md}.
+
+Topic admission remains the larger limit: query-relevant retrieval cannot find
+sources outside selected topics. Evaluate an original-space topic-prototype
+admission control with memberships fixed before changing thresholds or discovery.
+No robust topic/label/ancestor, actual MCP-navigation, online lifecycle,
+full-ingestion or Rust-parity gate is established by this retrieval diagnostic.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

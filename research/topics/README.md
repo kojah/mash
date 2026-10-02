@@ -1144,7 +1144,16 @@ the configuration fails promotion on relevance/order quality. Posthoc diagnostic
 separate topic-admission and candidate-packing losses without repairing settings.
 This is neither a selected online startup policy nor Rust parity evidence.
 
-The full suite with the extra runs 358 tests; without it the two Infomap/runner
+The [query-relevant topic-filter retrieval control](../../benchmarks/2026-10-02-topic-filtered-retrieval.md)
+uses `topic_filtered_retrieval.py`/`cqadup_filtered_topics.py` to keep the full
+PCA25 topics/admission fixed while replacing centrality packing with original
+cosine retrieval inside complete admitted unions. Recall@100 improves to .22–.31,
+but direct .74 remains much better and vector work increases about 2.32 times.
+Exact repeats and all union/score/rank audits pass; this is not equal-work speed
+or intrinsic topic quality. Run with frozen topic/semantic first/repeat directories,
+fresh `--output` and repeat `--compare FIRST_JSON`, externally monitored.
+
+The full suite with the extra runs 360 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
