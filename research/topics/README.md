@@ -1,5 +1,13 @@
 # Topic methodology lab
 
+The [blind topic-review pilot](../../benchmarks/2026-10-02-blind-topic-review-pilot.md)
+prepares 32 source-grounded pairs with predictions/tags kept in a separate
+manifest. Use `blind_topic_packet.py` and the
+[review rubric](blind-topic-review-rubric.md) for reproduction. Answer fields
+remain unanswered; no independent human judgments or semantic quality claim
+follow from packet preparation. Annotation validation and agreement analysis
+remain follow-up work.
+
 Topic modeling is the first priority. The agreed sequence is research compilation,
 approach selection, Python experiments with recorded results, and Rust
 implementation only after selection. This directory is an offline lab, not a

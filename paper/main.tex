@@ -4073,6 +4073,38 @@ and tag metadata separate from original context, preserve uncertainty and
 multi-topic relationships, and never present assistant judgments as human gold.
 Source coverage and repeatability do not demonstrate guided-search utility.
 
+\subsection{Blind source-grounded review pilot preparation}
+We froze a review protocol before collecting judgments, using the exposed
+64 programming questions and their 2,016 pairs. A fixed source-group hash seed
+selects 16 pairs without using outcomes, followed by eight model-positive,
+tag-negative and eight model-negative, tag-positive diagnostics, excluding
+the first sample. The diagnostic policy is fixed at equal title/prose/code
+weighting, raw graph significance, hard assignment, threshold 0.20, budget
+three and seed 17; it is not the descriptive best setting. The 32 cases
+contain 41 unique sources. Shared endpoints are dependent, and deterministic
+hash sampling does not establish calibrated sampling inference. Primary and
+enriched diagnostic outcomes must be reported separately.
+
+Reviewers receive opaque identities, complete displayed source text and escaped
+original HTML, with independently shuffled orientation and order. Predictions,
+tags, strata, attribution and original identities remain in a separate manifest.
+No scripts or remote assets are loaded. Missing images or linked context warrant
+uncertainty. The rubric asks for primary/secondary subjects and source quotes,
+then separately evaluates specific shared subjects and useful broader subjects.
+The latter does not validate model-tree ancestry. All answers start unanswered;
+no annotations or inference calls are generated. Human/exposure declarations
+are self-reports, not automatically verified independent gold.
+
+Two bundles match exactly except preparation time (1.450 and 1.502 seconds after
+imports). Six tests cover sampling, separation, source preservation, blank answers,
+escaping and malformed input. A separate verifier reconstructs selection and
+source/hash invariants, using the same source renderer rather than an independent
+browser parser. The packet hash is
+\path{bad914d0d78d409bbc8de856d6df7b5cb59475182e6ef4450d30b4ac0adb82aa}.
+No human judgments have been received; annotation validation/agreement analysis
+and release preparation remain unfinished. This exposed development pilot is
+not agent-session gold or evidence of guided-search improvement.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
