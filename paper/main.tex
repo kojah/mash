@@ -7230,6 +7230,62 @@ and semantic ancestry evaluation, guided-search gains, global online state,
 edits/deletes/restart, ingestion overhead and selected Python/Rust differential
 CI remain unverified. The unchanged uncut hierarchy gates remain failed.
 
+\section{Matched evidence granularity under fixed dense discovery}
+The existing raw-message versus five-turn-context seed experiment already
+showed improved recall with precision near32\%; repeating it would not isolate
+the recent cut failure. We instead compare granularity under the same offline
+cosine average linkage: raw MiniLM message directions, unchanged causal
+up-to-five-turn/512-token vector aggregation, and original nonoverlapping
+16-turn/512-token physical blocks. This is not concatenated-text inference,
+validated semantic segmentation \cite{texttiling}, or an online topic method.
+No new inference, LLM, downloads, projection, cutoff/window sweep or held-out
+data. All162 training meetings and84,434 ready sources remain in geometry;
+all88,336 originals remain accounted for. Unknown/mixed sources remain in
+geometry but outside conditional annotation scores.
+
+The comparison fixes a potential confound: every arm excludes positive pairs
+sharing an \emph{original physical block}, even when fine discovery leaves are
+individual messages. Source-weighted ancestor fractions count singleton-known
+originals once. Thus broad/far/recurring positive denominators remain
+7,978,214/7,923,483/84,323. Coarsening across exclusion boundaries is rejected.
+Original block topology and complete merge tables replay exactly, with original
+metric totals within frozen tolerance. No gold annotation controls discovery.
+
+\begin{center}
+\begin{tabular}{lrrr}
+Evidence & Broad purity & Far purity & Recurring purity\\
+\hline
+Raw message & .402046 & .402285 & .546808\\
+Causal context & .433803 & .432418 & .561856\\
+Physical block & .475705 & .475791 & .561768\\
+\end{tabular}
+\end{center}
+Raw fine evidence is worse here; causal context improves over raw but still
+trails physical pooling on broad structure. Its recurring score differs from
+blocks by only.000087861. This is not a significance/equivalence test or coding
+generalization result. It weakens the hypothesis that smaller units alone
+solve topic quality, and does not establish good labels, multiple memberships
+or semantic ancestry. Generic dense representation and topic selection need
+separate evaluation. No production method is selected.
+
+Complete non-timing repeat passes with unchanged begin/end code pins. A
+source audit independently reconstructs annotations, causal boundaries,
+source LCA fractions, merge mean distances/populations and summaries for486
+trees,176,578 merges and47,958,060 repeated positive pair-scope contributions.
+Maximum aggregate discrepancy2.91$\times10^{-11}$ is within frozen relative
+$10^{-12}$/absolute$10^{-12}$ tolerance. It shares frozen vectors and NumPy
+arithmetic and does not establish global-minimum/tie choices. A separate
+independently maintained average-distance matrix verifies all176,578 chosen
+merges as global minima, maximum chosen-minus-minimum gap0.0, within the
+frozen numerical tolerance. It does not require identical tie choices. The
+source and global-minimum audits are recorded in
+\path{benchmarks/2026-10-02-topic-unit-granularity.md}.
+First/repeat research targets take31.987/29.788 seconds after imports,
+CPU25.639/24.723 seconds; complete ledgers dominate setup. These are not
+ingestion, label maintenance, persistence or production-worker memory results.
+Label/cut, coding multitag/ancestor/guided-search, global online lifecycle,
+complete-ingestion and selected Python/Rust differential gates remain open.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

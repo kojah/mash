@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 538 tests.
+The full suite with the extras and explicit author references runs 543 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1512,6 +1512,16 @@ The cut's precision increase accompanies broad pair recall only4.6–5.5% and
 coverage37–39%; reject promotion. Next P0 work changes evidence units rather
 than tuning this threshold. See [report](../../benchmarks/2026-10-02-semantic-topic-cuts.md).
 No production method is selected, and no new embedding inference is performed.
+The next comparison `qmsum_unit_granularity.py` holds average linkage fixed for
+raw messages, causal context and physical blocks. `matched_unit_hierarchy.py`
+uses ORIGINAL physical-block pair exclusions in every arm so denominators stay
+matched. See [protocol](UNIT_GRANULARITY_PROTOCOL.md) and
+[report](../../benchmarks/2026-10-02-topic-unit-granularity.md).
+Raw/context broad purity .402/.434 trails block .476; context recurring .561856
+is nearly identical to block .561768. Smaller units alone are not supported as
+the fix. Full non-timing repeat passes; independent source-LCA/height audit
+passes. The separate global-minimum audit has additional scope and is recorded
+in the report; do not infer global merge validation from the height audit.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
