@@ -1171,7 +1171,18 @@ audited; exact repeats pass. No token/label intervention or inference occurs.
 Run with frozen topic first/repeat directories, fresh `--output`, repeat
 `--compare FIRST_JSON`, and the external memory monitor.
 
-The full suite with the extra runs 364 tests; without it the two Infomap/runner
+The [bounded semantic MMR label control](../../benchmarks/2026-10-02-semantic-mmr-labels.md)
+uses `semantic_mmr.py`/`cqadup_semantic_labels.py` on unchanged PCA25 topics.
+Top-32 lexical pools need 495 singleton phrase embeddings from explicitly
+supplied installed assets, with no downloads or generative/paid calls. MMR
+reduces pair cosine at lower lexical relevance/coherence and does not consistently
+improve cross-topic term diversity; observed generic phrases remain. Fresh
+full-inference repeats match every nontiming field and complete vector hash.
+Source-supported labels and objective improvement are not semantic-quality gold.
+Run with frozen topic directories, verified source root, explicit `--snapshot`,
+fresh `--output-directory` and repeat `--compare FIRST_DIRECTORY/results.json`.
+
+The full suite with the extra runs 366 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

@@ -4845,6 +4845,72 @@ transductive association measure; intrinsic membership, label specificity,
 semantic ancestors and guided navigation remain separate gates. Details:
 \path{benchmarks/2026-10-02-topic-label-coherence.md}.
 
+\section{Bounded semantic MMR labels: low encoding cost, mixed proxies}
+Preregister a label-only MMR adaptation\cite{mmrlabels}, with all four PCA25
+memberships and exact lexical/class counts unchanged. Per topic take the top
+32 positive corpus-IDF terms, lexical ties; first eight must equal the archived
+baseline. 62 pools require 495 unique phrases, below a 1,024 pre-inference cap.
+Read only verified candidate sources, never query/reference features or reserved
+outcomes. Normalize lexical relevance by each pool maximum; select eight terms
+greedily using $.6\,\mathrm{relevance}-.4\max\mathrm{cosine}$ against previously
+selected phrases, signed cosine, zero first-step redundancy, lexical objective
+ties. No added containment/stopword rule or threshold repair. Compare plain
+and containment labels on identical pools; all archived diverse terms fall
+within these pools. This is not the original retrieval/summarization experiment.
+
+Use installed quantized MiniLM, singleton CPU, one intra/inter-op thread,
+exact tokenizer IDs, float32 pooling and existing int8-direction rounding.
+Complete phrase inputs have at most eight tokens. No truncation, downloads,
+generative or paid calls. Retain 495 $\times$ 384 vectors and original
+title/body code-point/UTF-8 source spans, hashes and support counts.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+Control & Plain pair cosine & Contained pair cosine & MMR pair cosine\\
+\midrule
+Forward hard & .4284 & .3942 & .3430\\
+Forward overlap & .4267 & .3932 & .3480\\
+Reverse hard & .4082 & .3801 & .3359\\
+Reverse overlap & .4225 & .3830 & .3302\\
+\bottomrule
+\end{tabular}\end{center}
+MMR NPMI is .2163/.2288/.2196/.2440 versus plain
+.2717/.2809/.2649/.2911; normalized relevance
+.6275/.6284/.6258/.6103 versus .6550/.6537/.6470/.6387. MMR cross-topic
+unique ratios .81875/.82500/.88636/.92045 are below plain
+.86250/.86875/.92045/.94318. Within-list cosine diversity is not cross-topic
+vocabulary diversity or independently judged specificity. Exploratory testing
+labels become \texttt{test, unit, tests, tdd, testing, integration, public, write};
+containment retains \texttt{mock} and \texttt{coverage} instead of those generic
+terms. Agile swaps \texttt{sprint} for \texttt{stories} but keeps \texttt{we};
+numeric/code groups remain noisy. No semantic naming improvement is established.
+
+Fresh full-inference repeats match every nontiming field and complete vector hash.
+366 tests pass for relevance/redundancy, signed cosine and deterministic ties.
+Independent lexical formula/ranking, component-product MMR steps, source
+membership/support/counts, original Unicode/byte spans/hashes and diagnostics
+are audited: 62 pools, 496 greedy steps, 1,488 source supports and 5,208 pairs,
+maximum lexical/objective differences $5.56\times10^{-17}$/$3.34\times10^{-16}$.
+An initial checker field-mapping error (raw \texttt{text} versus
+logical \texttt{body}) is corrected without changing experiment captures.
+
+First/repeat after-import wall time 4.041/4.046 s, CPU 3.973/3.979 s;
+setup 3.020/3.157 s, encoder startup .100/.097 s, 495-phrase encoding
+.369/.253 s (inference .313/.223 s), labels/support/diagnostics .544/.532 s.
+These are batch refresh costs, not measured per-message/full-ingestion overhead.
+Incremental cache persistence/invalidation and update frequency remain unmeasured.
+External 226/227 samples show RSS 491,348/491,392 KiB, PSS 483,814/483,881 KiB,
+approximate status VmHWM 491,340/491,384 KiB, separate rusage 491,056/490,968 KiB.
+Requested sleep 20 ms; actual median/max gaps 26.59/34.94 and 26.48/30.68 ms,
+zero/one vanished reads. Sampled maxima are lower bounds; target-only scope excludes
+children/observer; retained corpus/counts/model and monitoring contribute.
+Same installed asset hashes and Linux/science environment as the semantic baseline;
+ORT 1.30.0, tokenizers .23.2. Details: \path{benchmarks/2026-10-02-semantic-mmr-labels.md}.
+Do not promote this setting on lower cosine alone. Candidate evidence quality,
+intrinsic topics, independent specificity/intrusion, navigation, lifecycle,
+full ingestion and Rust parity remain separate gates.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
