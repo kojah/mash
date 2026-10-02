@@ -21,6 +21,20 @@ semantic-label quality, a merge rule or a selected production topic method.
 
 ## Current milestone: flat, multi-label topics
 
+[Acceptance and stopping rules](SELECTION_CRITERIA.md) now cap the current round:
+finish the frozen NMF/source-aware phrase comparison, at most one bounded
+correction, then an explicit acceptance or failed-gate decision. No new algorithm
+families or parameter sweeps. Independent label precision/primary-secondary
+coverage, lifecycle, complete ingestion and reference gates must all pass; exposed
+support proxies cannot substitute. No production method has been selected.
+
+The [fixed incremental NMF comparison](../../benchmarks/2026-10-02-incremental-nmf-topics.md)
+has completed twice: all16 non-runtime arms match exactly,670tests pass. Its four
+configurations have worse reviewed primary/secondary distinct support F1 than
+source-aware phrases, with broad forward/reverse dominant-membership ARI .585--.809.
+Reject this configuration without additional parameter sweeps. Retain source-aware
+phrases for independent review; no semantic acceptance or Rust integration follows.
+
 On 2026-10-02 the user dropped the hierarchy requirement. The first milestone
 is useful **flat topics**, with multiple independently supported tags per thread,
 topic browsing and composable topic filters. Semantic parent/child links, ancestor
