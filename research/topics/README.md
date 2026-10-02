@@ -1425,7 +1425,23 @@ operating point, not a general BIRCH verdict. Compression is optional, not a use
 requirement: next investigate source-preserving online graph/tree alternatives,
 with new frozen protocol and independent semantic/lifecycle/ingestion/Rust gates.
 
-The full suite with the extras and explicit author reference runs 501 tests.
+`fishdbc_reference.py` / `qmsum_fishdbc.py` implement the pinned unmodified author
+FISHDBC with complete source blocks, fixed lexical/dense views and both orders.
+[Frozen protocol](FISHDBC_PROTOCOL.md) and [audited result](../../benchmarks/2026-10-02-qmsum-fishdbc.md):
+lexical return purity .581/.580 vs average reference .622, default flat noise97%.
+Exact neighbors give virtually the same quality; reject this operating point,
+not all density methods. Full non-timing repeat and independent source/core/MST/
+graph/LCA/split audits pass. Native edge payload can contain reachability despite
+source comment: preserve raw-distance distinction in any port. Precomputed
+distances/small per-meeting graphs are not online ingestion timing evidence.
+Next evaluate sparse online average-link lexical-block trees, retaining all
+source evidence; labels/semantic/lifecycle/global frame/ingestion/Rust gates remain.
+
+The full suite with the extras and explicit author references runs 505 tests.
+Enable the compiled author FISHDBC prefix/repeat fixture with
+`MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
+without it that fixture explicitly skips. See the protocol for pinned reference
+source, build/dependencies and host-specific binary manifest.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
