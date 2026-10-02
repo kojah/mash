@@ -1512,7 +1512,22 @@ are missing; `--no-tests fail` rejects an accidentally empty selection.
 For an instrumented coverage report, install
 [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/releases/tag/v0.9.1)
 and the toolchain's `llvm-tools-preview` component. Set the model directory and
-all three backend test URLs above to installed models and disposable services, then run:
+all three backend test URLs above to installed models and disposable services.
+
+Also set `MASH_TEST_SERVER_BINARY` to the instrumented `mash` binary produced
+in the coverage target's `debug` directory. With an explicit `CARGO_TARGET_DIR`,
+use `$CARGO_TARGET_DIR/llvm-cov-target/debug/mash`; without it, the default is
+`target/llvm-cov-target/debug/mash`. An explicit `CARGO_LLVM_COV_TARGET_DIR` instead
+uses that directory directly, as defined by [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/src/cargo.rs#L63).
+The suite builds the binary before running tests, so it need not exist before
+the coverage command starts. Restart contracts
+require Docker and cached backend images; set `MASH_TEST_DOCKER_SG=1` on Xenia.
+They own their containers and API processes and do not restart the supplied
+backend test services. Use the instrumented binary; forced API termination can
+prevent its final LLVM profile flush, so the contract's runtime checks do not
+guarantee that all child-process execution appears in the coverage report.
+
+Then run:
 
 ```bash
 rustup component add llvm-tools-preview
@@ -1529,7 +1544,9 @@ reporting, allowing their coverage profiles to be written without changing
 production worker behavior. On nightly, use `CARGO_ARGS=--branch` to include
 LLVM's experimental branch instrumentation. This does not measure MC/DC.
 Generated SQL bindings, separate test files, standalone test helpers and the
-test-only relevance evaluator and manual benchmark modules are excluded from the report.
+test-only relevance evaluator, offline topic prototypes and manual benchmark
+modules are excluded from the report. The topic module is compiled only for tests;
+its experiments still run in the suite but cannot pad application coverage.
 Tests embedded in production source files still contribute to those files'
 coverage, so assess uncovered behavior as well as the aggregate percentage.
 Coverage needs LLVM instrumentation; regular development continues to use
