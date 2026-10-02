@@ -327,16 +327,23 @@ impl Store {
                 api::UpdateMode::UpdateOnly
             }),
         };
-        // A timeout may mean the CAS committed. Verify its unique version before
-        // returning or reclaiming anything; if verification fails leave staging intact.
+        // A failed request may still commit after this reread. Seeing another head
+        // only permits reclamation when the conditional write completed successfully.
+        // If verification fails, leave staging intact as well.
         let result = self
             .api
             .upsert(&collection(&identity.group_id, true), &input)
             .await;
         let current = self.node(identity).await?;
         if current.version != version {
+            if let Err(error) = result {
+                tracing::warn!(
+                    revision = plan.revision,
+                    "Qdrant publication unresolved; staging retained for possible delayed completion"
+                );
+                return Err(error);
+            }
             self.cleanup(identity, &version).await;
-            result?;
             return Err(conflict("concurrent Qdrant update; retry the operation"));
         }
         if !expected.is_empty() {

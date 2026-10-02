@@ -2,6 +2,7 @@ use super::*;
 use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
 use std::io::Write;
 mod memory;
+mod publication;
 
 struct Fixture {
     store: Store,
