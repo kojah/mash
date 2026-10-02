@@ -4210,6 +4210,55 @@ rules, independent judgments and new groups before selection. First/repeat hashe
 \path{8f48c259f8e15b1dda2353af947fb448e246c4bfd19fde46a4a979409c0a41cc},
 \path{7777fa67bf52aab251131aadab24b457b764fc5380b7c50c942298c2bc3cb3e9}.
 
+\subsection{Character-based source similarity control}
+Before more clustering, compare a general punctuation-preserving character
+representation against the original words. Freeze the original exposed
+64 sources and 2,016 pairs (97 shared-tag positives); no tags enter features.
+The word basis retains 629 original raw unigram columns. Character fragments
+use pinned CountVectorizer\cite{sklearncount}, char-wb lengths three through
+five, lowercase, question DF at least two/at most 0.40 and a cap of 8,192.
+Artificial boundary spaces mean these fragments are not source-contiguous
+phrase labels. No names are special-cased. Characters fit only these 64 sources;
+the old word basis remains transductive. Granularity, dimension and vocabulary
+construction also differ, so this is not a pure causal punctuation ablation.
+
+Preserve exact title/prose/code field hashes and full-source/channel count
+conservation. For both bases apply the existing nonempty-channel L1 mean,
+smooth source-cohort IDF and L2 normalization in three views. Compare six
+cosine matrices using full pair AP/AUC and fixed cuts 0.1--0.9, retaining
+the 0.70 precision/20-link gate without fallback or topic selection.
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrr}
+\toprule
+View & Word AP/AUC & Character AP/AUC\\
+\midrule
+Title/body & .1543/.6899 & .1120/.6180\\
+Title/prose/code & .1633/.7002 & .1262/.6495\\
+Title/prose & .1401/.6311 & .1244/.6220\\
+\bottomrule
+\end{tabular}
+\caption{Exposed source-pair tag-proxy ranking, not independent topic quality.}
+\end{table}
+Characters reach the feature cap; no source is zero and no tested cut passes.
+Synthetic tests retain distinct \texttt{C++}/\texttt{C\#} vectors, but this
+representation distinction does not improve proxy ranking. Incidental code
+substrings and whole-source topic mixing may contribute; causality is unisolated.
+No new encoder/LLM inference occurs. The candidate is not promoted.
+
+Two processes match all nontiming fields in 1.990/1.844 seconds after imports;
+feature counting takes 0.306/0.261 seconds. Five new tests/all 323 lab tests pass.
+A separate scalar audit reconstructs character counts, DF/cap frequency
+eligibility, original words, weights, 12,096 pair scores, AP/AUC and 54 cut
+confusion matrices. Its first process was stopped after identifying repeated
+row-total computation; a corrected verifier precomputes totals without changing
+the experiment. Shared source parsing does not prove independent HTML semantics;
+equal-frequency cap ties remain a pinned-library rule. These costs are not
+query latency, incremental ingestion, RSS or lifecycle evidence. Independent
+judgments, new groups and guided-search gains remain unmeasured. First/repeat hashes:
+\path{4e1a0e51e3d71835b3aee507dda528f8e4d5a37be987b560081a5992e6d14666},
+\path{cd7b3e8c70e90c159f431ca8f1b63af8d27c5af7512e9b73919e775de2095e2d}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

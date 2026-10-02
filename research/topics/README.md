@@ -1,5 +1,13 @@
 # Topic methodology lab
 
+The [character feature control](../../benchmarks/2026-10-02-character-topic-features.md)
+uses `character_features.py`/`character_questions.py` for six word/character
+source-similarity matrices with matched weighting/IDF. Characters preserve
+synthetic identifier distinctions but rank the exposed tag proxy worse; no
+tested cut passes. This is not a topic assignment, hierarchy or query benchmark,
+and vocabulary construction differs between bases. Run with the standard
+fresh-output/repeat arguments; no representation is promoted.
+
 The [source token-boundary audit](../../benchmarks/2026-10-02-topic-token-boundaries.md)
 uses `token_boundaries.py`/`token_audit.py` to preserve and inspect all 200
 title/prose/code inventories. It exposes punctuation/identifier collisions and
