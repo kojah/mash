@@ -5428,6 +5428,81 @@ improvement does not select a production method: independent coding-session
 generalization, semantic episode/tag/ancestor and label quality, guided search,
 complete ingestion performance and Rust parity remain required.
 
+\section{Selective boundaries and probability reliability}
+Selective classification studies rejection to trade risk against coverage
+\cite{geifman2017selective}. Our simpler positive-boundary acceptance diagnostic
+does not implement that work's statistical guarantee or confidently classify
+no-change cases. Freeze a single engineering target before outcomes: observed
+training OOF precision at least .80 with at least 20 accepted boundaries. Among
+eligible cutoffs, maximize accepted count, then exact rational precision, then
+stricter probability cutoff. Prediction remains strict probability greater than
+cutoff; equal-score blocks are indivisible. If unsupported, return a null winner
+and accept no automatic splits, without an F1 fallback. Unaccepted cases remain
+unresolved, not proven no-change. Recall/count diagnostics retain missed gold
+changes without treating unresolved decisions as negative semantic evidence.
+
+Verify the previous classifier's first/repeat results, all frozen arrays and
+code pins, and original JSON boundary identities. Reuse all 4,392 training and
+1,446 development rows without training, encoder calls, model downloads or
+generative/paid inference. Test remains unread; development remains exposed and
+exploratory. Ten fixed probability bins $[0,.1),\ldots,[.9,1]$ retain empty bins
+with null statistics. Report mean probability, observed frequency, Brier mean
+squared error, log loss clipped to float64 epsilon and count-weighted absolute
+bin-gap ECE. These are diagnostics, not probability calibration or risk bounds.
+
+\textbf{None of the 4,393 training cutoffs qualifies.} The largest empirical
+precision among cutoffs accepting at least 20 is .60: 15 correct and 10 false
+cuts among 25 accepted, recall .01691. This retrospective training maximum is
+not substituted as a policy or applied to development. The frozen unsupported
+policy therefore accepts zero and leaves all train/development boundaries
+unresolved; zero accepted cuts is not successful topic segmentation.
+
+\begin{center}\small
+\begin{tabular}{lrr}
+\toprule
+Probability diagnostic & Training OOF & Development\\
+\midrule
+Brier & .145088 & .154947\\
+Log loss & .453145 & .479500\\
+Fixed-bin ECE & .006070 & .014925\\
+\bottomrule
+\end{tabular}\end{center}
+Small aggregate calibration gaps do not provide useful high-precision
+discrimination. Development has only 9/2 examples in $[.6,.7)/[.7,.8)$ and none
+at or above .8. Their mean probabilities .630/.759 correspond to change rates
+.444/.5, with insufficient support for a stable tail conclusion. Correlated
+dialogue boundaries, selected cutoffs, OOF versus final-model prediction shift,
+development exposure and unknown pretraining overlap prevent a population
+precision guarantee. Do not lower the gate or substitute tiny perfect prefixes.
+
+Fresh repeats match every nontiming field, candidate, count, bin and unsupported
+decision exactly. A separate auditor with no lab imports verifies all 5,838
+original identities, parent array hashes, brute strict comparisons for every
+cutoff, exact eligibility/ties, accepted IDs, per-dialogue counts, scalar
+probability diagnostics and bins; maximum reliability drift is
+$1.11\times10^{-16}$. Five new edge-case tests pass; all 426 enabled lab tests
+pass. These are source/formula checks, not independent inference or Rust parity.
+
+After-import first/repeat wall is .2020/.1706\,s, CPU .1996/.1642\,s; source
+preflight .1483/.1336\,s and policy calibration .0347/.0241\,s. Evaluation enters
+the total; final JSON serialization does not. Rusage peaks are
+164460/164052\,KiB; external sampled RSS 164472/163320\,KiB, PSS
+156814/155683\,KiB and status high water 164472/164052\,KiB. There are 62/60
+observations, 1/0 vanished reads, median/max gaps 23.81/29.89 and
+23.64/27.14\,ms. Scope includes imports, source/probability arrays and policy
+records, excludes children/observer. Sampling lower bounds, approximate status,
+monitoring overhead and possible launcher high water preclude attributing these
+to production memory or the complete-ingestion gate; no subtraction is applied.
+
+Artifacts are \path{topic-tiage-selective-first-20261002},
+\path{topic-tiage-selective-second-20261002} and
+\path{topic-tiage-selective-audit-20261002.py}; full pins, commands and memory
+scope are in \path{benchmarks/2026-10-02-tiage-selective-boundaries.md}. This
+rejects the current cheap classifier at the frozen high-precision gate, not all
+possible episode methods. Further work requires informative topic evidence and
+independent technical-session validation. Topic labels, overlap, semantic
+ancestors, guided search, complete ingestion and Rust parity remain unresolved.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

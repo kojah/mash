@@ -1265,7 +1265,15 @@ precision remains .35 and the paired resampling range includes zero. Exact
 repeats and independent source/feature/fold/model/probability/calibration audits
 pass; this is not a selected topic method or a Rust parity gate.
 
-The full suite with the extras and explicit author reference runs 421 tests.
+The [selective boundary diagnostic](../../benchmarks/2026-10-02-tiage-selective-boundaries.md)
+uses `selective_boundaries.py`/`tiage_selective.py` on frozen classifier
+probabilities. No training-only cutoff reaches observed precision .80 with at
+least 20 accepted boundaries; the unsupported policy leaves all cases unresolved
+and has no F1 fallback. Small fixed-bin calibration gaps do not supply reliable
+high-precision coverage. Complete source/count/reliability audits and exact
+fresh repeats pass; no new training/inference or reserved test access occurs.
+
+The full suite with the extras and explicit author reference runs 426 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
