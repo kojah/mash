@@ -6613,6 +6613,81 @@ memory. Sampling intrusive/lower bounds, status approximate, launcher high water
 may persist, no subtraction. Stable online feature frames/lifecycle, complete
 ingestion$\le10\%$ and selected Rust parity CI remain unverified.
 
+\section{Explicit compression budget and source-only feasibility}
+Before any further calibration, freeze provisional engineering targets in
+\path{research/topics/COMPRESSION_BUDGET.md}: retain at most 50\% compression
+groups, at least 95\% unit-to-unit-centroid cosine $\ge.90$, all/crossspan hierarchy
+purity loss$\le.02$ against the lexical reference; compression-only meanCPU
+$\le.5$ms/p95wall$\le1$ms per closed block, additional persistent clustering state
+$\le16$MiB/10,000 active units. These are comparison targets, not user mandates or
+measured guarantees. Revisions require a new justified protocol. Complete-ingestion
+$\le10\%$, lifecycle, independent coding labels/multi-tags/ancestors/guided-search
+and selected Rust differential CI remain additional gates.
+
+For unit $x,y,c$ with $0\le t\le1$, $a=x\cdot c\ge t$, $b=y\cdot c\ge t$, residual
+Cauchy--Schwarz yields
+\[
+x\cdot y\ge ab-\sqrt{1-a^2}\sqrt{1-b^2}
+=\cos(\arccos a+\arccos b)\ge 2t^2-1.
+\]
+At $t=.90$, two passing members sharing a centroid require pair cosine $\ge.62$.
+Build the possible-pair graph with conservative $10^{-12}$ inclusion margin.
+Every isolated unit needs a distinct centroid unless it consumes one of
+$\lfloor N/20\rfloor$ allowed outliers. Across separate per-meeting groups,
+$K_{\min}\ge\max(M,\sum_m I_m-\lfloor N/20\rfloor)$ where $M$ counts nonempty
+meetings and $I_m$ isolated blocks. Compare this necessary lower bound to
+$\lfloor N/2\rfloor$ allowed groups. A small bound is only not ruled out, never
+proven feasible. This is elementary geometric reasoning, not a novelty claim.
+
+All 162 training meetings/88,336 source/84,434 common-ready turns, 8,196 fixed
+blocks. No fits, gold-selected thresholds, inference/LLM/projection/heldout.
+Fixed unit views: original 18,316dim sparse lexical, unchanged 384dim dense and
+equal-energy direct sum (cosine mean); no weight grid. Validate Gram symmetry/
+unit/PSD, capture every neighbor/isolated identity/closest cosine/Gram hash and
+source/contract/code pin. Frozen vocabulary/IDF and per-meeting groups do not
+represent future online global cross-thread/provider topic groups.
+
+\begin{center}\begin{tabular}{lrrrl}
+View & Isolated & Allowed bad & $K_{\min}\ge$ & Budget 4098 verdict \\
+Lexical & 8151 & 409 & 7742 & Ruled out \\
+Dense & 813 & 409 & 404 & Not ruled out \\
+Equal-energy hybrid & 7231 & 409 & 6822 & Ruled out
+\end{tabular}\end{center}
+
+Explored development 108 meetings/5459 units: lower bounds 5155/209/4546 versus
+budget 2729; reserved 54/2737: 2588/196/2277 versus 1368, same verdicts, not pristine
+heldout. Lexical must retain at least 94.46\% and hybrid 83.24\% under this angular
+guard: a radius sweep cannot defeat the necessary condition while keeping the
+same targets/view/scope. This is consistent with the preceding negligible compression
+without rejecting BIRCH generally. Next test dense-space compression with
+separate lexical macro evidence, measuring actual fidelity/retention/quality/
+cost. Dense is not promised feasible; changing targets/view/global scope needs
+new recorded experiments. No topic label/ancestor or production method selected.
+
+Five new orthogonality/boundary/outlier/singleton/open-verdict/invalid-Gram fixtures;
+enabled lab passes 496 tests. Full fresh repeat exact in every nontiming field,
+including all neighbor/isolated identities/closest values/fingerprints and split
+bounds. Independent original source/accounting/lexical reconstruction/scalar
+sparse-dense-hybrid pair/graph/integer-bound audit passes 162 meetings, 486 views,
+246,924 distinct block pairs/740,772 scalar-view pair checks; maximum cosine
+error$1.78\times10^{-15}$, identities/bounds/fingerprints exact. Shared NumPy/SciPy
+for fingerprints and frozen audited inputs; no separate encoder/Rust/semantic
+gate. Full protocol/pins in
+\path{benchmarks/2026-10-02-qmsum-compression-budget.md}.
+
+Offline after-import wall/CPU first 16.942/11.435 s, repeat 20.456/11.995 s;
+capture setup 16.459/20.052 s. Feature/Gram 276.705/225.859 ms, feasibility/graph
+including eigenspectrum 178.237/153.987 ms: no clustering/ingestion update gate.
+Imports/final JSON/repeat comparison outside timer, inside external scope; no
+intentional scientific benchmark overlap, host load uncontrolled, no variation
+speed claim. Rusage 2047792/2047680 KiB, sampled RSS/PSS/status-HWM
+2048924/2041129/2048924 and 2040916/2029954/2047680 KiB;
+437/494 samples, 1/0 vanished, median/max gaps 39.457/101.212 and 43.760/102.185 ms.
+Scientific imports/ledgers included, observer/children excluded; not persistent
+state/model-worker scope. Intrusive sampled maxima lower bounds, status approximate,
+launcher retained high water possible, no subtraction. Repeat RSS below HWM is
+consistent with missing a transient peak; no update/state/full-ingestion gate.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

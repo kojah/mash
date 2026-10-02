@@ -1403,7 +1403,19 @@ scalar-ARI audits pass. High mean order ARI is largely trivial near singleton
 partitions; no online frame/lifecycle/full-ingestion or production method gate.
 Greedy Python macro reference is unoptimized/cubic; no optimized fit-speed claim.
 
-The full suite with the extras and explicit author reference runs 491 tests.
+`COMPRESSION_BUDGET.md` freezes provisional retention/fidelity/quality/update/state
+targets before `compression_budget.py` / `qmsum_compression_budget.py` measure
+an algorithm-independent necessary centroid bound on immutable lexical/dense/
+equal-energy views. [Full result](../../benchmarks/2026-10-02-qmsum-compression-budget.md):
+95% unit-centroid cosine>=.9 plus50% retention is ruled out for per-meeting lexical
+(Kmin7742) and hybrid(6822) vsbudget4098. Dense Kmin404 is only not ruled out.
+Full repeat/scalar-source-view-pair/graph/bound audits pass. No clusters fit or
+semantic/online/ingestion gate measured; these engineering targets are provisional,
+not user mandates. Next test dense compression with separate lexical macro
+evidence against the same targets; source-only bound is not global cross-thread
+feasibility or a general BIRCH/lexical-topic verdict.
+
+The full suite with the extras and explicit author reference runs 496 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
