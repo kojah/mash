@@ -4,6 +4,13 @@ Status: required promotion contract, tracked in `mash-c0d.19.2.26`. No topic
 algorithm is selected, and no production Rust parity CI gate exists yet.
 Research candidates and their private captures are not the final contract.
 
+The development-only [stage comparator](STAGE_PARITY.md) and adversarial
+standard-library tests now implement the comparison boundary and run in CI.
+They enforce pinned fixture/policy provenance, ordered stage coverage, exact
+discrete decisions and explicitly named finite numeric tolerances. They do not
+implement the selected algorithm's typed schemas, Python/Rust runners or a
+complete port gate; those requirements remain open.
+
 Once quality and ingestion gates select a method, pin the executable Python
 reference, dependencies, algorithm parameters and fixture schema to a reviewed
 commit. Changes to the contract must update fixtures and both implementations

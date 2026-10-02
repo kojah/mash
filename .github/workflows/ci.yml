@@ -81,6 +81,8 @@ jobs:
         run: |
           python3 .github/scripts/test-deploy-gate.py
           python3 .github/scripts/test-deploy-credentials.py
+      - name: Verify topic parity comparator
+        run: python3 -m unittest discover -s research/topics -p 'test_stage_parity.py'
       - name: Install pinned sqlc release
         run: |
           mkdir -p "$RUNNER_TEMP/mash-sqlc"

@@ -1,5 +1,10 @@
 # Topic methodology lab
 
+The [stage comparator](STAGE_PARITY.md) prepares the future Rust/Python parity
+boundary. Its ten adversarial standard-library tests run in CI without private
+data or model downloads. Exact memberships/ancestry cannot be excused by numeric
+tolerances. This is comparator coverage, not actual selected-method Rust parity.
+
 The [character feature control](../../benchmarks/2026-10-02-character-topic-features.md)
 uses `character_features.py`/`character_questions.py` for six word/character
 source-similarity matrices with matched weighting/IDF. Characters preserve
@@ -1233,7 +1238,7 @@ No new inference occurs. Use verified semantic/source directories, complete
 `--preflight`, fresh `--output-directory`, repeat `--compare FIRST_RESULTS_JSON`,
 single-thread CPU settings and the external memory monitor.
 
-The full suite with the extras and explicit author reference runs 389 tests.
+The full suite with the extras and explicit author reference runs 399 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

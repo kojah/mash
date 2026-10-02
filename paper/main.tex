@@ -1427,6 +1427,17 @@ paired verification. Wider source-backed review and context-sensitive unit/label
 validation are necessary; more fragments alone are not supported as a remedy.
 
 \subsection{Executable reference as a future port gate}
+The comparison boundary is implemented in \path{research/topics/stage_parity.py}
+and exercised by ten adversarial standard-library CI tests. A pinned policy and
+fixture hash constrain ordered stage envelopes. Discrete decisions require exact
+types, ordering and values; named finite floating-point diagnostic arrays use
+caller-controlled absolute/reference-relative tolerances. A near-threshold score
+within tolerance cannot excuse changed memberships or ancestry. The checker
+rejects schema/provenance drift, duplicate JSON keys, nonfinite inputs, diagnostic
+shape changes and comparison overflow, and reports the first divergent stage/path
+without source payload values. This generic comparison boundary does not validate
+the eventual algorithm's complete typed source schema, model assets or invariants.
+No selected-method Python/Rust runner integration or port parity is established.
 Before a selected method is ported to Rust, freeze its executable Python reference,
 dependencies, parameters and shared per-stage fixture schema. The required
 contract is \path{research/topics/PORT_CONTRACT.md}, not a current winner or an
