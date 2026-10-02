@@ -5503,6 +5503,93 @@ possible episode methods. Further work requires informative topic evidence and
 independent technical-session validation. Topic labels, overlap, semantic
 ancestors, guided search, complete ingestion and Rust parity remain unresolved.
 
+\section{Human main-topic span source gate}
+QMSum \cite{zhong2021qmsum} provides human main-topic descriptions and possibly
+discontinuous relevant turn spans. Its annotation instructions target a small
+number of main topics, including substantial chatting, rather than every
+fine-grained shift. Capture only original training JSONL, README and LICENSE at
+author commit \path{83d7768c1f2b4dfeb091385d3dc7e239b8e5bb7e}, verify Git blobs,
+sizes and SHA256, and leave validation/test transcripts unread. Source and
+annotations stay outside Git; repository licensing does not establish all
+upstream transcript redistribution rights. Open author-repository annotation
+reports motivate caution, not automatic relabeling or proof of errors here.
+
+Typed immutable meeting/turn/topic/span and separate general/specific-query
+records retain exact speaker/text, raw JSONL line hash, source ordinals and
+original string span endpoints. Inclusive ranges must remain in the original
+transcript. Do not delete empty turns, reinterpret speakers as agent/user roles,
+invent missing native meeting IDs/domain fields or merge topic identities by
+label text. Gold topic names, questions and answers are evaluation annotations,
+never embedding or lexical feature inputs.
+
+The complete training source contains 162 meetings, 88,336 turns, 725 topic
+records with 771 spans, 162 general queries and 1,095 specific queries with 1,206
+spans. Thirty-three topics recur across multiple spans; 446 turns have multiple
+annotated topic memberships, 6,434 lack topic annotations and 81 transcript
+turns are empty. No same-topic span overlaps occur. All ranges are structurally
+valid; semantic correctness is unverified. Meetings span 91--1,832 turns and
+maximum turn size is 8,733 UTF-8 bytes; this does not establish model-token
+support. There are 59,304 exact unique turn texts and 29,032 repeat occurrences,
+plus 688 unique topic-name strings that do not define global topic identities.
+
+Every one of 88,174 adjacent pairs is accounted for: 81,111 preserve a nonempty
+annotation set, 466 switch different singleton sets, 42 change multi-membership,
+396 cross gaps and 6,159 are wholly unannotated. Gaps are unknown, not negative
+boundary gold. Overlap changes need not represent a unique hard cut. The source
+supports recurring-main-topic diagnostics with limited overlap support, not
+exhaustive episode, coding-agent, hierarchy or ancestor gold.
+
+Two final fresh stdlib runs match every nontiming field, including complete
+source/hash/span/query/transition ledgers. A separate original-JSONL sweep-line
+auditor verifies every turn, topic and query interval and transition. Seven
+edge-case tests run in dependency-free CI; all 433 enabled lab tests pass.
+No tokenizer, encoder or inference is used. Earlier science-environment captures
+remain superseded; final code removes an unnecessary science import and limits
+repeat exceptions to the explicit top-level timing envelope, without changing
+source or annotation semantics.
+
+Python 3.13.5 after-import preflight wall is 1.256/.886\,s, CPU .716/.817\,s,
+rusage 161932/162268\,KiB. The timer stops after constructing the ledger, before
+repeat comparison and JSON writing. Each metadata ledger is about 50.9\,MB.
+External full-target sampling includes loading that ledger on repeat: RSS
+162324/344764\,KiB, PSS 153637/335667\,KiB, status high water
+162324/346296\,KiB, 107/120 samples, no vanished reads and median/max gaps
+25.94/47.46 and 25.37/40.43\,ms. Comparison memory has a larger scope than
+preflight rusage. Sampled peaks are lower bounds, status approximate and
+monitoring intrusive; launcher high water may persist. No subtraction or
+ingestion-performance/production-memory claim. Source, final report and auditor
+pins, commands and caveats are in
+\path{benchmarks/2026-10-02-qmsum-topic-span-preflight.md}.
+
+\section{Related production patterns and scheduling proposal}
+Official product documentation, reviewed 2 October 2026, provides useful
+precedents with important scope limits. Intercom describes question-based
+subtopic discovery, broader grouping and daily multi-topic assignment
+\cite{intercomtopics}; its clustering/model details are not fully disclosed.
+LangSmith uses LLM trace summaries and model-driven hierarchical categorization
+in background/scheduled reports \cite{langsmithinsights}. Google documents
+curatable discovered topics and deployed LLM-based inference \cite{googlecxtopics}.
+These are vendor capability descriptions, not independent coding-session
+quality evaluations or evidence for BIRCH/GRINCH internals.
+
+Our design inference is to separate bounded evidence/assignment from budgeted
+background taxonomy maintenance within the existing process. New evidence can
+remain provisional while existing topics remain queryable; discovery need not
+restructure the semantic tree on every message. This does not authorize an LLM,
+an installed daemon or unversioned background mutation. Source-backed tags,
+provider-independent identities, local offline operation, one shared namespace
+per node group, retractable edit/delete evidence and consistent topic/tag
+generations remain requirements. Internal clustering topology cannot stand in
+for semantic parent relations or justify inherited ancestor tags.
+
+This is an architecture direction, not selection of an implemented algorithm.
+Next compare bounded original-source evidence with message-only evidence while
+holding clustering fixed. Freeze representation, split and evaluation policy
+before inference; do not leak annotated names/questions/answers. Production
+promotion still requires independent semantic quality/guided-search evidence,
+matched full-ingestion budget and Python/Rust differential CI. Further cutoff
+tuning of the rejected low-precision classifier is not the next experiment.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

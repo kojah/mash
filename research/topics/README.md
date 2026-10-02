@@ -1273,7 +1273,17 @@ and has no F1 fallback. Small fixed-bin calibration gaps do not supply reliable
 high-precision coverage. Complete source/count/reliability audits and exact
 fresh repeats pass; no new training/inference or reserved test access occurs.
 
-The full suite with the extras and explicit author reference runs 426 tests.
+The [QMSum complete training source gate](../../benchmarks/2026-10-02-qmsum-topic-span-preflight.md)
+uses stdlib `qmsum_capture.py`/`qmsum.py` on pinned original author JSONL only.
+All 162 meetings/88,336 turns, inclusive topic/query spans, source ordinals,
+empty turns, unknown annotation gaps and overlaps remain intact. Exact repeats
+and an independent sweep-line audit pass. Main-topic annotations do not supply
+exhaustive coding-session boundaries or semantic ancestors; no model calls or
+held-out downloads occur. [Production precedents](PRODUCTION_PATTERNS.md) inform
+a proposed separation of fast assignment from background taxonomy maintenance,
+with vendor-model limitations explicit. No topic algorithm is selected.
+
+The full suite with the extras and explicit author reference runs 433 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
