@@ -1049,7 +1049,16 @@ pass; 104 boundary bigram omissions are recorded. No reference-quality outcomes
 or model inference are used. Run the audit with the same fresh-output/repeat
 arguments. Channel weighting and topic quality are still untested.
 
-The full suite with the extra runs 289 tests; without it the two Infomap/runner
+The [channel-weight comparison](../../benchmarks/2026-10-02-channel-weighted-topics.md)
+uses `channel_weights.py` and `weighted_questions.py` for fixed title/body,
+title/prose/code and title/prose mass controls. Counts, masks and denominator
+changes are explicit; none of 216 settings passes the unchanged gate. Repeats,
+all probability/pair audits and three independent dense-mixture replays agree.
+Run it with the same fresh-output/repeat arguments. Source separation is useful
+provenance but has not established useful topics. Prioritize independent topic
+judgments/proxy validity before extending graph tuning.
+
+The full suite with the extra runs 293 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
