@@ -67,10 +67,10 @@ def load(database):
     return rows,metadata,provenance,dict(eligible)
 
 
-def run(sources,*,maximum_leaves=128,refresh_every=16):
+def run(sources,*,maximum_leaves=128,refresh_every=16,builder=refresh):
     if refresh_every is not None and (type(refresh_every) is not int or refresh_every < 1):
         raise ValueError('positive explicit refresh cadence or final-only required')
-    model = Stream(maximum_leaves=maximum_leaves); queue = RefreshQueue(); route_ms = []; begin = time.perf_counter(); cpu = time.process_time()
+    model = Stream(maximum_leaves=maximum_leaves); queue = RefreshQueue(builder); route_ms = []; begin = time.perf_counter(); cpu = time.process_time()
     try:
         for i,source in enumerate(sources):
             queue.poll(model); start = time.perf_counter(); model.upsert(source); route_ms.append((time.perf_counter()-start)*1000)

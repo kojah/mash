@@ -17,9 +17,15 @@ The no-LLM and complete-ingestion performance requirements remain. Selection and
 Rust parity still require evidence. A flat representation does not itself fix
 weak labels, short contextual replies or overly fragmented clusters.
 
-Next implement and measure a genuinely flat refresh/label path without the
-prototype's hierarchy construction or ancestor propagation. The existing
-prototype still builds trees; its timings are not flat-pipeline measurements.
+The [flat refresh control](../../benchmarks/2026-10-02-flat-topic-refresh.md)
+now implements and measures a path without hierarchy construction or ancestor
+propagation. Shared assignment/count/label helpers preserve historical tree
+snapshots exactly; flat labels use flat classes only. All three flat cadences
+repeat exactly and preserve assignments. An independent scalar audit checks
+5,454 label scores and scoped source/thread unions. Flat final publication takes
+6.14/7.21s on 1,850 admitted occurrences; this excludes complete ingestion.
+Fragmentation and weak-label counts remain unchanged, so no method is selected.
+Next prioritize source-backed granularity/label quality and budgeted publication.
 The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
 recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
 granularity/labels and budgeted publication over further hierarchy experiments.

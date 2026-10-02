@@ -15,7 +15,7 @@ from topic_stream_demo import DATABASE,GENERATION,run,lifecycle,page,pair_member
 
 
 SELECTION='270fdf50405136931791905b8555f5e4d7a35cb5a5fd935c4a201fd72b618167'
-PINS=['topic_cohort_demo.py','topic_stream_demo.py','topic_stream.py','topic_refresh.py','topic_jobs.py','data.py',
+PINS=['topic_cohort_demo.py','topic_stream_demo.py','topic_stream.py','topic_refresh.py','topic_features.py','topic_jobs.py','data.py',
       'episode_blocks.py','block_hierarchy.py','captured_hierarchy.py','subject_labels.py','label_noise.py','uv.lock']
 
 

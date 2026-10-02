@@ -8297,6 +8297,61 @@ then independently evaluate coding-session usefulness before method selection
 and Rust parity. Removing hierarchy simplifies delivery but does not establish
 that existing fragmented assignments or weak labels are useful.
 
+\section{Matched flat refresh and cadence control}
+We implemented a separate flat snapshot path with no linkage, branch nodes or
+ancestor propagation. Assignment, source token counts and lexical labels share
+helpers with the tree control. Global label eligibility is computed once per
+refresh in both paths. The tree retains historical ancestor-class statistics;
+flat labels calculate class frequency and mean length over flat topics only.
+The latter is an intentional formula-domain change, not just a presentation
+change. Historical tree snapshots remain exactly reproducible in both orders.
+
+Four fixed arms use the same exposed 128-thread cohort and all 1850 admitted
+occurrences: tree final-only, flat refresh requests every 16 events, flat every
+256, and flat final-only. Capacity 2000 and thresholds .55/.8, three tags,
+8192 vocabulary, support two and corpus DF limit .4 remain fixed. Each arm
+runs forward/reverse and exact checkpoint/refreshed restart. No new inference,
+LLM, downloads, selection or threshold fitting occurs. The worker coalesces
+requests; cadence 256 is not a selected CPU-budget or maximum-staleness policy.
+
+All flat memberships and versions exactly match the tree control. Flat schedules
+produce identical complete final snapshots, and repeats match all non-runtime
+fields. Forward retains 870 topics, 593 singletons, 698 weak-label topics,
+241 multi-tag sources and ten untagged sources (99.46\% coverage). Reverse has
+856, 578, 673, 234 and seven respectively. Pair Jaccard remains .757117.
+Flat-only statistics change 249 forward label arrays in score and/or rank;
+weak-label counts do not improve and label usefulness remains unverified.
+
+A no-producer-import auditor reconstructs source token multiplicities, flat
+class TF/length/frequency and scalar label scores, sharing only the static
+English stoplist and sklearn max-feature selection. Six snapshots, 5178 topics
+and 5454 label scores pass with maximum score error $1.77636\times10^{-15}$.
+Scoped source/topic/thread unions, support/DF limits and repeat/cadence equality
+pass. Routing winners, full vocabulary/rank selection, native parsing and
+semantics are outside this audit. Four new fixtures cover no-tree overlap,
+flat-only score arithmetic, restart/edit/delete/queue behavior and empty/invalid
+inputs. The full research suite passes 641 tests in 4.642s; this is not a
+selected-method Rust parity or production quality gate.
+
+Forward publication seconds are tree final 9.84/7.72, flat every-16
+26.57/29.81, flat every-256 17.76/34.29, and flat final 6.14/7.21.
+Corresponding CPU seconds are 8.50/7.70, 28.69/25.59, 19.09/21.30 and
+6.08/6.85. Final flat is 1.60/1.07 times faster than the matched tree control.
+The 256-event cadence reduces CPU but loses the second wall-time comparison;
+it is not a consistently faster online policy. Final-only withholds intermediate
+views. Fixed arm order, host/cache variation, Python GIL and intrusive monitoring
+limit timing conclusions. Full ingestion and its ten-percent gate remain open.
+
+Whole four-arm/two-order/restart time is 154.94/200.19s wall and
+158.40/161.43s CPU after load, before serialization/comparison. External sampled
+RSS maxima are 493576/495864 KiB and PSS 482438/484645 KiB; approximate
+status HWM and pre-serialization rusage are 501776/495300 KiB. The target
+retains a historical tree baseline, all arms, restarts, large result JSON and
+repeat comparison; cumulative counters cannot establish isolated worker memory.
+Sampling is a lower bound and excludes observer/children. Flat topic granularity
+and independent coding-session usefulness remain the next quality work.
+Detailed procedures: \path{benchmarks/2026-10-02-flat-topic-refresh.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
