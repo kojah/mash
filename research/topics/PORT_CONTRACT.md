@@ -4,6 +4,18 @@ Status: required promotion contract, tracked in `mash-c0d.19.2.26`. No topic
 algorithm is selected, and no production Rust parity CI gate exists yet.
 Research candidates and their private captures are not the final contract.
 
+The phrase reference now has an actual disk/interpreter restart control in
+`test_topic_phrase_restart.py`: a JSON checkpoint is restored by a fresh Python
+process, duplicate arrivals, edits, deletions and a previously absent subject
+are applied, and every complete snapshot is compared to uninterrupted execution.
+A second fresh process restores the post-edit checkpoint. The control checks
+stable phrase IDs, retained duplicate evidence without extra votes, removal of
+stale evidence, and rejection of a malformed checkpoint before publishing output.
+These synthetic checks cover the unchanged `SOURCE_COVERAGE` research reference;
+they do not test production SQLite/shared persistence, atomic publication,
+power-loss recovery, semantic quality or ingestion performance. The phrase
+snapshot still recomputes corpus statistics; this test is not an online-cost pass.
+
 The first milestone is flat, multi-label topics (decision 2026-10-02).
 Semantic ancestry, parent/child links and inherited tags are not requirements
 or promotion gates. Historical hierarchy examples below apply only to an
