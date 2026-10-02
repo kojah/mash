@@ -1,5 +1,14 @@
 # Topic methodology lab
 
+The [fixed-K online LDA control](../../benchmarks/2026-10-02-online-lda-topics.md)
+uses `online_lda.py`/`lda_questions.py` with pinned sklearn partial-fit updates,
+18 fits and 108 exposed settings. None qualifies; arrival-order predictions
+and historical memberships drift. Exact repeats and direct library replay
+check wrapper fidelity, not semantic quality or Rust parity. Fixed K supplies
+neither unknown-topic discovery nor semantic ancestry. No production method
+is selected. Run with the standard `--root`, fresh `--output`, repeat `--compare`
+arguments in the pinned graph research environment.
+
 The [blind topic-review pilot](../../benchmarks/2026-10-02-blind-topic-review-pilot.md)
 prepares 32 source-grounded pairs with predictions/tags kept in a separate
 manifest. Use `blind_topic_packet.py` and the

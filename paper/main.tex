@@ -3695,7 +3695,8 @@ and graph-tool inference\cite{networktopics}. Online LDA supplies stochastic
 count-mixture updates with fixed K\cite{onlinelda}. These provide different
 comparators; published results do not establish coding-session quality, ingestion
 cost, stable topic IDs or edit/delete behavior for Mash. No generative LLM calls
-are required for these statistical count models. None is implemented here.
+are required for these statistical count models. At this shortlist stage,
+none had been implemented; subsequent controls are reported below.
 
 Preregister a cheaper literal source-term membership control on only the exposed
 64 calibration questions and 2,016 natural pairs. Retain the old source-only
@@ -4118,6 +4119,54 @@ exercise these contracts; they are not human annotations. Exposure declarations
 remain visible, and self-reports do not establish independent authorship.
 Agreement does not measure accuracy, free-text label agreement, model ancestry
 or guided-search utility; none has been demonstrated by this tooling.
+
+\subsection{Fixed-K online variational LDA control}
+Online LDA\cite{onlinelda} provides incremental statistical count-mixture
+updates and nonexclusive memberships but requires fixed K and does not supply
+the requested semantic hierarchy. We use the pinned scikit-learn 1.9.1
+implementation\cite{sklearnlda}, not a numerical reimplementation. Before
+outcomes, freeze the original exposed 64 questions, 629 source-only unigram
+columns and 4,764 raw occurrences; tags never enter features or seeds. The
+vocabulary is transductive rather than future-unseen streaming extraction.
+Use K=8/16/32, one/ten epochs, batches of 16, alpha=eta=1/K, learning decay
+0.7, offset 10, model seed 17, one worker and document E-step limit/tolerance
+100/0.001. Set total samples to the nonempty corpus size and call partial-fit
+explicitly. Ten epochs revisit documents and are an initial-index comparator.
+Original, reverse and shuffle-17 orders are not chronological source times.
+
+Record first-arrival and final posteriors, abstaining on empty source rows.
+Final-score thresholds 0.10/0.20/0.30, relative margin 0.5 and budgets three/eight
+produce 108 settings from 18 fits. The unchanged 0.70 precision/20-link gate
+requires all orders; none passes even individually. Best descriptive precision
+among budget-three settings with at least 20 links is 0.0912 (30 true/299 false
+links, recall 0.3093) for one-pass K16/0.30/reverse; ten-pass K32/0.20/forward
+reaches 0.0959 (40/377, recall 0.4124). Both assign all 64 sources, emitting
+77/81 memberships. These descriptions are not selected winners or semantic
+precision. No old reserved outcomes are consulted.
+
+First-arrival versus final tags change for 1--8 sources across one-pass settings
+and 8--18 across ten-pass settings, comparing indices only within a fitted model.
+Across orders, matched policies disagree on 431--817 of 2,016 pair predictions.
+Thus fixed component indices do not demonstrate stable historical topic meaning.
+Top-eight word-probability descriptors retain lexical ties and exact source
+support; examples include ``metadata, transaction, table, id, install'' and
+``n, core, process, array, d.'' These are not independent label-quality scores.
+Corpus size, raw-count representation, priors and local optimization may
+contribute, but this experiment does not isolate their causal effects.
+
+Fresh processes match all nontiming fields in 2.698/2.746 seconds after imports.
+Per-fit fitting plus transforms take 38.0--109.8 ms; update p95 across fits
+ranges 3.71--8.31 ms. Four tests and a separate replay of all 18 library fits
+verify first/final posteriors, components, events, descriptors and 217,728 scalar
+pair decisions; all 312 lab tests pass. Shared library replay verifies wrapper
+fidelity, not independent numerical correctness or Rust parity. No additional
+encoder/LLM calls occur. Production extraction, label maintenance, persistence,
+peak RSS and complete ingestion are unmeasured. Fixed vocabulary/K, edits,
+deletions, restart recovery, semantic ancestors and guided-search utility remain
+open; no candidate is promoted.
+First/repeat hashes:
+\path{9b6fae52558214924a50dcdbd51f0c7893b4de629f98c5affc5e09348cee2000},
+\path{5251a5410d48286d7904471c86e57cea82a61f201f7ab9d83dae4194c4ccc1fb}.
 
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
