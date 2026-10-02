@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 543 tests.
+The full suite with the extras and explicit author references runs 547 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1522,6 +1522,16 @@ is nearly identical to block .561768. Smaller units alone are not supported as
 the fix. Full non-timing repeat passes; independent source-LCA/height audit
 passes. The separate global-minimum audit has additional scope and is recorded
 in the report; do not infer global merge validation from the height audit.
+`qmsum_lexical_granularity.py` holds those same boundaries/support fixed and
+changes features to original counts pooled BEFORE frozen full-snapshot TF/IDF.
+See [protocol](LEXICAL_GRANULARITY_PROTOCOL.md) and
+[report](../../benchmarks/2026-10-02-lexical-unit-granularity.md).
+Lexical raw/context/block recurring purity .546292/.607982/.622208; individual
+messages remain weak, pooled lexical evidence is the next label/membership
+candidate. Exact repeat/reference replay and independent scalar feature,
+original-source LCA/global-minimum audit pass. Zero rows273/5/0 remain owned.
+This does not rehabilitate the failed coherence cut or prove online IDF,
+semantic labels/ancestors, coding multitag/guided search or production readiness.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
