@@ -7643,6 +7643,76 @@ numeric/held-out contracts. Independent coding/semantic label and multitag/
 ancestor quality, guided agent utility, bounded global online lifecycle and
 complete ingestion plus selected Python/Rust parity remain gates.
 
+\section{Does discovery add value beyond plain thread context?}
+Positive parent guidance does not isolate clustering from ordinary context
+aggregation. Add one whole-meeting parent per original thread (162) alongside
+the existing 1,296 topic parents. Same 162 training meetings, 88,336 sources,
+84,434 ready sources, 1,095 specific queries and 1,206 spans
+\cite{zhong2021qmsum}; original source counts, static stoplist, frozen full
+word IDF, sublinear TF before IDF and L2 normalization. Pool original eligible
+counts before weighting parents; both source banks are exactly equal. No
+answers/topic-name features, new filler list, model inference/download/LLM,
+held-out data or parameter grid.
+
+Compare direct positive-source search and the fixed parent-rank adaptation
+of RRF\cite{rrf2009}: source reciprocal rank plus parent reciprocal rank,
+k=60, zero parent contribution if not positive. Rank complete pools, top20,
+exact float/global-ID ties; no mandatory gate, fallback or candidate cap.
+The parent rank is broadcast to its sources, unlike ordinary same-document
+RRF. Unsupported references stay in denominators; global other-meeting sources
+are unjudged, not known negative. All direct/topic records replay the frozen
+control. In known-meeting scope the sole thread bonus is constant, so all
+1,095 returned orders and metrics must exactly equal direct retrieval.
+Begin/end source pins and complete non-timing repeat pass.
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+Scope/arm & Recall20 & Precision20 & MRR & NDCG20 & Zero\\
+\hline
+Meeting/direct & .193067 & .171872 & .537946 & .276575 & 13\\
+Meeting/topic & .195939 & .173470 & .542060 & .280952 & 13\\
+Meeting/thread & .193067 & .171872 & .537946 & .276575 & 13\\
+Global/direct & .050725 & .024886 & .153729 & .060144 & 0\\
+Global/topic & .078522 & .042237 & .197217 & .090787 & 0\\
+Global/thread & .068532 & .036484 & .210416 & .086009 & 0\\
+\end{tabular}
+\end{center}
+Macros include every query. Topic-versus-thread recall improves/declines/ties
+on 111/34/950 global queries and 45/12/1,038 meeting queries. Global
+topic-versus-direct counts remain 238/13/844. Candidate coverage .951957;
+56,494 original reference contributions, 53,691 ready, 2,803 unsupported.
+No added zero cases. Ordinary context reproduces substantial gains; topics
+add recall/precision/NDCG but thread guidance ranks the first relevant hit
+better. Mixed outcomes neither select a universally better method nor prove
+semantic topics or that clustering caused all earlier gains. Keep thread
+context as a baseline and separate discovery from search-ranking decisions.
+
+Global retrieval-plus-metric median/p95 milliseconds: first direct
+8.243/12.635, topic 24.873/50.981, thread 24.113/51.802; repeat
+7.697/10.871, 22.716/33.400, 22.061/32.190. Query projection excluded;
+direct includes reference equality checking, topic equality checking lies
+outside its interval. Fixed call order/cache/host uncontrolled, not ranking-only
+or deployed E2E. After-import wall 93.481/83.268 seconds, CPU 87.559/78.643;
+feature construction 122.918/151.824 milliseconds. Large unused input-ledger
+validation and all arms share one target, not production worker memory or full
+ingestion. Two new numerical invariants bring the enabled suite to 570 tests.
+Procedures, fingerprints and external RSS/PSS scope in
+\path{benchmarks/2026-10-02-thread-context-control.md}.
+
+Independent audit reconstructs thread counts/pooling, queries/spans, ownership,
+formula, metrics and sole-parent invariant: 1,095 queries, 6,570 cases,
+121,512 selected records, 702,141 feature coordinates, maximum error
+2.22$\times10^{-16}$. Scalar fsum geometry checked within $10^{-12}$;
+exact rank replay shares NumPy/SciPy IEEE kernels, not independent scalar
+tie-winner parity. Shared pinned counts/IDF/topic inventory/sklearn stoplist;
+source tokenizer previously audited.
+
+No production method selected. Robust cross-language numerical ties, held-out
+and coding-session quality, semantic labels/multitags/ancestor inheritance,
+guided-agent utility, bounded shared online lifecycle/edit/delete/restart,
+complete ingestion overhead and selected executable Python/Rust parity remain
+necessary. Training meetings alone cannot settle these questions.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

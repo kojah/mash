@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 568 tests.
+The full suite with the extras and explicit author references runs 570 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1580,6 +1580,16 @@ Matched global scalar/vector medians 29.402/18.733ms first, 32.401/19.139 repeat
 small meeting scope regresses about .1ms. Complete repeat and reused independent
 source/query/span/formula/rank/metric audit pass. No candidate truncation, new
 quality claim, near-tie portability or production/E2E selection follows.
+`qmsum_thread_context.py` adds a plain whole-thread parent control using the same
+original source counts and fixed rank-bonus contract.
+[Protocol](THREAD_CONTEXT_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-thread-context-control.md).
+Global recall direct/thread/topic .050725/.068532/.078522, but thread MRR .210416
+beats topic .197217. Known-meeting thread order/metrics exactly equal direct.
+Complete repeat, source pins and independent count/query/span/rank/metric audit
+pass (6,570 cases, 702,141 feature coordinates). Context explains substantial gains;
+mixed outcomes do not select production discovery or establish semantic topics.
+Keep this simpler baseline for held-out quality/utility work.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
