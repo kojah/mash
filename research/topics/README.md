@@ -1,5 +1,20 @@
 # Topic methodology lab
 
+The [held-out guidance evaluation](../../benchmarks/2026-10-02-heldout-guidance.md)
+completes the frozen validation protocol:35 meetings/237 queries, training-only
+word frame, source-only inventory, six direct/topic/thread arms in two scopes.
+Full non-timing repeat and independent count/tree/query/span/rank/metric/bootstrap
+audit pass. Known-meeting recall delta+.00205 has95% interval[-.00082,.00603]:
+the primary benefit gate **fails**, although the MRR safety gate passes. Do not
+promote automatic topic ranking or retune this split. Test remains untouched.
+Next prioritize coding-agent label/multitag/ancestor/exploration evidence,
+separating taxonomy usefulness from ranking. No topic method selected.
+Use `qmsum_validation_guidance.py --artifacts ROOT --output FIRST`, then a fresh
+repeat with `--compare FIRST`, each under `memory_audit.py`; audit with
+`audit_validation_guidance.py --artifacts ROOT --capture FIRST --output AUDIT`.
+Original support/OOV/zero/unsupported references remain; scientific dependencies
+and source-unit ledger sharing are disclosed. No new inference/LLM/download.
+
 The [TIAGE training/development boundary experiment](../../benchmarks/2026-10-02-tiage-boundary-calibration.md)
 uses `boundary_scoring.py`, `tiage_calibration.py` and `tiage_development.py`.
 Training-only exact-F1 cutoff selection is sealed before development capture;
