@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 588 tests.
+The full suite with the extras and explicit author references runs 591 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1622,7 +1622,14 @@ pass and join the CI fixture step. [Frozen protocol](GUIDANCE_VALIDATION_PROTOCO
 35 meetings/20,123 turns/237 specific queries/248 spans captured, no inference
 or quality scoring. Training vocabulary/IDF cannot be re-fit on this split;
 primary known-meeting paired relevance gate and meeting bootstrap are frozen.
-Actual held-out scoring waits for the training numerical repeat/audit.
+Training numerical repeat/audit pass; actual held-out scoring remains to run.
+`qmsum_validation_units.py` now captures installed-tokenizer readiness and
+source-only physical boundaries on all validation turns, with no query scoring
+or feature fitting. 18,916 ready/1,207 unsupported, 2,073 blocks; complete repeat
+and independent native-text/token/readiness/greedy-boundary audit pass.
+`validation_blocks.py` retains ready sources independently of lexical zero
+directions; 100 generated cancellation/gap/window cases match prior boundaries.
+[Report](../../benchmarks/2026-10-02-validation-source-units.md).
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
