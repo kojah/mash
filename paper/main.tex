@@ -5194,6 +5194,49 @@ Keep production unchanged and prioritize source-grounded episode/context evidenc
 and granularity calibration. Full reproduction pins and limitations are in
 \path{benchmarks/2026-10-02-source-window-retrieval.md}.
 
+\subsection{Independent boundary-label source preflight}
+TIAGE \cite{xie2021tiage} supplies human-annotated PersonaChat topic shifts.
+Its response label denotes change relative to preceding context; annotators
+could consult following turns, unlike strictly online inference. This is
+independent boundary evidence, not coding-topic or ancestor gold.
+We pin author commit \texttt{08f98dfa066a5f2fba2bbd1d6ed6ee9a783a2b1d} and
+capture only README, MIT license, original annotated training JSON and two
+classifier-source files. Development/test and weak-supervision contents remain
+undownloaded; no author model code, new inference or model download runs.
+The classifier script references a Wiki loader rather than establishing JSON
+semantics, so the paper guidelines and original rows determine label alignment.
+
+The pinned source contains 300 dialogues, 4,692 complete turns and 4,392 scorable
+boundaries: 3,505 continuations and 887 changes. All 300 roots carry the
+\texttt{-1} sentinel and never become negative examples. Original dialogue
+lengths range from 14 to 26 turns; 4,613 exact unique turn texts retain all 79
+repeated occurrences. Counts refer to captured JSON, not reconstructed published
+task-instance counts. No speaker roles or cross-episode topic identities are
+invented. Typed parsing preserves complete Unicode, whitespace, identities,
+order and label provenance; unknown labels, internal sentinels, empty turns,
+duplicate keys and malformed inputs fail closed.
+
+Author blob/size and SHA256 checks precede parsing; all five files are
+revalidated and reserved files are rejected. Complete preflights repeat
+byte-identically under Python 3.13.5 with explicit code hashes. An independent direct-JSON audit reconstructs every row,
+source/text hash, label/count summary and repeated-text accounting; seven
+synthetic tests exercise extraction and corruption cases. The full enabled
+lab suite passes 406 tests. This verifies source fidelity, not annotation
+accuracy or segmentation performance. No latency or ingestion claim follows.
+
+Before any embedding or development-data capture, freeze the next experiment's
+complete installed-model turn vectors, adjacent versus previous-two-turn context
+cosine, explicit unsupported/canceling-input abstentions and no-change/all-change
+baselines. Record training-only calibration objectives, threshold/tie rules and
+complete candidates, pin the selected artifact, then evaluate separately on
+development data without outcome-based repair or test consumption. Labels never
+enter features. Report matched support, cross-split duplicates, boundary metrics,
+per-dialogue uncertainty and measured cost. Future-lookahead controls need an
+explicit delayed/offline designation. Pretraining overlap is unknown; labels,
+overlap, semantic ancestry and agent navigation still need independent coding
+evidence. Reproduction pins are in
+\path{benchmarks/2026-10-02-tiage-boundary-preflight.md}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

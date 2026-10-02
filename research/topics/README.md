@@ -1,5 +1,13 @@
 # Topic methodology lab
 
+The [TIAGE boundary preflight](../../benchmarks/2026-10-02-tiage-boundary-preflight.md)
+pins the author's human-annotated training data without downloading development,
+test or weak-supervision text. `tiage_capture.py`/`tiage.py` preserve all original
+turns, labels, sentinel semantics and source hashes; typed parsing, exact repeats
+and an independent every-row audit pass. No inference or boundary metrics have
+run. These are independent open-domain boundary annotations, not coding-topic
+labels or ancestor gold. Freeze calibration/evaluation rules before the next run.
+
 The [stage comparator](STAGE_PARITY.md) prepares the future Rust/Python parity
 boundary. Its ten adversarial standard-library tests run in CI without private
 data or model downloads. Exact memberships/ancestry cannot be excused by numeric
@@ -1238,7 +1246,7 @@ No new inference occurs. Use verified semantic/source directories, complete
 `--preflight`, fresh `--output-directory`, repeat `--compare FIRST_RESULTS_JSON`,
 single-thread CPU settings and the external memory monitor.
 
-The full suite with the extras and explicit author reference runs 399 tests.
+The full suite with the extras and explicit author reference runs 406 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
