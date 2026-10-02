@@ -26,6 +26,17 @@ repeat exactly and preserve assignments. An independent scalar audit checks
 6.14/7.21s on 1,850 admitted occurrences; this excludes complete ingestion.
 Fragmentation and weak-label counts remain unchanged, so no method is selected.
 Next prioritize source-backed granularity/label quality and budgeted publication.
+
+The [fixed lexical-fusion diagnostic](../../benchmarks/2026-10-02-flat-lexical-fusion.md)
+tests dense, lexical TF-IDF and half-fusion Gram routing on the same 1,850
+occurrences. Dense decisions match the prior flat control; all three arms repeat.
+At fixed .55, lexical/fusion produce 1,209/1,229 topics versus 870 dense, with
+more singletons and fewer source-supported topics. The lexical frame is fitted
+on the exposed cohort and the Gram router is offline/O(N-squared); neither is a
+production streaming contract. Audit verifies source/label math and pair density,
+not independent routing or semantic usefulness. These settings do not fix
+fragmentation. Next test phrase-centered flat topic seeds with original evidence,
+not further tree construction or output-driven threshold tuning.
 The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
 recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
 granularity/labels and budgeted publication over further hierarchy experiments.

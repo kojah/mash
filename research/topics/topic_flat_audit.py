@@ -8,7 +8,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from topic_capacity_audit import counts
 
 
-def audit(source_baseline,first,repeat):
+def audit(source_baseline,first,repeat,arm_names=('flat_every16','flat_every256','flat_final'),equal_schedules=True):
     original=json.loads(source_baseline.read_text())['baseline_checkpoint']['records']
     a=json.loads(first.read_text());b=json.loads(repeat.read_text())
     a.pop('runtime');b.pop('runtime');assert a==b
@@ -20,10 +20,10 @@ def audit(source_baseline,first,repeat):
     vocabulary=set(vectorizer.get_feature_names_out())
     df=Counter(term for row in words.values() for term in row if term in vocabulary)
     checked=topics_checked=0;maximum_error=0.
-    for name in ['flat_every16','flat_every256','flat_final']:
+    for name in arm_names:
         for direction in ['forward','reverse']:
             snapshot=a['arms'][name][direction]
-            assert snapshot==a['arms']['flat_final'][direction]
+            if equal_schedules:assert snapshot==a['arms']['flat_final'][direction]
             assert snapshot['representation']=='flat_multi_label' and 'nodes' not in snapshot and 'root' not in snapshot
             assert set(snapshot['versions'])==set(snapshot['memberships'])==set(sources)
             topics=snapshot['topics'];ids={topic['id'] for topic in topics};assert len(ids)==len(topics)
@@ -61,7 +61,7 @@ def audit(source_baseline,first,repeat):
                 assert set(thread['tags'])=={tag['topic'] for sid in members for tag in snapshot['memberships'][sid]}
                 assert all(sources[sid]['provider']==thread['provider'] for sid in members)
                 assert 'ancestor_tags' not in thread
-    return {'stable_repeat':True,'schedule_final_exact':True,'flat_snapshots_checked':6,
+    return {'stable_repeat':True,'schedule_final_exact':equal_schedules,'flat_snapshots_checked':len(arm_names)*2,
         'topics_checked':topics_checked,'label_scores_checked':checked,'maximum_label_score_error':maximum_error,
         'shared_dependencies':'sklearn English stoplist and max-feature vocabulary selection',
         'scope':'original-source unions, provider/thread tags, flat scalar label scores, repeat/schedule equality',

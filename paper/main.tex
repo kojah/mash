@@ -8352,6 +8352,71 @@ Sampling is a lower bound and excludes observer/children. Flat topic granularity
 and independent coding-session usefulness remain the next quality work.
 Detailed procedures: \path{benchmarks/2026-10-02-flat-topic-refresh.md}.
 
+\section{Fixed lexical fusion increases flat fragmentation}
+To test lexical evidence without a sparse-vector projection, we implemented a
+bounded fixed-frame Gram router. Topic columns accumulate similarities to
+already assigned members, with exact sum-vector norm updates and non-singleton
+leave-one-out assignment. This is an offline diagnostic: its $O(N^2)$ storage
+is not an unbounded stream design and no edit/delete/restart contract is selected.
+Flat source-counted labels retain the c-TF-IDF-style representation lineage
+\cite{bertopic}; this experiment changes routing geometry, not that formula.
+
+Reuse all 1850 admitted occurrences and existing dense vectors from the exposed
+128-thread cohort, preserving 7038 explicit exclusions. Three fixed arms are
+dense, source lexical TF-IDF and normalized equal-weight concatenation. The
+lexical frame uses technical unigrams/contiguous bigrams, 8192 maximum features,
+sublinear TF and source IDF fitted on all admitted development sources. This is
+transductive, not an online frame or held-out evaluation. A lexical zero row is
+explicitly unroutable in lexical-only; fusion retains its available dense part
+with the defined normalization. All arms use .55/.8 thresholds and three tags,
+without output-driven retuning, inference, downloads, LLM or paid calls.
+
+The dense Gram control reproduces both orders' original vector-router decisions,
+labels, versions, thread tags and diagnostics. Maximum membership-score error is
+$2.33147\times10^{-15}$, within the fixed $10^{-12}$ tolerance. All non-runtime
+fields repeat exactly. Forward topics/singletons/weak topics are dense
+870/593/698, lexical 1209/1034/1087 and fusion 1229/1051/1098.
+Untagged sources are ten, 33 and zero; lexical has 32 zero-geometry sources.
+Multi-tag counts fall from 241 dense to 40 lexical and 59 fusion. Topics with
+two supported label terms are 172/122/131, covering at least one such tag on
+1053/662/685 sources. Support is not semantic accuracy or independent evidence.
+Reverse lexical has 1214 topics and fusion 1229. Pair Jaccard rises to
+.923364/.837299 from dense .757117, while pairs fall from 23171/27130 dense
+to 5786/5558 lexical and 6883/6397 fusion.
+
+An independent scalar-weighted source-pair diagnostic finds 16395 dense,
+5330 lexical and 5586 fusion edges at .55. The same numeric cutoff has different
+selectivity across frames, helping explain more singleton topics and apparent
+stability. These pair graphs are not centroid-routing graphs or a full causal
+decomposition. The tested settings do not correct fragmentation; this does not
+reject lexical evidence at independently calibrated operating points. Do not
+promote fusion merely because all sources get a tag or tune this exposed sample
+until a desired count appears. Next test phrase-centered flat topic seeds and
+cross-thread source evidence instead of naming each tiny routing leaf as a
+separate subject. That experiment is not yet a selected method.
+
+A no-producer-import audit checks six snapshots, 6607 topics and 4558 scalar
+label scores, maximum error $1.77636\times10^{-15}$, source/thread/provider
+unions, support/DF and repeats. It reconstructs lexical weights with scalar
+logs/norms; stoplist, sklearn max-feature selection and NumPy/SciPy Gram products
+are shared. Routing decisions are not independently replayed; full rank/native
+parsing and semantic usefulness remain unverified. Three new synthetic fixtures
+exercise dense equivalence, zero rows/fusion and invalid inputs. The 644-test
+research suite passes in 6.410s; no selected Rust parity is established.
+
+Forward routing/through-snapshot seconds are dense .385/1.928 and .300/2.591,
+lexical .470/2.289 and 1.166/2.956, and fusion .407/2.004 and .578/2.967.
+Setup takes 1.010/1.238s after loading; the full six-route/label diagnostic takes
+15.568/19.146s wall and 15.294/15.911s CPU before serialization/comparison.
+Precomputation moves work outside routing timing; these are not production
+full-ingestion measurements or a reason to deploy quadratic storage. External
+sampled RSS is 362152/361592 KiB, PSS 351000/349991 KiB, status HWM
+362152/361580 KiB and pre-serialization rusage 361356/360084 KiB. The target
+includes historical artifacts, all frames/workspaces, labels and comparison;
+no counter subtraction or isolated worker attribution is valid. Sampling is a
+lower bound, monitoring intrusive, observer/children excluded. Detailed report:
+\path{benchmarks/2026-10-02-flat-lexical-fusion.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

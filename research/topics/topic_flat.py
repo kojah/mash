@@ -10,6 +10,12 @@ def refresh_flat(capture,threshold=.55,relative=.8,maximum_tags=3):
         raise ValueError('finite bounded membership parameters required')
     records=capture.records;ids=capture.leaf_ids
     ready,memberships,source_sets=assignments(capture,threshold,relative,maximum_tags)
+    return flat_snapshot(records,capture.revision,ids,ready,memberships,source_sets,threshold,relative,maximum_tags)
+
+
+def flat_snapshot(records,revision,ids,ready,memberships,source_sets,threshold=.55,relative=.8,maximum_tags=3):
+    if len(ids)!=len(source_sets) or set(memberships)!={record.source.id for record in records}:
+        raise ValueError('complete source membership and topic scope required')
     vocabulary,counts,df,idf=lexical_counts(records,ready)
     # Class statistics contain only flat topics. Historical ancestor classes
     # must not contribute duplicated term counts to the flat label weights.
@@ -29,7 +35,7 @@ def refresh_flat(capture,threshold=.55,relative=.8,maximum_tags=3):
         thread['tags'].update(tag['topic'] for tag in memberships[source.id])
     for thread in threads.values():
         thread['tags']=sorted(thread['tags']);thread['sources'].sort()
-    return {'schema_version':1,'representation':'flat_multi_label','revision':capture.revision,
+    return {'schema_version':1,'representation':'flat_multi_label','revision':revision,
         'versions':{r.source.id:r.version for r in records},'topics':topics,'memberships':memberships,
         'threads':[threads[key] for key in sorted(threads)],
         'parameters':{'threshold':threshold,'relative':relative,'maximum_tags':maximum_tags,
