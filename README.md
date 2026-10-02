@@ -237,6 +237,12 @@ stdout. Only mash's own trace targets are enabled; dependency logs are excluded.
 Trace fields omit query/history text, paths, filters, credentials, and vectors.
 Existing indexing progress events can also appear on stderr.
 
+Qdrant publication spans separate snapshot, catalog and document staging from
+the conditional head write, head verification and cleanup. The publication
+outcome distinguishes observed success, unresolved writes, conflicts, staging
+failure and verification failure. Cleanup reports whether a deletion failed;
+trace fields contain no node/group IDs, backend URLs or staging versions.
+
 Index traces separate discovery and checkpoint filtering, parser admission waits,
 parsing retries, queue sends, application, embedding planning and wave reads,
 CPU/Core ML inference batches, vector writes, and commits. Admission events

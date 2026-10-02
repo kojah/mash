@@ -9,11 +9,13 @@ use std::{
 
 #[derive(Clone, Copy)]
 enum Outcome {
+    StagingFailure,
     DelayedFailure,
     DelayedAcknowledgment,
     UnreadableVerification,
     AppliedFailure,
     CompletedLoser,
+    CleanupFailure,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -67,6 +69,7 @@ struct Backend {
     deletes: usize,
 }
 type Shared = Arc<Mutex<Backend>>;
+mod diagnostics;
 
 fn completed() -> axum::response::Response {
     Json(Reply {
@@ -84,11 +87,18 @@ async fn upsert(
 ) -> axum::response::Response {
     let mut backend = shared.lock().unwrap();
     for point in input.points {
-        let Ok(node) = serde_json::from_str::<NodeHead>(point.payload.get()) else {
+        let node = serde_json::from_str::<NodeHead>(point.payload.get())
+            .ok()
+            .filter(|node| node.kind == PointKind::Head);
+        let Some(node) = node else {
+            if matches!(backend.outcome, Outcome::StagingFailure) {
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
             backend.points.insert(point.id.clone(), point);
             continue;
         };
         match backend.outcome {
+            Outcome::StagingFailure => unreachable!("staging failed before publishing a head"),
             Outcome::DelayedFailure
             | Outcome::DelayedAcknowledgment
             | Outcome::UnreadableVerification => {
@@ -109,7 +119,7 @@ async fn upsert(
                 backend.points.insert(point.id.clone(), point);
                 return StatusCode::SERVICE_UNAVAILABLE.into_response();
             }
-            Outcome::CompletedLoser => {
+            Outcome::CompletedLoser | Outcome::CleanupFailure => {
                 // Another writer inserted a complete snapshot before this insert-only
                 // operation completed without replacing its head. Retain real chunks.
                 let mut winner = node;
@@ -176,6 +186,9 @@ async fn delete(
     let versions = &input.filter.must[0].r#match.any;
     let mut backend = shared.lock().unwrap();
     backend.deletes += 1;
+    if matches!(backend.outcome, Outcome::CleanupFailure) {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
     backend.points.retain(|_, point| {
         let version: Version = serde_json::from_str(point.payload.get()).unwrap();
         !versions.contains(&version.version)
@@ -204,25 +217,29 @@ async fn exercise(outcome: Outcome) {
         snapshot_budget: crate::shared::snapshot_budget::Budget::default(),
     };
     let identity = Identity {
-        group_id: "group".into(),
-        node_id: "node".into(),
-        generation: "generation".into(),
+        group_id: "private-group-canary".into(),
+        node_id: "private-node-canary".into(),
+        generation: crate::semantic::model_space("test", 4),
         dimensions: 4,
     };
-    let plan = crate::shared::snapshot::Plan {
-        loaded: crate::shared::snapshot::PendingSnapshot {
+    let fixture = Fixture {
+        store,
+        identity,
+        url,
+    };
+    let plan = crate::shared::snapshot::plan(
+        &fixture.file(1, "private-history-canary"),
+        crate::shared::snapshot::PendingSnapshot {
             payload: None,
             head: None,
             expected: String::new(),
         }
         .decode()
         .unwrap(),
-        revision: 1,
-        changed: true,
-        removed: 0,
-        purged: 0,
-    };
-    let result = store.commit(&identity, plan, "instance".into(), true).await;
+        4,
+    )
+    .unwrap();
+    let result = diagnostics::commit(&fixture.store, &fixture.identity, plan, outcome).await;
     if matches!(outcome, Outcome::AppliedFailure) {
         assert_eq!(result.unwrap().revision, 1);
     } else {
@@ -230,7 +247,10 @@ async fn exercise(outcome: Outcome) {
     }
     {
         let mut backend = shared.lock().unwrap();
-        if matches!(outcome, Outcome::CompletedLoser) {
+        if matches!(
+            outcome,
+            Outcome::CompletedLoser | Outcome::StagingFailure | Outcome::CleanupFailure
+        ) {
             assert_eq!(
                 backend.deletes, 2,
                 "confirmed losing CAS can reclaim staging"
@@ -245,16 +265,30 @@ async fn exercise(outcome: Outcome) {
             backend.points.insert(point.id.clone(), point);
         }
     }
-    let loaded = store
-        .load(&identity)
+    let loaded = fixture
+        .store
+        .load(&fixture.identity)
         .await
         .expect("late or winning publication must retain complete verifiable chunks");
-    assert_eq!(loaded.head.unwrap().revision, 1);
+    if matches!(outcome, Outcome::StagingFailure) {
+        assert!(loaded.head.is_none());
+    } else {
+        assert_eq!(loaded.head.unwrap().revision, 1);
+        assert_eq!(loaded.data.messages.len(), 2);
+        assert!(
+            loaded
+                .data
+                .messages
+                .values()
+                .all(|message| message.content.contains("private-history-canary"))
+        );
+    }
     server.abort();
 }
 
 #[tokio::test]
 async fn ambiguous_cas_can_publish_after_the_failed_caller_without_losing_chunks() {
+    exercise(Outcome::StagingFailure).await;
     exercise(Outcome::DelayedFailure).await;
     exercise(Outcome::DelayedAcknowledgment).await;
     exercise(Outcome::UnreadableVerification).await;
@@ -264,4 +298,5 @@ async fn ambiguous_cas_can_publish_after_the_failed_caller_without_losing_chunks
 async fn observed_publication_recovers_success_and_confirmed_loser_cleanup_preserves_winner() {
     exercise(Outcome::AppliedFailure).await;
     exercise(Outcome::CompletedLoser).await;
+    exercise(Outcome::CleanupFailure).await;
 }

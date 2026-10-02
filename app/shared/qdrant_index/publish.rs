@@ -10,6 +10,21 @@ use crate::shared::{
     protocol::{Forget, Forgotten, Indexed},
     snapshot::{self, Data, Plan},
 };
+use tracing::Instrument;
+
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, serde::Deserialize))]
+pub(super) enum PublicationOutcome {
+    Observed,
+    Unresolved,
+    Conflict,
+    StagingFailed,
+    VerificationFailed,
+}
+
+fn outcome(value: PublicationOutcome) {
+    tracing::Span::current().record("outcome", tracing::field::debug(value));
+}
 
 impl Store {
     pub(in crate::shared) async fn index(
@@ -103,6 +118,7 @@ impl Store {
         self.stage_documents(identity, data, version).await?;
         Ok(manifest)
     }
+    #[tracing::instrument(name = "qdrant_stage_snapshot", skip_all)]
     async fn stage_snapshot(
         &self,
         identity: &Identity,
@@ -144,6 +160,7 @@ impl Store {
             digest: encoded.digest.clone(),
         })
     }
+    #[tracing::instrument(name = "qdrant_stage_catalog", skip_all)]
     async fn stage_catalog(
         &self,
         identity: &Identity,
@@ -189,6 +206,7 @@ impl Store {
         }
         Ok(())
     }
+    #[tracing::instrument(name = "qdrant_stage_documents", skip_all)]
     async fn stage_documents(
         &self,
         identity: &Identity,
@@ -249,6 +267,7 @@ impl Store {
         }
         Ok(())
     }
+    #[tracing::instrument(name = "qdrant_publish", skip_all, fields(revision = plan.revision, outcome = tracing::field::Empty))]
     pub(super) async fn commit(
         &self,
         identity: &Identity,
@@ -298,6 +317,7 @@ impl Store {
         {
             Ok(manifest) => manifest,
             Err(error) => {
+                outcome(PublicationOutcome::StagingFailed);
                 self.cleanup(identity, &version).await;
                 return Err(error);
             }
@@ -309,43 +329,36 @@ impl Store {
             head: Some(head),
             manifest: Some(manifest),
         };
-        let point = api::Point {
-            id: point_id(&["head", &identity.node_id]),
-            vector: api::Vectors::default(),
-            payload: node,
-        };
         let expected = &plan.loaded.expected;
-        let input = api::Upsert {
-            points: vec![point],
-            update_filter: (!expected.is_empty()).then(|| api::Filter {
-                must: vec![api::matches("version", vec![expected.clone()])],
-                ..api::Filter::default()
-            }),
-            update_mode: Some(if expected.is_empty() {
-                api::UpdateMode::InsertOnly
-            } else {
-                api::UpdateMode::UpdateOnly
-            }),
-        };
         // A failed request may still commit after this reread. Seeing another head
         // only permits reclamation when the conditional write completed successfully.
         // If verification fails, leave staging intact as well.
-        let result = self
-            .api
-            .upsert(&collection(&identity.group_id, true), &input)
-            .await;
-        let current = self.node(identity).await?;
+        let result = self.publish_head(identity, node, expected).await;
+        let current = match self
+            .node(identity)
+            .instrument(tracing::info_span!("qdrant_verify_head"))
+            .await
+        {
+            Ok(current) => current,
+            Err(error) => {
+                outcome(PublicationOutcome::VerificationFailed);
+                return Err(error);
+            }
+        };
         if current.version != version {
             if let Err(error) = result {
+                outcome(PublicationOutcome::Unresolved);
                 tracing::warn!(
                     revision = plan.revision,
                     "Qdrant publication unresolved; staging retained for possible delayed completion"
                 );
                 return Err(error);
             }
+            outcome(PublicationOutcome::Conflict);
             self.cleanup(identity, &version).await;
             return Err(conflict("concurrent Qdrant update; retry the operation"));
         }
+        outcome(PublicationOutcome::Observed);
         if !expected.is_empty() {
             self.cleanup(identity, expected).await;
         }
@@ -356,7 +369,38 @@ impl Store {
             purged_conversations: plan.purged,
         })
     }
+
+    #[tracing::instrument(name = "qdrant_publish_head", skip_all)]
+    async fn publish_head(
+        &self,
+        identity: &Identity,
+        node: NodeHead,
+        expected: &str,
+    ) -> Result<(), AppError> {
+        let input = api::Upsert {
+            points: vec![api::Point {
+                id: point_id(&["head", &identity.node_id]),
+                vector: api::Vectors::default(),
+                payload: node,
+            }],
+            update_filter: (!expected.is_empty()).then(|| api::Filter {
+                must: vec![api::matches("version", vec![expected.to_owned()])],
+                ..api::Filter::default()
+            }),
+            update_mode: Some(if expected.is_empty() {
+                api::UpdateMode::InsertOnly
+            } else {
+                api::UpdateMode::UpdateOnly
+            }),
+        };
+        self.api
+            .upsert(&collection(&identity.group_id, true), &input)
+            .await
+    }
+
+    #[tracing::instrument(name = "qdrant_cleanup", skip_all, fields(retained = tracing::field::Empty))]
     async fn cleanup(&self, identity: &Identity, version: &str) {
+        let mut retained = false;
         for metadata in [false, true] {
             if self
                 .api
@@ -364,8 +408,10 @@ impl Store {
                 .await
                 .is_err()
             {
+                retained = true;
                 tracing::warn!("Qdrant obsolete staging cleanup failed; hidden version retained");
             }
         }
+        tracing::Span::current().record("retained", retained);
     }
 }
