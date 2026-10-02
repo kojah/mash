@@ -7161,6 +7161,65 @@ complete-ingestion$\leq10\%$ throughput loss and selected Python/Rust differenti
 CI remain promotion requirements. Procedures/current results in
 \path{benchmarks/2026-10-02-frozen-calibration.md}.
 
+\section{Frozen coherence cuts and source-supported labels}
+Following the negative calibration result, we separate tree geometry, topic
+selection and word representation. Class-based lexical representations
+\cite{bertopic} need not make a geometrically coherent node a useful topic.
+This experiment retains the fixed-TF and frozen-32-block calibrated filtered
+hashed rotation trees, each in forward and reverse insertion order. It adds no
+model inference, generative labels or held-out reads. All 162 training meetings,
+8,196 physical blocks and 84,434 ready sources are retained.
+
+The frozen factorial compares the existing eight-group display cut with a
+top-down coherence cut, and static-noise c-TF-IDF with source-supported
+corpus-IDF labels. The coherence threshold is the meeting's mean distinct-block
+raw MiniLM cosine plus one population standard deviation; a node must exceed
+it by more than $10^{-12}$. Pair means use subtree vector sums and squared
+norm sums, with an independent direct-pair audit. Singleton leaves are
+unassigned. Distinctive labels require letters, the unchanged stoplist,
+support from at least two eligible member blocks and corpus block frequency
+at most 40\%; c-TF-IDF is multiplied by smoothed block IDF. Groups with fewer
+than two label terms remain proposals but are excluded from usable tags.
+Representatives use original-vector means and the earliest exact argmax.
+These are initial-snapshot label diagnostics, not causal online label updates.
+
+All original known-topic positive source-pair denominators remain fixed:
+7,978,214 broad, 7,923,483 far and 84,323 recurring pairs. Unknown/mixed sources
+remain in geometry and coverage; unassigned sources do not form a shared
+cluster. Precision below is conditional source-pair precision, not label
+accuracy. In the first run, distinctive-label usable cuts yield:
+\begin{center}
+\begin{tabular}{llrrrr}
+Frame/order & Cut & Precision & Recall & F1 & Coverage\\
+\hline
+Fixed TF/forward & Eight & .317 & .735 & .442 & .941\\
+Fixed TF/forward & Semantic & .557 & .055 & .101 & .386\\
+Fixed TF/reverse & Eight & .311 & .721 & .435 & .937\\
+Fixed TF/reverse & Semantic & .571 & .046 & .084 & .375\\
+Calibrated/forward & Eight & .331 & .697 & .449 & .944\\
+Calibrated/forward & Semantic & .598 & .053 & .098 & .395\\
+Calibrated/reverse & Eight & .320 & .649 & .429 & .943\\
+Calibrated/reverse & Semantic & .600 & .049 & .091 & .381\\
+\end{tabular}
+\end{center}
+The coherence cut substantially fragments coverage and recall. Recurring
+recall under distinctive semantic cuts is .042--.087, versus .473--.700 for
+the eight-group controls. Increased precision does not justify promotion.
+Corpus weighting changes the first meeting's generic 61-block group's words
+to yellow/criteria/gap/bright/colour, but smaller groups still include
+pretty/right or don/really. Term support is not evidence of meaningful labels.
+This argues for revisiting discovery units and topic membership rather than
+tuning this threshold or adding example-specific stopwords. The first target
+takes 58.642 seconds after imports including setup, CPU 50.177 seconds;
+these are research diagnostics, not complete-ingestion costs.
+
+Full non-timing repeat and scoped geometry audit are recorded separately in
+\path{benchmarks/2026-10-02-semantic-topic-cuts.md}. Source-pair and label
+oracles, representative/summary auditing, independent coding multitag and
+semantic ancestry evaluation, guided-search gains, global online state,
+edits/deletes/restart, ingestion overhead and selected Python/Rust differential
+CI remain unverified. The unchanged uncut hierarchy gates remain failed.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

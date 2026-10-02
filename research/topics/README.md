@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 526 tests.
+The full suite with the extras and explicit author references runs 538 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1496,6 +1496,14 @@ terms. Filtered hashed recurring .601627/.646421 still fails the forward gate;
 first display has a generic61-block group and tiny/empty groups. Reject this
 bootstrap policy for promotion. Semantic cuts/lifecycle/full ingestion/Rust
 remain open, not skipped; next P0 bead addresses source-supported topic cuts.
+The follow-up `qmsum_semantic_cut.py` factorial freezes both existing filtered
+hashed trees/orders, tests fixed-eight versus semantic cuts, and static versus
+source-supported corpus-IDF labels. See [protocol](SEMANTIC_CUT_PROTOCOL.md).
+It preserves all original positive-pair denominators and reports proposed and
+usable assignment coverage separately. `audit_semantic_cut_geometry.py` is an
+independent direct-pair geometry/cut audit only; it does not verify source-pair
+metrics, label counts/rankings, representatives or semantic usefulness.
+No production method is selected, and no new embedding inference is performed.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
