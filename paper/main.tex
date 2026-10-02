@@ -8023,6 +8023,44 @@ fresh tasks, online/ingestion gates and selected Rust parity remain open.
 Contract/procedures in \path{research/topics/CHAT_REVIEW_SUBMISSION.md} and
 \path{benchmarks/2026-10-02-chat-review-validation.md}.
 
+\section{Inspectable deferred topic pipeline on coding sessions}
+We implemented an end-to-end research pipeline with bounded cosine routing
+during simulated ingestion and one coalescing background worker. Routing
+retains dense vector sums; deferred work assigns multiple memberships, builds
+an average-linkage lexical hierarchy~\cite{averagelinkage}, extracts
+source-supported c-TF-IDF/IDF labels~\cite{bertopic} and publishes thread tags
+with structural ancestors. This is not BIRCH and is not a production selection.
+No inference, model download or LLM was used. Edits/deletes invalidate stale
+evidence; insert-only snapshot lag is explicit; numerical checkpoints permit
+restart. Singleton self-membership remains provisional.
+
+Source-only eligibility selected three Claude Code and four Codex threads
+from the frozen development snapshot. The first attempt stopped before
+clustering because four Claude Code groups were requested but only three
+qualified. Eligibility was preserved and the shortfall recorded, rather than
+relaxing the source criteria. This availability-selected cohort is already
+exposed, not held-out or evidence of native history completeness.
+Of 149 messages, 74 had existing embeddings and 75 did not. Forward routing
+yielded 57 leaves, including 45 single-member leaves; 47 leaves lacked two
+supported label terms. Only two messages received multiple tags. Reversing
+arrival order yielded one multi-tag message and leaf co-membership pair
+Jaccard .710526. Fragmentation and arrival sensitivity preclude promotion;
+structural inheritance is not semantic entailment.
+
+Two complete runs reproduced stable outputs exactly, excluding runtime and
+scheduler observations. In-memory forget/reinsert and restart checks passed.
+An independent artifact auditor checked source text hashes, versions, node
+source unions and thread ancestor unions, but not numerical routing or label
+scores. The research suite passed 620 tests. Forward routing took
+124.82/68.73 ms and final publication 719.29/438.09 ms; foreground update p95
+was 3.79/1.89 ms. External target RSS maxima were 151460/162840 KiB and PSS
+143690/155116 KiB. These include imports, loading, reverse control and lifecycle
+work; sampled maxima are lower bounds and omit children/observer memory.
+Python GIL, scheduling, caches and intrusive monitoring affect runtime.
+These are not full-ingestion overhead, semantic-quality or Rust-parity gates.
+Detailed procedures, limits and private artifact identities are recorded in
+\path{benchmarks/2026-10-02-deferred-topic-prototype.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
