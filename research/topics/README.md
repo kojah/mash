@@ -1415,7 +1415,17 @@ not user mandates. Next test dense compression with separate lexical macro
 evidence against the same targets; source-only bound is not global cross-thread
 feasibility or a general BIRCH/lexical-topic verdict.
 
-The full suite with the extras and explicit author reference runs 496 tests.
+`dual_view.py` and `qmsum_dual_view.py` complete the fixed dense-compression /
+lexical-macro control. [Audited result](../../benchmarks/2026-10-02-qmsum-dual-view.md):
+retains about63% of blocks, misses50% target; reverse order misses95% fidelity
+and recurring-topic loss budget (.039 vs.02). Known reference numeric-state floor
+exceeds budget; partial CF-fit CPU misses its target. Full non-timing repeat and
+independent CF/source/fidelity/macro/LCA/state audit pass. This is an unsuccessful
+operating point, not a general BIRCH verdict. Compression is optional, not a user
+requirement: next investigate source-preserving online graph/tree alternatives,
+with new frozen protocol and independent semantic/lifecycle/ingestion/Rust gates.
+
+The full suite with the extras and explicit author reference runs 501 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
