@@ -1021,7 +1021,18 @@ lock pins and require their recorded Git revisions. The new runner verifies the
 archived baseline lock plus unchanged science packages; it does not relax those
 older guards. No additional model inference occurs.
 
-The full suite with the extra runs 273 tests; without it the two Infomap/runner
+The [local-window comparison](../../benchmarks/2026-10-02-local-window-topics.md)
+keeps the graph method and original question inputs fixed, changing only word
+co-occurrence contexts to complete source spans of 16/32/64 pre-filter tokens.
+`source_windows.py` retains Unicode/UTF-8 offsets and empty-evidence windows;
+`window_questions.py` freezes all 216 settings and requires the whole-question
+capture/code pins. None qualifies. Independent audits expose predominantly
+single-parent edge support, even though each word occurs in multiple parents;
+correlated windows do not create independent evidence. No inference occurs.
+Run `window_questions.py` with the same `--root`, fresh `--output` and repeat
+`--compare` arguments. This is not semantic episode segmentation or WNTM.
+
+The full suite with the extra runs 278 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
