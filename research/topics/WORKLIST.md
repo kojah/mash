@@ -7,7 +7,14 @@ topics; no semantic hierarchy or ancestor inheritance is required.
 
 The user's updated priority is topic quality with genuine online discovery.
 There is no fixed percentage overhead rejection gate; report full ingestion
-cost, memory and publication lag, and require bounded sustained-arrival backlog. The finite experiment cap remains in force.
+cost, memory and publication lag, and require bounded sustained-arrival backlog.
+The finite experiment cap remains in force.
+
+Explicit follow-up requested by the user: `mash-c0d.19.2.40` tracks a bounded
+online ensemble evaluation (unchanged phrase baseline versus one frozen
+phrase/dense hybrid, plus exact repeat). This is a separate authorized comparison,
+not reopening the completed NMF grid. Freeze its rules before execution and
+apply the same independent quality, online, lifecycle and reference gates.
 
 ## Decisions already made
 
