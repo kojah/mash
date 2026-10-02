@@ -8061,6 +8061,37 @@ These are not full-ingestion overhead, semantic-quality or Rust-parity gates.
 Detailed procedures, limits and private artifact identities are recorded in
 \path{benchmarks/2026-10-02-deferred-topic-prototype.md}.
 
+\section{Supported topic frontier: consolidation and coverage loss}
+We tested a deferred consolidation control without changing the previous
+149 sources, stored vectors, routing, lexical tree or labels. The first arm
+selects the deepest nodes having at least two sources and two supported label
+terms. The second additionally requires every member's leave-one-out centroid
+cosine to meet the existing .55 routing threshold. Unsupported residual
+branches abstain rather than receive an overlapping parent fallback. No
+threshold tuning, new inference or LLM was used.
+
+Label support reduced 57 leaves to 16 topics but retained only 42/74 embedded
+messages (56.76\%). Adding cohesion selected ten topics with 26/74 coverage
+(35.14\%). Reverse arrival retained 43 and 27 messages with 17 and 11 topics.
+Co-membership pair Jaccard was .769231 and .675676 versus the original
+.710526. These changing pair universes and large coverage losses preclude a
+quality-gain claim. Both candidates retained only one multi-topic source.
+Support filtering exposes poor leaves but does not repair their representation;
+we reject this cohesion gate as the main fragmentation correction.
+
+Two runs reproduced non-runtime output. An independent scalar auditor checked
+452 node/arm/order combinations, reconstructing leave-one-out scores,
+eligibility, deepest-node selection and source memberships without producer
+imports. Maximum score discrepancy was $1.11\times10^{-16}$; the nearest
+threshold margin was .009648. This is scoped numerical evidence, not semantic
+quality or universal Rust parity. Four fixtures and the 624-test suite passed.
+Both-order label-only computation took 23.86/30.97 ms and cohesion
+25.26/35.71 ms. Target sampled RSS maxima were 43140/43192 KiB and PSS
+35567/35786 KiB. Short-run sampling, imports, Python scheduling and intrusive
+monitoring limit interpretation; these are not complete-ingestion gates.
+Procedures and private artifacts are documented in
+\path{benchmarks/2026-10-02-supported-topic-frontier.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
