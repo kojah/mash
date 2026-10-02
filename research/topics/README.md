@@ -1213,7 +1213,19 @@ no semantic hierarchy or multi-topic quality. Use verified semantic directories,
 fresh `--output-directory`, repeat `--compare FIRST_DIRECTORY/results.json`,
 single-thread CPU settings and the external memory monitor.
 
-The full suite with the extra runs 378 tests; without it the two Infomap/runner
+The [budgeted Links reference trial](../../benchmarks/2026-10-02-links-budget-trial.md)
+uses `links_reference.py`, `links_state.py`, `links_trial.py` and
+`cqadup_links_trial.py`. Frozen defaults hit 8,192 subclusters after 8,351/8,403
+sources, with about 99% singleton subclusters; graph components are not semantic
+ancestors. Complete diagnostic repeats and independent event/graph/source audits
+pass, but discovery remains explicitly incomplete and quality fields null.
+Guarded timings include duplicate scans and periodic integrity checks, not full
+ingestion. Do not repair thresholds/caps or promote prefix results.
+
+The full suite with the extras and explicit author reference runs 384 tests.
+Enable the six Links merge/split/repair/ownership/budget fixtures with
+`MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
+without this variable they explicitly skip. Without the graph extra the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
