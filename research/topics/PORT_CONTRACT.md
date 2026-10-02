@@ -54,6 +54,19 @@ Include unequal cluster sizes, diffuse/canceling sums and score/order ties in
 shared fixtures. Record the selected linkage in the versioned stage schema;
 the exposed Python ablation is not a selected Rust port or parity CI gate.
 
+Compare corresponding stages, including single-unit fields. Payload weighting
+and field normalization can change floating-point bits even when a field has
+only one already-normalized unit. The complete-source semantic experiment found
+a maximum component difference of 2.78e-17 for its first query between the raw
+unit and aggregated field; both match exactly when compared with the same stage.
+Do not silently bypass singleton aggregation or compare a raw unit against a
+field vector. Freeze the order and precision of weighting, division and every
+normalization. Include non-axis-aligned singletons and unequal-weight multi-unit
+fixtures. Also freeze inference batch shape/composition or explicitly validate
+its allowed drift: the installed quantized encoder's padded-batch probe changed
+directions despite correct attention-masked pooling. Neither observation is
+evidence of a production Rust defect or permission to relax discrete decisions.
+
 Freeze synthetic/non-sensitive golden fixtures in Git. Include empty inputs,
 duplicates, zero and canceling vectors, nonfinite/malformed input rejection,
 equidistant candidates, near-threshold values on both sides, insertion-order

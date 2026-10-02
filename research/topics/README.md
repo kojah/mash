@@ -1115,7 +1115,14 @@ and `cqadup_batch_probe.py` to preserve complete source/token coverage and compa
 singleton/batch inference. Mixed quantized batches differ from singleton input
 directions; no equivalence is assumed. `cqadup_semantic.py` prepares singleton
 full-corpus title/balanced/fixed-RRF controls, with signed score domains and
-explicit complete-vector captures. Semantic ranking outcomes remain pending.
+explicit complete-vector captures. The [complete semantic retrieval control](../../benchmarks/2026-10-02-duplicate-semantic-retrieval.md)
+reports balanced nDCG@10 .3519/Recall@100 .7397 versus BM25 .2525/.5025;
+fixed RRF barely improves nDCG and lowers recall. Independent complete-vector,
+score/rank/metric auditing and same-stage warm query checks pass. A fresh full
+inference repeat matches every nontiming field and all eight vector/score files;
+external sampled RSS/PSS maxima are about 1.54/1.53 GiB for this research process.
+These are
+development duplicate-retrieval outcomes, not topic gold or method selection.
 
 The full suite with the extra runs 348 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.

@@ -4408,11 +4408,90 @@ Seven window/pooling tests, a saved-tokenizer regression, signed-score-domain
 checks and field-aggregation/fusion tests bring the research suite to 348 passing
 tests. No production topic method or semantic retrieval result is selected.
 Preregister title-only, normalized equal-title/body directions and fixed RRF60
-with BM25 complete ranks; aggregate units within fields by payload-token weight.
-Full-corpus inference, ranking, exact repeats and independent score audits remain
-pending. Details: \path{benchmarks/2026-10-02-semantic-window-fidelity.md}.
+with BM25 complete ranks\cite{rrf2009}; aggregate units within fields by payload-token weight.
+The complete semantic experiment below uses this protocol.
+Details: \path{benchmarks/2026-10-02-semantic-window-fidelity.md}.
 Corrected preflight SHA256:
 \path{85d35491d209b95b9a6a385d8c8b4dd2d325e305e5f7cf85bb32468c44a87d0a}.
+
+\subsection{Complete-source semantic duplicate retrieval}
+Retain the same 32,176 candidates and 64 development queries, explicit binary
+duplicate judgments and original-ID tie policy. Reserved queries remain unscored.
+Infer all 77,979 windows as singletons with the installed quantized MiniLM,
+then payload-weight and normalize each field, including singleton queries.
+Compare title-only cosine, normalized equal-title/body cosine, and fixed RRF60
+of balanced and frozen BM25 complete ranks\cite{rrf2009}. Preserve signed cosines;
+do not tune mixtures or introduce query-specific synonyms after outcomes.
+No generative/paid inference or model download occurs. Unknown Stack Exchange
+pretraining overlap prevents a zero-shot claim\cite{minilmcard}.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\hline
+Representation & MRR@10 & nDCG@10 & R@10 & R@100\\
+\hline
+Word BM25 & .2621 & .2525 & .3268 & .5025\\
+Title cosine & .2818 & .2594 & .3550 & .6641\\
+Balanced cosine & .3445 & .3519 & .4889 & .7397\\
+Balanced/BM25 RRF60 & .3515 & .3535 & .4563 & .6905\\
+\hline
+\end{tabular}
+\end{center}
+Balanced recovers seven of the sixteen common lexical top-100 misses;
+title recovers six and RRF five. Posthoc paired percentile bootstrap with
+5,000 resamples and seed 17 gives nDCG balanced minus BM25 .0993
+[.0030, .1993], balanced minus title .0925 [.0382, .1508], and RRF minus
+balanced .0016 [-.0845, .0887]. These are descriptive development intervals,
+without multiplicity correction or a preregistered selection test. First-judged
+rank wins/ties/losses are 41/8/15, 38/14/12 and 20/14/30 respectively.
+RRF loses recall on five queries and gains on one, so fusion is not automatically
+an improvement. The same three predetermined lexical failure cases now have
+balanced ranks 4,012 (coworker/rubber-duck), 188 (single-page/AJAX) and 3
+(RESTful/REST). The first two remain misses; fusion demotes the third to 36.
+Incomplete judgments prevent treating unjudged hits as irrelevant.
+
+Feature building costs 678.582 seconds, including 627.305 seconds of inference;
+total after imports is 693.597 seconds. Complete source preparation is separate.
+First rusage reports 1,613,884 KiB but cannot alone attribute a workload peak
+because Linux may retain pre-exec launcher peaks. A fresh full-inference repeat
+matches all nontiming manifest fields, including all eight complete vector/score
+file hashes. Monitored repeat wall time is 788.944 seconds (build 753.114,
+inference 690.924); monitoring and concurrent audit work prevent a controlled
+timing comparison. The external monitor records 16,976 samples with three
+vanished-address-space reads. Requested sleep is 20 ms; actual observation gaps
+have median 42.38 ms and maximum 277.04 ms. Observed maximum VmRSS/VmHWM and
+smaps RSS are 1,615,372 KiB, PSS 1,607,528 KiB; repeat rusage separately reports
+1,613,268 KiB. Do not subtract or equate these counters: status counters are
+approximate and sampled RSS/PSS maxima are lower bounds. Scope excludes children
+and observer, and monitoring can perturb runtime. The research process includes
+loading, ledgers and retained vectors; this is not production worker memory
+or a full-ingestion gate.
+With stored query vectors, balanced scoring plus complete ranking and metrics
+p50/p95 is 26.25/36.77 ms. A separate fresh warm encoder reproduces all 64
+query units, field vectors and ranking/metric records exactly, with 64 calls
+and no cache hits. Initialization is 129.88 ms; encoding plus field aggregation
+is 2.98/3.86 ms; encoding plus complete balanced evaluation is 21.04/26.15 ms.
+The warm RRF control also reuses frozen BM25 scores, excluding lexical query
+scoring. These are offline costs excluding loading/initial build, network, CLI/MCP,
+filters and reranking, with uncontrolled OS cache/read order and evaluation
+metrics absent from production. They are not production search latency.
+
+Independent accumulation verifies all fields/balanced vectors within
+$5.55\times10^{-17}$ and 16 fixed singleton reference rows exactly. A separate
+einsum reduction checks all 6,177,792 scores within $10^{-12}$ (largest error
+$6.66\times10^{-16}$); scalar fsum samples every 503rd document per query
+agree within $2.22\times10^{-16}$. RRF reconstruction and independent archived
+score sorting verify complete top-100 records, judged ranks and metrics.
+The audit shares the source loader, does not independently infer all units,
+and does not prove cross-platform close-score tie stability. The warm checker
+initially compared a raw unit with an aggregated field: a $2.78\times10^{-17}$
+difference disappears under corresponding-stage comparison. This reinforces
+freezing singleton aggregation and every normalization in the port contract;
+the experiment itself was unchanged. Python repeatability is not Rust parity.
+Details: \path{benchmarks/2026-10-02-duplicate-semantic-retrieval.md}; first result
+SHA256 \path{d6fec0c4f7fba4023487e2fc217cdf25820ea79d480bced0c370371bef350fb3}.
+Duplicate retrieval does not establish multi-topic labels, semantic ancestors,
+agent navigation gains, online lifecycle stability or the ingestion budget.
 
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
