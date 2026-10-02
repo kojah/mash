@@ -189,12 +189,17 @@ abort ingestion of that source. Compaction duplicate membership and saved origin
 parents share a separate store with the same 2 MiB inline accounting budget;
 restoration streams one entry at a time, and each finished or interrupted replay
 block releases its scratch store. These budgets are accounting thresholds, not
-process RSS limits. Dialogue identities, reconciliation lineage, model workspaces
-and other adapters still have separate memory costs.
+process RSS limits. Ordered dialogue UUIDs and their first native positions use
+a third private store with a 2 MiB inline accounting budget. Missing UUID slots,
+duplicate first positions and forward ancestry references remain exact.
+Reconciliation lineage, spool offsets, model workspaces and other adapters still
+have separate memory costs.
 The [ancestry staging measurement](benchmarks/2026-10-02-claude-ancestry-staging.md)
 records the whole-index memory reduction and indexing-time tradeoff.
 The [replay staging diagnostic](benchmarks/2026-10-03-claude-replay-staging.md)
 separately compares large compaction metadata with its previous in-memory rules.
+The [dialogue identity diagnostic](benchmarks/2026-10-03-claude-dialogue-identities.md)
+records its separate memory reduction and additional scratch-I/O cost.
 
 Without a configuration file, mash indexes these built-in roots when present:
 

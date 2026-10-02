@@ -1,5 +1,5 @@
 //! Translate native UUID ancestry, including non-message intermediate events.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::super::claude::{Lineage, reconcile};
 use super::super::json::ParentLink;
@@ -7,14 +7,16 @@ use super::super::messages::Messages;
 use super::stable_id;
 use crate::AppError;
 
+mod keys;
 mod parents;
 mod replay;
+use keys::Keys;
 use parents::Parents;
 
 #[derive(Default)]
 pub(super) struct Identity {
     parents: Parents,
-    pub(super) keys: Vec<Option<String>>,
+    keys: Keys,
     agent: Option<String>,
     session: Option<String>,
     sessions: BTreeSet<String>,
@@ -36,6 +38,10 @@ struct MessageIdentity {
 }
 
 impl Identity {
+    pub(super) fn push_key(&mut self, key: Option<String>) -> Result<(), AppError> {
+        self.keys.push(key)
+    }
+
     pub(super) fn observe(&mut self, record: &super::Record) -> Result<(), AppError> {
         if let Some(agent) = record.agent_id.as_ref().filter(|agent| !agent.is_empty()) {
             if self
@@ -88,7 +94,7 @@ impl Identity {
         normalize(
             thread,
             messages,
-            self.keys,
+            &self.keys,
             &self.parents,
             &self.transitions,
         )
@@ -98,7 +104,7 @@ impl Identity {
 fn normalize(
     thread: &str,
     messages: Messages,
-    keys: Vec<Option<String>>,
+    keys: &Keys,
     parents: &Parents,
     transitions: &BTreeSet<usize>,
 ) -> Result<(Messages, Lineage), AppError> {
@@ -107,73 +113,58 @@ fn normalize(
             "Claude message identities are incomplete",
         ));
     }
-    let mut identities = BTreeMap::new();
-    for (position, key) in keys.iter().enumerate() {
-        if let Some(key) = key {
-            identities
-                .entry(key.clone())
-                .or_insert_with(|| MessageIdentity {
-                    id: stable_id("claude-message", &[thread, key]),
-                    position: Some(position),
-                });
-        }
-    }
     let mut previous = None;
-    let contributions =
-        messages
-            .into_rows()?
-            .zip(keys)
-            .enumerate()
-            .map(|(ordinal, (message, key))| {
-                let mut message = message?;
-                let transition = transitions.contains(&ordinal);
-                let ancestry = key
-                    .as_ref()
-                    .map(|key| parents.get(key))
-                    .transpose()?
-                    .flatten();
-                let explicit_parent = key.is_some()
-                    && matches!(ancestry, Some(Ancestry::Known(ParentLink::Parent(_))));
-                let parent = if let Some(key) = key {
-                    message.id.clone_from(&identities[&key].id);
-                    match ancestry {
-                        None | Some(Ancestry::Known(ParentLink::Missing)) => previous.clone(),
-                        Some(Ancestry::Known(ParentLink::Root)) => None,
-                        Some(Ancestry::Known(ParentLink::Parent(parent))) => {
-                            resolve_parent(thread, &parent, &identities, parents)?
-                        }
-                        Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry(&key)),
-                    }
-                } else {
-                    previous.clone()
-                };
-                // A native fork copies history under its original session ID before
-                // writing the new session's dialogue. Only explicit ancestry into that
-                // retained prefix proves this is a fork, rather than concatenated logs.
-                if transition
-                    && (!explicit_parent
-                        || parent
-                            .as_ref()
-                            .and_then(|parent| parent.position)
-                            .is_none_or(|position| position >= ordinal))
-                {
-                    return Err(AppError::configuration(
-                        "Claude session transition is not linked to inherited dialogue",
-                    ));
+    let contributions = messages.into_rows()?.enumerate().map(|(ordinal, message)| {
+        let mut message = message?;
+        let key = keys.get(ordinal)?;
+        let transition = transitions.contains(&ordinal);
+        let ancestry = key
+            .as_ref()
+            .map(|key| parents.get(key))
+            .transpose()?
+            .flatten();
+        let explicit_parent =
+            key.is_some() && matches!(ancestry, Some(Ancestry::Known(ParentLink::Parent(_))));
+        let parent = if let Some(key) = key {
+            message.id = stable_id("claude-message", &[thread, &key]);
+            match ancestry {
+                None | Some(Ancestry::Known(ParentLink::Missing)) => previous.clone(),
+                Some(Ancestry::Known(ParentLink::Root)) => None,
+                Some(Ancestry::Known(ParentLink::Parent(parent))) => {
+                    resolve_parent(thread, &parent, keys, parents)?
                 }
-                previous = Some(MessageIdentity {
-                    id: message.id.clone(),
-                    position: Some(ordinal),
-                });
-                Ok((message, parent.map(|parent| parent.id)))
-            });
+                Some(Ancestry::Ambiguous) => return Err(ambiguous_ancestry(&key)),
+            }
+        } else {
+            previous.clone()
+        };
+        // A native fork copies history under its original session ID before
+        // writing the new session's dialogue. Only explicit ancestry into that
+        // retained prefix proves this is a fork, rather than concatenated logs.
+        if transition
+            && (!explicit_parent
+                || parent
+                    .as_ref()
+                    .and_then(|parent| parent.position)
+                    .is_none_or(|position| position >= ordinal))
+        {
+            return Err(AppError::configuration(
+                "Claude session transition is not linked to inherited dialogue",
+            ));
+        }
+        previous = Some(MessageIdentity {
+            id: message.id.clone(),
+            position: Some(ordinal),
+        });
+        Ok((message, parent.map(|parent| parent.id)))
+    });
     reconcile(contributions)
 }
 
 fn resolve_parent(
     thread: &str,
     parent: &str,
-    identities: &BTreeMap<String, MessageIdentity>,
+    identities: &Keys,
     parents: &Parents,
 ) -> Result<Option<MessageIdentity>, AppError> {
     let mut current = parent.to_owned();
@@ -184,8 +175,11 @@ fn resolve_parent(
     let mut power = 1_usize;
     let mut distance = 0_usize;
     loop {
-        if let Some(id) = identities.get(&current) {
-            return Ok(Some(id.clone()));
+        if let Some(position) = identities.first(&current)? {
+            return Ok(Some(MessageIdentity {
+                id: stable_id("claude-message", &[thread, &current]),
+                position: Some(position),
+            }));
         }
         match parents.get(&current)? {
             Some(Ancestry::Known(ParentLink::Parent(parent))) => current = parent,

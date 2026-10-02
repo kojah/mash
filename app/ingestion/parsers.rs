@@ -104,7 +104,7 @@ fn parse_jsonl(
         let ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("conversation contains too many messages"))?;
         if provider == Provider::ClaudeCode {
-            claude_identity.keys.push(extracted.source_id.clone());
+            claude_identity.push_key(extracted.source_id.clone())?;
         }
         let message_key = extracted.source_id.unwrap_or_else(|| ordinal.to_string());
         messages.push(NormalizedMessage {

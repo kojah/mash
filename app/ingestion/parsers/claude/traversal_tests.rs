@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeMap;
 
 // The previous traversal is an independent oracle for the constant-retention
 // implementation. Include all terminal states and paths entering short cycles.
@@ -77,7 +78,7 @@ fn constant_retention_traversal_matches_visited_set_for_all_small_graphs() {
                 [(
                     "b".to_owned(),
                     MessageIdentity {
-                        id: "dialogue".to_owned(),
+                        id: stable_id("claude-message", &["thread", "b"]),
                         position: Some(7),
                     },
                 )]
@@ -85,9 +86,16 @@ fn constant_retention_traversal_matches_visited_set_for_all_small_graphs() {
             } else {
                 BTreeMap::new()
             };
+            let mut dialogue_keys = Keys::with_limit(0);
+            if dialogue {
+                for _ in 0..7 {
+                    dialogue_keys.push(None).unwrap();
+                }
+                dialogue_keys.push(Some("b".to_owned())).unwrap();
+            }
             for key in ["a", "b", "c", "unknown"] {
                 assert_eq!(
-                    outcome(resolve_parent("thread", key, &identities, &staged)),
+                    outcome(resolve_parent("thread", key, &dialogue_keys, &staged)),
                     outcome(reference(key, &reference_parents, &identities)),
                     "graph {number}, start {key}, dialogue {dialogue}"
                 );
