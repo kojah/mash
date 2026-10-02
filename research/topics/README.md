@@ -1153,7 +1153,16 @@ Exact repeats and all union/score/rank audits pass; this is not equal-work speed
 or intrinsic topic quality. Run with frozen topic/semantic first/repeat directories,
 fresh `--output` and repeat `--compare FIRST_JSON`, externally monitored.
 
-The full suite with the extra runs 360 tests; without it the two Infomap/runner
+The [original-space topic-prototype control](../../benchmarks/2026-10-02-original-topic-prototypes.md)
+uses `topic_prototypes.py`/`cqadup_topic_prototypes.py` with fixed document
+memberships and equal-document-mass original-vector topic directions. Unchanged
+query cutoffs abstain on 50–53 of 64 queries and Recall@100 falls to .06–.09.
+Exact repeats and prototype/admission/union/score/rank audits pass, but this
+configuration is rejected. No inference or threshold repair occurs; no online
+prototype maintenance or intrinsic topic quality is established. The metadata
+union scan is a research diagnostic, not production filtered-index performance.
+
+The full suite with the extra runs 362 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
