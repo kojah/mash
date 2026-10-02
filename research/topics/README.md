@@ -1193,7 +1193,18 @@ provider-thread title quality. Use verified topic/source directories, fresh
 `--output-directory`, repeat `--compare FIRST_DIRECTORY/results.json`, and the
 external memory monitor. No production topic method is selected.
 
-The full suite with the extra runs 368 tests; without it the two Infomap/runner
+The [original-space online cosine discovery control](../../benchmarks/2026-10-02-online-cosine-discovery.md)
+uses `online_cosine.py`/`cqadup_online_cosine.py` without projection or inference.
+At a frozen .55 cosine join cutoff, complete forward/reverse streams fit below
+8,192 groups, but produce about 6,000 microgroups, many singletons and weak
+insertion order agreement. Final centroid drift leaves 60/66 earlier members
+below the cutoff. Full repeats and all-event alternate-reduction/source-sum
+audits pass. This is neither fixed-K spherical k-means nor Links, and establishes
+no semantic hierarchy or multi-topic quality. Use verified semantic directories,
+fresh `--output-directory`, repeat `--compare FIRST_DIRECTORY/results.json`,
+single-thread CPU settings and the external memory monitor.
+
+The full suite with the extra runs 374 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

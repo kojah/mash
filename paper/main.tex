@@ -4967,6 +4967,61 @@ Do not promote title-only labeling; source-grounded episode evidence, independen
 specificity, intrinsic topics, provider coverage, lifecycle, ingestion and Rust
 parity remain separate requirements.
 
+\subsection{Original-space threshold-growth online cosine discovery}
+After the failed original-space CF budget and overcompressed PCA25 configuration,
+freeze a distinct one-pass baseline on complete pinned original 384-dimensional
+balanced vectors. Spherical k-means provides prior art for cosine prototypes
+\cite{hornik2012spherical}; Links explicitly targets online high-dimensional unit
+vectors \cite{mansfield2018links}. This control reproduces neither fixed-K
+spherical k-means nor Links; face/voice results do not establish dialogue topics.
+There is no projection, bootstrap, refitting, forced K, query/reference feature,
+new inference or reserved scoring. In forward/reverse original-ID arrivals,
+scan all normalized cumulative-sum centroids. Join the best iff cosine is at
+least .55, otherwise create; exact ties use earliest created centroid, equality
+joins. Update cumulative sum/count/direction. Cap 8,192 groups, retain failed
+attempt/unprocessed accounting rather than repair the threshold. Record all
+events, nearest scores, assignments, source sums/counts and comparison counts.
+The .55 cosine cutoff is not equivalent to .55 Euclidean CF radius, so this is
+not a metric-matched algorithm comparison. Memberships remain insertion-time;
+no reassignment, overlapping tags, labels or semantic ancestry are invented.
+
+All 32,176 sources fit each order: 6,018/5,965 groups, 3,693/3,653 singletons
+(61.37/61.24\% of groups but 11.48/11.35\% of documents). Median/p95/max sizes
+1/23/407 and 1/24/394. Final member cosine median .7523/.7523, p05 .6104/.6100;
+60/66 members drift below their insertion cutoff as centroids move. For 2,325/2,312
+nonsingleton groups, macro mean pair cosine is .5750/.5736 using
+$(\|\sum_i x_i\|^2-n)/(n(n-1))$; singleton pair affinity is undefined.
+Exact centroid comparisons total 123,504,855/123,616,562. Full insertion ARI
+.394702; frozen 512-source coassignment Jaccard .282123, intersection 101/union
+358 among 130,816 evaluated pairs. Similar aggregate counts/cohesion do not
+establish stable memberships. Rare-source retention is intentional; finer groups
+are not automatically useful semantic organization or validated ancestors.
+
+374 tests pass. Fresh full runs match every nontiming field and six array hashes.
+Independent alternate-reduction replay checks 64,352 insertion events, complete
+nearest/admission decisions, source sums/counts/assignments, final cohesion and
+drift; maximum score discrepancy $1.22\times10^{-15}$, cumulative replay sum
+difference zero. ARI uses the same sklearn estimator; sample coassignment uses
+independent scalar loops. Frozen embedding inference is not independently rerun.
+First forward/reverse discovery 7.590/7.125 s, repeat 10.129/9.972 s;
+first insertion p50/p95 .230/.422 and .216/.391 ms, repeat .255/.682 and
+.246/.634 ms. This Python scan/update/event cost excludes parsing, inference,
+label maintenance, persistence and shared publication. After-import first/repeat
+wall 16.491/21.923 s, CPU 16.326/21.126 s, setup 1.024/1.023 s. Repeat overlaps
+independent auditing; no controlled speedup or complete-ingestion target follows.
+
+Rusage 543,292/542,208 KiB; external 666/827 samples show smaps RSS
+532,044/537,180 KiB, PSS 524,344/512,439 KiB, approximate status VmHWM
+543,292/542,208 KiB. Requested sleep 20 ms, actual median/max gaps 27.07/48.83
+and 27.86/76.73 ms, zero/one vanished reads, both exit zero. Sampled maxima
+are lower bounds; target scope excludes children/observer; research arrays,
+imports and monitoring contribute. This is not deployed worker memory or
+incremental/restart performance. Details:
+\path{benchmarks/2026-10-02-online-cosine-discovery.md}.
+Do not promote this setting or tune exposed cutoffs into a grid. Online semantic
+aggregation, independent name/topic/navigation quality, edits/deletes/restarts,
+ownership/publication, complete ingestion and Rust parity remain unverified.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
