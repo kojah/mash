@@ -3961,6 +3961,56 @@ preserving source detail instead of silently deleting code or hand-tuning
 stopwords. Independent agent-chat primary/secondary/ancestor judgments and
 guided-search outcomes remain necessary; community-tag overlap is a partial proxy.
 
+\section{Source-preserving prose and block-code channels}
+Before another discovery experiment, establish a source-grounded representation
+boundary. Classify explicit HTML \texttt{pre} content as block-code; inline
+\texttt{code}, technical names and ordinary prose stay prose. Do not infer code
+from vocabulary, indentation or language attributes. Preserve the original
+renderer byte-for-byte, including every source/rendered piece coordinate and
+SHA; neutral inserted separators and excluded markup/comments remain explicit.
+A context-only parser subclass is checked against a second run of the unchanged
+original renderer. Nested/unmatched/unclosed \texttt{pre} rejects with a reason
+rather than guessing repair. A self-closing block is empty and does not change
+later context. Existing active-content/declaration/size/piece caps remain.
+This is not browser rendering or full HTML validity.
+
+Coalesce adjacent content within each channel without splitting inline
+identifiers; retain neutral separator runs and complete code-point/UTF-8 byte
+coverage. Each unchanged-regex token must lie wholly in one content channel.
+Count title separately once. Source-adjacent unigram/bigram counts are computed
+per contiguous content run. Conserve every unigram; record any whole-body bigram
+lost across a boundary. Paragraph separators also break runs, so these are
+boundary omissions, not solely code/prose transitions or independently judged
+bad phrases. Never stitch surrounding prose into phrases across removed code.
+An initial setup stopped before corpus output because parser/loader pins were
+looked up in the topic rather than complete-unit manifest. Explicit original
+unit pins (validated against the topic's input SHA) fixed this without changing
+the extraction policy.
+
+Audit all 200 already-observed sources, using no reference tags/rationales or
+quality outcomes. All 200 are supported; 166 have block code. Of 45,677 lexical
+tokens, 21,564 are prose and 24,113 block-code (52.8\%). All displayed text and
+unigrams remain unchanged, with no fabricated terms. There are 104 boundary
+bigram occurrence omissions across 51 questions. Code volume motivates testing
+weights, not assuming code is noise: implementation details may be decisive.
+
+Two fresh processes repeat all non-timing fields. A separate HTMLParser callback
+state machine checks 23,107 piece channel assignments, complete runs/offsets/
+hashes, 45,677 token identities/channels and independently implemented lexical
+counts/omissions. The audit shares the Python HTML lexer and frozen display
+projection, so it is not independent browser parsing. Seven new tests cover
+inline identifiers, entities, Unicode/combining marks, CRLF, attribute/comment
+lookalikes, empty/self-closing/uppercase blocks, separators and unsupported
+boundaries/caps. All 289 lab tests pass with the graph extra. Total audit time
+after imports is 1.252/1.204 seconds, including double rendering and ledger checks;
+no additional inference/download. This is not complete ingestion, CPU/RSS/p95,
+lifecycle, topic quality or guided-search evidence. Earlier inference remains
+charged. First/repeat SHA256:
+\path{ce527aac29659a72872e9430a8bfc534f5c05113f9e31ecdc638cffd22b0b634},
+\path{ca397125c86d03eef46ba72d53bfc860f750395580da36e0110c0f097ef5645c}.
+Next freeze channel weighting and matched full-source controls before outcomes.
+No production source exclusion, semantic hierarchy or Rust parity is selected.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

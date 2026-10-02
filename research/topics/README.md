@@ -1041,7 +1041,15 @@ independent dense-mixture replays agree; coverage loss is substantial. Run it
 with the same fresh-output/repeat arguments. This is an exposed representation
 diagnostic, not a production rare-topic exclusion rule or a new statistical null.
 
-The full suite with the extra runs 282 tests; without it the two Infomap/runner
+The [source-channel foundation](../../benchmarks/2026-10-02-source-code-prose-channels.md)
+adds `question_channels.py` and `channel_audit.py`: explicit block-code versus
+prose, inline identifiers preserved, original rendered text/ledger unchanged,
+complete code-point/byte spans and unigram conservation. All 200 observed sources
+pass; 104 boundary bigram omissions are recorded. No reference-quality outcomes
+or model inference are used. Run the audit with the same fresh-output/repeat
+arguments. Channel weighting and topic quality are still untested.
+
+The full suite with the extra runs 289 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
