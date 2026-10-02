@@ -71,6 +71,16 @@ Complete-ingestion cost remains untested.
 Next test source-grounded content candidate admission, preserving brief specific
 subjects. No production topic method or Rust port is selected.
 
+The [candidate-only phatic control](../../benchmarks/2026-10-02-phrase-phatic-candidates.md)
+tests a fixed lexical exclusion list while preserving all sources, scoring and
+previous controls. Evidence metrics stay unchanged; referential-only topics fall
+only ten to nine, and broad coverage falls 1,081 to 1,074 sources. Repeat,
+lifecycle checks and independent six-snapshot rankings/source audit pass;
+657 tests pass. This small effect does not establish useful semantic labels.
+Do not grow a conversation-specific stoplist to fit these outputs. Next evaluate
+general-background lexical specificity and preserve technical/secondary subjects;
+independent quality, full ingestion and selected Rust parity gates stay open.
+
 The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
 recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
 granularity/labels and budgeted publication over further hierarchy experiments.

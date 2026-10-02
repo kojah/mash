@@ -12,6 +12,28 @@ import hashlib
 
 
 class PhraseSelectionTests(TestCase):
+    def test_phatic_candidates_abstain_but_brief_technical_inputs_survive(self):
+        store=PhraseStore('fixture')
+        store.upsert(PhraseSource('a','t','p','Yes, please!'))
+        store.upsert(PhraseSource('b','t','p','Redis?'))
+        store.upsert(PhraseSource('c','u','p','HNSW'))
+        store.upsert(PhraseSource('d','v','p','Postgres schemas'))
+        snapshot=store.snapshot(Selection.PHATIC_COVERAGE)
+        self.assertEqual(snapshot['memberships']['a'],[])
+        self.assertTrue(snapshot['memberships']['b']);self.assertTrue(snapshot['memberships']['c'])
+        self.assertEqual(store.records['a'].text,'Yes, please!')
+        phrases={topic['phrase'] for topic in snapshot['topics']}
+        self.assertIn('redis',phrases);self.assertIn('hnsw',phrases)
+        self.assertFalse(any(set(term.split())&{'yes','please'} for term in phrases))
+
+    def test_phatic_atom_filter_preserves_technical_token_boundaries(self):
+        store=PhraseStore('fixture')
+        for identity,term in [('a','no_std'),('b','hello-world'),('c','yes_client')]:
+            store.upsert(PhraseSource(identity,identity,'p',term))
+        result=store.snapshot(Selection.PHATIC_COVERAGE)
+        atoms={atom for topic in result['topics'] for atom in topic['phrase'].split()}
+        self.assertTrue({'no_std','hello-world','yes_client'}<=atoms)
+
     def test_input_hashing_streams_large_files(self):
         with TemporaryDirectory() as directory:
             path=Path(directory)/'source.bin';contents=b'data'*100_000;path.write_bytes(contents)

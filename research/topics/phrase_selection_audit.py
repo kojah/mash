@@ -11,6 +11,15 @@ from phrase_review_audit import audit_data
 def audit(args):
     first=json.loads(args.first.read_text());repeat=json.loads(args.repeat.read_text())
     first.pop('runtime');repeat.pop('runtime');assert first==repeat
+    if first['scope']=='fixed_phatic_candidate_control_not_semantic_selection':
+        assert args.allocation_baseline is not None
+        with args.allocation_baseline.open('rb') as file:
+            assert hashlib.file_digest(file,'sha256').hexdigest()==first['input_hashes']['allocation_baseline']
+        baseline=json.loads(args.allocation_baseline.read_text())
+        for scope in ['review','cohort']:
+            for mode in ['whole_thread_weight','source_unit_candidate_coverage']:
+                assert first['outputs'][scope][mode]==baseline['outputs'][scope][mode]
+        for key in ['review_lifecycle','cohort_lifecycle']:assert first['outputs'][key]==baseline['outputs'][key]
     packet=json.loads(args.packet.read_text());review=json.loads(args.review.read_text())
     for name in ['packet','review','database','selection']:
         with getattr(args,name).open('rb') as file:
@@ -56,4 +65,5 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ['packet','review','database','selection','first','repeat']:
         parser.add_argument('--'+name.replace('_','-'),type=Path,required=True)
+    parser.add_argument('--allocation-baseline',type=Path)
     print(json.dumps(audit(parser.parse_args()),sort_keys=True))

@@ -31,8 +31,7 @@ def model_for(sources,namespace):
     return model
 
 
-def lifecycle(model,sources,initial):
-    selection=Selection.SOURCE_COVERAGE
+def lifecycle(model,sources,initial,selection=Selection.SOURCE_COVERAGE):
     checkpoint=json.loads(json.dumps(model.checkpoint()))
     if PhraseStore.restore(checkpoint).snapshot(selection)!=initial:raise ValueError('selected-policy restart differs')
     first={}
@@ -69,12 +68,16 @@ def experiment(args):
     names=PINS+['phrase_review_evaluation.py','topic_phrases.py','topic_phrase_store.py','phrase_selection.py','phrase_selection_control.py']
     pins={name:digest(Path(__file__).with_name(name)) for name in names}
     hashes={name:digest(getattr(args,name)) for name in ['packet','review','database','selection','review_baseline','cohort_baseline']}
+    if args.allocation_baseline:hashes['allocation_baseline']=digest(args.allocation_baseline)
+    if args.phatic_filter and not args.allocation_baseline:raise ValueError('frozen allocation control required for phatic arm')
+    modes=[Selection.WHOLE_THREAD,Selection.SOURCE_COVERAGE]
+    if args.phatic_filter:modes.append(Selection.PHATIC_COVERAGE)
     sources,subjects,policy=load(args.packet,args.review)
     old_review=json.loads(args.review_baseline.read_text());old_cohort=json.loads(args.cohort_baseline.read_text())
     start=time.perf_counter();cpu=time.process_time();outputs={};timings={}
     for scope,points,prior in [('review',sources,old_review['snapshot'])]:
         model=model_for(points,prior['namespace']);arms={}
-        for mode in [Selection.WHOLE_THREAD,Selection.SOURCE_COVERAGE]:
+        for mode in modes:
             begin=time.perf_counter();snapshot=model.snapshot(mode);rows,summary=evaluate(snapshot,subjects)
             if mode==Selection.WHOLE_THREAD and (snapshot!=prior or summary!=old_review['summary']):raise ValueError('whole-thread review control drift')
             arms[mode]={'snapshot':snapshot,'subjects':rows,'summary':summary,
@@ -82,17 +85,26 @@ def experiment(args):
             timings[scope+'_'+mode]=(time.perf_counter()-begin)*1000
         outputs[scope]=arms
         outputs['review_lifecycle']=lifecycle(model,points,arms[Selection.SOURCE_COVERAGE]['snapshot'])
+        if args.phatic_filter:outputs['phatic_review_lifecycle']=lifecycle(model_for(points,prior['namespace']),points,arms[Selection.PHATIC_COVERAGE]['snapshot'],Selection.PHATIC_COVERAGE)
     broad,_,_,_,ledger=cohort(args.database,args.selection)
     broad=[PhraseSource(s.id,s.thread,s.provider,s.text) for s in broad];model=model_for(broad,old_cohort['forward']['namespace']);arms={}
-    for mode in [Selection.WHOLE_THREAD,Selection.SOURCE_COVERAGE]:
+    for mode in modes:
         begin=time.perf_counter();snapshot=model.snapshot(mode)
         if mode==Selection.WHOLE_THREAD and snapshot!=old_cohort['forward']:raise ValueError('whole-thread broad control drift')
         arms[mode]=snapshot;timings['cohort_'+mode]=(time.perf_counter()-begin)*1000
     outputs['cohort']=arms
     outputs['cohort_lifecycle']=lifecycle(model,broad,arms[Selection.SOURCE_COVERAGE])
+    if args.phatic_filter:outputs['phatic_cohort_lifecycle']=lifecycle(model_for(broad,old_cohort['forward']['namespace']),broad,arms[Selection.PHATIC_COVERAGE],Selection.PHATIC_COVERAGE)
+    if args.allocation_baseline:
+        previous=json.loads(args.allocation_baseline.read_text())
+        for scope in ['review','cohort']:
+            for mode in [Selection.WHOLE_THREAD,Selection.SOURCE_COVERAGE]:
+                if outputs[scope][mode]!=previous['outputs'][scope][mode]:raise ValueError('frozen allocation arm differs')
+        for key in ['review_lifecycle','cohort_lifecycle']:
+            if outputs[key]!=previous['outputs'][key]:raise ValueError('frozen allocation lifecycle differs')
     if pins!={name:digest(Path(__file__).with_name(name)) for name in names} or hashes!={name:digest(getattr(args,name)) for name in hashes}:
         raise ValueError('input/code drift')
-    return {'schema_version':1,'scope':'fixed_source_unit_allocation_development_control_not_semantic_selection',
+    return {'schema_version':1,'scope':'fixed_phatic_candidate_control_not_semantic_selection' if args.phatic_filter else 'fixed_source_unit_allocation_development_control_not_semantic_selection',
         'code_pins':pins,'input_hashes':hashes,'review_policy':policy,'source_ledger_sha256':ledger,'outputs':outputs,
         'whole_thread_controls_exact':True,'semantic_quality_verified':False,'production_selected':False,
         'runtime':{'refresh_and_review_ms':timings,'total_ms':(time.perf_counter()-start)*1000,
@@ -103,7 +115,8 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ['packet','review','database','selection','review_baseline','cohort_baseline','output']:
         parser.add_argument('--'+name.replace('_','-'),type=Path,required=True)
-    parser.add_argument('--compare',type=Path);args=parser.parse_args();result=experiment(args)
+    parser.add_argument('--compare',type=Path);parser.add_argument('--allocation-baseline',type=Path)
+    parser.add_argument('--phatic-filter',action='store_true');args=parser.parse_args();result=experiment(args)
     if args.compare and stable(json.loads(args.compare.read_text()))!=stable(result):raise ValueError('source allocation repeat differs')
     with args.output.open('x') as file:json.dump(result,file,sort_keys=True,allow_nan=False)
     args.output.chmod(0o600)

@@ -7,7 +7,7 @@ import math
 import numpy as np
 from subject_labels import ranked_terms
 from topic_features import terms
-from phrase_selection import Selection,select_source_coverage
+from phrase_selection import Selection,select_source_coverage,PHATIC_ATOMS
 
 
 class Support(StrEnum):
@@ -58,7 +58,7 @@ def discover(sources,namespace,maximum_tags=8,selection=Selection.WHOLE_THREAD):
             score=(pool.get(term,0)/max(lengths[thread],1)*math.log1p(mean/max(frequency[term],1))
                    *(math.log((1+len(threads))/(1+df))+1)) if allowed else 0.
             values.append(score)
-        if selection==Selection.SOURCE_COVERAGE:selected=select_source_coverage(values,vocabulary,rows,tokens,maximum_tags)
+        if selection!=Selection.WHOLE_THREAD:selected=select_source_coverage(values,vocabulary,rows,tokens,maximum_tags,selection)
         else:selected=ranked_terms(np.array(values),vocabulary,diverse=True,limit=maximum_tags) if vocabulary else []
         tags=[]
         for candidate in selected:
@@ -88,4 +88,6 @@ def discover(sources,namespace,maximum_tags=8,selection=Selection.WHOLE_THREAD):
     if selection!=Selection.WHOLE_THREAD:
         result['parameters'].update({'selection':selection,'source_unit_candidates':2,'coverage_utility_weight':.5,
             'coverage_units':'distinct exact inputs; supports top-two eligible local candidates'})
+    if selection==Selection.PHATIC_COVERAGE:
+        result['parameters']['candidate_atom_exclusions']=sorted(PHATIC_ATOMS)
     return result

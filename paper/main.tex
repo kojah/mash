@@ -8602,6 +8602,61 @@ technical subjects and abstention, then independently evaluate label/multitag
 usefulness and selected Rust parity. Detailed procedure and subsequent streamed
 hash captures: \path{benchmarks/2026-10-02-phrase-source-allocation.md}.
 
+\section{Candidate-only phatic filtering: limited effect}
+Test one fixed lexical eligibility control within the source-unit allocator,
+retaining its class-based lexical weights~\cite{bertopic}, complete sources,
+vocabulary, scoring statistics and evidence. Exclude candidate phrases containing
+one of 23 declared exact greeting, acknowledgement or discourse atoms before
+the top-two shortlist. This is a small stoplist experiment, not a learned
+content classifier or reference resolver. No short-source length cutoff,
+technical whitelist, reconstruction or rewriting occurs. Identifier atoms such
+as \texttt{no\_std}, \texttt{hello-world} and \texttt{yes\_client} survive.
+The list is fixed before results and includes no reference names or support
+judgments. No LLM, model inference, download, paid call or source reselection
+occurs. Original whole-thread and coverage snapshots, review metrics and
+lifecycle summaries match the prior pinned control exactly.
+
+Reuse the exposed eight-thread, 68-record oracle-admitted review and separate
+128-thread/1850-source cohort. Primary/secondary evidence recall remains
+.986111/.796296, best support F1 .734512/.559788, and name-atom hits three/five
+of nine, exactly as unfiltered coverage. Referential-only topics decrease
+from ten to nine; three reviewed thread tag lists change. Broad topics remain
+442; selected thread tags decrease from 720 to 718, recurring/provisional
+topics change from 291/151 to 288/154, evidence-covered sources from 1081 to
+1074 and multi-tag sources from 413 to 411. Nine of 128 broad thread tag
+lists change; all threads remain tagged. These are small changes and evidence
+proxies, not semantic accuracy or confirmed label errors. A contextual reference
+can be meaningful. Exposed familiar single-assistant judgments, oracle admission
+and unrelated phrase matches on multi-topic support records limit interpretation.
+This list does not solve the remaining topic-quality issue; do not expand it
+to fit these conversations. Next assess general-background lexical specificity
+with technical-term preservation and independent useful-label gates.
+
+Two runs match all non-runtime fields. Both source-unit alternatives pass
+refreshed restart, exact duplicates, original-vote/tag invariance, cleanup,
+actual source deletion, deleted restart, reinsertion and reverse semantics.
+A no-producer-import direct-SQLite/source-review audit checks all six snapshots:
+2604 selected scores/ranks, exclusions, shortlists, votes/utilities/ties, scoped
+IDs and literal source unions agree exactly. Reviewed support F1 error is
+$1.11\times10^{-16}$. Input sources, static English stoplist and declared
+phatic contract are shared dependencies; independent lifecycle replay, native
+parsing and semantic quality are not checked. The 657-test suite passes in
+4.251s. An initial identifier fixture expected three candidates from one source
+despite the two-candidate limit; preserve that failed capture. Correct it to
+isolate one identifier per source without changing the algorithm/results.
+
+Reviewed filtered refresh/evaluation is 18.67/16.71ms, broad filtered refresh
+3.076/3.300s, versus unfiltered broad 3.304/3.215s. Whole three-arm/lifecycle
+experiment is 57.464/56.724s wall and 57.218/56.437s CPU after reviewed loading,
+before output/comparison, excluding imports/initial reviewed loading. Sampled
+target RSS/status HWM is 189252/189532 KiB, PSS 179143/179522 KiB and
+pre-serialization rusage 189108/188988 KiB. There are 2252/2206 samples,
+one vanished read each and maximum gaps 44.52/44.82ms. Sample lower bounds,
+approximate status counters, intrusive observer, launcher history and excluded
+children/observer prevent isolated worker attribution. Complete ingestion,
+independent label/multitag usefulness and selected Rust parity remain unproven.
+No method is promoted. Procedures: \path{benchmarks/2026-10-02-phrase-phatic-candidates.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

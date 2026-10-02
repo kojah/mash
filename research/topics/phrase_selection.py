@@ -7,10 +7,18 @@ from subject_labels import ranked_terms
 class Selection(StrEnum):
     WHOLE_THREAD='whole_thread_weight'
     SOURCE_COVERAGE='source_unit_candidate_coverage'
+    PHATIC_COVERAGE='phatic_filtered_candidate_coverage'
 
 
-def select_source_coverage(values,vocabulary,rows,tokens,limit):
-    scores={term:float(value) for term,value in zip(vocabulary,values) if value>0}
+# Candidate-only language scaffolding; original text and scoring frame survive.
+# This is a fixed lexical control, not content classification or rewriting.
+PHATIC_ATOMS=frozenset('yes no thanks thank please hello hi hey greetings bye sorry actually basically anyway anyways lol lmao alright okok kk uhh umm hmmm'.split())
+
+
+def select_source_coverage(values,vocabulary,rows,tokens,limit,selection=Selection.SOURCE_COVERAGE):
+    if selection not in {Selection.SOURCE_COVERAGE,Selection.PHATIC_COVERAGE}:raise ValueError('coverage policy required')
+    scores={term:float(value) for term,value in zip(vocabulary,values) if value>0
+        and (selection!=Selection.PHATIC_COVERAGE or not (set(term.split())&PHATIC_ATOMS))}
     # One candidate vote per distinct exact input, independent of message IDs.
     units={row.text:row for row in rows};support={}
     for unit,row in sorted(units.items()):

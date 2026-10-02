@@ -7,6 +7,8 @@ import math
 from pathlib import Path
 from topic_capacity_audit import counts
 
+PHATIC=set('yes no thanks thank please hello hi hey greetings bye sorry actually basically anyway anyways lol lmao alright okok kk uhh umm hmmm'.split())
+
 
 def audit_snapshot(rows,forward):
     rows=sorted(rows,key=lambda row:row['id']);source={row['id']:row for row in rows};words={sid:counts(row['text']) for sid,row in source.items()}
@@ -42,7 +44,11 @@ def audit_snapshot(rows,forward):
             if any(parts<=prior or prior<=parts for prior in atoms):continue
             atoms.append(parts);selected.append((score,term))
             if len(selected)==8:break
-        if forward['parameters'].get('selection')=='source_unit_candidate_coverage':
+        policy=forward['parameters'].get('selection')
+        if policy in {'source_unit_candidate_coverage','phatic_filtered_candidate_coverage'}:
+            if policy=='phatic_filtered_candidate_coverage':
+                assert forward['parameters']['candidate_atom_exclusions']==sorted(PHATIC)
+                ranked=[(score,term) for score,term in ranked if not set(term.split())&PHATIC]
             base={term:score for score,term in ranked};votes=defaultdict(set)
             for text in sorted({row['text'] for row in items}):
                 present=counts(text);shortlist=[]
