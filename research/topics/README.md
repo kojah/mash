@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 552 tests.
+The full suite with the extras and explicit author references runs 556 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1541,6 +1541,15 @@ Name-token rate .278334→.226403, with unchanged588 empty/693 weak groups;
 do not promote from this weak proxy. 516 single-block groups are necessarily
 empty under the2-block support rule,359 despite multiple original ready sources.
 P0 follow-up separates source-label evidence from pooled clustering granularity.
+`qmsum_source_label_support.py` now compares distinct original-message and
+physical-block support on unchanged groups/scores/background, with unique
+source provenance. [Protocol](SOURCE_LABEL_SUPPORT_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-source-label-support.md).
+Exact baseline replay, full non-timing repeat and independent scalar
+presence/count/score/rank/source-ID/name-proxy audit pass. Empty groups drop
+588 to 360; weak groups 693 to 482, but name overlap .278334 to .275741 and
+generic recovered terms remain. Availability is not semantic quality;
+do not promote it or count duplicated context as source evidence.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
