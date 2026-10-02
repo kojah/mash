@@ -4493,6 +4493,86 @@ SHA256 \path{d6fec0c4f7fba4023487e2fc217cdf25820ea79d480bced0c370371bef350fb3}.
 Duplicate retrieval does not establish multi-topic labels, semantic ancestors,
 agent navigation gains, online lifecycle stability or the ingestion budget.
 
+\subsection{Complete-corpus BIRCH routing feasibility and CF fragmentation}
+Reuse verified balanced vectors for all 32,176 candidates, with no new inference.
+Before outcomes, freeze unprojected float64 unit directions, BIRCH radius .55,
+branching factor 50, no final global clustering, partial-fit batches 256 and
+8,192-leaf budget, comparing forward/reverse original-ID arrival orders
+\cite{birch,sklearnbirch}. The prepared downstream controls compare hard assignment
+with maximum-window overlapping tags (absolute .55, relative .85, budget three),
+automatic topic routing with at most 1,000 candidates and exact bounded reranking,
+and sparse c-TF-IDF/corpus-IDF labels with source-adjacent evidence. Those downstream
+controls are not reached on this corpus; they have no real-corpus quality result.
+Automatic routing is also distinct from an agent navigating labels through MCP.
+
+Both orders exceed the frozen leaf cap before completing the stream. Forward
+inserts 11,776 candidates with 8,345 CF summaries, leaving 20,400 unprocessed;
+reverse inserts 11,520 with 8,297 summaries, leaving 20,656. An independent
+prefix replay finds 6,266/6,316 singleton summaries (75.1\%/76.1\%), mean sizes
+1.411/1.388 and maximum sizes 13/25. These are partial compression statistics,
+not semantic topics or final nearest-centroid memberships. Batch-boundary cap
+overshoot is recorded, not presented as a strict allocation limit. The initial
+process returned an uncaught budget error before labels/routing. A structured
+budget exception now preserves both complete failure traces and unprocessed
+counts, without changing numerical policy or truncating sources. Two fresh
+diagnostic captures agree on every nontiming field and all source-count files.
+Capture completion does not mean the candidate completed discovery; order
+stability and routed-ranking results remain absent.
+
+The complete lexical prerequisite preserves C++, C\#, dotted identifiers and
+Unicode, using casefolded source-adjacent unigrams/whitespace bigrams, no stoplist,
+document DF min two/max .40 and vocabulary cap 32,768. Tokens over 128 original
+characters are excluded from label eligibility only; original sources/vectors
+remain unchanged. NUL field separation prevents fabricated title/body phrases.
+Full CSR source counts have 4,879,216 nonzeros. Independent regex/Counter loops
+verify every selected count on all 32,176 candidates, DF eligibility and frequency
+ordering; 293,891 terms qualify before the cap, whose boundary frequency is 21.
+Frequency-cap ties are not independently selected. Class labels would split
+each covered document's mass across tags, use all-source background IDF and
+include empty rows in average class length\cite{bertopic}; this is an explicit
+label control, not semantic MMR or a measured label-quality improvement.
+Seven synthetic boundary/count/routing tests bring the research suite to 355
+passing tests; no real-corpus class counts or label scores are reached.
+
+Prefix replay uses the same pinned sklearn implementation and its private leaf
+inspection API for the outside-Git audit, not an independent BIRCH implementation
+or a production dependency. CF counts conserve inserted samples and vector sums
+agree within $4.72\times10^{-12}$. Maximum squared radii are .302475/.302445,
+below $.55^2$, and unit-radius identity errors are at most
+$4.44\times10^{-16}$. For unit inputs,
+\[
+ R^2=\frac{1}{n}\sum_i\|x_i\|^2-\left\|\frac{1}{n}\sum_i x_i\right\|^2
+ =1-\|\bar{x}\|^2.
+\]
+Radius .55 therefore requires mean-vector norm at least approximately .8352.
+Mean off-diagonal pairwise cosine must be at least
+$(n(1-.55^2)-1)/(n-1)$, approaching .6975 for large groups. Admitting a close
+pair need not permit a broader topic to grow in the same summary. This geometric
+constraint does not isolate the cause of corpus spread or show that Euclidean
+distance universally fails in high dimensions.
+
+First diagnostic wall time after imports is 27.037 s: setup 8.620 s, source
+vocabulary/counting 16.606 s, partial forward/reverse fits .799/.867 s. Repeat
+is 26.804 s. Sub-second partial fits do not establish full-corpus throughput.
+External first/repeat monitors record 846/854 samples; observed smaps RSS maxima
+are 1,221,872/1,227,328 KiB, PSS 1,213,759/1,219,480 KiB. Status VmHWM maxima
+are 1,226,828/1,227,328 KiB, separate rusage 1,226,000/1,226,164 KiB. Requested
+sleep is 20 ms; actual median/max observation gaps are 34.37/65.18 and
+34.34/61.65 ms. Status is approximate, sampled maxima are lower bounds, and
+target-only scope excludes children/observer. Loading and retained arrays,
+monitoring and concurrent work prevent production worker or ingestion claims.
+Environment matches the previous experiment. Details:
+\path{benchmarks/2026-10-02-topic-routing-birch-budget.md}; first structured result
+SHA256 \path{c4903697116d607706934e3f35c8b68ac30e8c85e52842c0a7ac6e4f4d52775c}.
+
+Reject this unprojected leaf-as-topic setting as incomplete under its frozen
+budget. The result does not reject every BIRCH pipeline or demonstrate GRINCH
+superiority. Before another candidate, separate CF compression from semantic
+topic grouping/labels and preregister a fixed/versioned geometry or grouping
+alternative. Increasing the cap/radius alone would not establish meaningful
+topics, semantic ancestors or agent-search gains. Full independent quality,
+lifecycle/ingestion and Rust-parity requirements remain open.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

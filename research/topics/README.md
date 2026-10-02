@@ -1124,7 +1124,16 @@ external sampled RSS/PSS maxima are about 1.54/1.53 GiB for this research proces
 These are
 development duplicate-retrieval outcomes, not topic gold or method selection.
 
-The full suite with the extra runs 348 tests; without it the two Infomap/runner
+The [complete-corpus BIRCH topic feasibility control](../../benchmarks/2026-10-02-topic-routing-birch-budget.md)
+uses `topic_routing.py`, `topic_labels.py` and `cqadup_topics.py`. Both arrival
+orders exceed the frozen 8,192-leaf cap at about 36% coverage; structured failures
+retain unprocessed counts and no fabricated routing/label outcomes. Independent
+source counting checks 4,879,216 nonzeros and prefix replay verifies CF statistics;
+fresh captures match all nontiming fields. The prepared routing/label helpers
+are tested research controls, not selected production behavior. Separate CF
+compression from semantic topic grouping before another candidate.
+
+The full suite with the extra runs 355 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash
