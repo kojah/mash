@@ -27,7 +27,8 @@ class Subject:
     sources: frozenset[str]
 
 
-def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+def digest(path):
+    with path.open('rb') as file:return hashlib.file_digest(file,'sha256').hexdigest()
 
 
 def load(packet_path,review_path):
@@ -101,7 +102,7 @@ def evaluate(snapshot,subjects):
 
 
 def run(packet,review):
-    names=['phrase_review_evaluation.py','topic_phrases.py','topic_phrase_store.py','topic_features.py','subject_labels.py','label_noise.py']
+    names=['phrase_review_evaluation.py','topic_phrases.py','topic_phrase_store.py','phrase_selection.py','topic_features.py','subject_labels.py','label_noise.py']
     pins={name:digest(Path(__file__).with_name(name)) for name in names};sources,subjects,policy=load(packet,review)
     start=time.perf_counter();cpu=time.process_time();store=PhraseStore('phrase_source_review_development_v1')
     for source in sources:store.upsert(source)

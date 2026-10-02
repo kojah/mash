@@ -25,7 +25,7 @@ def duplicate_semantic(snapshot,original_ids):
 
 
 def experiment(database,selection,baseline):
-    names=PINS+['topic_phrases.py','topic_phrase_store.py','topic_phrase_control.py']
+    names=PINS+['topic_phrases.py','topic_phrase_store.py','phrase_selection.py','topic_phrase_control.py']
     pins={name:digest(Path(__file__).with_name(name)) for name in names};baseline_sha=digest(baseline)
     sources,_,_,_,ledger=load(database,selection);old=json.loads(baseline.read_text())['arms']['flat_final']['forward']
     sources=[PhraseSource(s.id,s.thread,s.provider,s.text) for s in sources];start=time.perf_counter();cpu=time.process_time()

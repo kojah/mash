@@ -1,6 +1,7 @@
 """Bounded mutable source ledger for deferred phrase snapshots; no inference."""
 from dataclasses import asdict
 from topic_phrases import PhraseSource,discover
+from phrase_selection import Selection
 
 
 class PhraseStore:
@@ -26,8 +27,8 @@ class PhraseStore:
         if source is None:return False
         self.text_bytes-=len(source.text.encode());del self.versions[identity];self.revision+=1;return True
 
-    def snapshot(self):
-        result=discover([self.records[key] for key in sorted(self.records)],self.namespace)
+    def snapshot(self,selection=Selection.WHOLE_THREAD):
+        result=discover([self.records[key] for key in sorted(self.records)],self.namespace,selection=selection)
         return {**result,'revision':self.revision,'versions':dict(sorted(self.versions.items()))}
 
     def checkpoint(self):

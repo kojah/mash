@@ -8,10 +8,8 @@ from pathlib import Path
 from topic_capacity_audit import counts
 
 
-def audit(source_baseline,first,repeat):
-    rows=json.loads(source_baseline.read_text())['baseline_checkpoint']['records']
+def audit_snapshot(rows,forward):
     rows=sorted(rows,key=lambda row:row['id']);source={row['id']:row for row in rows};words={sid:counts(row['text']) for sid,row in source.items()}
-    a=json.loads(first.read_text());b=json.loads(repeat.read_text());a.pop('runtime');b.pop('runtime');assert a==b
     threads=defaultdict(list);inputs=defaultdict(set);support=defaultdict(set)
     for row in rows:
         threads[row['thread']].append(row)
@@ -28,7 +26,7 @@ def audit(source_baseline,first,repeat):
     for pool in weighted.values():frequency.update(pool)
     lengths={thread:sum(pool.values()) for thread,pool in weighted.items()};mean=sum(lengths.values())/len(lengths)
     checked=0;maximum_error=0.;expected_topics={};expected_memberships={sid:[] for sid in source}
-    forward=a['forward'];thread_map={row['thread']:row for row in forward['threads']}
+    thread_map={row['thread']:row for row in forward['threads']}
     assert set(thread_map)==set(threads) and len(thread_map)==len(forward['threads'])
     for thread,items in sorted(threads.items()):
         ranked=[]
@@ -44,6 +42,29 @@ def audit(source_baseline,first,repeat):
             if any(parts<=prior or prior<=parts for prior in atoms):continue
             atoms.append(parts);selected.append((score,term))
             if len(selected)==8:break
+        if forward['parameters'].get('selection')=='source_unit_candidate_coverage':
+            base={term:score for score,term in ranked};votes=defaultdict(set)
+            for text in sorted({row['text'] for row in items}):
+                present=counts(text);shortlist=[]
+                for score,term in sorted(ranked,key=lambda item:(-item[0],item[1])):
+                    if term not in present:continue
+                    parts=set(term.split())
+                    if any(parts<=set(other.split()) or set(other.split())<=parts for other in shortlist):continue
+                    shortlist.append(term);votes[term].add(text)
+                    if len(shortlist)==2:break
+            selected=[];covered=set();available=set(votes);scale=max((base[t] for t in available),default=1.)
+            while available and len(selected)<8:
+                choices=[]
+                for term in available:
+                    parts=set(term.split())
+                    if not any(parts<=set(other.split()) or set(other.split())<=parts for _,other in selected):choices.append(term)
+                if not choices:break
+                gains={term:len(votes[term]-covered) for term in choices};maximum=max(gains.values())
+                def ordering(term):
+                    utility=.5*base[term]/scale+(.5*gains[term]/maximum if maximum else 0.)
+                    return (-utility,-base[term],term)
+                term=sorted(choices,key=ordering)[0];selected.append((base[term],term))
+                covered|=votes[term];available.remove(term)
         actual=thread_map[thread];assert len(actual['tags'])==len(selected)
         assert set(actual['sources'])=={row['id'] for row in items} and len(actual['sources'])==len(items)
         assert all(row['provider']==actual['provider'] for row in items)
@@ -70,14 +91,20 @@ def audit(source_baseline,first,repeat):
         actual=forward['memberships'][sid];assert len(tags)==len(actual)
         for left,right in zip(tags,actual):
             assert left['topic']==right['topic'] and math.isclose(left['score'],right['score'],rel_tol=1e-12,abs_tol=1e-12)
-    left=dict(forward);right=dict(a['reverse'])
+    return {'sources_checked':len(source),'threads_checked':len(threads),'topics_checked':len(actual_topics),'thread_ranks_and_scores_checked':checked,'maximum_score_error':maximum_error}
+
+
+def audit(source_baseline,first,repeat):
+    rows=json.loads(source_baseline.read_text())['baseline_checkpoint']['records']
+    a=json.loads(first.read_text());b=json.loads(repeat.read_text());a.pop('runtime');b.pop('runtime');assert a==b
+    checked=audit_snapshot(rows,a['forward'])
+    left=dict(a['forward']);right=dict(a['reverse'])
     for snapshot in [left,right]:snapshot.pop('revision');snapshot.pop('versions')
     assert left==right
-    return {'stable_repeat':True,'reverse_semantics_exact':True,'sources_checked':len(source),'threads_checked':len(threads),
-        'topics_checked':len(actual_topics),'thread_ranks_and_scores_checked':checked,'maximum_score_error':maximum_error,
-        'shared_dependency':'sklearn static English stoplist through independent scanner',
-        'scope':'original source text, independent counts/duplicate handling/vocabulary/full ranking/score/identity/thread and source unions',
-        'semantic_quality_verified':False,'lifecycle_independently_replayed':False}
+    return dict(checked,stable_repeat=True,reverse_semantics_exact=True,
+        shared_dependency='sklearn static English stoplist through independent scanner',
+        scope='original source text, independent counts/duplicate handling/vocabulary/full ranking/score/identity/thread and source unions',
+        semantic_quality_verified=False,lifecycle_independently_replayed=False)
 
 
 if __name__=='__main__':

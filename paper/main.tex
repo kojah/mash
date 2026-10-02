@@ -8537,6 +8537,71 @@ No subtraction/isolated worker claim or production/Rust promotion is justified.
 Independent coding quality and matched full-ingestion gates remain open.
 Detailed procedures: \path{benchmarks/2026-10-02-phrase-reviewed-support.md}.
 
+\section{Source-unit candidate allocation for flat subjects}
+Keep the frozen eight-thread exposed review (68 oracle-admitted records,
+nine primary/nine secondary subjects) and separate 128-thread/1850-record
+cohort. No new inference, LLM, download or paid call occurs. Both whole-thread
+controls reproduce their original snapshots. Review names enter evaluation
+only. Keep vocabulary, thread phrase weights, DF and eight-tag bounds unchanged.
+Shortlist two diverse eligible terms per distinct exact input using thread
+weights, then greedily maximize half normalized original weight plus half
+normalized newly covered candidate-voting inputs. Duplicate text has one vote;
+containment pruning and original-score/lexical ties are explicit. Zero maximum
+gain contributes zero coverage utility. Output scores stay original weights;
+source evidence is every literal match in the selected thread. This is lexical
+coverage, not semantic MMR or semantic deduplication.
+
+Primary/secondary any-phrase support recall changes from .929/.481 to
+.986/.796; best single-phrase support F1 changes from .735/.386 to
+.735/.560. Secondary subjects with no evidence fall from four to one, but
+primary name-atom hits fall from five to three of nine. Topics supported only
+by referential records increase from four to ten. Broad evidence coverage
+increases from 574 to 1081 of 1850 sources; topics decrease from 618 to 442,
+thread tags from 1007 to 720. All threads have tags. These are evidence proxies,
+not semantic accuracy: unrelated phrases on multi-topic records count toward
+recall. Familiar single-assistant review and oracle admission are dependent
+conditions. Referential evidence may be meaningful, so that count signals
+risk rather than proving bad topics. No production method is selected.
+
+Two runs repeat all non-runtime fields. Both scopes pass refreshed restart,
+one exact duplicate per thread, original-vote/tag invariance, cleanup, actual
+source deletion/absence, deleted restart, reinsertion and reverse semantics.
+A no-producer-import auditor independently reads immutable SQLite and the
+original packet/review, checking counts, vocabulary, scalar scores, shortlists,
+votes, utility/ties, IDs and source/thread unions. All 1838 selected ranks/scores
+across four snapshots have zero error; original-review support F1 error is
+$1.11\times10^{-16}$. Static English stoplist and source/review inputs are shared.
+An initial audit incorrectly expected a checkpoint in a phrase result; preserve
+its failure and use the corrected direct-SQLite audit. Independent lifecycle
+replay, native parsing, semantic gold and full-ingestion budget remain open.
+
+Initial broad refresh takes 2.877/2.732s for control and 3.045/3.242s for
+allocation. Entire paired lifecycle experiment takes 31.010/66.510s wall,
+30.937/35.070s CPU, after reviewed loading and before serialization/comparison;
+imports and initial reviewed loading are excluded. Sampled whole-target RSS is
+1250648/1249924 KiB, PSS 1240554/1239861 KiB. Inspection identifies a whole-file
+hash allocation of the 1078059008-byte SQLite source. Stream that integrity
+check and repeat the experiment, retaining prior captures. Memory observations
+are sampled lower bounds with approximate status counters, intrusive observer,
+launcher history and excluded observer/children; neither cost nor memory is an
+isolated production worker or complete-ingestion gate.
+Two subsequent streamed-hash runs match all non-runtime fields and the original
+scientific fields exactly; only the declared hash helper pin changes. Their
+independent audit passes. Sampled RSS/status HWM is 186756/186424 KiB,
+PSS 176625/176395 KiB and pre-serialization rusage 186344/186032 KiB.
+There are 1242/1230 samples, one/zero vanished reads, maximum gaps
+42.95/44.79ms. Whole experiment wall time is 30.892/30.081s and CPU
+30.745/29.743s. Broad refresh is 2.955/2.694s for control and 3.113/2.754s
+for allocation. Original captures remain intact. The 655-test suite passes
+in 4.196s, including rejection of score/evidence corruption and whole-file
+hash allocation. These results remove an experiment allocation without
+claiming a full-ingestion budget win.
+
+Next prioritize content-bearing source candidates while preserving brief
+technical subjects and abstention, then independently evaluate label/multitag
+usefulness and selected Rust parity. Detailed procedure and subsequent streamed
+hash captures: \path{benchmarks/2026-10-02-phrase-source-allocation.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

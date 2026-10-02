@@ -58,6 +58,19 @@ have no literal selected-phrase evidence. Repeat and independent support-metric
 arithmetic checks pass, but this is not semantic accuracy or independent human
 quality. Next compare bounded source-unit selection to whole-thread ranking;
 keep names out of discovery and preserve this control unchanged.
+The [source-unit allocation control](../../benchmarks/2026-10-02-phrase-source-allocation.md)
+now repeats and independently audits that matched comparison. Secondary evidence
+recall improves .481 to .796, but referential-only topics increase four to ten;
+these proxies do not establish semantic quality. Broad literal evidence covers
+1,081/1,850 sources versus 574, with 442 topics and 720 thread tags. Original
+controls are exact, lifecycle/reverse checks pass and independent scalar ranks,
+coverage votes, utilities and evidence agree. Streaming the source-file integrity
+hash removes a whole-file allocation: sampled whole-target RSS falls from about
+1.2 GiB to 182 MiB with scientific fields unchanged in two more runs.
+Complete-ingestion cost remains untested.
+Next test source-grounded content candidate admission, preserving brief specific
+subjects. No production topic method or Rust port is selected.
+
 The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
 recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
 granularity/labels and budgeted publication over further hierarchy experiments.

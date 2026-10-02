@@ -7,6 +7,7 @@ import math
 import numpy as np
 from subject_labels import ranked_terms
 from topic_features import terms
+from phrase_selection import Selection,select_source_coverage
 
 
 class Support(StrEnum):
@@ -22,8 +23,9 @@ class PhraseSource:
     text: str
 
 
-def discover(sources,namespace,maximum_tags=8):
+def discover(sources,namespace,maximum_tags=8,selection=Selection.WHOLE_THREAD):
     if type(maximum_tags) is not int or not 1<=maximum_tags<=8:raise ValueError('bounded thread tag selection required')
+    if not isinstance(selection,Selection):raise ValueError('typed phrase selection policy required')
     threads=defaultdict(list);tokens={};providers={}
     for source in sources:
         if source.thread in providers and providers[source.thread]!=source.provider:raise ValueError('thread provider scope differs')
@@ -56,7 +58,8 @@ def discover(sources,namespace,maximum_tags=8):
             score=(pool.get(term,0)/max(lengths[thread],1)*math.log1p(mean/max(frequency[term],1))
                    *(math.log((1+len(threads))/(1+df))+1)) if allowed else 0.
             values.append(score)
-        selected=ranked_terms(np.array(values),vocabulary,diverse=True,limit=maximum_tags) if vocabulary else []
+        if selection==Selection.SOURCE_COVERAGE:selected=select_source_coverage(values,vocabulary,rows,tokens,maximum_tags)
+        else:selected=ranked_terms(np.array(values),vocabulary,diverse=True,limit=maximum_tags) if vocabulary else []
         tags=[]
         for candidate in selected:
             term=candidate['term'];identity='phrase-'+hashlib.sha256((namespace+'\0'+term).encode()).hexdigest()
@@ -71,7 +74,7 @@ def discover(sources,namespace,maximum_tags=8):
     topics=[]
     for identity,topic in sorted(topic_map.items()):
         topics.append({**topic,'sources':sorted(topic['sources']),'threads':sorted(topic['threads'])})
-    return {'schema_version':1,'representation':'flat_phrase_subjects','namespace':namespace,'topics':topics,
+    result={'schema_version':1,'representation':'flat_phrase_subjects','namespace':namespace,'topics':topics,
         'threads':thread_rows,'memberships':memberships,'score_kind':'thread_sublinear_ctfidf_times_thread_idf',
         'parameters':{'maximum_thread_tags':maximum_tags,'maximum_vocabulary':8192,'maximum_thread_df_fraction':.4,
             'background_filter_warmup_threads':3,'recurring_minimum_threads':2,'recurring_minimum_distinct_inputs':2,
@@ -82,3 +85,7 @@ def discover(sources,namespace,maximum_tags=8):
             'untagged_sources':sum(not tags for tags in memberships.values()),
             'multi_tag_sources':sum(len(tags)>1 for tags in memberships.values()),
             'untagged_threads':sum(not thread['tags'] for thread in thread_rows)}}
+    if selection!=Selection.WHOLE_THREAD:
+        result['parameters'].update({'selection':selection,'source_unit_candidates':2,'coverage_utility_weight':.5,
+            'coverage_units':'distinct exact inputs; supports top-two eligible local candidates'})
+    return result

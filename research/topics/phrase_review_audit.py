@@ -7,11 +7,7 @@ from pathlib import Path
 from topic_capacity_audit import counts
 
 
-def audit(packet_path,review_path,first,repeat):
-    packet=json.loads(packet_path.read_text());review=json.loads(review_path.read_text())
-    a=json.loads(first.read_text());b=json.loads(repeat.read_text());a.pop('runtime');b.pop('runtime');assert a==b
-    assert hashlib.sha256(packet_path.read_bytes()).hexdigest()==a['packet_sha256']==review['packet_sha256']
-    assert hashlib.sha256(review_path.read_bytes()).hexdigest()==a['review_sha256']
+def audit_data(packet,review,a):
     snapshot=a['snapshot'];sources={};subjects=[];by_thread={c['thread']:c for c in review['cases']}
     for case in packet['cases']:
         accepted={}
@@ -57,6 +53,14 @@ def audit(packet_path,review_path,first,repeat):
         'maximum_f1_error':maximum_error,'scope':'source hashes/literal memberships and original-review support recall, maximum F1 and summary arithmetic',
         'shared_dependency':'sklearn static English stoplist through independent scanner',
         'rankings_lifecycle_native_semantic_quality_independently_verified':False,'independent_human_gold':False}
+
+
+def audit(packet_path,review_path,first,repeat):
+    packet=json.loads(packet_path.read_text());review=json.loads(review_path.read_text())
+    a=json.loads(first.read_text());b=json.loads(repeat.read_text());a.pop('runtime');b.pop('runtime');assert a==b
+    assert hashlib.sha256(packet_path.read_bytes()).hexdigest()==a['packet_sha256']==review['packet_sha256']
+    assert hashlib.sha256(review_path.read_bytes()).hexdigest()==a['review_sha256']
+    return audit_data(packet,review,a)
 
 
 if __name__=='__main__':
