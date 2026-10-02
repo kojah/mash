@@ -21,6 +21,10 @@ semantic-label quality, a merge rule or a selected production topic method.
 
 ## Current milestone: flat, multi-label topics
 
+The [current worklist](WORKLIST.md) maps remaining gates to Beads and records
+superseded hierarchy tasks. Historical experiment follow-ups below do not
+automatically reopen algorithm exploration.
+
 [Acceptance and stopping rules](SELECTION_CRITERIA.md) now cap the current round:
 finish the frozen NMF/source-aware phrase comparison, at most one bounded
 correction, then an explicit acceptance or failed-gate decision. No new algorithm

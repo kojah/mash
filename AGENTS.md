@@ -139,6 +139,11 @@ Topic modeling is the first priority. Follow the research sequence: compile
 prior art, shortlist approaches, perform reproducible Python experiments and
 record results, select a method, then implement it in Rust. Keep the Python lab
 isolated from the application and private corpora/artifacts outside Git.
+Before topic work, read `research/topics/SELECTION_CRITERIA.md` and
+`research/topics/WORKLIST.md`. Respect the finite experiment cap; historical
+follow-up notes do not authorize new algorithm rounds or restore hierarchy.
+Keep pending acceptance gates open and continue other production work while
+independent review is pending.
 Update `paper/main.tex` and `paper/references.bib` alongside substantive topic
 experiments with procedures, setup, prior art, results, analysis and limitations.
 Topic modeling must not use an LLM: no generative summaries, rewriting, labeling,
