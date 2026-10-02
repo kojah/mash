@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 556 tests.
+The full suite with the extras and explicit author references runs 560 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1550,6 +1550,17 @@ presence/count/score/rank/source-ID/name-proxy audit pass. Empty groups drop
 588 to 360; weak groups 693 to 482, but name overlap .278334 to .275741 and
 generic recovered terms remain. Availability is not semantic quality;
 do not promote it or count duplicated context as source evidence.
+`qmsum_query_navigation.py` compares label/full-group navigation with direct
+lexical source retrieval for all 1,095 grounded training queries, both known
+meeting and global inventories. [Protocol](QUERY_NAVIGATION_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-topic-query-navigation.md).
+At fixed two-group/20-source budgets, meeting recall .193067 direct versus
+.184373 full groups and .119224/.121328 label gates; label zero-results
+460/416 versus 13 direct. Complete repeat and independent scalar feature,
+query/span/score/rank/metric audit pass. Reject these labels as mandatory
+automatic gates; evaluate nonexclusive full-group guidance next. Global
+results have incomplete cross-meeting judgments; this is not mash hybrid
+search, semantic-label truth or selected production topic modeling.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference

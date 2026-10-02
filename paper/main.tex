@@ -7443,6 +7443,83 @@ production method selected. Independent semantic/coding labels, multitag and
 semantic-ancestor quality, guided-search gains, shared global lifecycle,
 complete ingestion and selected executable Python/Rust parity remain gates.
 
+\section{Grounded-query navigation beyond label-name overlap}
+Use all 1,095 specific training queries and 1,206 inclusive source spans in
+QMSum \cite{zhong2021qmsum}. Discovery and labels remain frozen; queries and
+reference spans enter afterward, without answers or native topic names as
+retrieval features. General queries lack spans and are outside this declared
+task. Keep the 88,336 original identities, 84,434 ready sources and 1,296
+meeting-local groups. Feature counts, static stoplist and full-snapshot IDF
+are unchanged, with sublinear TF before IDF and L2 normalization. Full group
+text pools ready-source counts before TF/IDF; displayed labels use one count
+per term. No new inference, LLM/download, grid or held-out data.
+
+Compare direct source retrieval with three navigation gates: full group words,
+block-supported labels and message-supported labels. Each gate selects at most
+two positive-score groups; all arms use the same source scores and return at
+most 20 positive-score sources. No zero padding or direct fallback. Exact
+score/global-ID ties are fixed. Preserve every query and original relevant
+source denominator, including unsupported sources; merge overlapping spans
+by identity. Precision divides by 20. Meeting-conditioned scope resembles a
+known-thread search; global scope unions existing meeting-local inventories,
+not a learned shared taxonomy. Other meetings are unjudged and cannot earn
+reference hits, rather than being established negatives.
+
+\begin{center}
+\begin{tabular}{llrrrr}
+Scope & Retrieval & Recall@20 & MRR & NDCG@20 & Zero results\\
+\hline
+Meeting & Direct sources & .193067 & .537946 & .276575 & 13\\
+Meeting & Full group words & .184373 & .528084 & .270806 & 13\\
+Meeting & Block labels & .119224 & .282983 & .162278 & 460\\
+Meeting & Message labels & .121328 & .293875 & .166704 & 416\\
+Global & Direct sources & .050725 & .153729 & .060144 & 0\\
+Global & Full group words & .054629 & .110569 & .062441 & 0\\
+Global & Block labels & .049864 & .092100 & .056812 & 13\\
+Global & Message labels & .046969 & .086683 & .052978 & 7\\
+\end{tabular}
+\end{center}
+All 56,494 repeated reference-source contributions remain accounted for;
+53,691 are ready. No query is entirely out of vocabulary. Ready-reference
+macro coverage is .951957; the ready-source oracle at the same result budget
+caps macro recall at .666561, not a retrieval feature. Long spans bound recall
+but do not explain the large label-gating loss. Meeting recall improves,
+declines or ties versus direct retrieval on 97/142/856 queries for full group
+text, 88/565/442 for block labels, 86/551/458 for message labels. No
+significance or held-out generalization claim. Meeting 0 queries 1--4 produce
+nonzero direct/full-group recall but no results under either label gate.
+
+Reject using the tested short label lists as mandatory automatic search
+gates. More populated labels do not ensure access to relevant messages. Full
+group text loses less in meeting scope but still trails direct sources;
+global mean recall/NDCG rise slightly while MRR and many individual queries
+decline. Do not promote that mixed result. Evaluate nonexclusive full-group
+guidance preserving direct eligibility next. This is not a rejection of all
+topic discovery or explicit topic filters, a clustering selection, or a
+benchmark of mash's hybrid/dense/reranked search or agent behavior.
+
+Complete non-timing repeat and independent scalar original-count/TF/IDF/
+fsum-normalized feature, inverted-index query score, original span/ownership,
+mathematical rank and metric audit pass: 577,607 feature coordinates, 1,095
+queries, 8,760 cases, 15,330 ranks and 115,936 selected scores. Maximum
+numeric discrepancy is 4.44$\times10^{-16}$. Scalar reassociation yields 832
+different near-rank choices with maximum gap 1.11$\times10^{-16}$, inside
+frozen $10^{-12}$; exact tie behavior remains separately pinned by executable
+fixtures/repeat. Metrics audit actual returned IDs. Shared pinned count/IDF/
+vocabulary/label-tree capture and NumPy/SciPy/sklearn stoplist; source tokenizer
+previously audited. Four new fixtures bring the enabled lab suite to 560 tests.
+
+First/repeat wall 46.489/41.906 seconds after imports, CPU 34.221/33.492;
+the sum of projection and all eight ranking/metric cases has median/p95
+22.128/40.644 and 19.951/29.434 milliseconds. This is not one request's latency
+or complete ingestion: large validation inputs, reference metrics and
+uncontrolled host load are included, while real model/HTTP/backend/reranking/
+persistence work is absent. Procedures, full metrics, pins and memory scope
+appear in \path{benchmarks/2026-10-02-topic-query-navigation.md}. Independent
+coding/semantic labels, multitag/ancestor quality, held-out guided-search
+utility, global online lifecycle, full-ingestion performance and selected
+executable Python/Rust parity remain promotion gates.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
