@@ -47,6 +47,68 @@ fn bare_invocation_prints_help_without_starting_an_interface() {
 }
 
 #[test]
+fn informational_flags_succeed_without_initializing_application_resources() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("unavailable");
+    for arguments in [
+        vec!["--help"],
+        vec!["-h"],
+        vec!["search", "--help"],
+        vec!["index", "--help"],
+        vec!["mcp", "--help"],
+        vec!["serve", "--help"],
+        vec!["models", "install", "--help"],
+        vec!["--version"],
+        vec!["-V"],
+    ] {
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args(["--config", missing.to_str().unwrap()])
+            .args(["--db", missing.to_str().unwrap()])
+            .args(["--models-dir", missing.to_str().unwrap()])
+            .args(&arguments)
+            .env_remove("MASH_TRACE")
+            .env("HOME", directory.path())
+            .env("XDG_CONFIG_HOME", directory.path())
+            .env("XDG_DATA_HOME", directory.path())
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{arguments:?}: {output:?}");
+        assert!(output.stderr.is_empty(), "{arguments:?}");
+        let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+        if arguments.contains(&"--version") || arguments.contains(&"-V") {
+            assert_eq!(
+                response,
+                serde_json::json!({"version": env!("CARGO_PKG_VERSION")})
+            );
+        } else {
+            assert_eq!(response.as_object().unwrap().len(), 1);
+            let help = response["help"].as_str().unwrap();
+            assert!(help.contains("Usage:"), "{arguments:?}");
+            assert!(help.contains("--help"), "{arguments:?}");
+        }
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn missing_and_invalid_cli_arguments_remain_json_usage_errors() {
+    for arguments in [vec![], vec!["--unknown"], vec!["search"], vec!["serve"]] {
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args(&arguments)
+            .env_remove("MASH_TRACE")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+        assert!(output.stdout.is_empty(), "{arguments:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "usage", "{arguments:?}");
+        assert_eq!(error["error"]["retryable"], false);
+    }
+}
+
+#[test]
 fn removed_commands_are_rejected() {
     for command in ["export", "doctor", "list", "sources"] {
         Command::cargo_bin("mash")

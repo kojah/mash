@@ -199,6 +199,8 @@ impl SearchArguments {
 #[serde(untagged)]
 pub(super) enum Response {
     Operation(Box<core::Response>),
+    Help { help: String },
+    Version { version: &'static str },
     WatchStopped { watching: bool },
     McpStopped,
 }
@@ -282,8 +284,22 @@ where
     T: Into<OsString> + Clone,
 {
     let arguments: Vec<OsString> = args.into_iter().map(Into::into).collect();
-    let cli =
-        Cli::try_parse_from(&arguments).map_err(|error| AppError::usage(error.to_string()))?;
+    let cli = match Cli::try_parse_from(&arguments) {
+        Ok(cli) => cli,
+        Err(error) => match error.kind() {
+            clap::error::ErrorKind::DisplayHelp => {
+                return Ok(Response::Help {
+                    help: error.to_string(),
+                });
+            }
+            clap::error::ErrorKind::DisplayVersion => {
+                return Ok(Response::Version {
+                    version: env!("CARGO_PKG_VERSION"),
+                });
+            }
+            _ => return Err(AppError::usage(error.to_string())),
+        },
+    };
     let mut builder = if matches!(cli.command, Command::Serve { .. }) {
         tokio::runtime::Builder::new_multi_thread()
     } else {

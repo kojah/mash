@@ -49,7 +49,10 @@ mash serve --server-config PATH
 One-shot data commands emit one JSON value; watch mode emits newline-delimited
 results, and `mash mcp` serves the stdio protocol. `mash serve` runs the shared
 index HTTP API; it reports its listening address as JSON on stderr and keeps
-stdout empty. Bare `mash` prints help. Global
+stdout empty. `mash --help` and subcommand `--help` return `{"help":"..."}`;
+`mash --version` returns `{"version":"..."}`. These informational requests
+exit successfully before loading configuration, models or indexes. Bare `mash`
+returns a JSON usage error containing help with exit code 2. Global
 options are `--config PATH`, `--db PATH`, and
 `--models-dir PATH`.
 
