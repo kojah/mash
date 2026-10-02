@@ -12,6 +12,12 @@ autoexamples = false
 autobenches = false
 build = false
 
+[workspace]
+members = ["crates/mash-query"]
+default-members = [".", "crates/mash-query"]
+exclude = ["generated/postgres"]
+resolver = "3"
+
 [lib]
 path = "app/lib.rs"
 
@@ -25,6 +31,7 @@ name = "cli_contract"
 path = "app/tests/cli_contract.rs"
 
 [dependencies]
+mash-query = { path = "crates/mash-query" }
 rmcp = { version = "3.4.0", default-features = false, features = ["server", "macros", "transport-io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "fs", "net", "io-util"] }
 axum = "0.8"
@@ -61,7 +68,6 @@ ring = "0.17"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["raw_value"] }
 walkdir = "2.5.0"
-whatlang = "0.18.0"
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"] }

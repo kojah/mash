@@ -1,14 +1,12 @@
 //! Conservative local language validation before inference or network access.
-use crate::AppError;
+use crate::Error;
 
-pub(super) fn validate(query: &str) -> Result<(), AppError> {
+pub(super) fn validate(query: &str) -> Result<(), Error> {
     if query.chars().any(|character| {
         character.is_alphabetic()
             && !matches!(u32::from(character), 0..=0x024f | 0x1e00..=0x1eff | 0x2c60..=0x2c7f | 0xa720..=0xa7ff | 0xab30..=0xab6f)
     }) {
-        return Err(AppError::usage(
-            "the current search models support English queries; queries in other scripts are unsupported",
-        ));
+        return Err(Error::UnsupportedScript);
     }
     // Names, URLs and short technical phrases do not provide enough linguistic
     // evidence. Never treat an uncertain prediction as an unsupported language.
@@ -23,10 +21,7 @@ pub(super) fn validate(query: &str) -> Result<(), AppError> {
         && info.is_reliable()
         && info.confidence() >= 0.9
     {
-        return Err(AppError::usage(format!(
-            "the current search models support English queries; detected {}. Rephrase the query in English",
-            info.lang().eng_name(),
-        )));
+        return Err(Error::UnsupportedLanguage(info.lang().eng_name()));
     }
     Ok(())
 }
@@ -45,7 +40,7 @@ mod tests {
             "je voudrais retrouver les conversations récentes sur notre moteur de recherche partagé",
         ] {
             let error = validate(query).expect_err(query);
-            assert!(error.error.message.contains("Rephrase"), "{error:?}");
+            assert!(error.to_string().contains("Rephrase"), "{error:?}");
         }
     }
 

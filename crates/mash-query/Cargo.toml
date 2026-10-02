@@ -1,0 +1,15 @@
+[package]
+name = "mash-query"
+version = "0.1.0"
+edition = "2024"
+description = "Pure query validation and literal matching rules shared by mash search backends"
+license = "MIT"
+publish = false
+
+[dependencies]
+url = "2.5.8"
+whatlang = "0.18.0"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

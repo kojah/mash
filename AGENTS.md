@@ -120,6 +120,12 @@ iteration. Retain Clippy, formatting, and doctest validation. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
+The handwritten workspace defaults include `mash` and `mash-query`; the generated
+PostgreSQL dependency is excluded. Query-only iteration can use
+`env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
+See `docs/crate-boundaries.md`; integrated search validation remains required
+when changing query behavior.
+
 For repeated unit-test edits, use the persistent target/temp directories above
 with `CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif --lib`, adding a focused
 `-E` expression when appropriate. Warm incremental builds substantially reduce

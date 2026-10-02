@@ -1478,7 +1478,7 @@ cargo run-clif -- status
 cargo test-clif
 ```
 
-These aliases select Cranelift for mash in the development profile. Dependencies
+These aliases select Cranelift for mash and mash-query in the development profile. Dependencies
 keep LLVM, so their existing build cache can be reused. `test-clif` requires
 `cargo-nextest`. Use the usual commands below for standard LLVM verification
 and `cargo build --release` for optimized builds. Cranelift is an experimental
@@ -1491,6 +1491,12 @@ cargo nextest run
 cargo clippy --all-targets -- -D warnings
 cargo test --doc
 ```
+
+The handwritten workspace includes the application and the pure `mash-query`
+crate. These default commands cover both. For an isolated query edit cycle,
+use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
+See [crate boundaries](docs/crate-boundaries.md) for responsibilities and
+the integrated checks required when changing search behavior.
 
 For repeated unit-test edits, keep one target directory and enable incremental
 compilation explicitly:
