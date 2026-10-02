@@ -8764,6 +8764,53 @@ topic-quality outcomes stay mixed. Procedures and identities:
 \path{research/topics/SCIENCE_ENVIRONMENT.md} and
 \path{benchmarks/2026-10-02-scientific-environment-replay.md}.
 
+\section{Distinct subject-support assignment and local evidence redundancy}
+Prior independent-best support F1 lets one tag receive credit for several reviewed
+subjects. Add a diagnostic-only partial one-to-one matching on the same exposed
+eight-thread/68-record review (nine primary/nine secondary subjects), without
+changing any of the four discovery controls. Pair weight is exact rational
+$2|E\cap T|/(|E|+|T|)$ for reviewed subject support $E$ and tag support $T$
+restricted to this thread. Maximize total F1, then positive pair count, then
+lexicographic assignment path: original subject ordinal, sorted topic IDs,
+unmatched last. Zero-weight edges remain unmatched. Primary and secondary subjects
+receive equal objective weight; group means are not individually optimized.
+Bound subset dynamic programming to sixteen tags; tested controls use at most
+eight. This evaluates optimistic literal-evidence separability, not label meaning.
+
+Whole-thread/source-coverage/phatic/background primary distinct F1 is
+.734512/.734512/.725253/.720370; secondary is
+.385714/.515344/.528042/.544974. Secondary unmatched counts are 4/2/1/2 of nine.
+Coverage's secondary gain survives the distinct constraint, though its previous
+independent-best .559788 overstates the joint .515344. Each coverage variant has
+contention in one of eight threads. Background's mixed primary/secondary outcome
+does not select it. Corpus-familiar, single-assistant exposed annotations and
+oracle admission remain substantial limitations; these are not semantic gold.
+
+In the separate 128-thread/1850-record cohort, local tag support signatures
+number 331/545/544/537 across 1007/720/718/725 tags. Identical-support tag pairs
+are 2192/175/174/188 of 3496/1899/1890/1927 total pairs; 125/98/98/98 threads
+contain at least one identical pair. Source allocation substantially diversifies
+evidence. However, identical sources can genuinely discuss different subjects:
+this is not synonym truth or an automatic merge criterion. Weak labels still
+require stronger quality evidence rather than more stopword/weight tuning.
+
+Two sequential fresh pinned CPython3.11.15 runs reproduce all non-runtime fields.
+Diagnostic evaluation is 50.970/47.850ms excluding imports/loading/serialization,
+including final input/code hash rechecks, not discovery or complete ingestion.
+A no-producer-import auditor reconstitutes original admitted identities/support,
+rehashes admitted text, exhaustively enumerates 1152 feasible assignments,
+checks 72 subject choices/rational F1s and 9847 local-support pairs. Choices and
+F1 fractions match exactly; floating mean error is at most $1.11\times10^{-16}$.
+An initial bitwise mean check failed across interpreter summation behavior;
+retain that log and use rational accumulation with $10^{-15}$ tolerance only
+for display means. Broad evidence derives from the previously audited capture,
+not a new independent SQLite ingestion. Five CI fixtures include 150 seeded
+exhaustive-oracle matrices, ties/abstention/scope/corruption; all 666 research tests
+pass in 4.903s with author-reference paths supplied. No new annotations,
+inference, generative LLM, download or paid call occurs. Semantic quality,
+selected Rust parity and ingestion budget remain open. Procedures and capture
+identities: \path{benchmarks/2026-10-02-distinct-topic-support.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

@@ -90,6 +90,7 @@ jobs:
           python3 -m unittest discover -s research/topics -p 'test_qmsum_validation_capture.py'
           python3 -m unittest discover -s research/topics -p 'test_chat_review.py'
           python3 -m unittest discover -s research/topics -p 'test_science_env.py'
+          python3 -m unittest discover -s research/topics -p 'test_distinct_support.py'
       - name: Install pinned sqlc release
         run: |
           mkdir -p "$RUNNER_TEMP/mash-sqlc"

@@ -9,6 +9,16 @@ exactly against the old capture, with independent source/frequency audit and
 selection. Environment reproduction establishes no semantic quality, complete
 ingestion or selected Rust parity gate.
 
+The [distinct-support diagnostic](../../benchmarks/2026-10-02-distinct-topic-support.md)
+now prevents one tag receiving independent credit for several reviewed subjects.
+Exact rational joint matching preserves source coverage's secondary support gain
+(.385714 to .515344), below the old independent-best .559788. Broad identical
+local-support pairs drop 2192 to 175, but identical evidence can legitimately
+contain multiple subjects. Complete repeat and a no-producer-import exhaustive
+original-review audit pass: 1152 feasible assignments, 72 subject checks, 9847
+pairs. Five stdlib fixtures run in CI. This is evidence diversification, not
+semantic-label quality, a merge rule or a selected production topic method.
+
 ## Current milestone: flat, multi-label topics
 
 On 2026-10-02 the user dropped the hierarchy requirement. The first milestone
