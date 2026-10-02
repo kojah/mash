@@ -1101,7 +1101,15 @@ Strict source/reference separation excludes opaque metadata from features.
 Complete SHA/CRC audits and independent BFS grouping agree; no retrieval or
 topic-quality outcomes have been measured. Raw sources stay outside Git.
 
-The full suite with the extra runs 331 tests; without it the two Infomap/runner
+The [development retrieval controls](../../benchmarks/2026-10-02-duplicate-lexical-retrieval.md)
+use `lexical_retrieval.py` and `cqadup_retrieval.py` for full-corpus word/character
+TF-IDF and word BM25. Vocabulary never sees query text or references; reserved
+queries stay unscored. Complete matrices, deterministic ties and judged ranks
+are captured outside Git. None establishes semantic topic quality or a selected
+production method. Use the runner's fresh `--output-directory` and repeat with
+`--compare FIRST_DIRECTORY/results.json`.
+
+The full suite with the extra runs 336 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

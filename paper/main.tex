@@ -4299,6 +4299,72 @@ first cohort SHA256 is
 Reserved retrieval outcomes remain unopened. Independent dialogue/topic judgments
 and matched performance measurements remain necessary for production selection.
 
+\subsection{Development-only complete-corpus lexical retrieval}
+Preregister three controls on the frozen 64 development queries and full
+32,176-question corpus. Fit candidate-only vocabulary (DF at least two,
+cap 65,536); concatenate title, newline and body without cleaning, stopwords
+or accent stripping. Compare default Unicode word unigrams of length at least
+two and boundary-padded character 3--5 fragments with sublinear TF, smooth
+IDF and L2 cosine\cite{sklearntfidf}. Word BM25\cite{bm25review2009} shares
+the word vocabulary, with $k_1=1.2$, $b=.75$, distinct query terms and positive
+IDF $\log(1+(N-df+.5)/(df+.5))$\cite{lucenebm25}. Lengths count complete
+analyzer tokens before DF/cap filtering. This is not exact Lucene equivalence.
+Full rankings break score ties by lexical original identity, retaining zero
+scores and exact judged ranks. Reserved queries remain unscored.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+Control & MRR@10 & nDCG@10 & Recall@10 & Recall@100 \\
+\midrule
+Word TF-IDF & .2232 & .2309 & .3263 & .4877 \\
+Character TF-IDF & .2132 & .2224 & .3000 & .5283 \\
+Word BM25 & .2621 & .2525 & .3268 & .5025 \\
+\bottomrule
+\end{tabular}
+\caption{Development duplicate-retrieval macro averages over all 64 queries.
+Unjudged candidates are not proven irrelevant; no method is selected.}
+\end{table}
+
+BM25 improves first judged rank on 23 queries, ties 14 and worsens 27 relative
+to word TF-IDF. Characters improve 24, tie 12 and worsen 28, gaining nine
+top-100 hits while losing six. All queries have feature evidence. Word features
+number 28,213 (2,993,065 nonzeros); characters reach 65,536 (34,693,072 nonzeros).
+Post-hoc descriptive paired-query bootstrap (5,000 resamples, seed 17) gives
+nDCG differences BM25--word .0217 with percentile 95\% interval
+$[-.0137,.0589]$ and character--word $-.0084$ with $[-.0523,.0391]$.
+Both include zero; these conditional development intervals do not measure
+annotation error or establish a confirmatory winner.
+
+Sixteen queries miss every judged duplicate in all three top-100 rankings.
+Inspecting the first three such IDs in lexical order suggests vocabulary mismatch
+and generic query phrasing: coworker benefits versus rubber-duck debugging,
+single-page tradeoffs versus an AJAX/modal implementation, and RESTful versus
+REST definitions. Unjudged top hits can still be useful. These observations
+motivate matched representation and bounded local-encoder controls; they do not
+prove causality or justify name-specific synonym patches. Topic-guided retrieval
+must still be compared with direct retrieval under equal budgets.
+
+First-process fitting takes 3.596/46.612/3.383 seconds (word/character/BM25);
+scoring, full ranking and metrics p50/p95 take 31.98/50.25, 114.26/140.99 and
+26.48/32.60 ms. These are Python offline evaluation costs, not production latency
+or complete ingestion gates. Five synthetic tests bring the research suite to
+336 passing tests. No encoder, paid inference or model download is used.
+Details: \path{benchmarks/2026-10-02-duplicate-lexical-retrieval.md}; first result
+SHA256 \path{22ce86f9ec04daa7a8c41bc174b399faad93c1b2cb91066c5c5735a156658c0d}.
+Fresh-process repeats match all nontiming fields, including complete score
+matrices. Independent token loops and scalar posting-list calculations verify
+all 6,177,792 scores within $10^{-12}$ (largest error $7.11\times10^{-15}$),
+plus independent sorting of archived scores, judged ranks and metrics.
+The audit shares the verified source loader and does not reproduce library
+frequency-cap tie selection or prove cross-platform close-score tie stability.
+Repeat wall time is 128.683 seconds concurrent with the audit, so is not a
+controlled performance comparison. Environment is Linux x86-64 on AMD EPYC
+9645, Python 3.11.15, NumPy 2.4.6, SciPy 1.17.1 and scikit-learn 1.9.1,
+with one OpenMP/OpenBLAS/MKL thread. Neither scalar fidelity nor exact repeats
+establish Rust parity, semantic labels or useful production topic navigation.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
