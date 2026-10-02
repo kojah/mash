@@ -5981,6 +5981,112 @@ gaps 44.17/497.51\,ms. Discovery repeat wall/CPU is 254.075/189.830\,s (setup
 from timing/peak differences. Five new edge tests bring the enabled lab suite to
 458. Selected Python/Rust runners, semantic quality and production cost remain open.
 
+\section{Zero-inference bounded semantic context}
+Isolate unit evidence while retaining the rejected seed discovery control.
+Reuse frozen raw MiniLM directions: sum current plus at most four contiguous
+preceding common-ready original turn directions in float64 and normalize.
+Whole-turn cumulative raw model tokens must be at most 512, including each
+turn's special tokens; stop at meeting roots, unsupported source gaps or token
+limits without compacting across missing evidence. Preserve every original
+source ordinal, context start, token count, stop reason and support. Norm at
+most $10^{-12}$ explicitly abstains. This averages existing vectors, not
+concatenated-text embeddings or detected episodes; it adds no model calls,
+download, LLM, remote inference or held-out source. Context is causal in original
+order even when discovery arrival is reversed.
+
+Start with the prior complete raw/masked common support of 84,434 rows out of
+88,336 turns/162 meetings, retaining any additional cancellation in the ledger
+and excluding it from both compared policies. This support is an experimental
+inheritance, not a general requirement that raw-ready inputs support masking.
+Freeze unchanged .55 immutable source-seed cosine, first-created ties, equality
+joins, cap 2,048 and meeting reset, forward/reverse. Labels use unchanged exact
+marker-cleaned original counts, corpus IDF, class scoring and eight-term lexical
+ties; no duplication of context into labels, broad filter or cutoff grid.
+Original raw meeting records must replay exactly wherever support is unchanged.
+
+Before outcomes, prespecify original-distance-greater-than-four singleton-known
+pair recurrence to exclude shared context components. Unknown and multi-annotated
+sources still enter discovery. Freeze paired original-meeting bootstrap: 2,000
+draws of 162 meeting IDs with replacement, NumPy default\_rng seed 20261002,
+context-minus-raw micro far-pair precision/recall/F1, forward/reverse separately,
+percentile 2.5/97.5 intervals; zero denominators score zero. This is exploratory
+training-corpus uncertainty, not held-out coding-topic, label or ancestor quality.
+
+Typed support/stop reasons and four new causal/gap/budget/cancellation/validation
+edge tests bring the enabled lab suite to 462. The initial harness stops before
+outcomes because a whole-capture comparator requiring timings was applied to a
+meeting record; replace it with exact record equality, retain the failed run and
+keep the scientific protocol unchanged. Complete corrected result, fresh repeat,
+independent lineage/seed/label/full-pair audit and cost are recorded in
+\path{benchmarks/2026-10-02-qmsum-semantic-units.md}. Reproducibility does not
+prove semantic quality or production readiness.
+
+All 84,434 inherited ready rows remain supported, with no cancellation and 3,902
+explicit unsupported sources. Stop reasons are 631 roots, 72,004 five-turn
+limits, 10,398 unsupported priors, 1,401 token limits and 3,902 unsupported
+currents. Original raw records replay exactly; singleton-known gold stays
+77,892 rows, 27,346,484 all-distance and 27,049,334 far pairs.
+\begin{center}
+\begin{tabular}{lrrrrr}
+Policy & Groups & Singletons & Far precision & Far recall & Far F1\\\hline
+Raw forward & 30328 & 20794 & .320282 & .046487 & .081190\\
+Raw reverse & 30396 & 20739 & .329192 & .044663 & .078654\\
+Context forward & 5662 & 339 & .320677 & .159298 & .212858\\
+Context reverse & 5458 & 915 & .319177 & .162015 & .214931
+\end{tabular}
+\end{center}
+Median group size increases from one to five; largest groups are
+356/288/632/745. All-distance F1 is .082737/.080182/.227343/.229043;
+empty labels 110/116/0/1. Context improves recurrence beyond overlapping
+neighbors while reducing fragmentation. Around .32 pair precision and
+arrival-sensitive membership/coverage remain concerns. Windows can import
+unrelated prior subjects across unrecognized topic shifts; this is not validated
+reference resolution. Descriptor presence
+does not demonstrate independent label quality. Retain causal aggregation as
+candidate evidence for actual discovery comparisons; do not select the
+fixed-seed algorithm, semantic hierarchy or production unit policy from this
+broad meeting gold.
+
+Prespecified bootstrap context-minus-raw forward recall/F1 is
+.112811 [.094763,.131952]/.131668 [.115178,.148720]; reverse
+.117352 [.100203,.136589]/.136276 [.121277,.152308]. Precision forward
+$ .000396 [-.009930,.011977] $, reverse $ -.010014 [-.023335,.002132] $.
+Recall/F1 intervals are positive in this exploratory corpus; precision
+intervals include zero. This is not an equivalence test, held-out generalization
+or validated coding-topic improvement.
+
+First after-import wall/CPU is 196.840/127.114\,s, setup 27.887\,s,
+rusage 2336624\,KiB. Aggregation once across all original rows costs 1.368\,s;
+both arrival-order timing records repeat that once-computed value, so sum only
+context-forward records. Raw forward/reverse discovery 53.423/53.194\,s,
+context 20.927/19.523\,s; labels 5.260/4.436/2.462/2.560\,s. External target
+VmRSS/smaps RSS/PSS/status peaks 2337724/2337584/2329734/2337724\,KiB,
+2546 samples, one vanished read, median/maximum gaps 65.33/627.24\,ms. Retained
+full prior source/vector/discovery ledgers and all compared outputs are offline
+workspace, not inference-worker or production memory. Imports/final JSON/repeat
+comparison lie outside stage timers, inside external scope; observer excluded.
+Monitoring is intrusive, sampled peaks lower bounds, status approximate,
+launcher high water may persist and no peak subtraction. No full-ingestion,
+lifecycle, multi-tag, independent label/ancestor or selected Rust parity gate.
+
+Complete fresh repeat matches every nontiming field, source lineage, raw replay,
+seed event, label and pair contingency. Independent audit uses a reverse candidate
+walk with ascending explicit vector sums to reconstruct all 88,336 source
+lineages, then separately replays 337,736 seed decisions, scalar labels and the
+complete known upper-triangle pairs, directly enumerating far pairs rather than
+nearby-pair subtraction. Maximum seed-score/label error is zero. It shares NumPy
+normalization/scipy dot and relies on separate source/count/frozen-vector audits;
+context matrices are reconstructed through all seed scores rather than separately
+persisted. No Rust or independent semantic quality gate follows. Repeat wall/CPU
+142.125/124.496\,s, setup 14.558\,s, aggregation once 1.060\,s; rusage
+2329544\,KiB. Sampled external VmRSS/smaps RSS/PSS/status
+2330664/2330388/2219683/2330664\,KiB, 2532 samples, one vanished read and gaps
+59.69/171.55\,ms. Repeat overlaps audit, so timing/peak variation is not a speed
+conclusion. P0 follow-up \texttt{mash-c0d.19.2.20.8.3.2} holds causal evidence
+fixed for actual BIRCH/grafting or bounded graph comparisons with frozen
+algorithm-specific settings before outcomes; cutoffs across algorithms are not
+interchangeable.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

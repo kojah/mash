@@ -1317,7 +1317,18 @@ Complete token-window support and frozen local singleton directions are audited;
 new discovery uses prespecified nonoverlap pairs and fixed seed/label policy.
 Inference reproducibility is not semantic topic quality or production selection.
 
-The full suite with the extras and explicit author reference runs 458 tests.
+The [zero-inference semantic context comparison](../../benchmarks/2026-10-02-qmsum-semantic-units.md)
+uses `semantic_units.py`/`qmsum_semantic_units.py` to sum current plus up to four
+contiguous preceding frozen source directions, with whole-turn 512-token budget
+and explicit source-gap/cancellation support. Exact raw replay, fresh repeat and
+independent full-source lineage/seed/label/pair audits pass. Nonoverlap recurrence
+improves substantially but precision remains about32%; this retains candidate
+unit evidence, not the fixed-seed method, semantic hierarchy or production policy.
+The frozen paired-meeting bootstrap supports exploratory recall/F1 gains; no
+coding-quality/generalization claim. No extra model calls or held-out sources.
+Actual BIRCH/grafting discovery comparisons and production gates remain open.
+
+The full suite with the extras and explicit author reference runs 462 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
