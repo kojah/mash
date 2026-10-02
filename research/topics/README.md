@@ -1283,7 +1283,15 @@ held-out downloads occur. [Production precedents](PRODUCTION_PATTERNS.md) inform
 a proposed separation of fast assignment from background taxonomy maintenance,
 with vendor-model limitations explicit. No topic algorithm is selected.
 
-The full suite with the extras and explicit author reference runs 433 tests.
+The [QMSum causal lexical context diagnostic](../../benchmarks/2026-10-02-qmsum-lexical-context.md)
+compares original-turn and bounded causal raw-count evidence on complete training
+source, without inference or annotation features. Context improves Hit@1/MRR but
+reduces Hit@10; retain original evidence rather than promoting context-only
+replacement. This is in-sample representation evidence, not algorithm selection.
+The helper is `causal_lexical_context.py`; existing lexical background controls
+remain in `lexical_context.py`.
+
+The full suite with the extras and explicit author reference runs 438 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

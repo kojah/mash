@@ -5590,6 +5590,85 @@ promotion still requires independent semantic quality/guided-search evidence,
 matched full-ingestion budget and Python/Rust differential CI. Further cutoff
 tuning of the rejected low-precision classifier is not the next experiment.
 
+\section{Bounded causal lexical evidence on complete QMSum training}
+Before further clustering selection, we compare original-turn evidence with
+causal source windows on all 162 training meetings/88,336 turns. This is an
+exploratory in-sample representation diagnostic using broad main-topic spans
+\cite{zhong2021qmsum}, not coding-session topic or guided-search validation.
+No LLM, encoder, new inference, held-out source or download is used.
+
+Fit source-only lowercase Unicode two-character-or-longer unigram counts with
+no stoplist and a fixed 20,000 vocabulary cap; the observed 18,316-term vocabulary
+does not activate the cap. Fit smooth IDF and sublinear TF with L2 normalization
+on original source counts. Compare original-turn candidate vectors against
+current-plus-at-most-four-previous-turn raw counts transformed by the same
+TF-IDF. Windows stay within the original meeting and retain whole turns under
+a 1,024-regex-token budget. An over-budget current turn remains intact without
+borrowed context. Annotation names, questions/answers, speakers, identities and
+positions never enter vector construction. Query vectors remain original-turn
+vectors for both candidate policies.
+
+Query anchors require one annotated topic, at least five regex tokens and
+common nonempty vectors. Candidates have singleton annotations and common
+nonempty vectors in the same meeting; exclude all positions within four turns
+of the query to prevent source overlap. Gold relevance uses the current
+candidate's local topic, not the entire borrowed context. Unknown/multi-topic
+turns are excluded support, not negatives. Keep zero scores and break exact ties
+by original ordinal. Of 41,843 eligible queries, 82 lack a known relevant peer;
+all 41,761 supported queries also have nonrelevant peers. Supported/informative
+scopes coincide. Random Hit@1 expectation is .306874.
+
+\begin{center}
+\begin{tabular}{lrr}
+Metric & Original turn & Causal context\\\hline
+MRR & .644210 & .657425\\
+Hit@1 & .500587 & .574124\\
+Hit@10 & .920883 & .854314\\
+Recall@1 & .004745 & .005941\\
+Recall@10 & .033101 & .046005
+\end{tabular}
+\end{center}
+The 1,000 paired meeting resamples, seed 20261002, give descriptive MRR-gain
+2.5/50/97.5 percentiles .009566/.013297/.016951. Source-family correlation,
+pretraining and experiment-selection uncertainty are not covered. Of 81,456
+singleton anchors, 2,725 contexts cross different or unknown annotations;
+78,731 retain the same singleton membership throughout. These annotations are
+post-construction diagnostics, not window-selection input. There are 287 empty
+source vectors; 800 root limits, 87,480 five-turn limits, 53 token limits and
+three over-budget-current fallbacks account for every source window.
+
+Context improves first-result accuracy but lowers the fraction of queries with
+any relevant top-ten result. Higher recall alongside lower hit rate is compatible
+with concentration of relevant results in successful queries; aggregate results
+do not establish that explanation causally. We therefore reject context-only
+replacement as a demonstrated improvement and next test retention of both views
+with source-identity deduplication. This does not select clustering, labels or
+semantic parent relationships, and does not yet test discovery with fixed
+clustering.
+
+Final fresh repeats match every nontiming field and CSR/vocabulary/IDF artifact
+hash. Five new helper edge tests bring the complete enabled suite to 438.
+An independent original-source auditor reconstructs counts, context ranges,
+TF-IDF, support, rankings and resamples without importing experiment helpers.
+Terminal success covers all 162 meetings, 88,336 turns and 41,843 query rows;
+maximum vector error is $2.78\times10^{-16}$ and saved score error is zero.
+Shared SciPy dot
+kernels do not establish independent-kernel, inference or Rust parity.
+The older lexical-control module remains intact under its original name.
+
+After-import wall first/repeat is 15.389/15.912\,s, CPU 15.265/15.319\,s;
+fit/aggregate .820/1.118\,s and evaluation 12.831/12.813\,s. Repeat overlaps the
+auditor, and timing excludes repeat comparison/final JSON output. Rusage peaks
+598864/590788\,KiB; external target-only RSS 599568/594104\,KiB and PSS
+591726/586056\,KiB, with 664/701 samples and one/zero vanished reads.
+Status high water is 599568/593404\,KiB, median/max sampling gaps
+28.33/51.99 and 28.47/52.76\,ms. Sampled peaks are lower bounds, status
+approximate, monitoring intrusive, and launcher high water may persist.
+External scope includes imports/comparison/JSON, excluding observer/auditor
+memory. These are offline diagnostic costs, not production ingestion or memory.
+Reproduction/pins are in
+\path{benchmarks/2026-10-02-qmsum-lexical-context.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
