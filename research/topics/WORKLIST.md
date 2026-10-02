@@ -6,8 +6,8 @@ authorize another algorithm round. The first milestone is flat multi-label
 topics; no semantic hierarchy or ancestor inheritance is required.
 
 The user's updated priority is topic quality with genuine online discovery.
-The provisional indexing budget allows 25% longer complete ingestion; it is
-not a reason to compromise quality. The finite experiment cap remains in force.
+There is no fixed percentage overhead rejection gate; report full ingestion
+cost, memory and publication lag, and require bounded sustained-arrival backlog. The finite experiment cap remains in force.
 
 ## Decisions already made
 
@@ -37,7 +37,7 @@ are historical hypotheses rather than the current execution queue.
 | Independent semantic review | Pending. Existing exposed development reviews and the smaller prepared packet cannot meet the scope gate. Review at least 20 previously unexposed threads across two providers, with at least 60 certain subjects, 20 primary and 20 secondary. Freeze source-backed subjects before exposing blinded candidate output. No assistant-created gold. `mash-c0d.19.2.33.1` and the retained candidate `mash-c0d.19.2.38.9` track this work. |
 | Declared score and provenance audit | The [scorer](TOPIC_QUALITY_REVIEW.md) exists. Once review is complete, report all tags/subjects, uncertainty and thread-level intervals; separately verify actual source/candidate pins, chronology, independence and duplicate exclusions. A passing declaration is insufficient. |
 | Online discovery | Pending acceptance. Demonstrate topics published before full indexing, bounded incremental updates and new-topic discovery without full-corpus reruns. Measure sustained-arrival backlog and publication lag; test edits/deletions/restart. Assignment into a frozen taxonomy alone cannot pass. |
-| Complete ingestion cost | Pending. Measure matched initial/incremental indexing with topics on/off, including context, inference, labels, clustering, persistence and draining topic work on supported node classes. The provisional budget is at most 25% longer elapsed ingestion (1.25×), replacing the former throughput-loss gate; record CPU, peak RSS, p95 updates and publication lag. A quality-passing online candidate over budget gets an explicit measured tradeoff decision. Refresh-only Python timings cannot pass. `mash-c0d.19.2.38.7` tracks bounded publication/cost evaluation. |
+| Complete ingestion cost | Pending. Measure matched initial/incremental indexing with topics on/off, including context, inference, labels, clustering, persistence and draining topic work on supported node classes. The user permits a generous budget: no fixed percentage rejection gate. Record elapsed time, throughput, CPU, peak RSS, p95 updates and publication lag, and verify bounded backlog without blocking ordinary search. Refresh-only Python timings cannot pass. `mash-c0d.19.2.38.7` tracks bounded publication/cost evaluation. |
 | Scoped lifecycle | Pending acceptance. Verify stable/versioned identities, ownership, duplicate votes, updates/deletes, publication and restart against actual persisted local/shared state. Small prototype fixtures establish only their own coverage. |
 | Reference and Rust | Conditional on all selection gates passing. Freeze the executable [port contract](PORT_CONTRACT.md), then implement Rust and require fixed-vector/full-path differential CI and the same quality/performance checks. No new unselected Rust topic prototype. |
 | Flat MCP integration | Conditional on selection and Rust validation. Shared core supplies flat topic browsing/detail, thread metadata tags, and composable any/all topic filters. Search remains available without topics; topic metadata cannot silently discard direct search candidates. |

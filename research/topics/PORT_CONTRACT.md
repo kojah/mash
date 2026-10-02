@@ -112,8 +112,8 @@ do not commit histories or depend on private credentials for public fixture CI.
 Parity, semantic quality and performance are independent gates. Require matched
 held-out assignments/labels and guided-search evaluation, plus complete initial
 and incremental ingestion measurements (including edits/deletes, persistence,
-CPU/RSS, p95 and topic publication lag), against the provisional ≤25% additional
-elapsed-ingestion budget (including draining topic work). Require online
+CPU/RSS, p95 and topic publication lag), with the complete quality/cost tradeoff disclosed
+(including draining topic work), rather than a fixed percentage cutoff. Require online
 new-topic discovery without full-corpus reruns as specified in
 [SELECTION_CRITERIA.md](SELECTION_CRITERIA.md). A faithful
 port of the current weak candidates must not pass production selection merely
