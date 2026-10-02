@@ -6953,15 +6953,111 @@ Offline after-import wall18.040/18.512s, CPU15.590/16.042s, including large
 captured label/source ledger/count verification/encoding/persistence. Not isolated
 hashing or full ingestion; imports/final JSON/repeat comparison outside timer,
 inside external scope. No intentional benchmark overlap/uncontrolled host load,
-no variation speed claim. Rusage1676500/1676628KiB, sampled RSS/PSS/statusHWM
-1676984/1669340/1676984 and1677372/1669496/1677372;561/579samples,1/1vanished,
-median/max gaps40.737/81.774 and39.779/77.204ms. Target includes imports/large
+no variation speed claim. Rusage 1,676,500 / 1,676,628 KiB. First sampled
+RSS 1,676,984, PSS 1,669,340, status HWM 1,676,984 KiB; repeat RSS 1,677,372,
+PSS 1,669,496, status HWM 1,677,372 KiB. Samples 561 / 579, vanished 1 / 1;
+median/max gaps 40.737 / 81.774 and 39.779 / 77.204 ms. Target includes imports/large
 ledgers, excludes observer/children; intrusive sampled lower bounds/status
 approximate/launcher high water possible/no subtraction. No worker/topic-state
 attribution. Next rotation-only quality comparison against exact-identity TF and
 offline TF-IDF, both orders, collision distortion and actual labels. Stable
 encoding does not establish semantic/global lifecycle/ingestion/Rust gates or
 production selection.
+
+\section{Fixed online lexical-frame quality control}
+Freeze \path{research/topics/STABLE_FRAME_QUALITY_PROTOCOL.md} before outcomes;
+encoding contract/preflight unchanged. Four source-only views: marker-only and
+static-noise-filtered hashed TF, each versus distinct-term TF identity oracle.
+Hashing has no fitted vocabulary\cite{sklearnfeaturehashing}; identity oracle
+uses original terms only as coordinate identities, without learned weights.
+Rotation-only exact-neighbor average linkage, both source orders,1,296 trees.
+All162 training meetings,88,336 source turns,84,434 ready,77,892 singleton-known,
+8,196 physical blocks retained. Filtered frame keeps118 flagged raw-geometry
+fallbacks; no inferred labels for fallback sources. Original all/far/crossspan
+pair support7,978,214/7,923,483/84,323 unchanged;29 recurring topics in21meetings.
+No grid/new inference/LLM/heldout or production change. Sparse normalization
+guard from current reference is pinned; historical IDF controls remain at
+\texttt{1d2a35b}. Offline TF-IDF average comparator remains.554138/.553862/.622208.
+
+\begin{center}\begin{tabular}{lrr}
+Frame & All forward/reverse & Recurring forward/reverse \\
+Raw hashed TF & .474494/.483193 & .598382/.585379 \\
+Raw term-identity TF & .478710/.483865 & .604296/.581059 \\
+Filtered hashed TF & .509198/.499559 & .604523/.590431 \\
+Filtered term-identity TF & .509377/.498971 & .608917/.593786
+\end{tabular}\end{center}
+Every frame fails necessary recurring loss$\leq.02$ in both orders. Raw hashed
+loss.023826/.036829; filtered hashed.017685/.031777; raw identity.017912/.041150;
+filtered identity.013291/.028422. All-scope losses.044761--.079644, not a broad-topic
+pass. Filtering improves aggregates over raw TF; no independent coding-agent or
+statistical winner claim. Across246,924 distinct-block pairs, mean absolute hash
+cosine error.002158/.001623 raw/filtered, maximum.235702/.408248. Hash versus
+identity tree differences are small and inconsistently signed; this does not
+establish tail safety. Increasing hash capacity alone cannot repair an identity
+control failure. Earlier offline-IDF rotation recurring.624317/.603018 suggests
+weighting matters on this corpus, but its broad losses remained.025813/.021120;
+restoring offline IDF would not establish selection or causal sufficiency.
+
+Capture every tree and display group. Fixed diagnostic cut repeatedly splits
+largest leaf-population node into min(8,blockcount) groups, ties lexicographic
+original membership. No gold-count cut. Existing c-TF-IDF\cite{bertopic} on
+original unhashed static-filtered counts, within meeting/cut, top8 positive
+terms/lexical ties. Fallback blocks contribute no invented label evidence.
+Representative is original block maximizing dot product with unnormalized group
+mean, earliest source on exact ties. First meeting filtered hashed forward
+contains64-block generic group with \texttt{just,gap,think,right,say,like,remote,gonna};
+singleton \texttt{consumerism}, singleton \texttt{fair}, two-block
+\texttt{screen,bigger,dial,make}, and three empty-label groups. These actual
+outputs show uneven cuts and conversational contamination, not robust topics.
+No bespoke word additions, calibrated semantic cut, inherited semantic-ancestor
+claim, multitag gold or independent label-quality score.
+
+Fresh repeat matches every nontiming field: complete source trees/ownership,
+node fingerprints/counters, labels/representatives/source text. Independent
+auditor \path{research/topics/audit_stable_frame_quality.py} checks1,296trees,
+127,888,160 original pair-scope contributions,67,771 terms,10,368representatives;
+maximum numeric error$2.89\times10^{-15}$. Initial audit incorrectly required
+same representative under pairwise reassociation; next mean-vector replay also
+exposed equal integer counts in different CSR layouts changing normalized TF by
+one ULP (meeting0 raw identity forward blocks66/69, gap$2.22\times10^{-16}$).
+Correct audit replays frozen incidence-layout/mean-vector operation for exact
+IDs, separately verifies equal original count values and independent scalar
+pairwise score/max agreement within existing$10^{-12}$ numerical tolerance.
+Record all347 reassociation winner differences, maximumgap$2.33\times10^{-15}$.
+Original captures unchanged; no quality gate relaxed. Shared numerical operation
+replay is not independent representative-ID algorithm parity. Canonical sparse
+layout/reduction/ties must be frozen for chosen Rust contract. Audit shares
+frozen banks/counts, NumPy/SciPy/static stoplist; no independent rotation or
+tokenizer/hash replay. Prior encoding audit is a separate boundary check.
+
+First/repeat after-import wall152.661/143.189s, CPU148.313/139.284s,
+setup8.619/9.634s. Raw hashed forward/reverse fit CPU11.449/11.265s and10.825/10.698s,
+insert p95wall3.032/2.836ms and2.791/2.670ms. Filtered hashed CPU8.916/9.081s and
+8.432/8.371s; p95wall2.091/2.123ms and1.944/1.929ms. Completed-tree batched labels
+sum1.53--1.59s per full-corpus frame/order first,1.43--1.47s repeat; not online
+maintenance. Validation3.84--3.98s first,3.53--3.72s repeat. Includes source/label
+ledgers, evaluation and states; main timer excludes imports/final JSON/repeat
+comparison, external scope includes them. No persistence/lifecycle/full ingestion
+gate. Rusage 1,521,528 / 1,521,336 KiB. First sampled RSS 1,512,176,
+PSS 1,504,671, status HWM 1,521,528 KiB; repeat RSS 1,516,328, PSS 1,504,716,
+status HWM 1,521,336 KiB. Samples 5,070 / 4,979, vanished 0 / 2;
+median/max gaps 30.184 / 60.080 and 29.405 / 70.240 ms.
+Target excludes children/observer; intrusive sampled lower
+bounds/status approximate/launcher high water possible/no subtraction. Includes
+large captured ledgers; no worker/model/topic-state attribution. Sequential runs,
+short first-JSON inspection overlapped repeat setup; otherwise uncontrolled host
+load, no variation speed claim. Full pins/procedures/cost scope in
+\path{benchmarks/2026-10-02-stable-frame-quality.md}. Enabled520-test suite passes;
+no Rust/application validation claim.
+
+Reject this fixed-TF operating point for promotion. Next prespecified bounded
+prefix calibration with fixed versioned weights/unseen-term handling may preserve
+online coordinates without mutable subtree IDF. That remains an experiment,
+alongside evidence-based semantic cuts/label support; do not assume it will pass.
+Global provider-independent namespaces, bounded state, edit/delete/restart,
+complete-ingestion$\leq10\%$ loss, independent coding multitag/ancestor/guided-search
+quality and selected Python/Rust differential CI remain required. Production
+method remains unselected.
 
 \bibliographystyle{plain}
 \bibliography{references}

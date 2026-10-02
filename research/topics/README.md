@@ -1461,7 +1461,25 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 516 tests.
+The full suite with the extras and explicit author references runs 520 tests.
+
+Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
+`stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
+[full report](../../benchmarks/2026-10-02-stable-frame-quality.md).
+Raw/filtered hashed TF and distinct-term TF controls, rotation-only in both
+orders, retain all original sources and pair support. All four frames fail
+necessary recurring loss<=.02 in both orders; hashed-filtered scores
+.604523/.590431 versus offline reference .622208. Exact identity controls
+also fail reverse: merely increasing hash capacity cannot repair this result.
+The first display includes a generic 64-block group and tiny/empty-label groups.
+Do not port this operating point or expose it as robust MCP topics.
+Full repeat matches all non-timing fields. Independent source-pair/label audit
+passes1296 trees/127888160 pair contributions/67771 terms/10368 representatives.
+Exact representative IDs replay shared CSR-layout/mean-vector operations;
+347 nearly tied winners differ under pairwise reassociation (maxgap2.33e-15),
+so chosen Rust parity must freeze layout/reduction/ties. No semantic/global
+lifecycle/full-ingestion or production gate. Beads tracks bounded frozen
+calibration weighting and evidence-based cuts as the next experiment.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
