@@ -112,6 +112,8 @@ These diagnostics also appear in progress notifications. Opt-in tracing records
 a source fingerprint in place of its path, plus the provider, line, column and
 category. Neither includes record content or raw decoder error messages. Final-result diagnostics
 remain available when intermediate progress notifications are dropped.
+For a recovery checklist that preserves source records and existing index data,
+see [recovering incomplete indexing](docs/index-recovery.md).
 Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
 newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
 The final command response stays JSON on stdout. Watching remains opt-in with
