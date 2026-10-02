@@ -5346,6 +5346,88 @@ and preserve development/test separation. Current geometry and boundary results
 are exploratory diagnostics. Robust overlapping tags, validated semantic trees,
 MCP topic tools and improved downstream agent search remain unproven.
 
+\section{Bounded lexical and dense boundary classifier}
+\label{sec:tiage-classifier}
+Lexical cohesion \cite{texttiling} and utterance-pair coherence \cite{xing}
+motivate a small complementary-feature control. We implement neither reference
+algorithm: this is supervised logistic boundary detection using existing
+embeddings, not unsupervised topic discovery. Before observing classifier
+outcomes, freeze six features: adjacent cosine; cosine to the normalized mean of
+at most two previous directions; current/previous token-set Jaccard; Jaccard
+against the union of at most two previous token sets; and current/previous
+log-one-plus token counts. Lowercase Unicode word tokens of at least two
+characters retain repetitions for counts; empty unions score zero. No phrase
+recognizers, stoplists, fitted vocabulary, future turns, roles, provider, position,
+identities or labels enter the feature vector. Dialogue IDs only define folds.
+
+Reuse the complete audited TIAGE train/development sources and frozen normalized
+int8-derived singleton directions: 4,392/1,446 supported boundaries, no new
+inference. Five deterministic dialogue-group folds independently fit a scaler
+and logistic regression ($C=1$, liblinear, 1,000 iteration limit, seed 20261002).
+Select the cutoff only from training out-of-fold probabilities by exact rational
+micro-F1, then fewer predicted changes, then smaller signed cutoff. Strict
+negative-probability comparison preserves the previous calibrator's tie rules.
+Refit all training; predict change if probability exceeds
+0.22878543025787945. Development never fits the scaler, model or cutoff but was
+already exposed in the cosine study, so this is exploratory rather than a fresh
+held-out model-selection result. Test remains unread. No complete dialogue is
+duplicated across splits; 19 shared unique texts / 30 development occurrences
+remain included; pretraining overlap is unknown.
+
+\begin{center}\small
+\begin{tabular}{lrrrrr}
+\toprule
+Scope/method & Precision & Recall & F1 & AP & AUC\\
+\midrule
+Training OOF & .3408 & .6156 & .4387 & .3833 & .7191\\
+Development classifier & .3500 & .6302 & .4501 & .3756 & .6993\\
+Development adjacent cosine & .3416 & .5756 & .4287 & .3549 & .6873\\
+Development all-change & .2151 & 1 & .3540 & -- & --\\
+\bottomrule
+\end{tabular}\end{center}
+The classifier produces 196 true positives, 364 false positives, 115 false
+negatives and 771 true negatives on development. Relative to adjacent cosine,
+17 additional correct boundaries accompany 19 additional false boundaries.
+One thousand paired dialogue resamples (seed 20261002) give F1-gain
+2.5/50/97.5 percentiles $[-.00196,.02105,.04592]$, including zero. This descriptive
+range omits cutoff-selection, pretraining and development-exposure uncertainty;
+it is not calibrated significance. Correlated-feature coefficients and the
+absence of an ablation preclude attributing the gain specifically to lexical
+features. Precision .35 remains inadequate evidence for robust session episodes.
+
+Two fresh runs match all five saved array hashes, fold assignments, scaler/model
+parameters, probabilities, threshold candidates and every nontiming field.
+An independent original-JSON audit verifies all 5,838 boundary identities,
+alternate cosine/lexical reductions, five fold-local scalers and six same-library
+model refits, scalar sigmoid predictions, all 4,393 brute-counted cutoff
+candidates, and per-dialogue confusion/AP/AUC. Maximum feature, probability and
+ranking differences are $1.55\times10^{-15}$, $2.22\times10^{-16}$ and
+$3.33\times10^{-16}$. This is source/formula verification, not an independent
+solver, inference implementation or Python/Rust port test. Five additional
+targeted tests pass; the complete enabled lab now passes 421 tests.
+
+Python 3.11.15 and scikit-learn 1.9.1 run single-threaded. After-import wall
+first/repeat is .4085/.3882\,s, CPU .4035/.3801\,s; preflight .3300/.3082\,s;
+five fold fits, cutoff calibration and final fit/predict .0466/.0455\,s.
+Evaluation and array writes enter the total; final JSON serialization does not.
+Frozen embeddings avoid new inference here, not the earlier embedding cost.
+Rusage peaks are 182108/181516\,KiB; externally sampled target RSS
+182224/181916\,KiB, PSS 170657/172024\,KiB, status high water
+182168/181836\,KiB. Sampling yields 66/71 observations and 1/0 vanished reads;
+median/max gaps are 24.16/30.01 and 24.23/36.86\,ms. Target scope includes imports,
+arrays, features and model fitting, excludes observer/children; sampled peaks
+are lower bounds, status approximate, monitoring perturbs runtime and rusage
+may retain launcher high water. No subtraction or complete-ingestion claim.
+
+Artifacts are \path{topic-tiage-classifier-first-20261002} and
+\path{topic-tiage-classifier-second-20261002}; the independent audit is
+\path{topic-tiage-classifier-audit-20261002.py}. Full source/result/code hashes,
+repeat commands and memory scope are recorded in
+\path{benchmarks/2026-10-02-tiage-boundary-classifier.md}. The cheap modest
+improvement does not select a production method: independent coding-session
+generalization, semantic episode/tag/ancestor and label quality, guided search,
+complete ingestion performance and Rust parity remain required.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

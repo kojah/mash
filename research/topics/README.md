@@ -1256,7 +1256,16 @@ No new inference occurs. Use verified semantic/source directories, complete
 `--preflight`, fresh `--output-directory`, repeat `--compare FIRST_RESULTS_JSON`,
 single-thread CPU settings and the external memory monitor.
 
-The full suite with the extras and explicit author reference runs 416 tests.
+The [bounded lexical/dense boundary classifier](../../benchmarks/2026-10-02-tiage-boundary-classifier.md)
+uses `boundary_classifier.py` on verified complete frozen TIAGE sources/vectors.
+Five dialogue-disjoint training folds fit their own scalers and logistic models;
+the cutoff uses training OOF predictions only. Development is already exposed
+and explicitly exploratory. No new inference occurs. F1 improves modestly, but
+precision remains .35 and the paired resampling range includes zero. Exact
+repeats and independent source/feature/fold/model/probability/calibration audits
+pass; this is not a selected topic method or a Rust parity gate.
+
+The full suite with the extras and explicit author reference runs 421 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
