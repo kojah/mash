@@ -1378,7 +1378,19 @@ lexical gains include zero;21 supported meetings29 topics, internal partitions
 already explored. Prioritize lexical-block macro discovery with dense/temporal
 controls; no production topic/label/ancestor or ingestion/Rust gate passes.
 
-The full suite with the extras and explicit author reference runs 480 tests.
+`block_hierarchy.py` and `qmsum_block_hierarchy.py` test cut-free offline
+average-link trees on the immutable8196 lexical/dense blocks, preserving mixed
+known-source fractions and excluding all same-block positive pairs.
+[Audited reference](../../benchmarks/2026-10-02-qmsum-block-hierarchy.md): lexical
+all/crossspan conditional purity .554/.622 vs dense .476/.562, but balanced
+chronology wins broad topics at .815. Full fresh non-timing repeat, independent
+original-source pair/LCA/global average-distance minimum and split-summary audit
+pass. Lexical is a recurring-topic candidate, not selected production discovery;
+online frames/compression, coding labels/multi-tags/ancestors and full-ingestion
+gate remain. Fixed an initial JSON numeric/string node-key comparison failure;
+preserved original capture and bridged every scientific field unchanged.
+
+The full suite with the extras and explicit author reference runs 486 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
