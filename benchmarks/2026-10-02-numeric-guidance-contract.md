@@ -1,6 +1,6 @@
 # Candidate transitive numerical guidance contract
 
-P0 `mash-c0d.19.2.20.8.3.3.3.9.4.3`, still in progress.
+P0 `mash-c0d.19.2.20.8.3.3.3.9.4.3`, completed research study, no adoption.
 [Protocol](../research/topics/NUMERIC_GUIDANCE_PROTOCOL.md).
 No production, clustering, feature or historical capture change. This is a
 numerical reference/fixture result, not corpus quality or performance evidence.
@@ -58,6 +58,80 @@ No numerical corpus quality, full-ingestion cost or memory performance gate was
 run. Reference is deliberately scalar/exact; production cost must be measured,
 not inferred from correctness fixtures.
 
+## Complete corpus comparison
+
+First target and complete repeat finished successfully; all non-timing fields
+match exactly. Independent audit passes. This establishes reference arithmetic
+and measured training drift/cost, not production adoption or inference parity.
+First capture `topic-qmsum-numeric-guidance-first-20261002.json` SHA256
+`0487c7f64bb354fc6b89b55b8e12fe5efbd233808773ec3b03aa2d7c5bcb5136`.
+Repeat capture SHA256
+`240e4337f1924ee4d3772a0c0094ecf309fb7d7d1cdb5ae24ff7b6b6051f29d6`.
+
+| Scope/arm | Changed orders | Changed memberships | Recall improves/declines/ties |
+|---|---:|---:|---:|
+| Meeting/direct | 7 | 0 | 0/0/1095 |
+| Meeting/topic | 7 | 0 | 0/0/1095 |
+| Meeting/thread | 7 | 0 | 0/0/1095 |
+| Global/direct | 119 | 87 | 0/0/1095 |
+| Global/topic | 151 | 51 | 0/0/1095 |
+| Global/thread | 183 | 64 | 1/2/1092 |
+
+Direct/topic recall and precision stay exactly unchanged. Known-meeting direct
+MRR .537946 to .537794, topic .542060 to .541908; NDCG also changes slightly.
+Global topic MRR .197217 to .196778 and NDCG .090787 to .090728.
+Global thread macro recall .068532 to .068709 but precision .036484 to .036438;
+MRR .210416 to .210403. Gains/losses can have different sizes. This is neither
+behavior-identical nor a demonstrated general quality improvement. Global
+membership replacements can be unjudged; do not call them false positives.
+
+First retrieval-plus-metric median/p95 milliseconds:
+
+| Scope | Combined exact replay | Numeric direct | Numeric topic | Numeric thread |
+|---|---:|---:|---:|---:|
+| Meeting | .783/1.446 | 1.526/4.563 | .610/1.667 | .407/1.095 |
+| Global | 73.385/301.582 | 96.883/284.743 | 174.159/530.602 | 141.462/505.052 |
+
+Combined exact replay includes all three arms/metrics/equality checks; it is
+not a per-arm matched baseline. Fixed order/cache/host/monitor effects remain;
+source-array conversion/projection excluded. Direct timing can include release
+of the previous scope's retained full ranked tuple at assignment. Do not infer
+an isolated per-arm speed ratio or deployed latency. Scalar Fraction reference
+is expensive in this full-pool prototype; correctness utility and production
+implementation cost are separate questions. After-import wall822.550s,
+CPU680.847s, setup20.448s, feature construction122.921ms. Imports/final JSON
+serialization excluded from main timings, included externally; no ingestion gate.
+
+Rusage peak2,197,912KiB; external RSS/PSS maxima2,198,880/2,190,723KiB,
+approximate status HWM2,198,880KiB. Samples18,961, vanished0, median/max
+gaps36.845/383.136ms. One target, all arms/unused input validation; children/
+observer excluded, monitoring intrusive, sampled maxima lower bounds, status
+approximate, launcher high water can survive exec. No subtraction or worker
+memory attribution. First/repeat scientific targets sequential; brief result
+inspection before repeat and held-out source/fixture/paper preparation during
+repeat must be disclosed in final cost analysis.
+
+Repeat after-import wall692.461s, CPU652.772s, setup16.757s,
+feature construction131.197ms. Global combined-exact/direct/topic/thread
+median/p95 69.751/133.976, 92.402/146.708, 161.152/483.181,
+131.149/448.494ms. Same interval/allocation/order limitations as the first run.
+Rusage2,197,744KiB; external RSS/PSS2,198,780/2,190,890KiB, approximate HWM
+2,198,780KiB, samples17,898, vanished1, median/max gaps35.785/231.687ms.
+Single-target monitoring scope and no-worker/no-ingestion limitations unchanged.
+
+Independent audit artifact `topic-qmsum-numeric-guidance-audit-20261002.json`
+SHA256 `44efb2e0beaac30a5ba6ebaa7ba612db6109630eeead62cfc54d280487aa8f55`.
+All1,095 queries/6,570 cases/121,512 selected records/702,141 feature coordinates
+pass; maximum scalar feature/numeric error2.22e-16. Original count/thread
+pooling/query/span/ownership/bin/rational-order/formula/metric/drift reconstruction
+without producer imports. Separate Fraction rounding oracle, but exact binary64
+conversion/Fraction arithmetic shared; exact projection replay shares NumPy/
+SciPy IEEE kernels. Not independent scalar tie-winner, platform-bound or Rust
+parity. Auditor SHA256
+`23bf4ae929e9deb6d28ef5e324aabe569437625526649009658b2ec25f640095`;
+reusable audit reference SHA256
+`a8335735133093502aed4115905b3bdc2c2fcbe81413d89d406127f6751d55a7`.
+
 ## Remaining work
 
 The complete study runner is now `research/topics/qmsum_numeric_guidance.py`.
@@ -78,7 +152,7 @@ proof follows.
 
 Two additional scientific-environment fixtures verify exact numerator/denominator
 weights, integer keys/ranks and absent-parent metadata survive JSON round trips.
-The full enabled suite now passes 581 tests (3.023s). These fixtures overlap
+The full enabled suite at this stage passed 581 tests (3.023s). These fixtures overlap
 the first corpus run briefly, as does the manuscript build; no corpus result, cost, repeat or audit pass is
 claimed while that run is live. Do not restart on observation timeout. The
 first/repeat/audit artifacts belong outside Git under the
@@ -86,10 +160,10 @@ first/repeat/audit artifacts belong outside Git under the
 read. This complete study may disqualify the scalar reference on cost even if
 its numeric decisions are useful.
 
-Keep the bead open for full paired direct/topic/thread corpus comparison,
-retaining changed IDs/ranks and all original query/span denominators, exact
-repeat and independent audit plus scope costs/external memory evidence. Freeze
-held-out evaluation before inspecting its outcomes. This reference cannot
+The complete paired comparison/repeat/audit/cost scope is now done. Retain this
+as a research reference, not an efficient production implementation or evidence
+that bins fix arbitrary inference drift. Held-out evaluation is frozen separately
+before quality outcomes; see GUIDANCE_VALIDATION_PROTOCOL.md. This reference cannot
 replace independent coding-session semantic labels/multitags/ancestors,
 guided-agent utility, bounded shared online lifecycle/edit/delete/restart,
 complete ingestion <=10% loss, justified platform score-error bounds or selected

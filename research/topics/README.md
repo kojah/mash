@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 581 tests.
+The full suite with the extras and explicit author references runs 588 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1600,7 +1600,7 @@ pass locally and are included in the existing CI fixture step. A one-ULP bin
 boundary fixture deliberately reports instability. This changes near-tie
 decisions and is not applied to prior captures or production. Paired corpus
 quality/cost, justified platform score bounds and selected Rust parity remain
-unverified; the issue stays open.
+unverified; corpus study outcome below does not select production behavior.
 `qmsum_numeric_guidance.py` executes that paired complete-query study against
 the pinned thread-context capture, with exact-control replay, all original
 denominators, per-query changed IDs/ranks/metrics and scope timing records.
@@ -1608,7 +1608,21 @@ denominators, per-query changed IDs/ranks/metrics and scope timing records.
 pooling, queries/spans, bin ordering and rational fusion without producer
 imports. Two scientific-environment fixtures verify exact rational weights and
 absent-parent fields survive JSON round trips. The corpus study is running;
-complete repeat/audit/results and production suitability are not yet established.
+First numeric corpus run completed: direct/topic recall unchanged, small MRR/
+NDCG differences and three global thread recall changes; complete non-timing
+repeat and independent audit pass; production suitability is not established.
+See the report for provisional
+scope costs and explicit rank changes.
+The separate `qmsum_validation_capture.py` captures only pinned author validation
+sources, reuses the typed original parser and verifies strict protocol/file/split
+provenance. Complete transcript feature hashes are disjoint from training;
+shared individual turns are counted, not dropped. Seven stdlib capture/split fixtures
+pass and join the CI fixture step. [Frozen protocol](GUIDANCE_VALIDATION_PROTOCOL.md),
+[source report](../../benchmarks/2026-10-02-guidance-validation-contract.md).
+35 meetings/20,123 turns/237 specific queries/248 spans captured, no inference
+or quality scoring. Training vocabulary/IDF cannot be re-fit on this split;
+primary known-meeting paired relevance gate and meeting bootstrap are frozen.
+Actual held-out scoring waits for the training numerical repeat/audit.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
