@@ -1182,7 +1182,18 @@ Source-supported labels and objective improvement are not semantic-quality gold.
 Run with frozen topic directories, verified source root, explicit `--snapshot`,
 fresh `--output-directory` and repeat `--compare FIRST_DIRECTORY/results.json`.
 
-The full suite with the extra runs 366 tests; without it the two Infomap/runner
+The [title-field evidence control](../../benchmarks/2026-10-02-title-field-topic-labels.md)
+uses `topic_field_evidence.py`/`cqadup_field_labels.py` to separate complete
+original title/body counts on the frozen vocabulary and topics. Exact field
+conservation, fresh repeats and independent source/count/label/support audits
+pass. Title-only labels increase term diversity but retain question phrasing
+and testing synonyms; coherence is mixed. Thirteen zero-title-evidence sources
+remain included. No inference occurs and public question titles do not establish
+provider-thread title quality. Use verified topic/source directories, fresh
+`--output-directory`, repeat `--compare FIRST_DIRECTORY/results.json`, and the
+external memory monitor. No production topic method is selected.
+
+The full suite with the extra runs 368 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

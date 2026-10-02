@@ -4911,6 +4911,62 @@ Do not promote this setting on lower cosine alone. Candidate evidence quality,
 intrinsic topics, independent specificity/intrusion, navigation, lifecycle,
 full ingestion and Rust parity remain separate gates.
 
+\subsection{Title versus merged source evidence for fixed-topic labels}
+Before observing outcomes, freeze all 32,176 sources, the original 32,768-term
+merged vocabulary, four PCA25 membership snapshots, equal-document tag mass,
+eight labels and unchanged technical-token/source-adjacent bigram rules.
+Compare merged versus original title-only class counts; background document IDF
+remains merged, while class counts, lengths and c-TF-IDF are recomputed per field.
+No query/reference features, new vocabulary fitting, stopword/numeric patches,
+model calls or reserved scoring occur. Original title/body counts must conserve
+the archived merged matrix exactly. Preserve zero-evidence sources/topic rows
+and empty-label abstention; retain selected-field source spans and hashes.
+The c-TF-IDF representation and coherence interpretation follow the preceding
+studies; this control changes evidence, not topic geometry or the estimator.
+
+Title/body counts have 322,810/4,727,380 nonzeros and mass 326,578/5,904,993;
+their sum matches merged 4,879,216 nonzeros and mass 6,231,571 exactly. Overlapping
+field terms explain nonzero nonadditivity. Thirteen zero-title-vocabulary sources
+remain included; no topic has zero evidence. Corpus-IDF diagnostics are:
+\begin{center}\begin{tabular}{lrr}
+Order/membership & Merged/title NPMI & Merged/title unique ratio\\\hline
+Forward/hard & .2717/.2743 & .8625/.9250\\
+Forward/overlap & .2809/.2848 & .8688/.9250\\
+Reverse/hard & .2649/.2608 & .9205/.9432\\
+Reverse/overlap & .2911/.3105 & .9432/.9886
+\end{tabular}\end{center}
+Plain c-TF-IDF NPMI changes from .1580/.1715/.1380/.1635 to
+.2101/.2134/.1885/.2339; containment changes from .2426/.2494/.2405/.2449
+to .2241/.2385/.2222/.2477. All three variants increase term diversity in all
+four settings, but coherence is mixed. Previously identified illustrative groups
+gain \texttt{algorithm}, \texttt{inheritance}, \texttt{mvc}, \texttt{asp.net};
+question phrases \texttt{how to}, \texttt{why is}, \texttt{why do} remain, as do
+testing variants. Assistant inspection is not human gold. Curated public question
+titles do not establish availability or quality of provider-thread titles, nor
+represent later topic shifts. Labels do not repair the failed routing/order
+behavior of these fixed groups. No semantic tree or navigation gain is claimed.
+
+Fresh repeats match every nontiming field and all 30 sparse array hashes.
+Independent original-field Counter extraction, class/formula/rank/support and
+coherence auditing verifies all sources, 2,976 label entries and 1,419 source
+supports; maximum scalar score error $5.55\times10^{-17}$. The class replay uses
+a separate driver with the same SciPy multiplication backend. 368 tests pass,
+including Unicode/technical field boundaries and zero-evidence abstention.
+First/repeat after-import wall time 22.138/18.279 s, CPU 20.792/18.041 s;
+field counting/conservation/capture 12.253/10.480 s, setup 14.422/12.178 s
+includes that field work. Rusage peaks 547,004/546,772 KiB; external 814/734
+samples yield RSS 548,036/547,336 KiB, PSS 535,377/530,294 KiB and approximate
+VmHWM equal to RSS maxima. Requested sleep 20 ms, actual median/max gaps
+28.57/69.76 and 27.15/56.62 ms; two/zero vanished reads. Both workloads exit zero;
+repeat overlaps independent auditing. These are not controlled speed comparisons.
+Sampling perturbs runtime; target-only scope excludes children/observer; maxima
+are lower bounds. Retained research matrices/imports contribute. No production
+memory, per-message latency or complete-ingestion gate is established.
+Details: \path{benchmarks/2026-10-02-title-field-topic-labels.md}.
+Do not promote title-only labeling; source-grounded episode evidence, independent
+specificity, intrinsic topics, provider coverage, lifecycle, ingestion and Rust
+parity remain separate requirements.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
