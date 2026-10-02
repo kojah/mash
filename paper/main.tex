@@ -5724,6 +5724,92 @@ ingestion/memory claim is made. Procedures and terminal
 repeat/audit evidence are recorded in
 \path{benchmarks/2026-10-02-qmsum-dual-evidence.md}.
 
+\section{Complete meeting-local sparse seed discovery control}
+To test discovery rather than ranking, freeze an insert-only source-seed control
+at cosine .55, equality joining, first-created seed ties, immutable seeds and
+2,048-seed capacity per meeting. Maximum observed meeting size is 1,832 turns,
+so the cap cannot force assignment. Test original/context evidence in forward
+and reverse source order. All 88,336 source turns remain accounted for; 88,049
+common nonempty vectors enter discovery, including unknown/multi-annotated
+turns; 287 empty vectors remain explicit. No gold fields enter construction.
+No LLM, inference, download or held-out source is used. This meeting-local
+control is not BIRCH/GRINCH or the required group-wide production namespace.
+
+Labels aggregate original source unigram counts once, never borrowed context
+counts. Fixed normalized class frequency times
+$\log(1+\text{mean class length}/\text{total class term frequency})$ times frozen
+whole-training source IDF supplies eight highest-scoring terms with lexical ties
+and no stoplist. Every descriptor has positive original-source support.
+Gold evaluates singleton-known unordered within-meeting pairs; missing/multiple
+annotations remain discovery inputs but are excluded gold. There are 81,181
+known rows and 29,018,426 pairs per policy. Annotated-name token overlap is a
+post-construction lexical proxy, not semantic label or coding-topic validation.
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+Evidence/order & Groups & Singletons & Precision & Recall & F1\\\hline
+Original/forward & 52620 & 45817 & .354524 & .025140 & .046950\\
+Original/reverse & 52525 & 45699 & .352188 & .025094 & .046850\\
+Context/forward & 24672 & 1027 & .982448 & .013171 & .025993\\
+Context/reverse & 24646 & 993 & .982789 & .013184 & .026018
+\end{tabular}
+\end{center}
+Original groups have median size one and maxima 179/262; context median four
+and maxima 55/53. Context reduces singletons but recovers even fewer same-topic
+pairs. High precision is not semantic success: adjacent windows share source.
+A post-hoc diagnostic excluding original pair distances at most four is added
+after observing these results, without refitting or changing policy. It must
+not be represented as a prespecified evaluation gate.
+
+That diagnostic contains 28,697,518 known nonoverlap pairs per policy.
+Original forward/reverse precision is .341508/.339267, recall
+.024591/.024552 and F1 .045878/.045791. Context precision falls to
+.598689/.606515, recall .000209/.000217 and F1 .000418/.000435. Context-forward
+recovers only 1,826 nonoverlap same-topic pairs versus 119,168 across all
+distances. Most apparent contextual precision reflects adjacency/shared text,
+not recurring-topic discovery. We reject this lexical seed control as a
+production topic method; this does not reject context in other representations
+or authorize exposed-threshold tuning.
+
+Annotated-name token overlap means .015927/.015864 original and
+.017147/.017054 context cover 82,231 topic/source incidences each. Common
+original-forward descriptors include \texttt{disfmarker} (5751),
+\texttt{it} (4821), \texttt{yeah} (4802) and \texttt{vocalsound} (3425); context-forward
+includes \texttt{yeah} (2228), \texttt{vocalsound} (1622) and \texttt{disfmarker} (1151).
+These are descriptor-list counts, not document frequencies or semantic labels.
+An original-source scan finds 33,979 and 16,301 occurrences of the two braced
+transcript markers. This supplies evidence for targeted source-preserving markup
+and label-noise ablation, not for indiscriminate filler deletion or improved
+embedding quality. Fixed unigram labels and pure lexical seeds fail to recover
+main-topic recurrence; do not promote or retune this control on exposed results.
+
+First after-import wall 98.867\,s, CPU 73.232\,s, setup 2.355\,s. Discovery wall
+original 20.066/20.633\,s and context 20.095/19.077\,s; final batch labeling
+4.719/4.462 and 3.237/2.947\,s. Each policy inserts 88,049 sources; empirical
+95th-percentile insertion order statistics are .3134/.3123/.3128/.3020\,ms,
+not production latency. Timers exclude imports/final JSON; no online label
+maintenance or full-ingestion gate is measured. Rusage 795996\,KiB, external
+RSS 796652/PSS 788584\,KiB and status high water 796652\,KiB, with 2,683 samples,
+one vanished read and median/max gaps 34.99/152.94\,ms. Sampled peaks are lower
+bounds, monitoring intrusive, status approximate and launcher peaks may persist.
+External scope includes imports/JSON and excludes observer/other processes.
+Full-repeat, independent seed/label/upper-triangle audits and provenance are
+recorded in \path{benchmarks/2026-10-02-qmsum-seed-discovery.md}.
+Every nontiming first/repeat JSON field matches. A separate auditor reconstructs
+all 352,196 seed insert decisions and label scores with zero numeric error,
+complete source coverage and independently enumerated gold pairs. It shares
+SciPy dot kernels and the pinned prior source/vector audit. Seven tests bring
+the complete enabled suite to 449. Captures precede a tested wrapper-only fix
+for integer JSON object keys in repeat comparison; original execution pins
+remain unchanged and scientific computation is unaffected.
+Repeat wall 83.366\,s, CPU 71.475\,s, setup 5.699\,s and rusage 795668\,KiB overlap
+the auditor and do not demonstrate a clean speed comparison. External repeat
+RSS 796516/PSS 782500\,KiB and status high water 796516\,KiB have 2,675 samples,
+one vanished read, median/max gaps 32.73/111.16\,ms. A separate post-run repeat
+comparator is outside monitored workload scope. No ingestion gate follows.
+Lifecycle, multi-tags, semantic ancestry, independent coding-topic quality and
+selected-method Rust parity remain unverified.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

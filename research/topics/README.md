@@ -1297,7 +1297,14 @@ and one original-source identity per result. It verifies both baseline rankings
 on unchanged support before comparing fusion. No new inference or clustering
 selection is involved.
 
-The full suite with the extras and explicit author reference runs 442 tests.
+The [complete fixed sparse-seed discovery control](../../benchmarks/2026-10-02-qmsum-seed-discovery.md)
+tests original/context evidence under forward/reverse insertion on all common
+nonempty QMSum turns. This is meeting-local insert-only grouping, not a production
+multi-topic hierarchy. Context reduces singleton groups but fragments recurring
+topics; known transcript markup and acknowledgements remain common descriptors.
+Retrieval gains do not establish discovery or label quality.
+
+The full suite with the extras and explicit author reference runs 449 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
