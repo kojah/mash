@@ -5116,6 +5116,73 @@ unit/granularity/calibration evidence and new reserved evaluation; independent
 topics/names/ancestors/navigation, lifecycle, publication, ingestion and Rust
 parity remain prerequisites. Details: \path{benchmarks/2026-10-02-links-budget-trial.md}.
 
+\subsection{Complete source-window retrieval control}
+Before further discovery experiments, we isolate representation aggregation.
+PARADE compares passage aggregation under localized versus distributed evidence
+\cite{li2020parade}; our fixed bi-encoder cosine maximum is not its learned
+aggregator. Position-sensitive evaluation \cite{boytsov2025positional} motivates
+recording winning-window position, without treating that position as a gold span.
+
+The prospectively fixed control preserves all 32,176 original documents and
+77,915 original title/body windows. The same 64 development query field vectors
+query four scorers: archived balanced document cosine, body-field cosine,
+all-window maximum signed cosine and body-only maximum. No new inference,
+projection, rewriting, omitted sources, query/qrel features or reserved scoring
+occurs. Source hashes and complete contiguous Unicode/UTF-8 spans are verified.
+Window ties select the earliest original encoded row; document ties use original
+lexical IDs. Frozen encoder windows are not annotated dialogue episodes.
+
+\begin{center}\begin{tabular}{lrrrr}\toprule
+Scorer & MRR@10 & nDCG@10 & Recall@10 & Recall@100\\\midrule
+Balanced document & .3445 & .3519 & .4889 & .7397\\
+Body field & .3475 & .3506 & .4474 & .6620\\
+All-window maximum & .3602 & .3452 & .4722 & .6628\\
+Body-window maximum & .3723 & .3567 & .4308 & .6643\\\bottomrule
+\end{tabular}\end{center}
+Body maximum improves first hits over body-field averaging but lowers Recall@10;
+all-window maximum loses 7.69 percentage points of Recall@100 versus balanced
+averaging. These mixed exposed development duplicate outcomes select neither
+a production policy nor a semantic topic method. No significance claim follows.
+
+Fixed body-window strata 1/2--4/5+ contain 22,358/9,548/270 candidates and
+55/18/1 supported queries with 119/40/1 explicit positive links. Queries may
+support multiple strata. All methods miss the single 5+ positive at ranks
+10 and 100, insufficient evidence for a general long-document claim. Conditional
+Recall@100 for the first two strata is .7121/.6944 balanced, .6445/.5764 body,
+.6415/.6412 all-window and .6433/.6111 body-window. Unjudged sources are not
+negatives; every query has a declared positive, so no-match behavior is untested.
+Mean top-100 stratum counts shift from 67.20/32.25/.55 balanced to
+59.03/39.69/1.28 body maximum. All-window evidence wins on a title in 62.84
+results and a later body window in 9.52; body maximum selects later windows in
+21.55. Length opportunities and position changes do not establish false positives
+or gold passage relevance. Public questions differ from agent sessions, and
+possible embedding pretraining overlap remains unknown.
+
+Complete repeats match every nontiming field and seven array hashes. An independent
+source audit reconstructs 4,986,560 unit scores, all maximum/winner decisions,
+256 complete rankings, metrics, conditional supports and top-100 composition.
+Alternate component reduction differs by at most $6.66\times10^{-16}$;
+metric error is zero. Exact ties replay the declared full GEMV stage.
+The lab passes 389 tests with optional graph/reference inputs enabled; neither
+repeatability nor this audit constitutes Rust parity.
+
+One shared window scan evaluates 77,915 vectors, 2.42 times a document scan;
+both centroid baselines are additionally scored. Combined four-policy scoring,
+reduction, ranking and metrics p50/p95 is 76.57/83.68 ms first and
+77.34/84.63 ms repeat. After-import totals are 11.646/12.215 s, setup
+6.004/6.569 s and CPU 11.024/11.288 s. Final JSON output is outside the timer;
+no encoding occurs and no separate per-policy latency is fabricated.
+Rusage peaks are 1,250,164/1,250,212 KiB; external 498/436 samples observe
+smaps RSS 1,231,764/1,250,604 KiB and PSS 1,224,195/1,242,840 KiB.
+Requested 20 ms sampling has maximum gaps 51.23/59.78 ms, with 1/0 vanished
+reads; both processes exit zero. Sampled peaks are lower bounds and status
+counters approximate. Target-only scope excludes children/observer and includes
+source validation, retained vectors/scores and output; monitoring can perturb
+runtime. These are research costs, not production latency or full-ingestion gates.
+Keep production unchanged and prioritize source-grounded episode/context evidence
+and granularity calibration. Full reproduction pins and limitations are in
+\path{benchmarks/2026-10-02-source-window-retrieval.md}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently

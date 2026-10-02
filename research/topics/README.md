@@ -1222,7 +1222,18 @@ pass, but discovery remains explicitly incomplete and quality fields null.
 Guarded timings include duplicate scans and periodic integrity checks, not full
 ingestion. Do not repair thresholds/caps or promote prefix results.
 
-The full suite with the extras and explicit author reference runs 384 tests.
+The [complete source-window retrieval control](../../benchmarks/2026-10-02-source-window-retrieval.md)
+uses `window_retrieval.py`/`cqadup_window_retrieval.py` on all original title/body
+windows and frozen development query fields. Source/Unicode/UTF-8 coverage,
+signed maxima and exact ties are validated; fresh repeats and independent
+score/winner/rank/metric/composition audits pass. Body maxima improve first hits
+but all-window Recall@100 falls versus balanced document directions. This is
+a representation diagnostic, not episode/topic gold or a selected search policy.
+No new inference occurs. Use verified semantic/source directories, complete
+`--preflight`, fresh `--output-directory`, repeat `--compare FIRST_RESULTS_JSON`,
+single-thread CPU settings and the external memory monitor.
+
+The full suite with the extras and explicit author reference runs 389 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner
