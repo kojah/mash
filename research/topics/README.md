@@ -1450,7 +1450,18 @@ Full non-timing repeat and independent original-source/aggregate/mean/LCA audits
 pass; four meaningful prefix parity/pairmean/highdimension/invalid/stale fixtures.
 Numeric buffer views are not complete state or RSS; dense reserved capacity included.
 
-The full suite with the extras and explicit author references runs 509 tests.
+`stable_lexical_frame.py` begins the future-free frame candidate with fixed
+16384 SHA256 buckets, per-term sublinear TF and no learned vocabulary/IDF.
+[Protocol](STABLE_LEXICAL_PROTOCOL.md) / [preflight report](../../benchmarks/2026-10-02-stable-lexical-preflight.md):
+all88336 source counts exactly reconstructed,8196 blocks retained; static-filter
+control explicitly flags118 raw-geometry fallbacks. Raw/filter collisions in1392/
+546blocks need quality evaluation. Full non-timing/matrix repeat and independent
+932956-coordinate audit pass; no tree/label/global ingestion or production gate.
+Two normalization boundary fixtures now accept tiny finite norms and reject
+overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
+historical sparse-average captures remain pinned to commit1d2a35b.
+
+The full suite with the extras and explicit author references runs 516 tests.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference

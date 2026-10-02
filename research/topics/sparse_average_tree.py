@@ -33,8 +33,9 @@ class SparseAverageTree(Tree):
         v=sparse.csr_matrix(vector,dtype=np.float64,copy=True)
         if v.shape[0]!=1 or not 1<=v.shape[1]<=self.maximum_dimensions or not np.isfinite(v.data).all():raise ValueError('finite bounded sparse row required')
         v.sum_duplicates();v.eliminate_zeros();v.sort_indices()
-        norm=float(np.sqrt(v.multiply(v).sum()))
-        if norm<=np.finfo(np.float64).eps:raise ValueError('nonzero leaf direction required')
+        with np.errstate(over='ignore',under='ignore',invalid='ignore'):
+            norm=float(np.sqrt(v.multiply(v).sum()))
+        if not np.isfinite(norm) or norm<=0:raise ValueError('positive finite leaf norm required')
         v=v/norm
         if self.matrix is not None and v.shape[1]!=self.matrix.shape[1]:raise ValueError('vector space changed')
         leaf=self._node(v,1,len(self.leaves));nearest=self._nearest(leaf) if self.leaves else None

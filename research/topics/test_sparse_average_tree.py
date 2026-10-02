@@ -7,6 +7,23 @@ from sparse_average_tree import SparseAverageTree
 
 
 class SparseLinkage(unittest.TestCase):
+    def test_tiny_finite_norm_matches_dense_and_does_not_mutate_input(self):
+        v=np.array([1e-18,0.,0.]);source=sparse.csr_matrix(v.reshape(1,-1));before=source.copy()
+        a=SparseAverageTree(Mode.ROTATE);b=Tree(Mode.ROTATE,linkage=Linkage.AVERAGE)
+        a.insert('tiny',source);b.insert('tiny',v);a.validate();b.validate()
+        # CSR reciprocal scaling and dense division can differ by one ULP.
+        np.testing.assert_allclose(a.root.total.toarray()[0],b.root.total,rtol=0,atol=1e-12)
+        self.assertEqual((source-before).nnz,0)
+
+    def test_invalid_norm_fails_before_tree_mutation(self):
+        a=SparseAverageTree(Mode.ROTATE);a.insert('valid',sparse.csr_matrix([[1.,0.]]))
+        root=a.root;statistics=asdict(a.statistics)
+        for v in [sparse.csr_matrix([[1e308,0.]]),sparse.csr_matrix([[1e-200,0.]]),
+                  sparse.csr_matrix(([1.,-1.],([0,0],[0,0])),shape=(1,2))]:
+            with self.assertRaises(ValueError):a.insert('rejected',v)
+            self.assertIs(a.root,root);self.assertEqual(a.serial,1)
+            self.assertEqual(a.identities,['valid']);self.assertEqual(asdict(a.statistics),statistics);a.validate()
+
     def test_continuous_nonboundary_dense_prefix_parity(self):
         vectors=np.random.default_rng(20261002).normal(size=(18,12))
         for mode in Mode:

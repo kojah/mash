@@ -6904,6 +6904,65 @@ epsilon versus dense positive-finite checks differ outside the unit-input
 corpus domain. Fixture parity is not universal malformed-input parity; define
 typed sparse aggregates for the chosen implementation.
 
+\section{Stable lexical frame preflight}
+Freeze \path{research/topics/STABLE_LEXICAL_PROTOCOL.md} before corpus outcomes.
+Full-training IDF does not establish future-free global features. Hashing maps
+new terms without learned vocabulary but introduces collisions
+\cite{sklearnfeaturehashing}. Candidate fixed16,384 positive buckets,
+SHA256(domainNUL + UTF8(term)), first8bytes little-endian modulo; domain
+\texttt{mash.topic.lexical.v1}. Python3.11 Unicode lowercase/token regex,
+exact case-sensitive marker subtraction preserving adjacent words. Apply
+$1+\ln(\mathrm{termcount})$ before bucket coalescing, float64 L2; no IDF/DF fit,
+projection/inference/LLM/heldout or embedding change. Prespecified marker-only
+and fixed existing English/acknowledgement-filter TF controls. Empty filtered
+sources explicitly retain raw geometry with fallback state; empty raw sources
+remain unassigned, never disappear. Descriptor hashes include Unicode/token/
+marker regex/flags, policy/stoplist, hash/norm/fallback semantics. Different frames
+reject; generation changes require explicit rebuild/publication. Edits/deletes,
+global group publication and chosen Rust Unicode parity remain unimplemented.
+
+Separately repair sparse normalization: positive finite computed norm matches
+dense acceptance, tiny$10^{-18}$ accepted; overflow$10^{308}$, underflow$10^{-200}$
+and duplicate-coordinate cancellation reject before tree mutation. Initial
+bit-exact tiny fixture failed at$1.11\times10^{-16}$ CSR reciprocal/dense division
+difference; use already declared$10^{-12}$ numerical tolerance, not a relaxed
+quality gate. Prior controls retain historical commit\texttt{1d2a35b} and unchanged
+captures; current source is not that frozen helper. Two boundary/five frame
+fixtures, enabled516-test suite passes2.669s. No application/Rust change.
+
+All88,336 source-turn counts exactly reproduce immutable marker-only ledger;
+old vocabulary used only as count-lineage oracle, not coordinate/weight training.
+All8,196 physical source blocks retained. No topic tree fitted or labels scored.
+\begin{center}\begin{tabular}{lrrrrr}
+Policy & Ready & Raw fallback & Empty & Colliding blocks & Term surplus \\
+Marker-only TF & 8196 & 0 & 0 & 1392 & 1780 \\
+Static-filter TF & 8078 & 118 & 0 & 546 & 610
+\end{tabular}\end{center}
+Two8,196x16,384 CSR banks with611,407/321,549 nonzero coordinates; all nonempty
+unit norms within$10^{-12}$. Colliding surplus counts distinct terms minus buckets
+per block, not topic error. Filter fallback1.44\% explicitly captured, no hidden
+support loss. Readable labels need original unhashed terms. Full fresh repeat
+exact in every nontiming field and every matrix file. Independent saved-source/
+scalar hash-byteorder/weights/coalescing/norm/ownership/state audit:16,392 cases,
+932,956 coordinates, error0. Shared frozen source ledger/NumPy/SciPy, not an
+independent tokenizer/tree-quality/Rust implementation. System sha256sum checks
+golden \texttt{cbioportal} bucket805. Procedures/pins and full results in
+\path{benchmarks/2026-10-02-stable-lexical-preflight.md}.
+
+Offline after-import wall18.040/18.512s, CPU15.590/16.042s, including large
+captured label/source ledger/count verification/encoding/persistence. Not isolated
+hashing or full ingestion; imports/final JSON/repeat comparison outside timer,
+inside external scope. No intentional benchmark overlap/uncontrolled host load,
+no variation speed claim. Rusage1676500/1676628KiB, sampled RSS/PSS/statusHWM
+1676984/1669340/1676984 and1677372/1669496/1677372;561/579samples,1/1vanished,
+median/max gaps40.737/81.774 and39.779/77.204ms. Target includes imports/large
+ledgers, excludes observer/children; intrusive sampled lower bounds/status
+approximate/launcher high water possible/no subtraction. No worker/topic-state
+attribution. Next rotation-only quality comparison against exact-identity TF and
+offline TF-IDF, both orders, collision distortion and actual labels. Stable
+encoding does not establish semantic/global lifecycle/ingestion/Rust gates or
+production selection.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
