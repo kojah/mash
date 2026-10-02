@@ -1291,7 +1291,13 @@ replacement. This is in-sample representation evidence, not algorithm selection.
 The helper is `causal_lexical_context.py`; existing lexical background controls
 remain in `lexical_context.py`.
 
-The full suite with the extras and explicit author reference runs 438 tests.
+The [fixed dual-view diagnostic](../../benchmarks/2026-10-02-qmsum-dual-evidence.md)
+retains both original/context candidate views with full-list equal-weight RRF
+and one original-source identity per result. It verifies both baseline rankings
+on unchanged support before comparing fusion. No new inference or clustering
+selection is involved.
+
+The full suite with the extras and explicit author reference runs 442 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

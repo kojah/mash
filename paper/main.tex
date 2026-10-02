@@ -5669,6 +5669,61 @@ memory. These are offline diagnostic costs, not production ingestion or memory.
 Reproduction/pins are in
 \path{benchmarks/2026-10-02-qmsum-lexical-context.md}.
 
+\section{Retaining both lexical evidence views with fixed rank fusion}
+The preceding context-only result motivates retaining original and contextual
+evidence rather than replacing source turns. Before outputs we freeze equal
+weight reciprocal rank fusion \cite{rrf2009}, $k=60$, one-based full-list
+ranks with no pre-fusion truncation, exact ties by source ordinal, and one
+candidate per original turn. Query vectors, annotation/exclusion support and
+candidate budgets are unchanged. Both original baseline rankings must match
+the audited capture for every supported query. No tuning grid, annotation
+feature, inference, download or held-out access occurs.
+
+\begin{center}
+\begin{tabular}{lrrr}
+Metric & Original & Context & Dual RRF\\\hline
+MRR & .644210 & .657425 & .668580\\
+Hit@1 & .500587 & .574124 & .540456\\
+Hit@10 & .920883 & .854314 & .919782\\
+Recall@1 & .004745 & .005941 & .005314\\
+Recall@10 & .033101 & .046005 & .037707
+\end{tabular}
+\end{center}
+All 41,761 supported queries remain identical; 82 unsupported rows remain
+explicit. Fusion improves MRR and first-hit accuracy over original evidence
+while nearly restoring original top-ten coverage. It does not dominate:
+context-only has higher first-hit accuracy and recall; original Hit@10 remains
+slightly higher. Against original, Hit@10 improves on 1,373 queries, regresses
+on 1,419 and ties on 38,969 (net loss 46). MRR improves on 11,531, regresses on
+9,869 and ties on 20,361. Hit@1 improves on 5,232, regresses on 3,567 and ties
+on 32,962. Complete per-query directions remain in the artifact.
+
+The 1,000 paired meeting MRR-gain percentiles, seed 20261002, are
+.020880/.024355/.027803 versus original and .007730/.011182/.014210 versus
+context. These descriptive exposed-training resamples do not establish
+independent coding-topic quality; no Hit@10 noninferiority margin or equivalence
+was prespecified. Rank fusion does not demonstrate improvement in discovery,
+lexical labels or semantic ancestry. We retain two views as a research candidate
+and next test representations within fixed online discovery and label evaluation,
+rather than tuning RRF on this corpus. Four source-alignment/full-list/tie/error
+tests bring the complete enabled lab suite to 442. Fresh repeat matches every
+nontiming field. A separate scalar RRF auditor verifies all 88,336 source turns,
+41,843 query rows and 41,761 supported rankings/directions/resamples, with zero
+fused score error, using the pinned prior source/count/vector audit. It shares
+SciPy dot kernels and does not prove inference or Rust parity.
+After-import total wall is 23.620/23.199\,s, CPU
+23.492/22.866\,s, evaluation 21.240/21.442\,s; no new inference. Timing excludes
+repeat comparison/final JSON, and repeat overlaps an independent auditor.
+Rusage 508232/509908\,KiB contrasts with external full-target RSS
+508916/678248\,KiB and PSS 500836/664250\,KiB; repeat comparison loads another
+complete ledger after the experiment timer. Status high water is
+508420/683384\,KiB, with 975/1021 samples, one/zero vanished reads and median/max
+gaps 28.22/42.66 and 28.55/64.11\,ms. Sampling is a lower bound, status counters
+approximate and monitoring intrusive; no peak subtraction or production
+ingestion/memory claim is made. Procedures and terminal
+repeat/audit evidence are recorded in
+\path{benchmarks/2026-10-02-qmsum-dual-evidence.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
