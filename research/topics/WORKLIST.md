@@ -15,6 +15,11 @@ online ensemble evaluation (unchanged phrase baseline versus one frozen
 phrase/dense hybrid, plus exact repeat). This is a separate authorized comparison,
 not reopening the completed NMF grid. Freeze its rules before execution and
 apply the same independent quality, online, lifecycle and reference gates.
+The frozen control and exact repeat are now recorded in
+[the ensemble report](../../benchmarks/2026-10-02-topic-ensemble.md): 720 tags
+become 538, untagged sources rise 769 to 1,022 and six threads lose all tags.
+This is a coverage risk, not an independent quality verdict. No promotion or
+cutoff tuning; complete online publication, quality and ingestion gates remain.
 
 ## Decisions already made
 

@@ -32,7 +32,8 @@ A coding-agent session is not necessarily one document about one subject. A
 session may discuss implementation, diagnosis, tooling and unrelated planning.
 Conversely, a short approval can continue a substantive earlier discussion while
 carrying little standalone lexical evidence. Our target is a source-grounded
-collection of topic tags per thread, with meaningful ancestor inheritance and
+collection of flat, overlapping topic tags per thread in the first milestone,
+with hierarchy deferred, and
 tools for browsing topics, finding candidate threads, and searching messages
 within those threads. A topic's discovery structure and its semantic taxonomy
 are distinct objects; an internal clustering node is not automatically a useful
@@ -8921,6 +8922,58 @@ references supplied. The seven fixtures join CI; no real review is generated,
 filled or scored, and no algorithm/parameter experiment is added. Procedures and
 schema: \path{research/topics/TOPIC_QUALITY_REVIEW.md}. Numeric pass flags must
 never automatically select the topic method.
+
+\section{A bounded phrase/dense ensemble control}
+The user relaxed the ingestion percentage cutoff in favor of quality while
+retaining genuine online discovery and no generative model. We froze a two-arm
+protocol before execution: unchanged source-aware phrase proposals versus those
+proposals corroborated by existing dense directions. This is a targeted
+experiment, not a claim that combining earlier algorithms generally helps.
+Phrase labels retain their class-based lexical statistics, related to the
+representation approach in BERTopic~\cite{bertopic}; the corroboration rule is
+our diagnostic, not an evaluated production recipe.
+
+Use the existing exposed 128-thread/1850-source capture, verify original captured
+text hashes, and reproduce the complete phrase baseline semantics. Average
+unit-normalized vectors once per distinct input/thread; normalize each mean.
+Compare it with the normalized mean of other supporting threads, excluding
+the entire target thread. At least two threads and two distinct inputs require
+cosine $\geq.55$; undefined directions abstain. Rare subjects remain provisional.
+Do not refill rejected tags, change scores/order or attach nonliteral evidence.
+No new inference, LLM, grid or independent annotations are used.
+
+First run: topics $442\to283$, thread tags $720\to538$,
+sources without evidence $769\to1022$, multi-tag sources $413\to318$,
+and untagged threads $0\to6$. Provisional topics remain 151. These are coverage
+risks, not semantic precision/recall. Multi-subject message directions and an
+all-peer mean may dilute real subgroups, while generic semantic similarity may
+preserve weak labels. Do not promote or tune this cutoff against the outputs.
+
+First lexical snapshot 4.085s, geometry inserts 5.224s total/p95 $7.896$ms,
+filter 9.578s; complete control after initial hashes, including source loading,
+checkpoint and reverse recreation, duplicate and provenance checks,
+59.679s wall/54.248s CPU. Rusage peak 1452628KiB
+includes multiple retained ledgers/checkpoints and imports, not isolated worker
+memory or complete ingestion. Pin the scientific environment and one numerical
+worker on Xenia; scheduling/power are uncontrolled. Geometry updates affected
+buckets, but the lexical snapshot still recomputes corpus statistics. This does
+not pass complete online operation or sustained-arrival publication.
+
+Four new fixtures and all 681 research tests pass with author references supplied.
+Exact repeat matches every non-runtime field: repeat lexical 4.725s,
+geometry 4.683s/p95 $6.939$ms, filter 9.942s, whole 63.888s wall/55.005s CPU,
+rusage peak 1453264KiB. A scalar audit of all 720 decisions finds 346 corroborated,
+192 provisional and 182 uncorroborated, maximum cosine error $1.67\times10^{-15}$
+and minimum cutoff distance $.001310$; thread/source filtering matches exactly.
+The auditor shares token extraction but imports no phrase/ensemble producer;
+this is numerical/source agreement, not semantic or native parsing evidence.
+Captures and audit are recorded in
+\path{benchmarks/2026-10-02-topic-ensemble.md}. Independent semantic review,
+production lifecycle, full-ingestion tradeoff and Rust parity remain open.
+The first comparison mistakenly included arrival counters; another capture was
+rejected for code drift during execution. Preserve both failed logs, use the
+unchanged final captures, and do not count guardrail failures as algorithm runs.
+Protocol: \path{research/topics/ENSEMBLE_PROTOCOL.md}; no production selection.
 
 \bibliographystyle{plain}
 \bibliography{references}
