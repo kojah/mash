@@ -1437,7 +1437,20 @@ distances/small per-meeting graphs are not online ingestion timing evidence.
 Next evaluate sparse online average-link lexical-block trees, retaining all
 source evidence; labels/semantic/lifecycle/global frame/ingestion/Rust gates remain.
 
-The full suite with the extras and explicit author references runs 505 tests.
+`sparse_average_tree.py` / `qmsum_sparse_average.py` reuse unchanged prototype
+rotate/graft/restructure with CSR unnormalized subtree means, preserving exact
+mean cross-leaf cosine. [Frozen protocol](SPARSE_AVERAGE_PROTOCOL.md) and
+[audited result](../../benchmarks/2026-10-02-qmsum-sparse-average.md): lexical
+rotation return .624/.603 passes provisional recurring loss in both orders;
+graft .624/.602 narrowly misses reverse and uses more reference insertion CPU.
+Advance rotation-only to stable online lexical-frame evaluation, not production
+selection: broad loss .026/.021 remains, full-training IDF/global frame and
+coding labels/multitag/ancestors/lifecycle/ingestion/Rust gates unverified.
+Full non-timing repeat and independent original-source/aggregate/mean/LCA audits
+pass; four meaningful prefix parity/pairmean/highdimension/invalid/stale fixtures.
+Numeric buffer views are not complete state or RSS; dense reserved capacity included.
+
+The full suite with the extras and explicit author references runs 509 tests.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference
