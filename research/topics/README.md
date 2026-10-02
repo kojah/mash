@@ -1461,7 +1461,7 @@ Two normalization boundary fixtures now accept tiny finite norms and reject
 overflow/underflow/cancellation without mutation; CSR/dense tolerance1e-12,
 historical sparse-average captures remain pinned to commit1d2a35b.
 
-The full suite with the extras and explicit author references runs 564 tests.
+The full suite with the extras and explicit author references runs 568 tests.
 
 Fixed-frame quality follow-up: `qmsum_stable_frame_quality.py` and
 `stable_frame_quality.py`, [frozen protocol](STABLE_FRAME_QUALITY_PROTOCOL.md),
@@ -1572,6 +1572,14 @@ rank replay. Retain as a candidate, not a production choice. Full-pool global
 Python sorting costs about46--47ms median; bounded cost, held-out/coding
 quality and robust cross-language near-ties remain necessary alongside prior
 semantic/global-lifecycle/full-ingestion gates.
+`qmsum_vector_guidance.py` compares scalar/vector ranking on identical arrays
+and preserves all 2,190 scoped results and their original metrics exactly.
+[Protocol](VECTOR_GUIDANCE_PROTOCOL.md),
+[report](../../benchmarks/2026-10-02-vector-topic-guidance.md).
+Matched global scalar/vector medians 29.402/18.733ms first, 32.401/19.139 repeat;
+small meeting scope regresses about .1ms. Complete repeat and reused independent
+source/query/span/formula/rank/metric audit pass. No candidate truncation, new
+quality claim, near-tie portability or production/E2E selection follows.
 Enable the compiled author FISHDBC prefix/repeat fixture with
 `MASH_TOPIC_FISHDBC_REFERENCE=/home/james/scratch/mash-artifacts/topic-fishdbc-author-20261002`;
 without it that fixture explicitly skips. See the protocol for pinned reference

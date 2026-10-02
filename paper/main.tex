@@ -7587,6 +7587,62 @@ absent and host load uncontrolled. Independent coding/semantic label and
 multitag/ancestor quality, held-out guided search, bounded costs, shared online
 lifecycle, complete ingestion and selected Python/Rust parity remain gates.
 
+\section{Exact vectorization without a candidate cap}
+Remove per-source Python record allocation from the parent-rank reference.
+Validate integer ownership through sorted ID lookups rather than arrays
+indexed by maximum global ID; vectorize all positive-rank contributions and
+final ordering, constructing only at most 20 returned records. Keep full
+source/group pools, k=60, exact float/global-ID ties, source identities,
+features, queries, scopes and result budget unchanged. No clipping,
+quantization, grid, inference/LLM/download, new label gate or held-out data.
+This does not resolve the separate numerical near-tie portability contract.
+
+For every one of 1,095 queries, run scalar then vector on identical arrays in
+meeting/global scope. All 2,190 scoped pairs match every ID, source/parent
+score/rank, fused score and candidate count against both the scalar call and
+frozen capture. Fresh direct scores/IDs replay the preceding control. Original
+metrics are retained because every returned identity matches, then independently
+re-audited from original queries/spans. Complete non-timing repeat and source
+pins pass. Four differential fixtures include 200 seeded generated cases,
+arbitrary ID permutations, zeros/negative values, exact ties, one-ULP neighbors,
+empty inventories and invalid ownership; enabled suite reaches 568 tests.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+Scope & First scalar & First vector & Repeat scalar & Repeat vector\\
+\hline
+Meeting & .178/.338 & .291/.490 & .180/.377 & .282/.514\\
+Global & 29.402/54.553 & 18.733/32.995 & 32.401/62.168 & 19.139/41.373\\
+\end{tabular}
+\end{center}
+Entries are ranking-only median/p95 milliseconds. Global median improves,
+but small meeting scope regresses about .1ms. Both paths retain complete
+positive ranks and scope validation; fixed array overhead can dominate small
+inputs. Do not infer universal speed, a tuned adaptive selector or quality gains.
+Prior timings included metric/accounting work; compare these matched pairs.
+Query projection, baseline/equality checks, metrics and actual model/HTTP/
+backend/reranking/persistence are outside this table. Scalar precedes vector;
+cache/order/host effects remain uncontrolled.
+
+First/repeat complete research wall 88.623/95.479 seconds after imports,
+CPU 84.066/88.361, feature construction 78.423/68.624 milliseconds. Both
+implementations and equivalence work, large unused embedding/context validation
+and capture processing enter the target. No per-implementation memory or
+deployed latency/ingestion attribution. The reused independent auditor passes
+1,095 queries, 4,380 cases, 81,008 selected records and 568,026 scalar feature
+coordinates; max error 2.22$\times10^{-16}$. Exact rank replay shares
+NumPy/SciPy IEEE kernels; scalar fsum geometry agreement within $10^{-12}$
+does not prove scalar tie-winner equivalence. Shared pinned original counts/
+IDF/groups/sklearn stoplist; source tokenizer previously audited. Procedures,
+fingerprints and memory scope in
+\path{benchmarks/2026-10-02-vector-topic-guidance.md}.
+
+No new quality result or production method selected. Compare against plain
+thread-context guidance to isolate clustering utility, then freeze robust
+numeric/held-out contracts. Independent coding/semantic label and multitag/
+ancestor quality, guided agent utility, bounded global online lifecycle and
+complete ingestion plus selected Python/Rust parity remain gates.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
