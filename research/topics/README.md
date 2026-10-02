@@ -1,5 +1,14 @@
 # Topic methodology lab
 
+The [scientific environment](SCIENCE_ENVIRONMENT.md) now has explicit exact
+version pins, distribution archive hashes and a fresh-directory initializer.
+A fresh CPython3.11.15 environment verifies all 43 original package versions
+and [replays all four current flat controls](../../benchmarks/2026-10-02-scientific-environment-replay.md)
+exactly against the old capture, with independent source/frequency audit and
+661 passing research tests. The broader `uv.lock` remains a separate dependency
+selection. Environment reproduction establishes no semantic quality, complete
+ingestion or selected Rust parity gate.
+
 ## Current milestone: flat, multi-label topics
 
 On 2026-10-02 the user dropped the hierarchy requirement. The first milestone

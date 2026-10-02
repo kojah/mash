@@ -4,6 +4,16 @@ Status: required promotion contract, tracked in `mash-c0d.19.2.26`. No topic
 algorithm is selected, and no production Rust parity CI gate exists yet.
 Research candidates and their private captures are not the final contract.
 
+The first milestone is flat, multi-label topics (decision 2026-10-02).
+Semantic ancestry, parent/child links and inherited tags are not requirements
+or promotion gates. Historical hierarchy examples below apply only to an
+explicitly optional future hierarchy experiment, not this milestone.
+
+Use the exact scientific reference environment described in
+[SCIENCE_ENVIRONMENT.md](SCIENCE_ENVIRONMENT.md), rather than assuming the
+broader research lock reproduces historical captures. A matching environment
+is necessary evidence, not selected-method Rust parity or semantic quality.
+
 The development-only [stage comparator](STAGE_PARITY.md) and adversarial
 standard-library tests now implement the comparison boundary and run in CI.
 They enforce pinned fixture/policy provenance, ordered stage coverage, exact
@@ -24,7 +34,7 @@ Keep Python a development/CI dependency; production execution stays Rust.
 | Inference | Pinned model/tokenizer/pooling/truncation/quantization; measured vector tolerance and downstream decision checks |
 | Clustering | Identical fixed input vectors; defined normalization, precision, tie order, thresholds, insertion decisions and abstentions |
 | Labels | Same source-adjacent token counts, background statistics, scoring formula, candidate eligibility and deterministic ties |
-| Tags/tree | Same multi-topic memberships, ancestry and inherited tags under canonical identities |
+| Thread tags | Same multi-topic memberships and original evidence under scoped canonical identities |
 | Lifecycle | Defined edits/deletes/late-arrival transitions, persisted state and restart recovery before those features ship |
 
 Offsets require special care: Python research spans use Unicode code points,
@@ -52,8 +62,9 @@ for numeric, boolean, enum and array fields in the selected fixture contract.
 The differential comparator reports the first mismatching stage, source fixture,
 expected/actual identities and bounded numeric differences. Compare memberships
 as sets of stable canonical source identities, not incidental cluster numbers.
-For ties and topology decisions, retain explicit canonical tie rules and event
-traces; do not canonicalize away a genuinely different parent relationship.
+For ties and assignment decisions, retain explicit canonical tie rules and event
+traces. If comparing an optional hierarchy experiment, do not canonicalize away
+a genuinely different parent relationship.
 Freeze the linkage formula and aggregation weights explicitly. Normalized-centroid
 cosine differs from the dot product of unnormalized vector means (average
 cross-leaf cosine for unit inputs); silently normalizing a mean changes the method.
