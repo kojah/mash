@@ -2,6 +2,7 @@ use super::*;
 mod compaction;
 mod memory;
 mod pipeline;
+mod tool_history;
 use crate::{
     ingestion::{IndexOptions, direct_scans, index},
     provider::Provider,
