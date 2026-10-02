@@ -8166,6 +8166,35 @@ prevent interpretation as complete-ingestion or Rust-parity gates.
 Procedures and preserved failed/final artifacts are documented in
 \path{benchmarks/2026-10-02-complete-topic-windows.md}.
 
+\section{Admitted-text adjacency control}
+Using the frozen first-window and complete-window vectors, we compared
+canonical unit boundaries against admitted-text adjacency. Only literal empty
+projections without vectors are kept separately without ending a pending unit;
+nonempty unembedded text still forces a boundary. No excluded content is
+embedded or borrowed. Typed policies preserve provider/thread scope and the
+unchanged .55 join threshold, eight-turn and 8192-byte bounds.
+
+Both policies produce the identical partition on this cohort: 144 units,
+three multi-turn units and a maximum of four members. Canonical defaults
+exactly reproduce the prior snapshots. First/full representations retain
+59/58 leaves and .875/.961538 order pair Jaccard. A scoped scalar audit finds
+18 adjacent admitted pairs separated by excluded records; their maximum
+cosine is .391520 and none reaches .55. This does not reconstruct every
+pooled-centroid decision or establish universal policy equivalence. It rules
+out exclusion boundaries as the correction on this small exposed cohort,
+rather than justifying a lower threshold.
+
+Two runs match non-runtime fields. Three new fixtures validate explicit
+exclusion handling, unknown missing-geometry boundaries, typed policies and
+provider scope. Four-arm/two-order computation takes 2.023/5.566s wall and
+2.013/2.712s CPU, illustrating host contention. Sampled target RSS is
+145956/143972 KiB and PSS 136072/134255 KiB; rusage is retained separately.
+Imports, fixed arm order, sampling and monitoring limit interpretation;
+these are not full-ingestion gates. Next evaluation should use the existing
+128-thread frozen cohort and all 1850 admitted occurrences, rather than
+continue tuning this small sample. Detailed procedures and private artifacts:
+\path{benchmarks/2026-10-02-admitted-topic-adjacency.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

@@ -1,5 +1,6 @@
 """Causal adjacent user-turn pooling for routing, retaining original label evidence."""
 import argparse
+from enum import StrEnum
 import hashlib
 import json
 from pathlib import Path
@@ -10,18 +11,30 @@ from topic_refresh import refresh
 from topic_stream_demo import pair_members
 
 
-def units(sources,threshold=.55,maximum_turns=8,maximum_joined_bytes=8192):
+class Adjacency(StrEnum):
+    CANONICAL = 'canonical_break_at_exclusions'
+    ADMITTED = 'admitted_text_with_exclusions_separate'
+
+
+def units(sources,threshold=.55,maximum_turns=8,maximum_joined_bytes=8192,adjacency=Adjacency.CANONICAL):
     if not 0<threshold<=1 or type(maximum_turns) is not int or not 1<=maximum_turns<=8:
         raise ValueError('bounded explicit unit parameters required')
     if type(maximum_joined_bytes) is not int or not 1<=maximum_joined_bytes<=8192:
         raise ValueError('bounded represented unit text required')
+    if not isinstance(adjacency,Adjacency):raise ValueError('known typed adjacency policy required')
     grouped={}
-    for source in sources:grouped.setdefault(source.thread,[]).append(source)
+    for source in sources:
+        rows=grouped.setdefault(source.thread,[])
+        if rows and rows[0].provider!=source.provider:raise ValueError('thread provider changes')
+        rows.append(source)
     result={}
     for thread,rows in grouped.items():
         completed=[];pending=[];total=None;size=0
         for source in rows:
-            if pending and pending[0].provider!=source.provider:raise ValueError('thread provider changes')
+            if adjacency is Adjacency.ADMITTED and source.vector is None and source.text=='':
+                # Only an explicit empty projection is an exclusion. Missing
+                # geometry for nonempty text remains a boundary in both arms.
+                completed.append((source,));continue
             length=len(source.text.encode())
             accept=False
             if pending and source.vector is not None and total is not None:

@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 from topic_stream import Source
-from topic_units import units
+from topic_units import units,Adjacency
 
 
 def source(identity,vector,text='fixture',thread='t'):
@@ -9,6 +9,22 @@ def source(identity,vector,text='fixture',thread='t'):
 
 
 class UnitTests(unittest.TestCase):
+    def test_admitted_adjacency_preserves_exclusions_without_forcing_boundary(self):
+        rows=[source('a',[1,0]),source('excluded',None,''),source('b',[1,0])]
+        groups=units(rows,adjacency=Adjacency.ADMITTED)
+        self.assertEqual([[s.id for s in g] for g in groups],[['excluded'],['a','b']])
+        self.assertEqual({s.id for g in groups for s in g},{s.id for s in rows})
+        self.assertEqual([[s.id for s in g] for g in units(rows)],[['a'],['excluded'],['b']])
+
+    def test_unknown_missing_geometry_still_breaks_admitted_adjacency(self):
+        rows=[source('a',[1,0]),source('missing',None,'real unembedded request'),source('b',[1,0])]
+        self.assertEqual(list(map(len,units(rows,adjacency=Adjacency.ADMITTED))),[1,1,1])
+
+    def test_policy_and_provider_scope_are_strict(self):
+        with self.assertRaises(ValueError):units([],adjacency='admitted')
+        rows=[source('excluded',None,''),Source('other','t','different','fixture',np.array([1.,0.]))]
+        with self.assertRaises(ValueError):units(rows)
+
     def test_adjacent_related_turns_pool_but_topic_change_does_not(self):
         rows=[source('a',[1,0]),source('b',[1,0]),source('c',[0,1])]
         self.assertEqual([[s.id for s in g] for g in units(rows)],[['a','b'],['c']])
