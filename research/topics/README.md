@@ -1311,7 +1311,13 @@ descriptors disappear; broad filtering improves a post-hoc content-word proxy
 but changes coverage substantially. Raw-name overlap rewards function words,
 so neither proxy establishes semantic quality or embedding/discovery improvement.
 
-The full suite with the extras and explicit author reference runs 453 tests.
+The [complete semantic representation controls](../../benchmarks/2026-10-02-qmsum-semantic-controls.md)
+preserve exact source coordinates while masking only known transcript markers.
+Complete token-window support and frozen local singleton directions are audited;
+new discovery uses prespecified nonoverlap pairs and fixed seed/label policy.
+Inference reproducibility is not semantic topic quality or production selection.
+
+The full suite with the extras and explicit author reference runs 458 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

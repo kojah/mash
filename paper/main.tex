@@ -5883,6 +5883,104 @@ memory. Sampled peaks are lower bounds, status approximate, monitoring intrusive
 launcher peaks may persist; no subtraction or production-memory/ingestion gate.
 Representation cleanup/refitting and independent semantic evaluation remain open.
 
+\section{Complete local semantic representation control}
+The rejected lexical source-seed experiment motivates changing representation,
+without treating retrieval gains as topic discovery. Freeze the complete QMSum
+training source (162 meetings, 88,336 turns), the installed quantized MiniLM and
+tokenizer assets, and two policies: unchanged original text versus replacement
+of exact case-sensitive braced \texttt{disfmarker}/\texttt{vocalsound} characters
+by equal-length ASCII spaces. Preserve original character/UTF-8 coordinates and
+record all marker spans; no broad stopword removal, cropping, rewriting, LLM,
+download or held-out source. Model/tokenizer pins and executable procedures are
+in \path{benchmarks/2026-10-02-qmsum-semantic-controls.md}.
+
+Tokenize singleton inputs without padding or truncation, including special
+tokens in the 512-token limit. Raw ready/empty/over-window counts are
+88,182/81/73; masked 84,447/3,829/60. All 88,336 sources remain accounted for,
+including 3,748 newly empty and 13 newly window-supported masked inputs. Common
+support is 84,434. Complete repeated preflight and independent literal-search,
+source-coordinate and pinned-tokenizer audit cover all 176,672 variant rows;
+the auditor shares the tokenizer implementation, not an independent engine.
+
+Encode each exact ready text once across policies: one CPU intra/inter thread,
+batch one, float32 attended-token mean pooling, max-absolute scaling to 127,
+ties-away rounding, int8 clipping and float64 unit normalization. Store both
+88,336-by-384 matrices, unsupported rows explicitly zero and unsearchable.
+Bound the encoder cache at 1,024; exact-text frozen-vector reuse has first-origin
+lineage. There are 83,272 unique model calls, 89,357 stored-vector reuses and 81
+cache clears. Independent audit verifies every original input, status, origin,
+finite/unit/int8 direction and unsupported zero. Direct separately implemented
+pooling/quantizing ONNX replay of 32 smallest unique input hashes and eight
+longest inputs matches 40 saved directions bitwise. This samples inference on
+the same runtime/tokenizer; it does not establish Rust or independent-engine
+parity, topic quality or full-ingestion cost.
+
+Before semantic discovery outputs, freeze the same immutable source-seed control:
+cosine .55, equality joins, first-created ties, maximum 2,048 seeds per meeting,
+forward/reverse arrivals and per-meeting reset. Include all common-ready inputs,
+including unknown and overlapping annotations. Evaluate singleton-known gold
+pairs both all-distance and original source distance greater than four, the
+latter prespecified here. Labels use exact-marker-cleaned original source counts,
+unchanged source IDF, class scoring and eight-term lexical ties; no broad filter
+or threshold grid. This insert-only, single-membership control has no semantic
+ancestors, cross-meeting discovery, edits or lifecycle and is not the production
+topic architecture.
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+Policy & Groups & Singletons & Far precision & Far recall & Far F1\\\hline
+Raw forward & 30328 & 20794 & .320282 & .046487 & .081190\\
+Raw reverse & 30396 & 20739 & .329192 & .044663 & .078654\\
+Masked forward & 40713 & 29453 & .335820 & .029401 & .054068\\
+Masked reverse & 40761 & 29366 & .341648 & .028606 & .052791
+\end{tabular}
+\end{center}
+Each policy has 77,892 singleton-known rows, 27,346,484 all-distance pairs and
+27,049,334 far pairs. Median group size remains one. All-distance F1 is
+.082737/.080182 raw forward/reverse and .055675/.054393 masked. Masking increases
+fragmentation and reduces far recurrence while slightly increasing precision.
+Thus known-markup removal does not justify a general embedding-cleanup policy,
+and this fixed seed control is not selected for production. Changed support
+prevents direct attribution against earlier lexical pair metrics. These broad
+meeting annotations are not exhaustive coding-session, fine-grained label or
+semantic-ancestor gold; poor performance here neither compares BIRCH with GRINCH
+nor establishes that the local embedding model cannot work with better units or
+discovery. Distinct changes to units and discovery require separately frozen
+comparisons rather than further tuning this cutoff.
+
+Complete fresh embedding and discovery repeats match every nontiming field,
+both vector-file hashes, all source ownership, seed events, labels and pair
+counts. Independent discovery audit reconstructs all 337,736 seed events,
+scalar descriptor scores and complete known upper-triangle pairs. It enumerates
+original-distance-greater-than-four pairs separately from the driver's
+nearby-pair subtraction; maximum score/label error is zero. The audit shares
+scipy sparse dot and depends on separate source/count/vector audits. It does
+not establish independent coding-topic quality, ancestry, lifecycle or Rust
+parity. P0 follow-up \texttt{mash-c0d.19.2.20.8.3} separates source-backed bounded
+contextual-unit evidence from actual discovery-algorithm comparisons before
+changing production; fundamental changes are allowed when evidence supports them.
+
+First after-import embedding wall/CPU is 354.796/287.839\,s (setup 2.463\,s,
+encoding 351.661\,s, flush/hash .671\,s). Rusage 1310032\,KiB; external target
+RSS/PSS/status high water 1311676/1303875/1311676\,KiB, 7300 samples, two vanished
+reads and median/maximum gaps 43.08/300.74\,ms. Discovery first wall/CPU is
+289.017/195.588\,s (setup 14.405\,s), rusage 2334564\,KiB; sampled external
+RSS/PSS/status peaks 2336200/2303485/2336200\,KiB. Retained source ledgers,
+mapped vectors and multiple policies belong to the offline workspace, not
+production inference memory. Timers exclude imports, final JSON and comparison;
+external scope includes them. Monitoring is intrusive, sampled peaks are lower
+bounds, status approximate and launcher high water may persist. Concurrent
+audits/runs perturb timing; observer/other-process memory is excluded, no peak
+subtraction and no full-ingestion throughput gate. Embedding repeat wall/CPU is
+369.906/282.873\,s, rusage 1309020\,KiB; sampled RSS/PSS/status
+1310296/1276021/1310296\,KiB, 7155 samples, two vanished reads and median/maximum
+gaps 44.17/497.51\,ms. Discovery repeat wall/CPU is 254.075/189.830\,s (setup
+9.624\,s), rusage 2335960\,KiB; external VmRSS/smaps RSS/PSS/status peaks
+2308652/2316844/2091885/2335960\,KiB, 3784 samples, one vanished read and gaps
+57.91/597.27\,ms. Overlapping workloads and monitoring prevent speed conclusions
+from timing/peak differences. Five new edge tests bring the enabled lab suite to
+458. Selected Python/Rust runners, semantic quality and production cost remain open.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
