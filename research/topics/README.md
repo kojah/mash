@@ -1,5 +1,15 @@
 # Topic methodology lab
 
+The [coding-chat source pilot](../../benchmarks/2026-10-02-coding-chat-review-pilot.md)
+prepares actual Claude Code/Codex indexed histories rather than question proxies.
+`chat_review_packet.py` deterministically samples source groups with explicit
+review exclusions/aliases and bounded complete indexed context;7 chats/281 turns,
+one reported Codex-medium shortfall. Separate unblinded originals, escaped offline
+review page, rubric and blank answers remain private. Complete repeat and
+independent `audit_chat_review.py` source/selection/turn/blank-answer audit pass.
+No generated labels, LLM/inference or actual human judgments; this already
+exposed snapshot is development only, not held-out semantic/agent validation.
+
 The [held-out guidance evaluation](../../benchmarks/2026-10-02-heldout-guidance.md)
 completes the frozen validation protocol:35 meetings/237 queries, training-only
 word frame, source-only inventory, six direct/topic/thread arms in two scopes.
