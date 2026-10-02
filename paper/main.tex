@@ -8195,6 +8195,45 @@ these are not full-ingestion gates. Next evaluation should use the existing
 continue tuning this small sample. Detailed procedures and private artifacts:
 \path{benchmarks/2026-10-02-admitted-topic-adjacency.md}.
 
+\section{Wider coding cohort exposes the prototype capacity limit}
+We evaluated the same deferred pipeline on an existing frozen, exposed
+128-thread selection. The older capture contains 1812 deduplicated directions;
+original SQLite reconstruction restores all 1850 admitted occurrences,
+including 38 exact-input duplicates. Another 7038 canonical user-role records
+have empty projections and remain in a separate exclusion ledger. Admitted
+embedding coverage is complete. No source reselection, new inference, download
+or LLM was used. Text totals 1527917 bytes, within the original source/text
+budgets; the 128-leaf cap and .55 threshold are unchanged.
+
+Forward/reverse routing anchors 785/779 occurrences; 1065/1071 hit leaf
+capacity. After deferred soft matching, 1028/1017 remain untagged. Thus forward
+topic coverage is only 822/1850 (44.43\%). Every thread has some tag, which
+does not expose this message-level failure. Forward has 57 singleton leaves,
+70 weak-label leaves and 58 source-supported leaves. Multi-tag counts are
+107/93; co-membership pairs 22769/27872 give Jaccard .675079. These are
+structural diagnostics, not accuracy; repeated inputs can contribute label
+support without independent semantic evidence. The tested cap is unsuitable
+for primary topic assignment on this cohort.
+
+Two runs match stable artifacts. Original-source deletion, stale-publication
+rejection and checkpoint/refreshed restart checks pass. A no-producer-import
+auditor verifies original hashes, 1850 scalar-normalized stored directions,
+7038 exclusions, the exact set of 8888 canonical identities, all 255 node
+source unions and 128 thread ancestor unions. Routing, labels, native parsing
+and semantics are outside that audit. The 636-test research suite passes.
+
+Forward routing through publication takes 14.066/15.665s and foreground p95
+22.13/23.91ms with seven refresh jobs. Whole experiment wall time before
+artifact serialization is 42.300/47.496s, including both orders and several
+lifecycle/restart refreshes. This is not production full-ingestion overhead.
+External sampled RSS maxima are 479144/693352 KiB and PSS 471186/685436 KiB.
+Rusage is sampled earlier, before serialization; the full target includes
+large JSON artifacts and repeat comparison, rather than only a topic worker.
+Sampling, launcher history, Python GIL, monitoring and host load constrain
+interpretation. Next test adequate capacity and refresh cost, without forcing
+merges or lowering thresholds to hide coverage loss. Detailed procedures:
+\path{benchmarks/2026-10-02-128-thread-topic-pipeline.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix

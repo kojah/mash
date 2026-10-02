@@ -2,8 +2,10 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import sqlite3
+import struct
 
 
 def audit(directory,database):
@@ -19,6 +21,10 @@ def audit(directory,database):
     assert len(by_source)==len(sources)
     records={r['id']:r for r in checkpoint['records']}
     assert set(records)==set(by_source)==set(snapshot['versions'])
+    assert {p['id'] for p in report['source_provenance']}==set(by_source)
+    assert len(report['source_provenance'])==len(by_source)
+    canonical=set()
+    vector_checks=0
     with sqlite3.connect(database.resolve().as_uri()+'?mode=ro&immutable=1',uri=True) as db:
         for p in report['source_provenance']:
             source=by_source[p['id']]
@@ -27,9 +33,41 @@ def audit(directory,database):
             original,represented,ordinal,thread=row
             assert thread==report['cohort'][source['thread']]['original_thread']
             assert ordinal==p['ordinal'] and represented==source['represented_text']
+            key=(thread,p['original_message']);assert key not in canonical;canonical.add(key)
             assert hashlib.sha256(original.encode()).hexdigest()==p['original_text_sha256']
             assert hashlib.sha256(represented.encode()).hexdigest()==p['represented_text_sha256']
             assert records[p['id']]['version']==snapshot['versions'][p['id']]
+            stored=db.execute('SELECT vector,dimensions,generation FROM message_embeddings WHERE message_id=?',(p['original_message'],)).fetchone()
+            expected=records[p['id']]['vector']
+            if stored is None:assert expected is None and p['vector_sha256'] is None
+            else:
+                raw,dimensions,generation=stored
+                assert dimensions==384 and len(raw)==384 and generation==report['embedding_generation']
+                assert hashlib.sha256(raw).hexdigest()==p['vector_sha256']
+                values=struct.unpack('384b',raw);norm=math.sqrt(sum(v*v for v in values))
+                assert norm>0 and len(expected)==384
+                assert all(abs(value/norm-component)<1e-12 for value,component in zip(values,expected))
+                vector_checks+=1
+        if 'excluded_source_provenance' in report:
+            all_ids=set(by_source);excluded=report['excluded_source_provenance']
+            assert len(excluded)==7038
+            for entry in excluded:
+                assert entry['id'] not in all_ids;all_ids.add(entry['id'])
+                original,represented,ordinal,thread,role=db.execute(
+                    'SELECT content,COALESCE(search_projection,content),ordinal,conversation_id,role FROM messages WHERE id=?',
+                    (entry['original_message'],)).fetchone()
+                assert role=='user' and represented=='' and ordinal==entry['ordinal']
+                assert thread==report['cohort'][entry['thread']]['original_thread']
+                key=(thread,entry['original_message']);assert key not in canonical;canonical.add(key)
+                assert hashlib.sha256(original.encode()).hexdigest()==entry['original_text_sha256']
+                assert hashlib.sha256(represented.encode()).hexdigest()==entry['represented_text_sha256']
+                assert db.execute('SELECT 1 FROM message_embeddings WHERE message_id=?',(entry['original_message'],)).fetchone() is None
+            expected_count=sum(db.execute("SELECT count(*) FROM messages WHERE conversation_id=? AND role='user'",(row['original_thread'],)).fetchone()[0]
+                               for row in report['cohort'].values())
+            assert expected_count==len(all_ids)==8888
+            expected_keys={(row['original_thread'],identity) for row in report['cohort'].values()
+                           for identity, in db.execute("SELECT id FROM messages WHERE conversation_id=? AND role='user'",(row['original_thread'],))}
+            assert canonical==expected_keys
     nodes={n['id']:n for n in snapshot['nodes']}
     assert len(nodes)==len(snapshot['nodes'])
     root=snapshot['root'];seen=set()
@@ -59,8 +97,9 @@ def audit(directory,database):
             while parent is not None:
                 ancestors.add(parent);parent=nodes[parent]['parent']
         assert set(row['direct_tags'])==direct and set(row['ancestor_tags'])==ancestors
-    return {'scope':'source_text_hashes_versions_tree_source_unions_and_thread_ancestor_unions',
+    return {'scope':'source_text_hashes_stored_directions_versions_exclusion_conservation_tree_and_thread_ancestor_unions',
             'sources_checked':len(sources),'nodes_checked':len(nodes),'threads_checked':len(snapshot['threads']),
+            'stored_vectors_checked':vector_checks,'excluded_records_checked':len(report.get('excluded_source_provenance',[])),
             'semantic_quality_verified':False,'numerical_routing_reconstructed':False}
 
 
