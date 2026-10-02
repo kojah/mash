@@ -1355,7 +1355,18 @@ aggregate audits pass. Do not promote a frontier from these trees; evaluate
 bounded source-only episode geometry before separate macro-topic discovery.
 Neither this conditional score nor tree shape validates coding labels/ancestors.
 
-The full suite with the extras and explicit author reference runs 472 tests.
+`episode_blocks.py`, `return_ranking.py` and `qmsum_block_geometry.py` test one
+bounded16-turn/512-original-token source-block policy with gap flushing, raw-vector
+pooling and sublinear TF-IDF, before macro discovery. No new inference/LLM/download.
+[Complete control](../../benchmarks/2026-10-02-qmsum-block-geometry.md):8196 blocks,
+2410 matched conditional return queries across29 native topics. Message-expanded
+pooling improves MAP .301 to .349 dense/.369 lexical, but Hit10 falls .772 to
+.454/.478. Post-hoc diagnostic finds65% block-dense top10s entirely one physical
+block. Complete fresh repeat and independent source/block/cosine/ranking/summary
+audit pass; do not promote until unique-block evaluation. Internal54/108 partition
+is explored, not pristine heldout. Pool .312s is stage-only, not ingestion overhead.
+
+The full suite with the extras and explicit author reference runs 476 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

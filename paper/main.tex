@@ -6299,6 +6299,97 @@ author Scala parity follows. Procedures/pins are in
 passes here. Study \texttt{mash-c0d.19.2.20.8.3.3.1} is complete; parent remains
 active, with episode-geometry follow-up \texttt{mash-c0d.19.2.20.8.3.3.2}.
 
+\section{Bounded block geometry before macro-topic discovery}
+After weak cut-free hierarchy, freeze one source-only representation control:
+nonoverlapping blocks of at most 16 original turns and sum of original model
+tokens at most 512, unsupported gaps flushing without source compaction. Test
+turn before token bound at a next ready turn; gap/end flush first. Equal raw
+float64 direction sum/L2 at closure, explicit cancellation at norm $\le10^{-12}$.
+Unknown/multi-annotated ready turns remain in features. Original lexical count
+sums use sublinear $(1+\log tf)\,IDF$ and L2; IDF is frozen full-training-source
+IDF, including the internal reserved partition. No semantic boundary detector,
+LLM, new inference, download or author held-out source. Final closed-block
+snapshots may contain later turns than their query source; these are not causal
+initial-turn/draft-topic quality. Idle flush and edit/delete publication remain
+undefined.
+
+Compare raw/causal-five/block dense, raw/block lexical, raw/block RRF60\cite{rrf2009}
+and chronological distance, with source turns as queries rather than independently
+written searches. Every method shares singleton-known original-gap-greater-than-four
+candidate support, excludes same physical block and same native topic/component,
+and defines positives as the same topic in another native span. Round scores to
+12 decimals; retrieve only positive scores, descending then original-ordinal ties;
+zero-score lexical results abstain. RRF uses positive branch ranks, k60. Preserve
+unretrieved relevant sources in AP's denominator. Before outcomes, reserve
+ordinal-modulo-three-zero meetings (54) internally, other 108 development. All
+training sources were previously explored: this is not pristine held-out evidence,
+no parameter calibration and no candidate grid. Members of a block remain distinct
+messages carrying the same pooled vector in this first control.
+
+All 162 meetings/88,336 turns yield 84,434 usable/77,892 known sources, 8,196
+blocks, no cancellation: 7,242 single-known-topic, 421 mixed, 533 zero-known.
+Broad annotation support is not independent semantic purity. Eligible pairs
+18,961,803 and return positives 84,323, 27 fewer than prior span support after
+matched block exclusion. Query support 2,410 across 29 topics/21 meetings;
+75,482 other known sources have no eligible returns, not automatic successes.
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+Representation & MAP & MRR & Hit10 & Topic-macro AP \\\hline
+Raw dense & .300767 & .457126 & .772199 & .245970 \\
+Causal-five dense & .320640 & .423800 & .695851 & .254918 \\
+Block dense & .348504 & .364900 & .453527 & .333904 \\
+Raw lexical & .134592 & .430315 & .745643 & .134682 \\
+Block lexical & .368752 & .321091 & .478423 & .359152 \\
+Raw RRF60 & .300241 & .458464 & .782158 & .246714 \\
+Block RRF60 & .356136 & .377863 & .528216 & .348526 \\
+Chronological distance & .262109 & .037070 & .077593 & .216470
+\end{tabular}\end{center}
+
+Raw lexical has 30 zero-result queries. Development support is 1,707 queries/
+18 topics/12 meetings, reserved 703/11/9. Reserved raw-dense MAP/Hit10
+.255499/.812233 versus block-dense .301499/.419630, block-lexical .362450/.568990
+and block-RRF .334379/.539118. Pooling improves average and topic-macro precision
+but loses early retrieval in both partitions; neither a clear winner nor a
+production replacement follows. Sparse native meeting returns are conditional
+adjacent evidence, not coding/ancestor/multi-tag gold or guided-search benefit.
+
+Explicitly post-hoc, map frozen top10s to source-only physical blocks. Mean unique
+blocks raw-dense 7.61, pooled dense 1.53, lexical 1.62 and RRF 1.99. Raw-dense
+has zero top10s wholly in one block; pooled-dense 1,561/2,410 (64.77\%), lexical
+1,450 (60.17\%) and RRF 831 (34.48\%). Copies consume the result budget, though
+this does not establish that duplication explains all degradation. Do not promote
+MAP gains yet. Next freeze unique-block output for all branches, max eligible
+passage scores and deduplicated branch ranks before RRF, with mixed-topic binary
+and graded known support. New result granularity changes relevance counts and
+cannot be presented as a direct AP gain over message-expanded evaluation.
+
+Four new fixtures and full enabled lab suite pass 476 tests. Complete fresh repeat
+matches every nontiming field, source/block lineage, file/score/rank hash and summary.
+Independent original-source greedy block, scalar norm, count/lexical pooling,
+candidate/cosine, Python-sort/AP and aggregate audit verifies all 88,336 turns,
+8,196 blocks, 2,410 queries, 19,280 rankings and 24 summaries; maximum direction
+error $5.55\times10^{-17}$ and metric error $3.33\times10^{-16}$, integer support
+and rank/top10 identities exact. NumPy/SciPy and prerequisite frozen inference/
+count audits are shared; no independent encoder rerun follows. Pins/procedures are
+in \path{benchmarks/2026-10-02-qmsum-block-geometry.md}.
+
+Pool wall/CPU across source slots .312/.276 s, repeat .312/.262 s: closure stage
+totals, not update p95 or full-ingestion gate. First after-import wall/CPU
+22.125/15.773 s, setup 16.752; repeat 19.243/14.896, setup 14.688. Scoring
+.868/.785 s and ranking 1.037/.964 s. Includes NPY write, excludes imports/final
+JSON/comparison; external scope includes these, excludes observer/children.
+First briefly overlaps validation startup; timing variation is not a speed claim.
+Rusage first/repeat 2008612/2008228 KiB; external sampled RSS/PSS/status
+2010012/2002232/2010012 and 2009468/2001336/2009468 KiB, 596/600 samples,
+zero/two vanished reads, median/max gaps 38.92/101.17 and 34.95/79.75 ms.
+Full offline capture loading, ledgers and scientific imports are not worker model
+memory. Monitoring is intrusive, sampled peaks lower bounds, status approximate,
+launcher high water may persist, no peak subtraction or full-ingestion claim.
+Focused study \texttt{mash-c0d.19.2.20.8.3.3.2.1} complete; parent active with
+unique-block evaluation \texttt{mash-c0d.19.2.20.8.3.3.2.2}. No production
+method/semantic-label/lifecycle/namespace/Rust parity gate passes.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
