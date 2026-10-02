@@ -1162,7 +1162,16 @@ configuration is rejected. No inference or threshold repair occurs; no online
 prototype maintenance or intrinsic topic quality is established. The metadata
 union scan is a research diagnostic, not production filtered-index performance.
 
-The full suite with the extra runs 362 tests; without it the two Infomap/runner
+The [frozen topic-label coherence diagnostics](../../benchmarks/2026-10-02-topic-label-coherence.md)
+use `label_coherence.py`/`cqadup_label_coherence.py` on unchanged PCA25 labels.
+Whole-document binary-presence NPMI and term reuse favor corpus-IDF, but they
+are not human semantic quality: the highest-coherence list repeats testing
+variants. All 36,100 joint count cells and 5,208 label pairs are independently
+audited; exact repeats pass. No token/label intervention or inference occurs.
+Run with frozen topic first/repeat directories, fresh `--output`, repeat
+`--compare FIRST_JSON`, and the external memory monitor.
+
+The full suite with the extra runs 364 tests; without it the two Infomap/runner
 tests explicitly skip while mathematical and sparse-update tests still run.
 
 ```bash

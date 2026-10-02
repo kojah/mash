@@ -4785,6 +4785,66 @@ monitor/concurrent audit and retained snapshots prevent controlled speed or
 ingestion-overhead claims. Environment matches prior studies. Details:
 \path{benchmarks/2026-10-02-original-topic-prototypes.md}.
 
+\section{Frozen-label document coherence and reuse diagnostics}
+Before further label tuning, freeze all three top-eight label variants in the
+four PCA25 order/membership snapshots. NPMI topic-word evaluation has prior
+art\cite{launpmicoherence}, but our estimator differs: binary original-document
+presence, technical unigrams/phrases, no lemmatization or external sliding-window
+corpus. It is not replication or human-validated agent-chat coherence. No
+labels, memberships, words or vocabulary change; verify both captures and all
+arrays, without queries/references, reserved outcomes, inference/downloads or
+generative/paid calls.
+
+With document frequencies $a,b$, joint count $c$ and $N=32{,}176$, compute
+\[
+\mathrm{NPMI}(a,b,c)=\frac{\log(cN/(ab))}{-\log(c/N)}.
+\]
+No smoothing: zero joint count has limit $-1$, universal joint count is undefined,
+and singleton lists abstain. Average all pairs, with macro score defined only
+when every topic is defined. Record lexical containment and unique terms over
+label slots within each snapshot. Sparse int64 presence counts cover 190 terms,
+36,100 matrix cells, 186 lists/1,488 slots and 5,208 within-label pairs.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+Control & Plain NPMI & Corpus-IDF NPMI & Diverse NPMI\\
+\midrule
+Forward hard & .158006 & .271666 & .242633\\
+Forward overlap & .171482 & .280891 & .249384\\
+Reverse hard & .137989 & .264893 & .240454\\
+Reverse overlap & .163537 & .291133 & .244878\\
+\bottomrule
+\end{tabular}\end{center}
+All topic scores are defined. Plain unique-term ratios range .644--.761,
+corpus-IDF .863--.943, diverse .850--.920. Plain/corpus-IDF have no zero-joint
+pairs; diverse has 3/4/0/2. Corpus-IDF containment pairs 18/21/10/12 become
+zero under containment pruning by construction. Lower diverse coherence need
+not mean worse labels; changing nested word/phrase pairs changes the metric.
+Posthoc highest-corpus-IDF-coherence inspection finds the same testing terms
+in every snapshot, NPMI .560010: \texttt{test, tests, unit, testing, unit tests,
+unit testing, unit test, tdd}, with permutations. Topical but repetitive names
+can score highly, as can code-token associations. This reinforces the separation
+of automatic coherence and human interpretability\cite{hoyle}; no semantic
+acceptance cutoff or automatic topic rejection follows.
+
+Fresh repeats match all nontiming fields. Independent document posting-set
+intersections verify every DF/joint count and scalar log-probability reductions
+all 5,208 pairs, maximum NPMI difference $2.23\times10^{-16}$. Label order,
+containment/zero/undefined counts and macro summaries agree. 364 tests pass,
+including independent/disjoint/perfect associations, infeasible contingencies,
+universal-event abstention, binary presence, containment and singleton labels.
+First/repeat after-import time 1.504/1.246 s, separate rusage 345,688/345,796 KiB.
+External 135/129 samples show RSS 346,244/346,408 KiB, PSS 337,099/333,118 KiB;
+approximate status VmHWM matches RSS here. Requested sleep 20 ms; actual median/max
+gaps 26.96/93.01 and 25.70/34.18 ms, one/zero vanished reads. Sampled maxima are
+lower bounds, target-only scope excludes children/observer, snapshot loading,
+concurrent audit and monitoring contribute. These are not production ingestion
+costs. Long multi-topic documents and contained phrases can inflate this
+transductive association measure; intrinsic membership, label specificity,
+semantic ancestors and guided navigation remain separate gates. Details:
+\path{benchmarks/2026-10-02-topic-label-coherence.md}.
+
 \section{Planned evaluation and unresolved requirements}
 Next prioritize source-grounded body/episode units, target-representation
 calibration and granular coding/provider thread discrimination with independently
