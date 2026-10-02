@@ -48,7 +48,7 @@ class Capture:
 class Stream:
     def __init__(self,dimensions=384,maximum_leaves=128,maximum_sources=2048,maximum_text_bytes=8*1024*1024,threshold=.55):
         if (type(dimensions) is not int or not 1 <= dimensions <= 1024 or type(maximum_leaves) is not int
-                or not 1 <= maximum_leaves <= 128 or type(maximum_sources) is not int or not 1 <= maximum_sources <= 2048
+                or not 1 <= maximum_leaves <= 2000 or type(maximum_sources) is not int or not 1 <= maximum_sources <= 2048
                 or type(maximum_text_bytes) is not int or not 1 <= maximum_text_bytes <= 8*1024*1024
                 or isinstance(threshold,bool) or not math.isfinite(threshold) or not 0 < threshold <= 1):
             raise ValueError('bounded explicit stream configuration required')

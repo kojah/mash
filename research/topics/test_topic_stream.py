@@ -14,6 +14,18 @@ def source(identity,vector,text='fixture alpha',thread='thread-a',provider='prov
 
 
 class TopicStreamTests(unittest.TestCase):
+    def test_explicit_capacity_supports_more_than_default_without_forced_assignment(self):
+        small=Stream(dimensions=129);large=Stream(dimensions=129,maximum_leaves=2000)
+        for i in range(129):
+            point=np.zeros(129);point[i]=1
+            value=source(str(i),point)
+            small.upsert(value);large.upsert(value)
+        self.assertIs(small.records['128'].state,RouteState.CAPACITY)
+        self.assertTrue(all(r.state is RouteState.ASSIGNED for r in large.records.values()))
+        restored=Stream.restore(json.loads(json.dumps(large.checkpoint())))
+        self.assertEqual(restored.checkpoint(),large.checkpoint())
+        with self.assertRaises(ValueError):Stream(maximum_leaves=2001)
+
     def test_one_blocked_background_job_does_not_block_routing_or_queue_captures(self):
         started = Event(); release = Event()
         def builder(capture):

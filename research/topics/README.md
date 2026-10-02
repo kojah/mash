@@ -1,5 +1,29 @@
 # Topic methodology lab
 
+## Current milestone: flat, multi-label topics
+
+On 2026-10-02 the user dropped the hierarchy requirement. The first milestone
+is useful **flat topics**, with multiple independently supported tags per thread,
+topic browsing and composable topic filters. Semantic parent/child links, ancestor
+inheritance, descendant filters and tree-navigation tools are not requirements
+or promotion gates. Historical experiments and annotation contracts below retain
+their original scope; they do not override this decision.
+
+Evaluate label specificity, primary/secondary subject precision and recall,
+coverage/outliers, arrival/update stability and guided-agent usefulness on real
+coding chats. Preserve source evidence, stable/versioned topic identities,
+provider/node/index scope, bounded work, edits/deletions and restart correctness.
+The no-LLM and complete-ingestion performance requirements remain. Selection and
+Rust parity still require evidence. A flat representation does not itself fix
+weak labels, short contextual replies or overly fragmented clusters.
+
+Next implement and measure a genuinely flat refresh/label path without the
+prototype's hierarchy construction or ancestor propagation. The existing
+prototype still builds trees; its timings are not flat-pipeline measurements.
+The [capacity/scheduling control](../../benchmarks/2026-10-02-topic-capacity-scheduling.md)
+recovers 99.46% tagging coverage, but 698/870 leaves have weak labels. Prioritize
+granularity/labels and budgeted publication over further hierarchy experiments.
+
 The [chat submission validator](../../benchmarks/2026-10-02-chat-review-validation.md)
 parses known review schemas into typed models using only Python's standard library.
 Run `chat_review.py --packet PRIVATE/review.json --answers PRIVATE/completed.json`.
@@ -27,7 +51,7 @@ Full non-timing repeat and independent count/tree/query/span/rank/metric/bootstr
 audit pass. Known-meeting recall delta+.00205 has95% interval[-.00082,.00603]:
 the primary benefit gate **fails**, although the MRR safety gate passes. Do not
 promote automatic topic ranking or retune this split. Test remains untouched.
-Next prioritize coding-agent label/multitag/ancestor/exploration evidence,
+Next prioritize coding-agent label/multitag/flat-topic browsing evidence,
 separating taxonomy usefulness from ranking. No topic method selected.
 Use `qmsum_validation_guidance.py --artifacts ROOT --output FIRST`, then a fresh
 repeat with `--compare FIRST`, each under `memory_audit.py`; audit with
@@ -124,7 +148,7 @@ method selection or promotion.
 | Unit | Whole-thread means, bounded user episodes, turn-pair/context units | Long sessions mix subjects; short approvals need context without importing unrelated assistant topics. |
 | Discovery | BIRCH reference, offline HDBSCAN, average-link control; then GRINCH/online alternatives | Separate geometry failures from label failures and quantify online tradeoffs. |
 | Labels | c-TF-IDF; contrastive training-background weights; representative phrases/MMR | Preserve technical and secondary subjects while reducing conversational labels. |
-| Hierarchy | Independently reviewed semantic parents and overlapping leaves | Tree topology alone does not establish ancestor correctness. |
+| Flat memberships | Independently reviewed primary and secondary topic tags | Topic overlap and useful labels matter; semantic hierarchy is outside the milestone. |
 
 The [Links primary-source assessment](../../benchmarks/2026-10-02-links-assessment.md)
 adds a bounded reference trial to the online shortlist. Its graph repair is
@@ -137,17 +161,18 @@ or performance is established, and the reference defaults are not product defaul
 
 Freeze native source-group splits before fitting or label selection. Annotate
 primary and secondary subjects, irrelevant/context-only text, episode boundaries,
-and parent relationships independently of algorithm outputs. Review full sources
+independently of algorithm outputs. Review full sources
 where available and mark incomplete evidence explicitly. Keep a development set
 and a reserved set; do not tune on reserved labels. Report provider and rare-topic
 breakdowns, not just a single coherence score.
 
 Record assignment precision, secondary-topic recall, label specificity, intrusion
-judgments, unassigned coverage, ancestor correctness and insertion-order stability.
+judgments, unassigned coverage and insertion-order stability.
 Record wall time, peak process RSS, inference calls, and incremental update cost.
 The [annotation protocol](annotation-guidelines.md) defines source/context scope,
-episode granularity, overlap, ancestors, uncertainty and independent review for
-the next dataset; it does not retroactively alter the initial pilot.
+episode granularity, overlap, uncertainty and independent review. Its historical
+ancestor annotations are optional research, not a milestone requirement; this
+scope change does not retroactively alter the initial pilot.
 Automatic coherence is a diagnostic, not a replacement for source review.
 Select an approach only after reviewing these tradeoffs against a frozen baseline;
 no numeric quality acceptance threshold has yet been justified by annotations.

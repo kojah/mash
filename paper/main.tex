@@ -8234,6 +8234,69 @@ interpretation. Next test adequate capacity and refresh cost, without forcing
 merges or lowering thresholds to hide coverage loss. Detailed procedures:
 \path{benchmarks/2026-10-02-128-thread-topic-pipeline.md}.
 
+\section{Capacity and refresh scheduling control}
+We reused the frozen 128-thread cohort and all 1850 admitted occurrences,
+keeping .55 similarity and the 2048-source/8 MiB bounds fixed. The explicit
+research leaf capacity can now reach the exact hierarchy helper bound of 2000;
+the constructor default remains 128. Three fixed arms compare 128 leaves with
+refresh requests every 16 events, 2000 with the same cadence, and 2000 with
+one final refresh. Each runs both arrival orders and checkpoint/refreshed
+restart. No inference, download, LLM, new selection or threshold tuning occurs.
+Empty projections remain excluded. The cohort is exposed development data.
+
+Adequate capacity anchors all 1850 sources, with no capacity rejections, and
+1840 receive a final tag (99.46\%, versus 44.43\% at capacity 128). Forward
+has 870 leaves, 593 singletons, 698 weak-label leaves, 241 multi-tag sources
+and 924 weak nodes. Reverse has 856 leaves, seven untagged sources, 234
+multi-tag sources and 899 weak nodes. Pair Jaccard rises to .757117 with
+23171/27130 pairs. Coverage recovery is not topic accuracy: fragmentation and
+weak labels remain substantial; semantic ancestors and independent coding-chat
+usefulness are unvalidated.
+
+The two adequate-capacity schedules yield exactly the same full final snapshots
+in both orders. Repeats match all non-runtime fields; the capacity-128 baseline
+exactly matches the prior experiment. An independent auditor with no producer
+imports checks six snapshots, 7410 nodes and 21125 label entries for source
+support, corpus DF, membership bounds, tree/thread unions and equivalence.
+It shares the static English stoplist and does not reconstruct routing winners
+or numeric label scores. The research suite passes 637 tests in 4.607s.
+
+Frequent adequate-capacity refresh takes 47.18/53.66s through final publication
+with eight jobs; final-only takes 16.46/11.89s with one job, 2.87/4.51 times
+faster. Final-only has no intermediate topic publication and is a diagnostic,
+not a selected online policy. Forward CPU is 49.27/55.50s versus 14.09/11.77s.
+Python GIL, host scheduling, caches, monitoring and fixed arm order limit
+interpretation. These measurements exclude embedding and the complete ingestion
+pipeline; the provisional ten-percent overhead gate is untested.
+
+Whole three-arm/two-order/restart wall time is 203.18/177.97s after load,
+before serialization/comparison. Sampled target RSS peaks are 503776/508920 KiB
+and PSS 495828/501042 KiB; status HWM and pre-serialization rusage are
+503584/508020 KiB. Cumulative rusage is not arm- or worker-specific. The
+instrumented target includes loading, all arms, restarts, large result JSON and
+repeat comparison. Sampling is a lower bound; observer/children are excluded.
+Next evaluate budgeted online refresh and source-backed label/topic granularity,
+without promoting coverage or numerical agreement to semantic evidence.
+Detailed procedures: \path{benchmarks/2026-10-02-topic-capacity-scheduling.md}.
+
+\section{Revised first milestone: flat multi-label topics}
+After the capacity/scheduling control, the user removed semantic hierarchy from
+required scope. The first milestone is useful flat topics with multiple
+source-supported tags per thread, topic browsing and composable topic filters.
+Semantic parents, ancestor inheritance, descendant filtering and tree-navigation
+tools are no longer acceptance gates. Historical hierarchy experiments retain
+their original procedures and results; this decision does not reinterpret them.
+
+Flat labels, primary/secondary assignment quality, coverage/outliers, stability,
+agent usefulness, scoped identities and edit/delete/restart correctness remain
+required, together with no LLM and matched complete-ingestion performance.
+The current prototype still constructs a hierarchy. Its timings cannot be
+reported as flat-pipeline costs. Next measure a genuinely flat refresh and
+label path plus budgeted online publication on the same frozen source cohort,
+then independently evaluate coding-session usefulness before method selection
+and Rust parity. Removing hierarchy simplifies delivery but does not establish
+that existing fragmented assignments or weak labels are useful.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
