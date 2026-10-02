@@ -1328,7 +1328,23 @@ The frozen paired-meeting bootstrap supports exploratory recall/F1 gains; no
 coding-quality/generalization claim. No extra model calls or held-out sources.
 Actual BIRCH/grafting discovery comparisons and production gates remain open.
 
-The full suite with the extras and explicit author reference runs 462 tests.
+The [actual discovery controls](../../benchmarks/2026-10-02-qmsum-discovery-controls.md)
+hold causal evidence fixed for singleton-update BIRCH radius.4/branch64 and
+existing exact-neighbor GRINCH-style cut.7, different uncalibrated operating
+points. `discovery_inputs.py`, `discovery_controls.py` and
+`qmsum_discovery_controls.py` preserve full source ownership, final CF/tree
+state hashes, labels/pairs, rare-topic support and order ARI. Complete BIRCH
+repeat and independent direct-library/CF/source/label/pair/rare/scalar-ARI audit
+pass; far recurrence below.5% rejects that radius as final topic discovery,
+not BIRCH as compression or at another calibration. GRINCH-style full-source
+repeat and final-state/cut/label/pair audits pass; its frozen cut also fragments
+recurrence, with higher cost and weak order stability. Explicitly post-hoc
+native-disjoint-span return audit shows most primary far positives remain within
+long spans. Neither operating point is selected; cut-free broader hierarchy and
+macro-granularity evaluation is next. Final geometry is not semantic ancestry
+and no production/Rust gate passes.
+
+The full suite with the extras and explicit author reference runs 467 tests.
 Enable the six Links merge/split/repair/ownership/budget fixtures with
 `MASH_TOPIC_LINKS_REFERENCE=/home/james/scratch/mash-artifacts/topic-links-author-20261002`;
 without this variable they explicitly skip. Without the graph extra the two Infomap/runner

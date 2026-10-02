@@ -6087,6 +6087,142 @@ fixed for actual BIRCH/grafting or bounded graph comparisons with frozen
 algorithm-specific settings before outcomes; cutoffs across algorithms are not
 interchangeable.
 
+\section{Actual incremental discovery on fixed causal evidence}
+Hold all audited causal directions, identities, support and label policy fixed
+while changing discovery. Reuse prior operating points before new outcomes:
+scikit-learn 1.9.1 BIRCH radius .4, branching 64, no final global clustering,
+one copied point per partial fit and final prediction in original order;
+existing GRINCH-style normalized-centroid tree, exact leaf neighbors, stable
+arrival/node-serial ties, 2,000-leaf/1,024-dimension bounds, rotations, strict
+mutual-preference grafts, LCA-bounded restructuring and cut .7 accepting a clade
+only when every internal merger meets it. Reset at each of all 162 source meetings,
+with both forward and reverse arrival. BIRCH radius and tree cosine are different
+uncalibrated operating points, not a matched cutoff comparison. GRINCH-style
+differs from reviewed author Scala; no reference execution/parity or theorem claim.
+Internal CF/grafting topology is not semantic ancestry, and final predictions do
+not establish stable historical tags or edit/delete/restart behavior.
+
+Use all 88,336 sources and unchanged 84,434 supported causal units without new
+inference, model downloads, LLM or held-out text. Canonical lexicographic original
+source-index partitions preserve complete unique ownership. Labels retain exact
+marker-cleaned original counts, source IDF/class score/top-eight/lexical ties,
+not duplicated context. Singleton-known support stays 77,892 rows, 27,346,484
+all-distance and 27,049,334 original-distance-greater-than-four pairs. Before
+outcomes, prespecify per-native-topic singleton-known support: zero, rare 1--20
+rows and common above 20, including zero eligible far positive pairs. Report
+per-meeting forward/reverse adjusted Rand score and unweighted/source-row-weighted
+means as stability, not correctness. No name features or parameter grid.
+
+\begin{center}
+\begin{tabular}{lrrrrrr}
+BIRCH & Groups & Singletons & All P & Far P & Far R & Far F1\\\hline
+Forward & 19548 & 1998 & .887767 & .620852 & .003967 & .007884\\
+Reverse & 19445 & 2618 & .891945 & .639988 & .004234 & .008412
+\end{tabular}
+\end{center}
+Median group size four, largest 60/55 and empty labels 2/1. High all-pair precision
+largely reflects nearby overlap: far true matches 32,383/34,560 versus
+169,796/173,419 all-distance. Far recurrence below .5\% rejects this operating
+point as useful recurrence discovery, without disproving BIRCH at another
+calibration or choosing another algorithm's incomparable cut. Mean/source-row-
+weighted order ARI .574879/.528650. Of 725 native topics, 589 are common (76,258
+supported rows), 134 rare (1,634), two zero support. Rare far positives 6,242,
+recovered 180/199 (2.88/3.19\%); 17 rare topics have zero eligible far positive
+pairs. Common far positives 8,156,750, recovered 32,203/34,361. These broad
+meeting annotations do not supply independent coding-label/multi-tag/ancestor gold.
+
+BIRCH complete fresh repeat matches every nontiming field, model-state hash,
+partition, label and pair count. Independent full-source causal reconstruction,
+direct pinned-library replay verifies 38,993 final CF subclusters, physical
+sample/linear-sum accounting, center/CF hashes and radius bounds. Scalar labels,
+complete known upper-triangle/far pairs, rare-topic diagnostics and separately
+computed ARI match with zero label error. Library replay is wrapper fidelity,
+not an independent BIRCH algorithm; previous source/vector/count/unit audits are
+prerequisites. GRINCH-style first full-source run is complete and audited below;
+no comparative winner or production method selection follows.
+
+BIRCH first after-import wall/CPU 102.877/89.094\,s, setup 16.805\,s;
+forward/reverse insertion 36.490/36.091\,s, evaluation 1.012/1.280\,s.
+Rusage 2020032\,KiB; sampled external RSS/PSS/status peaks
+2021272/1919217/2021272\,KiB, 2670 samples, one vanished read and median/maximum
+gaps 38.00/168.20\,ms. First overlaps GRINCH, repeat also overlaps its auditor; retained
+source/scientific/output ledgers are offline workspace, not production worker
+memory. Insertion excludes final prediction/validation/cut/state capture and
+labels. Imports/final JSON/comparison are outside stage timers, inside external
+scope; observer excluded, sampled peaks lower bounds, status approximate,
+monitoring intrusive, launcher high water may persist and no subtraction or
+full-ingestion gate. Repeat wall/CPU 140.403/91.700\,s, setup 47.237\,s,
+rusage 2019332\,KiB; external RSS/PSS/status 2020768/1843902/2020768\,KiB,
+3064 samples, zero vanished reads and gaps 41.10/679.84\,ms. Timing/peak
+variation under overlap is not an algorithm performance comparison.
+Five new tests bring the enabled suite to 467, including
+immutable source evidence and rare-topic original-gap support. Procedures/pins
+and continuing outcomes are in
+\path{benchmarks/2026-10-02-qmsum-discovery-controls.md}; actual selected-method
+Rust parity, independent semantic quality and production lifecycle remain open.
+
+\begin{center}
+\begin{tabular}{lrrrrrr}
+GRINCH-style & Groups & Singletons & All P & Far P & Far R & Far F1\\\hline
+Forward & 22512 & 7107 & .576092 & .441563 & .021639 & .041257\\
+Reverse & 23930 & 7523 & .583121 & .434318 & .017988 & .034545
+\end{tabular}
+\end{center}
+Median group size two, largest 217/173 and empty labels 19/25. Mean/source-row-
+weighted ARI .385297/.344461. Rare far positives remain 6,242, recovered
+742/605 (11.89/9.69\%); common recovered 175,899/146,231. At these unmatched
+operating points grafting recovers more far positives than BIRCH, but low recall,
+order sensitivity and higher insertion cost do not select this cut. Neither
+current cut/radius is selected; no universal algorithm-failure claim follows.
+
+GRINCH-style first wall/CPU 755.375/648.139\,s, setup 17.083\,s,
+rusage 2019356\,KiB. Forward/reverse insertion 368.280/332.652\,s,
+CPU 317.351/285.402\,s; validation/cut/state capture 12.809/12.340\,s.
+External sampled RSS/PSS/status 2020676/1853736/2020676\,KiB, 17,332 samples,
+two vanished reads, gaps 39.00/349.26\,ms. Overlaps BIRCH/repeat/audit and uses
+the same offline scopes/caveats; no Rust/full-ingestion cost or production
+memory inference. Independent final-state audit covers 337,412 live nodes,
+exact aggregate/link hashes, leaf/source ownership, merger cosines and complete
+every-merger-cut partitions, scalar labels, known/far pairs, rare counts and
+independent scalar ARI. Maximum merger/label error zero. v2 auditor models both
+insert normalization and leaf-link normalization; original BIRCH auditor remains
+byte-preserved. This is final-state/cut verification, not independent insertion
+decisions or author Scala execution. Complete fresh repeat matches every
+nontiming field, node/source hash, statistics, canonical partition, label,
+pair/support count and order metric. Repeat wall/CPU 640.047/585.141\,s,
+setup 14.157\,s,rusage 2019732\,KiB; sampled external RSS/PSS/status
+2021184/1980943/2021184\,KiB, 16,361 samples, two vanished reads and gaps
+36.64/236.49\,ms. Overlaps final-state/crossspan audits; timing/peak differences
+are not speed/memory conclusions. No method is selected.
+
+\subsection{Post-hoc returns across disjoint native spans}
+After observing weak cuts, freeze a stronger diagnostic before computing it:
+merge overlapping/adjacent inclusive original spans per topic, assign exact
+components to singleton-known supported sources and require original distance
+above four and different native components. Positives are the same topic across
+disjoint components; different-topic negatives remain. No new fit, cut or labels.
+This explicitly post-hoc diagnostic does not replace the primary metric.
+All 771 source spans need no same-topic merge; 33 of 725 native topics have
+multiple components. Same 77,892 known rows give 18,970,692 eligible pairs but
+only 84,350 positives, compared with 8,162,992 all-far positives. Most primary
+far positives therefore remain within long contiguous annotated spans.
+
+Return recall forward/reverse: causal seed .106722/.096325 (9,002/8,125 true
+pairs), BIRCH .000451/.000865 (38/73), GRINCH-style .005525/.012910 (466/1,089).
+Crossspan precision .003257/.002872, .001918/.003741, .002082/.005662 respectively
+is a changed-prevalence conditional diagnostic: within-span positives disappear
+while between-topic negatives remain. It is not comparable to primary precision,
+proof of deployment precision collapse or independently validated coding returns.
+Sparse native recurring topics do not represent a global semantic taxonomy gold.
+Complete separate original-source upper-triangle mask audit verifies every
+meeting/order/method contingency, all components and summaries against counter
+reductions. Pins and procedures are in the discovery-controls report. No
+guided-search/semantic/Rust gate follows; evaluate broader hierarchy/macro grouping
+and granularity before treating a fixed flat cut as semantic topics. Bounded
+study \texttt{mash-c0d.19.2.20.8.3.2} is complete; P0 follow-up
+\texttt{mash-c0d.19.2.20.8.3.3} compares cut-free broader hierarchy against
+root-only/temporal baselines before calibrated frontier or bounded macro discovery.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
