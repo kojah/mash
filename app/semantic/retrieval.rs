@@ -29,6 +29,7 @@ pub(crate) fn hybrid_search_filtered(
         limit,
         unit,
         fusion,
+        ranking,
     } = options;
     let candidate_limit = unit.candidate_limit();
     let lexical = measurements::measure_vec(Stage::LocalLexical, None, || {
@@ -61,6 +62,9 @@ pub(crate) fn hybrid_search_filtered(
     dense_stage.complete(Some(semantic.chunks.len()), Some(semantic_hits.len()));
     drop(dense_stage);
     let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
+    if ranking == crate::gold::config::Ranking::Fusion {
+        return Ok(crate::search_ranking::finish_fusion(fused, unit, limit));
+    }
     let selection = crate::search_ranking::select(backend, query, fused, unit, limit)?;
     let documents = selection.hits[..selection.count]
         .iter()

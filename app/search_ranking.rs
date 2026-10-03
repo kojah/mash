@@ -13,6 +13,18 @@ pub(crate) struct Selection {
     pub(crate) count: usize,
 }
 
+/// Preserve fused ordering and all thread evidence; cap message results only.
+pub(crate) fn finish_fusion(
+    mut hits: Vec<SearchHit>,
+    unit: SearchUnit,
+    limit: usize,
+) -> Vec<SearchHit> {
+    if matches!(unit, SearchUnit::Messages) {
+        hits.truncate(limit);
+    }
+    hits
+}
+
 pub(crate) fn select(
     backend: &mut Backend,
     query: &str,

@@ -77,7 +77,7 @@ async fn assert_scoped(paths: &Paths, ids: &[String], expected: &[&str]) {
         paths: paths.clone(),
         operation: Operation::Search {
             fusion: crate::gold::config::FusionOverrides::default(),
-            diagnostics: false,
+            diagnostics: true,
             query: "authentication".into(),
             intent: None,
             limit: None,
@@ -100,6 +100,20 @@ async fn assert_scoped(paths: &Paths, ids: &[String], expected: &[&str]) {
     };
     assert!(response.shared, "{:?}", response.shared_error);
     assert_eq!(response.unit, SearchUnit::Messages);
+    let ranking = crate::config::load(paths.config.as_deref())
+        .unwrap()
+        .gold
+        .query
+        .ranking;
+    let diagnostics = response.diagnostics.as_ref().unwrap();
+    assert_eq!(diagnostics.ranking, Some(ranking));
+    if ranking == crate::gold::config::Ranking::Fusion {
+        assert!(diagnostics.stages.iter().all(|stage| !matches!(
+            stage.stage,
+            crate::observability::retrieval::Stage::Rerank
+                | crate::observability::retrieval::Stage::Context
+        )));
+    }
     let Results::Messages(messages) = response.results else {
         panic!("messages")
     };
@@ -176,7 +190,21 @@ async fn contract(service: Service) {
         .map(|thread| thread.conversation_id.clone())
         .collect();
     assert_eq!(ids.len(), 2);
-    assert_scoped(&paths, &ids, &["codex", "claude-code"]).await;
+    let before = std::fs::read(paths.db.as_ref().unwrap()).unwrap();
+    let token = std::env::var("PATH").unwrap();
+    let shared_before = service.get("freshness", &token).await;
+    for ranking in ["contextual-rerank", "fusion", "contextual-rerank"] {
+        std::fs::write(
+            config_path,
+            format!(
+                "{configuration}\n[gold.query]\nunit='messages'\nlimit=10\nranking='{ranking}'\n"
+            ),
+        )
+        .unwrap();
+        assert_scoped(&paths, &ids, &["codex", "claude-code"]).await;
+        assert_eq!(std::fs::read(paths.db.as_ref().unwrap()).unwrap(), before);
+        assert_eq!(service.get("freshness", &token).await, shared_before);
+    }
     assert_scoped(&paths, &["unknown".into()], &[]).await;
     service.cleanup().await;
 }

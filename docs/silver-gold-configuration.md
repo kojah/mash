@@ -458,6 +458,21 @@ overrides with exact-mention are rejected because that operation does not use
 hybrid fusion. Empty MCP fusion objects behave like omitted overrides. Further
 ranking controls remain follow-up work.
 
+Node configuration also supports `[gold.query] ranking = "contextual-rerank"`
+(the unchanged default) or `"fusion"`. Both related-discussion modes retrieve
+and fuse the same lexical and dense candidates with the configured weights.
+Fusion-only ranking retains deterministic fused order and skips the two-stage
+contextual reranker and its additional context fetches. Thread collection still
+groups evidence and limits the returned threads; message collection limits
+messages. It does not promise the same ordering or relevance as reranking.
+This setting changes no build manifest, embeddings or silver and takes effect on
+the next request, including an idle worker. CLI and MCP resolve it through the
+same core. Exact-mention ignores hybrid ranking. Diagnostics include the resolved
+hybrid `ranking`, with no rerank/context stages in fusion mode. Models remain
+required for dense query embeddings; the current model loader still loads its
+reranker assets even when inference is skipped. Per-request ranking overrides
+and independently loading only the required model assets remain follow-ups.
+
 The HTTP server separately accepts a strict shared-candidate query policy:
 
 ```toml

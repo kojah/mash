@@ -611,6 +611,13 @@ builds: `rank_constant` defaults to 60 (1–1000), and `lexical_weight` and
 stream before contextual reranking. These query-only settings apply to local,
 combined and fallback searches, take effect on the next request, and require no
 index rebuild. Exact-mention search is independent of fusion settings.
+Set `[gold.query] ranking = "fusion"` to keep fused hybrid ordering and skip
+contextual reranking and its context fetches. The default is
+`"contextual-rerank"`. This query-only policy applies across local, shared and
+combined searches through the same CLI/MCP core, including worker requests.
+It changes no stored vectors or silver. Dense query embeddings still require
+installed models; currently their reranker assets are loaded even when unused.
+Use diagnostics to compare execution and results before choosing a default.
 For one hybrid request, CLI `search` accepts `--fusion-rank-constant`,
 `--lexical-weight` and `--semantic-weight`; MCP `search` accepts a partial
 `fusion` object with the corresponding underscore-named fields. Omitted fields

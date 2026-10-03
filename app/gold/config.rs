@@ -91,6 +91,16 @@ pub(crate) struct Query {
     pub(crate) unit: SearchUnit,
     pub(crate) limit: usize,
     pub(crate) fusion: Fusion,
+    pub(crate) ranking: Ranking,
+}
+
+/// Query-only ranking over the active lexical and dense candidate artifacts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Ranking {
+    #[default]
+    ContextualRerank,
+    Fusion,
 }
 
 /// Query-only candidate fusion; independent of embedding/build identity.
@@ -166,6 +176,7 @@ pub(crate) struct Options {
     pub(crate) limit: usize,
     pub(crate) unit: SearchUnit,
     pub(crate) fusion: Fusion,
+    pub(crate) ranking: Ranking,
 }
 
 impl Options {
@@ -174,6 +185,7 @@ impl Options {
             limit,
             unit,
             fusion: Fusion::default(),
+            ranking: Ranking::default(),
         }
     }
 }
@@ -185,6 +197,7 @@ impl Default for Query {
             unit: SearchUnit::Threads,
             limit: 20,
             fusion: Fusion::default(),
+            ranking: Ranking::default(),
         }
     }
 }
@@ -213,6 +226,29 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ranking_is_strict_query_only_policy() {
+        let defaults: Configuration = toml::from_str("").unwrap();
+        let fused: Configuration = toml::from_str("[query]\nranking='fusion'").unwrap();
+        assert_eq!(defaults.query.ranking, Ranking::ContextualRerank);
+        assert_eq!(fused.query.ranking, Ranking::Fusion);
+        assert_eq!(defaults.build, fused.build);
+        assert_eq!(
+            defaults.build.generation("model"),
+            fused.build.generation("model")
+        );
+        for text in [
+            "[query]\nranking='unknown'",
+            "[query]\nranking=true",
+            "[build]\nranking='fusion'",
+        ] {
+            assert!(
+                toml::from_str::<Configuration>(text).is_err(),
+                "accepted {text}"
+            );
+        }
+    }
 
     #[test]
     fn embedding_text_budgets_are_strict_unicode_safe_and_versioned() {

@@ -121,6 +121,7 @@ pub(super) async fn search_prepared(
         limit,
         unit,
         fusion,
+        ranking,
     } = options;
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);
@@ -178,20 +179,21 @@ pub(super) async fn search_prepared(
     let query = query.to_owned();
     let ranking_query = query.clone();
     let (mut backend, selection) = crate::blocking(move || {
-        let mut fused = semantic::fuse(lexical, semantic, unit, fusion);
-        fused.extend(local_hits);
-        fused.sort_by(|a, b| {
-            b.fusion_score
-                .total_cmp(&a.fusion_score)
-                .then_with(|| a.node_id.cmp(&b.node_id))
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        let fused = crate::search_results::diversify(fused, unit);
-        let selection =
-            crate::search_ranking::select(&mut backend, &ranking_query, fused, unit, limit)?;
+        let fused = combine_candidates(lexical, semantic, local_hits, options);
+        let selection = if ranking == crate::gold::config::Ranking::Fusion {
+            crate::search_ranking::Selection {
+                hits: fused,
+                count: 0,
+            }
+        } else {
+            crate::search_ranking::select(&mut backend, &ranking_query, fused, unit, limit)?
+        };
         Ok((backend, selection))
     })
     .await?;
+    if ranking == crate::gold::config::Ranking::Fusion {
+        return finish_fused(backend, selection.hits, retrieval, options).await;
+    }
     let (context, context_error) = measured_context_documents(
         config,
         context_database,
@@ -207,6 +209,41 @@ pub(super) async fn search_prepared(
             hits: fused,
             retrieval,
             context_error,
+        })
+    })
+    .await
+}
+
+fn combine_candidates(
+    lexical: Vec<SearchHit>,
+    semantic: Vec<SearchHit>,
+    local: Vec<SearchHit>,
+    options: Options,
+) -> Vec<SearchHit> {
+    let mut fused = semantic::fuse(lexical, semantic, options.unit, options.fusion);
+    fused.extend(local);
+    fused.sort_by(|a, b| {
+        b.fusion_score
+            .total_cmp(&a.fusion_score)
+            .then_with(|| a.node_id.cmp(&b.node_id))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    crate::search_results::diversify(fused, options.unit)
+}
+
+async fn finish_fused(
+    backend: semantic::LoadedBackend,
+    hits: Vec<SearchHit>,
+    retrieval: SharedRetrieval,
+    options: Options,
+) -> Result<SearchOutcome, AppError> {
+    crate::blocking(move || {
+        // Returning a loaded backend to the cache can destroy the old model.
+        drop(backend);
+        Ok(SearchOutcome {
+            hits: crate::search_ranking::finish_fusion(hits, options.unit, options.limit),
+            retrieval,
+            context_error: None,
         })
     })
     .await

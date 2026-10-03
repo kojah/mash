@@ -74,14 +74,14 @@ pub(super) async fn run(
         } else {
             crate::gold::diagnostics::Scope::Combined
         };
-        Some((limit, fusion, scope))
+        Some((limit, fusion, scope, configuration.gold.query.ranking))
     } else {
         None
     };
     let mut response = run_inner(configuration, database, models, input).await?;
-    if let Some((limit, fusion, scope)) = policy {
+    if let Some((limit, fusion, scope, ranking)) = policy {
         response.diagnostics = Some(crate::gold::diagnostics::Diagnostics::new(
-            &response, scope, limit, fusion,
+            &response, scope, limit, fusion, ranking,
         ));
     }
     Ok(response)
@@ -109,6 +109,7 @@ async fn run_inner(
     let mut options = crate::gold::config::Options::new(limit, unit);
     let intent = intent.unwrap_or(configuration.gold.query.intent);
     options.fusion = resolve_fusion(fusion, intent, configuration.gold.query.fusion)?;
+    options.ranking = configuration.gold.query.ranking;
     let filters = resolve(
         &query,
         intent,

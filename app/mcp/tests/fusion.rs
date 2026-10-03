@@ -83,6 +83,48 @@ async fn indexed_fixture() -> (Mash, tempfile::TempDir) {
 }
 
 #[tokio::test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+async fn real_models_mcp_ranking_defaults_reload_without_indexing() {
+    let (server, root) = indexed_fixture().await;
+    let database = root.path().join("index.sqlite3");
+    let before = std::fs::read(&database).unwrap();
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    let task = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
+    let client = ().serve(client_io).await.unwrap();
+    let service = task.await.unwrap();
+    for ranking in ["contextual-rerank", "fusion", "contextual-rerank"] {
+        let config = configuration(root.path(), 10, 4).replace(
+            "unit='messages'",
+            &format!("unit='messages'\nranking='{ranking}'"),
+        );
+        std::fs::write(root.path().join("node.toml"), config).unwrap();
+        let response = client
+            .call_tool(
+                CallToolRequestParams::new("search").with_arguments(
+                    json!({"query":"cache model", "local":true, "diagnostics":true})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_ne!(response.is_error, Some(true), "{response:?}");
+        let result = response.structured_content.unwrap();
+        assert_eq!(result["results"].as_array().unwrap().len(), 1);
+        assert_eq!(result["diagnostics"]["ranking"], ranking);
+        let stages = result["diagnostics"]["stages"].as_array().unwrap();
+        assert_eq!(
+            stages.iter().any(|s| s["stage"] == "rerank"),
+            ranking == "contextual-rerank"
+        );
+        assert_eq!(std::fs::read(&database).unwrap(), before);
+    }
+    client.cancel().await.unwrap();
+    service.cancel().await.unwrap();
+}
+
+#[tokio::test]
 #[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
 async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_indexing() {
     let (server, root) = indexed_fixture().await;

@@ -22,6 +22,29 @@ fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
 }
 
 #[test]
+fn fusion_finish_preserves_order_and_thread_evidence_without_inference() {
+    let hits = || {
+        vec![
+            candidate("a", "first", "one"),
+            candidate("a", "second", "two"),
+            candidate("b", "third", "three"),
+        ]
+    };
+    let messages = finish_fusion(hits(), SearchUnit::Messages, 1);
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].id, "first");
+    let threads = finish_fusion(hits(), SearchUnit::Threads, 1);
+    assert_eq!(
+        threads
+            .iter()
+            .map(|hit| hit.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first", "second", "third"]
+    );
+    assert!(threads.iter().all(|hit| hit.rerank_score.is_none()));
+}
+
+#[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
     let root = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();

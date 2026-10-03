@@ -81,6 +81,7 @@ fn real_models_index_and_run_hybrid_search() {
     #[cfg(unix)]
     assert_worker_stage_diagnostics(&config, &database, model_arg);
     assert_gold_query_defaults(&config, &database, model_arg);
+    assert_gold_ranking_defaults(&config, &database, model_arg);
     assert_source_independent_gold_rebuild(&config, &database, &claude, &codex, model_arg);
 }
 
@@ -435,6 +436,62 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
     }
     assert_eq!(std::fs::read(database).unwrap(), before);
     std::fs::write(config, canonical_config).unwrap();
+}
+
+fn assert_gold_ranking_defaults(config: &Path, database: &Path, models: &str) {
+    let original = std::fs::read_to_string(config).unwrap();
+    let before = std::fs::read(database).unwrap();
+    for ranking in ["contextual-rerank", "fusion", "contextual-rerank"] {
+        std::fs::write(
+            config,
+            format!("{original}\n[gold.query]\nranking='{ranking}'\n"),
+        )
+        .unwrap();
+        for unit in ["threads", "messages"] {
+            for direct in [true, false] {
+                let mut command = Command::cargo_bin("mash").unwrap();
+                command.args([
+                    "--config",
+                    config.to_str().unwrap(),
+                    "--db",
+                    database.to_str().unwrap(),
+                    "--models-dir",
+                    models,
+                    "search",
+                    "--local",
+                    "--unit",
+                    unit,
+                    "--diagnostics",
+                    "authentication",
+                ]);
+                if direct {
+                    command.arg("--no-worker");
+                }
+                let output = command.output().unwrap();
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+                let results = response["results"].as_array().unwrap();
+                assert_ne!(results.as_slice(), &[] as &[Value]);
+                assert_eq!(response["diagnostics"]["ranking"], ranking);
+                let stages = response["diagnostics"]["stages"].as_array().unwrap();
+                assert!(stages.iter().any(|s| s["stage"] == "embed"));
+                assert_eq!(
+                    stages.iter().any(|s| s["stage"] == "rerank"),
+                    ranking == "contextual-rerank"
+                );
+                assert_eq!(
+                    std::fs::read(database).unwrap(),
+                    before,
+                    "query policy modified index"
+                );
+            }
+        }
+    }
+    std::fs::write(config, original).unwrap();
 }
 
 #[cfg(unix)]

@@ -1,5 +1,8 @@
 //! Request-only policy and retrieval outcome; never canonical history.
-use super::{config::Fusion, exact::Intent};
+use super::{
+    config::{Fusion, Ranking},
+    exact::Intent,
+};
 use crate::core::SearchResponse;
 use crate::search_results::{Results, SearchUnit};
 use serde::{Deserialize, Serialize};
@@ -40,6 +43,8 @@ pub(crate) struct Diagnostics {
     pub(crate) shared_fallback: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) fusion: Option<Fusion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) ranking: Option<Ranking>,
     pub(crate) returned_results: usize,
     /// Core time includes configuration and model admission, excludes CLI startup.
     pub(crate) elapsed_ms: u64,
@@ -55,6 +60,7 @@ impl Diagnostics {
         scope: Scope,
         limit: usize,
         fusion: Fusion,
+        ranking: Ranking,
     ) -> Self {
         let hybrid = response.intent == Intent::RelatedDiscussion;
         let fallback = response.shared_error.is_some();
@@ -76,6 +82,7 @@ impl Diagnostics {
             },
             shared_fallback: fallback,
             fusion: hybrid.then_some(fusion),
+            ranking: hybrid.then_some(ranking),
             returned_results: match &response.results {
                 Results::Threads(hits) => hits.len(),
                 Results::Messages(hits) => hits.len(),
