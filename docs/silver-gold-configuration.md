@@ -468,16 +468,42 @@ messages. It does not promise the same ordering or relevance as reranking.
 This setting changes no build manifest, embeddings or silver and takes effect on
 the next request, including an idle worker. CLI and MCP resolve it through the
 same core. Exact-mention ignores hybrid ranking. Diagnostics include the resolved
-hybrid `ranking`, with no rerank/context stages in fusion mode. Models remain
-required for dense query embeddings; the current model loader still loads its
-reranker assets even when inference is skipped. Independently loading only the
-required model assets remains a follow-up. CLI `search --ranking fusion` or
+hybrid `ranking`, with no rerank/context stages in fusion mode. Dense query
+embeddings require local inference or a configured remote service. The model
+loader loads reranker assets only for contextual-rerank. Local fusion loads its embedding
+model alone, retaining installation inventory validation and generation leases.
+Its cache identity includes ranking: switching ranking reloads a matching
+backend instead of retaining an unused reranker. Remote fusion loads neither
+local model and needs no local asset installation; it validates remote settings
+and credentials instead. Status distinguishes physical `models_installed` from
+effective `query_models` (`"available"` or `"unavailable"`) for current TOML
+query defaults. Query resource selection does not change
+build identity or vectors. CLI `search --ranking fusion` or
 MCP `search` with `"ranking":"fusion"` overrides ranking for one request;
 `"contextual-rerank"` is also accepted. Omission inherits current TOML, including
 worker and MCP sessions. Overrides do not persist and a later request returns
 to current defaults. Explicit ranking overrides with exact-mention fail before
 model admission, SQLite or HTTP access because literal retrieval does not use
 hybrid ranking. Unknown ranking names fail at the typed CLI/JSON boundary.
+
+A single Linux x86_64 CI-profile run on 2026-10-03 measured backend acquisition
+(inventory validation, lease selection, cache lookup and model initialization)
+with the installed MiniLM/Jina assets:
+
+| Acquisition sequence | Load time | Reranker loaded |
+| --- | ---: | --- |
+| First fusion backend | 274.9 ms | No |
+| Reuse fusion backend | 0.8 ms | No |
+| New contextual backend after fusion | 818.2 ms | Yes |
+| New fusion backend after contextual | 209.2 ms | No |
+
+These are individual observations, not percentiles or cold filesystem-cache
+measurements. They exclude query inference, retrieval, reranking and process
+startup. Switching policy reinitializes embeddings; stable-policy requests
+reuse the sole idle backend. RSS, sustained mixed-policy traffic and complete
+corpus ingestion/search costs remain acceptance work. The executable evidence
+is `ranking_selects_only_required_models_and_restores_contextual_backend`; its
+successful output is retained outside Git in the model-selection integration log.
 
 The HTTP server separately accepts a strict shared-candidate query policy:
 

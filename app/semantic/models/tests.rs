@@ -3,6 +3,71 @@ use super::*;
 use crate::semantic::shared_query_vector;
 
 #[test]
+fn remote_fusion_requires_no_local_model_assets_and_cannot_rerank() {
+    let root = tempfile::tempdir().unwrap();
+    let models =
+        Models::new(root.path().join("absent-models")).with_remote(Some(remote::Configuration {
+            url: "http://127.0.0.1:1/v1/embeddings".into(),
+            model: "test".into(),
+            dimensions: 384,
+            api: remote::Api::OpenaiCompatible,
+            token_env: None,
+            request_dimensions: false,
+        }));
+    models
+        .require_search(crate::gold::config::Ranking::Fusion)
+        .unwrap();
+    let mut backend = models
+        .load_search(crate::gold::config::Ranking::Fusion)
+        .unwrap()
+        .unwrap();
+    assert!(backend.embedding.is_none() && backend.reranker.is_none());
+    assert!(backend.rerank("query", &["document"]).is_err());
+    assert!(
+        models
+            .require_search(crate::gold::config::Ranking::ContextualRerank)
+            .is_err()
+    );
+    assert!(!root.path().join("absent-models").exists());
+}
+
+#[test]
+#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+fn ranking_selects_only_required_models_and_restores_contextual_backend() {
+    let root = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();
+    let models = Models::new(root);
+    for ranking in [
+        crate::gold::config::Ranking::Fusion,
+        crate::gold::config::Ranking::Fusion,
+        crate::gold::config::Ranking::ContextualRerank,
+        crate::gold::config::Ranking::Fusion,
+    ] {
+        let started = std::time::Instant::now();
+        let mut backend = models.load_search(ranking).unwrap().unwrap();
+        println!(
+            "MODEL_SELECTION {ranking:?} load_us={} reranker_loaded={}",
+            started.elapsed().as_micros(),
+            backend.reranker.is_some()
+        );
+        assert_eq!(
+            backend.reranker.is_some(),
+            ranking == crate::gold::config::Ranking::ContextualRerank
+        );
+        assert_ne!(
+            shared_query_vector(&mut backend, "model cache")
+                .unwrap()
+                .len(),
+            0
+        );
+        if ranking == crate::gold::config::Ranking::ContextualRerank {
+            assert_eq!(backend.rerank("cache", &["model cache"]).unwrap().len(), 1);
+        } else {
+            assert!(backend.rerank("cache", &["model cache"]).is_err());
+        }
+    }
+}
+
+#[test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 fn query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence() {
     let source = std::env::var_os("MASH_TEST_MODELS_DIR")
@@ -71,6 +136,8 @@ fn small_rerank_batches_preserve_scores_and_document_indices() {
     ];
     let expected = backend
         .reranker
+        .as_mut()
+        .unwrap()
         .rerank("cbioportal importer", documents, false, None)
         .unwrap();
     let actual = backend.rerank("cbioportal importer", &documents).unwrap();

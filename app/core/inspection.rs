@@ -1,5 +1,5 @@
 //! Read-only canonical views and local/shared readiness inspection.
-use super::models::StatusResponse;
+use super::models::{ModelAvailability, StatusResponse};
 use super::{SearchMode, ViewResponse, publication_config, required_shared, routed_both};
 use crate::AppError;
 use crate::config::ResolvedConfig;
@@ -51,9 +51,16 @@ fn local_status(
     models_dir: &Path,
     configuration: &ResolvedConfig,
 ) -> Result<StatusResponse, AppError> {
-    let models_installed = Models::new(models_dir.to_path_buf())
-        .with_remote(configuration.embeddings.clone())
-        .is_installed();
+    let models =
+        Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
+    let models_installed = models.is_installed();
+    let query_models_available = match models.require_search(configuration.gold.query.ranking) {
+        Ok(()) => true,
+        Err(error) if matches!(error.error.kind, crate::ErrorKind::Configuration) => {
+            return Err(error);
+        }
+        Err(_) => false,
+    };
     if !database_path.is_file() {
         return Ok(StatusResponse {
             gold: None,
@@ -66,9 +73,14 @@ fn local_status(
             embeddings: 0,
             stored_embeddings: 0,
             models_installed,
+            query_models: if query_models_available {
+                ModelAvailability::Available
+            } else {
+                ModelAvailability::Unavailable
+            },
             semantic_support: true,
             realized_mode: SearchMode::Unavailable,
-            recommended_action: Some(if models_installed {
+            recommended_action: Some(if query_models_available {
                 crate::Action::Index
             } else {
                 crate::Action::ModelsInstall
@@ -93,7 +105,7 @@ fn local_status(
         .as_ref()
         .zip(snapshot.silver.as_ref())
         .is_some_and(|(m, s)| m.matches(&configuration.gold.build, &model, s));
-    let hybrid_ready = models_installed
+    let hybrid_ready = query_models_available
         && snapshot.derived_clean
         && snapshot.exact_semantic_coverage
         && manifest_matches;
@@ -108,13 +120,18 @@ fn local_status(
         embeddings: current_embeddings,
         stored_embeddings: counts.embeddings,
         models_installed,
+        query_models: if query_models_available {
+            ModelAvailability::Available
+        } else {
+            ModelAvailability::Unavailable
+        },
         semantic_support: true,
         realized_mode: if hybrid_ready {
             SearchMode::Hybrid
         } else {
             SearchMode::Unavailable
         },
-        recommended_action: if !models_installed {
+        recommended_action: if !query_models_available {
             Some(crate::Action::ModelsInstall)
         } else if hybrid_ready {
             None
@@ -129,4 +146,40 @@ fn local_status(
         },
         shared_index: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_distinguishes_remote_fusion_requirements_from_installed_assets() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("node.toml");
+        let models = root.path().join("missing-models");
+        let database = root.path().join("missing.sqlite3");
+        for (ranking, available) in [("fusion", true), ("contextual-rerank", false)] {
+            std::fs::write(&config, format!("version=1\nproviders={{}}\n[embeddings]\nurl='http://127.0.0.1:1/v1/embeddings'\nmodel='test'\n[gold.query]\nranking='{ranking}'\n")).unwrap();
+            let configuration = crate::config::load(Some(&config)).unwrap();
+            let status = local_status(&database, &models, &configuration).unwrap();
+            assert!(!status.models_installed);
+            assert_eq!(
+                matches!(status.query_models, ModelAvailability::Available),
+                available
+            );
+            assert!(!status.ready);
+            if available {
+                assert!(matches!(
+                    status.recommended_action,
+                    Some(crate::Action::Index)
+                ));
+            } else {
+                assert!(matches!(
+                    status.recommended_action,
+                    Some(crate::Action::ModelsInstall)
+                ));
+            }
+        }
+        assert!(!database.exists() && !models.exists());
+    }
 }

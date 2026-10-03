@@ -63,7 +63,7 @@ fn backend(root: &Path, threads: Option<usize>) -> Backend {
     Backend {
         embedding: Some(load_local_embedding(root, threads).unwrap()),
         remote: None,
-        reranker: load_reranker_with_threads(root, threads).unwrap(),
+        reranker: Some(load_reranker_with_threads(root, threads).unwrap()),
         assets_lease: None,
     }
 }

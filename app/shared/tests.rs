@@ -227,6 +227,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         &models_dir,
         None,
         "hello",
+        crate::gold::config::Ranking::default(),
     )
     .await
     .unwrap();

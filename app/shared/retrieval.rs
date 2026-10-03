@@ -41,7 +41,14 @@ pub(crate) async fn search(
 ) -> Result<SearchOutcome, AppError> {
     filters.filter.validate()?;
     crate::search_query::validate(query)?;
-    let prepared = prepare_search(local_database, models_dir, embeddings, query).await?;
+    let prepared = prepare_search(
+        local_database,
+        models_dir,
+        embeddings,
+        query,
+        options.ranking,
+    )
+    .await?;
     search_prepared(
         config,
         local_database.map(|(path, _)| path),
@@ -66,6 +73,7 @@ pub(super) async fn prepare_search(
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
+    ranking: crate::gold::config::Ranking,
 ) -> Result<PreparedSearch, AppError> {
     let root = models_dir.to_path_buf();
     let text = query.to_owned();
@@ -78,7 +86,7 @@ pub(super) async fn prepare_search(
     );
     crate::blocking(move || {
         let models = Models::new(root).with_remote(embeddings);
-        models.require_installed()?;
+        models.require_search(ranking)?;
         let local_build = readiness_database
             .as_ref()
             .map(|(_, build)| build)
@@ -89,7 +97,7 @@ pub(super) async fn prepare_search(
                 .require_gold_build(&build, &models.generation())?;
         }
         let mut backend = models
-            .load()?
+            .load_search(ranking)?
             .ok_or_else(|| AppError::model("run `mash models install`"))?;
         let vector = semantic::shared_query_vector(&mut backend, &text)?;
         Ok(PreparedSearch {

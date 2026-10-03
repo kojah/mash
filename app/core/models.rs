@@ -204,6 +204,7 @@ pub(crate) struct StatusResponse {
     pub(super) embeddings: u64,
     pub(super) stored_embeddings: u64,
     pub(super) models_installed: bool,
+    pub(super) query_models: ModelAvailability,
     pub(super) semantic_support: bool,
     pub(super) realized_mode: SearchMode,
     pub(super) recommended_action: Option<crate::Action>,
@@ -212,6 +213,13 @@ pub(crate) struct StatusResponse {
     pub(super) shared: Option<shared::Publication>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared_index: Option<shared::Freshness>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum ModelAvailability {
+    Available,
+    Unavailable,
 }
 
 #[derive(Debug, Serialize)]

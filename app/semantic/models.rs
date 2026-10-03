@@ -31,13 +31,14 @@ pub(crate) struct Models {
 pub(crate) struct Backend {
     embedding: Option<TextEmbedding>,
     remote: Option<remote::Client>,
-    reranker: TextRerank,
+    reranker: Option<TextRerank>,
     // Retained with cached models and lazy Core ML sessions until their drop.
     assets_lease: Option<fs::File>,
 }
 
 #[derive(PartialEq, Eq)]
 struct BackendCacheKey {
+    ranking: crate::gold::config::Ranking,
     root: PathBuf,
     marker_modified: Option<SystemTime>,
     files: Vec<(String, u64, Option<SystemTime>)>,
@@ -134,8 +135,41 @@ impl Models {
         self.read_valid_marker().map(|_| ())
     }
 
-    #[tracing::instrument(name = "load_search_models", skip_all)]
+    pub(crate) fn require_search(
+        &self,
+        ranking: crate::gold::config::Ranking,
+    ) -> Result<(), AppError> {
+        if ranking == crate::gold::config::Ranking::Fusion
+            && let Some(config) = &self.remote
+        {
+            return remote::Client::new(config.clone()).map(|_| ());
+        }
+        self.require_installed()
+    }
+
+    #[cfg(test)]
     pub(crate) fn load(&self) -> Result<Option<LoadedBackend>, AppError> {
+        self.load_search(crate::gold::config::Ranking::default())
+    }
+
+    #[tracing::instrument(name = "load_search_models", skip_all)]
+    pub(crate) fn load_search(
+        &self,
+        ranking: crate::gold::config::Ranking,
+    ) -> Result<Option<LoadedBackend>, AppError> {
+        if ranking == crate::gold::config::Ranking::Fusion
+            && let Some(config) = &self.remote
+        {
+            return Ok(Some(LoadedBackend {
+                backend: Some(Backend {
+                    embedding: None,
+                    remote: Some(remote::Client::new(config.clone())?),
+                    reranker: None,
+                    assets_lease: None,
+                }),
+                cache_key: None,
+            }));
+        }
         if !self.root.join(MARKER_NAME).is_file() {
             return Ok(None);
         }
@@ -147,13 +181,19 @@ impl Models {
                 backend: Some(Backend {
                     embedding: None,
                     remote: Some(remote::Client::new(config.clone())?),
-                    reranker: load_reranker(&asset_root)?,
+                    reranker: match ranking {
+                        crate::gold::config::Ranking::ContextualRerank => {
+                            Some(load_reranker(&asset_root)?)
+                        }
+                        crate::gold::config::Ranking::Fusion => None,
+                    },
                     assets_lease: selected.lease,
                 }),
                 cache_key: None,
             }))
         } else {
             let key = BackendCacheKey {
+                ranking,
                 root: asset_root.clone(),
                 marker_modified: fs::metadata(self.root.join(MARKER_NAME))
                     .map_err(AppError::io)?
@@ -177,7 +217,7 @@ impl Models {
                 .take();
             let mut backend = match cached {
                 Some(cached) if cached.key == key => cached.backend,
-                _ => Backend::load_local(&asset_root)?,
+                _ => Backend::load_local_search(&asset_root, ranking)?,
             };
             backend.assets_lease = selected.lease;
             Ok(Some(LoadedBackend {
@@ -237,8 +277,18 @@ impl Backend {
     }
 
     pub(super) fn load_local(root: &Path) -> Result<Self, AppError> {
+        Self::load_local_search(root, crate::gold::config::Ranking::default())
+    }
+
+    fn load_local_search(
+        root: &Path,
+        ranking: crate::gold::config::Ranking,
+    ) -> Result<Self, AppError> {
         let embedding = load_local_embedding(root, None)?;
-        let reranker = load_reranker(root)?;
+        let reranker = match ranking {
+            crate::gold::config::Ranking::ContextualRerank => Some(load_reranker(root)?),
+            crate::gold::config::Ranking::Fusion => None,
+        };
         Ok(Self {
             embedding: Some(embedding),
             remote: None,
@@ -298,6 +348,10 @@ impl Backend {
         if batch_size == 0 {
             return Err(AppError::internal("reranking batch size must be positive"));
         }
+        let reranker = self
+            .reranker
+            .as_mut()
+            .ok_or_else(|| AppError::internal("query backend has no reranker"))?;
         let mut order = (0..documents.len()).collect::<Vec<_>>();
         let bucket = |index: usize| documents[index].as_ref().len().next_power_of_two();
         order.sort_by_key(|&index| bucket(index));
@@ -310,8 +364,7 @@ impl Backend {
                     .iter()
                     .map(|&index| documents[index].as_ref())
                     .collect::<Vec<_>>();
-                let results = self
-                    .reranker
+                let results = reranker
                     .rerank(query.as_ref(), &refs, false, Some(batch_size))
                     .map_err(|error| {
                         AppError::model(format!("reranking inference failed: {error}"))

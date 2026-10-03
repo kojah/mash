@@ -350,6 +350,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fusion_backend_embeds_through_remote_api_without_local_assets() {
+        let (config, _mock, task) = mock().await;
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("absent-models");
+        let models = crate::semantic::Models::new(path.clone()).with_remote(Some(config));
+        let vector = crate::blocking(move || {
+            models.require_search(crate::gold::config::Ranking::Fusion)?;
+            let mut backend = models
+                .load_search(crate::gold::config::Ranking::Fusion)?
+                .unwrap();
+            crate::semantic::shared_query_vector(&mut backend, "first")
+        })
+        .await
+        .unwrap();
+        assert_eq!(vector.len(), 1024);
+        assert!(!path.exists());
+        task.abort();
+    }
+
+    #[tokio::test]
     async fn voyage_requests_use_query_document_types_restore_order_and_sanitize_errors() {
         let (config, mock, task) = mock().await;
         let client = Client::new(config).unwrap();

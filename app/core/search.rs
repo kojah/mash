@@ -276,11 +276,11 @@ fn local_search(
     build: &crate::gold::config::Build,
 ) -> Result<SearchResponse, AppError> {
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
-    models.require_installed()?;
+    models.require_search(options.ranking)?;
     let generation = build.generation(&models.generation());
     let storage = Storage::open_search(database_path, &generation)?;
     storage.require_gold_build(build, &models.generation())?;
-    let mut backend = models.load()?.ok_or_else(|| {
+    let mut backend = models.load_search(options.ranking)?.ok_or_else(|| {
         AppError::model("semantic models are not installed; run `mash models install`")
     })?;
     let results = semantic::hybrid_search_filtered(
