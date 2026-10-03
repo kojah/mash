@@ -7,10 +7,10 @@ test "$(cornucopia --version)" = "cornucopia 1.0.1"
 test "$(sqlc version)" = "v1.31.1"
 if [[ -n "${MASH_CODEGEN_POSTGRES_URL:-}" ]]; then
     # Creates and drops a temporary database; never validates against live data.
-    cornucopia fresh queries/postgres/_extensions.sql app/shared/schema.sql \
+    cornucopia fresh queries/postgres/_extensions.sql app/shared/migrations.sql app/shared/schema.sql \
         --url "$MASH_CODEGEN_POSTGRES_URL"
 else
-    cornucopia schema queries/postgres/_extensions.sql app/shared/schema.sql \
+    cornucopia schema queries/postgres/_extensions.sql app/shared/migrations.sql app/shared/schema.sql \
         --container-image pgvector/pgvector:pg17
 fi
 sqlc generate

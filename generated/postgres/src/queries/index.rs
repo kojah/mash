@@ -1199,7 +1199,7 @@ impl VersionStmt {
 pub struct CountsStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn counts() -> CountsStmt {
     CountsStmt(
-        "SELECT (SELECT count(*) FROM conversations WHERE node_id=$1) AS conversations, count(*) AS messages, count(*) FILTER(WHERE projection<>'') AS searchable_messages, count(*) FILTER(WHERE projection<>'' AND generation=$2 AND vector_dims(vector)=$3) AS embeddings FROM messages WHERE node_id=$1",
+        "SELECT (SELECT count(*) FROM conversations WHERE node_id=$1) AS conversations, count(*) AS messages, count(*) FILTER(WHERE projection<>'') AS searchable_messages, count(*) FILTER(WHERE projection<>'' AND generation=$2 AND vector_dims(vector)=$3) AS embeddings FROM messages m LEFT JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id WHERE m.node_id=$1",
         None,
     )
 }
@@ -1256,7 +1256,7 @@ impl<'c, 'a, 's, C: GenericClient, T1: crate::StringSql, T2: crate::StringSql>
 pub struct IncompatibleStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn incompatible() -> IncompatibleStmt {
     IncompatibleStmt(
-        "SELECT EXISTS(SELECT 1 FROM messages WHERE projection<>'' AND ($1::text IS NULL OR node_id<>$1) AND (generation IS DISTINCT FROM $2 OR vector IS NULL OR vector_dims(vector)<>$3)) AS incompatible",
+        "SELECT EXISTS(SELECT 1 FROM messages m LEFT JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id WHERE projection<>'' AND ($1::text IS NULL OR m.node_id<>$1) AND (generation IS DISTINCT FROM $2 OR vector IS NULL OR vector_dims(vector)<>$3)) AS incompatible",
         None,
     )
 }
@@ -1409,7 +1409,7 @@ impl FreshnessStmt {
 pub struct SourcesStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn sources() -> SourcesStmt {
     SourcesStmt(
-        "SELECT provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint, NOT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2)) AS ready FROM direct_sources s WHERE node_id=$3",
+        "SELECT provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint, NOT EXISTS(SELECT 1 FROM messages m LEFT JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2)) AS ready FROM direct_sources s WHERE node_id=$3",
         None,
     )
 }
@@ -1536,7 +1536,7 @@ impl BrokenContextStmt {
 pub struct SearchStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn search() -> SearchStmt {
     SearchStmt(
-        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, ts_rank_cd(document,websearch_to_tsquery('simple',$1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE document @@ websearch_to_tsquery('simple',$1) AND projection<>'' AND generation=$2 AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at>=$4) AND ($5::text IS NULL OR m.node_id<>$5) ORDER BY score DESC,m.node_id,m.id LIMIT $6",
+        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, ts_rank_cd(document,websearch_to_tsquery('simple',$1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE document @@ websearch_to_tsquery('simple',$1) AND projection<>'' AND generation=$2 AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at>=$4) AND ($5::text IS NULL OR m.node_id<>$5) ORDER BY score DESC,m.node_id,m.id LIMIT $6",
         None,
     )
 }
@@ -1632,7 +1632,7 @@ impl<
 pub struct SemanticStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn semantic() -> SemanticStmt {
     SemanticStmt(
-        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, 1.0-(m.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE generation=$2 AND vector_dims(vector)=$3 AND projection<>'' AND ($4::text IS NULL OR c.provider=$4) AND ($5::bigint IS NULL OR m.created_at>=$5) AND ($6::text IS NULL OR m.node_id<>$6) ORDER BY score DESC,m.node_id,m.id LIMIT $7",
+        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, 1.0-(g.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE generation=$2 AND vector_dims(vector)=$3 AND projection<>'' AND ($4::text IS NULL OR c.provider=$4) AND ($5::bigint IS NULL OR m.created_at>=$5) AND ($6::text IS NULL OR m.node_id<>$6) ORDER BY score DESC,m.node_id,m.id LIMIT $7",
         None,
     )
 }

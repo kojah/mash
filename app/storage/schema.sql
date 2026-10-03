@@ -1,3 +1,4 @@
+-- Silver publication ownership and durable reconciliation state.
 CREATE TABLE IF NOT EXISTS shared_publication (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     instance TEXT NOT NULL,
@@ -11,6 +12,7 @@ CREATE TABLE IF NOT EXISTS shared_forgets (
     scope TEXT NOT NULL, conversation_id TEXT NOT NULL,
     PRIMARY KEY(scope, conversation_id)
 );
+-- Silver canonical history and provider-native interpretation.
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (
@@ -44,6 +46,7 @@ CREATE TABLE IF NOT EXISTS messages (
     fingerprint TEXT NOT NULL DEFAULT '',
     UNIQUE (conversation_id, ordinal)
 );
+-- Gold retrieval state, rebuilt from silver without provider source files.
 CREATE TABLE IF NOT EXISTS message_embeddings (
     message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
     generation TEXT NOT NULL DEFAULT '',
@@ -71,6 +74,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
     conversation_id UNINDEXED,
     tokenize = 'unicode61'
 );
+-- Silver provenance, deletion intent and provider replay checkpoints.
 CREATE TABLE IF NOT EXISTS tombstones (
     provider TEXT NOT NULL,
     conversation_id TEXT NOT NULL,
@@ -105,6 +109,7 @@ CREATE TABLE IF NOT EXISTS claude_source_messages (
     created_at INTEGER,
     PRIMARY KEY(source_key, message_id)
 ) WITHOUT ROWID;
+-- Gold readiness/invalidation metadata; silver commits invalidate this state.
 CREATE TABLE IF NOT EXISTS derived_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     search_dirty INTEGER NOT NULL CHECK (search_dirty IN (0, 1)),

@@ -213,7 +213,7 @@ async fn upload_batch(
                     return Err(AppError::usage("invalid message embedding or ordinal"));
                 }
             }
-            "INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,generation,vector,context_parent) SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,generation,vector::public.vector,CASE context->>'kind' WHEN 'root' THEN -1 WHEN 'parent' THEN (context->>'ordinal')::bigint END FROM jsonb_to_recordset($2::text::jsonb) r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,generation text,vector real[],context jsonb) WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id)"
+            "WITH silver AS (INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,created_at,context_parent) SELECT $1,r.id,r.conversation_id,ordinal,role,content,projection,created_at,CASE context->>'kind' WHEN 'root' THEN -1 WHEN 'parent' THEN (context->>'ordinal')::bigint END FROM jsonb_to_recordset($2::text::jsonb) r(id text,conversation_id text,ordinal bigint,role text,content text,projection text,created_at bigint,context jsonb) WHERE EXISTS(SELECT 1 FROM conversations c WHERE c.node_id=$1 AND c.id=r.conversation_id) RETURNING node_id,id,projection) INSERT INTO message_search(node_id,id,generation,vector,document) SELECT s.node_id,s.id,r.generation,r.vector::public.vector,to_tsvector('simple',s.projection) FROM silver s JOIN jsonb_to_recordset($2::text::jsonb) r(id text,generation text,vector real[]) ON r.id=s.id"
         }
     };
     let json = batch
@@ -475,11 +475,14 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
         ))
         .await
         .map_err(pg_error)?;
+        tx.batch_execute(include_str!("migrations.sql"))
+            .await
+            .map_err(pg_error)?;
         tx.batch_execute(include_str!("schema.sql"))
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 15 {
+        if version != 16 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
@@ -633,7 +636,7 @@ async fn filtered_candidates(
             &format!(
                 "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
                 ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
-         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
+         FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
            AND ($5::text IS NULL OR m.node_id<>$5)
@@ -648,8 +651,8 @@ async fn filtered_candidates(
         .query(
             &format!(
                 "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                1.0 - (m.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
-         FROM messages m JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
+                1.0 - (g.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
+         FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
            AND ($6::text IS NULL OR m.node_id<>$6)

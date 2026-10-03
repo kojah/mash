@@ -116,10 +116,20 @@ Atomic publication must prevent readers from combining different revisions.
 | Backend | Current silver storage | Current gold storage | Remaining separation |
 | --- | --- | --- | --- |
 | SQLite | `conversations`, `messages`, provenance and checkpoints | `message_embeddings`, `message_fts`, `semantic_chunks` and retrieval caches | Further module organization; table split already exists |
-| Postgres | `conversations`, `messages`, `direct_sources`, tombstones and node metadata | Vectors, generation and generated full-text data on `messages` | Move derived fields out of canonical messages, preserving existing rows |
+| Postgres | `conversations`, `messages`, `direct_sources`, tombstones and node metadata | `message_search`: vectors, model generation and full-text documents | Table split exists; shared pipeline/module organization continues |
 | Redis | Immutable node snapshots, state and catalog keys | Search documents and their vectors | Canonical snapshots still include vectors |
 | Qdrant | State chunks, node heads and catalog records | Searchable message points with dense/sparse vectors | Canonical state chunks still include vectors |
 
-Shared storage separation is not complete. Its migration and lifecycle checks
-are tracked in `mash-c0d.3.12`; extracting the node-side gold materializer does not
-by itself establish that storage boundary.
+The current Postgres definitions in `app/shared/schema.sql` explicitly group
+silver and gold tables. Historical bootstrap/upgrades live in
+`app/shared/migrations.sql`. Version 16 moves existing generation, vector and
+full-text values into `message_search` within the startup transaction, then
+removes those columns from canonical messages. Publications write both tables
+in the same transaction. Readiness checks use a left join so missing gold fails
+search, while viewing continues to use silver alone. Deleting silver cascades
+to its gold rows; deleting gold leaves canonical history intact. This adds no
+second canonical body copy.
+
+Shared storage separation is not complete for Redis/Qdrant. Its migration and
+lifecycle checks are tracked in `mash-c0d.3.12`; extracting the node-side gold
+materializer does not by itself establish those storage boundaries.

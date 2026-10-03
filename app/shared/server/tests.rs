@@ -14,6 +14,7 @@ mod relevance;
 mod restart;
 mod selections;
 mod snapshot_budget;
+mod storage_layers;
 mod threads;
 mod windsurf;
 
@@ -1180,7 +1181,7 @@ async fn postgres_publication_migrates_existing_array_vectors_without_losing_his
     let service = Service::new(true).await;
     let client = service.pool.get().await.unwrap();
     let schema = backend::group_schema(&service.group);
-    client.batch_execute(&format!("SET search_path={schema},public; INSERT INTO nodes VALUES('legacy','old',1); INSERT INTO conversations VALUES('legacy','conversation','codex',NULL,NULL,NULL); ALTER TABLE messages ALTER COLUMN vector TYPE double precision[] USING NULL; UPDATE version SET version=1;")).await.unwrap();
+    client.batch_execute(&format!("SET search_path={schema},public; DROP TABLE message_search; ALTER TABLE messages ADD COLUMN generation TEXT, ADD COLUMN vector double precision[], ADD COLUMN document TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple',projection)) STORED; INSERT INTO nodes VALUES('legacy','old',1); INSERT INTO conversations(node_id,id,provider) VALUES('legacy','conversation','codex'); UPDATE version SET version=1;")).await.unwrap();
     for (id, vector) in [
         ("complete", vec![1.0f64; 384]),
         ("incomplete", vec![1.0; 2]),
@@ -1192,7 +1193,7 @@ async fn postgres_publication_migrates_existing_array_vectors_without_losing_his
         .await
         .unwrap();
     let client = service.pool.get().await.unwrap();
-    let tx=client.query_one(&format!("SELECT count(*),count(vector),max(public.vector_dims(vector)) FROM {schema}.messages"),&[]).await.unwrap();
+    let tx=client.query_one(&format!("SELECT count(*),count(vector),max(public.vector_dims(vector)) FROM {schema}.messages m LEFT JOIN {schema}.message_search g USING(node_id,id)"),&[]).await.unwrap();
     assert_eq!(tx.get::<_, i64>(0), 2);
     assert_eq!(tx.get::<_, i64>(1), 1);
     assert_eq!(tx.get::<_, Option<i32>>(2), Some(384));
