@@ -5,6 +5,12 @@ CREATE TABLE IF NOT EXISTS gold_manifest (
     manifest TEXT
 );
 INSERT OR IGNORE INTO gold_manifest(singleton) VALUES (1);
+-- Independent local lexical publication; contains no copied canonical text.
+CREATE TABLE IF NOT EXISTS lexical_manifest (
+    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+    manifest TEXT
+);
+INSERT OR IGNORE INTO lexical_manifest(singleton) VALUES (1);
 -- Silver metadata evidence; no copied canonical content or retrieval settings.
 CREATE TABLE IF NOT EXISTS conversation_enrichment (
     conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,

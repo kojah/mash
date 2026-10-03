@@ -7,11 +7,10 @@ impl Storage {
     pub(crate) fn open_lexical(path: &std::path::Path) -> Result<Self, AppError> {
         let storage = Self::open_catalog(path)?;
         let silver = storage.silver_certificate()?;
-        let certified = storage.gold_manifest()?.is_some_and(|m| {
-            // This checks completed indexing and silver identity, not the
-            // configured dense recipe or availability of its model files.
-            m.matches(&m.build, &m.model_generation, &silver)
-        });
+        let searchable_messages = storage.counts()?.searchable_messages;
+        let certified = storage
+            .lexical_manifest()?
+            .is_some_and(|m| m.matches(&silver, searchable_messages));
         if storage.derived_search_is_dirty()? || !certified {
             return Err(AppError::search_not_ready(
                 "lexical index is incomplete or stale; run `mash index`",

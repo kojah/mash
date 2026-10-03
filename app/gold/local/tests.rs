@@ -81,7 +81,7 @@ fn canonical(path: &Path) -> Vec<u8> {
 }
 
 #[test]
-fn failed_gold_build_preserves_durable_silver_and_does_not_publish_readiness() {
+fn failed_dense_build_preserves_silver_and_publishes_completed_lexical_artifact() {
     let fixture = fixture(false);
     let before = canonical(&fixture.database);
     let missing = fixture.database.with_file_name("missing-models");
@@ -110,6 +110,16 @@ fn failed_gold_build_preserves_durable_silver_and_does_not_publish_readiness() {
         0
     );
     assert!(Storage::open_search(&fixture.database, &models.generation()).is_err());
+    let lexical = Storage::open_lexical(&fixture.database).unwrap();
+    assert!(lexical.gold_manifest().unwrap().is_none());
+    assert_eq!(
+        lexical
+            .lexical_manifest()
+            .unwrap()
+            .unwrap()
+            .searchable_messages,
+        1
+    );
     assert!(!missing.exists());
     assert!(!fixture.source_root.exists());
 }

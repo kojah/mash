@@ -16,14 +16,8 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
     let mut writer = crate::storage::Storage::open_writer(&database).unwrap();
     writer.finish_silver_ingestion().unwrap();
     writer.rebuild_derived_search_state().unwrap();
+    writer.publish_lexical_manifest().unwrap();
     let certificate = writer.silver_certificate().unwrap();
-    writer
-        .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
-            crate::gold::config::Build::default(),
-            "unavailable".into(),
-            certificate.clone(),
-        ))
-        .unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
     let config = directory.path().join("config.toml");

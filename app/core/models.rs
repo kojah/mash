@@ -193,6 +193,7 @@ pub(crate) struct ViewResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusResponse {
+    pub(super) lexical: Option<Box<crate::gold::lexical_manifest::Manifest>>,
     pub(super) gold: Option<crate::gold::manifest::Manifest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) silver: Option<crate::silver::certificate::Certificate>,

@@ -756,6 +756,11 @@ impl Storage {
             .unchecked_transaction()
             .map_err(AppError::database)?;
         let silver = self.silver_certificate()?;
+        let lexical_clean = !self.derived_search_is_dirty()?;
+        let searchable_messages = self.counts()?.searchable_messages;
+        let lexical = self
+            .lexical_manifest()?
+            .filter(|m| lexical_clean && m.matches(&silver, searchable_messages));
         let mut manifest = self
             .gold_manifest()?
             .filter(|m| m.matches(&m.build, &m.model_generation, &silver));
@@ -839,6 +844,7 @@ impl Storage {
                 )
                 .map_err(AppError::database)?;
         }
+        advance_lexical_after_forget(&transaction, lexical)?;
         transaction.commit().map_err(AppError::database)?;
         Ok(removed > 0)
     }
@@ -918,6 +924,40 @@ impl Storage {
             .collect::<rusqlite::Result<_>>()
             .map_err(AppError::database)
     }
+}
+
+fn advance_lexical_after_forget(
+    connection: &rusqlite::Connection,
+    manifest: Option<crate::gold::lexical_manifest::Manifest>,
+) -> Result<(), AppError> {
+    let Some(mut manifest) = manifest else {
+        return Ok(());
+    };
+    let revision: i64 = connection
+        .query_row(
+            "SELECT revision FROM silver_state WHERE singleton=1",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(AppError::database)?;
+    manifest.silver.revision =
+        u64::try_from(revision).map_err(|_| AppError::database_data("invalid silver revision"))?;
+    manifest.searchable_messages = u64::try_from(
+        sql::Counts
+            .query_one(connection)
+            .map_err(AppError::database)?
+            .searchable_messages,
+    )
+    .map_err(|_| AppError::database_data("invalid searchable message count"))?;
+    let json = serde_json::to_string(&manifest)
+        .map_err(|_| AppError::internal("serialize lexical build manifest"))?;
+    connection
+        .execute(
+            "UPDATE lexical_manifest SET manifest=?1 WHERE singleton=1",
+            [json],
+        )
+        .map_err(AppError::database)?;
+    Ok(())
 }
 
 pub(super) fn source_is_in_reconciliation_scope(

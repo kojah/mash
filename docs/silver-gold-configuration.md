@@ -18,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude summary-title and cwd origins, OpenCode native title/directory/worktree, Hermes title/cwd/repository root and Pi title/cwd are recorded. Unaudited origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests; shared lexical readiness is independent of dense readiness. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; atomic all-node replacement and broader enrichment origins remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests and independent lexical publication contracts. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; atomic all-node replacement and broader enrichment origins remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -481,7 +481,26 @@ query defaults. Exact-mention status checks certified, current lexical data with
 requiring models or matching the configured dense recipe; it reports lexical
 readiness even when dense coverage is incomplete. Missing, dirty or stale lexical
 data still requires explicit indexing. This is local readiness; shared inspection
-remains separate. Query resource selection does not change
+remains separate. Local SQLite schema 39 stores a separate
+`lexical_manifest`: schema and representation versions, certified silver revision
+and interpretation version, and searchable-message coverage. Its representation
+is FTS5 `unicode61` over interpreted dialogue, followed by literal verification.
+It contains no canonical text or dense model settings. Status exposes this record
+as `lexical`; missing or incompatible records fail readiness checks.
+
+Explicit indexing publishes lexical completion after refreshing derived search
+data, before dense inference. If later inference fails after that transaction is
+committed, exact search can use the completed lexical artifact while hybrid
+search remains unavailable. A rejected source cannot certify new lexical data;
+an unchanged previously certified snapshot may remain usable. `forget` advances
+a previously current, clean lexical record atomically with deletion, including
+when no dense record exists. It does not revive stale or dirty lexical data.
+Upgrades from schema 38 or earlier create an empty lexical publication slot;
+run explicit indexing (or source-free `index --rebuild-local-gold` with certified
+silver) to publish it. Reads never migrate or build it. This establishes an
+independent artifact contract; configurable artifact enablement remains pending.
+
+Query resource selection does not change
 build identity or vectors. CLI `search --ranking fusion` or
 MCP `search` with `"ranking":"fusion"` overrides ranking for one request;
 `"contextual-rerank"` is also accepted. Omission inherits current TOML, including

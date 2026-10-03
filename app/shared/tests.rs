@@ -344,6 +344,7 @@ fn seed_ready(path: &Path, generation: &str) {
         .unwrap();
     storage.finish_silver_ingestion().unwrap();
     storage.mark_semantic_index_ready(generation).unwrap();
+    storage.publish_lexical_manifest().unwrap();
     storage
         .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
             crate::gold::config::Build::default(),

@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    gold::{config::Build, exact::Literal, manifest::Manifest},
-    search_filter::Selection,
-};
+use crate::{gold::exact::Literal, search_filter::Selection};
 
 fn certify(writer: &mut Storage) {
     writer
@@ -13,13 +10,77 @@ fn certify(writer: &mut Storage) {
         .unwrap();
     writer.finish_silver_ingestion().unwrap();
     writer.rebuild_derived_search_state().unwrap();
+    writer.publish_lexical_manifest().unwrap();
+}
+
+#[test]
+fn lexical_publication_survives_forget_without_a_dense_manifest() {
+    for dirty in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("lexical.sqlite3");
+        let mut writer = Storage::open_writer(&path).unwrap();
+        writer
+            .replace_conversation(&conversation("delete this"))
+            .unwrap();
+        certify(&mut writer);
+        if dirty {
+            writer.mark_derived_search_dirty().unwrap();
+        }
+        writer.commit_writer().unwrap();
+        assert!(writer.gold_manifest().unwrap().is_none());
+        drop(writer);
+        let mut writer = Storage::open_existing(&path).unwrap();
+        assert!(writer.forget(&conversation("delete this").id).unwrap());
+        drop(writer);
+        assert_eq!(Storage::open_lexical(&path).is_ok(), !dirty);
+        if !dirty {
+            let reader = Storage::open_lexical(&path).unwrap();
+            assert_eq!(
+                reader
+                    .lexical_manifest()
+                    .unwrap()
+                    .unwrap()
+                    .searchable_messages,
+                0
+            );
+        }
+    }
+}
+
+#[test]
+fn schema_upgrade_never_invents_lexical_publication_and_explicit_rebuild_recovers() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("old.sqlite3");
+    let mut writer = Storage::open_writer(&path).unwrap();
     writer
-        .publish_gold_manifest(&Manifest::new(
-            Build::default(),
-            "unavailable-model".into(),
-            writer.silver_certificate().unwrap(),
-        ))
+        .replace_conversation(&conversation("unchanged silver"))
         .unwrap();
+    certify(&mut writer);
+    writer.commit_writer().unwrap();
+    let certificate = writer.silver_certificate().unwrap();
+    let messages = writer.view("message-1", 0).unwrap();
+    drop(writer);
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch("DROP TABLE lexical_manifest; PRAGMA user_version=38")
+        .unwrap();
+    drop(connection);
+    let before = std::fs::read(&path).unwrap();
+    assert!(Storage::open_lexical(&path).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    let mut writer = Storage::open_writer(&path).unwrap();
+    assert!(writer.lexical_manifest().unwrap().is_none());
+    assert_eq!(writer.silver_certificate().unwrap(), certificate);
+    writer.refresh_derived_search_state().unwrap();
+    writer.publish_lexical_manifest().unwrap();
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let reader = Storage::open_lexical(&path).unwrap();
+    assert_eq!(reader.silver_certificate().unwrap(), certificate);
+    assert_eq!(
+        serde_json::to_vec(&reader.view("message-1", 0).unwrap()).unwrap(),
+        serde_json::to_vec(&messages).unwrap()
+    );
 }
 
 #[test]

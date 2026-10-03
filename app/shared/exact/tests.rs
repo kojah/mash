@@ -86,13 +86,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
     let mut writer = Storage::open_writer(&database).unwrap();
     writer.finish_silver_ingestion().unwrap();
     writer.rebuild_derived_search_state().unwrap();
-    writer
-        .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
-            crate::gold::config::Build::default(),
-            "absent".into(),
-            writer.silver_certificate().unwrap(),
-        ))
-        .unwrap();
+    writer.publish_lexical_manifest().unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
     let before = std::fs::read(&database).unwrap();

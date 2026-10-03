@@ -3083,6 +3083,65 @@ impl<'a> GoldManifestBuilder<'a, ()> {
         GoldManifest {}
     }
 }
+pub struct LexicalManifestRow {
+    pub manifest: Option<String>,
+}
+impl LexicalManifestRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            manifest: row.get(0)?,
+        })
+    }
+}
+pub struct LexicalManifest;
+impl LexicalManifest {
+    pub const QUERY: &'static str = r"SELECT manifest FROM lexical_manifest WHERE singleton=1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl LexicalManifest {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<LexicalManifestRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), LexicalManifestRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<LexicalManifestRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), LexicalManifestRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl LexicalManifest {
+    pub const fn builder() -> LexicalManifestBuilder<'static, ()> {
+        LexicalManifestBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct LexicalManifestBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> LexicalManifestBuilder<'a, ()> {
+    pub fn build(self) -> LexicalManifest {
+        let () = self.fields;
+        LexicalManifest {}
+    }
+}
 pub struct SourceEnrichmentRow {
     pub evidence: Option<String>,
 }

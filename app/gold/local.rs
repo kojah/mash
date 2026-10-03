@@ -45,6 +45,9 @@ pub(crate) fn build(
         storage.refresh_derived_search_state()?;
     }
     let search_refresh_milliseconds = elapsed_milliseconds(search_started);
+    if source_complete {
+        storage.publish_lexical_manifest()?;
+    }
     emit_index_phase(crate::progress::Phase::SemanticEmbeddings, summary);
     let embedding_started = Instant::now();
     let generation = build.generation(&model);

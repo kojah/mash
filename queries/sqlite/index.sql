@@ -131,6 +131,9 @@ WHERE provider=sqlc.arg(provider) ORDER BY source_key;
 -- name: GoldManifest :one
 SELECT manifest FROM gold_manifest WHERE singleton=1;
 
+-- name: LexicalManifest :one
+SELECT manifest FROM lexical_manifest WHERE singleton=1;
+
 -- name: SourceEnrichment :many
 SELECT e.evidence FROM conversations AS c
 LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id

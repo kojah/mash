@@ -139,7 +139,11 @@ impl NodeFixture {
              ON CONFLICT(provider) DO UPDATE SET interpretation_version=1,state=1;
              UPDATE gold_manifest SET manifest=json_set(manifest,
                  '$.silver.revision',(SELECT revision FROM silver_state WHERE singleton=1),
-                 '$.silver.completeness','complete') WHERE singleton=1;"
+                 '$.silver.completeness','complete') WHERE singleton=1;
+             UPDATE lexical_manifest SET manifest=json_set(manifest,
+                 '$.silver.revision',(SELECT revision FROM silver_state WHERE singleton=1),
+                 '$.silver.completeness','complete',
+                 '$.searchable_messages',(SELECT count(*) FROM messages WHERE COALESCE(search_projection,content)<>'')) WHERE singleton=1;"
         ).unwrap();
         connection
             .execute(

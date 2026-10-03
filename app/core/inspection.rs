@@ -59,6 +59,7 @@ fn local_status(
     let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
+            lexical: None,
             gold: None,
             silver: None,
             ready: false,
@@ -103,12 +104,13 @@ fn local_status(
         && manifest_matches;
     let lexical_ready = snapshot.derived_clean
         && snapshot
-            .gold
+            .lexical
             .as_ref()
             .zip(snapshot.silver.as_ref())
-            .is_some_and(|(m, s)| m.matches(&m.build, &m.model_generation, s));
+            .is_some_and(|(m, s)| m.matches(s, counts.searchable_messages));
     let ready = if exact { lexical_ready } else { hybrid_ready };
     Ok(StatusResponse {
+        lexical: snapshot.lexical.map(Box::new),
         gold: snapshot.gold,
         silver: snapshot.silver,
         ready,

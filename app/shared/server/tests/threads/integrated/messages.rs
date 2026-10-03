@@ -61,6 +61,7 @@ async fn seed(paths: &Paths) {
         }
         storage.finish_silver_ingestion()?;
         storage.mark_semantic_index_ready(&models.generation())?;
+        storage.publish_lexical_manifest()?;
         storage.publish_gold_manifest(&crate::gold::manifest::Manifest::new(
             crate::gold::config::Build::default(),
             models.generation(),

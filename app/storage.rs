@@ -71,6 +71,7 @@ pub(crate) struct Counts {
 }
 
 pub(crate) struct StatusSnapshot {
+    pub(crate) lexical: Option<crate::gold::lexical_manifest::Manifest>,
     pub(crate) gold: Option<crate::gold::manifest::Manifest>,
     pub(crate) silver: Option<crate::silver::certificate::Certificate>,
     pub(crate) counts: Counts,

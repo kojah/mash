@@ -322,6 +322,7 @@ fn seed_core(database: &std::path::Path) {
     writer.finish_silver_scan(Provider::Codex, true).unwrap();
     writer.finish_silver_ingestion().unwrap();
     writer.rebuild_derived_search_state().unwrap();
+    writer.publish_lexical_manifest().unwrap();
     writer
         .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
             crate::gold::config::Build::default(),

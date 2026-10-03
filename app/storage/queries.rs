@@ -79,6 +79,7 @@ impl Storage {
         }
         if version < SCHEMA_VERSION {
             return Ok(StatusSnapshot {
+                lexical: None,
                 gold: None,
                 silver: None,
                 counts: Counts {
@@ -99,6 +100,7 @@ impl Storage {
             transaction_base_messages: 0,
         };
         Ok(StatusSnapshot {
+            lexical: storage.lexical_manifest()?,
             gold: storage.gold_manifest()?,
             silver: Some(storage.silver_certificate()?),
             counts: storage.counts()?,
