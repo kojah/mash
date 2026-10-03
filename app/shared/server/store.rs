@@ -40,7 +40,7 @@ pub(super) async fn initialize(
             .ok_or_else(|| {
                 AppError::configuration("Qdrant snapshot limit exceeds platform capacity")
             })?,
-        config.qdrant_vector_index,
+        config.gold.query.vector_search,
         config.qdrant_memory,
     )
     .await?

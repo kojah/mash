@@ -360,6 +360,7 @@ fn server_rejects_removed_backends_and_settings() {
         "max_connections = 8",
         "redis_max_node_mib = 64",
         "[redis_vector_index]\nalgorithm = 'hnsw'",
+        "[qdrant_vector_index]\nalgorithm = 'exact'",
     ] {
         assert_startup_rejected(
             format!("version=1\n{setting}{STARTUP_NODE}").as_bytes(),
@@ -375,11 +376,11 @@ fn qdrant_server_rejects_invalid_settings_before_network_access() {
         ("qdrant_memory = 'disk'", "invalid server configuration"),
         ("qdrant_url_env = '1INVALID'", "invalid credential"),
         (
-            "[qdrant_vector_index]\nalgorithm='hnsw'\nef_runtime=0",
+            "[gold.query.vector_search]\nalgorithm='hnsw'\nef_runtime=0",
             "ef_runtime",
         ),
         (
-            "[qdrant_vector_index]\nalgorithm='exact'\nef_runtime=20",
+            "[gold.query.vector_search]\nalgorithm='exact'\nef_runtime=20",
             "invalid server configuration",
         ),
     ] {

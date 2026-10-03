@@ -458,6 +458,26 @@ overrides with exact-mention are rejected because that operation does not use
 hybrid fusion. Empty MCP fusion objects behave like omitted overrides. Further
 ranking controls remain follow-up work.
 
+The HTTP server separately accepts a strict shared-candidate query policy:
+
+```toml
+[gold.query.vector_search]
+algorithm = "exact" # Default; or "hnsw" for approximate dense candidates.
+# ef_runtime = 200 # HNSW only, integer 1..4096; default 200.
+```
+
+This selects Qdrant query parameters against the existing physical collection;
+it is not an index-construction recipe. It is excluded from build manifests,
+model generations and group build activation. Changing it requires a server
+restart and neither recomputes embeddings nor changes canonical silver. Exact
+lexical retrieval remains unchanged. The old top-level `qdrant_vector_index`
+table is rejected rather than silently converted. Connection credentials,
+snapshot budgets and `qdrant_memory` remain deployment settings. This server
+query policy applies to all served groups; independent per-group or per-request
+vector policies and configurable physical index construction remain follow-ups.
+Node query defaults (intent, result unit/limit and fusion) retain their separate
+schema; they are not accepted as server query fields.
+
 Validation before request overrides on 2026-10-03 passed 642 standard tests and 55 real-model/Qdrant
 contracts. Weighted lexical/semantic preferences changed candidate ordering on
 deterministic fixtures. Real-model direct and cached CLI searches reflected

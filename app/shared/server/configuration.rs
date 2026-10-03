@@ -30,8 +30,6 @@ pub(super) struct Configuration {
     #[serde(default = "default_node_mib")]
     pub(super) qdrant_max_node_mib: usize,
     #[serde(default)]
-    pub(super) qdrant_vector_index: qdrant_index::VectorIndex,
-    #[serde(default)]
     pub(super) qdrant_memory: qdrant_index::MemoryTier,
     #[serde(default = "default_uploads")]
     pub(super) max_concurrent_uploads: usize,
@@ -43,6 +41,13 @@ pub(super) struct Configuration {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Gold {
     pub(super) build: crate::gold::config::Build,
+    pub(super) query: Query,
+}
+/// Retrieval policy for shared candidates, independent of collection construction.
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct Query {
+    pub(super) vector_search: qdrant_index::VectorIndex,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -87,7 +92,7 @@ pub(super) fn env_name(name: &str) -> Result<(), AppError> {
 pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
-    config.qdrant_vector_index.validate()?;
+    config.gold.query.vector_search.validate()?;
     crate::shared::snapshot_budget::Budget::validate(config.max_mutation_snapshot_mib)?;
     if !(1..=4096).contains(&config.qdrant_max_node_mib) {
         return Err(AppError::configuration(
@@ -179,4 +184,55 @@ pub(super) async fn load(path: &Path) -> Result<Configuration, AppError> {
             .map_err(|_| AppError::configuration("invalid server configuration"))
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vector_query_policy_is_independent_of_gold_build_identity() {
+        let default: Gold = toml::from_str("").unwrap();
+        let hnsw: Gold =
+            toml::from_str("[query.vector_search]\nalgorithm = 'hnsw'\nef_runtime = 80").unwrap();
+        assert_eq!(
+            default.query.vector_search,
+            qdrant_index::VectorIndex::Exact {}
+        );
+        assert_eq!(
+            hnsw.query.vector_search,
+            qdrant_index::VectorIndex::Hnsw { ef_runtime: 80 }
+        );
+        assert_eq!(default.build, hnsw.build);
+        assert_eq!(
+            default.build.generation("model"),
+            hnsw.build.generation("model")
+        );
+        hnsw.query.vector_search.validate().unwrap();
+        let omitted_ef: Gold = toml::from_str("[query.vector_search]\nalgorithm = 'hnsw'").unwrap();
+        assert_eq!(
+            omitted_ef.query.vector_search,
+            qdrant_index::VectorIndex::Hnsw { ef_runtime: 200 }
+        );
+    }
+
+    #[test]
+    fn vector_query_policy_rejects_invalid_or_misplaced_fields() {
+        for text in [
+            "[query.vector_search]\nalgorithm = 'unknown'",
+            "[query.vector_search]\nalgorithm = 'exact'\nef_runtime = 80",
+            "[query.vector_search]\nalgorithm = 'hnsw'\nm = 16",
+            "[build.vector_search]\nalgorithm = 'hnsw'",
+            "[query]\nlimit = 10",
+        ] {
+            assert!(toml::from_str::<Gold>(text).is_err(), "accepted {text}");
+        }
+        for ef in [0, 4097] {
+            let gold: Gold = toml::from_str(&format!(
+                "[query.vector_search]\nalgorithm = 'hnsw'\nef_runtime = {ef}"
+            ))
+            .unwrap();
+            assert!(gold.query.vector_search.validate().is_err());
+        }
+    }
 }

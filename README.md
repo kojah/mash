@@ -1060,12 +1060,19 @@ group_id = "personal"
 node_id = "xenia"
 token_env = "MASH_XENIA_TOKEN"
 
-[qdrant_vector_index]
+[gold.query.vector_search]
 algorithm = "exact"
 # To opt into approximate retrieval instead:
 # algorithm = "hnsw"
 # ef_runtime = 200
 ```
+
+The server's `gold.query.vector_search` controls retrieval from the existing
+dense index. Changing it requires restarting the HTTP service, but does not
+rebuild vectors, change gold build identity, or modify silver. The previous
+top-level `qdrant_vector_index` table is rejected; move it to the table above.
+This server policy applies to all groups served by the process. Node-side
+`gold.query` still controls intent, fusion and result shape independently.
 
 ```bash
 docker run --name mash-qdrant -p 127.0.0.1:6333:6333 \

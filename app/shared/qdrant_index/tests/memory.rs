@@ -126,6 +126,24 @@ async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch
                 .unwrap();
             assert_policy(&fixture, memory).await;
             assert_filters_and_context(&fixture).await;
+            let freshness =
+                serde_json::to_vec(&fixture.store.freshness(&fixture.identity).await.unwrap())
+                    .unwrap();
+            let alternate_query = match index {
+                VectorIndex::Exact {} => VectorIndex::Hnsw { ef_runtime: 80 },
+                VectorIndex::Hnsw { .. } => VectorIndex::Exact {},
+            };
+            let alternate = reopen(&fixture, alternate_query, memory).await.unwrap();
+            let hits = alternate
+                .search(&fixture.identity, fixture.query())
+                .await
+                .unwrap();
+            assert_eq!(hits.lexical.len(), 2);
+            assert_eq!(hits.semantic.len(), 2);
+            assert_eq!(
+                freshness,
+                serde_json::to_vec(&alternate.freshness(&fixture.identity).await.unwrap()).unwrap()
+            );
             let reopened = reopen(&fixture, index, memory).await.unwrap();
             assert_eq!(
                 reopened.status(&fixture.identity).await.unwrap().messages,
