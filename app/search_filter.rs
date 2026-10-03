@@ -153,7 +153,7 @@ impl Filter {
     }
 
     /// Identifiers come only from this closed enum; literals are SQL quoted.
-    /// COALESCE gives absent metadata the same Boolean semantics as Redis.
+    /// COALESCE preserves the filter tree's Boolean semantics for absent metadata.
     pub(crate) fn sql(&self, local_node: Option<&str>) -> String {
         match self {
             Self::All(v) => join_sql(v, " AND ", "TRUE", local_node),
@@ -186,39 +186,6 @@ impl Filter {
             }
         }
     }
-
-    pub(crate) fn redis(&self) -> String {
-        match self {
-            Self::All(v) => join_redis(v, " ", "@searchable:[0 +inf]"),
-            Self::Any(v) => join_redis(v, " | ", "@searchable:[2 2]"),
-            Self::Not(v) => format!("(-{})", v.redis()),
-            Self::After(v) => format!("(@dated:[1 1] @created_at:[{} +inf])", v * 1000),
-            Self::Before(v) => format!("(@dated:[1 1] @created_at:[-inf ({}])", v * 1000),
-            _ => {
-                let field = match self {
-                    Self::Node(_) => "node_tag",
-                    Self::Provider(_) => "provider_tag",
-                    Self::Role(_) => "role_tag",
-                    Self::Conversation(_) => "conversation",
-                    Self::Project(_) => "project_tag",
-                    Self::Repository(_) => "repository_tag",
-                    _ => unreachable!(),
-                };
-                if self.values().is_empty() {
-                    return "(@searchable:[2 2])".to_owned();
-                }
-                let values = match self {
-                    Self::Provider(providers) => providers
-                        .iter()
-                        .map(|provider| provider.redis_tag().to_owned())
-                        .collect::<Vec<_>>(),
-                    _ => self.values().iter().map(|value| tag(value)).collect(),
-                }
-                .join("|");
-                format!("(@{field}:{{{values}}})")
-            }
-        }
-    }
 }
 
 fn quote(value: &str) -> String {
@@ -239,24 +206,6 @@ fn join_sql(children: &[Filter], join: &str, empty: &str, node: Option<&str>) ->
         )
     }
 }
-fn join_redis(children: &[Filter], join: &str, empty: &str) -> String {
-    if children.is_empty() {
-        format!("({empty})")
-    } else {
-        format!(
-            "({})",
-            children
-                .iter()
-                .map(Filter::redis)
-                .collect::<Vec<_>>()
-                .join(join)
-        )
-    }
-}
-pub(crate) fn tag(value: &str) -> String {
-    blake3::hash(value.as_bytes()).to_hex().to_string()
-}
-
 pub(crate) fn timestamp(value: &str) -> Result<i64, AppError> {
     let time = chrono::DateTime::parse_from_rfc3339(value)
         .map(|t| t.timestamp())
@@ -282,7 +231,6 @@ mod tests {
         let f: Filter = serde_json::from_str(r#"{"all":[{"any":[{"provider":["codex"]},{"role":["user"]}]},{"not":{"project":["x') OR TRUE --"]}},{"after":1}]}"#).unwrap();
         f.validate().unwrap();
         assert!(f.sql(Some("local")).contains("'x'') OR TRUE --'"));
-        assert!(!f.redis().contains("OR TRUE"));
         assert_eq!(
             Filter::Node(vec!["local".into()]).sql(Some("local")),
             "COALESCE('local' IN ('local'), FALSE)"

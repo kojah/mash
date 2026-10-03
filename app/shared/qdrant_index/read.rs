@@ -4,7 +4,7 @@ use super::{
     AppError, Document, Identity, NodeHead, PointKind, Store, VectorIndex, api, collection,
     failure, point_id, sparse, tokens,
 };
-use crate::shared::{Freshness, NodeFreshness, backend::valid_id, protocol};
+use crate::shared::{Freshness, NodeFreshness, protocol, validation::valid_id};
 use crate::storage::{Counts, Message, SearchHit};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -154,7 +154,7 @@ impl Store {
             .map(|(n, h)| (n, &h.version))
             .eq(current.iter().map(|(n, h)| (n, &h.version)))
         {
-            return Err(crate::shared::backend::conflict(
+            return Err(crate::shared::validation::conflict(
                 "Qdrant group changed while reading; retry the operation",
             ));
         }
@@ -209,6 +209,7 @@ impl Store {
         }
         Ok(state)
     }
+    #[tracing::instrument(name = "backend_list_threads", skip_all, fields(backend = "qdrant"))]
     pub(in crate::shared) async fn list_threads(
         &self,
         identity: &Identity,
@@ -260,6 +261,7 @@ impl Store {
         self.stable_heads(identity, &heads).await?;
         Ok(collector.finish())
     }
+    #[tracing::instrument(name = "backend_search", skip_all, fields(backend = "qdrant"))]
     pub(in crate::shared) async fn search(
         &self,
         identity: &Identity,
@@ -357,6 +359,7 @@ impl Store {
                 .collect(),
         })
     }
+    #[tracing::instrument(name = "backend_view", skip_all, fields(backend = "qdrant"))]
     pub(in crate::shared) async fn view(
         &self,
         identity: &Identity,

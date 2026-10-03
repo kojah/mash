@@ -3,17 +3,16 @@
 //! in gold/shared.rs. Backends atomically persist and query their declared views.
 use serde::{Deserialize, Serialize};
 
-mod backend;
 mod client;
 pub(crate) mod protocol;
 mod publication;
 mod qdrant_index;
-mod redis_index;
 mod retrieval;
 mod routed;
 pub(crate) mod server;
 mod snapshot;
 mod snapshot_budget;
+mod validation;
 
 pub(crate) use client::{freshness, list_threads, view};
 pub(crate) use publication::write_event;

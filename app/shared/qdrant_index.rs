@@ -169,6 +169,15 @@ fn sparse(text: &str, query: bool) -> api::Sparse {
     }
 }
 impl Store {
+    #[cfg(test)]
+    pub(in crate::shared) fn unavailable() -> Self {
+        Self {
+            api: api::Client::new("http://127.0.0.1:9", None, 64 * 1024 * 1024).unwrap(),
+            max_node_bytes: 64 * 1024 * 1024,
+            vector_index: VectorIndex::default(),
+            snapshot_budget: super::snapshot_budget::Budget::default(),
+        }
+    }
     pub(in crate::shared) fn with_snapshot_budget(
         mut self,
         budget: super::snapshot_budget::Budget,
@@ -280,7 +289,7 @@ impl Store {
     }
     async fn unchanged(&self, identity: &Identity, version: &str) -> Result<(), AppError> {
         if self.node(identity).await?.version != version {
-            return Err(super::backend::conflict(
+            return Err(super::validation::conflict(
                 "Qdrant node changed while reading; retry the operation",
             ));
         }

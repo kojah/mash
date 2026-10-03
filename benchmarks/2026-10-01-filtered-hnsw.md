@@ -91,7 +91,7 @@ concurrent mutations and repeated controlled runs under the existing performance
 budget. Faster vector retrieval alone does not establish faster, relevant search.
 
 ```sh
-python3 tools/benchmark-vector.py \
+python3 research/storage/redis-vector-pilot.py \
   --frozen /path/to/private/vectors.sqlite3 \
   --artifacts /path/to/new/private/artifacts \
   --sizes 100000 --queries 100 --k 20 --profiles --filtered-policies

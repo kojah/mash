@@ -168,18 +168,6 @@ async fn verify_filters(service: &Service) {
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_thread_catalog_http_filter_sort_page_and_group_contract() {
-    contract(Service::new_backend(true, false).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_thread_catalog_http_filter_sort_page_and_group_contract() {
-    contract(Service::new_backend(false, true).await).await;
-}
-
-#[tokio::test]
 async fn thread_catalog_auth_and_invalid_requests_fail_before_backend_access() {
     let service = Service::new(false).await;
     let unauthorized = service

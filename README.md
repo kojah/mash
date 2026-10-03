@@ -3,36 +3,28 @@
 Agent work is tracked with [Beads](https://github.com/steveyegge/beads). With `bd`
 and Dolt installed, run `bd bootstrap` after cloning, then `bd prime` and `bd ready`.
 Issue history lives on a separate Dolt Git remote in this GitHub repository;
-`bd dolt commit` and `bd dolt push` persist tracking updates. Configuration is
-versioned; database files and credentials remain local.
+`bd dolt commit` and `bd dolt push` persist tracking updates. The entire `.beads/` directory, including configuration, stays local and is ignored
+by Git. `bd bootstrap` discovers the Dolt history from the Git origin.
 
 mash (Multi-Agent Search History) searches Claude Code, Codex, and Aider histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
-index locally, into a shared service over HTTP, or both, with independent provider allowlists.
+keep a local index and optionally publish to a shared service over HTTP, with independent provider allowlists.
 SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
 cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
-The service uses Qdrant by default, with Redis Search and PostgreSQL + pgvector as alternatives.
+The service uses Qdrant as its sole shared storage backend. Local SQLite is required for offline search.
 
 ## Commands
 
-Database query models are generated with Cornucopia 1.0.1 for PostgreSQL and
-sqlc 1.31.1 / sqlc-gen-rust 0.1.12 for Rusqlite. Generated output is checked in;
-normal Cargo builds require neither generators nor a running database.
-To regenerate as part of a build, install these generator versions and run
+SQLite query models are generated with sqlc 1.31.1 / sqlc-gen-rust 0.1.12.
+Generated output is checked in; normal Cargo builds require no generator.
+To regenerate as part of a build, install these versions and run
 `make build CODEGEN=1` (add `CARGO_ARGS='--release --locked'` for release).
 `make generate-queries` regenerates without compiling; `make check-generated`
-checks for stale output. PostgreSQL validation uses a disposable pgvector Docker
-container, or a temporary database on `MASH_CODEGEN_POSTGRES_URL` (server URL
-without a database path). SQLite generation reads the same schema SQL used at
-runtime. CI checks regeneration against the committed output.
-
-Generated typed reads cover retrieval, viewing, status, and shared freshness/state.
-Runtime filter predicates and FTS ranking retain custom SQL; dynamic PostgreSQL
-rows use column names and the generated result model, while SQLite reuses the
-generated projection and decoder. Schema migrations and low-level vector/storage
-writes remain explicit driver operations.
+checks for stale output. Generation reads the same SQLite schema SQL used at runtime.
+CI checks regeneration against committed output. Dynamic predicates and FTS ranking
+reuse the generated projection and decoder; migrations and writes remain explicit.
 
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot|gemini-cli|cline]... [--since-days N|--all-history]
@@ -583,9 +575,9 @@ cross-version validation gates. These limits do not establish aggregate RSS.
 For tree histories, `view --context N` includes up to N actual ancestors and
 up to N messages along the first saved continuation from the match. It never
 adds sibling replies because their file ordinals happen to be nearby. Contextual
-reranking follows the same rule on SQLite, PostgreSQL, Redis and Qdrant. Linear histories
-keep their existing ordinal neighbourhoods. SQLite schema 32 and shared PostgreSQL
-schema 15 preserve existing messages and vectors. Update the shared service before
+reranking follows the same rule on SQLite and Qdrant. Linear histories
+keep their existing ordinal neighbourhoods. SQLite migrations preserve existing
+messages and vectors. Update the shared service before
 publishing Pi, Copilot, Gemini, Cline, Cursor, Windsurf or Antigravity histories from upgraded nodes.
 
 Codex histories include raw response records and completed `UserMessage` /
@@ -658,7 +650,7 @@ not automatically erase previously indexed history. Use `forget` for deletion.
 Omit the top-level `shared` for a fully local installation. Search defaults to SQLite plus other nodes in the shared group when shared settings exist; otherwise it uses SQLite. Configure the same
 group ID and API URL on every member, with a distinct node ID and token for each
 publisher. The service authorizes each token for a fixed group and node. Group IDs select
-separate PostgreSQL schemas; every node within a group contributes to one joint
+separate Qdrant collections; every node within a group contributes to one joint
 index. The database can live wherever you choose.
 
 The former `nodes`, `local_node`, SSH destinations, `--local-node`,
@@ -745,7 +737,7 @@ An MCP request can select either repository while excluding tool messages:
 
 The CLI accepts the same expression through `--filter '...JSON...'`. Convenience
 flags and the structured expression are combined with AND. Filters apply before
-lexical/semantic candidate limits on SQLite, PostgreSQL, and Redis, then the
+lexical/semantic candidate limits on SQLite and Qdrant, then the
 combined results are reranked. Raw SQL, regular expressions, and glob patterns
 are not supported. Limits are eight levels of nesting, 128 expressions, and 100
 values per field list.
@@ -763,8 +755,7 @@ ingestion also refreshes its source checkpoints when upgrading metadata support.
 ## Shared index
 
 Nodes access the shared index through an authenticated Axum HTTP service. Only
-that service connects to Redis, Qdrant, or PostgreSQL. PostgreSQL uses async `tokio-postgres` and a bounded
-`deadpool-postgres` connection pool (16 connections by default). There is one
+that service connects to Qdrant. There is one
 joint index per group, with node ownership enforced by the service.
 
 `POST /v1/threads` lists thread metadata without model inference, message bodies
@@ -785,9 +776,7 @@ deduplicated before paging; the best matching copy for the requested sort order
 supplies metadata. `limit` defaults to 50 (1–100); `offset` defaults to 0
 (0–10000). Pagination stops before advertising an offset beyond 10000; narrow
 filters to browse larger collections. Pages are stable while the index is unchanged; updates between page
-requests can shift boundaries. Redis reads that overlap catalog replacement
-return a retryable conflict instead of partial metadata. Older Redis publications
-need an explicit `mash index` on their publishing node to create a catalog.
+requests can shift boundaries.
 
 Use `mash list-threads` or the MCP `list_threads` tool for the same metadata
 discovery. These thin wrappers call the shared application core. The default
@@ -812,222 +801,39 @@ mash list-threads --provider codex --title-contains cbioportal --limit 10
 mash search 'database migration' --unit messages --provider codex --conversation THREAD_ID
 ```
 
-The shared HTTP service defaults to [Qdrant](#qdrant-backend-default). Configure
-`qdrant_url_env` and omit `backend`, or explicitly select `backend = "qdrant"`.
-Redis Search and PostgreSQL/pgvector remain available with an explicit backend.
-One service uses one backend for all its groups. Changing backends creates a
-separate index: run `mash index` on each publishing node to populate it. Existing
-Redis configurations that omitted `backend` must add `backend = "redis"` before
-upgrading; mash rejects their Redis credentials under the Qdrant default rather
-than silently selecting another database. An explicit backend selection preserves
-the current index.
+The HTTP service uses [Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env`;
+there is no backend selector. PostgreSQL/Redis settings are rejected. An existing
+Qdrant configuration must omit `backend = "qdrant"` before upgrading.
+See the [Qdrant-only transition](docs/qdrant-only-transition.md) for validation
+and the separate live-data migration work.
 
-### PostgreSQL backend (optional)
+Each node has a different randomly generated token (at least 32 printable ASCII
+bytes), supplied through its configured `shared.token_env`. Server group membership
+comes from the `nodes` list; restart to change membership or rotate tokens.
+A node can search its whole group and can only publish or forget its own data.
+Database credentials belong on the HTTP server, supplied through environment variables.
+Use an HTTPS reverse proxy for remote access or HTTP on a trusted private network.
+The service binds to `127.0.0.1:8787` by default. Node clients disable redirects.
 
-Provision PostgreSQL with the pgvector extension installed. For local development:
+The API exposes `/v1/index` (NDJSON), `/v1/state`, `/v1/status`, `/v1/freshness`,
+`/v1/search`, `/v1/threads`, `/v1/view`, and `/v1/forget`. Requests use bearer
+credentials. Search carries a query embedding and returns candidates for node-side
+fusion and reranking. The HTTP server needs no model assets. Interrupted or invalid
+uploads leave the visible revision and freshness unchanged. Uploads are bounded
+by 128 records per batch, 8 MiB per event, 8 GiB per request, and the configured
+`qdrant_max_node_mib` (64 MiB default). Ordinary JSON requests are limited to 64 KiB.
+Node/revision checks reject stale uploads; full snapshot retries are idempotent.
 
-```bash
-docker run --rm --name mash-postgres \
-  -e POSTGRES_PASSWORD=dev-password -e POSTGRES_DB=mash \
-  -p 127.0.0.1:5432:5432 pgvector/pgvector:pg17
-```
-
-The HTTP server can run on any host with database connectivity; mash does not
-choose or provision a host. Create a separate server configuration:
-
-```toml
-version = 1
-listen = "127.0.0.1:8787"
-backend = "postgres"
-database_url_env = "MASH_DATABASE_URL"
-max_connections = 16
-
-[[nodes]]
-group_id = "personal"
-node_id = "xenia"
-token_env = "MASH_XENIA_TOKEN"
-
-[[nodes]]
-group_id = "personal"
-node_id = "macbook"
-token_env = "MASH_MACBOOK_TOKEN"
-```
-
-Use a different randomly generated token for each node (at least 32 printable
-ASCII bytes). Supply the same token to that node through its configured
-`shared.token_env`. Tokens and database credentials are environment variables,
-not values in TOML configuration or status output. Group membership comes from
-the server's `nodes` list; restart the service to change membership or rotate a
-token. A node can search and view its whole group, but can only publish or forget
-its own data. One service can host multiple groups with separate schemas.
-
-```bash
-# On the service host; set the node token variables from your secret store too.
-export MASH_DATABASE_URL='postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require'
-mash serve --server-config /absolute/path/to/server.toml
-
-# On a node, set MASH_NODE_TOKEN and configure shared.api_url before running:
-mash index
-mash search 'sqlite migration' --shared
-mash view MESSAGE_ID --shared xenia --context 2
-```
-
-The service enables `CREATE EXTENSION vector` and migrates each configured group
-at startup. Its database role needs extension/schema creation and table-write
-privileges; alternatively an administrator can preinstall pgvector. Existing
-array-based shared indexes migrate to `vector(384)` without dropping history.
-Incomplete old vectors become NULL and require reindexing by their source nodes.
-
-PostgreSQL connection failures include safe configuration hints when the driver
-provides structured evidence: authentication, database name, connection capacity,
-permissions, network errors and pool timeout stages. With tracing enabled, the
-`postgres_pool_failure` event records only a bounded cause category. Credentials,
-connection strings and raw database error messages are never included. Errors
-without a typed cause retain a general health/credentials/TLS hint; this includes
-some TLS failures, so a generic hint does not identify the underlying cause.
-Old node configuration containing `database_url_env` is rejected: replace it
-with `api_url` and `token_env`; retain database credentials only on the service.
-
-PostgreSQL TLS verifies certificates and hostnames using public CA roots by
-default. Explicit `sslmode=disable` supports trusted local development instances.
-The service binds to `127.0.0.1:8787` by default. Use an HTTPS reverse proxy for
-remote access, or explicitly configure an HTTP address on a trusted private
-network. Nodes accept HTTP(S) URLs, with optional path prefixes, and disable
-redirects to keep credentials at the configured endpoint.
-
-The API exposes `/v1/index` (NDJSON batches), `/v1/state`, `/v1/status`,
-`/v1/freshness`, `/v1/search`, `/v1/view`, and `/v1/forget`. Requests use
-`Authorization: Bearer TOKEN`; mash also sends its expected group/node headers.
-These are domain operations rather than an arbitrary SQL endpoint. Search
-requests carry a query embedding; responses contain lexical/vector candidates
-for node-side fusion and reranking. The HTTP server needs no model assets.
-
-Uploads are spooled into temporary files with restrictive permissions and
-deleted when the request finishes. Nodes finish parsing and inference before
-uploading; the service receives the entire bounded stream before opening its
-transaction. Interrupted or invalid uploads leave data and freshness unchanged.
-Uploads are limited to 128 records per batch, 8 MiB per event and 8 GiB per
-request; ordinary JSON requests are limited to 64 KiB. Request timeouts and pool
-limits bound work. Source checkpoints use revisions to reject concurrent stale
-uploads; retry indexing after a conflict. Full snapshot retries are idempotent.
-
-### Redis backend (optional)
-
-Set `redis_url_env` and select `backend = "redis"` explicitly. Select `backend = "postgres"` for
-PostgreSQL/pgvector. Node configuration and MCP tools
-stay the same; nodes still use an API URL and their node token. One service uses
-one storage backend for all its groups. Changing the backend creates a separate
-index: reindex from node histories to populate it; mash does not automatically
-copy data between backends.
-
-
-```toml
-version = 1
-listen = "127.0.0.1:8787"
-backend = "redis"
-redis_url_env = "MASH_REDIS_URL"
-
-[[nodes]]
-group_id = "personal"
-node_id = "xenia"
-token_env = "MASH_XENIA_TOKEN"
-```
-
-Exact cosine retrieval (Redis FLAT) is the default. To opt into approximate
-HNSW retrieval, add this table to the **server** configuration, before `[[nodes]]`:
-
-```toml
-[redis_vector_index]
-algorithm = "hnsw"
-m = 16
-ef_construction = 200
-ef_runtime = 200
-filter_policy = "auto"
-```
-
-Use `algorithm = "exact"` without HNSW parameters to retain exact retrieval.
-The setting applies to every group served by that process; node, CLI and MCP
-configuration stay the same. Local SQLite and PostgreSQL retrieval remain exact.
-`m` (2..128) and `ef_construction` (4..4096) control graph construction.
-`ef_runtime` (1..4096) controls query effort: higher values can improve recall
-at the cost of latency. These bounds limit configuration, not total memory.
-
-`filter_policy = "auto"` lets Redis choose graph batches or exact scoring of
-the filtered population. `"exact"` forces exact filtered scoring even with an
-HNSW index. `"batches"` forces graph traversal; only that policy accepts optional
-`batch_size` (1..4096). Omitting batch size lets Redis choose it dynamically.
-Our [filtered benchmark](benchmarks/2026-10-01-filtered-hnsw.md) found speedups
-for broad filters but recall losses and severe latency tails for other filters.
-Approximate retrieval always respects filters; it may miss closer qualifying
-neighbors or return fewer candidates. Lexical retrieval, fusion and reranking
-retain their existing behavior.
-
-Changing the algorithm, `m`, `ef_construction`, or dimensions of an existing
-group is rejected at startup, preserving its stored data. Restore its matching
-settings or configure a new `group_id` on the server and publishing nodes, then
-run explicit indexing to populate that group. mash does not automatically drop
-or rebuild existing indexes. Runtime effort and filter policy can change on
-restart without republishing. Startup verifies the actual installed schema and
-waits up to five minutes for background index initialization before listening.
-
-Use Redis with Search support, such as Redis 8 or Redis Stack, rather than a
-key-value-only Redis installation. A local development instance can run with:
-
-```bash
-docker run --rm --name mash-redis -p 127.0.0.1:6379:6379 \
-  redis:8.2 redis-server --appendonly yes --maxmemory-policy noeviction
-export MASH_REDIS_URL='redis://127.0.0.1:6379/'
-mash serve --server-config /absolute/path/to/redis-server.toml
-```
-
-The service uses the `redis-rs` (`redis`) crate with async multiplexed connections
-and reconnection support. Use `rediss://` for TLS outside a trusted private
-network. Keep database credentials on the service. Configure persistence and
-`noeviction`: the Redis backend is a shared index, rather than an evictable cache.
-This implementation targets a single Redis instance; it does not configure a
-Redis Cluster deployment.
-
-Each group gets a separate full-text/vector index. Redis defaults to exact `FLAT`
-cosine search with opt-in HNSW over the configured embeddings, followed by node-side
-RRF and reranking. Provider/age filters, context-only tool output, per-node
-ownership, checkpoints, tombstones, and freshness are supported. Its lexical
-retrieval uses Redis token matching and ranking; PostgreSQL web-search operators
-are not interpreted as operators by the Redis backend. Consequently lexical
-candidates can differ between backends.
-
-For atomic publication, the service stages a complete changed node revision and
-then switches its visible metadata with a compare-and-swap Lua operation. Search
-and view use atomic Lua reads restricted to current revisions; partially staged
-or retired data cannot appear in results. Failed uploads leave the visible data
-and freshness unchanged. Superseded records are unlinked at commit; abandoned
-stages expire after ten minutes. Redis supplies synchronization timestamps.
-
-Each upload and each node's serialized canonical snapshot is limited to
-**64 MiB by default**. Set `redis_max_node_mib` in the server configuration
-to raise that bound (1–4096 MiB). Size Redis memory for all nodes' canonical
-data, thread catalogs, searchable documents, vectors, and temporary staging copies; this limit
-does not reserve memory or change Redis's `maxmemory` setting.
-The [real-history Redis publication and persistence check](benchmarks/2026-10-01-redis-publication-persistence.md)
-published and replaced 225,267 canonical messages with an 8 GiB container budget
-and `maxmemory=6gb`; allocation peaked at 4.27 GiB during replacement and settled
-near 2.08 GiB after restart. Its 2 GiB predecessor was OOM-killed. These are
-corpus-specific measurements, not minimum safe sizing or a guarantee for several
-nodes, concurrent publishers, persistence rewrites, or continued growth.
-Canonical snapshots use bounded 8 MiB Redis values with a checksummed manifest.
-New publications also stage a compact conversation-metadata catalog using the
-same chunk/checksum format. Catalogs contain no message bodies or vectors and
-become visible and retire with their canonical snapshot. An explicit publication
-creates a catalog for an older snapshot before that stage can be reused.
 Set `max_concurrent_uploads` (default 4, range 1–16) to bound concurrent staging
 work; large histories should use 1. The same capacity also covers `forget`
-mutations on all shared backends. A complete upload or accepted forget operation
+mutations. A complete upload or accepted forget operation
 keeps its slot until the work succeeds or fails, including if the requester
 disconnects or times out. Cancellation does not imply rollback: retry using the
 existing node/revision checks. Busy mutations return a retryable HTTP 503;
 search and metadata reads do not consume mutation slots. This bounds the number
 of mutations, not their total RAM.
 
-Redis and Qdrant also use `max_mutation_snapshot_mib` (default 1,024, range
+Qdrant uses `max_mutation_snapshot_mib` (default 1,024, range
 1–65,536) to admit snapshot work by size. Each mutation reserves the sum of its
 existing canonical snapshot and incoming upload bytes, rounded up to MiB, with
 a minimum of one MiB. `forget` reserves the existing snapshot size. Reservations
@@ -1036,9 +842,7 @@ through decoding, planning and publication. Busy capacity returns a retryable
 503. A mutation larger than the entire budget returns a nonretryable 400 naming
 the setting to increase; the active revision stays unchanged. Uploads and stored
 chunks may already have been privately spooled before this check, but typed
-snapshot decoding has not started. PostgreSQL processes stream batches rather
-than full canonical snapshots, so this particular budget applies only to Redis
-and Qdrant.
+snapshot decoding has not started.
 
 This setting measures serialized inputs, **not RSS**. Allow additional RAM for
 decoded objects, readers, allocator caches, transport buffers and database staging;
@@ -1063,8 +867,7 @@ quality for a group. See [the measured comparison](benchmarks/2026-09-30-shared-
 
 In both mode without destination filters, local indexing commits first. Changes
 mark a durable local publication revision;
-a changed node publishes its complete snapshot in one PostgreSQL transaction,
-using batches of up to 128 records or about 1 MiB. Raw tool outputs are uploaded
+a changed node stages its complete snapshot in Qdrant and atomically advances its head. Raw tool outputs are uploaded
 for context but remain excluded from search. Unchanged revisions are acknowledged
 without replacing shared records. A failed upload returns local success with
 `shared.state: "pending"`; subsequent `index` runs retry even with no new history.
@@ -1078,8 +881,8 @@ recreated database must use a new node ID. Stale snapshots cannot replace newer
 accepted revisions.
 
 With per-index filters in both mode, SQLite ingests only the local allowlist and
-PostgreSQL independently ingests the shared allowlist from the original history
-files. PostgreSQL stores its own source checkpoints. Local work still commits
+the shared publication coordinator independently ingests the shared allowlist from the original history
+files. Qdrant stores the shared source checkpoints. Local work still commits
 first and shared failures return pending; retry with `index` while retaining the
 original shared history files. Shared forget intents are durably queued in SQLite
 when offline and applied before the next shared ingestion. A successful forget
@@ -1152,8 +955,6 @@ credit. `limit` counts the selected unit, and filters apply equally
 to both modes before retrieval. Thread excerpts are bounded to 800 characters
 plus ellipses, with a window around a query term when present. Results describe
 the bounded candidate pool, not an exhaustive count of matches in each chat.
-On server startup, older Redis snapshots receive a resumable metadata repair from
-their canonical records without changing their revision or last-updated timestamp.
 Unknown upstream metadata remains null.
 
 Reranking uses batches of up to four documents grouped by length, reducing
@@ -1205,14 +1006,13 @@ Other platforms retain atomic activation without these Unix flush barriers.
 
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
-exact retrieval scores the matching shared vectors. Redis also supports opt-in
-HNSW as described above; its filtered policy can still choose exact scoring.
-Qdrant and Redis serialize canonical publication JSON to private temporary
+exact retrieval scores the matching shared vectors. Qdrant also supports opt-in HNSW.
+Qdrant serializes canonical publication JSON to private temporary
 files on blocking workers and stream bounded chunks from those files. This
 avoids keeping a second full serialized snapshot in API memory. Temporary disk
-must hold the incoming upload and canonical JSON (plus the Redis thread catalog)
+must hold the incoming upload and canonical JSON
 until publication finishes. The validated canonical data still resides in
-memory. Stored canonical snapshots and Redis catalogs are also received into
+memory. Stored canonical snapshots are also received into
 private, checksummed files and decoded on blocking workers, avoiding a full
 input JSON buffer during replacement or retry. Temporary disk must accommodate
 these reads too. Backend staging and validated data have additional costs;
@@ -1221,9 +1021,9 @@ concurrent uploads when provisioning the API and database.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
 recall tradeoffs before choosing approximate retrieval.
 
-### Qdrant backend (default)
+### Qdrant shared storage
 
-Omit `backend` or select `backend = "qdrant"` on the HTTP service. Nodes continue using the same
+Configure `qdrant_url_env` on the HTTP service. Nodes continue using the same
 API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
 required for conditional node publication; older versions are rejected before
 creating collections. Exact vector retrieval remains the default; HNSW is opt-in.
@@ -1231,7 +1031,6 @@ creating collections. Exact vector retrieval remains the default; HNSW is opt-in
 ```toml
 version = 1
 listen = "127.0.0.1:8787"
-backend = "qdrant"
 qdrant_url_env = "MASH_QDRANT_URL"
 # Optional for an authenticated Qdrant service:
 # qdrant_api_key_env = "MASH_QDRANT_API_KEY"
@@ -1261,7 +1060,7 @@ mash serve --server-config /absolute/path/to/qdrant-server.toml
 Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
 contain credentials, paths, queries or fragments; redirects are disabled so keys
 are not forwarded elsewhere. Qdrant credentials belong only on the HTTP server.
-Changing backends requires an explicit `mash index` from each publishing node.
+Populating a new shared group requires an explicit `mash index` from each publishing node.
 `qdrant_memory` selects the Qdrant 1.19+ `cached` (default) or `cold` tier for
 dense vectors, the HNSW index and the sparse lexical index in new message
 collections. Startup validates reported placement on existing collections;
@@ -1277,7 +1076,7 @@ snapshots, checkpoints, tombstones, and thread catalogs. Lexical retrieval uses
 lowercase alphanumeric tokens, hashed sparse term IDs, saturated term frequency,
 and a fixed 256-token length reference; exact token predicates prevent hash
 collisions from producing false lexical matches. This is a backend-specific
-lexical ranking function, not identical to Redis or PostgreSQL BM25/term ranking.
+lexical ranking function; it differs from SQLite FTS5 ranking.
 The existing application core still fuses, reranks, and groups message candidates.
 All expressive filters apply inside Qdrant before candidate limits. HNSW is
 approximate; exact mode stays available without rebuilding the collection.
@@ -1342,8 +1141,7 @@ dimensions = 1024
 The service configuration applies to every group it serves. Publishers and
 searchers must use the matching model and dimensions. Changing them rebuilds
 local embeddings on the next index pass; reindex all shared publishers before
-searching. PostgreSQL startup migrates existing vectors without deleting history.
-Redis indexes have fixed dimensions: use a new group ID when changing dimensions,
+searching. Qdrant collections have fixed dimensions: use a new group ID when changing dimensions,
 then reindex its members. Model identifiers and dimensions prevent mismatched
 queries from being compared with the stored embedding space.
 
@@ -1363,7 +1161,7 @@ deletion. It reloads configuration on each pass and watches for config/model
 marker changes. Missing roots are watched through their nearest existing parent.
 Removing an authoritative configured root reports an error rather than purging
 its history; removing individual sources from an existing root is reconciled.
-Failed indexing and pending PostgreSQL publication retry after 30 seconds without
+Failed indexing and pending shared publication retry after 30 seconds without
 requiring another file change. A reconciliation pass every five minutes recovers
 missed events. No models are downloaded automatically; every node retains SQLite.
 
@@ -1393,13 +1191,13 @@ timestamps:
 - `last_updated_at`: last committed data update or deletion. A check with no
   changed data preserves this timestamp.
 
-PostgreSQL supplies these timestamps, which commit atomically with the node's
-data. Failed or rolled-back uploads leave them unchanged. They describe received
+The API records these timestamps in the atomically published Qdrant node head.
+Failed uploads leave them unchanged. They describe received
 index data, not the newest source message's timestamp or proof that a node is
 currently online. Older nodes can have null timestamps until they publish with
 this version. Use `mash status --shared` to include shared-index freshness;
 ordinary status remains usable offline. Freshness inspection is
-read-only; the service adds missing metadata tables during startup migration.
+read-only.
 
 ## MCP
 
@@ -1431,8 +1229,7 @@ than adding transport or provider abstractions.
 
 `app/shared/server.rs` owns Axum routing, authorization, typed HTTP responses
 and the listener lifecycle. Its private `configuration` module loads bounded
-strict TOML and resolves authorized node identities; `store` initializes and
-dispatches to the concrete Redis/PostgreSQL backends; `upload` spools bounded
+strict TOML and resolves authorized node identities; `store` initializes Qdrant; `upload` spools bounded
 NDJSON streams. Configuration and credentials are validated before connecting
 to storage, and backend initialization completes before the listener opens.
 
@@ -1475,7 +1272,7 @@ For shared operations, provide the configured node token environment variable to
 `shared` boolean and a `unit` of `threads` (default) or `messages`; `view` accepts a `shared` publishing node ID. Search, view, and
 status and `list_threads` are annotated read-only. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;
-service-side PostgreSQL I/O uses `tokio-postgres` and async/await. SQLite, parsing, and local FastEmbed inference run on blocking
+service-side Qdrant I/O uses async HTTP. SQLite, parsing, and local FastEmbed inference run on blocking
 workers and are awaited by callers. MCP mutations serialize per session; status
 and view may run concurrently, while model-heavy operations use a single permit
 to bound memory and CPU use. Remote embeddings use the same node configuration
@@ -1504,8 +1301,6 @@ modules are grouped by responsibility:
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
   defines persisted silver history and gold embeddings within one atomic revision.
 - `app/shared/qdrant_index/`: typed REST, conditional publication, and dense/sparse retrieval.
-- `app/shared/redis_index/`: atomic publication,
-  and read queries; the parent module handles connections and schema setup.
 - `app/tests/`: CLI contract tests grouped by behavior, with common setup in
   `support.rs`. CLI and MCP share marker fixtures from `app/test_support.rs`.
 
@@ -1575,19 +1370,11 @@ The installed August 2026 nightly can hit a [Clippy compiler crash](https://gith
 when checking async code. On that toolchain, use
 `RUSTFLAGS=-Znext-solver=no cargo clippy --all-targets -- -D warnings`.
 
-The storage integration tests are ignored by default. PostgreSQL tests require a disposable
-database with pgvector installed in `MASH_TEST_PG_URL`. Tests start real HTTP
-services and create/remove isolated test-group schemas:
+The storage integration tests require disposable Qdrant 1.19+ in
+`MASH_TEST_QDRANT_URL`. Tests start real HTTP services and create/remove isolated
+collections for their owned groups:
 
 ```bash
-MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
-  MASH_TEST_PG_URL='postgresql://USER:PASSWORD@localhost/DATABASE?sslmode=disable' \
-  cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(postgres)'
-
-MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
-  MASH_TEST_REDIS_URL='redis://localhost:6379/' \
-  cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(redis)'
-
 MASH_TEST_MODELS_DIR='/path/to/explicitly-installed-models' \
   MASH_TEST_QDRANT_URL='http://localhost:6333/' \
   cargo nextest run --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
@@ -1602,7 +1389,7 @@ are missing; `--no-tests fail` rejects an accidentally empty selection.
 For an instrumented coverage report, install
 [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/releases/tag/v0.9.1)
 and the toolchain's `llvm-tools-preview` component. Set the model directory and
-all three backend test URLs above to installed models and disposable services.
+the Qdrant test URL above to installed models and disposable services.
 
 Also set `MASH_TEST_SERVER_BINARY` to the instrumented `mash` binary produced
 in the coverage target's `debug` directory. With an explicit `CARGO_TARGET_DIR`,
@@ -1611,7 +1398,7 @@ use `$CARGO_TARGET_DIR/llvm-cov-target/debug/mash`; without it, the default is
 uses that directory directly, as defined by [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/src/cargo.rs#L63).
 The suite builds the binary before running tests, so it need not exist before
 the coverage command starts. Restart contracts
-require Docker and cached backend images; set `MASH_TEST_DOCKER_SG=1` on Xenia.
+require Docker and the cached Qdrant image; set `MASH_TEST_DOCKER_SG=1` on Xenia.
 They own their containers and API processes and do not restart the supplied
 backend test services. Use the instrumented binary; forced API termination can
 prevent its final LLVM profile flush, so the contract's runtime checks do not
@@ -1671,10 +1458,10 @@ inference workspace limit, not a total indexing memory limit.
 ## Automatic deployment
 
 Every push to `main` first runs CI, including generated-query checks, linting,
-and SQLite, real embedding/reranking/hybrid-search, PostgreSQL, and Redis tests.
+and SQLite, real embedding/reranking/hybrid-search, and Qdrant tests.
 CI explicitly installs and smoke-tests local models on cache misses; model assets
 are cached by platform, dependency lockfile and installation implementation.
-Both shared-backend gates include normal and routed Claude-copy reconciliation.
+The shared-storage gate includes normal and routed Claude-copy reconciliation.
 Only a successful run can build and
 deploy the Linux x86-64 and Apple Silicon binaries from that same commit.
 Deployments are serialized; a superseded commit is skipped after acquiring

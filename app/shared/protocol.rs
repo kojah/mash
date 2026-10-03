@@ -119,14 +119,6 @@ impl Batch {
             Self::Messages { records } => records.len(),
         }
     }
-
-    pub(super) fn records_json(&self) -> Result<String, serde_json::Error> {
-        match self {
-            Self::Tombstones { records } => serde_json::to_string(records),
-            Self::Conversations { records } => serde_json::to_string(records),
-            Self::Messages { records } => serde_json::to_string(records),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -157,7 +149,7 @@ impl ConversationRecord {
                     ..
                 }) = origin
                 {
-                    super::backend::valid_id(message_id)?;
+                    super::validation::valid_id(message_id)?;
                 }
             }
         }

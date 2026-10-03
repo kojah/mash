@@ -1,6 +1,4 @@
 use super::*;
-use crate::shared::backend;
-use deadpool_postgres::{Manager, Pool};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
@@ -17,7 +15,6 @@ mod selections;
 mod silver_scans;
 mod snapshot_budget;
 mod source_silver;
-mod storage_layers;
 mod threads;
 mod windsurf;
 
@@ -174,18 +171,6 @@ async fn verify_delayed_provider_publication_stays_forgotten(service: &Service, 
     assert_eq!(indexed.counts.conversations, 0);
 }
 
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_round_trips_every_supported_provider_with_filters() {
-    provider_contract(Service::new_backend(true, false).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_round_trips_every_supported_provider_with_filters() {
-    provider_contract(Service::new_backend(false, true).await).await;
-}
-
 async fn wal_checkpoint_contract(service: Service) {
     use crate::shared::protocol::{Checkpoint, Event, NodeState, Start};
     let hash = blake3::hash(b"database-session-alpha").to_hex().to_string();
@@ -262,18 +247,6 @@ async fn wal_checkpoint_contract(service: Service) {
     service.cleanup().await;
 }
 
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_round_trips_native_session_wal_fingerprints() {
-    wal_checkpoint_contract(Service::new_backend(true, false).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_round_trips_native_session_wal_fingerprints() {
-    wal_checkpoint_contract(Service::new_backend(false, true).await).await;
-}
-
 async fn remote_space_contract(service: Service) {
     let generation = crate::semantic::model_space("voyage-4", 1024);
     let mut events = snapshot(1);
@@ -334,21 +307,7 @@ async fn remote_space_contract(service: Service) {
     service.cleanup().await;
 }
 
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_publication_remote_model_space_supports_1024_dimensions() {
-    remote_space_contract(Service::with_dimensions(true, false, 1024).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_publication_remote_model_space_supports_1024_dimensions() {
-    remote_space_contract(Service::with_dimensions(false, true, 1024).await).await;
-}
-
 struct Service {
-    pool: Pool,
-    store: Store,
     url: String,
     group: String,
     task: tokio::task::JoinHandle<()>,
@@ -505,149 +464,11 @@ async fn rich_filter_contract(service: Service) {
     service.cleanup().await;
 }
 
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_publication_rich_filters_apply_before_ranking() {
-    rich_filter_contract(Service::new(true).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_publication_rich_filters_apply_before_ranking() {
-    rich_filter_contract(Service::with_dimensions(false, true, 384).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_repairs_old_metadata_without_changing_snapshot_freshness() {
-    let service = Service::with_dimensions(false, true, 384).await;
-    assert_eq!(
-        service.upload(FIRST, &snapshot(1)).await.status(),
-        StatusCode::OK
-    );
-    let before = service.get("freshness", FIRST).await;
-    let url = std::env::var("MASH_TEST_REDIS_URL").unwrap();
-    let mut connection = redis::Client::open(url)
-        .unwrap()
-        .get_multiplexed_async_connection()
-        .await
-        .unwrap();
-    let pattern = format!(
-        "mash:r:{}:message:*",
-        blake3::hash(service.group.as_bytes()).to_hex()
-    );
-    let keys: Vec<String> = redis::cmd("KEYS")
-        .arg(pattern)
-        .query_async(&mut connection)
-        .await
-        .unwrap();
-    assert_eq!(keys.len(), 3);
-    let heads = format!(
-        "mash:r:{}:nodes",
-        blake3::hash(service.group.as_bytes()).to_hex()
-    );
-    redis::cmd("EVAL").arg("local h=cjson.decode(redis.call('HGET',KEYS[1],ARGV[1])); h.metadata_ready=nil; redis.call('HSET',KEYS[1],ARGV[1],cjson.encode(h))").arg(1).arg(heads).arg("first").query_async::<()>(&mut connection).await.unwrap();
-    for key in &keys {
-        redis::cmd("HDEL")
-            .arg(key)
-            .arg("conversation_record")
-            .query_async::<i64>(&mut connection)
-            .await
-            .unwrap();
-    }
-    let Store::Redis(store) = &service.store else {
-        panic!("Redis fixture");
-    };
-    let identity = Identity {
-        group_id: service.group.clone(),
-        node_id: "first".into(),
-        generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
-        dimensions: 384,
-    };
-    store.repair_metadata(&identity).await.unwrap();
-    store.repair_metadata(&identity).await.unwrap(); // Idempotent.
-    for key in &keys {
-        let raw: String = redis::cmd("HGET")
-            .arg(key)
-            .arg("conversation_record")
-            .query_async(&mut connection)
-            .await
-            .unwrap();
-        let conversation: protocol::ConversationRecord = serde_json::from_str(&raw).unwrap();
-        assert_eq!(conversation.project.as_deref(), Some("/work/mash"));
-        assert_eq!(conversation.repository.as_deref(), Some("repo://mash"));
-    }
-    assert_eq!(service.get("freshness", FIRST).await, before);
-    service.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_publication_excludes_own_node_before_candidate_limit_and_readiness() {
-    exclude_own_contract(Service::new(true).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_publication_excludes_own_node_before_candidate_limit_and_readiness() {
-    exclude_own_contract(Service::with_dimensions(false, true, 384).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_publication_configured_limits_and_chunked_canonical_data_round_trip() {
-    let small = Service::with_limit(false, true, 384, 1024 * 1024).await;
-    let large = Service::with_limit(false, true, 384, 32 * 1024 * 1024).await;
-    let mut events = snapshot(1);
-    let text = "hello ".repeat(450_000);
-    events[2]["records"][0]["content"] = json!(text);
-    events[2]["records"][0]["projection"] = json!(text);
-    events[2]["records"][1]["content"] = json!(text);
-    events[2]["records"][1]["projection"] = json!(text);
-    let records = events[2]["records"].as_array().unwrap().clone();
-    events.truncate(2);
-    for record in records {
-        events.push(json!({"type":"batch","kind":"messages","records":[record]}));
-    }
-    events.push(json!({"type":"finish"}));
-    assert_eq!(
-        small.upload(FIRST, &events).await.status(),
-        StatusCode::PAYLOAD_TOO_LARGE
-    );
-    assert_eq!(small.get("status", FIRST).await["messages"], 0);
-    assert_eq!(large.upload(FIRST, &events).await.status(), StatusCode::OK);
-    assert_eq!(large.get("status", FIRST).await["messages"], 3);
-    let unchanged = vec![
-        json!({"type":"start","instance":"snapshot-instance","revision":2,"base_revision":1,"snapshot":false,"forgets":[]}),
-        json!({"type":"finish"}),
-    ];
-    assert_eq!(
-        large.upload(FIRST, &unchanged).await.status(),
-        StatusCode::OK
-    );
-    assert_eq!(large.get("status", FIRST).await["messages"], 3);
-    let forget = large
-        .request("forget", FIRST)
-        .json(&json!({"instance":"snapshot-instance","revision":3,"ids":["conversation"]}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(forget.status(), StatusCode::OK);
-    assert_eq!(large.get("status", FIRST).await["messages"], 0);
-    small.cleanup().await;
-    large.cleanup().await;
-}
 impl Drop for Service {
     fn drop(&mut self) {
         self.task.abort();
     }
 }
-enum TestBackend {
-    Postgres,
-    Redis,
-    Qdrant,
-}
-
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
 async fn qdrant_publication_http_authorization_vectors_groups_rollback_and_retry() {
@@ -679,66 +500,20 @@ async fn qdrant_publication_remote_model_space_supports_1024_dimensions() {
     remote_space_contract(Service::qdrant(1024).await).await;
 }
 impl Service {
-    async fn new(database: bool) -> Self {
-        Self::new_backend(database, false).await
+    async fn new(available: bool) -> Self {
+        Self::with_parameters(available, 384, 64 * 1024 * 1024, FIRST).await
     }
-    async fn new_backend(database: bool, redis: bool) -> Self {
-        Self::with_dimensions(database, redis, 384).await
-    }
-    async fn with_dimensions(database: bool, redis: bool, dimensions: usize) -> Self {
-        Self::with_limit(database, redis, dimensions, 64 * 1024 * 1024).await
-    }
-    async fn with_limit(
-        database: bool,
-        redis: bool,
-        dimensions: usize,
-        max_node_bytes: usize,
-    ) -> Self {
-        Self::with_token(database, redis, dimensions, max_node_bytes, FIRST).await
-    }
-
     async fn qdrant(dimensions: usize) -> Self {
-        Self::with_backend(
-            false,
-            TestBackend::Qdrant,
-            dimensions,
-            64 * 1024 * 1024,
-            FIRST,
-        )
-        .await
+        Self::with_parameters(true, dimensions, 64 * 1024 * 1024, FIRST).await
     }
-
-    async fn with_token(
-        database: bool,
-        redis: bool,
-        dimensions: usize,
-        max_node_bytes: usize,
-        first_token: &str,
-    ) -> Self {
-        Self::with_backend(
-            database,
-            if redis {
-                TestBackend::Redis
-            } else {
-                TestBackend::Postgres
-            },
-            dimensions,
-            max_node_bytes,
-            first_token,
-        )
-        .await
-    }
-
-    async fn with_backend(
-        database: bool,
-        backend: TestBackend,
+    async fn with_parameters(
+        available: bool,
         dimensions: usize,
         max_node_bytes: usize,
         first_token: &str,
     ) -> Self {
         Self::with_budget(
-            database,
-            backend,
+            available,
             dimensions,
             max_node_bytes,
             first_token,
@@ -746,13 +521,8 @@ impl Service {
         )
         .await
     }
-    #[allow(
-        clippy::too_many_lines,
-        reason = "shared fixture wires the same identities and HTTP server for each concrete backend"
-    )]
     async fn with_budget(
-        database: bool,
-        backend: TestBackend,
+        available: bool,
         dimensions: usize,
         max_node_bytes: usize,
         first_token: &str,
@@ -768,21 +538,22 @@ impl Service {
             "api-{}",
             directory.path().file_name().unwrap().to_string_lossy()
         );
-        let url = if database {
-            std::env::var("MASH_TEST_PG_URL").unwrap()
+        let store = if available {
+            Store::connect(
+                &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
+                None,
+                &[group.clone(), format!("{group}-other")],
+                dimensions,
+                max_node_bytes,
+                super::super::qdrant_index::VectorIndex::default(),
+                super::super::qdrant_index::MemoryTier::default(),
+            )
+            .await
+            .unwrap()
         } else {
-            "host=127.0.0.1 port=9 user=unused connect_timeout=1".into()
-        };
-        let options = url.parse().unwrap();
-        let pool = Pool::builder(Manager::new(options, tokio_postgres::NoTls))
-            .max_size(4)
-            .build()
-            .unwrap();
-        if database {
-            backend::initialize(&pool, &[group.clone(), format!("{group}-other")])
-                .await
-                .unwrap();
+            Store::unavailable()
         }
+        .with_snapshot_budget(budget);
         let identities = Arc::new(HashMap::from([
             (
                 blake3::hash(first_token.as_bytes()),
@@ -807,47 +578,16 @@ impl Service {
                 Identity {
                     group_id: format!("{group}-other"),
                     node_id: "first".into(),
-                    generation: generation.clone(),
+                    generation,
                     dimensions,
                 },
             ),
         ]));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let store = if matches!(backend, TestBackend::Qdrant) {
-            Store::Qdrant(
-                super::super::qdrant_index::Store::connect(
-                    &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
-                    None,
-                    &[group.clone(), format!("{group}-other")],
-                    dimensions,
-                    max_node_bytes,
-                    super::super::qdrant_index::VectorIndex::default(),
-                    super::super::qdrant_index::MemoryTier::default(),
-                )
-                .await
-                .unwrap()
-                .with_snapshot_budget(budget.clone()),
-            )
-        } else if matches!(backend, TestBackend::Redis) {
-            Store::Redis(
-                super::super::redis_index::Store::connect(
-                    &std::env::var("MASH_TEST_REDIS_URL").unwrap(),
-                    &[group.clone(), format!("{group}-other")],
-                    dimensions,
-                    max_node_bytes,
-                    super::super::redis_index::VectorIndex::default(),
-                )
-                .await
-                .unwrap()
-                .with_snapshot_budget(budget),
-            )
-        } else {
-            Store::Postgres(pool.clone())
-        };
         let uploads = Arc::new(tokio::sync::Semaphore::new(4));
         let app = App {
-            store: store.clone(),
+            store,
             identities,
             uploads: uploads.clone(),
         };
@@ -855,8 +595,6 @@ impl Service {
             axum::serve(listener, router(app)).await.unwrap();
         });
         Self {
-            pool,
-            store,
             url,
             group,
             task,
@@ -895,65 +633,24 @@ impl Service {
             .unwrap()
     }
     async fn cleanup(&self) {
-        match &self.store {
-            Store::Qdrant(_) => {
-                for group in [&self.group, &format!("{}-other", self.group)] {
-                    for suffix in ["state", "messages"] {
-                        reqwest::Client::new()
-                            .delete(format!(
-                                "{}/collections/mash_q_{}_{suffix}",
-                                std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
-                                blake3::hash(group.as_bytes()).to_hex()
-                            ))
-                            .send()
-                            .await
-                            .unwrap()
-                            .error_for_status()
-                            .unwrap();
-                    }
-                }
-            }
-            Store::Postgres(pool) => {
-                let client = pool.get().await.unwrap();
-                for group in [&self.group, &format!("{}-other", self.group)] {
-                    client
-                        .batch_execute(&format!(
-                            "DROP SCHEMA {} CASCADE",
-                            backend::group_schema(group)
-                        ))
-                        .await
-                        .unwrap();
-                }
-            }
-            Store::Redis(_) => {
-                let client =
-                    redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
-                let mut connection = client.get_multiplexed_async_connection().await.unwrap();
-                for group in [&self.group, &format!("{}-other", self.group)] {
-                    let prefix = format!("mash:r:{}:", blake3::hash(group.as_bytes()).to_hex());
-                    redis::cmd("FT.DROPINDEX")
-                        .arg(format!("{prefix}index"))
-                        .arg("DD")
-                        .query_async::<()>(&mut connection)
-                        .await
-                        .unwrap();
-                    let keys: Vec<String> = redis::cmd("KEYS")
-                        .arg(format!("{prefix}*"))
-                        .query_async(&mut connection)
-                        .await
-                        .unwrap();
-                    if !keys.is_empty() {
-                        redis::cmd("DEL")
-                            .arg(keys)
-                            .query_async::<usize>(&mut connection)
-                            .await
-                            .unwrap();
-                    }
-                }
+        for group in [&self.group, &format!("{}-other", self.group)] {
+            for suffix in ["state", "messages"] {
+                reqwest::Client::new()
+                    .delete(format!(
+                        "{}/collections/mash_q_{}_{suffix}",
+                        std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
+                        blake3::hash(group.as_bytes()).to_hex()
+                    ))
+                    .send()
+                    .await
+                    .unwrap()
+                    .error_for_status()
+                    .unwrap();
             }
         }
     }
 }
+
 fn snapshot(revision: i64) -> Vec<Value> {
     let mut vector = vec![0.0; 384];
     vector[0] = 127.0;
@@ -1026,17 +723,6 @@ async fn authorization_and_request_limits_apply_before_database_access() {
     assert_eq!(line.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL pointing to disposable PostgreSQL with pgvector"]
-#[allow(clippy::too_many_lines)]
-async fn postgres_publication_http_authorization_vectors_groups_rollback_and_retry() {
-    http_storage_contract(Service::new(true).await).await;
-}
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL pointing to disposable Redis Search"]
-async fn redis_publication_http_authorization_vectors_groups_rollback_and_retry() {
-    http_storage_contract(Service::new_backend(false, true).await).await;
-}
 #[allow(clippy::too_many_lines)]
 async fn http_storage_contract(service: Service) {
     let events = snapshot(1);
@@ -1212,31 +898,5 @@ async fn http_storage_contract(service: Service) {
         .await
         .unwrap();
     assert_eq!(incompatible.status(), StatusCode::SERVICE_UNAVAILABLE);
-    service.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL pointing to disposable PostgreSQL with pgvector"]
-async fn postgres_publication_migrates_existing_array_vectors_without_losing_history() {
-    let service = Service::new(true).await;
-    let client = service.pool.get().await.unwrap();
-    let schema = backend::group_schema(&service.group);
-    client.batch_execute(&format!("SET search_path={schema},public; DROP TABLE message_search; ALTER TABLE messages ADD COLUMN generation TEXT, ADD COLUMN vector double precision[], ADD COLUMN document TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple',projection)) STORED; INSERT INTO nodes(node_id,instance,revision) VALUES('legacy','old',1); INSERT INTO conversations(node_id,id,provider) VALUES('legacy','conversation','codex'); UPDATE version SET version=1;")).await.unwrap();
-    for (id, vector) in [
-        ("complete", vec![1.0f64; 384]),
-        ("incomplete", vec![1.0; 2]),
-    ] {
-        client.execute("INSERT INTO messages(node_id,id,conversation_id,ordinal,role,content,projection,generation,vector) VALUES('legacy',$1,'conversation',$2,'user','legacy history','legacy history',$3,$4)", &[&id,&(i64::from(id!="complete")),&crate::semantic::SHARED_EMBEDDING_GENERATION,&vector]).await.unwrap();
-    }
-    drop(client);
-    backend::initialize(&service.pool, std::slice::from_ref(&service.group))
-        .await
-        .unwrap();
-    let client = service.pool.get().await.unwrap();
-    let tx=client.query_one(&format!("SELECT count(*),count(vector),max(public.vector_dims(vector)) FROM {schema}.messages m LEFT JOIN {schema}.message_search g USING(node_id,id)"),&[]).await.unwrap();
-    assert_eq!(tx.get::<_, i64>(0), 2);
-    assert_eq!(tx.get::<_, i64>(1), 1);
-    assert_eq!(tx.get::<_, Option<i32>>(2), Some(384));
-    drop(client);
     service.cleanup().await;
 }

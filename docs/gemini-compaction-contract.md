@@ -41,7 +41,7 @@ Archived text shares the existing 32 MiB replay and 65,536-message budgets.
 
 SQLite schema 31 and shared source fingerprint `search-text-v5` require an
 explicit `mash index` to refresh unchanged histories. Search never performs
-the migration or ingestion. PostgreSQL/Redis wire and storage layouts are unchanged.
+the migration or ingestion. Compaction uses the existing typed HTTP publication contract.
 
 Unmarked summaries and complete JSON snapshots lack reliable event provenance.
 They continue to follow resumed history; live UI/model compaction and alternate

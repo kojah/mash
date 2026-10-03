@@ -3,8 +3,7 @@
 The handwritten Cargo workspace contains `mash` and `mash-query`. Both are
 default members, so the ordinary formatting, Clippy, nextest and doctest
 commands cover the query crate as well as the application. The root package
-is an implicit member; `generated/postgres` is excluded and remains a generated
-path dependency. Cargo's [workspace documentation](https://doc.rust-lang.org/cargo/reference/workspaces.html)
+is an implicit member. Cargo's [workspace documentation](https://doc.rust-lang.org/cargo/reference/workspaces.html)
 describes package selection and default members. Current workspace membership
 was also checked with `cargo metadata`, rather than inferred from the manifest.
 

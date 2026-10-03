@@ -33,27 +33,6 @@ jobs:
         image: qdrant/qdrant:v1.19.1
         ports:
           - 6333:6333
-      redis:
-        image: redis:8.2
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      postgres:
-        image: pgvector/pgvector:pg17
-        env:
-          POSTGRES_PASSWORD: mash-test
-          POSTGRES_DB: mash_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
@@ -104,12 +83,8 @@ jobs:
           tar --no-same-owner -xzf "$RUNNER_TEMP/mash-sqlc/sqlc.tar.gz" -C "$RUNNER_TEMP/mash-sqlc"
           echo "$RUNNER_TEMP/mash-sqlc" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/mash-sqlc/sqlc" version
-      - name: Install PostgreSQL query generator
-        run: cargo install cornucopia --version 1.0.1 --locked
-      - name: Verify generated database queries
+      - name: Verify generated SQLite queries
         run: make check-generated
-        env:
-          MASH_CODEGEN_POSTGRES_URL: postgresql://postgres:mash-test@localhost:5432
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo nextest run --profile ci
       - name: Configure explicit test model directory
@@ -129,20 +104,12 @@ jobs:
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
           -E 'test(real_models_index_and_run_hybrid_search) or test(real_models_thread_discovery_and_scoped_messages) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked) or test(labeled_synthetic_relevance_matrix)'
-      - name: Verify shared PostgreSQL publication
-        run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(postgres)'
-        env:
-          MASH_TEST_PG_URL: postgresql://postgres:mash-test@localhost:5432/mash_test?sslmode=disable
-      - name: Verify shared Redis publication
-        run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(redis)'
-        env:
-          MASH_TEST_REDIS_URL: redis://localhost:6379/
       - run: cargo test --doc
       - name: Verify shared Qdrant publication and retrieval
         run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
         env:
           MASH_TEST_QDRANT_URL: http://localhost:6333
-      - name: Verify persisted shared backends after database and API restart
+      - name: Verify persisted Qdrant data after database and API restart
         env:
           MASH_TEST_RESTART_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}-restart
         run: |

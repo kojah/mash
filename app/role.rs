@@ -57,17 +57,6 @@ impl rusqlite::types::FromSql for Role {
         Ok(value.as_str()?.into())
     }
 }
-impl<'a> tokio_postgres::types::FromSql<'a> for Role {
-    fn from_sql(
-        ty: &tokio_postgres::types::Type,
-        raw: &'a [u8],
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(<&str as tokio_postgres::types::FromSql>::from_sql(ty, raw)?.into())
-    }
-    fn accepts(ty: &tokio_postgres::types::Type) -> bool {
-        <&str as tokio_postgres::types::FromSql>::accepts(ty)
-    }
-}
 
 impl schemars::JsonSchema for Role {
     fn schema_name() -> std::borrow::Cow<'static, str> {

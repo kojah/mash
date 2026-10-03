@@ -6,9 +6,9 @@ use super::{
 };
 use crate::shared::snapshot::Encoded;
 use crate::shared::{
-    backend::{conflict, valid_id},
     protocol::{Forget, Forgotten, Indexed},
     snapshot::{self, Data, Plan},
+    validation::{conflict, valid_id},
 };
 use tracing::Instrument;
 
@@ -27,6 +27,7 @@ fn outcome(value: PublicationOutcome) {
 }
 
 impl Store {
+    #[tracing::instrument(name = "backend_index", skip_all, fields(backend = "qdrant"))]
     pub(in crate::shared) async fn index(
         &self,
         identity: &Identity,

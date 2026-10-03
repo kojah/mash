@@ -8,14 +8,10 @@ struct Fixture {
     codex: std::path::PathBuf,
     group: String,
     server: Option<shared_server::Server>,
-    redis: bool,
 }
 
 impl Fixture {
     fn new() -> Self {
-        Self::with_backend(false)
-    }
-    fn with_backend(redis: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         let config = root.join("config.toml");
@@ -30,21 +26,13 @@ impl Fixture {
 "#).unwrap();
         Self::write_codex(&codex);
         let group = format!("routing-{}", root.file_name().unwrap().to_string_lossy());
-        let server = if redis {
-            Some(shared_server::Server::redis(
+        let server = std::env::var("MASH_TEST_QDRANT_URL").ok().map(|_| {
+            shared_server::Server::new(
                 root,
                 &group,
                 &["remote", "split", "first-delivery", "local"],
-            ))
-        } else {
-            std::env::var("MASH_TEST_PG_URL").ok().map(|_| {
-                shared_server::Server::new(
-                    root,
-                    &group,
-                    &["remote", "split", "first-delivery", "local"],
-                )
-            })
-        };
+            )
+        });
         Self {
             directory,
             config,
@@ -53,7 +41,6 @@ impl Fixture {
             codex,
             group,
             server,
-            redis,
         }
     }
 
@@ -114,19 +101,15 @@ impl Fixture {
         body
     }
 
-    fn client(&self) -> postgres::Client {
-        let mut client =
-            postgres::Client::connect(&std::env::var("MASH_TEST_PG_URL").unwrap(), postgres::NoTls)
-                .unwrap();
-        client
-            .batch_execute(&format!(
-                "SET search_path=mash_g_{}",
-                &blake3::hash(self.group.as_bytes()).to_hex()[..32]
-            ))
-            .unwrap();
-        client
+    fn remote_node(&self, node: &str) -> Value {
+        self.json(&["status", "--shared"], true)["shared_index"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|value| value["node_id"] == node)
+            .unwrap()
+            .clone()
     }
-
     fn assert_claude_scan(&self, node: &str) {
         let state: Value = tokio::runtime::Runtime::new().unwrap().block_on(async {
             reqwest::Client::new()
@@ -148,63 +131,24 @@ impl Fixture {
     }
 
     fn cleanup(&self) {
-        if self.redis {
-            let client =
-                redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
-            let mut connection = client.get_connection().unwrap();
-            let prefix = format!("mash:r:{}:", blake3::hash(self.group.as_bytes()).to_hex());
-            redis::cmd("FT.DROPINDEX")
-                .arg(format!("{prefix}index"))
-                .arg("DD")
-                .query::<()>(&mut connection)
-                .unwrap();
-            let keys: Vec<String> = redis::cmd("KEYS")
-                .arg(format!("{prefix}*"))
-                .query(&mut connection)
-                .unwrap();
-            if !keys.is_empty() {
-                redis::cmd("DEL")
-                    .arg(keys)
-                    .query::<usize>(&mut connection)
-                    .unwrap();
-            }
-            return;
-        }
-        self.client()
-            .batch_execute(&format!(
-                "DROP SCHEMA mash_g_{} CASCADE",
-                &blake3::hash(self.group.as_bytes()).to_hex()[..32]
-            ))
-            .unwrap();
+        shared_server::cleanup_group(&self.group);
     }
 }
 
 #[test]
-#[ignore = "requires disposable PostgreSQL and explicitly installed MASH_TEST_MODELS_DIR"]
-fn claude_copy_reconciliation_postgres_snapshot() {
-    claude_copy_reconciliation(false, false);
+#[ignore = "requires disposable Qdrant and explicitly installed MASH_TEST_MODELS_DIR"]
+fn claude_copy_reconciliation_qdrant_snapshot() {
+    claude_copy_reconciliation(false);
 }
 
 #[test]
-#[ignore = "requires disposable PostgreSQL and explicitly installed MASH_TEST_MODELS_DIR"]
-fn claude_copy_reconciliation_postgres_routed() {
-    claude_copy_reconciliation(false, true);
+#[ignore = "requires disposable Qdrant and explicitly installed MASH_TEST_MODELS_DIR"]
+fn claude_copy_reconciliation_qdrant_routed() {
+    claude_copy_reconciliation(true);
 }
 
-#[test]
-#[ignore = "requires disposable Redis Search and explicitly installed MASH_TEST_MODELS_DIR"]
-fn claude_copy_reconciliation_redis_snapshot() {
-    claude_copy_reconciliation(true, false);
-}
-
-#[test]
-#[ignore = "requires disposable Redis Search and explicitly installed MASH_TEST_MODELS_DIR"]
-fn claude_copy_reconciliation_redis_routed() {
-    claude_copy_reconciliation(true, true);
-}
-
-fn claude_copy_reconciliation(redis: bool, routed: bool) {
-    let mut fixture = Fixture::with_backend(redis);
+fn claude_copy_reconciliation(routed: bool) {
+    let mut fixture = Fixture::new();
     fixture.models = std::env::var("MASH_TEST_MODELS_DIR").unwrap().into();
     let root = fixture.directory.path().join("claude");
     let a = root.join("session.jsonl");
@@ -342,8 +286,8 @@ fn shared_only_configuration_is_rejected_before_opening_sqlite() {
 }
 
 #[test]
-#[ignore = "requires MASH_TEST_PG_URL pointing to an expendable PostgreSQL database"]
-fn postgres_publication_routes_providers_independently_and_retries_shared_forgets() {
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant"]
+fn qdrant_publication_routes_providers_independently_and_retries_shared_forgets() {
     let fixture = Fixture::new();
     fixture.configure("both", "split");
     assert_eq!(
@@ -367,19 +311,20 @@ fn postgres_publication_routes_providers_independently_and_retries_shared_forget
         .collect::<Result<_, _>>()
         .unwrap();
     assert_eq!(providers, ["claude-code", "codex"]);
-    let remote: Vec<String> = fixture
-        .client()
-        .query("SELECT provider FROM conversations", &[])
-        .unwrap()
-        .iter()
-        .map(|r| r.get(0))
-        .collect();
-    assert_eq!(remote, ["codex"]);
-    let id: String = fixture
-        .client()
-        .query_one("SELECT id FROM messages", &[])
-        .unwrap()
-        .get(0);
+    assert_eq!(fixture.remote_node("split")["conversations"], 1);
+    assert_eq!(fixture.remote_node("split")["messages"], 1);
+    let id: String = connection
+        .query_row(
+            "SELECT id FROM messages WHERE conversation_id='codex-session'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let remote = fixture.json(&["view", &id, "--shared", "split", "--context", "0"], true);
+    assert_eq!(remote["messages"][0]["content"], "shared Codex output");
+    let threads = fixture.json(&["list-threads", "--shared"], true);
+    assert_eq!(threads["threads"].as_array().unwrap().len(), 1);
+    assert_eq!(threads["threads"][0]["provider"], "codex");
     assert_eq!(
         fixture.json(&["forget", "codex-session"], false)["shared"]["state"],
         "pending"
@@ -395,24 +340,13 @@ fn postgres_publication_routes_providers_independently_and_retries_shared_forget
         fixture.json(&["index"], true)["shared"]["state"],
         "published"
     );
-    assert_eq!(
-        fixture
-            .client()
-            .query_one("SELECT count(*) FROM conversations", &[])
-            .unwrap()
-            .get::<_, i64>(0),
-        0
-    );
+    assert_eq!(fixture.remote_node("split")["conversations"], 0);
     assert_eq!(
         fixture.json(&["index", "--full"], true)["shared"]["state"],
         "published"
     );
     assert_eq!(
-        fixture
-            .client()
-            .query_one("SELECT count(*) FROM conversations", &[])
-            .unwrap()
-            .get::<_, i64>(0),
+        fixture.remote_node("split")["conversations"],
         0,
         "persistent tombstone prevents reupload"
     );
@@ -425,8 +359,8 @@ fn postgres_publication_routes_providers_independently_and_retries_shared_forget
 }
 
 #[test]
-#[ignore = "requires MASH_TEST_PG_URL pointing to an expendable PostgreSQL database"]
-fn postgres_publication_forget_before_initial_delivery_is_durable() {
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant"]
+fn qdrant_publication_forget_before_initial_delivery_is_durable() {
     let fixture = Fixture::new();
     fixture.configure("both", "first-delivery");
     assert_eq!(
@@ -442,72 +376,9 @@ fn postgres_publication_forget_before_initial_delivery_is_durable() {
         "published"
     );
     assert_eq!(
-        fixture
-            .client()
-            .query_one("SELECT count(*) FROM conversations", &[])
-            .unwrap()
-            .get::<_, i64>(0),
+        fixture.remote_node("first-delivery")["conversations"],
         0,
         "forget before first upload is durable"
     );
     fixture.cleanup();
-}
-
-#[test]
-#[ignore = "requires MASH_TEST_REDIS_URL pointing to disposable Redis Search"]
-fn redis_publication_local_required_and_filtered_offline_forgets_through_cli() {
-    let fixture = Fixture::with_backend(true);
-    fixture.configure("both", "split");
-    assert_eq!(
-        fixture.json(&["index"], false)["shared"]["state"],
-        "pending"
-    );
-    assert_eq!(
-        fixture.json(&["index"], true)["shared"]["state"],
-        "published"
-    );
-    assert_eq!(
-        fixture.json(&["forget", "codex-session"], false)["shared"]["state"],
-        "pending"
-    );
-    assert_eq!(
-        fixture.json(&["index"], true)["shared"]["state"],
-        "published"
-    );
-    assert_eq!(
-        fixture.json(&["index", "--full"], true)["shared"]["state"],
-        "published"
-    );
-    let status = fixture.json(&["status", "--shared"], true);
-    assert_eq!(status["conversations"], 1);
-    assert_eq!(
-        status["shared_index"]["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|n| n["node_id"] == "split")
-            .unwrap()["messages"],
-        0
-    );
-    let client = redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
-    let mut connection = client.get_connection().unwrap();
-    let prefix = format!(
-        "mash:r:{}:",
-        blake3::hash(fixture.group.as_bytes()).to_hex()
-    );
-    redis::cmd("FT.DROPINDEX")
-        .arg(format!("{prefix}index"))
-        .arg("DD")
-        .query::<()>(&mut connection)
-        .unwrap();
-    let keys: Vec<String> = redis::cmd("KEYS")
-        .arg(format!("{prefix}*"))
-        .query(&mut connection)
-        .unwrap();
-    if !keys.is_empty() {
-        redis::cmd("DEL")
-            .arg(keys)
-            .query::<usize>(&mut connection)
-            .unwrap();
-    }
 }

@@ -87,14 +87,14 @@ execution profiles for production filters, concurrent publication/deletion and
 end-to-end hybrid search. Even the large unfiltered gain saves approximately six
 milliseconds here; embedding and reranking can dominate the full request.
 
-The [pilot harness](../tools/benchmark-vector.py) requires no Python packages. It
+The [pilot harness](../research/storage/redis-vector-pilot.py) requires no Python packages. It
 reads the source SQLite database without changing it, freezes vector metadata in
 a private artifact directory, and uses isolated Redis namespaces with cleanup.
 It only accepts the designated disposable test port and never flushes Redis.
 Do not run alongside other performance measurements. For example:
 
 ```sh
-python3 tools/benchmark-vector.py \
+python3 research/storage/redis-vector-pilot.py \
   --source /path/to/existing-index.sqlite3 \
   --artifacts /path/to/private/pilot-artifacts \
   --sizes 1000 10000 100000 --queries 100 --k 20

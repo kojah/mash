@@ -23,15 +23,8 @@ struct TraceSpan {
 }
 
 fn traced_router(dispatcher: tracing::Dispatch) -> Router {
-    let options = "host=127.0.0.1 port=9 user=unused connect_timeout=1"
-        .parse()
-        .unwrap();
-    let pool = Pool::builder(Manager::new(options, tokio_postgres::NoTls))
-        .max_size(1)
-        .build()
-        .unwrap();
     let app = App {
-        store: Store::Postgres(pool),
+        store: Store::unavailable(),
         identities: Arc::new(HashMap::from([(
             blake3::hash(FIRST.as_bytes()),
             Identity {

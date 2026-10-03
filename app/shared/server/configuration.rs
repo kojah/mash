@@ -1,7 +1,7 @@
 //! Strict server settings, bounded loading and configured node identities.
 use super::Identity;
 use crate::AppError;
-use crate::shared::{qdrant_index, redis_index};
+use crate::shared::qdrant_index;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -23,24 +23,14 @@ pub(super) struct Configuration {
     pub(super) embeddings: EmbeddingSpace,
     #[serde(default = "default_listen")]
     pub(super) listen: SocketAddr,
-    #[serde(default)]
-    pub(super) backend: BackendChoice,
-    pub(super) database_url_env: Option<String>,
-    pub(super) redis_url_env: Option<String>,
     pub(super) qdrant_url_env: Option<String>,
     pub(super) qdrant_api_key_env: Option<String>,
-    #[serde(default = "default_redis_node_mib")]
+    #[serde(default = "default_node_mib")]
     pub(super) qdrant_max_node_mib: usize,
     #[serde(default)]
     pub(super) qdrant_vector_index: qdrant_index::VectorIndex,
     #[serde(default)]
     pub(super) qdrant_memory: qdrant_index::MemoryTier,
-    #[serde(default = "default_connections")]
-    pub(super) max_connections: usize,
-    #[serde(default = "default_redis_node_mib")]
-    pub(super) redis_max_node_mib: usize,
-    #[serde(default)]
-    pub(super) redis_vector_index: redis_index::VectorIndex,
     #[serde(default = "default_uploads")]
     pub(super) max_concurrent_uploads: usize,
     #[serde(default = "default_snapshot_budget")]
@@ -62,16 +52,7 @@ impl Default for EmbeddingSpace {
     }
 }
 
-#[derive(Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(super) enum BackendChoice {
-    Postgres,
-    Redis,
-    #[default]
-    Qdrant,
-}
-
-fn default_redis_node_mib() -> usize {
+fn default_node_mib() -> usize {
     64
 }
 fn default_uploads() -> usize {
@@ -83,10 +64,6 @@ fn default_snapshot_budget() -> usize {
 fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8787))
 }
-const fn default_connections() -> usize {
-    16
-}
-
 pub(super) fn env_name(name: &str) -> Result<(), AppError> {
     if name.is_empty()
         || !name
@@ -103,33 +80,8 @@ pub(super) fn env_name(name: &str) -> Result<(), AppError> {
 pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
-    config.redis_vector_index.validate()?;
     config.qdrant_vector_index.validate()?;
     crate::shared::snapshot_budget::Budget::validate(config.max_mutation_snapshot_mib)?;
-    if !matches!(config.backend, BackendChoice::Redis)
-        && config.redis_vector_index != (redis_index::VectorIndex::Exact {})
-    {
-        return Err(AppError::configuration(
-            "redis_vector_index HNSW settings require backend=redis",
-        ));
-    }
-    if !matches!(config.backend, BackendChoice::Qdrant)
-        && (config.qdrant_url_env.is_some()
-            || config.qdrant_api_key_env.is_some()
-            || config.qdrant_memory != qdrant_index::MemoryTier::default()
-            || config.qdrant_vector_index != qdrant_index::VectorIndex::default())
-    {
-        return Err(AppError::configuration(
-            "Qdrant settings require backend=qdrant",
-        ));
-    }
-    if matches!(config.backend, BackendChoice::Qdrant)
-        && (config.database_url_env.is_some() || config.redis_url_env.is_some())
-    {
-        return Err(AppError::configuration(
-            "Qdrant backend does not accept database_url_env or redis_url_env",
-        ));
-    }
     if !(1..=4096).contains(&config.qdrant_max_node_mib) {
         return Err(AppError::configuration(
             "qdrant_max_node_mib must be between 1 and 4096",
@@ -140,17 +92,9 @@ pub(super) fn identities(
             "max_concurrent_uploads must be between 1 and 16",
         ));
     }
-    if !(1..=4096).contains(&config.redis_max_node_mib) {
+    if config.version != 1 || config.nodes.is_empty() {
         return Err(AppError::configuration(
-            "redis_max_node_mib must be between 1 and 4096",
-        ));
-    }
-    if config.version != 1
-        || config.nodes.is_empty()
-        || !(1..=128).contains(&config.max_connections)
-    {
-        return Err(AppError::configuration(
-            "server requires version 1, configured nodes, and 1..128 connections",
+            "server requires version 1 and configured nodes",
         ));
     }
     if !(1..=2048).contains(&config.embeddings.dimensions)

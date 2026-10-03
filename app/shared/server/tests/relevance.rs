@@ -3,9 +3,9 @@ use super::*;
 use crate::core::{self, IndexRequest, Operation, Request};
 use crate::semantic::evaluation;
 
-async fn contract(backend: TestBackend, database: bool) {
+async fn contract() {
     let token = std::env::var("PATH").unwrap();
-    let service = Service::with_backend(database, backend, 384, 64 * 1024 * 1024, &token).await;
+    let service = Service::with_parameters(true, 384, 64 * 1024 * 1024, &token).await;
     let (_root, paths) = evaluation::fixture();
     core::execute(Request {
         paths: paths.clone(),
@@ -47,17 +47,5 @@ async fn contract(backend: TestBackend, database: bool) {
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL and installed MASH_TEST_MODELS_DIR"]
 async fn qdrant_labeled_hybrid_relevance_matrix_uses_real_models_and_core() {
-    contract(TestBackend::Qdrant, false).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL and installed MASH_TEST_MODELS_DIR"]
-async fn redis_labeled_hybrid_relevance_matrix_uses_real_models_and_core() {
-    contract(TestBackend::Redis, false).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL and installed MASH_TEST_MODELS_DIR"]
-async fn postgres_labeled_hybrid_relevance_matrix_uses_real_models_and_core() {
-    contract(TestBackend::Postgres, true).await;
+    contract().await;
 }

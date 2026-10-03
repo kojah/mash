@@ -1,9 +1,9 @@
 //! Backend-independent publication planning and atomic silver/gold revisions.
-use super::backend::{conflict, valid_id};
 use super::protocol::{
     self, Batch, Checkpoint, ConversationRecord, Event, MessageRecord, NodeState, Start, Tombstone,
 };
 use super::server::Identity;
+use super::validation::{conflict, valid_id};
 use crate::provider::Provider;
 use crate::storage::Counts;
 use crate::{AppError, semantic};
@@ -49,7 +49,6 @@ pub(super) struct Data {
     pub(super) tombstones: BTreeMap<String, Tombstone>,
 }
 pub(super) struct Loaded {
-    pub(super) digest: Option<String>,
     pub(super) head: Option<Head>,
     pub(super) expected: String,
     pub(super) data: Data,
@@ -67,7 +66,6 @@ impl PendingSnapshot {
             .map_or(0, payload::Received::encoded_bytes)
     }
     pub(in crate::shared) fn decode(self) -> Result<Loaded, AppError> {
-        let digest = self.payload.as_ref().map(|p| p.digest.clone());
         let data = match self.payload {
             None => Data::default(),
             Some(payload) => match self
@@ -80,7 +78,6 @@ impl PendingSnapshot {
             },
         };
         Ok(Loaded {
-            digest,
             head: self.head,
             expected: self.expected,
             data,

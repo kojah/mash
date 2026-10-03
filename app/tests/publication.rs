@@ -1,9 +1,9 @@
 use super::*;
 
 #[test]
-#[ignore = "requires MASH_TEST_PG_URL pointing to an expendable PostgreSQL database"]
+#[ignore = "requires MASH_TEST_QDRANT_URL pointing to an expendable Qdrant instance"]
 #[allow(clippy::too_many_lines)]
-fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli() {
+fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
     let dir = tempfile::tempdir().expect("temp");
     let database = dir.path().join("local.sqlite3");
     seed_readiness_database(&database, Some(""));
@@ -26,7 +26,6 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
         group_id = (group.as_str()),node_id = "cli-node",api_url = (server.url.as_str()),token_env = "MASH_TEST_SHARED_CLIENT_TOKEN"
         }
     }).expect("TOML")).expect("config");
-    let url = std::env::var("MASH_TEST_PG_URL").expect("test URL");
     let invoke = |args: &[&str], online: bool| {
         let mut command = Command::cargo_bin("mash").expect("binary");
         command.args([
@@ -46,23 +45,24 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
             command.env_remove("MASH_TEST_SHARED_CLIENT_TOKEN");
         }
         let output = command.args(args).output().expect("run");
+        let response = serde_json::from_slice::<Value>(&output.stdout).expect("JSON response");
+        let incomplete_index = args.first() == Some(&"index")
+            && (response["silver"]["completeness"] != "complete"
+                || response["shared"]["state"] == "pending");
         assert!(
-            output.status.code()
-                == Some(if args.first() == Some(&"index") && !online {
-                    9
-                } else {
-                    0
-                }),
-            "{}",
+            output.status.code() == Some(if incomplete_index { 9 } else { 0 }),
+            "response={response}; {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        serde_json::from_slice::<Value>(&output.stdout).expect("JSON response")
+        response
     };
     let first = invoke(&["index"], false);
     assert_eq!(first["shared"]["state"], "pending");
     let retry = invoke(&["index"], true);
     assert_eq!(retry["changed_messages"], 0);
     assert_eq!(retry["shared"]["state"], "published");
+    // Publication succeeds independently of legacy silver certification.
+    assert_eq!(retry["silver"]["completeness"], "unverified");
     let first_freshness = invoke(&["status", "--shared"], true)["shared_index"].clone();
     assert_eq!(first_freshness["group_id"], group);
     assert_eq!(first_freshness["nodes"][0]["node_id"], "cli-node");
@@ -110,9 +110,5 @@ fn postgres_publication_retries_no_change_index_and_offline_forget_through_cli()
             .as_slice(),
         &[] as &[serde_json::Value]
     );
-    let schema = format!("mash_g_{}", &blake3::hash(group.as_bytes()).to_hex()[..32]);
-    postgres::Client::connect(&url, postgres::NoTls)
-        .expect("cleanup client")
-        .batch_execute(&format!("DROP SCHEMA {schema} CASCADE"))
-        .expect("cleanup");
+    shared_server::cleanup_group(&group);
 }

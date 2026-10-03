@@ -5,12 +5,7 @@ use crate::shared::snapshot_budget::Budget;
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 async fn qdrant_snapshot_budget_rejects_overweight_and_busy_mutations_without_revision_changes() {
-    contract(TestBackend::Qdrant).await;
-}
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_snapshot_budget_rejects_overweight_and_busy_mutations_without_revision_changes() {
-    contract(TestBackend::Redis).await;
+    contract().await;
 }
 
 async fn assert_error(response: reqwest::Response, status: StatusCode, retryable: bool) {
@@ -42,10 +37,9 @@ fn large_snapshot(revision: i64) -> Vec<Value> {
     large
 }
 
-async fn contract(backend: TestBackend) {
+async fn contract() {
     let budget = Budget::new(1).unwrap();
-    let service =
-        Service::with_budget(false, backend, 384, 64 * 1024 * 1024, FIRST, budget.clone()).await;
+    let service = Service::with_budget(true, 384, 64 * 1024 * 1024, FIRST, budget.clone()).await;
     let large = large_snapshot(1);
     assert_eq!(service.upload(FIRST, &large).await.status(), StatusCode::OK);
     let before = service.get("freshness", FIRST).await;

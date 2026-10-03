@@ -2,18 +2,6 @@ use super::*;
 use crate::silver::enrichment::{Evidence, Origin, SourceField, VERSION};
 
 #[tokio::test]
-#[ignore = "requires disposable PostgreSQL with pgvector"]
-async fn postgres_enrichment_catalog_search_replacement_and_validation() {
-    contract(Service::new(true).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires disposable Redis Search"]
-async fn redis_enrichment_catalog_search_replacement_and_validation() {
-    contract(Service::new_backend(false, true).await).await;
-}
-
-#[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_enrichment_catalog_search_replacement_and_validation() {
     contract(Service::qdrant(384).await).await;

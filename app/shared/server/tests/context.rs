@@ -250,15 +250,3 @@ async fn contract(service: Service) {
     }
     service.cleanup().await;
 }
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_context_preserves_branches_and_rejects_broken_publications() {
-    contract(Service::new_backend(true, false).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_context_preserves_branches_and_rejects_broken_publications() {
-    contract(Service::new_backend(false, true).await).await;
-}

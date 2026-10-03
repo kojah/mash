@@ -4,16 +4,6 @@ use crate::shared::protocol::{NodeState, ScanReport};
 use crate::silver::certificate::INTERPRETATION_VERSION;
 
 #[tokio::test]
-#[ignore = "requires disposable PostgreSQL with pgvector"]
-async fn postgres_silver_scan_reports() {
-    contract(Service::new(true).await).await;
-}
-#[tokio::test]
-#[ignore = "requires disposable Redis Search"]
-async fn redis_silver_scan_reports() {
-    contract(Service::new_backend(false, true).await).await;
-}
-#[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_silver_scan_reports() {
     contract(Service::qdrant(384).await).await;

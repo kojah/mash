@@ -131,21 +131,9 @@ Atomic publication must prevent readers from combining different revisions.
 | Backend | Silver storage | Gold storage |
 | --- | --- | --- |
 | SQLite | `conversations`, `messages`, provenance and checkpoints | `message_embeddings`, `message_fts`, `semantic_chunks` and retrieval caches |
-| Postgres | `conversations`, `messages`, `direct_sources`, tombstones and node metadata | `message_search`: vectors, model generation and full-text documents |
-| Redis | Immutable snapshot `silver` section, state and catalog keys | Snapshot `gold.embeddings` section and search documents |
 | Qdrant | Snapshot `silver` section in state chunks, node heads and catalog records | Snapshot `gold.embeddings` section and searchable message vectors |
 
-The current Postgres definitions in `app/shared/schema.sql` explicitly group
-silver and gold tables. Historical bootstrap/upgrades live in
-`app/shared/migrations.sql`. Version 16 moves existing generation, vector and
-full-text values into `message_search` within the startup transaction, then
-removes those columns from canonical messages. Publications write both tables
-in the same transaction. Readiness checks use a left join so missing gold fails
-search, while viewing continues to use silver alone. Deleting silver cascades
-to its gold rows; deleting gold leaves canonical history intact. This adds no
-second canonical body copy.
-
-Redis and Qdrant use the typed persisted revision schema in
+Qdrant use the typed persisted revision schema in
 `app/shared/snapshot/layers.rs`. Its `silver` section contains canonical threads,
 messages, source checkpoints and tombstones; canonical messages have no vector
 or model-generation fields. The separate `gold.embeddings` map owns those
@@ -160,9 +148,8 @@ in-memory joined planning model is not serializable in production, preventing
 new writes of that old representation. Serialization borrows canonical rows and
 vectors rather than cloning a complete node. Retrieval documents are
 denormalized gold views: they may copy canonical excerpts/metadata together with
-derived search fields, while silver remains the canonical source. The Redis
-and Qdrant storage adapters identify these views explicitly in their module
-documentation. Their copies are not another silver store.
+derived search fields, while silver remains the canonical source. The Qdrant storage adapter identifies these views explicitly in its module
+documentation. These copies are not another silver store.
 
 ## Verified boundary contracts
 
@@ -171,9 +158,6 @@ remain unchanged, verify model failure preserves durable silver, and cover
 incremental reuse plus recovery after losing temporary queues. Rejected source
 records prevent readiness even when stored vectors are complete.
 
-The Postgres storage lifecycle test preserves silver and gold through historical
-migration and repeated startup, removes/replaces gold without deleting silver,
-and verifies readiness and cascading deletion. Shared snapshot codec and real
-Redis/Qdrant migration tests preserve message/provenance/vector data and revision
+Shared snapshot codec and real Qdrant migration tests preserve message/provenance/vector data and revision
 ownership while rewriting the historical mixed format. Backend contracts cover
 filters, all supported providers, branches, authorization and failed publication.

@@ -89,24 +89,6 @@ impl Provider {
             Self::Antigravity => 13,
         }
     }
-
-    pub(crate) const fn redis_tag(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "c",
-            Self::Codex => "x",
-            Self::Aider => "a",
-            Self::Hermes => "h",
-            Self::Opencode => "o",
-            Self::Openclaw => "l",
-            Self::Pi => "p",
-            Self::Copilot => "g",
-            Self::GeminiCli => "m",
-            Self::Cline => "n",
-            Self::Cursor => "u",
-            Self::Windsurf => "w",
-            Self::Antigravity => "t",
-        }
-    }
 }
 
 impl std::fmt::Display for Provider {
@@ -149,20 +131,5 @@ impl rusqlite::types::FromSql for Provider {
             .as_str()?
             .parse()
             .map_err(|_| rusqlite::types::FromSqlError::InvalidType)
-    }
-}
-
-impl<'a> tokio_postgres::types::FromSql<'a> for Provider {
-    fn from_sql(
-        ty: &tokio_postgres::types::Type,
-        raw: &'a [u8],
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let value = <&str as tokio_postgres::types::FromSql>::from_sql(ty, raw)?;
-        value
-            .parse()
-            .map_err(|_| "unsupported stored provider".into())
-    }
-    fn accepts(ty: &tokio_postgres::types::Type) -> bool {
-        <&str as tokio_postgres::types::FromSql>::accepts(ty)
     }
 }

@@ -220,11 +220,7 @@ async fn index(
     {
         return Err(AppError::usage("index uploads require application/x-ndjson").into());
     }
-    let max_bytes = match &app.store {
-        Store::Postgres(_) => 8 * 1024 * 1024 * 1024,
-        Store::Redis(store) => store.max_node_bytes(),
-        Store::Qdrant(store) => store.max_node_bytes(),
-    };
+    let max_bytes = app.store.max_node_bytes();
     let file = spool(request.into_body(), max_bytes).await?;
     Ok(Json(
         admission::run(permit, async move { app.store.index(&id, file).await }).await?,

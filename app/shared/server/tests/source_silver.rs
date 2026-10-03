@@ -2,18 +2,6 @@ use super::*;
 use crate::silver::certificate::{Certificate, Completeness, INTERPRETATION_VERSION};
 
 #[tokio::test]
-#[ignore = "requires disposable PostgreSQL with pgvector"]
-async fn postgres_source_silver_lifecycle() {
-    contract(Service::new(true).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires disposable Redis Search"]
-async fn redis_source_silver_lifecycle() {
-    contract(Service::new_backend(false, true).await).await;
-}
-
-#[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_source_silver_lifecycle() {
     contract(Service::qdrant(384).await).await;

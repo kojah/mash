@@ -4,10 +4,7 @@ use super::*;
 #[ignore = "requires MASH_TEST_QDRANT_URL and installed MASH_TEST_MODELS_DIR"]
 async fn qdrant_core_scoped_message_search_uses_thread_discovery() {
     let token = std::env::var("PATH").unwrap();
-    contract(
-        Service::with_backend(false, TestBackend::Qdrant, 384, 64 * 1024 * 1024, &token).await,
-    )
-    .await;
+    contract(Service::with_parameters(true, 384, 64 * 1024 * 1024, &token).await).await;
 }
 use crate::search_filter::Selection;
 use crate::search_results::{Results, SearchUnit};
@@ -178,18 +175,4 @@ async fn contract(service: Service) {
     assert_scoped(&paths, &ids, &["codex", "claude-code"]).await;
     assert_scoped(&paths, &["unknown".into()], &[]).await;
     service.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL and MASH_TEST_MODELS_DIR"]
-async fn postgres_real_models_discovery_to_merged_scoped_messages() {
-    let token = std::env::var("PATH").unwrap();
-    contract(Service::with_token(true, false, 384, 64 * 1024 * 1024, &token).await).await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL and MASH_TEST_MODELS_DIR"]
-async fn redis_real_models_discovery_to_merged_scoped_messages() {
-    let token = std::env::var("PATH").unwrap();
-    contract(Service::with_token(false, true, 384, 64 * 1024 * 1024, &token).await).await;
 }

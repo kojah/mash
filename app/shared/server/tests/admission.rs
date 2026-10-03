@@ -3,8 +3,7 @@ use super::*;
 
 #[tokio::test]
 async fn index_and_forget_share_capacity_without_blocking_read_routes() {
-    let service =
-        Service::with_backend(false, TestBackend::Postgres, 384, 64 * 1024 * 1024, FIRST).await;
+    let service = Service::with_parameters(false, 384, 64 * 1024 * 1024, FIRST).await;
     // This fixture deliberately has no database. Busy mutations must be rejected
     // before backend access; reads still reach it and return their own failure.
     let permit = service.uploads.clone().acquire_many_owned(4).await.unwrap();

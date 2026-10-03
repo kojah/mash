@@ -65,9 +65,7 @@ message text is unchanged. Date cutoffs still apply. Source-free gold rebuilding
 does not replay providers or invent missing evidence.
 
 The same optional typed evidence is published through both snapshot and routed
-uploads. PostgreSQL schema 18 stores it with canonical thread metadata;
-migration from schema 17 preserves history and vectors and leaves origins absent.
-Redis and Qdrant retain it in their typed conversation records. All backends
+uploads. Qdrant retains it in typed conversation records. Both local and shared indexes
 return it in thread listings and search metadata. Local listings and search do
 the same, through generated SQLite reads. CLI and MCP share these core models.
 
@@ -127,9 +125,8 @@ replay; changing gold policy must operate on the already interpreted silver.
 
 Shared routed source checkpoints also persist the interpretation version. Native
 and Claude publication replay admitted sources when their version differs,
-even when file stamps and embedding generation match. PostgreSQL schema 17
-migrates retained checkpoints to version 0; Redis/Qdrant snapshot decoding treats
-an absent version the same way. The server reports those checkpoints as unready
+even when file stamps and embedding generation match. Qdrant snapshot decoding treats
+an absent version as version 0. The server reports those checkpoints as unready
 until an applicable explicit indexing run replays them. A date cutoff can leave
 older checkpoints unverified; it does not retroactively certify their contents.
 Existing canonical history and gold vectors survive this migration.
@@ -145,8 +142,7 @@ Full local snapshot publication includes a typed `source_silver` certificate
 read in the same SQLite transaction as the outgoing history. Its revision is
 the source silver revision, distinct from the publication revision. The server
 persists it atomically with the accepted snapshot and returns it from the node
-state endpoint. PostgreSQL schema 19 adds a nullable node field; Redis and
-Qdrant store it in their existing atomic publication heads. Historical snapshots
+state endpoint. Qdrant stores it in the atomic publication head. Historical snapshots
 leave it absent. A duplicate publication preserves its accepted certificate.
 
 This is a node-supplied statement about the source history, independent of vector
@@ -172,8 +168,7 @@ after that provider's report. The reports become visible only with the acknowled
 publication and are returned as `silver_scans` in node state, independently of
 embedding coverage. Partial discovery is explicitly reported as non-authoritative.
 
-PostgreSQL schema 20 stores this small report list on the node; Redis and Qdrant
-retain it in the atomic head. Each publication replaces the list. Legacy uploads,
+Qdrant retains this report list in the atomic head. Each publication replaces the list. Legacy uploads,
 full snapshots and server-side forget leave no routed reports. Historical scan
 authority is never inferred from checkpoint presence or vector readiness.
 

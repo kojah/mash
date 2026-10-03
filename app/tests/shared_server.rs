@@ -10,26 +10,8 @@ pub struct Server {
     child: Child,
     pub url: String,
 }
-#[derive(Clone, Copy)]
-enum Backend {
-    Postgres,
-    Redis,
-    Default,
-}
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, Backend::Postgres, None)
-    }
-    pub fn redis(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, Backend::Redis, None)
-    }
-    fn start(
-        root: &Path,
-        group: &str,
-        nodes: &[&str],
-        backend: Backend,
-        vector_index: Option<toml::Table>,
-    ) -> Self {
         let path = root.join("server.toml");
         let credentials: Vec<_> = nodes
             .iter()
@@ -42,31 +24,12 @@ impl Server {
                 }
             })
             .collect();
-        let mut config = match backend {
-            Backend::Redis => toml::toml! {
-                version = 1
-                listen = "127.0.0.1:0"
-                backend = "redis"
-                redis_url_env = "MASH_TEST_REDIS_URL"
-                nodes = (credentials.clone())
-            },
-            Backend::Postgres => toml::toml! {
-                version = 1
-                listen = "127.0.0.1:0"
-                backend = "postgres"
-                database_url_env = "MASH_TEST_PG_URL"
-                nodes = (credentials.clone())
-            },
-            Backend::Default => toml::toml! {
-                version = 1
-                listen = "127.0.0.1:0"
-                qdrant_url_env = "MASH_TEST_QDRANT_URL"
-                nodes = (credentials.clone())
-            },
+        let config = toml::toml! {
+            version = 1
+            listen = "127.0.0.1:0"
+            qdrant_url_env = "MASH_TEST_QDRANT_URL"
+            nodes = (credentials)
         };
-        if let Some(index) = vector_index {
-            config.insert("redis_vector_index".into(), toml::Value::Table(index));
-        }
         std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
         let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
         command
@@ -158,7 +121,7 @@ async fn qdrant_default_server_configuration_starts_and_creates_group_collection
         "default-startup-{}",
         root.path().file_name().unwrap().to_string_lossy()
     );
-    let server = Server::start(root.path(), &group, &["node"], Backend::Default, None);
+    let server = Server::new(root.path(), &group, &["node"]);
     let document = std::fs::read_to_string(root.path().join("server.toml")).unwrap();
     assert!(!document.contains("backend"));
     let origin = std::env::var("MASH_TEST_QDRANT_URL").unwrap();
@@ -188,98 +151,11 @@ async fn qdrant_default_server_configuration_starts_and_creates_group_collection
 }
 
 #[test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-fn redis_hnsw_server_configuration_creates_the_selected_index() {
-    let root = tempfile::tempdir().unwrap();
-    let group = format!(
-        "hnsw-startup-{}",
-        root.path().file_name().unwrap().to_string_lossy()
-    );
-    let server = Server::start(
-        root.path(),
-        &group,
-        &["node"],
-        Backend::Redis,
-        Some(toml::toml! {
-            algorithm = "hnsw"
-            filter_policy = "batches"
-            batch_size = 128
-        }),
-    );
-    let prefix = format!("mash:r:{}:", blake3::hash(group.as_bytes()).to_hex());
-    let client = redis::Client::open(std::env::var("MASH_TEST_REDIS_URL").unwrap()).unwrap();
-    let mut connection = client.get_connection().unwrap();
-    let info: Vec<redis::Value> = redis::cmd("FT.INFO")
-        .arg(format!("{prefix}index"))
-        .query(&mut connection)
-        .unwrap();
-    let attributes = info
-        .windows(2)
-        .find(|pair| {
-            redis::from_redis_value::<String>(pair[0].clone())
-                .is_ok_and(|name| name == "attributes")
-        })
-        .unwrap();
-    let attributes: Vec<Vec<redis::Value>> =
-        redis::from_redis_value(attributes[1].clone()).unwrap();
-    assert!(
-        attributes
-            .iter()
-            .any(|fields| fields.windows(2).any(|pair| {
-                redis::from_redis_value::<String>(pair[0].clone())
-                    .is_ok_and(|name| name == "algorithm")
-                    && redis::from_redis_value::<String>(pair[1].clone())
-                        .is_ok_and(|value| value == "HNSW")
-            }))
-    );
-    drop(server);
-    redis::cmd("FT.DROPINDEX")
-        .arg(format!("{prefix}index"))
-        .query::<()>(&mut connection)
-        .unwrap();
-    redis::cmd("UNLINK")
-        .arg(format!("{prefix}dimensions"))
-        .query::<i64>(&mut connection)
-        .unwrap();
-}
-
-#[test]
-fn server_rejects_invalid_vector_index_before_network_or_credentials() {
-    for (settings, message) in [
-        (
-            "backend = 'postgres'\n[redis_vector_index]\nalgorithm = 'hnsw'",
-            "require backend=redis",
-        ),
-        (
-            "[redis_vector_index]\nalgorithm = 'hnsw'\nm = 0",
-            "m=2..128",
-        ),
-        (
-            "[redis_vector_index]\nalgorithm = 'hnsw'\nbatch_size = 128",
-            "batch_size requires",
-        ),
-        (
-            "[redis_vector_index]\nalgorithm = 'exact'\nef_runtime = 100",
-            "invalid server configuration",
-        ),
-        (
-            "[redis_vector_index]\nalgorithm = 'hnsw'\nfilter_policy = 'unknown'",
-            "invalid server configuration",
-        ),
-    ] {
-        let document = format!("version = 1\n{settings}{STARTUP_NODE}");
-        assert_startup_rejected(document.as_bytes(), &[], message);
-    }
-}
-
-#[test]
 fn server_rejects_invalid_configuration_before_connecting() {
     assert_startup_rejected(b"\xff", &[], "must be UTF-8 TOML");
     assert_startup_rejected(&vec![b' '; 65_537], &[], "exceeds 65536 bytes");
     for (setting, message) in [
         ("version = 2", "requires version 1"),
-        ("version = 1\nmax_connections = 0", "1..128 connections"),
-        ("version = 1\nmax_connections = 129", "1..128 connections"),
         (
             "version = 1\nmax_concurrent_uploads = 0",
             "max_concurrent_uploads",
@@ -288,10 +164,13 @@ fn server_rejects_invalid_configuration_before_connecting() {
             "version = 1\nmax_concurrent_uploads = 17",
             "max_concurrent_uploads",
         ),
-        ("version = 1\nredis_max_node_mib = 0", "redis_max_node_mib"),
         (
-            "version = 1\nredis_max_node_mib = 4097",
-            "redis_max_node_mib",
+            "version = 1\nqdrant_max_node_mib = 0",
+            "qdrant_max_node_mib",
+        ),
+        (
+            "version = 1\nqdrant_max_node_mib = 4097",
+            "qdrant_max_node_mib",
         ),
         (
             "version = 1\n[embeddings]\nmodel = 'test'\ndimensions = 0",
@@ -363,92 +242,63 @@ fn server_rejects_missing_invalid_and_duplicate_credentials() {
 }
 
 #[test]
-fn server_rejects_backend_credential_configuration_mixups() {
+fn server_rejects_removed_backends_and_settings() {
+    for setting in [
+        "backend = 'postgres'",
+        "backend = 'redis'",
+        "backend = 'qdrant'",
+        "database_url_env = 'MASH_UNUSED'",
+        "redis_url_env = 'MASH_UNUSED'",
+        "max_connections = 8",
+        "redis_max_node_mib = 64",
+        "[redis_vector_index]\nalgorithm = 'hnsw'",
+    ] {
+        assert_startup_rejected(
+            format!("version=1\n{setting}{STARTUP_NODE}").as_bytes(),
+            &[],
+            "invalid server configuration",
+        );
+    }
+}
+#[test]
+fn qdrant_server_rejects_invalid_settings_before_network_access() {
     for (setting, message) in [
         ("", "Qdrant requires qdrant_url_env"),
+        ("qdrant_memory = 'disk'", "invalid server configuration"),
+        ("qdrant_url_env = '1INVALID'", "invalid credential"),
         (
-            "database_url_env = 'MASH_UNUSED_DATABASE'",
-            "Qdrant backend does not accept database_url_env",
+            "[qdrant_vector_index]\nalgorithm='hnsw'\nef_runtime=0",
+            "ef_runtime",
         ),
         (
-            "redis_url_env = 'MASH_UNUSED_REDIS'",
-            "Qdrant backend does not accept database_url_env or redis_url_env",
-        ),
-        ("backend = 'redis'", "Redis requires redis_url_env"),
-        (
-            "backend = 'redis'\ndatabase_url_env = 'MASH_UNUSED_DATABASE'",
-            "Redis backend does not accept database_url_env",
-        ),
-        (
-            "backend = 'postgres'",
-            "PostgreSQL requires database_url_env",
-        ),
-        (
-            "backend = 'postgres'\nredis_url_env = 'MASH_UNUSED_REDIS'",
-            "PostgreSQL backend does not accept redis_url_env",
-        ),
-        (
-            "backend = 'redis'\nredis_url_env = '1INVALID'",
-            "invalid credential environment variable name",
+            "[qdrant_vector_index]\nalgorithm='exact'\nef_runtime=20",
+            "invalid server configuration",
         ),
     ] {
         assert_startup_rejected(
-            format!("version = 1\n{setting}{STARTUP_NODE}").as_bytes(),
+            format!("version=1\n{setting}{STARTUP_NODE}").as_bytes(),
             &[("MASH_STARTUP_TOKEN_A", STARTUP_TOKEN)],
             message,
         );
     }
 }
 
-#[test]
-fn qdrant_server_rejects_incompatible_settings_before_network_access() {
-    for (settings, message) in [
-        (
-            "backend = 'redis'\nqdrant_memory = 'cold'",
-            "require backend=qdrant",
-        ),
-        (
-            "backend = 'qdrant'\nqdrant_memory = 'disk'",
-            "invalid server configuration",
-        ),
-        (
-            "backend = 'redis'\nqdrant_url_env = 'MASH_QDRANT_URL'",
-            "require backend=qdrant",
-        ),
-        ("backend = 'qdrant'", "Qdrant requires qdrant_url_env"),
-        (
-            "backend = 'qdrant'\nredis_url_env = 'MASH_REDIS_URL'",
-            "does not accept",
-        ),
-        (
-            "backend = 'qdrant'\ndatabase_url_env = 'MASH_DATABASE_URL'",
-            "does not accept",
-        ),
-        (
-            "backend = 'qdrant'\nqdrant_url_env = '1INVALID'",
-            "invalid credential",
-        ),
-        (
-            "backend = 'qdrant'\nqdrant_max_node_mib = 0",
-            "qdrant_max_node_mib",
-        ),
-        (
-            "backend = 'qdrant'\n[qdrant_vector_index]\nalgorithm = 'hnsw'\nef_runtime = 0",
-            "ef_runtime",
-        ),
-        (
-            "backend = 'qdrant'\n[qdrant_vector_index]\nalgorithm = 'exact'\nef_runtime = 20",
-            "invalid server configuration",
-        ),
-        (
-            "backend = 'qdrant'\n[redis_vector_index]\nalgorithm = 'hnsw'",
-            "require backend=redis",
-        ),
-    ] {
-        assert_startup_rejected(
-            format!("version = 1\n{settings}{STARTUP_NODE}").as_bytes(),
-            &[("MASH_STARTUP_TOKEN_A", STARTUP_TOKEN)],
-            message,
-        );
-    }
+pub fn cleanup_group(group: &str) {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let origin = std::env::var("MASH_TEST_QDRANT_URL").unwrap();
+        let client = reqwest::Client::new();
+        for kind in ["state", "messages"] {
+            let collection = format!("mash_q_{}_{kind}", blake3::hash(group.as_bytes()).to_hex());
+            client
+                .delete(format!(
+                    "{}/collections/{collection}",
+                    origin.trim_end_matches('/')
+                ))
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap();
+        }
+    });
 }

@@ -5,7 +5,7 @@ use super::{FIRST, OTHER, SECOND};
 use crate::provider::Provider;
 use crate::search_filter::Filter;
 use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
-use fixture::{Api, Backend, Database};
+use fixture::{Api, Database};
 
 fn vector() -> Vec<f64> {
     let mut vector = vec![0.0; 384];
@@ -260,59 +260,49 @@ async fn verify(api: &Api, revision: i64) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires Docker, cached backend images, and MASH_TEST_SERVER_BINARY"]
+#[ignore = "requires Docker, cached Qdrant image, and MASH_TEST_SERVER_BINARY"]
 async fn shared_backend_persisted_restart_contract() {
-    for backend in [Backend::Postgres, Backend::Redis, Backend::Qdrant] {
-        let started = std::time::Instant::now();
-        let database = Database::start(backend);
-        database.ready().await;
-        let root = tempfile::tempdir().unwrap();
-        let api = Api::start(&database, root.path());
-        publish(&api, FIRST, 1, false).await;
-        publish(&api, SECOND, 1, true).await;
-        publish(&api, FIRST, 2, false).await;
-        let before = verify(&api, 2).await;
-        drop(api);
-        database.restart().await;
-        let api = Api::start(&database, root.path());
-        assert_eq!(
-            verify(&api, 2).await,
-            before,
-            "persisted freshness {backend:?}"
-        );
-        let stale = api.upload(FIRST, &snapshot(1, false)).await;
-        assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
-        assert_eq!(
-            verify(&api, 2).await,
-            before,
-            "stale update changed {backend:?}"
-        );
-        publish(&api, FIRST, 3, false).await;
-        let before_crash = verify(&api, 3).await;
-        // Keep the API alive during the database crash, then replace it too.
-        // SIGKILL bypasses database shutdown flushing but preserves host storage.
-        database.crash_and_restart().await;
-        drop(api);
-        let api = Api::start(&database, root.path());
-        assert_eq!(
-            verify(&api, 3).await,
-            before_crash,
-            "persisted freshness after process crash {backend:?}"
-        );
-        let stale = api.upload(FIRST, &snapshot(2, false)).await;
-        assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
-        assert_eq!(
-            verify(&api, 3).await,
-            before_crash,
-            "stale update after process crash changed {backend:?}"
-        );
-        publish(&api, FIRST, 4, false).await;
-        verify(&api, 4).await;
-        drop(api);
-        drop(database);
-        eprintln!(
-            "{backend:?} graceful restart and process crash verified in {:?}",
-            started.elapsed()
-        );
-    }
+    let started = std::time::Instant::now();
+    let database = Database::start();
+    database.ready().await;
+    let root = tempfile::tempdir().unwrap();
+    let api = Api::start(&database, root.path());
+    publish(&api, FIRST, 1, false).await;
+    publish(&api, SECOND, 1, true).await;
+    publish(&api, FIRST, 2, false).await;
+    let before = verify(&api, 2).await;
+    drop(api);
+    database.restart().await;
+    let api = Api::start(&database, root.path());
+    assert_eq!(verify(&api, 2).await, before, "persisted freshness Qdrant");
+    let stale = api.upload(FIRST, &snapshot(1, false)).await;
+    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
+    assert_eq!(verify(&api, 2).await, before, "stale update changed Qdrant");
+    publish(&api, FIRST, 3, false).await;
+    let before_crash = verify(&api, 3).await;
+    // Keep the API alive during the database crash, then replace it too.
+    // SIGKILL bypasses database shutdown flushing but preserves host storage.
+    database.crash_and_restart().await;
+    drop(api);
+    let api = Api::start(&database, root.path());
+    assert_eq!(
+        verify(&api, 3).await,
+        before_crash,
+        "persisted freshness after process crash Qdrant"
+    );
+    let stale = api.upload(FIRST, &snapshot(2, false)).await;
+    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
+    assert_eq!(
+        verify(&api, 3).await,
+        before_crash,
+        "stale update after process crash changed Qdrant"
+    );
+    publish(&api, FIRST, 4, false).await;
+    verify(&api, 4).await;
+    drop(api);
+    drop(database);
+    eprintln!(
+        "Qdrant graceful restart and process crash verified in {:?}",
+        started.elapsed()
+    );
 }

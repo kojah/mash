@@ -13,7 +13,6 @@ pub(in crate::shared) struct Receiver {
 
 pub(in crate::shared) struct Received {
     file: tempfile::NamedTempFile,
-    pub(in crate::shared) digest: String,
     bytes: usize,
 }
 
@@ -61,7 +60,6 @@ impl Receiver {
         drop(self.output);
         Ok(Received {
             file: self.file,
-            digest: digest.to_owned(),
             bytes: self.bytes,
         })
     }
@@ -97,7 +95,6 @@ mod tests {
             receiver.append(part).await.unwrap();
         }
         let verified = receiver.finish(&digest).await.unwrap();
-        assert_eq!(verified.digest, digest);
         assert_eq!(verified.decode::<Vec<String>>().unwrap(), value);
 
         let mut receiver = Receiver::new(bytes.len()).await.unwrap();

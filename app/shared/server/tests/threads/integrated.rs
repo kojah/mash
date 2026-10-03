@@ -6,7 +6,7 @@ use super::*;
 async fn qdrant_core_thread_catalog_dedup_replacement_delete_and_forget() {
     let token = std::env::var("PATH").unwrap();
     contract(
-        Service::with_backend(false, TestBackend::Qdrant, 384, 64 * 1024 * 1024, &token).await,
+        Service::with_parameters(true, 384, 64 * 1024 * 1024, &token).await,
         &token,
     )
     .await;
@@ -230,26 +230,4 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
             .all(|row| row.conversation_id != "a"),
         "a delayed publication cannot resurrect a tombstoned catalog entry"
     );
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_core_thread_catalog_dedup_replacement_delete_and_forget() {
-    let token = std::env::var("PATH").unwrap();
-    contract(
-        Service::with_token(true, false, 384, 64 * 1024 * 1024, &token).await,
-        &token,
-    )
-    .await;
-}
-
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_core_thread_catalog_dedup_replacement_delete_and_forget() {
-    let token = std::env::var("PATH").unwrap();
-    contract(
-        Service::with_token(false, true, 384, 64 * 1024 * 1024, &token).await,
-        &token,
-    )
-    .await;
 }

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Vector-only Redis FLAT/HNSW pilot; never point this at production Redis.
+"""Archived vector-only Redis FLAT/HNSW experiment; not a supported Mash backend.
+
+Retained to reproduce the historical September/October 2026 comparisons.
+Never point this at production Redis.
 
 Uses existing document vectors with self-matches removed, not user-query
 inference. No history text is exported. Artifacts contain sensitive embeddings.

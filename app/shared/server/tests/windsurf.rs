@@ -111,12 +111,7 @@ async fn contract(service: Service) {
 }
 
 #[tokio::test]
-#[ignore = "requires MASH_TEST_PG_URL with pgvector"]
-async fn postgres_native_windsurf_publication_preserves_prose_and_context() {
-    contract(Service::new_backend(true, false).await).await;
-}
-#[tokio::test]
-#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
-async fn redis_native_windsurf_publication_preserves_prose_and_context() {
-    contract(Service::new_backend(false, true).await).await;
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_native_windsurf_publication_preserves_prose_and_context() {
+    contract(Service::qdrant(384).await).await;
 }
