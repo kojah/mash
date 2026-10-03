@@ -109,3 +109,20 @@ WHERE conversation_id=sqlc.arg(conversation_id) AND ordinal=sqlc.arg(ordinal);
 
 -- name: FirstChild :one
 SELECT ordinal FROM messages WHERE conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
+
+-- name: SilverCertificate :one
+SELECT s.revision, s.interpretation_version,
+    CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=0) AS INTEGER) AS pending,
+    CAST(s.interpretation_version<>sqlc.arg(current_version)
+        OR EXISTS(SELECT 1 FROM silver_scans WHERE interpretation_version<>sqlc.arg(current_version))
+        OR EXISTS(SELECT 1 FROM source_checkpoints WHERE interpretation_version<>sqlc.arg(current_version))
+        OR EXISTS(SELECT 1 FROM conversations c WHERE NOT EXISTS(
+            SELECT 1 FROM silver_scans p WHERE p.provider=c.provider
+              AND p.interpretation_version=sqlc.arg(current_version))) AS INTEGER) AS unverified,
+    CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=2) AS INTEGER) AS incomplete,
+    (SELECT count(*) FROM silver_rejections) AS rejected_sources
+FROM silver_state s WHERE s.singleton=1;
+
+-- name: SilverRejections :many
+SELECT source_key,source_path,modified_ns FROM silver_rejections
+WHERE provider=sqlc.arg(provider) ORDER BY source_key;

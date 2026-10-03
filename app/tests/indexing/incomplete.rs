@@ -20,6 +20,7 @@ struct Progress {
 
 #[derive(Deserialize)]
 struct Summary {
+    silver: Certificate,
     malformed_records: u64,
     record_diagnostics: Diagnostics,
 }
@@ -69,6 +70,22 @@ enum Category {
 #[derive(Deserialize)]
 struct Status {
     ready: bool,
+    silver: Certificate,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+struct Certificate {
+    revision: u64,
+    interpretation_version: u32,
+    completeness: Completeness,
+    rejected_sources: u64,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum Completeness {
+    Complete,
+    Incomplete,
 }
 
 #[test]
@@ -109,6 +126,16 @@ fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repai
         assert_eq!(output.status.code(), Some(exit_code));
         let summary: Summary = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(summary.malformed_records, malformed_records);
+        assert_eq!(summary.silver.interpretation_version, 1);
+        assert_eq!(summary.silver.rejected_sources, malformed_records);
+        assert_eq!(
+            summary.silver.completeness,
+            if malformed_records == 0 {
+                Completeness::Complete
+            } else {
+                Completeness::Incomplete
+            }
+        );
         assert!(!String::from_utf8_lossy(&output.stdout).contains("PRIVATE-CLI-RECORD-CANARY"));
         assert!(!String::from_utf8_lossy(&output.stderr).contains("PRIVATE-CLI-RECORD-CANARY"));
         summary
@@ -133,41 +160,47 @@ fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repai
             .as_ref()
             .unwrap()
             .assert_source(&malformed, malformed_records);
-        let status: Status = serde_json::from_value(run_json(&[
-            "--config",
-            config.to_str().unwrap(),
-            "--db",
-            database.to_str().unwrap(),
-            "--models-dir",
-            models.to_str().unwrap(),
-            "status",
-        ]))
-        .unwrap();
-        assert_eq!(status.ready, ready);
-        if !ready {
-            let search = Command::cargo_bin("mash")
-                .unwrap()
-                .args([
-                    "--config",
-                    config.to_str().unwrap(),
-                    "--db",
-                    database.to_str().unwrap(),
-                    "--models-dir",
-                    models.to_str().unwrap(),
-                    "search",
-                    "cbioportal",
-                    "--local",
-                    "--no-worker",
-                ])
-                .output()
-                .unwrap();
-            assert_eq!(search.status.code(), Some(8));
-            assert_eq!(search.stdout, [] as [u8; 0]);
-        }
+        assert_readiness(&config, &database, &models, ready, &summary.silver);
         if malformed_records > 0 {
             std::fs::remove_file(&malformed).unwrap();
         } else {
             std::fs::write(&malformed, corrupt).unwrap();
         }
+    }
+}
+
+fn assert_readiness(
+    config: &Path,
+    database: &Path,
+    models: &Path,
+    ready: bool,
+    certificate: &Certificate,
+) {
+    let paths = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    let status: Status =
+        serde_json::from_value(run_json(&[paths.as_slice(), &["status"]].concat())).unwrap();
+    assert_eq!(status.ready, ready);
+    assert_eq!(&status.silver, certificate);
+    if !ready {
+        let search = Command::cargo_bin("mash")
+            .unwrap()
+            .args(
+                [
+                    paths.as_slice(),
+                    &["search", "cbioportal", "--local", "--no-worker"],
+                ]
+                .concat(),
+            )
+            .output()
+            .unwrap();
+        assert_eq!(search.status.code(), Some(8));
+        assert_eq!(search.stdout, [] as [u8; 0]);
     }
 }

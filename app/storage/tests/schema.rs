@@ -4,7 +4,7 @@ use rusqlite::params;
 mod cline;
 
 #[test]
-fn identity_only_migration_preserves_readiness_vectors_and_unrelated_checkpoints() {
+fn identity_migration_preserves_vectors_and_checkpoints_but_requires_certification() {
     for ready in [true, false] {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("index.sqlite3");
@@ -53,7 +53,7 @@ fn identity_only_migration_preserves_readiness_vectors_and_unrelated_checkpoints
             .unwrap();
         drop(storage);
         let storage = Storage::open(&path).unwrap();
-        assert_eq!(storage.semantic_index_is_ready("fixture").unwrap(), ready);
+        assert!(!storage.semantic_index_is_ready("fixture").unwrap());
         assert_eq!(storage.derived_search_is_dirty().unwrap(), !ready);
         assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
         super::super::test_support::assert_quantized_embedding(

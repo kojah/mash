@@ -5,11 +5,12 @@ use std::time::Instant;
 pub(crate) struct Ingestion {
     pub(crate) summary: silver::IndexSummary,
     pub(crate) milliseconds: u64,
+    pub(crate) certificate: silver::certificate::Certificate,
 }
 
 impl Ingestion {
     pub(crate) fn is_complete(&self) -> bool {
-        self.summary.malformed_records == 0
+        self.certificate.is_complete()
     }
 }
 
@@ -21,10 +22,15 @@ pub(crate) fn ingest(
     let started = Instant::now();
     storage.defer_derived_updates()?;
     let summary = silver::index(storage, options)?;
+    let certificate = storage.silver_certificate()?;
     // Publish canonical changes and invalidation together, before building views.
     storage.commit_and_continue_writer()?;
     Ok(Ingestion {
         summary,
+        certificate,
         milliseconds: crate::progress::milliseconds(started),
     })
 }
+
+#[cfg(test)]
+mod tests;

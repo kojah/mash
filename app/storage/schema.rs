@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 35;
+pub(super) const SCHEMA_VERSION: i64 = 36;
 mod cline;
 
 const SCHEMA: &str = include_str!("schema.sql");
@@ -24,7 +24,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if matches!(version, 32..=34) {
+    if matches!(version, 32..=35) {
         return migrate_current_projections(connection, version);
     }
 
@@ -66,6 +66,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
     add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
     migrate_source_identities(&transaction)?;
+    install_silver_contract(&transaction)?;
     transaction.execute_batch("CREATE INDEX IF NOT EXISTS messages_context_parent ON messages(conversation_id, context_parent, ordinal) WHERE context_parent IS NOT NULL").map_err(AppError::database)?;
     if version < 8 {
         transaction
@@ -111,12 +112,36 @@ fn migrate_current_projections(connection: &Connection, version: i64) -> Result<
     transaction
         .execute_batch(SCHEMA)
         .map_err(AppError::database)?;
-    cline::migrate(&transaction)?;
+    install_silver_contract(&transaction)?;
+    if version < 35 {
+        cline::migrate(&transaction)?;
+    }
     if version < 34 {
         transaction
             .execute(
                 "DELETE FROM source_checkpoints WHERE provider = ?1",
                 [crate::provider::Provider::ClaudeCode],
+            )
+            .map_err(AppError::database)?;
+    }
+    let certificate = super::generated::SilverCertificate::builder()
+        .current_version(i64::from(
+            crate::silver::certificate::INTERPRETATION_VERSION,
+        ))
+        .build()
+        .query_one(&transaction)
+        .map_err(AppError::database)?;
+    if certificate.unverified != 0
+        || certificate.pending != 0
+        || certificate.incomplete != 0
+        || certificate.rejected_sources != 0
+    {
+        // Preserve vectors and canonical history, but never invent a completed
+        // ingestion certificate for a database predating this contract.
+        transaction
+            .execute(
+                "UPDATE derived_state SET semantic_ready_generation=NULL,resume_generation=NULL,resume_silver_revision=NULL,resume_interpretation_version=NULL WHERE singleton=1",
+                [],
             )
             .map_err(AppError::database)?;
     }
@@ -140,6 +165,42 @@ fn prepare_message_columns(connection: &Connection) -> Result<(), AppError> {
         "context_parent",
         "INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal))",
     )?;
+    Ok(())
+}
+
+fn install_silver_contract(connection: &Connection) -> Result<(), AppError> {
+    for (column, declaration) in [
+        ("resume_generation", "TEXT"),
+        ("resume_silver_revision", "INTEGER"),
+        ("resume_interpretation_version", "INTEGER"),
+    ] {
+        add_column_if_missing(connection, "derived_state", column, declaration)?;
+    }
+    add_column_if_missing(
+        connection,
+        "source_checkpoints",
+        "interpretation_version",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (interpretation_version >= 0)",
+    )?;
+    // Gold writes and scan bookkeeping do not change the canonical revision.
+    for table in [
+        "conversations",
+        "messages",
+        "tombstones",
+        "claude_sources",
+        "claude_source_messages",
+    ] {
+        for operation in ["INSERT", "UPDATE", "DELETE"] {
+            connection
+                .execute_batch(&format!(
+                    "CREATE TRIGGER IF NOT EXISTS silver_{table}_{operation}
+                 AFTER {operation} ON {table} BEGIN
+                 UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
+                 END;"
+                ))
+                .map_err(AppError::database)?;
+        }
+    }
     Ok(())
 }
 

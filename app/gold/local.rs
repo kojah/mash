@@ -22,6 +22,7 @@ pub(crate) fn build(
     source: &silver::Ingestion,
 ) -> Result<Build, AppError> {
     let summary = &source.summary;
+    let source_complete = storage.silver_certificate()?.is_complete();
     let mut model_load_milliseconds = 0;
     let search_started = Instant::now();
     if storage.derived_search_is_dirty()? {
@@ -36,6 +37,9 @@ pub(crate) fn build(
     emit_index_phase(crate::progress::Phase::SemanticEmbeddings, summary);
     let embedding_started = Instant::now();
     let generation = models.generation();
+    if !source_complete {
+        storage.resume_unchanged_semantic_snapshot(&generation)?;
+    }
     let already_published = storage.semantic_generation_is_published(&generation)?
         && !storage.has_pending_embeddings()?;
     if !already_published {
@@ -60,7 +64,7 @@ pub(crate) fn build(
     };
     let embedding_milliseconds = elapsed_milliseconds(embedding_started);
     let counts = storage.counts()?;
-    if !already_published && source.is_complete() {
+    if !already_published && source_complete {
         crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
             storage.mark_semantic_index_ready(&generation)
         })?;

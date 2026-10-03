@@ -110,6 +110,7 @@ fn index(
     }
     emit_index_phase(crate::progress::Phase::LocalComplete, &summary);
     Ok(IndexResponse {
+        silver: source.certificate,
         indexed_conversations: counts.conversations,
         indexed_messages: counts.messages,
         searchable_messages: counts.searchable_messages,

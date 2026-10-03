@@ -21,6 +21,7 @@ mod semantic_chunks;
 mod claude_sources;
 mod indexing;
 pub(crate) mod publication;
+mod silver_state;
 
 // Connection/schema and generated query infrastructure for both layers.
 mod queries;
@@ -67,6 +68,7 @@ pub(crate) struct Counts {
 }
 
 pub(crate) struct StatusSnapshot {
+    pub(crate) silver: Option<crate::silver::certificate::Certificate>,
     pub(crate) counts: Counts,
     pub(crate) current_embeddings: u64,
     pub(crate) derived_clean: bool,

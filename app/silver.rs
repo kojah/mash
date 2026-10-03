@@ -11,6 +11,7 @@ mod aider;
 mod antigravity;
 #[cfg(test)]
 mod benchmarks;
+pub(crate) mod certificate;
 pub(crate) mod claude;
 mod cline;
 pub(crate) use cline::visible_projection as cline_dialogue_text;
@@ -213,6 +214,10 @@ fn index_at(
             .map(|discovery| (provider, roots, discovery))
         })
         .collect::<Result<Vec<_>, _>>()?;
+    // All targeted providers are pending before any batch can commit.
+    for &(provider, _, _) in &discoveries {
+        storage.begin_silver_scan(provider)?;
+    }
     for (provider, roots, discovery) in discoveries {
         index_provider(
             storage,
@@ -231,6 +236,8 @@ fn index_at(
 
     summary.processed_files = summary.scanned_files;
     progress.emit(&summary, crate::progress::Phase::IngestionComplete, true);
+
+    storage.finish_silver_ingestion()?;
 
     Ok(summary)
 }
@@ -292,6 +299,7 @@ fn index_provider_pipeline(
         parse,
         authoritative,
     } = scan;
+    let rejected_before = summary.malformed_records;
     let observed_layout = discovery::source_layout(&discovery.sources);
     let (mut pending, observed_paths, mut complete) = prepare_sources(
         storage,
@@ -427,6 +435,11 @@ fn index_provider_pipeline(
         roots,
         cutoff_modified_ns,
     )?;
+    if first_error.is_none() {
+        // Optional built-in roots can be absent. Completeness certifies the
+        // admitted stored history, not exhaustive coverage of inaccessible roots.
+        storage.finish_silver_scan(provider, summary.malformed_records == rejected_before)?;
+    }
     first_error.map_or(Ok(()), Err)
 }
 
@@ -595,6 +608,11 @@ fn apply_parsed_source(
     // them would replace prior messages and vectors while retaining an old
     // checkpoint, so leave the entire contribution untouched until a clean retry.
     if parsed.malformed_records != 0 {
+        storage.reject_silver_source(
+            provider,
+            &result.source.history.identity,
+            &result.source.stamp,
+        )?;
         if let Some(issue) = parsed.first_record_issue {
             tracing::warn!(target: "mash", provider = issue.provider.as_str(),
                 source_fingerprint = %blake3::hash(issue.source.as_os_str().as_encoded_bytes()).to_hex(),

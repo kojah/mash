@@ -71,7 +71,7 @@ fn claude_schema_upgrade_replays_real_legacy_ids_and_preserves_unrelated_vectors
         drop(connection);
 
         let mut storage = Storage::open_writer(&database).unwrap();
-        assert!(storage.semantic_index_is_ready("fixture").unwrap());
+        assert!(!storage.semantic_index_is_ready("fixture").unwrap());
         assert_eq!(storage.embedding_count("fixture").unwrap(), 3);
         let summary = index(&mut storage, &options(&root)).unwrap();
         assert_eq!(summary.checkpoint_skipped_sources, 0);

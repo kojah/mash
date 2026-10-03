@@ -215,8 +215,11 @@ fn gold_rebuild_from_stored_history_survives_source_removal_and_is_idempotent() 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
 fn rejected_source_keeps_gold_unready_even_with_complete_stored_vectors() {
-    let fixture = fixture(true);
+    let mut fixture = fixture(true);
     assert_eq!(fixture.source.summary.malformed_records, 1);
+    // A stale caller's success summary/certificate cannot override durable evidence.
+    fixture.source.summary.malformed_records = 0;
+    fixture.source.certificate.completeness = crate::silver::certificate::Completeness::Complete;
     let models = Models::new(PathBuf::from(
         std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
     ));

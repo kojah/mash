@@ -73,6 +73,7 @@ pub(crate) enum Response {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct IndexResponse {
+    pub(super) silver: crate::silver::certificate::Certificate,
     pub(super) indexed_conversations: u64,
     pub(super) indexed_messages: u64,
     pub(super) searchable_messages: u64,
@@ -111,7 +112,8 @@ impl Response {
 
 impl IndexResponse {
     pub(super) fn needs_retry(&self) -> bool {
-        self.malformed_records > 0
+        !self.silver.is_complete()
+            || self.malformed_records > 0
             || self
                 .shared
                 .as_ref()
@@ -147,6 +149,8 @@ pub(crate) struct ViewResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) silver: Option<crate::silver::certificate::Certificate>,
     pub(super) ready: bool,
     pub(super) database_path: Option<PathBuf>,
     pub(super) conversations: u64,

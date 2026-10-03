@@ -56,6 +56,7 @@ fn local_status(
         .is_installed();
     if !database_path.is_file() {
         return Ok(StatusResponse {
+            silver: None,
             ready: false,
             database_path: Some(database_path.to_path_buf()),
             conversations: 0,
@@ -90,6 +91,7 @@ fn local_status(
     let hybrid_ready =
         models_installed && snapshot.derived_clean && snapshot.exact_semantic_coverage;
     Ok(StatusResponse {
+        silver: snapshot.silver,
         ready: hybrid_ready,
         database_path: Some(database_path.to_path_buf()),
         conversations: counts.conversations,

@@ -1,4 +1,23 @@
 -- Silver publication ownership and durable reconciliation state.
+CREATE TABLE IF NOT EXISTS silver_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    interpretation_version INTEGER NOT NULL DEFAULT 0 CHECK (interpretation_version >= 0)
+);
+INSERT OR IGNORE INTO silver_state(singleton) VALUES (1);
+CREATE TABLE IF NOT EXISTS silver_scans (
+    provider TEXT PRIMARY KEY,
+    interpretation_version INTEGER NOT NULL CHECK (interpretation_version > 0),
+    -- 0=pending, 1=complete, 2=incomplete.
+    state INTEGER NOT NULL CHECK (state IN (0, 1, 2))
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS silver_rejections (
+    provider TEXT NOT NULL,
+    source_key TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    modified_ns INTEGER NOT NULL,
+    PRIMARY KEY(provider, source_key)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS shared_publication (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     instance TEXT NOT NULL,
@@ -88,6 +107,7 @@ CREATE TABLE IF NOT EXISTS source_checkpoints (
     size_bytes INTEGER NOT NULL,
     modified_ns INTEGER NOT NULL,
     fingerprint TEXT NOT NULL DEFAULT '',
+    interpretation_version INTEGER NOT NULL DEFAULT 0 CHECK (interpretation_version >= 0),
     PRIMARY KEY (provider, source_key)
 );
 CREATE TABLE IF NOT EXISTS claude_sources (
@@ -113,6 +133,9 @@ CREATE TABLE IF NOT EXISTS claude_source_messages (
 CREATE TABLE IF NOT EXISTS derived_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     search_dirty INTEGER NOT NULL CHECK (search_dirty IN (0, 1)),
-    semantic_ready_generation TEXT
+    semantic_ready_generation TEXT,
+    resume_generation TEXT,
+    resume_silver_revision INTEGER,
+    resume_interpretation_version INTEGER
 );
 INSERT OR IGNORE INTO derived_state(singleton, search_dirty) VALUES (1, 1);

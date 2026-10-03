@@ -97,10 +97,12 @@ policies must use stored silver without provider replay. Query-oriented policy
 belongs in gold; provider-native visibility is retained in silver rather than
 reconstructed by gold from raw serialized tool bodies.
 
-The ingestion outcome used for readiness is run metadata, not a new persisted
-completion certificate. An independently exposed gold operation would need a
-durable, versioned completion contract before it could safely publish readiness
-after arbitrary restarts.
+Local gold now consults the durable, versioned silver certificate in SQLite,
+including pending provider scans and rejected sources across runs. Index/status
+responses expose this evidence. See `silver-gold-configuration.md` for its scope,
+replay and migration semantics. An independently exposed gold operation still
+needs its build manifest/configuration contract and shared propagation before it
+can safely replace projections across arbitrary restarts.
 
 Local SQLite is required. Configuration supports local-only or local plus shared
 indexing, with per-index provider allowlists. Every provider forwarded to the

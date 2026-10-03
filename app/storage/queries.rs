@@ -69,6 +69,7 @@ impl Storage {
         }
         if version < SCHEMA_VERSION {
             return Ok(StatusSnapshot {
+                silver: None,
                 counts: Counts {
                     conversations: readonly_table_count(&connection, "conversations")?,
                     messages: readonly_table_count(&connection, "messages")?,
@@ -87,6 +88,7 @@ impl Storage {
             transaction_base_messages: 0,
         };
         Ok(StatusSnapshot {
+            silver: Some(storage.silver_certificate()?),
             counts: storage.counts()?,
             current_embeddings: storage.embedding_count(generation)?,
             derived_clean: !storage.derived_search_is_dirty()?,

@@ -18,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times | Adapter-normalized metadata can be absent or derived. Source facts and inferred annotations do not yet have a uniform per-field origin/confidence model. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, source checkpoints, malformed-record diagnostics and gold invalidation | Source/embedding fingerprints exist, but there is no general durable silver enrichment version/completion certificate and gold build manifest. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate | Local completeness and interpretation version are durable. Shared certificate propagation, per-field enrichment origins and gold build manifests remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -27,11 +27,61 @@ record the rule/version and provenance of inferred annotations. No mandatory
 LLM enrichment is proposed. Embedding models, gold chunking and ranking do not
 belong in canonical silver. Topic assignments remain experimental gold.
 
-Prioritize durable interpretation/completeness versioning and traceable metadata
+Prioritize shared interpretation/completeness versioning and traceable metadata
 before speculative enrichment fields. Gold should consume the retained visible
 dialogue and relationship model rather than attempting to reinterpret provider
 formats. Adding finer retrieval units may require source-offset/segment mappings;
 that requirement must be audited before a chunk schema is finalized.
+
+## Durable local silver certificate
+
+SQLite schema 36 stores a canonical `silver_state.revision`, interpretation-rule
+version, per-provider `silver_scans` and source-keyed `silver_rejections`.
+Canonical thread/message, deletion-intent and Claude provenance mutations advance
+the revision transactionally. Embeddings, FTS, vector caches and scan/checkpoint
+bookkeeping do not. Interpretation version is a separate build dependency.
+
+`index` and `status` expose a typed `silver` certificate with `revision`,
+`interpretation_version`, `completeness` and `rejected_sources`. Completeness is
+`unverified`, `pending`, `incomplete` or `complete`. Older read-only status or a
+missing database has no certificate. Local gold reads durable current evidence;
+a transient ingestion summary alone cannot authorize publishing readiness.
+
+All targeted provider scans become pending before any partial batch can commit.
+Interrupted non-authoritative scans therefore retain pending state after restart.
+Authoritative provider failures retain the existing savepoint/transaction rollback
+behavior. A clean provider or date-window subset cannot clear another source's
+rejection. A clean replay clears only that source's rejection; deletion clears it
+only after a complete discovery verifies absence inside the reconciliation roots
+and time window. Rejected snapshots leave prior canonical contributions intact.
+
+Completeness certifies admitted stored history, not exhaustive filesystem
+coverage: optional built-in roots may be absent. Their existing conservative
+reconciliation behavior is retained. A hard discovery/parse error still fails the
+run. A known rejected source remains incomplete even if a later cutoff skips it.
+CLI/MCP indexing reports retry status until durable evidence is complete.
+
+A rejected refresh that changes no canonical data may retain the previously
+published gold snapshot. Its generation, silver revision and interpretation
+version must match, with complete vector coverage and no pending embedding work.
+This resumes existing gold; incomplete silver cannot authorize a new projection.
+Changed canonical data or a changed model prevents resumption. Thus initial
+rejections remain unavailable, while an unchanged prior index can remain usable
+even as index/status reports an unresolved source rejection. These resume fields
+are gold readiness metadata, not a second maintained projection.
+
+Source checkpoints record `INTERPRETATION_VERSION`. A mismatched version cannot
+skip replay. Existing schema-35 history and vectors are retained during migration,
+but absent completeness evidence is not fabricated and old gold readiness is
+invalidated. Run explicit indexing to certify the data. Old checkpoints outside
+the selected time window remain unverified; replay the applicable history (for
+example with `--all-history`) before rebuilding from that silver. Merely reopening
+the database does not certify it. Changing interpretation rules requires bronze
+replay; changing gold policy must operate on the already interpreted silver.
+
+This is the local foundation. The shared wire/storage contract and uniform
+per-field source-versus-inferred metadata evidence are still separate work; this
+certificate does not claim that either has shipped.
 
 ## Implemented query configuration
 

@@ -42,7 +42,7 @@ fn identity_migration_reparses_checkpointed_claude_parent_and_agent() {
         .pragma_update(None, "user_version", 32)
         .unwrap();
     let mut storage = Storage::open_writer(&database).unwrap();
-    assert!(storage.semantic_index_is_ready("fixture").unwrap());
+    assert!(!storage.semantic_index_is_ready("fixture").unwrap());
     let options = IndexOptions {
         providers: [(Provider::ClaudeCode, vec![directory.path().to_path_buf()])].into(),
         roots_are_authoritative: true,

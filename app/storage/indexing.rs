@@ -370,13 +370,15 @@ impl Storage {
             .query_row(
                 "SELECT 1 FROM source_checkpoints
                   WHERE provider = ?1 AND source_key = ?2
-                    AND size_bytes = ?3 AND modified_ns = ?4 AND fingerprint = ?5",
+                    AND size_bytes = ?3 AND modified_ns = ?4 AND fingerprint = ?5
+                    AND interpretation_version = ?6",
                 params![
                     provider,
                     source.key(),
                     stamp.size_bytes,
                     stamp.activity_ns.unwrap_or(stamp.modified_ns),
-                    stamp.fingerprint
+                    stamp.fingerprint,
+                    crate::silver::certificate::INTERPRETATION_VERSION
                 ],
                 |_| Ok(()),
             )
@@ -394,15 +396,17 @@ impl Storage {
         self.require_writer()?;
         self.connection
             .execute(
-                "INSERT INTO source_checkpoints(provider, source_key, size_bytes, modified_ns, source_path, fingerprint)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO source_checkpoints(provider, source_key, size_bytes, modified_ns, source_path, fingerprint, interpretation_version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                  ON CONFLICT(provider, source_key) DO UPDATE SET
                     size_bytes = excluded.size_bytes,
                     modified_ns = excluded.modified_ns,
-                    source_path = excluded.source_path, fingerprint = excluded.fingerprint",
-                params![provider, source.key(), stamp.size_bytes, stamp.activity_ns.unwrap_or(stamp.modified_ns), source.path.to_string_lossy(), stamp.fingerprint],
+                    source_path = excluded.source_path, fingerprint = excluded.fingerprint,
+                    interpretation_version = excluded.interpretation_version",
+                params![provider, source.key(), stamp.size_bytes, stamp.activity_ns.unwrap_or(stamp.modified_ns), source.path.to_string_lossy(), stamp.fingerprint, crate::silver::certificate::INTERPRETATION_VERSION],
             )
             .map_err(AppError::database)?;
+        self.clear_silver_rejection(provider, &source.key())?;
         Ok(())
     }
 
@@ -585,6 +589,12 @@ impl Storage {
         cutoff_modified_ns: Option<i64>,
     ) -> Result<u64, AppError> {
         self.require_writer()?;
+        self.purge_missing_silver_rejections(
+            provider,
+            observed_keys,
+            authoritative_roots,
+            cutoff_modified_ns,
+        )?;
         let mut removed = if provider == Provider::ClaudeCode {
             self.purge_claude_sources(observed_keys, authoritative_roots, cutoff_modified_ns)?
         } else {

@@ -9,6 +9,25 @@ use super::{EmbeddingWrite, SemanticChunk, SemanticChunks, Storage, cutoff_times
 use crate::AppError;
 
 impl Storage {
+    pub(crate) fn resume_unchanged_semantic_snapshot(
+        &mut self,
+        generation: &str,
+    ) -> Result<(), AppError> {
+        self.require_writer()?;
+        if self.has_pending_embeddings()? || !self.semantic_coverage_is_complete(generation)? {
+            return Ok(());
+        }
+        self.connection.execute(
+            "UPDATE derived_state SET semantic_ready_generation=resume_generation
+             WHERE singleton=1 AND search_dirty=0 AND resume_generation=?1
+               AND resume_silver_revision=(SELECT revision FROM silver_state WHERE singleton=1)
+               AND resume_interpretation_version=(SELECT interpretation_version FROM silver_state WHERE singleton=1)
+               AND resume_interpretation_version=?2",
+            params![generation, crate::silver::certificate::INTERPRETATION_VERSION],
+        ).map_err(AppError::database)?;
+        Ok(())
+    }
+
     pub(crate) fn embedding_count(&self, generation: &str) -> Result<u64, AppError> {
         let count: i64 = self
             .connection
@@ -129,7 +148,7 @@ impl Storage {
         Ok(())
     }
 
-    pub(super) fn mark_semantic_index_incomplete(&self) -> Result<(), AppError> {
+    pub(crate) fn mark_semantic_index_incomplete(&self) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection
             .execute(

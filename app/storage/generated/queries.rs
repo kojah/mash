@@ -2854,3 +2854,168 @@ impl<'a> FirstChildBuilder<'a, (&'a str, Option<i64>)> {
         }
     }
 }
+pub struct SilverCertificateRow {
+    pub revision: i64,
+    pub interpretation_version: i64,
+    pub pending: i64,
+    pub unverified: i64,
+    pub incomplete: i64,
+    pub rejected_sources: i64,
+}
+impl SilverCertificateRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            revision: row.get(0)?,
+            interpretation_version: row.get(1)?,
+            pending: row.get(2)?,
+            unverified: row.get(3)?,
+            incomplete: row.get(4)?,
+            rejected_sources: row.get(5)?,
+        })
+    }
+}
+pub struct SilverCertificate {
+    current_version: i64,
+}
+impl SilverCertificate {
+    pub const QUERY: &'static str = r"SELECT s.revision, s.interpretation_version,
+    CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=0) AS INTEGER) AS pending,
+    CAST(s.interpretation_version<>?1
+        OR EXISTS(SELECT 1 FROM silver_scans WHERE interpretation_version<>?1)
+        OR EXISTS(SELECT 1 FROM source_checkpoints WHERE interpretation_version<>?1)
+        OR EXISTS(SELECT 1 FROM conversations c WHERE NOT EXISTS(
+            SELECT 1 FROM silver_scans p WHERE p.provider=c.provider
+              AND p.interpretation_version=?1)) AS INTEGER) AS unverified,
+    CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=2) AS INTEGER) AS incomplete,
+    (SELECT count(*) FROM silver_rejections) AS rejected_sources
+FROM silver_state s WHERE s.singleton=1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl SilverCertificate {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<SilverCertificateRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), SilverCertificateRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<SilverCertificateRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), SilverCertificateRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.current_version,)
+    }
+}
+impl SilverCertificate {
+    pub const fn builder() -> SilverCertificateBuilder<'static, ((),)> {
+        SilverCertificateBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct SilverCertificateBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> SilverCertificateBuilder<'a, ((),)> {
+    pub fn current_version(self, current_version: i64) -> SilverCertificateBuilder<'a, (i64,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        SilverCertificateBuilder {
+            fields: (current_version,),
+            _phantom,
+        }
+    }
+}
+impl<'a> SilverCertificateBuilder<'a, (i64,)> {
+    pub fn build(self) -> SilverCertificate {
+        let (current_version,) = self.fields;
+        SilverCertificate { current_version }
+    }
+}
+pub struct SilverRejectionsRow {
+    pub source_key: String,
+    pub source_path: String,
+    pub modified_ns: i64,
+}
+impl SilverRejectionsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_key: row.get(0)?,
+            source_path: row.get(1)?,
+            modified_ns: row.get(2)?,
+        })
+    }
+}
+pub struct SilverRejections<'a> {
+    provider: &'a str,
+}
+impl<'a> SilverRejections<'a> {
+    pub const QUERY: &'static str = r"SELECT source_key,source_path,modified_ns FROM silver_rejections
+WHERE provider=?1 ORDER BY source_key";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> SilverRejections<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<SilverRejectionsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), SilverRejectionsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.provider,)
+    }
+}
+impl<'a> SilverRejections<'a> {
+    pub const fn builder() -> SilverRejectionsBuilder<'a, ((),)> {
+        SilverRejectionsBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct SilverRejectionsBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> SilverRejectionsBuilder<'a, ((),)> {
+    pub fn provider(self, provider: &'a str) -> SilverRejectionsBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        SilverRejectionsBuilder {
+            fields: (provider,),
+            _phantom,
+        }
+    }
+}
+impl<'a> SilverRejectionsBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> SilverRejections<'a> {
+        let (provider,) = self.fields;
+        SilverRejections { provider }
+    }
+}
