@@ -212,13 +212,38 @@ pub(crate) fn collect(
     limit: usize,
     query: &str,
 ) -> Results {
-    let exact_reference = crate::search_query::has_reference(query);
+    collect_inner(hits, unit, limit, query, None)
+}
+
+pub(crate) fn collect_exact(
+    hits: Vec<SearchHit>,
+    unit: SearchUnit,
+    limit: usize,
+    literal: &crate::gold::exact::Literal,
+) -> Results {
+    collect_inner(hits, unit, limit, "", Some(literal))
+}
+
+fn collect_inner(
+    hits: Vec<SearchHit>,
+    unit: SearchUnit,
+    limit: usize,
+    query: &str,
+    literal: Option<&crate::gold::exact::Literal>,
+) -> Results {
+    let exact_reference = literal.is_some() || crate::search_query::has_reference(query);
+    let matches = |hit: &SearchHit| {
+        literal.map_or_else(
+            || crate::search_query::matches_reference(&hit.content, query),
+            |literal| literal.matches(&hit.content),
+        )
+    };
     if matches!(unit, SearchUnit::Messages) {
         return Results::Messages(
             eligible(hits)
                 .into_iter()
                 .filter(|hit| exact_reference || qualifies_as_evidence(hit))
-                .filter(|hit| crate::search_query::matches_reference(&hit.content, query))
+                .filter(&matches)
                 .take(limit.min(1000))
                 .collect(),
         );
@@ -230,7 +255,7 @@ pub(crate) fn collect(
         // A literal reference is independently verifiable even outside the
         // bounded model budget; its exact number is checked below.
         .filter(|hit| exact_reference || qualifies_as_evidence(hit))
-        .filter(|hit| crate::search_query::matches_reference(&hit.content, query))
+        .filter(matches)
         .enumerate()
     {
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
@@ -278,7 +303,16 @@ pub(crate) fn collect(
             node_id: hit.node_id,
             role: hit.role,
             created_at: hit.created_at,
-            snippet: excerpt(&hit.content, query),
+            snippet: literal.map_or_else(
+                || excerpt(&hit.content, query),
+                |literal| {
+                    evidence_window_at(
+                        &hit.content,
+                        literal.find(&hit.content).map_or(0, |range| range.start),
+                        800,
+                    )
+                },
+            ),
             rerank_score: hit.rerank_score,
             fusion_score: hit.fusion_score,
             copies: hit.copies,
@@ -360,6 +394,10 @@ pub(crate) fn evidence_window(content: &str, query: &str, length: usize) -> Stri
         })
         .min()
         .unwrap_or(0);
+    evidence_window_at(content, offset, length)
+}
+
+fn evidence_window_at(content: &str, offset: usize, length: usize) -> String {
     // An ASCII match begins at a UTF-8 boundary even in multilingual content.
     let leading_context = (length / 3).min(160);
     let start = content[..offset]

@@ -224,6 +224,7 @@ async fn run_inner(
             .map_or("local", |c| c.node_id.as_str()),
     )?;
     if intent == crate::gold::exact::Intent::ExactMention {
+        let literal = crate::gold::exact::Literal::new(&query)?;
         if use_shared || (!use_local && configuration.shared.is_some()) {
             let (hits, shared_error) = shared::search_exact(
                 required_shared(configuration)?,
@@ -244,14 +245,13 @@ async fn run_inner(
                     SearchMode::MergedLexical
                 },
                 unit,
-                results: crate::search_results::collect(hits, unit, limit, &query),
+                results: crate::search_results::collect_exact(hits, unit, limit, &literal),
                 query,
                 shared: shared_error.is_none(),
                 shared_error,
                 shared_context_error: None,
             });
         }
-        let literal = crate::gold::exact::Literal::new(&query)?;
         let database = database.to_path_buf();
         return crate::blocking(move || {
             local_exact(&database, &literal, query, (limit, unit), &filters)
@@ -339,7 +339,7 @@ fn local_exact(
         intent: crate::gold::exact::Intent::ExactMention,
         realized_mode: SearchMode::Lexical,
         unit,
-        results: crate::search_results::collect(hits, unit, limit, &query),
+        results: crate::search_results::collect_exact(hits, unit, limit, literal),
         query,
         shared: false,
         shared_error: None,

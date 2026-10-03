@@ -1085,6 +1085,14 @@ mentions. This is literal retrieval, without stemming, typo correction, synonyms
 or language-model restrictions. Queries need at least one letter/number and are
 bounded to 16 KiB. Common words are allowed because they may be code identifiers.
 
+Thread excerpts in exact mode use the first boundary-checked occurrence of the
+whole literal, including short identifiers. They do not anchor to an earlier
+partial keyword match. Excerpts retain the 800-character window and ellipses;
+very long literals can exceed that window. The message ID remains the anchor
+for `view`, which returns original canonical content rather than the searchable
+projection used to select the excerpt. Related-discussion excerpts retain their
+keyword-based window.
+
 SQLite FTS5 supplies phrase candidates; a deterministic literal predicate and
 metadata filters run before newest-first ordering and the bounded candidate limit. The
 existing thread/message deduplication and result shaping remain in use. Only

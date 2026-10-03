@@ -56,13 +56,21 @@ impl Literal {
     }
 
     pub(crate) fn matches(&self, content: &str) -> bool {
-        self.matcher.find_overlapping_iter(content).any(|m| {
-            !content[..m.start()]
-                .chars()
-                .next_back()
-                .is_some_and(identifier)
-                && !content[m.end()..].chars().next().is_some_and(identifier)
-        })
+        self.find(content).is_some()
+    }
+
+    /// The first boundary-checked occurrence, in UTF-8 byte offsets.
+    pub(crate) fn find(&self, content: &str) -> Option<std::ops::Range<usize>> {
+        self.matcher
+            .find_overlapping_iter(content)
+            .find(|m| {
+                !content[..m.start()]
+                    .chars()
+                    .next_back()
+                    .is_some_and(identifier)
+                    && !content[m.end()..].chars().next().is_some_and(identifier)
+            })
+            .map(|m| m.start()..m.end())
     }
 }
 

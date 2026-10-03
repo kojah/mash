@@ -40,7 +40,16 @@ fn records() -> Vec<MessageRecord> {
         ("phrase-decoy", "connection  pool", Some(1000)),
         ("for", "for loops in Rust", Some(1000)),
     ] {
-        rows.push(row(id, i64::try_from(rows.len()).unwrap(), content, time));
+        let content = if id == "recent" {
+            format!(
+                "voyage-code-40 {} ({content}) {}",
+                "🦀 ".repeat(1200),
+                "界".repeat(1200)
+            )
+        } else {
+            content.to_owned()
+        };
+        rows.push(row(id, i64::try_from(rows.len()).unwrap(), &content, time));
     }
     let mut hidden = row(
         "hidden",
@@ -388,6 +397,10 @@ async fn verify_core(service: &Service) {
             crate::search_results::Results::Threads(threads) => {
                 assert_eq!(threads.len(), 1);
                 assert_eq!(threads[0].matches.len(), 3);
+                let excerpt = &threads[0].matches[0];
+                assert_eq!(excerpt.message_id, "recent");
+                assert!(excerpt.snippet.contains("VOYAGE-code-4"));
+                assert!(!excerpt.snippet.contains("voyage-code-40"));
                 assert!(threads[0].matches.iter().all(
                     |m| m.copies.len() == 1 && m.copies[0].node_id.as_deref() == Some("second")
                 ));

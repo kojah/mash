@@ -396,6 +396,44 @@ fn provider_identity_limits_and_message_mode_are_preserved() {
 }
 
 #[test]
+fn exact_excerpts_show_verified_literals_instead_of_earlier_partial_decoys() {
+    for (query, decoy, matched) in [
+        ("if", "gift", "IF"),
+        ("\"foo foo\"", "xfoo foo", "foo foo"),
+        ("voyage-code-4", "voyage-code-40", "VOYAGE-code-4"),
+        (
+            "\"database timeout\"",
+            "database health",
+            "database timeout",
+        ),
+        ("C++", "C++20", "c++"),
+    ] {
+        let literal = crate::gold::exact::Literal::new(query).unwrap();
+        let mut evidence = hit("thread", "message");
+        evidence.content = format!(
+            "{decoy} {} ({matched}) {}",
+            "🦀 ".repeat(1200),
+            "界".repeat(1200)
+        );
+        evidence.lexical_score = None;
+        let mut wrong = hit("wrong", "wrong");
+        wrong.content = decoy.into();
+        let Results::Threads(results) =
+            collect_exact(vec![wrong, evidence], SearchUnit::Threads, 2, &literal)
+        else {
+            panic!("threads");
+        };
+        assert_eq!(results.len(), 1, "{query}");
+        let anchor = &results[0].matches[0];
+        assert_eq!(anchor.message_id, "message");
+        assert!(anchor.snippet.contains(matched), "{query}");
+        assert!(!anchor.snippet.contains(decoy), "{query}");
+        assert!(anchor.snippet.starts_with('…') && anchor.snippet.ends_with('…'));
+        assert!(anchor.snippet.chars().count() <= 802);
+    }
+}
+
+#[test]
 fn excerpts_are_bounded_unicode_safe_and_focus_on_query_evidence() {
     let content = format!(
         "{}cBioPortal importer {}",

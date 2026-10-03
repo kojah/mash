@@ -1,6 +1,64 @@
 use super::*;
 
 #[test]
+fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("claude");
+    std::fs::create_dir(&root).unwrap();
+    let content = format!("gift {} (IF) {}", "🦀 ".repeat(1200), "界".repeat(1200));
+    std::fs::write(
+        root.join("thread.jsonl"),
+        serde_json::to_vec(&serde_json::json!({
+            "type":"user", "sessionId":"thread", "uuid":"message",
+            "message":{"role":"user","content":content}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let models = directory.path().join("missing-models");
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    run_json(&[base.as_slice(), &["index"]].concat());
+    std::fs::remove_dir_all(root).unwrap();
+    let before = std::fs::read(&database).unwrap();
+    for direct in [false, true] {
+        let mut args = [base.as_slice(), &["search", "if", "--local"]].concat();
+        if direct {
+            args.push("--no-worker");
+        }
+        let response = run_json(&args);
+        let anchor = &response["results"][0]["matches"][0];
+        let snippet = anchor["snippet"].as_str().unwrap();
+        assert!(snippet.contains("(IF)"));
+        assert!(!snippet.contains("gift"));
+        let viewed = run_json(
+            &[
+                base.as_slice(),
+                &[
+                    "view",
+                    anchor["message_id"].as_str().unwrap(),
+                    "--context",
+                    "0",
+                ],
+            ]
+            .concat(),
+        );
+        assert_eq!(viewed["messages"][0]["content"], content);
+    }
+    assert_eq!(std::fs::read(database).unwrap(), before);
+    assert!(!models.exists());
+}
+
+#[test]
 fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");
