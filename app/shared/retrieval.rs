@@ -123,6 +123,7 @@ pub(super) async fn search_prepared(
                 config,
                 Endpoint::Search,
                 &protocol::Search {
+                    intent: crate::gold::exact::Intent::RelatedDiscussion,
                     query: query.to_owned(),
                     unit,
                     vector,

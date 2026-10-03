@@ -136,6 +136,7 @@ pub(in crate::shared) fn start(
     };
     if loaded.head.is_none() {
         loaded.head = Some(Head {
+            lexical_manifest: None,
             gold_manifest: None,
             silver_coverage: Vec::new(),
             silver_revision: None,

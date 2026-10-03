@@ -254,17 +254,26 @@ pub(super) struct Indexed {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Search {
+    #[serde(default, skip_serializing_if = "related_discussion")]
+    pub intent: crate::gold::exact::Intent,
     #[serde(default)]
     pub unit: crate::search_results::SearchUnit,
     pub query: String,
     #[serde(default = "default_generation")]
     pub generation: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub vector: Vec<f64>,
     pub provider: Option<Provider>,
     pub days: Option<u32>,
     #[serde(default)]
     pub exclude_self: bool,
     pub filter: Option<crate::search_filter::Filter>,
+}
+
+// Serde's skip predicate requires a borrowed field.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn related_discussion(intent: &crate::gold::exact::Intent) -> bool {
+    *intent == crate::gold::exact::Intent::RelatedDiscussion
 }
 
 #[derive(Debug, Deserialize, Serialize)]

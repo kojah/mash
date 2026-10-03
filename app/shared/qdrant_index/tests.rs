@@ -1,6 +1,7 @@
 use super::*;
 use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
 use std::io::Write;
+mod exact;
 mod memory;
 mod publication;
 
@@ -97,6 +98,7 @@ impl Fixture {
     }
     fn query(&self) -> protocol::Search {
         protocol::Search {
+            intent: crate::gold::exact::Intent::RelatedDiscussion,
             unit: crate::search_results::SearchUnit::Messages,
             query: "needle".into(),
             generation: self.identity.generation.clone(),
@@ -561,6 +563,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     node_id: "node".into(),
                     version: version.clone(),
                     head: Some(Head {
+                        lexical_manifest: None,
                         gold_manifest: None,
                         silver_coverage: Vec::new(),
                         silver_revision: None,

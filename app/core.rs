@@ -19,6 +19,20 @@ pub(crate) use models::{
 };
 
 pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
+    execute_admitted(request, None).await
+}
+
+pub(crate) async fn execute_with_model_limit(
+    request: Request,
+    capacity: &tokio::sync::Semaphore,
+) -> Result<Response, AppError> {
+    execute_admitted(request, Some(capacity)).await
+}
+
+async fn execute_admitted(
+    request: Request,
+    capacity: Option<&tokio::sync::Semaphore>,
+) -> Result<Response, AppError> {
     use tracing::Instrument;
     let operation = match &request.operation {
         Operation::Index(_) => "index",
@@ -31,7 +45,7 @@ pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
     };
     async {
         let started = std::time::Instant::now();
-        let result = execute_inner(request).await;
+        let result = execute_inner(request, capacity).await;
         tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
         match &result {
             Ok(response) if response.needs_retry() => tracing::info!(outcome = "incomplete", "request completed"),
@@ -50,11 +64,35 @@ pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
         .await
 }
 
-async fn execute_inner(request: Request) -> Result<Response, AppError> {
+async fn execute_inner(
+    request: Request,
+    capacity: Option<&tokio::sync::Semaphore>,
+) -> Result<Response, AppError> {
     let path = request.paths.config;
     let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
     let database = request.paths.db.unwrap_or_else(default_database_path);
     let models = request.paths.models_dir.unwrap_or_else(default_models_path);
+    let uses_models = match &request.operation {
+        Operation::Search { intent, .. } => {
+            intent.unwrap_or(configuration.gold.query.intent)
+                == crate::gold::exact::Intent::RelatedDiscussion
+        }
+        Operation::Index(_) | Operation::ModelsInstall => true,
+        _ => false,
+    };
+    let _permit = if uses_models {
+        match capacity {
+            Some(capacity) => Some(
+                capacity
+                    .acquire()
+                    .await
+                    .map_err(|_| AppError::internal("model worker unavailable"))?,
+            ),
+            None => None,
+        }
+    } else {
+        None
+    };
     dispatch(request.operation, &configuration, &database, &models)
         .boxed()
         .await

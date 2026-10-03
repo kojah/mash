@@ -23,7 +23,7 @@ struct Mash {
 #[serde(deny_unknown_fields)]
 struct Search {
     query: String,
-    /// related-discussion (default) or exact-mention; exact currently requires local=true.
+    /// related-discussion (default) or model-free exact-mention.
     intent: Option<crate::gold::exact::Intent>,
     /// Maximum results; omitted uses gold.query.limit (20 by default).
     limit: Option<usize>,
@@ -191,23 +191,13 @@ impl Mash {
         } else {
             None
         };
-        let uses_models = matches!(&operation, Operation::Search { intent, .. }
-            if *intent != Some(crate::gold::exact::Intent::ExactMention))
-            || matches!(operation, Operation::Index(_) | Operation::ModelsInstall);
-        let _permit = if uses_models {
-            match self.model_work.acquire().await {
-                Ok(permit) => Some(permit),
-                Err(_) => {
-                    return Err(crate::AppError::internal("model worker unavailable"));
-                }
-            }
-        } else {
-            None
-        };
-        core::execute(Request {
-            paths: self.paths.as_ref().clone(),
-            operation,
-        })
+        core::execute_with_model_limit(
+            Request {
+                paths: self.paths.as_ref().clone(),
+                operation,
+            },
+            &self.model_work,
+        )
         .await
     }
 }
@@ -247,7 +237,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search using gold.query defaults; override intent, unit or limit. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference; currently requires local=true when shared is configured. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require a completed current index and never run ingestion. Hybrid shared failures fall back to local results with shared_error."
+        description = "Search using gold.query defaults; override intent, unit or limit. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference, locally and through the shared service. Narrow broad exact queries with metadata filters if the shared candidate or time budget is reached. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require completed current retrieval artifacts and never run ingestion. Combined shared failures fall back to local results with shared_error; shared-only failures return an error."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute(Operation::Search {

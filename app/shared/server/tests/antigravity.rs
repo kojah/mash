@@ -36,6 +36,7 @@ async fn contract(service: Service) {
         ("synthetic_scope_only_marker", 0),
     ] {
         let request = Search {
+            intent: crate::gold::exact::Intent::RelatedDiscussion,
             unit: crate::search_results::SearchUnit::Messages,
             query: query.into(),
             generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),

@@ -70,25 +70,34 @@ pub(super) async fn run(
     )?;
     if intent == crate::gold::exact::Intent::ExactMention {
         if use_shared || (!use_local && configuration.shared.is_some()) {
-            return Err(AppError::usage(
-                "exact-mention currently supports local search only; set local=true or --local",
-            ));
+            let (hits, shared_error) = shared::search_exact(
+                required_shared(configuration)?,
+                (!use_shared).then_some(database),
+                &query,
+                unit,
+                &filters,
+            )
+            .await?;
+            return Ok(SearchResponse {
+                intent,
+                realized_mode: if shared_error.is_some() {
+                    SearchMode::LocalLexical
+                } else if use_shared {
+                    SearchMode::Lexical
+                } else {
+                    SearchMode::MergedLexical
+                },
+                unit,
+                results: crate::search_results::collect(hits, unit, limit, &query),
+                query,
+                shared: shared_error.is_none(),
+                shared_error,
+            });
         }
         let literal = crate::gold::exact::Literal::new(&query)?;
         let database = database.to_path_buf();
         return crate::blocking(move || {
-            let storage = Storage::open_lexical(&database)?;
-            let hits = storage.search_exact(&literal, unit.candidate_limit(), &filters)?;
-            let hits = semantic::fuse(hits, vec![], unit);
-            Ok(SearchResponse {
-                query: query.clone(),
-                intent,
-                realized_mode: SearchMode::Lexical,
-                unit,
-                results: crate::search_results::collect(hits, unit, limit, &query),
-                shared: false,
-                shared_error: None,
-            })
+            local_exact(&database, &literal, query, (limit, unit), &filters)
         })
         .await;
     }
@@ -130,6 +139,27 @@ pub(super) async fn run(
         })
         .await
     }
+}
+
+fn local_exact(
+    database: &Path,
+    literal: &crate::gold::exact::Literal,
+    query: String,
+    (limit, unit): (usize, crate::search_results::SearchUnit),
+    filters: &crate::search_filter::Scope,
+) -> Result<SearchResponse, AppError> {
+    let storage = Storage::open_lexical(database)?;
+    let hits = storage.search_exact(literal, unit.candidate_limit(), filters)?;
+    let hits = crate::gold::exact::rank(hits, unit);
+    Ok(SearchResponse {
+        intent: crate::gold::exact::Intent::ExactMention,
+        realized_mode: SearchMode::Lexical,
+        unit,
+        results: crate::search_results::collect(hits, unit, limit, &query),
+        query,
+        shared: false,
+        shared_error: None,
+    })
 }
 
 #[tracing::instrument(name = "local_search", skip_all)]

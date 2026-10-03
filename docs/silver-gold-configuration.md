@@ -417,7 +417,7 @@ Local recipes remain independent of shared recipes; nondefault local recipes
 use the independently routed publication path rather than forwarding local
 vectors as shared default vectors.
 
-## Query intent: local exact mentions
+## Query intent: exact mentions
 
 `[gold.query] intent = "related-discussion"` retains the existing hybrid retrieval
 default. `intent = "exact-mention"` selects the lexical and metadata artifacts,
@@ -455,7 +455,7 @@ or language-model restrictions. Queries need at least one letter/number and are
 bounded to 16 KiB. Common words are allowed because they may be code identifiers.
 
 SQLite FTS5 supplies phrase candidates; a deterministic literal predicate and
-metadata filters run before BM25 ordering and the bounded candidate limit. The
+metadata filters run before newest-first ordering and the bounded candidate limit. The
 existing thread/message deduplication and result shaping remain in use. Only
 interpreted visible text is matched; titles and hidden canonical text are not
 extra matching fields. Completed indexing, a matching silver certificate and a
@@ -463,10 +463,28 @@ clean lexical artifact remain required even if dense vectors/models are absent
 or a different embedding recipe is configured. Search opens SQLite read-only
 and cannot initialize an index. The CLI bypasses its model worker for this mode.
 
-**Current scope:** exact mentions are implemented locally. Shared/combined exact
-retrieval explicitly returns a usage error; use `--local` / MCP `local=true`
-when a shared service is configured. Qdrant parity and bounded shared candidate
-paging remain on `mash-q3e.4.1` / `mash-q3e.4.2`; these Beads are not complete.
+Exact mentions also support shared-only and combined retrieval through the HTTP
+service. Combined search reads local SQLite and peer-node Qdrant candidates
+concurrently, excludes this node's shared copy, and uses the existing copy
+deduplication and thread shaping. Matching evidence is ordered newest first,
+with undated evidence last and node/message identity breaking ties.
+
+Shared publication records a separate typed lexical manifest pinned to retained
+silver, interpretation rules and lexical representation version. Freshness exposes
+`lexical_manifest` and `lexical_current` independently of dense readiness. Old
+heads without this evidence require explicit indexing or rebuilding; search never
+repairs them. Changing a dense recipe or lacking vectors does not invalidate a
+current lexical artifact.
+
+Qdrant scans token/metadata-filtered candidates in 100-point pages, retrieving
+visible dialogue and metadata without vectors or canonical message bodies.
+Literal checks and current visibility rules precede result limits. The server
+checks publication stability and enforces a 10,000-candidate and 1.5-second
+budget. Exhaustion is an explicit error asking for narrower filters, rather than
+an apparently complete partial result. Combined queries fall back to local
+results with `shared_error`; shared-only queries fail. Both CLI and MCP resolve
+the configured intent in the shared core, so exact queries bypass model loading
+and model-work admission even when the intent override is omitted.
 
 Validation on 2026-10-03: the real-model integration fixture found the visible
 `login token` message and rejected hidden tool output in both result shapes,
@@ -477,6 +495,24 @@ unchanged. These small-fixture timings are diagnostic, not full-corpus latency
 or percentile estimates. The change adds no persistent tables or content copies;
 it reuses the existing FTS5 and metadata artifacts. Logs are in the external
 `mash-artifacts/gold-exact-real-model-20261003.log` artifact.
+
+Shared validation used two nodes with 1,271 messages each, including over 1,100
+token decoys, legacy hidden-tool projections, literal boundary cases and scoped
+metadata. Eight debug-build HTTP queries took 297, 270, 18, 15, 15, 17, 14 and
+11 ms in the contract-suite run. A separate 10,001-candidate fixture verified
+explicit budget failure and recovery with a time filter. These are synthetic
+diagnostics, not real-corpus percentiles. Retained shared silver/freshness and
+local database bytes remained unchanged by queries. The independent lexical
+manifest adds small per-node publication metadata, without another content copy.
+The Qdrant contract log is `shared-exact-qdrant-contracts-20261003.log` under
+the external artifact directory. Broader artifact selection/calibration remains
+tracked in `mash-q3e.4.2` and `mash-q3e.6`.
+
+The persisted restart contract also verified lexical freshness and exact search
+after graceful Qdrant/API restart and SIGKILL with retained storage. The final
+standard suite passed 632 tests; the separate integrated run passed the three
+exact Qdrant contracts, restart contract and real-model hybrid regression. This
+establishes process-restart recovery, not power-loss durability or failover.
 
 ## Shared build recipes and manifests
 

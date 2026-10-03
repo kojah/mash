@@ -56,6 +56,12 @@ fn exact_lexical_filters_literal_decoys_before_limit_and_never_reads_hidden_text
     }]
     .into();
     writer.replace_conversation(&hidden).unwrap();
+    let mut legacy = conversation_with_messages(&[("legacy-tool", "voyage-code-4")]);
+    legacy.id = "legacy-thread".into();
+    legacy.source = crate::silver::SourceIdentity::file("legacy.jsonl");
+    legacy.messages.inline_mut()[0].role = crate::role::Role::Tool;
+    legacy.messages.inline_mut()[0].created_at = Some(i64::MAX);
+    writer.replace_conversation(&legacy).unwrap();
     certify(&mut writer);
     writer.commit_writer().unwrap();
     drop(writer);

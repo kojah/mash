@@ -154,6 +154,8 @@ impl IndexResponse {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SearchMode {
     Lexical,
+    LocalLexical,
+    MergedLexical,
     Hybrid,
     LocalHybrid,
     MergedHybrid,

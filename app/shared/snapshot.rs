@@ -21,6 +21,8 @@ fn identity_key(provider: Provider, id: &str) -> String {
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct Head {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) lexical_manifest: Option<super::lexical_manifest::Manifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) gold_manifest: Option<super::gold_manifest::Manifest>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(super) silver_coverage: Vec<super::silver_coverage::Coverage>,

@@ -1,0 +1,134 @@
+use super::*;
+use crate::core::{self, Operation, Paths, Request, Response, SearchMode};
+use axum::{Json, Router, extract::State, routing::post};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+fn hit() -> SearchHit {
+    SearchHit {
+        id: "peer-message".into(),
+        conversation_id: "peer-thread".into(),
+        provider: crate::provider::Provider::Codex,
+        role: crate::role::Role::User,
+        content: "use voyage-code-4".into(),
+        created_at: Some(1000),
+        metadata: crate::search_results::ThreadMetadata::default(),
+        copies: vec![],
+        node_id: Some("peer".into()),
+        lexical_score: Some(0.0),
+        semantic_score: None,
+        rerank_score: None,
+        fusion_score: 0.0,
+    }
+}
+
+async fn reply(
+    State(mode): State<Arc<AtomicUsize>>,
+    Json(input): Json<protocol::Search>,
+) -> Json<protocol::Candidates> {
+    assert_eq!(input.intent, exact::Intent::ExactMention);
+    assert_eq!(input.query, "voyage-code-4");
+    assert!(input.vector.is_empty() && input.generation.is_empty());
+    assert!(input.filter.is_some());
+    let mut candidates = protocol::Candidates {
+        lexical: vec![hit()],
+        semantic: vec![],
+        documents: vec![],
+    };
+    match mode.load(Ordering::SeqCst) {
+        1 => candidates.lexical[0].content = "voyage-code-40".into(),
+        2 => candidates.lexical[0].node_id = Some("self".into()),
+        3 => candidates.semantic.push(hit()),
+        4 => candidates.lexical[0].node_id = None,
+        _ => {}
+    }
+    Json(candidates)
+}
+
+#[tokio::test]
+async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
+    let root = tempfile::tempdir().unwrap();
+    let database = root.path().join("local.sqlite3");
+    let mut writer = Storage::open_writer(&database).unwrap();
+    writer.finish_silver_ingestion().unwrap();
+    writer.rebuild_derived_search_state().unwrap();
+    writer
+        .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
+            crate::gold::config::Build::default(),
+            "absent".into(),
+            writer.silver_certificate().unwrap(),
+        ))
+        .unwrap();
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let before = std::fs::read(&database).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mode = Arc::new(AtomicUsize::new(0));
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let router = Router::new()
+        .route("/v1/search", post(reply))
+        .with_state(mode.clone());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let config = root.path().join("node.toml");
+    std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='self'\napi_url={url:?}\ntoken_env='HOME'\n[gold.query]\nintent='exact-mention'\n")).unwrap();
+    let request = Request {
+        paths: Paths {
+            config: Some(config),
+            db: Some(database.clone()),
+            models_dir: Some(root.path().join("missing-models")),
+        },
+        operation: Operation::Search {
+            query: "voyage-code-4".into(),
+            intent: None,
+            unit: Some(SearchUnit::Messages),
+            limit: Some(2),
+            filters: Box::default(),
+            local: false,
+            shared: false,
+        },
+    };
+    let Response::Search(response) = core::execute(request.clone()).await.unwrap() else {
+        panic!("search response")
+    };
+    assert!(matches!(response.realized_mode, SearchMode::MergedLexical));
+    assert!(response.shared && response.shared_error.is_none());
+    let crate::search_results::Results::Messages(hits) = response.results else {
+        panic!("messages")
+    };
+    assert_eq!(hits.len(), 1);
+    for malformed in 1..5 {
+        mode.store(malformed, Ordering::SeqCst);
+        let Response::Search(response) = core::execute(request.clone()).await.unwrap() else {
+            panic!("search response")
+        };
+        assert!(matches!(response.realized_mode, SearchMode::LocalLexical));
+        assert!(!response.shared && response.shared_error.is_some());
+        let crate::search_results::Results::Messages(hits) = response.results else {
+            panic!("messages")
+        };
+        assert!(hits.is_empty());
+    }
+    let mut shared = request;
+    let Operation::Search { shared: only, .. } = &mut shared.operation else {
+        panic!("search")
+    };
+    *only = true;
+    mode.store(1, Ordering::SeqCst);
+    assert!(
+        core::execute(shared.clone()).await.is_err(),
+        "shared-only cannot fall back"
+    );
+    mode.store(0, Ordering::SeqCst);
+    let Response::Search(response) = core::execute(shared).await.unwrap() else {
+        panic!("search response")
+    };
+    assert!(matches!(response.realized_mode, SearchMode::Lexical));
+    assert!(response.shared);
+    server.abort();
+    assert_eq!(std::fs::read(database).unwrap(), before);
+    assert!(!root.path().join("missing-models").exists());
+}

@@ -26,7 +26,11 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
     writer.commit_writer().unwrap();
     drop(writer);
     let config = directory.path().join("config.toml");
-    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    std::fs::write(
+        &config,
+        "version=1\nproviders={}\n[gold.query]\nintent='exact-mention'\n",
+    )
+    .unwrap();
     let server = Mash {
         paths: Arc::new(Paths {
             config: Some(config),
@@ -40,7 +44,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
         std::time::Duration::from_secs(5),
         server.search(Parameters(Search {
             query: "for".into(),
-            intent: Some(crate::gold::exact::Intent::ExactMention),
+            intent: None,
             limit: Some(1),
             unit: Some(crate::search_results::SearchUnit::Messages),
             filters: crate::search_filter::Selection::default(),

@@ -148,6 +148,7 @@ async fn publish(api: &Api, token: &str, revision: i64, second: bool) {
 
 fn query(unit: crate::search_results::SearchUnit) -> protocol::Search {
     protocol::Search {
+        intent: crate::gold::exact::Intent::RelatedDiscussion,
         unit,
         query: "restartneedle".into(),
         generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
@@ -242,6 +243,12 @@ async fn verify_gold(api: &Api) {
         (0.70..0.72).contains(&score),
         "rebuilt vector must survive restart: {score}"
     );
+    input.intent = crate::gold::exact::Intent::ExactMention;
+    input.generation.clear();
+    input.vector.clear();
+    let exact: protocol::Candidates = api.post_json("search", FIRST, &input).await;
+    assert_eq!(exact.lexical.len(), 1);
+    assert!(exact.semantic.is_empty() && exact.documents.is_empty());
 }
 
 async fn verify(api: &Api, revision: i64) -> String {
@@ -306,6 +313,13 @@ async fn verify(api: &Api, revision: i64) -> String {
     assert_eq!(freshness.nodes[1].revision, 1);
     for node in &freshness.nodes {
         assert!(node.gold_current);
+        assert!(node.lexical_current);
+        assert!(
+            node.lexical_manifest
+                .as_ref()
+                .unwrap()
+                .matches(node.silver_revision.as_ref())
+        );
         let manifest = node.gold_manifest.as_ref().unwrap();
         assert_eq!(manifest.build, crate::gold::config::Build::default());
         assert_eq!(Some(&manifest.silver), node.silver_revision.as_ref());

@@ -8,6 +8,7 @@ mod context;
 mod correlation;
 mod cursor;
 mod enrichment;
+mod exact;
 mod gold;
 mod native;
 mod relevance;
@@ -90,6 +91,7 @@ async fn provider_contract(service: Service) {
     for &provider in Provider::ALL {
         for direct in [true, false] {
             let input = Search {
+                intent: crate::gold::exact::Intent::RelatedDiscussion,
                 unit: crate::search_results::SearchUnit::Messages,
                 query: "providerneedle".into(),
                 generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),

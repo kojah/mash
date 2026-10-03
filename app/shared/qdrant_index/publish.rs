@@ -27,6 +27,11 @@ fn outcome(value: PublicationOutcome) {
     tracing::Span::current().record("outcome", tracing::field::debug(value));
 }
 
+fn publication_timestamp() -> String {
+    chrono::DateTime::from(std::time::SystemTime::now())
+        .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+}
+
 fn staging_version() -> Result<String, AppError> {
     let mut random = [0u8; 32];
     getrandom::fill(&mut random)
@@ -343,9 +348,11 @@ impl Store {
         let previous = plan.loaded.head.as_ref();
         let gold_manifest =
             gold_manifest::publication(checked, previous, identity, &silver_revision);
-        let now = chrono::DateTime::from(std::time::SystemTime::now())
-            .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+        let lexical_manifest =
+            crate::shared::lexical_manifest::Manifest::new(silver_revision.clone());
+        let now = publication_timestamp();
         let head = Head {
+            lexical_manifest: Some(lexical_manifest),
             gold_manifest,
             silver_coverage: previous.map_or_else(Vec::new, |h| h.silver_coverage.clone()),
             silver_revision: Some(silver_revision),

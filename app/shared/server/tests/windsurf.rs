@@ -56,6 +56,7 @@ async fn contract(service: Service) {
     vector[0] = 127.0;
     for (query, expected) in [("cbioportal", 3), ("reasoning", 0)] {
         let search = Search {
+            intent: crate::gold::exact::Intent::RelatedDiscussion,
             unit: crate::search_results::SearchUnit::Messages,
             query: query.into(),
             generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),

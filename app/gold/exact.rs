@@ -70,6 +70,23 @@ fn identifier(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '_' | '-' | '+')
 }
 
+pub(crate) fn order(hits: &mut [crate::storage::SearchHit]) {
+    hits.sort_by(|a, b| {
+        b.created_at
+            .cmp(&a.created_at)
+            .then_with(|| a.node_id.cmp(&b.node_id))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+}
+
+pub(crate) fn rank(
+    mut hits: Vec<crate::storage::SearchHit>,
+    unit: crate::search_results::SearchUnit,
+) -> Vec<crate::storage::SearchHit> {
+    order(&mut hits);
+    crate::semantic::fuse(hits, vec![], unit)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4,8 +4,10 @@
 use serde::{Deserialize, Serialize};
 
 mod client;
+mod exact;
 mod gold_manifest;
 mod gold_rebuild;
+mod lexical_manifest;
 pub(crate) mod protocol;
 mod publication;
 mod qdrant_index;
@@ -21,6 +23,7 @@ mod snapshot_budget;
 mod validation;
 
 pub(crate) use client::{freshness, list_threads, view};
+pub(crate) use exact::search as search_exact;
 pub(crate) use publication::write_event;
 pub(crate) use publication::{forget_routed, publish, publish_routed, routed_status, status};
 pub(crate) use rebuild::{Rebuilt, rebuild_gold};
@@ -66,6 +69,10 @@ pub(crate) struct Freshness {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct NodeFreshness {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lexical_manifest: Option<lexical_manifest::Manifest>,
+    #[serde(default)]
+    lexical_current: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     gold_manifest: Option<gold_manifest::Manifest>,
     #[serde(default)]

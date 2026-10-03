@@ -97,7 +97,7 @@ fn check_recipe(
     Ok(())
 }
 
-fn search_filter(
+pub(super) fn search_filter(
     input: &protocol::Search,
     active: &BTreeMap<&String, &NodeHead>,
 ) -> Result<api::Filter, AppError> {
@@ -137,7 +137,10 @@ fn search_filter(
 }
 
 impl Store {
-    async fn heads(&self, identity: &Identity) -> Result<BTreeMap<String, NodeHead>, AppError> {
+    pub(super) async fn heads(
+        &self,
+        identity: &Identity,
+    ) -> Result<BTreeMap<String, NodeHead>, AppError> {
         let points = self
             .api
             .scroll::<NodeHead>(
@@ -163,7 +166,7 @@ impl Store {
         }
         Ok(heads)
     }
-    async fn stable_heads(
+    pub(super) async fn stable_heads(
         &self,
         identity: &Identity,
         heads: &BTreeMap<String, NodeHead>,
@@ -199,6 +202,12 @@ impl Store {
                 revision.validate()?;
             }
             nodes.push(NodeFreshness {
+                lexical_manifest: h.lexical_manifest.clone(),
+                lexical_current: h.metadata_ready
+                    && h.catalog_ready
+                    && h.lexical_manifest
+                        .as_ref()
+                        .is_some_and(|m| m.matches(h.silver_revision.as_ref())),
                 gold_manifest: h.gold_manifest.clone(),
                 gold_current: h.gold_manifest.as_ref().is_some_and(|m| {
                     m.matches(
@@ -312,6 +321,10 @@ impl Store {
         identity: &Identity,
         input: protocol::Search,
     ) -> Result<protocol::Candidates, AppError> {
+        if input.intent == crate::gold::exact::Intent::ExactMention {
+            return tokio::time::timeout(std::time::Duration::from_millis(1500), self.search_exact(identity, input))
+                .await.map_err(|_| AppError::usage("exact query exceeded the shared search budget; narrow the query or metadata filters"))?;
+        }
         crate::search_query::validate(&input.query)?;
         if !crate::search_query::has_terms(&input.query)
             || input.query.len() > 16384

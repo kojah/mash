@@ -156,9 +156,9 @@ enum Payload {
     Fields(&'static [&'static str]),
 }
 #[derive(Deserialize)]
-struct ScrollResult<P> {
-    points: Vec<Record<P>>,
-    next_page_offset: Option<String>,
+pub(super) struct ScrollResult<P> {
+    pub points: Vec<Record<P>>,
+    pub next_page_offset: Option<String>,
 }
 #[derive(Serialize)]
 struct Delete {
@@ -589,6 +589,35 @@ impl Client {
     ) -> Result<Vec<Record<P>>, AppError> {
         self.scroll_selected(name, filter, Payload::Fields(fields))
             .await
+    }
+    pub(super) async fn scroll_page<P: DeserializeOwned>(
+        &self,
+        name: &str,
+        filter: Filter,
+        offset: Option<String>,
+        fields: &'static [&'static str],
+        limit: usize,
+    ) -> Result<ScrollResult<P>, AppError> {
+        let reply: ScrollResult<P> = self
+            .call(
+                Method::POST,
+                &format!("collections/{name}/points/scroll?consistency=all"),
+                Some(&Scroll {
+                    filter,
+                    limit,
+                    with_payload: Payload::Fields(fields),
+                    with_vector: false,
+                    offset: offset.clone(),
+                }),
+            )
+            .await?;
+        if reply.points.len() > limit
+            || (reply.next_page_offset.is_some()
+                && (reply.next_page_offset == offset || reply.points.is_empty()))
+        {
+            return Err(failure());
+        }
+        Ok(reply)
     }
     async fn scroll_selected<P: DeserializeOwned>(
         &self,

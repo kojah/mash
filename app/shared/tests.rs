@@ -111,6 +111,7 @@ async fn interactive_request_timeout_does_not_inherit_the_upload_budget() {
     });
     let started = std::time::Instant::now();
     let query = protocol::Search {
+        intent: crate::gold::exact::Intent::RelatedDiscussion,
         unit: SearchUnit::Threads,
         query: "cache".into(),
         generation: "test".into(),

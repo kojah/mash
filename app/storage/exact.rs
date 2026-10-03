@@ -30,11 +30,12 @@ impl Storage {
         self.connection
             .create_scalar_function(
                 "mash_literal",
-                1,
+                2,
                 FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
                 move |ctx| {
-                    let content = ctx.get_raw(0).as_str()?;
-                    Ok(matcher.matches(content))
+                    let role = ctx.get::<crate::role::Role>(0)?;
+                    let content = ctx.get_raw(1).as_str()?;
+                    Ok(matcher.matches(&crate::silver::dialogue::visible(&role, content)))
                 },
             )
             .map_err(AppError::database)?;
@@ -45,14 +46,14 @@ impl Storage {
         let mut statement = self
             .connection
             .prepare(&format!(
-                "{projection}, bm25(message_fts) AS lexical_score
+                "{projection}, 0.0 AS lexical_score
              FROM message_fts
              JOIN messages m ON m.id=message_fts.message_id
              JOIN conversations c ON c.id=m.conversation_id
              LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
              WHERE message_fts MATCH ?1 AND ({predicate})
-               AND mash_literal(COALESCE(m.search_projection,m.content))
-             ORDER BY lexical_score,m.id LIMIT ?2"
+               AND mash_literal(m.role,COALESCE(m.search_projection,m.content))
+             ORDER BY m.created_at DESC,m.id LIMIT ?2"
             ))
             .map_err(AppError::database)?;
         let rows = statement
