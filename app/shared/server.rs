@@ -137,6 +137,7 @@ fn router(app: App) -> Router {
         .route("/v1/view", post(view))
         .route("/v1/forget", post(forget))
         .route("/v1/index", post(index))
+        .route("/v1/gold", post(rebuild_gold))
         .method_not_allowed_fallback(|| async {
             ApiError(
                 StatusCode::METHOD_NOT_ALLOWED,
@@ -248,6 +249,30 @@ pub(crate) async fn run(path: &Path) -> Result<(), AppError> {
         })
         .await
         .map_err(|_| AppError::internal("HTTP server failed"))
+}
+
+async fn rebuild_gold(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+    request: Request,
+) -> Result<Json<protocol::Indexed>, ApiError> {
+    let permit = admission::reserve(&app.uploads)?;
+    if request
+        .headers()
+        .get("content-type")
+        .and_then(|h| h.to_str().ok())
+        != Some("application/x-ndjson")
+    {
+        return Err(AppError::usage("gold uploads require application/x-ndjson").into());
+    }
+    let file = spool(request.into_body(), app.store.max_node_bytes()).await?;
+    Ok(Json(
+        admission::run(
+            permit,
+            async move { app.store.rebuild_gold(&id, file).await },
+        )
+        .await?,
+    ))
 }
 
 #[cfg(test)]

@@ -196,6 +196,53 @@ async fn verify_search(api: &Api) {
     assert!(result.semantic.iter().all(|hit| hit.id != "retired"));
 }
 
+async fn rebuild_gold(api: &Api) {
+    use crate::shared::gold_rebuild::{Embedding, Event as Gold};
+    let before: protocol::NodeState = api.get("state", FIRST).await;
+    let records = ["anchor", "claude"]
+        .into_iter()
+        .map(|message_id| {
+            let mut vector = vector();
+            vector[1] = 127.0;
+            Embedding {
+                message_id: message_id.into(),
+                vector,
+            }
+        })
+        .collect();
+    let events = [
+        Gold::Start {
+            publication_revision: before.revision,
+            silver: before.silver_revision.clone().unwrap(),
+            generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
+        },
+        Gold::Embeddings { records },
+        Gold::Finish,
+    ];
+    api.upload_stream("gold", FIRST, &events)
+        .await
+        .error_for_status()
+        .unwrap();
+    let after: protocol::NodeState = api.get("state", FIRST).await;
+    assert_eq!(after, before);
+    verify_gold(api).await;
+}
+
+async fn verify_gold(api: &Api) {
+    let mut input = query(crate::search_results::SearchUnit::Messages);
+    input.filter = Some(Filter::All(vec![
+        Filter::Node(vec!["first".into()]),
+        Filter::Provider(vec![Provider::Codex]),
+    ]));
+    let result: protocol::Candidates = api.post_json("search", FIRST, &input).await;
+    assert_eq!(result.semantic.len(), 1);
+    let score = result.semantic[0].semantic_score.unwrap();
+    assert!(
+        (0.70..0.72).contains(&score),
+        "rebuilt vector must survive restart: {score}"
+    );
+}
+
 async fn verify(api: &Api, revision: i64) -> String {
     let state: protocol::NodeState = api.get("state", FIRST).await;
     assert_eq!(state.source_silver, Some(source_certificate(revision)));
@@ -286,21 +333,25 @@ async fn shared_backend_persisted_restart_contract() {
     publish(&api, FIRST, 1, false).await;
     publish(&api, SECOND, 1, true).await;
     publish(&api, FIRST, 2, false).await;
+    rebuild_gold(&api).await;
     let before = verify(&api, 2).await;
     drop(api);
     database.restart().await;
     let api = Api::start(&database, root.path());
     assert_eq!(verify(&api, 2).await, before, "persisted freshness Qdrant");
+    verify_gold(&api).await;
     let stale = api.upload(FIRST, &snapshot(1, false)).await;
     assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
     assert_eq!(verify(&api, 2).await, before, "stale update changed Qdrant");
     publish(&api, FIRST, 3, false).await;
+    rebuild_gold(&api).await;
     let before_crash = verify(&api, 3).await;
     // Keep the API alive during the database crash, then replace it too.
     // SIGKILL bypasses database shutdown flushing but preserves host storage.
     database.crash_and_restart().await;
     drop(api);
     let api = Api::start(&database, root.path());
+    verify_gold(&api).await;
     assert_eq!(
         verify(&api, 3).await,
         before_crash,

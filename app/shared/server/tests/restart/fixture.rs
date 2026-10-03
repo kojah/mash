@@ -227,13 +227,21 @@ impl Api {
         token: &str,
         events: &[crate::shared::protocol::Event],
     ) -> reqwest::Response {
+        self.upload_stream("index", token, events).await
+    }
+    pub(super) async fn upload_stream<T: Serialize>(
+        &self,
+        route: &str,
+        token: &str,
+        events: &[T],
+    ) -> reqwest::Response {
         let mut body = Vec::new();
         for event in events {
             serde_json::to_writer(&mut body, event).unwrap();
             body.push(b'\n');
         }
         self.client
-            .post(format!("{}/v1/index", self.url))
+            .post(format!("{}/v1/{route}", self.url))
             .bearer_auth(token)
             .header("content-type", "application/x-ndjson")
             .body(body)

@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 mod client;
+mod gold_rebuild;
 pub(crate) mod protocol;
 mod publication;
 mod qdrant_index;

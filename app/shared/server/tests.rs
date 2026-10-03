@@ -8,6 +8,7 @@ mod context;
 mod correlation;
 mod cursor;
 mod enrichment;
+mod gold;
 mod native;
 mod relevance;
 mod restart;

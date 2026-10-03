@@ -27,6 +27,38 @@ fn outcome(value: PublicationOutcome) {
 }
 
 impl Store {
+    pub(in crate::shared) async fn rebuild_gold(
+        &self,
+        identity: &Identity,
+        file: tempfile::NamedTempFile,
+    ) -> Result<Indexed, AppError> {
+        let incoming = file.as_file().metadata().map_err(AppError::io)?.len();
+        if incoming > u64::try_from(self.max_node_bytes).unwrap_or(u64::MAX) {
+            return Err(AppError::usage(
+                "gold upload exceeds the configured snapshot limit",
+            ));
+        }
+        let pending = self.pending_snapshot(identity).await?;
+        let reservation = self
+            .snapshot_budget
+            .reserve(pending.encoded_bytes(), incoming)?;
+        let generation = identity.generation.clone();
+        let dimensions = identity.dimensions;
+        let (plan, _reservation) = crate::blocking(move || {
+            super::super::gold_rebuild::plan(&file, pending.decode()?, &generation, dimensions)
+                .map(|plan| (plan, reservation))
+        })
+        .await?;
+        let instance = plan
+            .loaded
+            .head
+            .as_ref()
+            .ok_or_else(failure)?
+            .instance
+            .clone();
+        self.commit(identity, plan, instance, false).await
+    }
+
     #[tracing::instrument(name = "backend_index", skip_all, fields(backend = "qdrant"))]
     pub(in crate::shared) async fn index(
         &self,

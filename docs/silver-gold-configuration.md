@@ -241,6 +241,48 @@ No shared gold build is authorized by this milestone alone.
 
 ## Explicit local gold rebuilding
 
+### Shared gold-only publication boundary
+
+`POST /v1/gold` accepts authenticated `application/x-ndjson` for the token's
+own node. It operates only on stored Qdrant silver, without provider discovery,
+source files, parsing or reinterpretation. The service performs no inference;
+the caller supplies embeddings. The strict stream contains:
+
+1. `type = "start"`, `publication_revision`, `silver` (the server-owned
+   revision/fingerprint/schema), and `generation` (the configured model space).
+2. `type = "embeddings"`, `records` containing only `message_id` and `vector`,
+   in batches of at most 128.
+3. Exactly one final `type = "finish"`.
+
+Both input identities must match current stored state. A complete current-rule
+source certificate, or complete retained-provider coverage for every stored
+thread's provider, is required. Empty uncertified or legacy histories cannot
+become certified through this operation. An empty routed scope needs an actual
+complete provider report. The model and dimensions must match the configured
+shared embedding space. Every visible stored message needs exactly one valid
+vector. Unknown, duplicate or context-only identities, malformed vectors,
+missing coverage, canonical record events and unfinished streams fail before
+publication. Input is spooled with the same byte/line limits and bounded mutation
+admission as ingestion.
+
+Replacement reuses immutable Qdrant staging and conditional head publication.
+Canonical content, visible dialogue, context, metadata, tombstones, checkpoints,
+scan evidence, source certificate and the silver identity remain unchanged.
+Source synchronization timestamps and the **source-upload revision** also remain
+unchanged. Incrementing that counter for a gold build would collide with the next
+local SQLite snapshot revision. Qdrant's separate immutable version and head CAS
+serialize gold updates and source uploads. Concurrent canonical changes make the
+old rebuild fail or leave it hidden; a failed build preserves the active index.
+There is one active node head; obsolete physical staging cleanup does not make a
+second maintained projection.
+
+This establishes the safe storage mutation needed by shared source-free builds.
+Stored-silver download, node-side rebuild commands/progress, independently
+configurable shared recipes, build manifests and group-wide configuration
+activation remain in the parent implementation scope. The existing client search
+and ingestion behavior is unchanged; this endpoint does not claim that the
+shared configuration acceptance criteria are complete.
+
 `mash index --rebuild-local-gold` builds local FTS and embeddings from retained
 silver. Add `--full` to force replacement of local derived state. MCP exposes the
 same operation as `index` with `rebuild_local_gold = true`, including progress
