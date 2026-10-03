@@ -1081,13 +1081,22 @@ algorithm = "exact"
 # To opt into approximate retrieval instead:
 # algorithm = "hnsw"
 # ef_runtime = 200
+
+# Optional default for a configured group:
+# [gold.query.groups.personal]
+# algorithm = "hnsw"
+# ef_runtime = 80
 ```
 
 The server's `gold.query.vector_search` controls retrieval from the existing
-dense index. Changing it requires restarting the HTTP service, but does not
-rebuild vectors, change gold build identity, or modify silver. The previous
+dense index. Defaults are persisted per group. Use `mash serve --server-config
+server.toml --activate-query` to intentionally change existing defaults; conflicting
+startup settings otherwise fail. Running API processes read the selected policy
+on subsequent hybrid searches. This does not rebuild vectors, change gold build
+identity, or modify silver. The previous
 top-level `qdrant_vector_index` table is rejected; move it to the table above.
-This server policy applies to all groups served by the process. Node-side
+Groups inherit the server default unless named in `gold.query.groups.GROUP`.
+Status exposes the selected policy in `group_gold.vector_search`. Node-side
 `gold.query` still controls intent, fusion and result shape independently.
 
 ```bash

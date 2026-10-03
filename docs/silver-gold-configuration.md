@@ -573,19 +573,49 @@ The HTTP server separately accepts a strict shared-candidate query policy:
 [gold.query.vector_search]
 algorithm = "exact" # Default; or "hnsw" for approximate dense candidates.
 # ef_runtime = 200 # HNSW only, integer 1..4096; default 200.
+
+# Optional complete default for one configured group:
+[gold.query.groups.personal]
+algorithm = "hnsw"
+ef_runtime = 80
 ```
 
 This selects Qdrant query parameters against the existing physical collection;
 it is not an index-construction recipe. It is excluded from build manifests,
-model generations and group build activation. Changing it requires a server
-restart and neither recomputes embeddings nor changes canonical silver. Exact
+model generations and group build activation. Each group's selected policy is
+persisted alongside its catalogue. Start with `serve --activate-query` to
+intentionally replace an existing query default; a conflicting startup without
+that flag fails. New groups select the configured policy on first bootstrap.
+Changing query defaults neither recomputes embeddings nor changes canonical silver. Exact
 lexical retrieval remains unchanged. The old top-level `qdrant_vector_index`
 table is rejected rather than silently converted. Connection credentials,
 snapshot budgets and `qdrant_memory` remain deployment settings. This server
-query policy applies to all served groups; independent per-group or per-request
-vector policies and configurable physical index construction remain follow-ups.
+query default applies to groups without an explicit `gold.query.groups.GROUP`
+override. Unknown groups and invalid policies are rejected before credentials
+or database access. All API handles read the persisted policy for each hybrid
+search, so a running handle configured with an older query default observes the
+selected policy without restarting. Status exposes `group_gold.vector_search`.
+Older catalogue records without this field have the explicit exact default;
+select HNSW with intentional query activation if needed.
+
+Query activation preserves the gold version, build/model identity and immutable
+node references. It changes only policy and the catalogue CAS publication token,
+so delayed writers cannot restore an old policy. Later node publications and
+gold build activations preserve that policy. Selection is atomic per group;
+startup across multiple groups is not one transaction. The additional authority
+read and concurrent-request timing remain part of the shared cost gate.
+Per-request vector overrides and configurable physical index construction remain
+follow-ups under `mash-q3e.4.2.2` and `.3.7`.
 Node query defaults (intent, result unit/limit and fusion) retain their separate
 schema; they are not accepted as server query fields.
+
+The per-group persistence milestone passed 673 standard tests, 22 disposable
+Qdrant backend tests and two HTTP gold-rebuild tests, plus strict all-target
+Clippy, formatting and doctests. Tests compare complete retained snapshot bytes
+before/after query activation, preserve node references and build identity,
+read through independently opened handles, isolate groups, reject invalid
+policies and fence a delayed catalogue write. Per-request vector controls remain
+tracked in `mash-q3e.4.2.2.2`; neither the parent nor the shared cost gate is closed.
 
 Validation before request overrides on 2026-10-03 passed 642 standard tests and 55 real-model/Qdrant
 contracts. Weighted lexical/semantic preferences changed candidate ordering on

@@ -48,6 +48,8 @@ pub(super) struct Gold {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Query {
     pub(super) vector_search: qdrant_index::VectorIndex,
+    /// Complete query defaults for named groups; other groups inherit `vector_search`.
+    pub(super) groups: HashMap<String, qdrant_index::VectorIndex>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -93,6 +95,15 @@ pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
     config.gold.query.vector_search.validate()?;
+    for (group, policy) in &config.gold.query.groups {
+        crate::config::validate_identifier(group, "group_id")?;
+        policy.validate()?;
+        if !config.nodes.iter().any(|node| &node.group_id == group) {
+            return Err(AppError::configuration(
+                "gold query defaults name an unconfigured group",
+            ));
+        }
+    }
     crate::shared::snapshot_budget::Budget::validate(config.max_mutation_snapshot_mib)?;
     if !(1..=4096).contains(&config.qdrant_max_node_mib) {
         return Err(AppError::configuration(
@@ -213,6 +224,41 @@ mod tests {
         assert_eq!(
             omitted_ef.query.vector_search,
             qdrant_index::VectorIndex::Hnsw { ef_runtime: 200 }
+        );
+    }
+
+    #[test]
+    fn group_query_defaults_are_typed_and_reject_unconfigured_groups_before_credentials() {
+        let text = "version=1\nnodes=[{group_id='team',node_id='node',token_env='MASH_QUERY_TEST_TOKEN'}]\n[gold.query.groups.team]\nalgorithm='hnsw'\nef_runtime=80\n";
+        let config: Configuration = toml::from_str(text).unwrap();
+        assert_eq!(
+            config.gold.query.groups["team"],
+            qdrant_index::VectorIndex::Hnsw { ef_runtime: 80 }
+        );
+        assert_eq!(
+            config.gold.query.vector_search,
+            qdrant_index::VectorIndex::default()
+        );
+        assert_eq!(config.gold.build, crate::gold::config::Build::default());
+        let unknown: Configuration =
+            toml::from_str(&text.replace("groups.team", "groups.unknown")).unwrap();
+        assert!(
+            identities(&unknown)
+                .err()
+                .unwrap()
+                .error
+                .message
+                .contains("unconfigured group")
+        );
+        let invalid: Configuration =
+            toml::from_str(&text.replace("ef_runtime=80", "ef_runtime=0")).unwrap();
+        assert!(
+            identities(&invalid)
+                .err()
+                .unwrap()
+                .error
+                .message
+                .contains("ef_runtime")
         );
     }
 

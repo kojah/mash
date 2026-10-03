@@ -354,7 +354,7 @@ impl Store {
         for word in tokens(&input.query) {
             lexical_filter.must.push(api::matches("tokens", vec![word]));
         }
-        let (exact, ef) = match self.vector_index {
+        let (exact, ef) = match self.active_configuration(identity).await?.vector_search {
             VectorIndex::Exact {} => (true, 200),
             VectorIndex::Hnsw { ef_runtime } => (false, ef_runtime),
         };

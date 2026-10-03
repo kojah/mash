@@ -150,6 +150,9 @@ enum Command {
         /// Explicitly replace persisted shared group gold settings from this TOML.
         #[arg(long)]
         activate_gold: bool,
+        /// Explicitly replace persisted shared group query defaults without indexing.
+        #[arg(long)]
+        activate_query: bool,
     },
 }
 
@@ -360,9 +363,14 @@ where
     if let Command::Serve {
         server_config,
         activate_gold,
+        activate_query,
     } = cli.command
     {
-        runtime.block_on(crate::shared::server::run(&server_config, activate_gold))?;
+        runtime.block_on(crate::shared::server::run(
+            &server_config,
+            activate_gold,
+            activate_query,
+        ))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp { watch, debounce_ms } = cli.command {
         let paths = Paths {

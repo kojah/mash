@@ -1,6 +1,202 @@
 //! Durable authority across independent store handles and deliberate switches.
 use super::*;
 
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_group_query_activation_preserves_gold_and_silver_across_processes() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let other = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(1, "retained"))
+        .await
+        .unwrap();
+    let before = fixture
+        .store
+        .active_configuration(&fixture.identity)
+        .await
+        .unwrap();
+    let data =
+        serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap();
+    let query = VectorIndex::Hnsw { ef_runtime: 80 };
+    let alternate = fixture.store.clone().with_query(query);
+    let error = alternate
+        .select_query(&fixture.identity, false)
+        .await
+        .unwrap_err();
+    assert!(matches!(error.error.kind, crate::ErrorKind::Configuration));
+    alternate
+        .select_query(&fixture.identity, true)
+        .await
+        .unwrap();
+    // Even an API handle configured for exact reads the new persisted policy.
+    let after = fixture
+        .store
+        .active_configuration(&fixture.identity)
+        .await
+        .unwrap();
+    assert_eq!(after.vector_search, query);
+    assert_eq!(after.version, before.version);
+    assert_eq!(after.build, before.build);
+    assert_eq!(after.generation, before.generation);
+    assert_eq!(
+        serde_json::to_vec(&after.nodes).unwrap(),
+        serde_json::to_vec(&before.nodes).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap(),
+        data
+    );
+    assert_eq!(
+        fixture
+            .store
+            .gold_configuration(&fixture.identity)
+            .await
+            .unwrap()
+            .vector_search,
+        query
+    );
+    assert_eq!(fixture.search().await.semantic.len(), 2);
+    let reopened = Store::connect(
+        &fixture.url,
+        None,
+        std::slice::from_ref(&fixture.identity.group_id),
+        4,
+        64 * 1024 * 1024,
+        VectorIndex::default(),
+        MemoryTier::Cached,
+    )
+    .await
+    .unwrap();
+    reopened
+        .select_gold(&fixture.identity, false)
+        .await
+        .unwrap();
+    assert!(
+        reopened
+            .select_query(&fixture.identity, false)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        reopened
+            .search(&fixture.identity, fixture.query())
+            .await
+            .unwrap()
+            .semantic
+            .len(),
+        2
+    );
+    assert_eq!(
+        other
+            .store
+            .active_configuration(&other.identity)
+            .await
+            .unwrap()
+            .vector_search,
+        VectorIndex::default()
+    );
+
+    fixture.cleanup().await;
+    other.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_query_policy_survives_delayed_writers_publication_and_build_activation() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(1, "retained"))
+        .await
+        .unwrap();
+    let before = fixture
+        .store
+        .active_configuration(&fixture.identity)
+        .await
+        .unwrap();
+    let query = VectorIndex::Hnsw { ef_runtime: 80 };
+    fixture
+        .store
+        .clone()
+        .with_query(query)
+        .select_query(&fixture.identity, true)
+        .await
+        .unwrap();
+    let after = fixture
+        .store
+        .active_configuration(&fixture.identity)
+        .await
+        .unwrap();
+    // A delayed catalogue write must not restore an old query policy.
+    let mut delayed = before.clone();
+    delayed.nodes.as_mut().unwrap().clear();
+    delayed.publication = Some(super::super::publish::staging_version().unwrap());
+    fixture
+        .store
+        .replace_configuration(&fixture.identity, delayed, Some(&before))
+        .await
+        .unwrap();
+    let observed = fixture
+        .store
+        .active_configuration(&fixture.identity)
+        .await
+        .unwrap();
+    assert_eq!(observed.publication, after.publication);
+    assert_eq!(observed.vector_search, query);
+
+    // Later publications and build activations preserve independent query defaults.
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(2, "updated"))
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture
+            .store
+            .active_configuration(&fixture.identity)
+            .await
+            .unwrap()
+            .vector_search,
+        query
+    );
+    let title = title_store(&fixture);
+    title.select_gold(&fixture.identity, true).await.unwrap();
+    assert_eq!(
+        title
+            .active_configuration(&fixture.identity)
+            .await
+            .unwrap()
+            .vector_search,
+        query
+    );
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_invalid_query_activation_leaves_authority_unchanged() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let before = fixture
+        .store
+        .active_configuration(&fixture.identity)
+        .await
+        .unwrap();
+    let invalid = fixture
+        .store
+        .clone()
+        .with_query(VectorIndex::Hnsw { ef_runtime: 0 });
+    assert!(invalid.select_query(&fixture.identity, true).await.is_err());
+    let after = fixture
+        .store
+        .active_configuration(&fixture.identity)
+        .await
+        .unwrap();
+    assert_eq!(after.publication, before.publication);
+    assert_eq!(after.vector_search, before.vector_search);
+    fixture.cleanup().await;
+}
+
 fn title_store(fixture: &Fixture) -> Store {
     fixture
         .store

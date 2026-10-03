@@ -23,7 +23,7 @@ pub(super) enum MemoryTier {
     Cold,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "algorithm", rename_all = "lowercase", deny_unknown_fields)]
 pub(super) enum VectorIndex {
     Exact {},

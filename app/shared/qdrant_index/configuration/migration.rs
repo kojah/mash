@@ -28,6 +28,7 @@ impl Store {
                 build: self.build.clone(),
                 generation: identity.generation.clone(),
                 dimensions: identity.dimensions,
+                vector_search: previous.vector_search,
             };
             let result = self
                 .replace_configuration(identity, sealed, Some(&previous))

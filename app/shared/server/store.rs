@@ -9,6 +9,7 @@ pub(super) async fn initialize(
     config: &Configuration,
     identities: &HashMap<blake3::Hash, Identity>,
     activate_gold: bool,
+    activate_query: bool,
 ) -> Result<Store, AppError> {
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
     let groups = groups.into_iter().collect::<Vec<_>>();
@@ -49,7 +50,17 @@ pub(super) async fn initialize(
     let mut selected = HashSet::new();
     for identity in identities.values() {
         if selected.insert(&identity.group_id) {
-            store.select_gold(identity, activate_gold).await?;
+            let group_store = store.clone().with_query(
+                config
+                    .gold
+                    .query
+                    .groups
+                    .get(&identity.group_id)
+                    .copied()
+                    .unwrap_or(config.gold.query.vector_search),
+            );
+            group_store.select_gold(identity, activate_gold).await?;
+            group_store.select_query(identity, activate_query).await?;
         }
     }
     Ok(store)

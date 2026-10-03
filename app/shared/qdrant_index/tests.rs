@@ -587,6 +587,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     build: crate::gold::config::Build::default(),
                     generation: "test".into(),
                     dimensions: 4,
+                    vector_search: VectorIndex::default(),
                     publication: Some(format!("{revision:064x}")),
                     phase: Some(super::configuration::Phase::Ready),
                     nodes: Some(std::collections::BTreeMap::from([(

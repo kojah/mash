@@ -82,6 +82,8 @@ struct GroupGold {
     build: crate::gold::config::Build,
     generation: String,
     dimensions: usize,
+    #[serde(default)]
+    vector_search: qdrant_index::VectorIndex,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

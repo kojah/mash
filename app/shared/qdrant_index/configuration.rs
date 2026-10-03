@@ -25,6 +25,8 @@ pub(super) struct Configuration {
     pub(super) build: Build,
     pub(super) generation: String,
     pub(super) dimensions: usize,
+    #[serde(default)]
+    pub(super) vector_search: super::VectorIndex,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) publication: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -41,6 +43,7 @@ impl Configuration {
     }
 
     fn validate(&self) -> Result<(), AppError> {
+        self.vector_search.validate().map_err(|_| failure())?;
         if self.kind != PointKind::Configuration
             || !valid_version(&self.version)
             || self.generation.is_empty()
@@ -76,6 +79,44 @@ fn valid_version(version: &str) -> bool {
 }
 
 impl Store {
+    pub(in crate::shared) fn with_query(mut self, query: super::VectorIndex) -> Self {
+        self.vector_index = query;
+        self
+    }
+
+    /// Change only the persisted retrieval default. Keep the build identity and
+    /// immutable node references; concurrent publishers participate in the same CAS.
+    pub(in crate::shared) async fn select_query(
+        &self,
+        identity: &Identity,
+        activate: bool,
+    ) -> Result<(), AppError> {
+        self.vector_index.validate()?;
+        let previous = self.active_configuration(identity).await?;
+        if previous.vector_search == self.vector_index {
+            return Ok(());
+        }
+        if !activate {
+            return Err(AppError::configuration(
+                "server query defaults conflict with the persisted group policy; use --activate-query for an intentional change",
+            ));
+        }
+        let mut proposed = previous.clone();
+        proposed.vector_search = self.vector_index;
+        proposed.publication = Some(super::publish::staging_version()?);
+        let result = self
+            .replace_configuration(identity, proposed, Some(&previous))
+            .await;
+        let observed = self.active_configuration(identity).await?;
+        if observed.version == previous.version && observed.vector_search == self.vector_index {
+            return Ok(());
+        }
+        result?;
+        Err(conflict(
+            "concurrent shared query activation; retry startup",
+        ))
+    }
+
     pub(super) async fn group_configuration(
         &self,
         identity: &Identity,
@@ -133,6 +174,9 @@ impl Store {
             build: self.build.clone(),
             generation: identity.generation.clone(),
             dimensions: identity.dimensions,
+            vector_search: previous
+                .as_ref()
+                .map_or(self.vector_index, |p| p.vector_search),
             publication: Some(super::publish::staging_version()?),
             phase: Some(Phase::Ready),
             nodes: Some(
@@ -204,6 +248,7 @@ impl Store {
             build: current.build,
             generation: current.generation,
             dimensions: current.dimensions,
+            vector_search: current.vector_search,
         })
     }
 
