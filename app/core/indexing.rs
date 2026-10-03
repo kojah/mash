@@ -17,6 +17,11 @@ use std::time::Instant;
 
 use crate::{gold::local as gold, silver::local as silver};
 
+enum LocalInput {
+    ProviderFiles(history::IndexOptions),
+    StoredSilver,
+}
+
 #[tracing::instrument(name = "index", skip_all)]
 pub(super) async fn run(
     configuration: &ResolvedConfig,
@@ -24,6 +29,9 @@ pub(super) async fn run(
     models: &Path,
     request: IndexRequest,
 ) -> Result<IndexResponse, AppError> {
+    if request.rebuild_local_gold {
+        return rebuild_local(configuration, database, models, request).await;
+    }
     let full = request.full;
     let options = resolve_index_options(
         configuration,
@@ -43,7 +51,13 @@ pub(super) async fn run(
     let all_sources = options.clone();
     let mut result = crate::blocking(move || {
         history::validate_output_path(&db, &all_sources)?;
-        index(&db, &root, embeddings, full, &local_options)
+        index(
+            &db,
+            &root,
+            embeddings,
+            full,
+            LocalInput::ProviderFiles(local_options),
+        )
     })
     .await?;
     if routed_both(configuration) {
@@ -54,6 +68,11 @@ pub(super) async fn run(
         result.shared = Some(shared::publish(database, config).await);
     }
     result.total_milliseconds = elapsed_milliseconds(started);
+    emit_finished(&result);
+    Ok(result)
+}
+
+fn emit_finished(result: &IndexResponse) {
     let phase = if result
         .shared
         .as_ref()
@@ -74,6 +93,34 @@ pub(super) async fn run(
             (!result.needs_retry()).then_some(0),
         )
     });
+}
+
+async fn rebuild_local(
+    configuration: &ResolvedConfig,
+    database: &Path,
+    models: &Path,
+    request: IndexRequest,
+) -> Result<IndexResponse, AppError> {
+    if !request.provider.is_empty() || request.since_days.is_some() || request.all_history {
+        return Err(AppError::usage(
+            "rebuild-local-gold cannot be combined with provider or time selectors",
+        ));
+    }
+    let _progress = crate::progress::Session;
+    let db = database.to_path_buf();
+    let root = models.to_path_buf();
+    let embeddings = configuration.embeddings.clone();
+    let result = crate::blocking(move || {
+        index(
+            &db,
+            &root,
+            embeddings,
+            request.full,
+            LocalInput::StoredSilver,
+        )
+    })
+    .await?;
+    emit_finished(&result);
     Ok(result)
 }
 
@@ -83,13 +130,22 @@ fn index(
     models_dir: &Path,
     embeddings_config: Option<semantic::remote::Configuration>,
     full: bool,
-    options: &history::IndexOptions,
+    input: LocalInput,
 ) -> Result<IndexResponse, AppError> {
     let total_started = Instant::now();
+    let rebuild_local_gold = matches!(input, LocalInput::StoredSilver);
+    if rebuild_local_gold {
+        // Read-only preflight prevents schema migration or empty database
+        // creation from becoming an implicit bronze-to-silver operation.
+        require_certified_silver(&Storage::open_catalog(database_path)?)?;
+    }
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_indexer()?;
     let storage_started = Instant::now();
     let mut storage = Storage::open_writer(database_path)?;
+    if rebuild_local_gold {
+        require_certified_silver(&storage)?;
+    }
     if full || storage.derived_search_is_dirty()? {
         storage.defer_search_updates()?;
     }
@@ -97,9 +153,18 @@ fn index(
         storage.mark_derived_search_dirty()?;
     }
     let storage_setup_milliseconds = elapsed_milliseconds(storage_started);
-    let source = silver::ingest(&mut storage, options)?;
-    let gold = gold::build(&mut storage, &models, &source)?;
-    let summary = source.summary;
+    let (summary, certificate, ingestion_milliseconds) = match input {
+        LocalInput::ProviderFiles(options) => {
+            let source = silver::ingest(&mut storage, &options)?;
+            (source.summary, source.certificate, source.milliseconds)
+        }
+        LocalInput::StoredSilver => (
+            history::IndexSummary::default(),
+            storage.silver_certificate()?,
+            0,
+        ),
+    };
+    let gold = gold::build(&mut storage, &models, &summary)?;
     let counts = gold.counts;
     let embeddings = gold.embeddings;
     storage.commit_writer()?;
@@ -110,7 +175,8 @@ fn index(
     }
     emit_index_phase(crate::progress::Phase::LocalComplete, &summary);
     Ok(IndexResponse {
-        silver: source.certificate,
+        rebuild_local_gold,
+        silver: certificate,
         indexed_conversations: counts.conversations,
         indexed_messages: counts.messages,
         searchable_messages: counts.searchable_messages,
@@ -137,12 +203,21 @@ fn index(
         },
         model_load_milliseconds: gold.model_load_milliseconds,
         storage_setup_milliseconds,
-        ingestion_milliseconds: source.milliseconds,
+        ingestion_milliseconds,
         search_refresh_milliseconds: gold.search_refresh_milliseconds,
         embedding_milliseconds: gold.embedding_milliseconds,
         total_milliseconds: elapsed_milliseconds(total_started),
         shared: None,
     })
+}
+
+fn require_certified_silver(storage: &Storage) -> Result<(), AppError> {
+    if !storage.silver_certificate()?.is_complete() {
+        return Err(AppError::usage(
+            "local gold rebuild requires complete, current silver; run explicit mash index to repair or replay history first",
+        ));
+    }
+    Ok(())
 }
 
 fn elapsed_milliseconds(started: Instant) -> u64 {
@@ -212,6 +287,7 @@ fn resolve_index_options(
 pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, AppError> {
     let configuration = config::load(request.paths.config.as_deref())?;
     let Operation::Index(IndexRequest {
+        rebuild_local_gold,
         provider,
         since_days,
         all_history,
@@ -220,6 +296,9 @@ pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, 
     else {
         return Err(AppError::usage("watch requires an index request"));
     };
+    if *rebuild_local_gold {
+        return Err(AppError::usage("watch cannot rebuild only local gold"));
+    }
     let options = resolve_index_options(&configuration, provider, *since_days, *all_history)?;
     let mut roots = Vec::new();
     for (enabled, filter) in [

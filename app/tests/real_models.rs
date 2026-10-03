@@ -80,6 +80,126 @@ fn real_models_index_and_run_hybrid_search() {
     #[cfg(unix)]
     assert_worker_stage_diagnostics(&config, &database, model_arg);
     assert_gold_query_defaults(&config, &database, model_arg);
+    assert_source_independent_gold_rebuild(&config, &database, &claude, &codex, model_arg);
+}
+
+fn assert_source_independent_gold_rebuild(
+    config: &Path,
+    database: &Path,
+    claude: &Path,
+    codex: &Path,
+    models: &str,
+) {
+    let connection = Connection::open(database).unwrap();
+    let silver_tables = [
+        "conversations",
+        "messages",
+        "tombstones",
+        "claude_sources",
+        "claude_source_messages",
+        "source_checkpoints",
+        "silver_state",
+        "silver_scans",
+        "silver_rejections",
+    ];
+    for table in silver_tables {
+        connection
+            .execute_batch(&format!(
+                "CREATE TEMP TABLE expected_{table} AS SELECT * FROM {table}"
+            ))
+            .unwrap();
+    }
+    std::fs::remove_dir_all(claude).unwrap();
+    std::fs::remove_dir_all(codex).unwrap();
+    let original = std::fs::read_to_string(config).unwrap();
+    std::fs::write(config, format!("version=1\nproviders={{claude-code={{roots=[{:?}]}},codex={{roots=[{:?}]}}}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='node'\napi_url='http://127.0.0.1:9'\ntoken_env='MASH_GOLD_REBUILD_NO_TOKEN'\n",claude.to_str().unwrap(),codex.to_str().unwrap())).unwrap();
+    for full in [false, true] {
+        let mut command = Command::cargo_bin("mash").unwrap();
+        command.args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models,
+            "index",
+            "--rebuild-local-gold",
+        ]);
+        if full {
+            command.arg("--full");
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let indexed: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(indexed["rebuild_local_gold"], true);
+        assert_eq!(indexed["realized_mode"], "hybrid");
+        assert_eq!(indexed["scanned_files"], 0);
+        assert_eq!(indexed["ingestion_milliseconds"], 0);
+        assert_eq!(indexed["model_inferences"], if full { 2 } else { 0 });
+        assert!(indexed["shared"].is_null());
+        for table in silver_tables {
+            let unchanged = connection.query_row(&format!(
+                "SELECT NOT EXISTS(SELECT * FROM {table} EXCEPT SELECT * FROM expected_{table}) AND NOT EXISTS(SELECT * FROM expected_{table} EXCEPT SELECT * FROM {table})"), [], |row| row.get::<_, bool>(0)).unwrap();
+            assert!(unchanged, "gold changed silver table {table}");
+        }
+    }
+    assert_gold_rebuild_recovers_without_sources(config, database, models);
+    for table in silver_tables {
+        let unchanged = connection.query_row(&format!(
+            "SELECT NOT EXISTS(SELECT * FROM {table} EXCEPT SELECT * FROM expected_{table}) AND NOT EXISTS(SELECT * FROM expected_{table} EXCEPT SELECT * FROM {table})"), [], |row| row.get::<_, bool>(0)).unwrap();
+        assert!(unchanged, "recovery changed silver table {table}");
+    }
+    std::fs::write(config, original).unwrap();
+    assert_scoped_message_search(config, database, models);
+}
+
+fn assert_gold_rebuild_recovers_without_sources(config: &Path, database: &Path, models: &str) {
+    let broken = database.with_file_name("broken-models");
+    create_valid_model_marker(&broken);
+    let failed = Command::cargo_bin("mash")
+        .unwrap()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            broken.to_str().unwrap(),
+            "index",
+            "--rebuild-local-gold",
+            "--full",
+        ])
+        .output()
+        .unwrap();
+    assert!(!failed.status.success());
+    assert_eq!(failed.stdout, [] as [u8; 0]);
+    let connection = Connection::open(database).unwrap();
+    let ready: Option<String> = connection
+        .query_row(
+            "SELECT semantic_ready_generation FROM derived_state WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(ready.is_none(), "failed replacement must remain unready");
+    let recovered = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models,
+        "index",
+        "--rebuild-local-gold",
+    ]);
+    assert_eq!(recovered["realized_mode"], "hybrid");
+    assert_eq!(recovered["model_inferences"], 2);
+    assert_eq!(recovered["scanned_files"], 0);
+    assert!(recovered["shared"].is_null());
 }
 
 fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {

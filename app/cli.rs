@@ -48,6 +48,9 @@ enum Command {
     },
     /// Discover and index supported local histories.
     Index {
+        /// Build local retrieval state from certified stored silver, offline.
+        #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history"])]
+        rebuild_local_gold: bool,
         /// Recreate all derived search state.
         #[arg(long, conflicts_with = "watch")]
         full: bool,
@@ -228,12 +231,14 @@ impl Cli {
                 shared,
             },
             Command::Index {
+                rebuild_local_gold,
                 full,
                 provider,
                 since_days,
                 all_history,
                 ..
             } => Operation::Index(IndexRequest {
+                rebuild_local_gold,
                 full,
                 provider,
                 since_days,

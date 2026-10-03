@@ -93,6 +93,34 @@ and completeness certificate and uniform per-field source-versus-inferred
 metadata evidence are still separate work; versioned shared checkpoints alone
 do not prove either has shipped.
 
+## Explicit local gold rebuilding
+
+`mash index --rebuild-local-gold` builds local FTS and embeddings from retained
+silver. Add `--full` to force replacement of local derived state. MCP exposes the
+same operation as `index` with `rebuild_local_gold = true`, including progress
+notifications when the request carries a progress token. The response identifies
+the mode, reports zero provider files scanned and zero ingestion time, and returns
+the retained silver certificate.
+
+This mode requires an existing current-schema database with complete, current
+silver. Missing, migrated-but-unverified, pending or rejected silver cannot
+authorize it. The preflight is read-only and completeness is checked again under
+the writer transaction before derived-state mutations. Use ordinary explicit
+indexing to repair/replay silver first. No models are downloaded automatically.
+
+Rebuilding does not discover providers, read source files, advance source
+checkpoints or change canonical history. It explicitly targets the local index
+and does not upload to the shared service, even when normal indexing is configured
+for both. Provider/time selectors and watch mode conflict with this operation.
+Existing model configuration still selects the embedding implementation; offline
+inference requires the default installed local models rather than an optional
+remote embedding endpoint.
+
+The existing bounded gold builder persists invalidation before embedding work
+and checkpoints partial vectors. Repeating this command resumes/rebuilds derived
+state from silver after failure; it never repairs silver implicitly. Shared gold
+rebuilding and active build-recipe manifests remain subsequent work.
+
 ## Implemented query configuration
 
 Node configuration accepts a single strict typed TOML table:

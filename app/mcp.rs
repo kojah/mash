@@ -67,6 +67,9 @@ struct View {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Index {
+    /// Rebuild only local gold from certified stored silver, without provider reads or shared publication.
+    #[serde(default)]
+    rebuild_local_gold: bool,
     #[serde(default)]
     full: bool,
     #[serde(default)]
@@ -275,7 +278,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
+        description = "Explicitly index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads; incompatible with provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
     async fn index(
         &self,
@@ -284,6 +287,7 @@ impl Mash {
     ) -> CallToolResult {
         self.execute_with_progress(
             Operation::Index(IndexRequest {
+                rebuild_local_gold: request.rebuild_local_gold,
                 full: request.full,
                 provider: request.provider,
                 since_days: request.since_days,

@@ -2,7 +2,6 @@
 use crate::AppError;
 use crate::progress::milliseconds as elapsed_milliseconds;
 use crate::semantic::{self, Models};
-use crate::silver::local as silver;
 use crate::storage::{Counts, Storage};
 use std::time::Instant;
 
@@ -15,13 +14,12 @@ pub(crate) struct Build {
     pub(crate) embedding_milliseconds: u64,
 }
 
-#[tracing::instrument(name = "gold_build", skip_all, fields(source_complete = source.is_complete()))]
+#[tracing::instrument(name = "gold_build", skip_all)]
 pub(crate) fn build(
     storage: &mut Storage,
     models: &Models,
-    source: &silver::Ingestion,
+    summary: &crate::silver::IndexSummary,
 ) -> Result<Build, AppError> {
-    let summary = &source.summary;
     let source_complete = storage.silver_certificate()?.is_complete();
     let mut model_load_milliseconds = 0;
     let search_started = Instant::now();

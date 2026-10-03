@@ -36,6 +36,7 @@ writes remain explicit driver operations.
 
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot|gemini-cli|cline]... [--since-days N|--all-history]
+mash index --rebuild-local-gold [--full]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash list-threads [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]

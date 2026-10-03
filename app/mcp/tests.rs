@@ -4,6 +4,7 @@ use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
 mod incomplete;
+mod rebuild;
 mod selections;
 mod threads;
 

@@ -75,11 +75,14 @@ queues disappear. The durable dirty marker then requires a full derived-state
 rebuild from stored history. This recovery is more expensive than an incremental
 refresh, but does not require provider files.
 
-`mash index` still orchestrates both stages, including model-configuration
+`mash index` orchestrates both stages, including model-configuration
 preflight before opening the database. CLI and MCP use this same core. There is
 no new standalone gold command, and search never implicitly runs either stage.
 Stage spans are `silver_ingest` and `gold_build`; existing progress events and
-response fields remain available.
+response fields remain available. `mash index --rebuild-local-gold` explicitly
+builds only local gold from certified stored silver, without provider discovery
+or shared publication. MCP `index` exposes the same parameter and progress path.
+Add `--full` to force a complete derived rebuild; this leaves silver unchanged.
 
 ## Interpretation and publication boundaries
 

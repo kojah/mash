@@ -9,6 +9,7 @@ pub(crate) struct Ingestion {
 }
 
 impl Ingestion {
+    #[cfg(test)]
     pub(crate) fn is_complete(&self) -> bool {
         self.certificate.is_complete()
     }

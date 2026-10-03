@@ -1,6 +1,7 @@
 use super::*;
 use crate::provider::Provider;
 use crate::silver::IndexOptions;
+use crate::silver::local as silver;
 use std::path::{Path, PathBuf};
 
 struct Fixture {
@@ -89,7 +90,9 @@ fn failed_gold_build_preserves_durable_silver_and_does_not_publish_readiness() {
     assert!(stored.derived_search_is_dirty().unwrap());
     assert!(stored.search("qdrant", 5, None, None).unwrap().is_empty());
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
-    let error = build(&mut storage, &models, &fixture.source).err().unwrap();
+    let error = build(&mut storage, &models, &fixture.source.summary)
+        .err()
+        .unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::Model);
     drop(storage);
     assert_eq!(canonical(&fixture.database), before);
@@ -121,7 +124,11 @@ fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources
     for resume in [Resume::SameWriter, Resume::Reopen] {
         let fixture = fixture(false);
         let mut storage = Storage::open_writer(&fixture.database).unwrap();
-        assert!(build(&mut storage, &models, &fixture.source).unwrap().ready);
+        assert!(
+            build(&mut storage, &models, &fixture.source.summary)
+                .unwrap()
+                .ready
+        );
         storage.commit_writer().unwrap();
         drop(storage);
         std::fs::create_dir(&fixture.source_root).unwrap();
@@ -149,7 +156,7 @@ fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources
             drop(storage);
             storage = Storage::open_writer(&fixture.database).unwrap();
         }
-        let result = build(&mut storage, &models, &source).unwrap();
+        let result = build(&mut storage, &models, &source.summary).unwrap();
         assert!(result.ready);
         assert_eq!(result.counts.messages, 3);
         assert_eq!(result.counts.embeddings, 2);
@@ -188,7 +195,7 @@ fn gold_rebuild_from_stored_history_survives_source_removal_and_is_idempotent() 
             storage.defer_search_updates().unwrap();
             storage.mark_derived_search_dirty().unwrap();
         }
-        let result = build(&mut storage, &models, &fixture.source).unwrap();
+        let result = build(&mut storage, &models, &fixture.source.summary).unwrap();
         assert!(result.ready);
         assert_eq!(result.counts.messages, 2);
         assert_eq!(result.counts.searchable_messages, 1);
@@ -224,7 +231,7 @@ fn rejected_source_keeps_gold_unready_even_with_complete_stored_vectors() {
         std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
     ));
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
-    let result = build(&mut storage, &models, &fixture.source).unwrap();
+    let result = build(&mut storage, &models, &fixture.source.summary).unwrap();
     assert_eq!(result.counts.embeddings, result.counts.searchable_messages);
     assert!(!result.ready);
     storage.commit_writer().unwrap();

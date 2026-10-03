@@ -23,6 +23,8 @@ pub(crate) struct Request {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IndexRequest {
+    #[serde(default)]
+    pub(crate) rebuild_local_gold: bool,
     pub(crate) full: bool,
     pub(crate) provider: Vec<Provider>,
     pub(crate) since_days: Option<u32>,
@@ -73,6 +75,7 @@ pub(crate) enum Response {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct IndexResponse {
+    pub(super) rebuild_local_gold: bool,
     pub(super) silver: crate::silver::certificate::Certificate,
     pub(super) indexed_conversations: u64,
     pub(super) indexed_messages: u64,
