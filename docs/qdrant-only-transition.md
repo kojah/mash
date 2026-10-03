@@ -212,3 +212,14 @@ not a corpus throughput measurement. Private captures are `workflow-case.json`
 and `workflow-case.log` in the Mac migration directory. The full replay uses
 `silver-workflow.json` and `silver-workflow.log`; it has progressed beyond the
 earlier journal rejection but completion is not established by the isolated case.
+
+The full Mac replay subsequently exited with code 0 and complete silver, zero
+rejected sources and zero malformed records. It retained 3,018 threads,
+434,486 messages and 68,731 searchable messages in 214.344 seconds. This is an
+explicit local-only lexical replay on a changing native corpus, not a controlled
+comparison with previous failed runs. The installed legacy index remains
+unchanged; shared publication and dense-gold preparation are still pending.
+Read-only local status reports ready. A direct local `cbioportal` search using
+the staged configuration exited successfully with two thread results. Private
+captures are `offline-status.json` and `offline-search.json`; this verifies the
+local lexical path, not dense retrieval quality or shared coverage.
