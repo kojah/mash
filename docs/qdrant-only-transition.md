@@ -485,3 +485,53 @@ freshness. See [the measured costs and limitations](shared-ranking-cost-2026-10-
 The first attempt's worker-path failure is preserved separately. This completes
 the bounded context regression/cost check, not a universal latency or relevance
 claim. Fleet migration and topic acceptance remain incomplete.
+
+### Dev Mac default deployment: 4 October 2026
+
+The dev Mac now runs optimized native release `addb212`, SHA-256
+`63a38a7b60e374e6c8b2366bbebd2ad7000d0754e0abdaec951bb78b6a048a0d`,
+from its installed `~/.local/bin/mash`. Its actual macOS default configuration
+and database live in `~/Library/Application Support/dev.jamesqo.mash/`.
+The installed configuration uses both local and shared indexing, a 90-day
+window, lexical and dense artifacts, and the existing authenticated Qdrant API
+at `linux-node:8788`. Models remain in the existing macOS default directory;
+this deployment did not download models or re-embed the corpus.
+
+Before replacing defaults, read-only checks compared the legacy schema-15
+database (2,252 threads, 301,838 messages) with staged schema 39 (3,018 threads,
+434,486 messages). All legacy thread IDs remained present. There were 53,761
+missing legacy message IDs, so ID equality alone was insufficient. Exact
+same-thread/role/body multiset comparison narrowed this to 1,354 rows in 36
+threads. Every remaining body was present under the canonical conversation now
+owning its identical physical source path: all were Claude subagent paths whose
+thread identity had changed. This establishes body coverage for this snapshot,
+with explicit source-owner reassignment; it does not preserve every old ID or
+assert unchanged search projections. Projection multiplicities differed
+substantially and were not used as a preservation certificate.
+
+The release passed staged local exact, shared exact and local related-discussion
+searches before installation. With no Mash processes active, SQLite's backup API
+copied the staged database into an incoming file; `quick_check` and the message
+count passed before replacement. The old installed binary, TOML, database and
+any WAL/SHM files are retained in
+`~/.local/share/mash/qdrant-migration/installed-rollback-addb212/`.
+The frozen release, source pin, coverage captures and install record remain in
+that migration directory. Private evidence was also copied to
+`mash-artifacts/qdrant-live-transition-20261003/dev-installed-addb212/` on Xenia.
+
+Installed default-path checks passed: authenticated status reported published,
+local exact `cbioportal` returned two threads in 149 ms, and combined related
+search returned two threads in 1.068 s. Diagnostics confirmed both sources and
+every requested stage completed, with no shared fallback or incomplete context.
+Shared candidates were empty in combined mode because only this node is
+published and its remote duplicate is excluded. The staged shared-only exact
+check returned results in 260 ms. These are single smoke observations, not
+percentiles or semantic-quality evaluation. `mash mcp` also completed stdio
+initialization and exposed the seven expected tools. Its search path remains
+covered by the release's existing SDK integration tests; this deployment smoke
+checked protocol initialization and tool discovery.
+
+This completes only the dev-Mac default cutover. The personal Mac remains
+unreachable, Xenia's new scan remains blocked by its malformed Claude source,
+and the legacy Redis service and those two installed configurations are retained.
+The shared preview API remains the previously verified `6e8f2bb` release.
