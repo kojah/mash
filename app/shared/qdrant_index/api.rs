@@ -579,7 +579,8 @@ impl Client {
         name: &str,
         filter: Filter,
     ) -> Result<Vec<Record<P>>, AppError> {
-        self.scroll_selected(name, filter, Payload::All(true)).await
+        self.scroll_selected(name, filter, Payload::All(true), 100)
+            .await
     }
     pub(super) async fn scroll_fields<P: DeserializeOwned>(
         &self,
@@ -587,7 +588,9 @@ impl Client {
         filter: Filter,
         fields: &'static [&'static str],
     ) -> Result<Vec<Record<P>>, AppError> {
-        self.scroll_selected(name, filter, Payload::Fields(fields))
+        // Context outlines contain only identities and topology, not message bodies.
+        // Larger pages avoid serial round trips for long, parent-linked threads.
+        self.scroll_selected(name, filter, Payload::Fields(fields), 1000)
             .await
     }
     pub(super) async fn scroll_page<P: DeserializeOwned>(
@@ -624,6 +627,7 @@ impl Client {
         name: &str,
         filter: Filter,
         payload: Payload,
+        limit: usize,
     ) -> Result<Vec<Record<P>>, AppError> {
         let mut output = Vec::new();
         let mut offset = None;
@@ -634,13 +638,18 @@ impl Client {
                     &format!("collections/{name}/points/scroll?consistency=all"),
                     Some(&Scroll {
                         filter: filter.clone(),
-                        limit: 100,
+                        limit,
                         with_payload: payload.clone(),
                         with_vector: false,
                         offset: offset.clone(),
                     }),
                 )
                 .await?;
+            if reply.points.len() > limit
+                || (reply.next_page_offset.is_some() && reply.points.is_empty())
+            {
+                return Err(failure());
+            }
             output.extend(reply.points);
             if reply.next_page_offset.is_none() {
                 return Ok(output);

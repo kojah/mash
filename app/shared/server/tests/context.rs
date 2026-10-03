@@ -13,7 +13,9 @@ async fn qdrant_context_projects_multiple_topology_pages_and_fetches_selected_ba
     let service = Service::qdrant(384).await;
     let mut events = snapshot(1);
     let base: MessageRecord = serde_json::from_value(events[2]["records"][0].clone()).unwrap();
-    let records: Vec<_> = (0..256)
+    // Exceed the projected topology page size; selected bodies still span
+    // multiple smaller retrieval batches.
+    let records: Vec<_> = (0..1256)
         .map(|ordinal| MessageRecord {
             id: format!("message-{ordinal}"),
             ordinal,
@@ -53,6 +55,13 @@ async fn qdrant_context_projects_multiple_topology_pages_and_fetches_selected_ba
             };
             assert_eq!(message.content, expected);
         }
+        let tail = view(&service, 1253, 2, representation).await;
+        assert_eq!(
+            tail.iter()
+                .map(|message| message.ordinal)
+                .collect::<Vec<_>>(),
+            vec![1251, 1252, 1253, 1254, 1255]
+        );
     }
     service.cleanup().await;
 }

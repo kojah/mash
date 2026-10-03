@@ -903,6 +903,15 @@ CI includes the context-degradation regression. Captures are
 These tests verify instrumentation and default preservation; representative
 costs and held-out relevance remain separate gates.
 
+Shared context reads page projected topology (identities, ordinals and native
+parent links) at 1,000 records per request, while full-body scrolls retain
+100-record pages. Selection and revision checks remain unchanged, and selected
+bodies are still retrieved in batches of 100. This reduces sequential requests
+for long threads without changing branch selection or the one-second context
+deadline. The real ranking-cost control encountered incomplete shared context
+before this change; larger pages alone are not evidence that its timeout is
+resolved. Deployment and a repeated successful control remain necessary.
+
 ## Active local build recipe and manifest
 
 ```toml
