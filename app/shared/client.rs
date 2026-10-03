@@ -3,6 +3,25 @@ use super::{Freshness, protocol};
 use crate::{AppError, config::SharedConfig, storage::Message};
 use serde::Serialize;
 use std::{sync::LazyLock, time::Duration};
+use tokio::sync::{Semaphore, SemaphorePermit};
+
+struct Admission {
+    interactive: Semaphore,
+    bulk: Semaphore,
+}
+
+impl Admission {
+    const fn new(interactive: usize, bulk: usize) -> Self {
+        Self {
+            interactive: Semaphore::const_new(interactive),
+            bulk: Semaphore::const_new(bulk),
+        }
+    }
+}
+
+// Preserve the existing eight-way context retrieval budget. Bulk work cannot
+// consume those slots, and queued readers do not buffer response bodies.
+static ADMISSION: Admission = Admission::new(8, 1);
 
 pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppError> {
     get(config, Endpoint::Freshness).await
@@ -20,6 +39,17 @@ pub(super) enum Endpoint {
 }
 
 impl Endpoint {
+    const fn bulk(self) -> bool {
+        matches!(self, Self::State | Self::Index | Self::Forget)
+    }
+
+    fn capacity(self, admission: &'static Admission) -> &'static Semaphore {
+        if self.bulk() {
+            &admission.bulk
+        } else {
+            &admission.interactive
+        }
+    }
     const fn route(self) -> &'static str {
         match self {
             Self::Freshness => "freshness",
@@ -92,7 +122,16 @@ pub(super) fn request(
         .timeout(endpoint.timeout()))
 }
 pub(super) async fn response<T: serde::de::DeserializeOwned + Send + 'static>(
+    request: reqwest::RequestBuilder,
+    endpoint: Endpoint,
+) -> Result<T, AppError> {
+    response_admitted(request, endpoint, &ADMISSION).await
+}
+
+async fn response_admitted<T: serde::de::DeserializeOwned + Send + 'static>(
     mut request: reqwest::RequestBuilder,
+    endpoint: Endpoint,
+    admission: &'static Admission,
 ) -> Result<T, AppError> {
     use tracing::Instrument;
     let span = tracing::info_span!(
@@ -101,6 +140,13 @@ pub(super) async fn response<T: serde::de::DeserializeOwned + Send + 'static>(
         status = tracing::field::Empty,
         outcome = tracing::field::Empty,
         elapsed_ms = tracing::field::Empty,
+        queue_ms = tracing::field::Empty,
+        endpoint = endpoint.route(),
+        admission = if endpoint.bulk() {
+            "bulk"
+        } else {
+            "interactive"
+        },
     );
     if !span.is_disabled()
         && let Some(id) = crate::observability::http::TraceId::generate()
@@ -110,7 +156,22 @@ pub(super) async fn response<T: serde::de::DeserializeOwned + Send + 'static>(
     }
     async {
         let started = std::time::Instant::now();
-        let result = response_inner(request).await;
+        let mut admitted = false;
+        let result = tokio::time::timeout(endpoint.timeout(), async {
+            let permit = endpoint
+                .capacity(admission)
+                .acquire()
+                .await
+                .map_err(|_| AppError::shared("shared index HTTP admission is unavailable"))?;
+            admitted = true;
+            tracing::Span::current().record("queue_ms", crate::progress::milliseconds(started));
+            response_inner(request, permit).await
+        })
+        .await
+        .unwrap_or_else(|_| Err(AppError::shared("shared index HTTP request timed out")));
+        if !admitted {
+            tracing::Span::current().record("queue_ms", crate::progress::milliseconds(started));
+        }
         tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
         tracing::Span::current()
             .record("outcome", if result.is_ok() { "success" } else { "error" });
@@ -122,6 +183,7 @@ pub(super) async fn response<T: serde::de::DeserializeOwned + Send + 'static>(
 
 async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
     request: reqwest::RequestBuilder,
+    permit: SemaphorePermit<'static>,
 ) -> Result<T, AppError> {
     let response = request.send().await.map_err(|error| {
         AppError::shared(if error.is_timeout() {
@@ -155,6 +217,10 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
     // stays async; typed decoding must not occupy a runtime worker alongside
     // unrelated MCP reads, watch refreshes and publication heartbeats.
     crate::blocking(move || {
+        // A canceled caller cannot cancel serde work already running. Keep its
+        // slot occupied until that work actually ends, rather than admitting
+        // more bodies and decoders behind abandoned blocking tasks.
+        let _permit = permit;
         let span = tracing::info_span!(
             "shared_http_decode",
             bytes = bytes.len(),
@@ -172,14 +238,18 @@ pub(super) async fn get<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,
     endpoint: Endpoint,
 ) -> Result<T, AppError> {
-    response(request(config, reqwest::Method::GET, endpoint)?).await
+    response(request(config, reqwest::Method::GET, endpoint)?, endpoint).await
 }
 pub(super) async fn post<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,
     endpoint: Endpoint,
     body: &impl Serialize,
 ) -> Result<T, AppError> {
-    response(request(config, reqwest::Method::POST, endpoint)?.json(body)).await
+    response(
+        request(config, reqwest::Method::POST, endpoint)?.json(body),
+        endpoint,
+    )
+    .await
 }
 
 pub(crate) async fn list_threads(
@@ -207,3 +277,6 @@ pub(crate) async fn view(
     )
     .await
 }
+
+#[cfg(test)]
+mod admission_tests;

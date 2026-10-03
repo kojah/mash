@@ -55,7 +55,11 @@ async fn busy_response_decoder_does_not_block_another_shared_read() {
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let runtime_thread = std::thread::current().id();
     let busy = tokio::spawn(async move {
-        response::<HeldDecode>(reqwest::Client::new().get(format!("http://{address}/busy"))).await
+        response::<HeldDecode>(
+            reqwest::Client::new().get(format!("http://{address}/busy")),
+            Endpoint::Freshness,
+        )
+        .await
     });
     let decoder_thread = tokio::time::timeout(Duration::from_secs(1), receiver)
         .await
@@ -67,6 +71,7 @@ async fn busy_response_decoder_does_not_block_another_shared_read() {
         Duration::from_secs(1),
         response::<crate::storage::Counts>(
             reqwest::Client::new().get(format!("http://{address}/healthy")),
+            Endpoint::Freshness,
         ),
     )
     .await

@@ -63,6 +63,7 @@ async fn concurrent_http_calls_correlate_failures_and_bound_untrusted_metadata()
     let call = |token| {
         super::super::super::client::response::<crate::storage::Counts>(
             client.get(&url).bearer_auth(token),
+            super::super::super::client::Endpoint::Freshness,
         )
         .with_subscriber(dispatcher.clone())
     };
@@ -74,6 +75,7 @@ async fn concurrent_http_calls_correlate_failures_and_bound_untrusted_metadata()
     assert!(
         super::super::super::client::response::<crate::storage::Counts>(
             client.get(&url).bearer_auth(FIRST),
+            super::super::super::client::Endpoint::Freshness,
         )
         .with_subscriber(tracing::subscriber::NoSubscriber::default())
         .await

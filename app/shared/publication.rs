@@ -52,6 +52,7 @@ pub(super) async fn upload(
         request(config, reqwest::Method::POST, Endpoint::Index)?
             .header(reqwest::header::CONTENT_TYPE, "application/x-ndjson")
             .body(reqwest::Body::wrap_stream(stream)),
+        Endpoint::Index,
     );
     tokio::pin!(request);
     let started = std::time::Instant::now();
