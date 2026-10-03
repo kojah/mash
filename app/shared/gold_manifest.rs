@@ -66,6 +66,7 @@ mod tests {
         let title = Build {
             max_embedding_chars: None,
             representations: crate::gold::config::Representations::LexicalAndDense,
+            text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         };
         assert!(!manifest.matches(&title, "model", Some(&silver)));

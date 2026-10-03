@@ -867,6 +867,41 @@ Local recipes remain independent of shared recipes; nondefault local recipes
 use the independently routed publication path rather than forwarding local
 vectors as shared default vectors.
 
+### Configurable dense text preparation
+
+Local node and shared server TOML independently accept:
+
+```toml
+[gold.build]
+text_preparation = "collapse-whitespace"
+# embedding_text = "title-and-dialogue"
+# max_embedding_chars = 512
+```
+
+The default `preserve` retains current embedding input and generation identities.
+`collapse-whitespace` splits the prepared embedding text on Rust's Unicode
+whitespace boundaries, rejoins nonempty spans with one ASCII space, and removes
+leading/trailing whitespace. It runs after optional bounded title enrichment and
+before the optional character budget. Thus tabs, newlines, indentation and
+nonbreaking spaces are collapsed in model input. Canonical content, interpreted
+silver dialogue, lexical indexing text and displayed passages remain unchanged.
+Empty dialogue remains empty even when a title exists. Lexical-only builds retain
+the configuration without doing dense preparation or inference.
+
+The version-1 whitespace generation includes the embedding-text recipe, budget
+and model generation; manifests also retain the typed setting. Changing it
+requires explicit gold rebuilding and never triggers indexing from search.
+Local and shared preparation consume stored silver through the same function.
+Reverting to `preserve` replaces the active projection rather than maintaining
+another profile. Older stored recipes lacking this additive field resolve to
+`preserve`; services and clients must understand the new setting before publishing
+it. Query settings and deployment configuration do not affect this identity.
+
+This is opt-in configurability, with no claimed retrieval-quality gain. Collapsing
+code indentation may remove useful structure. Held-out quality and representative
+storage/build/search cost comparisons remain open; content selection and new
+retrieval units are also separate unfinished work.
+
 ## Query intent: exact mentions
 
 `[gold.query] intent = "related-discussion"` retains the existing hybrid retrieval

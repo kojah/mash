@@ -10,6 +10,7 @@ fn fixture() -> (Loaded, Identity, Build) {
     let build = Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let silver = crate::shared::silver_revision::State::next(None, "a".repeat(64)).unwrap();

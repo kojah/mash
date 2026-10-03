@@ -13,11 +13,42 @@ pub(crate) struct Configuration {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Build {
+    #[serde(skip_serializing_if = "TextPreparation::is_default")]
+    pub(crate) text_preparation: TextPreparation,
     #[serde(skip_serializing_if = "Representations::is_default")]
     pub(crate) representations: Representations,
     pub(crate) embedding_text: EmbeddingText,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_embedding_chars: Option<EmbeddingTextBudget>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum TextPreparation {
+    #[default]
+    Preserve,
+    CollapseWhitespace,
+}
+
+impl TextPreparation {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_default(&self) -> bool {
+        *self == Self::Preserve
+    }
+
+    fn prepare(self, text: String) -> String {
+        if self == Self::Preserve {
+            return text;
+        }
+        let mut prepared = String::with_capacity(text.len());
+        for word in text.split_whitespace() {
+            if !prepared.is_empty() {
+                prepared.push(' ');
+            }
+            prepared.push_str(word);
+        }
+        prepared
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -91,6 +122,16 @@ impl Build {
         if !self.dense_enabled() {
             return "gold-lexical-v1".into();
         }
+        if self.text_preparation == TextPreparation::CollapseWhitespace {
+            let recipe = match self.embedding_text {
+                EmbeddingText::Dialogue => "dialogue",
+                EmbeddingText::TitleAndDialogue => "title-and-dialogue",
+            };
+            return format!(
+                "gold-whitespace-v1:{recipe}:{}:{model}",
+                self.max_embedding_chars.map_or(0, |b| b.0)
+            );
+        }
         if let Some(budget) = self.max_embedding_chars {
             let recipe = match self.embedding_text {
                 EmbeddingText::Dialogue => "dialogue",
@@ -119,6 +160,7 @@ impl Build {
             }
             _ => dialogue,
         };
+        let prepared = self.text_preparation.prepare(prepared);
         match self.max_embedding_chars {
             Some(limit) => prepared.trim().chars().take(limit.0 as usize).collect(),
             None => prepared,
@@ -335,6 +377,47 @@ mod tests {
                 toml::from_str::<Configuration>(text).is_err(),
                 "accepted {text}"
             );
+        }
+    }
+
+    #[test]
+    fn whitespace_preparation_is_opt_in_unicode_safe_and_has_distinct_build_identity() {
+        let source = "  alpha\t\nβ\u{a0}gamma  ".to_owned();
+        assert_eq!(Build::default().prepare(source.clone(), None), source);
+        let mut recipe: Build = toml::from_str("text_preparation='collapse-whitespace'").unwrap();
+        assert_eq!(recipe.prepare(source, None), "alpha β gamma");
+        assert_eq!(recipe.prepare(" \n\t".into(), None), "");
+        assert_eq!(recipe.prepare(String::new(), Some("hidden")), "");
+        let mut identities = std::collections::BTreeSet::new();
+        for preparation in [
+            TextPreparation::Preserve,
+            TextPreparation::CollapseWhitespace,
+        ] {
+            for text in [EmbeddingText::Dialogue, EmbeddingText::TitleAndDialogue] {
+                for budget in [None, Some(256_u32.try_into().unwrap())] {
+                    recipe.text_preparation = preparation;
+                    recipe.embedding_text = text;
+                    recipe.max_embedding_chars = budget;
+                    assert!(identities.insert(recipe.generation("model")));
+                    assert_eq!(
+                        serde_json::from_str::<Build>(&serde_json::to_string(&recipe).unwrap())
+                            .unwrap(),
+                        recipe
+                    );
+                }
+            }
+        }
+        recipe.text_preparation = TextPreparation::CollapseWhitespace;
+        assert_eq!(
+            recipe.prepare(" α\nβ ".into(), Some("a\tb")),
+            "Thread: a b α β"
+        );
+        assert_eq!(
+            recipe.prepare(" é\t".repeat(300), None).chars().count(),
+            256
+        );
+        for value in ["'unknown'", "true", "7"] {
+            assert!(toml::from_str::<Build>(&format!("text_preparation={value}")).is_err());
         }
     }
 

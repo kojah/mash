@@ -204,6 +204,7 @@ fn title_store(fixture: &Fixture) -> Store {
         .with_build(crate::gold::config::Build {
             max_embedding_chars: None,
             representations: crate::gold::config::Representations::LexicalAndDense,
+            text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         })
 }

@@ -219,6 +219,11 @@ fn assert_gold_recipe_switches(config: &Path, database: &Path, models: &str) {
         ("title-and-dialogue", ""),
         ("title-and-dialogue", "max_embedding_chars=256\n"),
         ("dialogue", "max_embedding_chars=512\n"),
+        ("dialogue", "text_preparation='collapse-whitespace'\n"),
+        (
+            "title-and-dialogue",
+            "text_preparation='collapse-whitespace'\n",
+        ),
         ("dialogue", ""),
     ] {
         std::fs::write(

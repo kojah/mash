@@ -132,7 +132,10 @@ async fn lexical_only_materialization_preserves_rows_without_model_assets_or_htt
 }
 
 fn projection(ordinal: i64) -> String {
-    format!("projection {ordinal} {} trailingevidence", "é".repeat(300))
+    format!(
+        "projection\t{ordinal}\n{}\u{a0}trailingevidence",
+        "é".repeat(300)
+    )
 }
 
 fn canonical_rows(conversation: &Conversation) -> Vec<u8> {
@@ -152,12 +155,18 @@ async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_gr
         crate::gold::config::EmbeddingText::TitleAndDialogue,
     ] {
         for budget in [None, Some(256_u32.try_into().unwrap())] {
-            verify_materialization(crate::gold::config::Build {
-                max_embedding_chars: budget,
-                representations: crate::gold::config::Representations::LexicalAndDense,
-                embedding_text: recipe,
-            })
-            .await;
+            for preparation in [
+                crate::gold::config::TextPreparation::Preserve,
+                crate::gold::config::TextPreparation::CollapseWhitespace,
+            ] {
+                verify_materialization(crate::gold::config::Build {
+                    max_embedding_chars: budget,
+                    representations: crate::gold::config::Representations::LexicalAndDense,
+                    text_preparation: preparation,
+                    embedding_text: recipe,
+                })
+                .await;
+            }
         }
     }
 }
@@ -210,6 +219,14 @@ async fn verify_materialization(recipe: crate::gold::config::Build) {
         .map(|ordinal| recipe.prepare(projection(ordinal), Some("title")))
         .collect::<Vec<_>>();
     let requests = requests.lock().unwrap();
+    if recipe.text_preparation == crate::gold::config::TextPreparation::CollapseWhitespace {
+        assert!(
+            requests
+                .iter()
+                .flatten()
+                .all(|text| !text.contains(['\n', '\t', '\u{a0}']))
+        );
+    }
     if recipe.max_embedding_chars.is_some() {
         assert!(
             requests

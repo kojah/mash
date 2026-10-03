@@ -24,14 +24,18 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
             vector: m.vector.clone().unwrap(),
         })
         .collect::<Vec<_>>();
-    for representations in [
-        Representations::LexicalOnly,
-        Representations::LexicalAndDense,
-    ] {
-        let recipe = Build {
-            representations,
+    for recipe in [
+        Build {
+            representations: Representations::LexicalOnly,
             ..Default::default()
-        };
+        },
+        Build::default(),
+        Build {
+            text_preparation: crate::gold::config::TextPreparation::CollapseWhitespace,
+            ..Default::default()
+        },
+        Build::default(),
+    ] {
         let store = fixture.store.clone().with_build(recipe.clone());
         store.select_gold(&fixture.identity, true).await.unwrap();
         let loaded = store.load(&fixture.identity).await.unwrap();
@@ -280,6 +284,7 @@ async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams(
     let build = crate::gold::config::Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(build.clone());
@@ -347,6 +352,7 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
     let build = crate::gold::config::Build {
         max_embedding_chars: Some(256_u32.try_into().unwrap()),
         representations: crate::gold::config::Representations::LexicalAndDense,
+        text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(build.clone());
@@ -401,6 +407,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
     let title = crate::gold::config::Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(title.clone());
@@ -551,6 +558,7 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
     let title = crate::gold::config::Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(title.clone());
