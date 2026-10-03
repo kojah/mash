@@ -69,6 +69,8 @@ pub(crate) enum Operation {
         unit: Option<crate::search_results::SearchUnit>,
         #[serde(default)]
         fusion: crate::gold::config::FusionOverrides,
+        #[serde(default)]
+        diagnostics: bool,
         filters: Box<crate::search_filter::Selection>,
         shared: bool,
         local: bool,
@@ -166,6 +168,8 @@ pub(crate) enum SearchMode {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SearchResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) diagnostics: Option<crate::gold::diagnostics::Diagnostics>,
     pub(crate) query: String,
     #[serde(default)]
     pub(crate) intent: crate::gold::exact::Intent,

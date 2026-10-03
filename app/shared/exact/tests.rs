@@ -1,10 +1,29 @@
 use super::*;
 use crate::core::{self, Operation, Paths, Request, Response, SearchMode};
+use crate::gold::diagnostics::{Artifact, Scope, Source};
 use axum::{Json, Router, extract::State, routing::post};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+
+fn assert_diagnostics(response: &core::SearchResponse, scope: Scope, fallback: bool, count: usize) {
+    let diagnostics = response.diagnostics.as_ref().unwrap();
+    assert_eq!(diagnostics.requested_scope, scope);
+    let completed = match (scope, fallback) {
+        (Scope::Combined, false) => vec![Source::Local, Source::Shared],
+        (Scope::Shared, false) => vec![Source::Shared],
+        _ => vec![Source::Local],
+    };
+    assert_eq!(diagnostics.completed_sources, completed);
+    assert_eq!(diagnostics.returned_results, count);
+    assert_eq!(diagnostics.shared_fallback, fallback);
+    assert!(diagnostics.fusion.is_none());
+    assert_eq!(
+        diagnostics.selected_artifacts,
+        vec![Artifact::Metadata, Artifact::Lexical]
+    );
+}
 
 fn hit() -> SearchHit {
     SearchHit {
@@ -83,6 +102,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
         },
         operation: Operation::Search {
             fusion: crate::gold::config::FusionOverrides::default(),
+            diagnostics: true,
             query: "voyage-code-4".into(),
             intent: None,
             unit: Some(SearchUnit::Messages),
@@ -97,6 +117,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
     };
     assert!(matches!(response.realized_mode, SearchMode::MergedLexical));
     assert!(response.shared && response.shared_error.is_none());
+    assert_diagnostics(&response, Scope::Combined, false, 1);
     let crate::search_results::Results::Messages(hits) = response.results else {
         panic!("messages")
     };
@@ -108,6 +129,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
         };
         assert!(matches!(response.realized_mode, SearchMode::LocalLexical));
         assert!(!response.shared && response.shared_error.is_some());
+        assert_diagnostics(&response, Scope::Combined, true, 0);
         let crate::search_results::Results::Messages(hits) = response.results else {
             panic!("messages")
         };
@@ -129,6 +151,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
     };
     assert!(matches!(response.realized_mode, SearchMode::Lexical));
     assert!(response.shared);
+    assert_diagnostics(&response, Scope::Shared, false, 1);
     server.abort();
     assert_eq!(std::fs::read(database).unwrap(), before);
     assert!(!root.path().join("missing-models").exists());

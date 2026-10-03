@@ -106,6 +106,7 @@ async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_inde
         let mut args = json!({"query":"cache model", "local":true});
         if let Some(weight) = override_weight {
             args["fusion"] = json!({"semantic_weight":weight});
+            args["diagnostics"] = json!(true);
         }
         let response = client
             .call_tool(
@@ -119,6 +120,20 @@ async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_inde
         let hits = results["results"].as_array().unwrap();
         assert_eq!(hits.len(), 1);
         assert!((hits[0]["fusion_score"].as_f64().unwrap() - expected).abs() < 1e-6);
+        if let Some(weight) = override_weight {
+            let diagnostics = &results["diagnostics"];
+            assert_eq!(diagnostics["fusion"]["semantic_weight"], weight);
+            assert_eq!(diagnostics["fusion"]["rank_constant"], constant);
+            assert_eq!(diagnostics["requested_scope"], "local");
+            assert_eq!(diagnostics["returned_results"], 1);
+            assert_eq!(
+                diagnostics["selected_artifacts"],
+                json!(["metadata", "lexical", "dense"])
+            );
+            assert!(diagnostics["elapsed_ms"].is_u64());
+        } else {
+            assert!(results.get("diagnostics").is_none());
+        }
         assert_eq!(std::fs::read(&database).unwrap(), before);
     }
     client.cancel().await.unwrap();

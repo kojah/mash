@@ -48,6 +48,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
             intent: None,
             limit: Some(1),
             fusion: None,
+            diagnostics: true,
             unit: Some(crate::search_results::SearchUnit::Messages),
             filters: crate::search_filter::Selection::default(),
             shared: false,
@@ -61,6 +62,12 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
     assert_eq!(data["intent"], "exact-mention");
     assert_eq!(data["realized_mode"], "lexical");
     assert_eq!(data["results"], json!([]));
+    assert_eq!(data["diagnostics"]["intent"], "exact-mention");
+    assert_eq!(
+        data["diagnostics"]["selected_artifacts"],
+        json!(["metadata", "lexical"])
+    );
+    assert!(data["diagnostics"].get("fusion").is_none());
     assert_eq!(
         crate::storage::Storage::open_catalog(&database)
             .unwrap()
@@ -94,6 +101,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
                 intent: None,
                 limit: None,
                 fusion: None,
+                diagnostics: false,
                 unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: crate::search_filter::Selection {
                     provider: vec![Provider::Codex],
@@ -113,6 +121,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             intent: None,
             limit: None,
             fusion: None,
+            diagnostics: false,
             unit: Some(crate::search_results::SearchUnit::Threads),
             filters: crate::search_filter::Selection::default(),
             local: true,
@@ -285,7 +294,10 @@ fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
             .as_array()
             .unwrap()
             .iter()
-            .any(|field| field == "unit" || field == "limit" || field == "fusion")
+            .any(|field| field == "unit"
+                || field == "limit"
+                || field == "fusion"
+                || field == "diagnostics")
     );
     let schema = serde_json::to_string(&search.input_schema).unwrap();
     assert!(schema.contains("\"threads\"") && schema.contains("\"messages\""));

@@ -616,6 +616,10 @@ For one hybrid request, CLI `search` accepts `--fusion-rank-constant`,
 `fusion` object with the corresponding underscore-named fields. Omitted fields
 inherit current TOML defaults. Overrides are validated before model work,
 apply to local/shared/fallback ranking, and are rejected for exact-mention.
+For resolved policy and retrieval outcomes, use CLI `search --diagnostics` or
+MCP `search` with `"diagnostics":true`. The optional report includes selected
+artifacts, completed retrieval sources, fallback, result count and core time.
+It does not run indexing or change search results.
 See [silver enrichment and gold configuration](docs/silver-gold-configuration.md)
 for the layer contract and current configuration scope.
 

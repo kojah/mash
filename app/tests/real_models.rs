@@ -366,6 +366,7 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
             if let Some(weight) = override_weight {
                 let weight = weight.to_string();
                 command.args(["--lexical-weight", &weight, "--semantic-weight", &weight]);
+                command.arg("--diagnostics");
             }
             if direct {
                 command.arg("--no-worker");
@@ -381,6 +382,26 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
             let results = found["results"].as_array().unwrap();
             assert_ne!(results.as_slice(), &[] as &[Value]);
             assert!(results.len() <= limit);
+            if let Some(weight) = override_weight {
+                let diagnostics = &found["diagnostics"];
+                assert_eq!(diagnostics["policy_version"], 1);
+                assert_eq!(diagnostics["fusion"]["lexical_weight"], weight);
+                assert_eq!(diagnostics["limit"], limit);
+                assert_eq!(diagnostics["unit"], unit);
+                assert_eq!(diagnostics["requested_scope"], "local");
+                assert_eq!(
+                    diagnostics["completed_sources"],
+                    serde_json::json!(["local"])
+                );
+                assert_eq!(diagnostics["returned_results"], results.len());
+                assert_eq!(
+                    diagnostics["selected_artifacts"],
+                    serde_json::json!(["metadata", "lexical", "dense"])
+                );
+                assert!(diagnostics["elapsed_ms"].is_u64());
+            } else {
+                assert!(found.get("diagnostics").is_none());
+            }
             if unit == "messages" {
                 let score = results[0]["fusion_score"].as_f64().unwrap();
                 if weight == 1 {

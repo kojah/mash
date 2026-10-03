@@ -345,6 +345,7 @@ async fn verify_core(service: &Service) {
             },
             operation: core::Operation::Search {
                 fusion: crate::gold::config::FusionOverrides::default(),
+                diagnostics: false,
                 query: "voyage-code-4".into(),
                 intent: Some(Intent::ExactMention),
                 limit: Some(10),

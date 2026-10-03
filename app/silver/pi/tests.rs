@@ -421,6 +421,7 @@ async fn core_indexes_and_searches_all_native_pi_branches_with_real_models() {
             paths: paths.clone(),
             operation: Operation::Search {
                 fusion: crate::gold::config::FusionOverrides::default(),
+                diagnostics: false,
                 query: query.into(),
                 intent: None,
                 limit: Some(5),

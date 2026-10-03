@@ -31,6 +31,9 @@ struct Search {
     unit: Option<crate::search_results::SearchUnit>,
     /// Partial hybrid fusion overrides; omitted fields use current TOML defaults.
     fusion: Option<crate::gold::config::FusionOverrides>,
+    /// Include resolved retrieval policy, source outcomes and core timing.
+    #[serde(default)]
+    diagnostics: bool,
     #[serde(flatten)]
     filters: crate::search_filter::Selection,
     #[serde(default)]
@@ -248,6 +251,7 @@ impl Mash {
             limit: request.limit,
             unit: request.unit,
             fusion: request.fusion.unwrap_or_default(),
+            diagnostics: request.diagnostics,
             filters: Box::new(request.filters),
             shared: request.shared,
             local: request.local,

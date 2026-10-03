@@ -296,6 +296,7 @@ async fn core_indexes_and_searches_native_database_sessions_with_real_models() {
         paths: paths.clone(),
         operation: Operation::Search {
             fusion: crate::gold::config::FusionOverrides::default(),
+            diagnostics: false,
             query: "cbioportal importer".into(),
             intent: None,
             limit: Some(5),

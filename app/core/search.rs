@@ -13,6 +13,7 @@ pub(super) struct Input {
     pub(super) limit: Option<usize>,
     pub(super) unit: Option<crate::search_results::SearchUnit>,
     pub(super) fusion: crate::gold::config::FusionOverrides,
+    pub(super) diagnostics: bool,
     pub(super) filters: crate::search_filter::Selection,
     pub(super) shared: bool,
     pub(super) local: bool,
@@ -53,8 +54,41 @@ pub(super) fn resolve(
     filters.resolve(node)
 }
 
-#[tracing::instrument(name = "search", skip_all)]
 pub(super) async fn run(
+    configuration: &ResolvedConfig,
+    database: &Path,
+    models: &Path,
+    input: Input,
+) -> Result<SearchResponse, AppError> {
+    let policy = if input.diagnostics {
+        let (limit, _) = configuration.gold.query.resolve(input.limit, input.unit);
+        let fusion = resolve_fusion(
+            input.fusion,
+            input.intent.unwrap_or(configuration.gold.query.intent),
+            configuration.gold.query.fusion,
+        )?;
+        let scope = if input.shared {
+            crate::gold::diagnostics::Scope::Shared
+        } else if input.local || configuration.shared.is_none() {
+            crate::gold::diagnostics::Scope::Local
+        } else {
+            crate::gold::diagnostics::Scope::Combined
+        };
+        Some((limit, fusion, scope))
+    } else {
+        None
+    };
+    let mut response = run_inner(configuration, database, models, input).await?;
+    if let Some((limit, fusion, scope)) = policy {
+        response.diagnostics = Some(crate::gold::diagnostics::Diagnostics::new(
+            &response, scope, limit, fusion,
+        ));
+    }
+    Ok(response)
+}
+
+#[tracing::instrument(name = "search", skip_all)]
+async fn run_inner(
     configuration: &ResolvedConfig,
     database: &Path,
     models: &Path,
@@ -66,6 +100,7 @@ pub(super) async fn run(
         limit,
         unit,
         fusion,
+        diagnostics: _,
         filters,
         shared: use_shared,
         local: use_local,
@@ -96,6 +131,7 @@ pub(super) async fn run(
             )
             .await?;
             return Ok(SearchResponse {
+                diagnostics: None,
                 intent,
                 realized_mode: if shared_error.is_some() {
                     SearchMode::LocalLexical
@@ -130,6 +166,7 @@ pub(super) async fn run(
         )
         .await?;
         Ok(SearchResponse {
+            diagnostics: None,
             intent,
             realized_mode: search_mode(shared_error.is_some(), use_shared),
             unit,
@@ -163,6 +200,7 @@ fn local_exact(
     let hits = storage.search_exact(literal, unit.candidate_limit(), filters)?;
     let hits = crate::gold::exact::rank(hits, unit);
     Ok(SearchResponse {
+        diagnostics: None,
         intent: crate::gold::exact::Intent::ExactMention,
         realized_mode: SearchMode::Lexical,
         unit,
@@ -201,6 +239,7 @@ fn local_search(
         Some(filters),
     )?;
     Ok(SearchResponse {
+        diagnostics: None,
         intent: crate::gold::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,
         unit: options.unit,

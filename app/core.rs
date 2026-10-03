@@ -45,7 +45,12 @@ async fn execute_admitted(
     };
     async {
         let started = std::time::Instant::now();
-        let result = execute_inner(request, capacity).await;
+        let mut result = execute_inner(request, capacity).await;
+        if let Ok(Response::Search(response)) = &mut result
+            && let Some(diagnostics) = &mut response.diagnostics
+        {
+            diagnostics.elapsed_ms = crate::progress::milliseconds(started);
+        }
         tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
         match &result {
             Ok(response) if response.needs_retry() => tracing::info!(outcome = "incomplete", "request completed"),
@@ -174,6 +179,7 @@ async fn dispatch(
             limit,
             unit,
             fusion,
+            diagnostics,
             filters,
             shared,
             local,
@@ -187,6 +193,7 @@ async fn dispatch(
                 limit,
                 unit,
                 fusion,
+                diagnostics,
                 filters: *filters,
                 shared,
                 local,

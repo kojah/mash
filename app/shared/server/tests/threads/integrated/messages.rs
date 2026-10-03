@@ -76,6 +76,7 @@ async fn assert_scoped(paths: &Paths, ids: &[String], expected: &[&str]) {
         paths: paths.clone(),
         operation: Operation::Search {
             fusion: crate::gold::config::FusionOverrides::default(),
+            diagnostics: false,
             query: "authentication".into(),
             intent: None,
             limit: None,

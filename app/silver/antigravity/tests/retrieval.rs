@@ -27,6 +27,7 @@ async fn core_searches_native_antigravity_messages_and_threads_with_local_models
             paths: paths.clone(),
             operation: Operation::Search {
                 fusion: crate::gold::config::FusionOverrides::default(),
+                diagnostics: false,
                 query: "cbioportal study filters".into(),
                 intent: None,
                 limit: Some(5),

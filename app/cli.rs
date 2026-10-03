@@ -94,6 +94,9 @@ enum Command {
         /// Override the semantic candidate weight (1–100).
         #[arg(long)]
         semantic_weight: Option<u16>,
+        /// Include resolved retrieval policy, source outcomes and core timing.
+        #[arg(long)]
+        diagnostics: bool,
         #[command(flatten)]
         filters: Box<SearchArguments>,
         /// Query only the shared index (including this node).
@@ -274,6 +277,7 @@ impl Cli {
                 fusion_rank_constant,
                 lexical_weight,
                 semantic_weight,
+                diagnostics,
                 filters,
                 shared,
                 local,
@@ -283,6 +287,7 @@ impl Cli {
                 intent,
                 limit,
                 unit,
+                diagnostics,
                 fusion: crate::gold::config::FusionOverrides {
                     rank_constant: fusion_rank_constant,
                     lexical_weight,
@@ -536,16 +541,23 @@ mod tests {
             "4",
             "--fusion-rank-constant",
             "10",
+            "--diagnostics",
         ])
         .unwrap()
         .into_request()
         .unwrap();
-        let Operation::Search { fusion, .. } = request.operation else {
+        let Operation::Search {
+            fusion,
+            diagnostics,
+            ..
+        } = request.operation
+        else {
             panic!("search request")
         };
         assert_eq!(fusion.rank_constant, Some(10));
         assert_eq!(fusion.lexical_weight, Some(4));
         assert_eq!(fusion.semantic_weight, None);
+        assert!(diagnostics);
     }
 
     #[test]

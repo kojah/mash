@@ -433,6 +433,39 @@ model re-embedding, index mutation or readiness publication. Existing explicit
 query-limit semantics are preserved; the bounds above validate configuration
 defaults, not a new constraint on explicit requests.
 
+## Query diagnostics
+
+Opt-in CLI `search --diagnostics` and MCP `search` with `"diagnostics":true`
+include a typed, request-only `diagnostics` object. Policy version 1 reports
+resolved intent, unit, limit and hybrid fusion; policy-selected artifacts;
+requested local/shared/combined scope; successfully completed retrieval sources;
+shared fallback; returned result count; and core elapsed milliseconds. Exact
+search selects metadata and lexical artifacts and omits fusion. Related
+discussion selects metadata, lexical and dense artifacts. Selection describes
+the resolved policy, not measured inference calls or candidate counts.
+
+Core timing includes configuration and model admission, but excludes process
+startup, worker connection/queue time before admission and response serialization.
+Zero-result successful retrieval still counts as a completed source. A combined
+shared failure reports local completion and fallback; failed shared-only calls
+remain errors. Reports contain no source text, credentials, paths or model URLs.
+Diagnostics do not change ranking, run indexing or persist query policy. They
+are omitted by default. Per-stage counts/timings, artifact readiness/coverage,
+metadata/topic diagnostics and held-out attribution remain `mash-q3e.4.4` work.
+
+Validation on 2026-10-03 passed 645 standard tests, both real-model CLI/MCP
+contracts, strict all-target Clippy, formatting and doctest compilation.
+Exact local, shared, combined and fallback reports were verified without model
+capacity; real-model direct/cached CLI and SDK MCP reports reflected current
+defaults and overrides while the database remained byte-identical. Subsequent
+ordinary calls omitted diagnostics. Captures are
+`gold-search-diagnostics-standard-final-20261003.log`,
+`gold-search-diagnostics-models-20261003.log`,
+`gold-search-diagnostics-clippy-complete-20261003.log` and
+`gold-search-diagnostics-doc-20261003.log` in the external artifacts directory.
+These checks establish policy/outcome reporting, not held-out relevance or
+representative end-to-end performance.
+
 ## Active local build recipe and manifest
 
 ```toml
