@@ -649,6 +649,11 @@ costs, including the capabilities round trip, remain an acceptance gate.
 The [bounded local cost measurement](local-gold-cost-2026-10-03.md) records
 real-session construction, representation switching, storage and fresh-process
 CLI costs without changing silver. It does not close shared/fleet or quality gates.
+The [bounded shared cost comparison](shared-gold-cost-2026-10-03.md) now measures
+the explicit dense/lexical-only/dense rebuild path on the same certified sample,
+including authenticated HTTP searches and provider filtering. Silver hashes and
+source revisions remain unchanged. Server/backend resources, steady-state
+storage after compaction, fleet latency and held-out quality remain open.
 
 Query resource selection does not change
 build identity or vectors. CLI `search --ranking fusion` or
