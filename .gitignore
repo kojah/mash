@@ -17,15 +17,8 @@
 /gc-plans/
 /worktrees/
 
-# Beads / Dolt files (added by bd init)
+# Beads state and local configuration; issue history lives on the Dolt remote.
+/.beads/
 .dolt/
 *.db
 .beads-credential-key
-.beads/proxieddb/
-
-# Gas City
-.beads/*
-!.beads/identity.toml
-!.beads/config.yaml
-!.beads/metadata.json
-!.beads/.gitignore
