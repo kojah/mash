@@ -467,3 +467,21 @@ large views in both content representations. Earlier concurrent/setup attempts
 timed out; the fresh fixture passed in 47.507 seconds including initialization,
 upload and cleanup. This is functional evidence, not search latency. The real
 failing query still needs to be retried before claiming the timeout is resolved.
+
+### Preview neighborhood deployment and completed search control
+
+The optimized `6e8f2bb` release is now running on the staged endpoint
+`linux-node:8788`, PID 3928903, frozen binary `mash-native-neighborhood`,
+SHA-256 `f82bf0bf52a931a3f91899fbf890ead30625f1f0edb7d681b731b2866ce7674c`.
+The service added its two integer payload indexes through existing initialization.
+Authenticated freshness stayed unchanged across the update. Prior API metadata
+and binary are retained for rollback; `active-api-release.json` identifies the
+current process, with trace in `preview-server-neighborhood.log`.
+
+The failing shared query now completes with full context. The corrected bounded
+control completed 52 requests across six queries, two scopes and ranking modes,
+fresh processes and one resident worker, preserving local silver and shared
+freshness. See [the measured costs and limitations](shared-ranking-cost-2026-10-04.md).
+The first attempt's worker-path failure is preserved separately. This completes
+the bounded context regression/cost check, not a universal latency or relevance
+claim. Fleet migration and topic acceptance remain incomplete.
