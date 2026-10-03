@@ -50,6 +50,7 @@ impl Build {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Query {
+    pub(crate) intent: super::exact::Intent,
     pub(crate) unit: SearchUnit,
     pub(crate) limit: usize,
 }
@@ -57,6 +58,7 @@ pub(crate) struct Query {
 impl Default for Query {
     fn default() -> Self {
         Self {
+            intent: super::exact::Intent::default(),
             unit: SearchUnit::Threads,
             limit: 20,
         }

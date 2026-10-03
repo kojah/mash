@@ -193,6 +193,7 @@ async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
                 paths: paths.clone(),
                 operation: Operation::Search {
                     query: "cbioportal conversations".into(),
+                    intent: None,
                     limit: Some(5),
                     unit: Some(unit),
                     filters: Box::new(crate::search_filter::Selection {

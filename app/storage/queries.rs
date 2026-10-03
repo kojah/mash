@@ -330,7 +330,7 @@ impl Storage {
     }
 }
 
-fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> {
+pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> {
     Ok(SearchHit {
         id: row.id,
         conversation_id: row.conversation_id,

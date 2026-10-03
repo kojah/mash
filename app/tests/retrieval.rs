@@ -1,6 +1,51 @@
 use super::*;
 
 #[test]
+fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    let database = directory.path().join("index.sqlite3");
+    let models = directory.path().join("models");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    create_valid_model_marker(&models);
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    run_json(&[base.as_slice(), &["index"]].concat());
+    std::fs::remove_dir_all(&models).unwrap();
+    let before = std::fs::read(&database).unwrap();
+    for direct in [false, true] {
+        let mut args = [
+            base.as_slice(),
+            &["search", "for", "--intent", "exact-mention", "--local"],
+        ]
+        .concat();
+        if direct {
+            args.push("--no-worker");
+        }
+        let result = run_json(&args);
+        assert_eq!(result["intent"], "exact-mention");
+        assert_eq!(result["realized_mode"], "lexical");
+        assert_eq!(result["results"], serde_json::json!([]));
+    }
+    std::fs::write(
+        &config,
+        "version=1\nproviders={}\n[gold.query]\nintent='exact-mention'\nunit='messages'\nlimit=3\n",
+    )
+    .unwrap();
+    let result = run_json(&[base.as_slice(), &["search", "for", "--local"]].concat());
+    assert_eq!(result["unit"], "messages");
+    assert_eq!(result["intent"], "exact-mention");
+    assert_eq!(std::fs::read(&database).unwrap(), before);
+    assert!(!models.exists());
+}
+
+#[test]
 fn cached_and_direct_cli_validation_match_with_installed_models_and_no_index() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");

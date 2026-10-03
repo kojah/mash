@@ -76,6 +76,7 @@ async fn assert_scoped(paths: &Paths, ids: &[String], expected: &[&str]) {
         paths: paths.clone(),
         operation: Operation::Search {
             query: "authentication".into(),
+            intent: None,
             limit: None,
             unit: None,
             filters: Box::new(Selection {

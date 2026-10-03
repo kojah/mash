@@ -43,12 +43,21 @@ fn gold_query_defaults_are_typed_bounded_and_reported_in_status() {
     let status = serde_json::to_value(resolved.status()).unwrap();
     assert_eq!(status["gold"]["query"]["unit"], "messages");
     assert_eq!(status["gold"]["query"]["limit"], 7);
+    assert_eq!(status["gold"]["query"]["intent"], "related-discussion");
+    let exact =
+        parse_document(format!("{VALID}\n[gold.query]\nintent='exact-mention'\n").as_bytes())
+            .unwrap();
+    assert_eq!(
+        exact.gold.query.intent,
+        crate::gold::exact::Intent::ExactMention
+    );
     for invalid in [
         "[gold.query]\nlimit = 0",
         "[gold.query]\nlimit = 201",
         "[gold.query]\nlimit = -1",
         "[gold.query]\nlimit = '7'",
         "[gold.query]\nunit = 'chunks'",
+        "[gold.query]\nintent = 'decisions'",
         "[gold.query]\nunknown = true",
         "[gold]\nprofiles = []",
         "[gold.query]\nlimit = 1\n[gold.query]\nlimit = 2",

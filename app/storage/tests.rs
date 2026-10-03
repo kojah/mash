@@ -49,6 +49,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
     value
 }
 
+mod exact;
 mod indexing;
 mod schema;
 mod semantic;

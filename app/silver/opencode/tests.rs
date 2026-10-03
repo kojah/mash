@@ -269,6 +269,7 @@ async fn core_indexes_searches_and_views_native_opencode_threads() {
         paths: paths.clone(),
         operation: Operation::Search {
             query: "cbioportal importer".into(),
+            intent: None,
             limit: Some(5),
             unit: Some(crate::search_results::SearchUnit::Threads),
             filters: Box::new(crate::search_filter::Selection {

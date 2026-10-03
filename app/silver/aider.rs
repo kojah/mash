@@ -270,6 +270,7 @@ mod tests {
             paths: paths.clone(),
             operation: Operation::Search {
                 query: "cbioportal importer".into(),
+                intent: None,
                 limit: Some(5),
                 unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: Box::new(filters),

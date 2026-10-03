@@ -76,6 +76,9 @@ enum Command {
     /// Search indexed threads or messages.
     Search {
         query: String,
+        /// Retrieval intent; defaults to gold.query.intent (related-discussion).
+        #[arg(long, value_enum)]
+        intent: Option<crate::gold::exact::Intent>,
         /// Maximum results; defaults to gold.query.limit (20).
         #[arg(long)]
         limit: Option<usize>,
@@ -253,6 +256,7 @@ impl Cli {
             }),
             Command::Search {
                 query,
+                intent,
                 limit,
                 unit,
                 filters,
@@ -261,6 +265,7 @@ impl Cli {
                 ..
             } => Operation::Search {
                 query,
+                intent,
                 limit,
                 unit,
                 filters: Box::new(filters.into_selection()?),
@@ -368,6 +373,14 @@ async fn process_search(mut cli: Cli) -> Result<Response, AppError> {
     let models_dir = absolute(cli.models_dir.unwrap_or_else(default_models_path));
     cli.models_dir = Some(models_dir.clone());
     let request = cli.into_request()?;
+    if matches!(&request.operation, Operation::Search { intent, .. }
+        if intent.unwrap_or(configuration.gold.query.intent) == crate::gold::exact::Intent::ExactMention)
+    {
+        return core::execute(request)
+            .await
+            .map(Box::new)
+            .map(Response::Operation);
+    }
     core::validate_search_request(&request)?;
     let models = Models::new(models_dir).with_remote(configuration.embeddings.clone());
     if !models.is_installed() {

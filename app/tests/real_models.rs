@@ -75,12 +75,65 @@ fn real_models_index_and_run_hybrid_search() {
         assert!(indexed[timing].is_u64(), "missing index timing: {timing}");
     }
 
+    assert_exact_search_without_models(&config, &database);
     assert_scoped_message_search(&config, &database, model_arg);
     assert_thread_search_and_view(&config, &database, model_arg);
     #[cfg(unix)]
     assert_worker_stage_diagnostics(&config, &database, model_arg);
     assert_gold_query_defaults(&config, &database, model_arg);
     assert_source_independent_gold_rebuild(&config, &database, &claude, &codex, model_arg);
+}
+
+fn assert_exact_search_without_models(config: &Path, database: &Path) {
+    let original_config = std::fs::read_to_string(config).unwrap();
+    let missing_models = database.with_extension("missing-models");
+    let before = std::fs::read(database).unwrap();
+    // Dense recipe staleness must not disable unchanged lexical artifacts.
+    std::fs::write(
+        config,
+        format!("{original_config}\n[gold.build]\nembedding_text='title-and-dialogue'\n"),
+    )
+    .unwrap();
+    let mut durations = Vec::new();
+    for unit in ["threads", "messages"] {
+        for query in ["login token", "private-output-marker"] {
+            let started = std::time::Instant::now();
+            let result = run_json(&[
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                missing_models.to_str().unwrap(),
+                "search",
+                query,
+                "--intent",
+                "exact-mention",
+                "--local",
+                "--unit",
+                unit,
+            ]);
+            durations.push(started.elapsed().as_millis());
+            assert_eq!(result["realized_mode"], "lexical");
+            assert_eq!(result["intent"], "exact-mention");
+            assert_eq!(
+                result["results"].as_array().unwrap().len(),
+                usize::from(query == "login token")
+            );
+            assert!(
+                !serde_json::to_string(&result["results"])
+                    .unwrap()
+                    .contains("private-output-marker")
+            );
+        }
+    }
+    assert_eq!(std::fs::read(database).unwrap(), before);
+    assert!(!missing_models.exists());
+    std::fs::write(config, original_config).unwrap();
+    eprintln!(
+        "exact CLI synthetic two-message fixture: process-inclusive latency ms={durations:?}; SQLite bytes={}",
+        before.len()
+    );
 }
 
 fn assert_source_independent_gold_rebuild(

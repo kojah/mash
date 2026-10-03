@@ -9,6 +9,7 @@ use std::path::Path;
 
 pub(super) struct Input {
     pub(super) query: String,
+    pub(super) intent: Option<crate::gold::exact::Intent>,
     pub(super) limit: Option<usize>,
     pub(super) unit: Option<crate::search_results::SearchUnit>,
     pub(super) filters: crate::search_filter::Selection,
@@ -18,6 +19,7 @@ pub(super) struct Input {
 
 pub(super) fn resolve(
     query: &str,
+    intent: crate::gold::exact::Intent,
     filters: crate::search_filter::Selection,
     shared: bool,
     local: bool,
@@ -28,7 +30,12 @@ pub(super) fn resolve(
             "local and shared search are mutually exclusive",
         ));
     }
-    crate::search_query::validate(query)?;
+    match intent {
+        crate::gold::exact::Intent::RelatedDiscussion => crate::search_query::validate(query)?,
+        crate::gold::exact::Intent::ExactMention => {
+            crate::gold::exact::Literal::new(query)?;
+        }
+    }
     filters.resolve(node)
 }
 
@@ -41,6 +48,7 @@ pub(super) async fn run(
 ) -> Result<SearchResponse, AppError> {
     let Input {
         query,
+        intent,
         limit,
         unit,
         filters,
@@ -48,8 +56,10 @@ pub(super) async fn run(
         local: use_local,
     } = input;
     let (limit, unit) = configuration.gold.query.resolve(limit, unit);
+    let intent = intent.unwrap_or(configuration.gold.query.intent);
     let filters = resolve(
         &query,
+        intent,
         filters,
         use_shared,
         use_local,
@@ -58,6 +68,30 @@ pub(super) async fn run(
             .as_ref()
             .map_or("local", |c| c.node_id.as_str()),
     )?;
+    if intent == crate::gold::exact::Intent::ExactMention {
+        if use_shared || (!use_local && configuration.shared.is_some()) {
+            return Err(AppError::usage(
+                "exact-mention currently supports local search only; set local=true or --local",
+            ));
+        }
+        let literal = crate::gold::exact::Literal::new(&query)?;
+        let database = database.to_path_buf();
+        return crate::blocking(move || {
+            let storage = Storage::open_lexical(&database)?;
+            let hits = storage.search_exact(&literal, unit.candidate_limit(), &filters)?;
+            let hits = semantic::fuse(hits, vec![], unit);
+            Ok(SearchResponse {
+                query: query.clone(),
+                intent,
+                realized_mode: SearchMode::Lexical,
+                unit,
+                results: crate::search_results::collect(hits, unit, limit, &query),
+                shared: false,
+                shared_error: None,
+            })
+        })
+        .await;
+    }
     if use_shared || (!use_local && configuration.shared.is_some()) {
         let (results, shared_error) = shared::search(
             required_shared(configuration)?,
@@ -70,6 +104,7 @@ pub(super) async fn run(
         )
         .await?;
         Ok(SearchResponse {
+            intent,
             realized_mode: search_mode(shared_error.is_some(), use_shared),
             unit,
             results: crate::search_results::collect(results, unit, limit, &query),
@@ -125,6 +160,7 @@ fn local_search(
         Some(filters),
     )?;
     Ok(SearchResponse {
+        intent: crate::gold::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,
         unit: options.1,
         results: crate::search_results::collect(results, options.1, options.0, &query),

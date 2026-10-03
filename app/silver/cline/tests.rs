@@ -490,6 +490,7 @@ async fn core_retrieves_native_cline_threads_with_real_models() {
                     paths: paths.clone(),
                     operation: Operation::Search {
                         query: query.into(),
+                        intent: None,
                         limit: Some(5),
                         unit: Some(unit),
                         filters: Box::new(crate::search_filter::Selection {

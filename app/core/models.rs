@@ -63,6 +63,8 @@ pub(crate) enum Operation {
     },
     Search {
         query: String,
+        #[serde(default)]
+        intent: Option<crate::gold::exact::Intent>,
         limit: Option<usize>,
         unit: Option<crate::search_results::SearchUnit>,
         filters: Box<crate::search_filter::Selection>,
@@ -151,6 +153,7 @@ impl IndexResponse {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SearchMode {
+    Lexical,
     Hybrid,
     LocalHybrid,
     MergedHybrid,
@@ -160,6 +163,8 @@ pub(crate) enum SearchMode {
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SearchResponse {
     pub(crate) query: String,
+    #[serde(default)]
+    pub(crate) intent: crate::gold::exact::Intent,
     pub(crate) realized_mode: SearchMode,
     pub(crate) unit: crate::search_results::SearchUnit,
     pub(crate) results: crate::search_results::Results,

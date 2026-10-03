@@ -27,6 +27,7 @@ async fn core_searches_native_windsurf_messages_and_threads_with_local_models() 
             paths: paths.clone(),
             operation: Operation::Search {
                 query: "cbioportal study filters".into(),
+                intent: None,
                 limit: Some(5),
                 unit: Some(unit),
                 filters: Box::new(crate::search_filter::Selection {

@@ -14,6 +14,7 @@ use crate::AppError;
 // Gold views and materialized retrieval data.
 mod catalog;
 pub(crate) mod embedding_plan;
+mod exact;
 mod gold_manifest;
 mod semantic;
 mod semantic_chunks;

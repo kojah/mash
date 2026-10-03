@@ -147,6 +147,7 @@ async fn invalid_searches_return_usage_without_connecting_or_starting_a_worker()
             },
             operation: crate::core::Operation::Search {
                 query: query.into(),
+                intent: None,
                 limit: Some(5),
                 unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: Box::new(crate::search_filter::Selection {

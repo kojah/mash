@@ -23,6 +23,8 @@ struct Mash {
 #[serde(deny_unknown_fields)]
 struct Search {
     query: String,
+    /// related-discussion (default) or exact-mention; exact currently requires local=true.
+    intent: Option<crate::gold::exact::Intent>,
     /// Maximum results; omitted uses gold.query.limit (20 by default).
     limit: Option<usize>,
     /// Threads or messages; omitted uses gold.query.unit (threads by default).
@@ -189,10 +191,10 @@ impl Mash {
         } else {
             None
         };
-        let _permit = if matches!(
-            operation,
-            Operation::Search { .. } | Operation::Index(_) | Operation::ModelsInstall
-        ) {
+        let uses_models = matches!(&operation, Operation::Search { intent, .. }
+            if *intent != Some(crate::gold::exact::Intent::ExactMention))
+            || matches!(operation, Operation::Index(_) | Operation::ModelsInstall);
+        let _permit = if uses_models {
             match self.model_work.acquire().await {
                 Ok(permit) => Some(permit),
                 Err(_) => {
@@ -245,11 +247,12 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search using configured gold.query defaults (threads and 20 results unless configured otherwise); set unit and limit to override. Thread matches are relevance-ordered excerpts with message_id anchors for view; timestamps are Unix milliseconds. Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."
+        description = "Search using gold.query defaults; override intent, unit or limit. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference; currently requires local=true when shared is configured. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require a completed current index and never run ingestion. Hybrid shared failures fall back to local results with shared_error."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute(Operation::Search {
             query: request.query,
+            intent: request.intent,
             limit: request.limit,
             unit: request.unit,
             filters: Box::new(request.filters),
@@ -274,7 +277,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Report index/model readiness. Set shared=true to include per-node last_synced_at and last_updated_at from PostgreSQL. Shared-only queries PostgreSQL without opening SQLite."
+        description = "Report index/model readiness. Set shared=true to include per-node last_synced_at and last_updated_at from the shared HTTP service backed by Qdrant."
     )]
     async fn status(&self, Parameters(request): Parameters<Status>) -> CallToolResult {
         self.execute(Operation::Status {

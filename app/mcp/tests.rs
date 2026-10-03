@@ -9,6 +9,62 @@ mod selections;
 mod threads;
 
 #[tokio::test]
+async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let mut writer = crate::storage::Storage::open_writer(&database).unwrap();
+    writer.finish_silver_ingestion().unwrap();
+    writer.rebuild_derived_search_state().unwrap();
+    let certificate = writer.silver_certificate().unwrap();
+    writer
+        .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
+            crate::gold::config::Build::default(),
+            "unavailable".into(),
+            certificate.clone(),
+        ))
+        .unwrap();
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    let server = Mash {
+        paths: Arc::new(Paths {
+            config: Some(config),
+            db: Some(database.clone()),
+            models_dir: Some(directory.path().join("missing-models")),
+        }),
+        gate: Arc::new(tokio::sync::Mutex::new(())),
+        model_work: Arc::new(tokio::sync::Semaphore::new(0)),
+    };
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        server.search(Parameters(Search {
+            query: "for".into(),
+            intent: Some(crate::gold::exact::Intent::ExactMention),
+            limit: Some(1),
+            unit: Some(crate::search_results::SearchUnit::Messages),
+            filters: crate::search_filter::Selection::default(),
+            shared: false,
+            local: true,
+        })),
+    )
+    .await
+    .unwrap();
+    assert_ne!(result.is_error, Some(true));
+    let data = result.structured_content.unwrap();
+    assert_eq!(data["intent"], "exact-mention");
+    assert_eq!(data["realized_mode"], "lexical");
+    assert_eq!(data["results"], json!([]));
+    assert_eq!(
+        crate::storage::Storage::open_catalog(&database)
+            .unwrap()
+            .silver_certificate()
+            .unwrap(),
+        certificate
+    );
+}
+
+#[tokio::test]
 async fn typed_search_requests_validate_before_touching_models_or_storage() {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("config.toml");
@@ -29,6 +85,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
         let result = server
             .search(Parameters(Search {
                 query: "--models-dir=untrusted".into(),
+                intent: None,
                 limit: None,
                 unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: crate::search_filter::Selection {
@@ -46,6 +103,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
     let result = server
         .search(Parameters(Search {
             query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
+            intent: None,
             limit: None,
             unit: Some(crate::search_results::SearchUnit::Threads),
             filters: crate::search_filter::Selection::default(),

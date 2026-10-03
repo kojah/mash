@@ -417,6 +417,67 @@ Local recipes remain independent of shared recipes; nondefault local recipes
 use the independently routed publication path rather than forwarding local
 vectors as shared default vectors.
 
+## Query intent: local exact mentions
+
+`[gold.query] intent = "related-discussion"` retains the existing hybrid retrieval
+default. `intent = "exact-mention"` selects the lexical and metadata artifacts,
+without embeddings, reranking, model loading or changes to stored silver/gold.
+The CLI `--intent` and MCP `intent` override this query default independently of
+the active build recipe. Query settings are excluded from build manifests.
+
+Examples:
+
+```sh
+mash search voyage-code-4 --intent exact-mention --local --unit messages --conversation thread-a
+mash search '"connection pool"' --intent exact-mention --local
+```
+
+Equivalent MCP search arguments use the same typed core:
+
+```json
+{"query":"voyage-code-4","intent":"exact-mention","local":true,"unit":"messages","conversation":["thread-a","thread-b"],"provider":["codex"],"limit":10}
+```
+
+For related discussions, the existing metadata scopes compose with the default
+hybrid path, for example:
+
+```json
+{"query":"Redis shared index","intent":"related-discussion","unit":"threads","after":1772323200,"before":1775001600,"limit":10}
+```
+
+The entire trimmed query is one literal; one paired set of enclosing double
+quotes is removed. Matching folds ASCII case only, preserves internal punctuation
+and whitespace, and rejects matches adjacent to Unicode letters/numbers, `_`,
+`-` or `+`. Thus `voyage-code-4` does not match `voyage code 4`, `voyage-code-40`
+or `voyage-code-4-v2`; `C++` does not match `C++20`. Other punctuation separates
+mentions. This is literal retrieval, without stemming, typo correction, synonyms
+or language-model restrictions. Queries need at least one letter/number and are
+bounded to 16 KiB. Common words are allowed because they may be code identifiers.
+
+SQLite FTS5 supplies phrase candidates; a deterministic literal predicate and
+metadata filters run before BM25 ordering and the bounded candidate limit. The
+existing thread/message deduplication and result shaping remain in use. Only
+interpreted visible text is matched; titles and hidden canonical text are not
+extra matching fields. Completed indexing, a matching silver certificate and a
+clean lexical artifact remain required even if dense vectors/models are absent
+or a different embedding recipe is configured. Search opens SQLite read-only
+and cannot initialize an index. The CLI bypasses its model worker for this mode.
+
+**Current scope:** exact mentions are implemented locally. Shared/combined exact
+retrieval explicitly returns a usage error; use `--local` / MCP `local=true`
+when a shared service is configured. Qdrant parity and bounded shared candidate
+paging remain on `mash-q3e.4.1` / `mash-q3e.4.2`; these Beads are not complete.
+
+Validation on 2026-10-03: the real-model integration fixture found the visible
+`login token` message and rejected hidden tool output in both result shapes,
+using a nonexistent model directory and an incompatible configured dense recipe.
+The four CLI invocations took 20, 20, 19 and 17 ms including process startup on
+Xenia. The two-message SQLite fixture was 184,320 bytes and remained byte-for-byte
+unchanged. These small-fixture timings are diagnostic, not full-corpus latency
+or percentile estimates. The change adds no persistent tables or content copies;
+it reuses the existing FTS5 and metadata artifacts. Logs are in the external
+`mash-artifacts/gold-exact-real-model-20261003.log` artifact.
+
 ## Shared build recipes and manifests
 
 The server TOML selects the shared recipe independently of node configuration:

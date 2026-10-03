@@ -64,6 +64,7 @@ async fn execute_inner(request: Request) -> Result<Response, AppError> {
 pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError> {
     let Operation::Search {
         query,
+        intent,
         filters,
         shared,
         local,
@@ -74,7 +75,15 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
     };
     // The node affects the resolved scope, but not syntax validation. Actual
     // execution resolves again with the current configuration and time cutoff.
-    search::resolve(query, filters.as_ref().clone(), *shared, *local, "local").map(|_| ())
+    search::resolve(
+        query,
+        intent.unwrap_or_default(),
+        filters.as_ref().clone(),
+        *shared,
+        *local,
+        "local",
+    )
+    .map(|_| ())
 }
 
 #[cfg(unix)]
@@ -110,6 +119,7 @@ async fn dispatch(
             .map(Response::Index),
         Operation::Search {
             query,
+            intent,
             limit,
             unit,
             filters,
@@ -121,6 +131,7 @@ async fn dispatch(
             models,
             search::Input {
                 query,
+                intent,
                 limit,
                 unit,
                 filters: *filters,
