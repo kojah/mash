@@ -1,6 +1,7 @@
 use super::*;
 use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
 use std::io::Write;
+mod configuration;
 mod exact;
 mod memory;
 mod publication;
@@ -30,6 +31,7 @@ impl Fixture {
         let store = Store::connect(&url, None, &[group], 4, 64 * 1024 * 1024, index, memory)
             .await
             .unwrap();
+        store.select_gold(&identity, false).await.unwrap();
         Self {
             store,
             identity,

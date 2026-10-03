@@ -596,6 +596,11 @@ impl Service {
                 },
             ),
         ]));
+        if available {
+            for identity in identities.values() {
+                store.select_gold(identity, false).await.unwrap();
+            }
+        }
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let uploads = Arc::new(tokio::sync::Semaphore::new(4));

@@ -132,6 +132,9 @@ enum Command {
     Serve {
         #[arg(long, value_name = "PATH")]
         server_config: PathBuf,
+        /// Explicitly replace persisted shared group gold settings from this TOML.
+        #[arg(long)]
+        activate_gold: bool,
     },
 }
 
@@ -327,8 +330,12 @@ where
         .enable_all()
         .build()
         .map_err(|_| AppError::internal("failed to start async runtime"))?;
-    if let Command::Serve { server_config } = cli.command {
-        runtime.block_on(crate::shared::server::run(&server_config))?;
+    if let Command::Serve {
+        server_config,
+        activate_gold,
+    } = cli.command
+    {
+        runtime.block_on(crate::shared::server::run(&server_config, activate_gold))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp { watch, debounce_ms } = cli.command {
         let paths = Paths {

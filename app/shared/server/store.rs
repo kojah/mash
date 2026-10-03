@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 pub(super) async fn initialize(
     config: &Configuration,
     identities: &HashMap<blake3::Hash, Identity>,
+    activate_gold: bool,
 ) -> Result<Store, AppError> {
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
     let groups = groups.into_iter().collect::<Vec<_>>();
@@ -28,7 +29,7 @@ pub(super) async fn initialize(
                 .map_err(|_| AppError::configuration(format!("set {name} to the Qdrant API key")))
         })
         .transpose()?;
-    Ok(Store::connect(
+    let store = Store::connect(
         &url,
         key.as_deref(),
         &groups,
@@ -44,5 +45,12 @@ pub(super) async fn initialize(
     )
     .await?
     .with_snapshot_budget(budget)
-    .with_build(config.gold.build.clone()))
+    .with_build(config.gold.build.clone());
+    let mut selected = HashSet::new();
+    for identity in identities.values() {
+        if selected.insert(&identity.group_id) {
+            store.select_gold(identity, activate_gold).await?;
+        }
+    }
+    Ok(store)
 }

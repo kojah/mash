@@ -18,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests; shared lexical readiness is independent of dense readiness. Shared provider coverage verifies retained checkpoints independently of vectors. Group-wide build authorization and broader enrichment origins remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests; shared lexical readiness is independent of dense readiness. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; atomic all-node replacement and broader enrichment origins remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -193,8 +193,8 @@ Independently routed ingestion cannot attach a full-local-snapshot certificate:
 its provider allowlist and retained history may differ. Routed updates, replacement
 snapshots without a certificate, and server-side forget operations clear the prior
 source certificate. The scoped retained-coverage contract below supports routed
-ingestion. Group-wide build authorization, shared gold manifests and source-free
-shared rebuilds remain follow-up work.
+ingestion. Shared manifests and source-free rebuilds are implemented below;
+group-wide replacement and broader enrichment coverage remain follow-up work.
 
 ### Routed provider scan evidence
 
@@ -546,10 +546,61 @@ rebuilding to certify their vectors.
 If their retained silver also lacks current completeness evidence, explicit
 source ingestion is required before a source-free rebuild can be admitted.
 
-After changing server recipes, rebuild every publishing node. During this
-transition search fails until the group has matching manifests. This is **not a
-group-wide atomic activation transaction**: availability during coordinated
-switches and a durable group configuration pointer remain follow-up work.
+### Durable shared group configuration
+
+Qdrant's state collection contains one strict typed group configuration point:
+schema version, immutable configuration version, build recipe, model generation
+and dimensions. Ordinary API startup bootstraps an absent record once or requires
+matching persisted settings. Conflicting TOML fails startup before listening.
+Concurrent conflicting bootstrap uses insert-only publication; explicit
+replacement uses the observed configuration version as its conditional filter.
+Both paths reread durable state to verify the selected configuration. Matching
+startup is idempotent and does not advance its version.
+
+To intentionally switch, change the server TOML and run:
+
+```sh
+mash serve --server-config /absolute/path/to/server.toml --activate-gold
+```
+
+Activation changes group authority, without modifying canonical history or
+re-embedding it. All API processes must run the authority-aware protocol;
+older binaries do not implement these checks. APIs using this protocol with
+old recipe/model settings fail reads and publication. `/v1/freshness` reports typed `group_gold` configuration metadata
+alongside per-node manifests/readiness. Node and group reads check durable
+authority; publication checks its version before staging, before the node-head
+CAS and after verification. A switch observed during publication prevents
+acknowledgement. Malformed or unknown control schemas fail closed rather than
+being overwritten, even with the activation flag. Shared operations add
+control-point reads; there is no polling task, canonical-body copy or model
+inference for authority checks. Representative latency/throughput costs remain
+part of the broader measurement gate.
+
+Rebuild every contributing node after activation. Dense search fails until the
+group's manifests match; current lexical retrieval is independent of dense
+readiness. This is **not an atomic all-node replacement transaction**. The group
+control point and node heads are separate writes: an already-issued node CAS
+can complete after activation, leaving stale gold that readers reject and must
+be rebuilt. The upload is not acknowledged when that race is observed. Search
+availability during replacement, stronger storage-level fencing of delayed
+node writes, recovery/cleanup of interrupted transitions, model-dimension
+migration and representative cost measurements remain in `mash-q3e.3.5`/`.5`.
+Activating several configured groups is per-group, not one cross-group transaction.
+
+Validation on 2026-10-03 passed 641 standard tests and 50 disposable-Qdrant
+contracts. Conflicting first-start selections produced one winner; matching
+reopen preserved its version; six malformed control records failed without
+being overwritten. The real CLI contract verifies conflicting startup failure,
+explicit activation, stale-process rejection and idempotent API restart.
+A controlled activation immediately after node CAS rejects acknowledgement,
+retains canonical history and exposes the old manifest as incompatible with
+the new recipe. The separate real API/Qdrant graceful/SIGKILL restart contract
+also passed with unchanged persisted freshness, including group configuration.
+This does not prove power-loss durability, backup restoration or atomic group
+replacement. Logs are `group-gold-authority-standard-final-20261003.log`,
+`group-gold-authority-qdrant-final-20261003.log` and
+`group-gold-authority-restart-20261003.log` under the external artifacts directory.
+
 Routed ingestion negotiates the server's typed `gold_build` through `/v1/state`
 and pins it in the upload start. Native and Claude materialization apply that
 recipe to embedding inputs, while retaining canonical content and interpreted
@@ -572,8 +623,8 @@ small JSON fields to the existing state response and upload, with no extra
 request, inference or canonical-content copy. With the current 64-character head
 identity, compact JSON adds 89 bytes to node state and 86 bytes to the start
 record. Full-snapshot publication uses the same guard through the plan endpoint
-below. This protects a node publication, not a durable
-group-wide configuration activation.
+below. This node-version pin is separate from the durable group authority
+described above.
 
 The server certifies a source upload when its retained vectors already have a
 matching recipe/model manifest, or every remaining searchable conversation was
@@ -631,8 +682,8 @@ threads require preparation, publication stays pending until explicit indexing.
 The local deletion remains durable. `shared.preparation` reports reused threads/
 vectors, forwarded vectors, model inferences, model loading/embedding/preparation
 milliseconds and upload bytes. These are operation diagnostics, not CPU/RSS or
-corpus throughput measurements. Server configuration remains process-local;
-durable group activation is still pending on `mash-q3e.3.5`, and representative
+corpus throughput measurements. Group selection now has durable authority;
+atomic all-node replacement is still pending on `mash-q3e.3.5`, and representative
 node/server storage, inference and publication-cost acceptance remains `.5`.
 
 The 2026-10-03 unfiltered CLI fixture indexes one Codex and one Claude message,

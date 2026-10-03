@@ -29,6 +29,33 @@ async fn head(fixture: &Fixture, head: NodeHead) {
         .unwrap();
 }
 
+async fn assert_recipe_independent_lexical(fixture: &Fixture) {
+    let other_recipe = fixture
+        .store
+        .clone()
+        .with_build(crate::gold::config::Build {
+            embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+        });
+    other_recipe
+        .select_gold(&fixture.identity, true)
+        .await
+        .unwrap();
+    assert_eq!(
+        other_recipe
+            .search(&fixture.identity, exact_query(fixture, "retained"))
+            .await
+            .unwrap()
+            .lexical
+            .len(),
+        2
+    );
+    fixture
+        .store
+        .select_gold(&fixture.identity, true)
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_exact_readiness_rejects_stale_artifacts_and_unpublished_staging() {
@@ -60,21 +87,7 @@ async fn qdrant_exact_readiness_rejects_stale_artifacts_and_unpublished_staging(
             .is_empty()
     );
     // Recipe changes affect dense retrieval, not a current lexical artifact.
-    let other_recipe = fixture
-        .store
-        .clone()
-        .with_build(crate::gold::config::Build {
-            embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-        });
-    assert_eq!(
-        other_recipe
-            .search(&fixture.identity, exact_query(&fixture, "retained"))
-            .await
-            .unwrap()
-            .lexical
-            .len(),
-        2
-    );
+    assert_recipe_independent_lexical(&fixture).await;
     for corrupt in 0..4 {
         let mut changed = published.clone();
         let evidence = changed.head.as_mut().unwrap();

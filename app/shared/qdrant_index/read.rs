@@ -141,6 +141,7 @@ impl Store {
         &self,
         identity: &Identity,
     ) -> Result<BTreeMap<String, NodeHead>, AppError> {
+        self.gold_version(identity).await?;
         let points = self
             .api
             .scroll::<NodeHead>(
@@ -194,6 +195,7 @@ impl Store {
         &self,
         identity: &Identity,
     ) -> Result<Freshness, AppError> {
+        let group_gold = self.gold_configuration(identity).await?;
         let heads = self.heads(identity).await?;
         let mut nodes = Vec::new();
         for (node_id, node) in &heads {
@@ -227,8 +229,10 @@ impl Store {
             });
         }
         self.stable_heads(identity, &heads).await?;
+        self.unchanged_gold(identity, &group_gold.version).await?;
         Ok(Freshness {
             group_id: identity.group_id.clone(),
+            group_gold: Some(Box::new(group_gold)),
             nodes,
         })
     }

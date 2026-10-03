@@ -1057,6 +1057,15 @@ export MASH_QDRANT_URL='http://127.0.0.1:6333/'
 mash serve --server-config /absolute/path/to/qdrant-server.toml
 ```
 
+Shared gold settings are persisted per group. Startup with conflicting build/model
+settings fails. To deliberately replace the selected settings, update the server
+TOML and start with `--activate-gold`; rebuild each contributing node with
+`mash index --rebuild-shared-gold`. Old API settings fail closed, and dense search
+requires compatible manifests across the group. This preserves canonical history
+but interrupts dense search during replacement. See
+[the activation contract](docs/silver-gold-configuration.md#durable-shared-group-configuration)
+for publication races and remaining lifecycle gates.
+
 Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
 contain credentials, paths, queries or fragments; redirects are disabled so keys
 are not forwarded elsewhere. Qdrant credentials belong only on the HTTP server.

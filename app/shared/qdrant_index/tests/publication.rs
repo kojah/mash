@@ -16,6 +16,7 @@ enum Outcome {
     AppliedFailure,
     CompletedLoser,
     CleanupFailure,
+    ActivatedDuringPublication,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -119,6 +120,24 @@ async fn upsert(
                 backend.points.insert(point.id.clone(), point);
                 return StatusCode::SERVICE_UNAVAILABLE.into_response();
             }
+            Outcome::ActivatedDuringPublication => {
+                backend.points.insert(point.id.clone(), point);
+                let id = point_id(&["gold-configuration"]);
+                let mut control: serde_json::Value =
+                    serde_json::from_str(backend.points[&id].payload.get()).unwrap();
+                control["version"] = "b".repeat(64).into();
+                control["build"] = serde_json::to_value(crate::gold::config::Build {
+                    embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+                })
+                .unwrap();
+                backend.points.insert(
+                    id.clone(),
+                    MockPoint {
+                        id,
+                        payload: to_raw_value(&control).unwrap(),
+                    },
+                );
+            }
             Outcome::CompletedLoser | Outcome::CleanupFailure => {
                 // Another writer inserted a complete snapshot before this insert-only
                 // operation completed without replacing its head. Retain real chunks.
@@ -196,7 +215,23 @@ async fn delete(
     completed()
 }
 
-async fn exercise(outcome: Outcome) {
+fn seed_authority(shared: &Shared, identity: &Identity) {
+    let id = point_id(&["gold-configuration"]);
+    shared.lock().unwrap().points.insert(
+        id.clone(),
+        MockPoint {
+            id,
+            payload: to_raw_value(&serde_json::json!({
+                "kind":"configuration", "schema_version":1, "version":"a".repeat(64),
+                "build":crate::gold::config::Build::default(),
+                "generation":identity.generation, "dimensions":4
+            }))
+            .unwrap(),
+        },
+    );
+}
+
+async fn start(outcome: Outcome) -> (Fixture, Shared, tokio::task::JoinHandle<()>) {
     let shared = Arc::new(Mutex::new(Backend {
         outcome,
         points: BTreeMap::new(),
@@ -228,6 +263,12 @@ async fn exercise(outcome: Outcome) {
         identity,
         url,
     };
+    seed_authority(&shared, &fixture.identity);
+    (fixture, shared, server)
+}
+
+async fn exercise(outcome: Outcome) {
+    let (mut fixture, shared, server) = start(outcome).await;
     let plan = crate::shared::snapshot::plan(
         &fixture.file(1, "private-history-canary"),
         crate::shared::snapshot::PendingSnapshot {
@@ -267,6 +308,12 @@ async fn exercise(outcome: Outcome) {
             backend.points.insert(point.id.clone(), point);
         }
     }
+    if matches!(outcome, Outcome::ActivatedDuringPublication) {
+        assert!(fixture.store.state(&fixture.identity).await.is_err());
+        fixture.store = fixture.store.with_build(crate::gold::config::Build {
+            embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+        });
+    }
     let loaded = fixture
         .store
         .load(&fixture.identity)
@@ -275,6 +322,14 @@ async fn exercise(outcome: Outcome) {
     if matches!(outcome, Outcome::StagingFailure) {
         assert!(loaded.head.is_none());
     } else {
+        if matches!(outcome, Outcome::ActivatedDuringPublication) {
+            let head = loaded.head.as_ref().unwrap();
+            assert!(!head.gold_manifest.as_ref().unwrap().matches(
+                &fixture.store.build,
+                &fixture.identity.generation,
+                head.silver_revision.as_ref()
+            ));
+        }
         assert_eq!(loaded.head.unwrap().revision, 1);
         assert_eq!(loaded.data.messages.len(), 2);
         assert!(
@@ -301,4 +356,9 @@ async fn observed_publication_recovers_success_and_confirmed_loser_cleanup_prese
     exercise(Outcome::AppliedFailure).await;
     exercise(Outcome::CompletedLoser).await;
     exercise(Outcome::CleanupFailure).await;
+}
+
+#[tokio::test]
+async fn activation_after_node_cas_rejects_acknowledgement_and_preserves_stale_history() {
+    exercise(Outcome::ActivatedDuringPublication).await;
 }

@@ -70,7 +70,18 @@ impl Publication {
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Freshness {
     group_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group_gold: Option<Box<GroupGold>>,
     nodes: Vec<NodeFreshness>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct GroupGold {
+    version: String,
+    build: crate::gold::config::Build,
+    generation: String,
+    dimensions: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

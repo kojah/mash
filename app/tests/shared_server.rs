@@ -12,9 +12,12 @@ pub struct Server {
 }
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::with_recipe(root, group, nodes, "dialogue")
+        Self::start(root, group, nodes, "dialogue", false)
     }
     pub fn with_recipe(root: &Path, group: &str, nodes: &[&str], recipe: &str) -> Self {
+        Self::start(root, group, nodes, recipe, true)
+    }
+    fn start(root: &Path, group: &str, nodes: &[&str], recipe: &str, activate: bool) -> Self {
         let path = root.join("server.toml");
         let credentials: Vec<_> = nodes
             .iter()
@@ -44,6 +47,9 @@ impl Server {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
+        if activate {
+            command.arg("--activate-gold");
+        }
         for (i, node) in nodes.iter().enumerate() {
             command.env(format!("MASH_TEST_TOKEN_{i}"), token(node));
         }
@@ -163,6 +169,93 @@ async fn qdrant_default_server_configuration_starts_and_creates_group_collection
     }
     drop(server);
     assert!(statuses.iter().all(reqwest::StatusCode::is_success));
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_restart() {
+    let root = tempfile::tempdir().unwrap();
+    let group = format!(
+        "gold-startup-{}",
+        root.path().file_name().unwrap().to_string_lossy()
+    );
+    let old = Server::new(root.path(), &group, &["node"]);
+    let path = root.path().join("server.toml");
+    let document = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("dialogue", "title-and-dialogue");
+    std::fs::write(&path, document).unwrap();
+    let output = assert_cmd::Command::cargo_bin("mash")
+        .unwrap()
+        .args(["serve", "--server-config", path.to_str().unwrap()])
+        .env("MASH_TEST_TOKEN_0", token("node"))
+        .timeout(std::time::Duration::from_secs(10))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(super::error_kind(&output), "configuration");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--activate-gold"));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains(&token("node")));
+    let active = Server::with_recipe(root.path(), &group, &["node"], "title-and-dialogue");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let stale = client
+        .get(format!("{}/v1/state", old.url))
+        .bearer_auth(token("node"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
+    let before: serde_json::Value = client
+        .get(format!("{}/v1/freshness", active.url))
+        .bearer_auth(token("node"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        before["group_gold"]["build"]["embedding_text"],
+        "title-and-dialogue"
+    );
+    assert_eq!(before["nodes"], serde_json::json!([]));
+    drop(active);
+    let restarted = Server::start(root.path(), &group, &["node"], "title-and-dialogue", false);
+    let after: serde_json::Value = client
+        .get(format!("{}/v1/freshness", restarted.url))
+        .bearer_auth(token("node"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+    drop(restarted);
+    drop(old);
+    for kind in ["state", "messages"] {
+        client
+            .delete(format!(
+                "{}/collections/mash_q_{}_{}",
+                std::env::var("MASH_TEST_QDRANT_URL")
+                    .unwrap()
+                    .trim_end_matches('/'),
+                blake3::hash(group.as_bytes()).to_hex(),
+                kind
+            ))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+    }
 }
 
 #[test]

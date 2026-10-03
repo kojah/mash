@@ -1,6 +1,7 @@
 //! Qdrant storage adapter: layered silver/gold revisions and gold query documents.
 //! Message points are denormalized gold views; state chunks retain silver history.
 mod api;
+mod configuration;
 mod context;
 mod exact;
 mod publish;
@@ -103,6 +104,7 @@ enum PointKind {
     Head,
     Chunk,
     Catalog,
+    Configuration,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -223,6 +225,7 @@ impl Store {
         })
     }
     async fn node(&self, identity: &Identity) -> Result<NodeHead, AppError> {
+        self.gold_version(identity).await?;
         let id = point_id(&["head", &identity.node_id]);
         let points = self
             .api

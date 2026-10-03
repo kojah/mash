@@ -63,7 +63,9 @@ pub(super) async fn commit(
     let outcome = match expected {
         Outcome::AppliedFailure => PublicationOutcome::Observed,
         Outcome::DelayedFailure | Outcome::DelayedAcknowledgment => PublicationOutcome::Unresolved,
-        Outcome::UnreadableVerification => PublicationOutcome::VerificationFailed,
+        Outcome::UnreadableVerification | Outcome::ActivatedDuringPublication => {
+            PublicationOutcome::VerificationFailed
+        }
         Outcome::CompletedLoser | Outcome::CleanupFailure => PublicationOutcome::Conflict,
         Outcome::StagingFailure => PublicationOutcome::StagingFailed,
     };

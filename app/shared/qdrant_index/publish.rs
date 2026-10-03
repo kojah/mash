@@ -53,11 +53,23 @@ fn publication_manifests(
     )
 }
 
-fn staging_version() -> Result<String, AppError> {
+pub(super) fn staging_version() -> Result<String, AppError> {
     let mut random = [0u8; 32];
     getrandom::fill(&mut random)
         .map_err(|_| AppError::internal("create Qdrant staging identity"))?;
     Ok(blake3::hash(&random).to_hex().to_string())
+}
+
+fn encode_publication(
+    plan: Plan,
+    max_bytes: usize,
+) -> Result<(Plan, Encoded, crate::shared::silver_revision::State), AppError> {
+    if plan.revision < 1 {
+        return Err(AppError::usage("invalid Qdrant revision"));
+    }
+    let silver_revision = plan.silver_revision()?;
+    let encoded = Encoded::new(&plan.loaded.data.layers(), max_bytes)?;
+    Ok((plan, encoded, silver_revision))
 }
 
 impl Store {
@@ -357,16 +369,10 @@ impl Store {
         instance: String,
         checked: bool,
     ) -> Result<Indexed, AppError> {
-        if plan.revision < 1 {
-            return Err(AppError::usage("invalid Qdrant revision"));
-        }
+        let gold_version = self.gold_version(identity).await?;
         let max_bytes = self.max_node_bytes;
-        let (plan, encoded, silver_revision) = crate::blocking(move || {
-            let silver_revision = plan.silver_revision()?;
-            let encoded = Encoded::new(&plan.loaded.data.layers(), max_bytes)?;
-            Ok((plan, encoded, silver_revision))
-        })
-        .await?;
+        let (plan, encoded, silver_revision) =
+            crate::blocking(move || encode_publication(plan, max_bytes)).await?;
         let counts = plan.loaded.data.counts(identity);
         let version = staging_version()?;
         let previous = plan.loaded.head.as_ref();
@@ -418,6 +424,10 @@ impl Store {
             manifest: Some(manifest),
         };
         let expected = &plan.loaded.expected;
+        if let Err(error) = self.unchanged_gold(identity, &gold_version).await {
+            self.cleanup(identity, &version).await;
+            return Err(error);
+        }
         // A failed request may still commit after this reread. Seeing another head
         // only permits reclamation when the conditional write completed successfully.
         // If verification fails, leave staging intact as well.
@@ -447,6 +457,9 @@ impl Store {
             return Err(conflict("concurrent Qdrant update; retry the operation"));
         }
         outcome(PublicationOutcome::Observed);
+        // If activation overlapped publication, retain the committed node head
+        // but do not acknowledge it. New-recipe reads reject its stale manifest.
+        self.unchanged_gold(identity, &gold_version).await?;
         if !expected.is_empty() {
             self.cleanup(identity, expected).await;
         }

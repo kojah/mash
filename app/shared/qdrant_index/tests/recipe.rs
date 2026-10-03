@@ -160,6 +160,7 @@ async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams(
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(build.clone());
+    store.select_gold(&fixture.identity, true).await.unwrap();
     store
         .index(
             &fixture.identity,
@@ -224,6 +225,7 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(build.clone());
+    store.select_gold(&fixture.identity, true).await.unwrap();
     for changed in [true, false] {
         let file = source_upload(&fixture, 1, Some(build.clone()), true, false, false);
         let mut events = serde_json::Deserializer::from_reader(file.reopen().unwrap())
@@ -274,6 +276,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(title.clone());
+    store.select_gold(&fixture.identity, true).await.unwrap();
     assert_eq!(
         store.state(&fixture.identity).await.unwrap().gold_build,
         title
@@ -422,6 +425,7 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(title.clone());
+    store.select_gold(&fixture.identity, true).await.unwrap();
     for _ in 0..2 {
         store
             .index(
