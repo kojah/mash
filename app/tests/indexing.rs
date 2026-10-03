@@ -73,6 +73,10 @@ fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
     let before = std::fs::read(&database).unwrap();
     let status = run_json(&[base.as_slice(), &["status"]].concat());
     assert_eq!(status["ready"], true);
+    assert_eq!(
+        status["local_artifacts"],
+        serde_json::json!({"metadata":"ready","lexical":"ready","dense":"disabled"})
+    );
     let result = run_json(
         &[
             base.as_slice(),

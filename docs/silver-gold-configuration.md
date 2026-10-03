@@ -573,6 +573,31 @@ is FTS5 `unicode61` over interpreted dialogue, followed by literal verification.
 It contains no canonical text or dense model settings. Status exposes this record
 as `lexical`; missing or incompatible records fail readiness checks.
 
+CLI and MCP `status` also expose `local_artifacts`, independently of query-model
+availability:
+
+```json
+{"metadata":"ready","lexical":"ready","dense":"disabled"}
+```
+
+`missing` means the artifact has no usable current-schema publication; `stale`
+means a publication exists but fails current revision, recipe, version or coverage
+checks. `ready` means the local data checks pass, and `disabled` means the active
+build excludes dense search. Metadata readiness means current-schema canonical
+tables can serve metadata views; it does not certify a complete provider scan.
+Inspect `silver.completeness` and `silver.rejected_sources` separately. Lexical
+and dense readiness can describe retained certified data after a rejected
+refresh; neither proves that current provider files were fully synchronized.
+Their states reuse the existing dirty-state, manifest and coverage checks,
+with their identities and counts available in `lexical`, `gold`, `silver` and
+the existing message/vector counts. Retained old-generation vectors do not make
+the current dense artifact ready. Missing query models can leave artifacts ready
+while overall `ready` is false; installing models then needs no gold rebuild.
+Conversely, exact-mention can be ready while dense gold is stale. This inspection
+does not migrate, index, load inference models or add storage/network queries.
+It describes local artifacts only; requested shared inspection remains in
+`shared_index` with its per-node publication and freshness evidence.
+
 Explicit indexing publishes lexical completion after refreshing derived search
 data, before dense inference. If later inference fails after that transaction is
 committed, exact search can use the completed lexical artifact while hybrid

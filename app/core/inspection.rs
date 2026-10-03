@@ -1,5 +1,5 @@
 //! Read-only canonical views and local/shared readiness inspection.
-use super::models::{ModelAvailability, StatusResponse};
+use super::models::{ArtifactState, LocalArtifacts, ModelAvailability, StatusResponse};
 use super::{SearchMode, ViewResponse, publication_config, required_shared, routed_both};
 use crate::AppError;
 use crate::config::ResolvedConfig;
@@ -54,11 +54,13 @@ fn local_status(
     let models =
         Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
     let models_installed = models.is_installed();
+    let dense_enabled = configuration.gold.build.dense_enabled();
     let exact = configuration.gold.query.intent == crate::gold::exact::Intent::ExactMention;
     let query_models = query_model_availability(&models, &configuration.gold.query)?;
     let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
+            local_artifacts: local_artifacts(None, dense_enabled, false, false),
             lexical: None,
             gold: None,
             silver: None,
@@ -71,7 +73,7 @@ fn local_status(
             stored_embeddings: 0,
             models_installed,
             query_models,
-            semantic_support: configuration.gold.build.dense_enabled(),
+            semantic_support: dense_enabled,
             realized_mode: SearchMode::Unavailable,
             recommended_action: Some(if query_models_available {
                 crate::Action::Index
@@ -91,17 +93,16 @@ fn local_status(
     let model = semantic::configured_generation(configuration.embeddings.as_ref());
     let snapshot =
         Storage::status_snapshot(database_path, &configuration.gold.build.generation(&model))?;
-    let counts = snapshot.counts;
+    let counts = &snapshot.counts;
     let current_embeddings = snapshot.current_embeddings;
     let manifest_matches = snapshot
         .gold
         .as_ref()
         .zip(snapshot.silver.as_ref())
         .is_some_and(|(m, s)| m.matches(&configuration.gold.build, &model, s));
-    let hybrid_ready = query_models_available
-        && snapshot.derived_clean
-        && snapshot.exact_semantic_coverage
-        && manifest_matches;
+    let dense_current =
+        snapshot.derived_clean && snapshot.exact_semantic_coverage && manifest_matches;
+    let hybrid_ready = query_models_available && dense_current;
     let lexical_ready = snapshot.derived_clean
         && snapshot
             .lexical
@@ -110,7 +111,13 @@ fn local_status(
             .is_some_and(|(m, s)| m.matches(s, counts.searchable_messages));
     let ready = if exact { lexical_ready } else { hybrid_ready };
     Ok(StatusResponse {
-        lexical: snapshot.lexical.map(Box::new),
+        local_artifacts: local_artifacts(
+            Some(&snapshot),
+            dense_enabled,
+            lexical_ready,
+            dense_current,
+        ),
+        lexical: snapshot.lexical,
         gold: snapshot.gold,
         silver: snapshot.silver,
         ready,
@@ -122,7 +129,7 @@ fn local_status(
         stored_embeddings: counts.embeddings,
         models_installed,
         query_models,
-        semantic_support: configuration.gold.build.dense_enabled(),
+        semantic_support: dense_enabled,
         realized_mode: if ready && exact {
             SearchMode::Lexical
         } else if ready {
@@ -145,6 +152,27 @@ fn local_status(
         },
         shared_index: None,
     })
+}
+
+fn local_artifacts(
+    snapshot: Option<&crate::storage::StatusSnapshot>,
+    dense_enabled: bool,
+    lexical_current: bool,
+    dense_current: bool,
+) -> LocalArtifacts {
+    LocalArtifacts {
+        // Current-schema metadata views need no complete provider-scan certificate.
+        metadata: ArtifactState::publication(snapshot.is_some_and(|s| s.silver.is_some()), true),
+        lexical: ArtifactState::publication(
+            snapshot.is_some_and(|s| s.lexical.is_some()),
+            lexical_current,
+        ),
+        dense: if dense_enabled {
+            ArtifactState::publication(snapshot.is_some_and(|s| s.gold.is_some()), dense_current)
+        } else {
+            ArtifactState::Disabled
+        },
+    }
 }
 
 fn query_model_availability(

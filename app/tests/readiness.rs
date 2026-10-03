@@ -145,6 +145,10 @@ fn status_with_models_but_no_database_recommends_index() {
     let status = fixture.status();
     assert_eq!(status["ready"], false);
     assert_eq!(status["recommended_action"], "index");
+    assert_eq!(
+        status["local_artifacts"],
+        serde_json::json!({"metadata":"missing","lexical":"missing","dense":"missing"})
+    );
     assert!(!fixture.database.exists());
 }
 
@@ -157,6 +161,10 @@ fn status_with_missing_embeddings_recommends_index() {
     assert_eq!(status["embeddings"], 0);
     assert_eq!(status["ready"], false);
     assert_eq!(status["recommended_action"], "index");
+    assert_eq!(
+        status["local_artifacts"],
+        serde_json::json!({"metadata":"ready","lexical":"stale","dense":"stale"})
+    );
 }
 
 #[test]
@@ -169,6 +177,35 @@ fn status_with_completed_embeddings_reports_hybrid_readiness() {
     assert_eq!(status["ready"], true);
     assert_eq!(status["realized_mode"], "hybrid");
     assert!(status["recommended_action"].is_null());
+    assert_eq!(
+        status["local_artifacts"],
+        serde_json::json!({"metadata":"ready","lexical":"ready","dense":"ready"})
+    );
+}
+
+#[test]
+fn current_gold_readiness_does_not_require_query_model_assets() {
+    let fixture = NodeFixture::new();
+    fixture.seed(None);
+    fixture.insert_embedding();
+    fixture.complete_index();
+    let missing_models = fixture.database.with_extension("missing-models");
+    let before = std::fs::read(&fixture.database).unwrap();
+    let status = run_json(&[
+        "--db",
+        fixture.database.to_str().unwrap(),
+        "--models-dir",
+        missing_models.to_str().unwrap(),
+        "status",
+    ]);
+    assert_eq!(status["ready"], false);
+    assert_eq!(status["query_models"], "unavailable");
+    assert_eq!(
+        status["local_artifacts"],
+        serde_json::json!({"metadata":"ready","lexical":"ready","dense":"ready"})
+    );
+    assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
+    assert!(!missing_models.exists());
 }
 
 #[test]
@@ -203,15 +240,23 @@ fn exact_status_uses_lexical_certification_without_models_or_dense_coverage() {
     assert_eq!(complete["query_models"], "not-required");
     assert_eq!(complete["models_installed"], false);
     assert_eq!(complete["embeddings"], 0);
+    assert_eq!(
+        complete["local_artifacts"],
+        serde_json::json!({"metadata":"ready","lexical":"ready","dense":"stale"})
+    );
     assert!(complete["recommended_action"].is_null());
     assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
     let connection = Connection::open(&fixture.database).unwrap();
     connection
         .execute_batch("UPDATE derived_state SET search_dirty=1 WHERE singleton=1")
         .unwrap();
-    assert_eq!(status()["ready"], false);
+    let dirty = status();
+    assert_eq!(dirty["ready"], false);
+    assert_eq!(dirty["local_artifacts"]["lexical"], "stale");
     connection.execute_batch("UPDATE derived_state SET search_dirty=0 WHERE singleton=1; UPDATE silver_state SET revision=revision+1 WHERE singleton=1").unwrap();
-    assert_eq!(status()["ready"], false);
+    let advanced = status();
+    assert_eq!(advanced["ready"], false);
+    assert_eq!(advanced["local_artifacts"]["lexical"], "stale");
     assert!(!missing_models.exists());
 }
 

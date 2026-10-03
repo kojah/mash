@@ -380,6 +380,10 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         serde_json::from_str(value["content"][0]["text"].as_str().expect("text"))
             .expect("JSON status");
     assert_eq!(body["ready"], false);
+    assert_eq!(
+        body["local_artifacts"],
+        json!({"metadata":"missing","lexical":"missing","dense":"missing"})
+    );
     assert_eq!(status.structured_content.as_ref(), Some(&body));
     assert_eq!(body["configuration"]["loaded"], true);
     let args = json!({

@@ -232,7 +232,7 @@ async fn dispatch(
             .map(Response::View),
         Operation::Status { shared } => inspection::status(configuration, database, models, shared)
             .await
-            .map(Response::Status),
+            .map(|status| Response::Status(Box::new(status))),
         Operation::Forget { id } => maintenance::forget(database, configuration, id)
             .await
             .map(Response::Forget),

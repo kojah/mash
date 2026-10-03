@@ -103,7 +103,7 @@ pub(crate) enum Response {
     ListThreads(super::threads::Response),
     Search(SearchResponse),
     View(ViewResponse),
-    Status(StatusResponse),
+    Status(Box<StatusResponse>),
     Forget(ForgetResponse),
     ModelsInstall(ModelsInstallResponse),
 }
@@ -197,7 +197,8 @@ pub(crate) struct ViewResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusResponse {
-    pub(super) lexical: Option<Box<crate::gold::lexical_manifest::Manifest>>,
+    pub(super) local_artifacts: LocalArtifacts,
+    pub(super) lexical: Option<crate::gold::lexical_manifest::Manifest>,
     pub(super) gold: Option<crate::gold::manifest::Manifest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) silver: Option<crate::silver::certificate::Certificate>,
@@ -218,6 +219,34 @@ pub(crate) struct StatusResponse {
     pub(super) shared: Option<shared::Publication>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared_index: Option<shared::Freshness>,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct LocalArtifacts {
+    pub(super) metadata: ArtifactState,
+    pub(super) lexical: ArtifactState,
+    pub(super) dense: ArtifactState,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum ArtifactState {
+    Missing,
+    Stale,
+    Ready,
+    Disabled,
+}
+
+impl ArtifactState {
+    pub(super) fn publication(present: bool, current: bool) -> Self {
+        if !present {
+            Self::Missing
+        } else if current {
+            Self::Ready
+        } else {
+            Self::Stale
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
