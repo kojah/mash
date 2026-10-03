@@ -51,7 +51,36 @@ Qdrant provisioning, configuration replacement, explicit node re-publication and
 coverage/freshness/search verification before retiring the old data. The old
 Redis server configuration cannot start the new binary.
 
-Qdrant-only storage does not complete independent shared silver/gold lifecycles.
-Server-owned silver revision/completeness, independent gold manifests/configuration
-and source-free shared rebuilds remain work in `mash-q3e`. Lifecycle/backup/restore
-and representative real-session cost acceptance remain in `mash-q3e.5`.
+### Live preparation verified, 2026-10-03
+
+Persistent Qdrant 1.19.1 now runs on Xenia as `mash-qdrant`, with Docker volume
+`mash-qdrant-data`, restart policy `unless-stopped`, and HTTP bound only to
+`127.0.0.1:56333`. Its presence does not mean that chat data has been migrated.
+
+The staged server configuration is
+`~/.config/mash/server-qdrant.toml`, with a private environment file alongside it.
+It retains the three `personal` group identities, existing API token variables,
+4096 MiB node snapshot limit and one concurrent upload. A temporary current-code
+API on `127.0.0.1:8788` successfully initialized the group, accepted each node's
+authenticated capabilities request, and rejected unauthenticated status with 401.
+The temporary API was then stopped; no preview service was installed.
+
+Live traffic remains on the existing Redis API at port 8787. Its freshness
+baseline contains Xenia and personal-MacBook publications; dev-MacBook publication
+is absent. The dev MacBook is reachable using its existing dedicated SSH identity
+and has TOML configuration under macOS's
+`~/Library/Application Support/dev.jamesqo.mash/`. The personal MacBook's SSH
+connection timed out. No node configuration, installed binary or existing index
+was changed by this preparation.
+
+Continue `mash-847` by explicitly preparing current certified silver and publishing
+each node into Qdrant, then verifying source coverage, freshness, searches and
+local offline access before changing the live endpoint. Keep Redis data until
+that verification passes. Private baseline and authentication-check captures are
+under `/home/james/scratch/mash-artifacts/qdrant-live-transition-20261003/`.
+
+The application now supports server-owned silver revisions/completeness,
+independent lexical/dense manifests, one active gold configuration and explicit
+source-free shared rebuilds. See [the current layer contract](silver-gold-configuration.md).
+These application capabilities do not prove live fleet migration or complete the
+remaining topic-quality and retrieval evaluation work in `mash-q3e`.
