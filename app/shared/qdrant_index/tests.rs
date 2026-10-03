@@ -53,6 +53,24 @@ impl Fixture {
                 .unwrap();
         }
     }
+    async fn replace_node(&self, node: NodeHead) {
+        let previous = self
+            .store
+            .active_configuration(&self.identity)
+            .await
+            .unwrap();
+        let mut proposed = previous.clone();
+        proposed
+            .nodes
+            .as_mut()
+            .unwrap()
+            .insert(node.node_id.clone(), node);
+        proposed.publication = Some(super::publish::staging_version().unwrap());
+        self.store
+            .replace_configuration(&self.identity, proposed, Some(&previous))
+            .await
+            .unwrap();
+    }
     fn file(&self, revision: i64, marker: &str) -> tempfile::NamedTempFile {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         let events = vec![
@@ -147,23 +165,7 @@ async fn qdrant_mixed_snapshot_migrates_without_losing_embeddings_or_revision() 
     old.head.as_mut().unwrap().snapshot_schema = crate::shared::snapshot::layers::Schema::Mixed;
     old.head.as_mut().unwrap().silver_revision = None;
     let old_version = old.version.clone();
-    fixture
-        .store
-        .api
-        .upsert(
-            &collection(&fixture.identity.group_id, true),
-            &api::Upsert {
-                points: vec![api::Point {
-                    id: point_id(&["head", &fixture.identity.node_id]),
-                    vector: api::Vectors::default(),
-                    payload: old,
-                }],
-                update_filter: None,
-                update_mode: None,
-            },
-        )
-        .await
-        .unwrap();
+    fixture.replace_node(old).await;
     fixture
         .store
         .index(&fixture.identity, fixture.file(1, "retained"))
@@ -543,63 +545,81 @@ async fn qdrant_chunked_utf8_snapshots_and_size_limits_preserve_existing_head() 
     fixture.cleanup().await;
 }
 
+mod missing_chunk {
+    use super::*;
+    #[derive(Deserialize)]
+    pub(super) struct Ids {
+        pub(super) ids: Vec<String>,
+    }
+    #[derive(Serialize)]
+    pub(super) struct Record {
+        pub(super) id: String,
+        pub(super) payload: super::super::configuration::Configuration,
+    }
+    #[derive(Serialize)]
+    pub(super) struct Reply {
+        pub(super) status: &'static str,
+        pub(super) result: Vec<Record>,
+    }
+}
+
 #[tokio::test]
 async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
     use axum::{Json, Router, extract::State, routing::post};
+    use missing_chunk::{Ids, Record, Reply};
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
-    #[derive(Deserialize)]
-    struct Ids {
-        ids: Vec<String>,
-    }
-    #[derive(Serialize)]
-    struct Record {
-        id: String,
-        payload: NodeHead,
-    }
-    #[derive(Serialize)]
-    struct Reply {
-        status: &'static str,
-        result: Vec<Record>,
-    }
     async fn retrieve(
         State(calls): State<Arc<AtomicUsize>>,
         Json(input): Json<Ids>,
     ) -> Json<Reply> {
-        let result = if input.ids == vec![point_id(&["head", "node"])] {
+        let result = if input.ids == vec![point_id(&["gold-configuration"])] {
             let revision = calls.fetch_add(1, Ordering::SeqCst) + 1;
             let version = format!("version-{revision}");
             vec![Record {
                 id: input.ids[0].clone(),
-                payload: NodeHead {
-                    kind: PointKind::Head,
-                    node_id: "node".into(),
-                    version: version.clone(),
-                    head: Some(Head {
-                        lexical_manifest: None,
-                        gold_manifest: None,
-                        silver_coverage: Vec::new(),
-                        silver_revision: None,
-                        silver_scans: Vec::new(),
-                        source_silver: None,
-                        snapshot_schema: crate::shared::snapshot::layers::Schema::Mixed,
-                        instance: "instance".into(),
-                        generation: "test".into(),
-                        revision: i64::try_from(revision).unwrap(),
-                        version,
-                        counts: crate::storage::Counts::default(),
-                        last_synced_at: None,
-                        last_updated_at: None,
-                        metadata_ready: true,
-                        catalog_ready: true,
-                    }),
-                    manifest: Some(Manifest {
-                        bytes: 10,
-                        chunks: 1,
-                        digest: "unused".into(),
-                    }),
+                payload: super::configuration::Configuration {
+                    kind: PointKind::Configuration,
+                    schema_version: 2,
+                    version: "a".repeat(64),
+                    build: crate::gold::config::Build::default(),
+                    generation: "test".into(),
+                    dimensions: 4,
+                    publication: Some(format!("{revision:064x}")),
+                    phase: Some(super::configuration::Phase::Ready),
+                    nodes: Some(std::collections::BTreeMap::from([(
+                        "node".into(),
+                        NodeHead {
+                            kind: PointKind::Head,
+                            node_id: "node".into(),
+                            version: version.clone(),
+                            head: Some(Head {
+                                lexical_manifest: None,
+                                gold_manifest: None,
+                                silver_coverage: Vec::new(),
+                                silver_revision: None,
+                                silver_scans: Vec::new(),
+                                source_silver: None,
+                                snapshot_schema: crate::shared::snapshot::layers::Schema::Mixed,
+                                instance: "instance".into(),
+                                generation: "test".into(),
+                                revision: i64::try_from(revision).unwrap(),
+                                version,
+                                counts: crate::storage::Counts::default(),
+                                last_synced_at: None,
+                                last_updated_at: None,
+                                metadata_ready: true,
+                                catalog_ready: true,
+                            }),
+                            manifest: Some(Manifest {
+                                bytes: 10,
+                                chunks: 1,
+                                digest: "unused".into(),
+                            }),
+                        },
+                    )])),
                 },
             }]
         } else {
@@ -630,7 +650,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
     });
     let store = Store {
         build: crate::gold::config::Build::default(),
-        api: api::Client::new(&url, None, 1024).unwrap(),
+        api: api::Client::new(&url, None, 4096).unwrap(),
         max_node_bytes: 1024,
         vector_index: VectorIndex::default(),
         snapshot_budget: super::super::snapshot_budget::Budget::default(),

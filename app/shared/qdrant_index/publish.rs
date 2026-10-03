@@ -431,7 +431,9 @@ impl Store {
         // A failed request may still commit after this reread. Seeing another head
         // only permits reclamation when the conditional write completed successfully.
         // If verification fails, leave staging intact as well.
-        let result = self.publish_head(identity, node, expected).await;
+        let result = self
+            .publish_head(identity, node, expected, &gold_version)
+            .await;
         let current = match self
             .node(identity)
             .instrument(tracing::info_span!("qdrant_verify_head"))
@@ -469,34 +471,6 @@ impl Store {
             removed_messages: plan.removed,
             purged_conversations: plan.purged,
         })
-    }
-
-    #[tracing::instrument(name = "qdrant_publish_head", skip_all)]
-    async fn publish_head(
-        &self,
-        identity: &Identity,
-        node: NodeHead,
-        expected: &str,
-    ) -> Result<(), AppError> {
-        let input = api::Upsert {
-            points: vec![api::Point {
-                id: point_id(&["head", &identity.node_id]),
-                vector: api::Vectors::default(),
-                payload: node,
-            }],
-            update_filter: (!expected.is_empty()).then(|| api::Filter {
-                must: vec![api::matches("version", vec![expected.to_owned()])],
-                ..api::Filter::default()
-            }),
-            update_mode: Some(if expected.is_empty() {
-                api::UpdateMode::InsertOnly
-            } else {
-                api::UpdateMode::UpdateOnly
-            }),
-        };
-        self.api
-            .upsert(&collection(&identity.group_id, true), &input)
-            .await
     }
 
     #[tracing::instrument(name = "qdrant_cleanup", skip_all, fields(retained = tracing::field::Empty))]

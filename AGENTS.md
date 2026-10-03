@@ -20,7 +20,7 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
   cosine search, RRF, and bounded local reranking. Support Voyage and the
   OpenAI-compatible embeddings API without provider traits or registries.
 - Qdrant uses the existing reqwest client and typed REST models, named dense/sparse
-  vectors, and conditional node-head publication on Qdrant 1.19+. Default to exact
+  vectors, and conditional group-catalogue publication on Qdrant 1.19+. Default to exact
   vector retrieval; permit explicit HNSW. Keep immutable staging invisible, enforce
   revisions across API processes, and fail closed on incompatible existing schemas.
 - Do not add provider traits, registries, installed daemons, compatibility

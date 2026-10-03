@@ -10,23 +10,7 @@ fn exact_query(fixture: &Fixture, text: &str) -> protocol::Search {
 }
 
 async fn head(fixture: &Fixture, head: NodeHead) {
-    fixture
-        .store
-        .api
-        .upsert(
-            &collection(&fixture.identity.group_id, true),
-            &api::Upsert {
-                points: vec![api::Point {
-                    id: point_id(&["head", &fixture.identity.node_id]),
-                    vector: api::Vectors::default(),
-                    payload: head,
-                }],
-                update_filter: None,
-                update_mode: None,
-            },
-        )
-        .await
-        .unwrap();
+    fixture.replace_node(head).await;
 }
 
 async fn assert_recipe_independent_lexical(fixture: &Fixture) {

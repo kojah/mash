@@ -1092,9 +1092,10 @@ approximate; exact mode stays available without rebuilding the collection.
 Quantization is disabled. Existing incompatible dimensions, vector configuration,
 or payload index types are rejected without deleting data.
 
-Uploads stage immutable versions and atomically publish one node-head point with
-an expected-version condition. Competing stale writers receive a conflict; retries
-and ownership rules match the other backends. Reads only admit active versions
+Uploads stage immutable versions and atomically update a group catalogue with
+expected configuration, catalogue and node versions. Activation updates that same
+point, fencing delayed publications. Competing stale writers receive a conflict;
+different-node updates may retry metadata publication up to three times. Reads only admit active versions
 and verify their heads before returning. Canonical snapshots are checksummed and
 chunked; thread listing reads metadata without message bodies or vectors. The
 64 MiB limit applies to incoming uploads and each canonical node snapshot and is

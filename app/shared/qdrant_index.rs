@@ -225,22 +225,14 @@ impl Store {
         })
     }
     async fn node(&self, identity: &Identity) -> Result<NodeHead, AppError> {
-        self.gold_version(identity).await?;
-        let id = point_id(&["head", &identity.node_id]);
-        let points = self
-            .api
-            .retrieve::<NodeHead>(&collection(&identity.group_id, true), &[id])
-            .await?;
-        let node = points.into_iter().next().map_or_else(
-            || NodeHead {
-                kind: PointKind::Head,
-                node_id: identity.node_id.clone(),
-                version: String::new(),
-                head: None,
-                manifest: None,
-            },
-            |p| p.payload,
-        );
+        let mut nodes = configuration::catalogue_nodes(self.active_configuration(identity).await?)?;
+        let node = nodes.remove(&identity.node_id).unwrap_or_else(|| NodeHead {
+            kind: PointKind::Head,
+            node_id: identity.node_id.clone(),
+            version: String::new(),
+            head: None,
+            manifest: None,
+        });
         if node.kind != PointKind::Head
             || node.node_id != identity.node_id
             || node

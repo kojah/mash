@@ -549,11 +549,13 @@ source ingestion is required before a source-free rebuild can be admitted.
 ### Durable shared group configuration
 
 Qdrant's state collection contains one strict typed group configuration point:
-schema version, immutable configuration version, build recipe, model generation
-and dimensions. Ordinary API startup bootstraps an absent record once or requires
+schema version, immutable configuration version, build recipe, model generation,
+dimensions and a catalogue of visible node snapshot references. Schema 2 has a
+separate publication token that changes on every catalogue update. Ordinary API
+startup bootstraps an absent record once or requires
 matching persisted settings. Conflicting TOML fails startup before listening.
 Concurrent conflicting bootstrap uses insert-only publication; explicit
-replacement uses the observed configuration version as its conditional filter.
+replacement conditions on both the configuration version and publication token.
 Both paths reread durable state to verify the selected configuration. Matching
 startup is idempotent and does not advance its version.
 
@@ -568,7 +570,7 @@ re-embedding it. All API processes must run the authority-aware protocol;
 older binaries do not implement these checks. APIs using this protocol with
 old recipe/model settings fail reads and publication. `/v1/freshness` reports typed `group_gold` configuration metadata
 alongside per-node manifests/readiness. Node and group reads check durable
-authority; publication checks its version before staging, before the node-head
+authority; publication checks its version before staging, before the catalogue
 CAS and after verification. A switch observed during publication prevents
 acknowledgement. Malformed or unknown control schemas fail closed rather than
 being overwritten, even with the activation flag. Shared operations add
@@ -578,16 +580,39 @@ part of the broader measurement gate.
 
 Rebuild every contributing node after activation. Dense search fails until the
 group's manifests match; current lexical retrieval is independent of dense
-readiness. This is **not an atomic all-node replacement transaction**. The group
-control point and node heads are separate writes: an already-issued node CAS
-can complete after activation, leaving stale gold that readers reject and must
-be rebuilt. The upload is not acknowledged when that race is observed. Search
-availability during replacement, stronger storage-level fencing of delayed
-node writes, recovery/cleanup of interrupted transitions, model-dimension
+readiness. This is **not an atomic all-node gold replacement transaction**.
+Activation and node publication now conditionally replace the same catalogue
+point, fencing delayed publications at storage. Different-node updates may rebase
+metadata up to three times; same-node conflicts and configuration changes cannot
+rebase. The catalogue contains at most 512 node references, without canonical
+bodies or vectors. Search availability during replacement, cleanup of interrupted
+transitions, model-dimension
 migration and representative cost measurements remain in `mash-q3e.3.5`/`.5`.
 Activating several configured groups is per-group, not one cross-group transaction.
 
-Validation on 2026-10-03 passed 641 standard tests and 50 disposable-Qdrant
+Existing schema-1 groups require explicit `--activate-gold` migration even when
+their build settings match. Upgrade all API processes to the authority-aware
+protocol before migration; binaries predating that protocol are unsupported.
+Migration first seals the group against old writers, then adopts its immutable
+snapshot references after checking that legacy heads are stable. Interrupted
+migration fails closed and resumes with the same settings and flag. It does not
+read provider files or re-embed history. A late unacknowledged legacy write cannot
+change the active catalogue; its staging may require later reclamation.
+
+Catalogue-fencing validation passed 641 standard tests, all 53 Qdrant contracts
+with installed local models, and the separate real API/database graceful and
+SIGKILL restart contract. A delayed conditional catalogue update after activation
+could not remove the retained node reference; concurrent different nodes both
+remained visible. Explicit schema-1 migration and interrupted sealing/resume
+preserved snapshot versions and canonical fingerprints. Ten malformed control
+records failed closed. Source-free CLI/MCP rebuild, recipe negotiation, relevance
+and scoped-search contracts also passed. Logs are
+`group-catalogue-standard-20261003.log`,
+`group-catalogue-qdrant-final-20261003.log` and
+`group-catalogue-restart-20261003.log` in the external artifacts directory.
+These fixture timings are not representative corpus throughput or latency gates.
+
+Before catalogue fencing, validation on 2026-10-03 passed 641 standard tests and 50 disposable-Qdrant
 contracts. Conflicting first-start selections produced one winner; matching
 reopen preserved its version; six malformed control records failed without
 being overwritten. The real CLI contract verifies conflicting startup failure,

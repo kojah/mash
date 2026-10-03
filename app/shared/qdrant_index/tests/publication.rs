@@ -27,6 +27,7 @@ struct MockPoint {
 #[derive(Deserialize)]
 struct Incoming {
     points: Vec<MockPoint>,
+    update_filter: Option<Filter>,
 }
 #[derive(Deserialize)]
 struct Retrieve {
@@ -45,16 +46,16 @@ struct Operation {
 struct Delete {
     filter: Filter,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Filter {
     must: Vec<Match>,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Match {
     key: String,
     r#match: Values,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Values {
     any: Vec<String>,
 }
@@ -66,8 +67,33 @@ struct Version {
 struct Backend {
     outcome: Outcome,
     points: BTreeMap<String, MockPoint>,
-    queued: Option<MockPoint>,
+    queued: Option<Pending>,
     deletes: usize,
+}
+struct Pending {
+    point: MockPoint,
+    filter: Option<Filter>,
+}
+fn permitted(backend: &Backend, point: &MockPoint, filter: Option<&Filter>) -> bool {
+    filter.is_none_or(|filter| {
+        let Some(current) = backend.points.get(&point.id) else {
+            return false;
+        };
+        let current: super::super::configuration::Configuration =
+            serde_json::from_str(current.payload.get()).unwrap();
+        filter.must.iter().all(|condition| {
+            let value = match condition.key.as_str() {
+                "version" => current.version.as_str(),
+                "publication" => current.publication.as_deref().unwrap(),
+                _ => panic!("unexpected conditional field"),
+            };
+            condition
+                .r#match
+                .any
+                .iter()
+                .any(|expected| expected == value)
+        })
+    })
 }
 type Shared = Arc<Mutex<Backend>>;
 mod diagnostics;
@@ -82,28 +108,59 @@ fn completed() -> axum::response::Response {
     .into_response()
 }
 
+fn activate_title(backend: &mut Backend) {
+    let id = point_id(&["gold-configuration"]);
+    let mut control: super::super::configuration::Configuration =
+        serde_json::from_str(backend.points[&id].payload.get()).unwrap();
+    control.version = "b".repeat(64);
+    control.publication = Some("c".repeat(64));
+    control.build.embedding_text = crate::gold::config::EmbeddingText::TitleAndDialogue;
+    backend.points.insert(
+        id.clone(),
+        MockPoint {
+            id,
+            payload: to_raw_value(&control).unwrap(),
+        },
+    );
+}
+
 async fn upsert(
     State(shared): State<Shared>,
     Json(input): Json<Incoming>,
 ) -> axum::response::Response {
     let mut backend = shared.lock().unwrap();
     for point in input.points {
-        let node = serde_json::from_str::<NodeHead>(point.payload.get())
-            .ok()
-            .filter(|node| node.kind == PointKind::Head);
-        let Some(node) = node else {
+        let group =
+            serde_json::from_str::<super::super::configuration::Configuration>(point.payload.get())
+                .ok()
+                .filter(|group| group.kind == PointKind::Configuration);
+        let Some(mut group) = group else {
             if matches!(backend.outcome, Outcome::StagingFailure) {
                 return StatusCode::SERVICE_UNAVAILABLE.into_response();
             }
             backend.points.insert(point.id.clone(), point);
             continue;
         };
+        if !permitted(&backend, &point, input.update_filter.as_ref()) {
+            continue;
+        }
+        let node = group
+            .nodes
+            .as_ref()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .clone();
         match backend.outcome {
             Outcome::StagingFailure => unreachable!("staging failed before publishing a head"),
             Outcome::DelayedFailure
             | Outcome::DelayedAcknowledgment
             | Outcome::UnreadableVerification => {
-                backend.queued = Some(point);
+                backend.queued = Some(Pending {
+                    point,
+                    filter: input.update_filter.clone(),
+                });
                 return if matches!(backend.outcome, Outcome::DelayedAcknowledgment) {
                     Json(Reply {
                         status: "ok",
@@ -122,21 +179,7 @@ async fn upsert(
             }
             Outcome::ActivatedDuringPublication => {
                 backend.points.insert(point.id.clone(), point);
-                let id = point_id(&["gold-configuration"]);
-                let mut control: serde_json::Value =
-                    serde_json::from_str(backend.points[&id].payload.get()).unwrap();
-                control["version"] = "b".repeat(64).into();
-                control["build"] = serde_json::to_value(crate::gold::config::Build {
-                    embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-                })
-                .unwrap();
-                backend.points.insert(
-                    id.clone(),
-                    MockPoint {
-                        id,
-                        payload: to_raw_value(&control).unwrap(),
-                    },
-                );
+                activate_title(&mut backend);
             }
             Outcome::CompletedLoser | Outcome::CleanupFailure => {
                 // Another writer inserted a complete snapshot before this insert-only
@@ -164,11 +207,17 @@ async fn upsert(
                         },
                     );
                 }
+                group
+                    .nodes
+                    .as_mut()
+                    .unwrap()
+                    .insert(winner.node_id.clone(), winner);
+                group.publication = Some("e".repeat(64));
                 backend.points.insert(
                     point.id.clone(),
                     MockPoint {
                         id: point.id,
-                        payload: to_raw_value(&winner).unwrap(),
+                        payload: to_raw_value(&group).unwrap(),
                     },
                 );
             }
@@ -222,7 +271,8 @@ fn seed_authority(shared: &Shared, identity: &Identity) {
         MockPoint {
             id,
             payload: to_raw_value(&serde_json::json!({
-                "kind":"configuration", "schema_version":1, "version":"a".repeat(64),
+                "kind":"configuration", "schema_version":2, "version":"a".repeat(64),
+                "publication":"d".repeat(64), "phase":"ready", "nodes":{},
                 "build":crate::gold::config::Build::default(),
                 "generation":identity.generation, "dimensions":4
             }))
@@ -304,8 +354,12 @@ async fn exercise(outcome: Outcome) {
                 "ambiguous CAS must retain its staged snapshot"
             );
         }
-        if let Some(point) = backend.queued.take() {
-            backend.points.insert(point.id.clone(), point);
+        if let Some(pending) = backend.queued.take()
+            && permitted(&backend, &pending.point, pending.filter.as_ref())
+        {
+            backend
+                .points
+                .insert(pending.point.id.clone(), pending.point);
         }
     }
     if matches!(outcome, Outcome::ActivatedDuringPublication) {

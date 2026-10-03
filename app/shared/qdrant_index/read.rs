@@ -141,31 +141,7 @@ impl Store {
         &self,
         identity: &Identity,
     ) -> Result<BTreeMap<String, NodeHead>, AppError> {
-        self.gold_version(identity).await?;
-        let points = self
-            .api
-            .scroll::<NodeHead>(
-                &collection(&identity.group_id, true),
-                api::Filter {
-                    must: vec![api::matches("kind", vec!["head".into()])],
-                    ..api::Filter::default()
-                },
-            )
-            .await?;
-        let mut heads = BTreeMap::new();
-        for point in points {
-            let h = point.payload;
-            if h.kind != PointKind::Head
-                || point.id != point_id(&["head", &h.node_id])
-                || h.head.as_ref().is_none_or(|head| head.version != h.version)
-                || h.manifest.is_none()
-                || heads.contains_key(&h.node_id)
-            {
-                return Err(failure());
-            }
-            heads.insert(h.node_id.clone(), h);
-        }
-        Ok(heads)
+        super::configuration::catalogue_nodes(self.active_configuration(identity).await?)
     }
     pub(super) async fn stable_heads(
         &self,
