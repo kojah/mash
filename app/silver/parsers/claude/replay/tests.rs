@@ -133,6 +133,60 @@ fn staged_replay_matches_original_rules_after_every_arrival() {
 }
 
 #[test]
+fn stop_hook_restoration_requires_a_linked_uninterrupted_boundary_in_both_stores() {
+    for limit in [0, 4096] {
+        for interruption in [
+            "none",
+            "new",
+            "duplicate",
+            "unidentified",
+            "wrong-parent",
+            "non-root",
+        ] {
+            let mut replay = Replay::with_limit(limit);
+            let mut parents = Parents::with_limit(limit);
+            for input in [
+                record("root", None),
+                record("answer", Some("root")),
+                record("anchor", Some("answer")),
+                record("answer", None),
+            ] {
+                replay.observe(&input, &mut parents).unwrap();
+            }
+            let hook: Record = serde_json::from_value(serde_json::json!({
+                "type":"system","subtype":"stop_hook_summary","uuid":"hook",
+                "parentUuid":if interruption == "wrong-parent" { "root" } else { "answer" },
+            }))
+            .unwrap();
+            replay.observe(&hook, &mut parents).unwrap();
+            let interrupt = match interruption {
+                "new" => Some(record("unrelated", Some("hook"))),
+                "duplicate" => Some(record("answer", None)),
+                "unidentified" => Some(serde_json::from_str(r#"{"type":"user"}"#).unwrap()),
+                _ => None,
+            };
+            if let Some(input) = interrupt {
+                replay.observe(&input, &mut parents).unwrap();
+            }
+            let mut end = boundary("boundary", "hook", "hook");
+            if interruption == "non-root" {
+                end.parent = ParentLink::Parent("hook".into());
+            }
+            replay.observe(&end, &mut parents).unwrap();
+            assert_eq!(
+                parents.get("answer").unwrap(),
+                Some(if interruption == "none" {
+                    Ancestry::Known(ParentLink::Parent("root".into()))
+                } else {
+                    Ancestry::Ambiguous
+                }),
+                "{limit} {interruption}"
+            );
+        }
+    }
+}
+
+#[test]
 #[ignore = "explicit synthetic replay metadata memory diagnostic"]
 fn benchmark_claude_replay_metadata() {
     let reference_mode = std::env::var("MASH_BENCH_REPLAY_MODE").expect("reference or staged");

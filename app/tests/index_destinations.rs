@@ -161,6 +161,12 @@ fn claude_copy_reconciliation(routed: bool) {
         ];
         if let Some(branch) = branch {
             rows.push(serde_json::json!({"type":"user","sessionId":"claude-session","uuid":branch,"parentUuid":"common","message":{"role":"user","content":format!("{branch} sentinel")}}));
+            rows.extend([
+                serde_json::json!({"type":"user","sessionId":"claude-session","uuid":"common","parentUuid":null,"message":{"role":"user","content":"common sentinel"}}),
+                serde_json::json!({"type":"user","sessionId":"claude-session","uuid":branch,"parentUuid":null,"message":{"role":"user","content":format!("{branch} sentinel")}}),
+                serde_json::json!({"type":"system","subtype":"stop_hook_summary","uuid":"hook","parentUuid":branch}),
+                serde_json::json!({"type":"system","subtype":"compact_boundary","uuid":"boundary","parentUuid":null,"logicalParentUuid":"hook","compactMetadata":{"preservedSegment":{"tailUuid":"hook"}}}),
+            ]);
         }
         std::fs::write(
             path,

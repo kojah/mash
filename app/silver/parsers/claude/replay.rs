@@ -7,6 +7,7 @@ use crate::silver::json::{Kind, ParentLink, Record, SystemSubtype};
 #[derive(Default)]
 pub(super) struct Replay {
     anchor: Option<String>,
+    last_duplicate: Option<String>,
     // Ambiguous marks a duplicate without saved changes; Known stores the first
     // original parent to restore only after a proven native replay boundary.
     // Both membership and changes share bounded inline/private disk storage.
@@ -24,6 +25,7 @@ impl Replay {
 
     pub(super) fn clear(&mut self) {
         self.anchor = None;
+        self.last_duplicate = None;
         self.duplicates.clear();
     }
 
@@ -43,6 +45,11 @@ impl Replay {
             return Ok(());
         };
         if let Some(known) = parents.get(uuid)? {
+            // A new duplicate block cannot borrow changes retained across a
+            // stop-hook summary from the preceding block.
+            if self.last_duplicate.is_none() {
+                self.duplicates.clear();
+            }
             let saved = self.duplicates.get(uuid)?;
             if let Ancestry::Known(previous) = known
                 && previous != parent
@@ -54,6 +61,7 @@ impl Replay {
             } else if saved.is_none() {
                 self.duplicates.insert(uuid, Ancestry::Ambiguous)?;
             }
+            self.last_duplicate = Some(uuid.clone());
             return Ok(());
         }
         // Preserve original archived ancestry only when the native boundary
@@ -79,7 +87,20 @@ impl Replay {
                 Ok(())
             })?;
         }
-        self.clear();
+        // Native compaction can write a new stop-hook summary between the
+        // reduced replay and its boundary. Retain pending changes only when
+        // that summary directly follows and links to the last replayed UUID.
+        // Another new event or duplicate block still discards that evidence.
+        let linked_hook = record.kind == Kind::System
+            && record.subtype == Some(SystemSubtype::StopHookSummary)
+            && self.last_duplicate.as_ref().is_some_and(
+                |last| matches!(&record.parent, ParentLink::Parent(parent) if parent == last),
+            );
+        if linked_hook {
+            self.last_duplicate = None;
+        } else {
+            self.clear();
+        }
         self.anchor = Some(uuid.clone());
         parents.insert(uuid, Ancestry::Known(parent))?;
         Ok(())

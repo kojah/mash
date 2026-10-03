@@ -239,6 +239,9 @@ Compaction may append reduced copies of earlier dialogue with rewritten parents.
 Mash retains the original archived ancestry only for an uninterrupted block of
 existing UUIDs followed by a native compaction boundary whose logical parent and
 preserved tail identify the preceding event outside that block. Replayed message
+ancestry can also survive a new native `stop_hook_summary` directly linked to
+the last duplicate, when that summary is confirmed by the next boundary. Another
+new event or duplicate block discards the pending replay evidence. Replayed message
 content must still match; unrelated reparenting and incomplete replay evidence
 fail transactionally. The native compaction boundary remains a context root.
 Native forks may retain the original session ID on their copied history. When

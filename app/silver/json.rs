@@ -103,6 +103,7 @@ pub(super) struct Record {
 #[serde(rename_all = "snake_case")]
 pub(super) enum SystemSubtype {
     CompactBoundary,
+    StopHookSummary,
     #[default]
     #[serde(other)]
     Unknown,

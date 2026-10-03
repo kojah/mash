@@ -162,3 +162,30 @@ payload and unrelated-ancestry conflict checks must remain intact. Private
 captures are `silver-prefix.json`, `silver-prefix.log` and metadata-only
 `ancestry-diagnostic.json` in the Mac migration directory. No shared data was
 published by this attempt.
+
+### Stop-hook compaction validation
+
+The parser now retains pending replay ancestry across a new native
+`stop_hook_summary` only when it links directly to the last duplicate. Restoration
+still requires the next root compaction boundary to confirm that summary as both
+logical parent and preserved tail. Other new events, a new duplicate block,
+unidentified dialogue, payload conflicts and malformed records remain rejected.
+The rule adds one transient UUID to existing bounded replay bookkeeping.
+
+Validation passed seven focused parser/reconciliation tests, 619 standard tests
+and both Qdrant routed/snapshot copy-reconciliation contracts, whose fixtures now
+include the stop-hook case. Inline and spilled ancestry stores, archived context,
+surviving copies and restart checkpoints are covered. A native Mac build of the
+verified working-tree fix indexed the previously rejected source in isolation:
+one thread, 3,491 messages and 508 searchable messages, zero rejected sources,
+complete silver and exit code 0 in 2.073 seconds. This is a functional source
+replay, not a controlled throughput benchmark. Private captures are
+`stop-hook-case.json` and `stop-hook-case.log` in the Mac migration directory.
+
+The full Mac replay progressed past that source, then exited with code 9 on a
+workflow journal containing multiple agent identities. Inspection found 141
+`started` and 97 `result` events, 141 agents, no user/assistant message records
+and no malformed JSON. `mash-847.4` tracks handling of event-only sources without
+rejecting them as chat transcripts or guessing from filenames. The migration
+database remains empty after rollback, and the installed index remains unchanged.
+No shared publication or live endpoint cutover has occurred.

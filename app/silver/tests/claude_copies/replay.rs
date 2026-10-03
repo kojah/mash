@@ -43,6 +43,101 @@ fn original(path: &Path) {
 }
 
 #[test]
+fn claude_replay_accepts_linked_stop_hook_summary_but_rejects_other_interruptions() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("history.jsonl");
+    for (kind, subtype, parent, tail, valid) in [
+        ("system", "stop_hook_summary", "answer", "hook", true),
+        ("system", "stop_hook_summary", "root", "hook", false),
+        ("system", "other", "answer", "hook", false),
+        ("attachment", "stop_hook_summary", "answer", "hook", false),
+        ("system", "stop_hook_summary", "answer", "wrong", false),
+    ] {
+        original(&path);
+        let hook = serde_json::json!({
+            "type":kind,"subtype":subtype,"uuid":"hook","parentUuid":parent,
+        });
+        append_replay(&path, Some("hook"), tail, Some(&hook.to_string()));
+        let parsed = parse_claude(&path);
+        if valid {
+            assert_eq!(parsed.unwrap().conversation.unwrap().messages.len(), 5);
+            let rows = fs::read_to_string(&path).unwrap();
+            let last = rows.rfind("answer sentinel").unwrap();
+            let mut conflict = rows.clone();
+            conflict.replace_range(last..last + "answer sentinel".len(), "conflicting sentinel");
+            fs::write(&path, conflict).unwrap();
+            assert!(
+                parse_claude(&path)
+                    .err()
+                    .unwrap()
+                    .error
+                    .message
+                    .contains("conflicting content or ancestry")
+            );
+            fs::write(&path, format!("{rows}{{broken\n")).unwrap();
+            let malformed = parse_claude(&path).unwrap();
+            assert!(malformed.conversation.is_none());
+            assert_eq!(malformed.malformed_records, 1);
+        } else {
+            assert!(
+                parsed
+                    .err()
+                    .unwrap()
+                    .error
+                    .message
+                    .contains("conflicting ancestry")
+            );
+        }
+    }
+}
+
+#[test]
+fn claude_stop_hook_replay_preserves_archived_context_and_checkpointed_copy() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("sources");
+    fs::create_dir(&root).unwrap();
+    let archive = root.join("archive.jsonl");
+    let current = root.join("current.jsonl");
+    original(&archive);
+    fs::copy(&archive, &current).unwrap();
+    append_replay(
+        &current,
+        Some("hook"),
+        "hook",
+        Some(
+            r#"{"type":"system","subtype":"stop_hook_summary","uuid":"hook","parentUuid":"answer"}"#,
+        ),
+    );
+    let database = directory.path().join("index.sqlite3");
+    for restart in [false, true] {
+        let mut storage = Storage::open_writer(&database).unwrap();
+        let summary = index(&mut storage, &options(&root)).unwrap();
+        assert_eq!(summary.checkpoint_skipped_sources, u64::from(restart));
+        storage.commit_writer().unwrap();
+        assert_eq!(storage.counts().unwrap().messages, 5);
+        let tail = stable_id("claude-message", &["copied-thread", "tail"]);
+        assert_eq!(
+            storage
+                .view(&tail, 10)
+                .unwrap()
+                .iter()
+                .map(|m| m.content.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "root sentinel",
+                "omitted sentinel",
+                "answer sentinel",
+                "tail sentinel"
+            ]
+        );
+        drop(storage);
+        if !restart {
+            fs::remove_file(&archive).unwrap();
+        }
+    }
+}
+
+#[test]
 fn spilled_native_ancestry_preserves_compaction_context_and_restart_checkpoint() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("sources");
