@@ -1532,3 +1532,32 @@ and shared indexes, and measure storage, indexing and search costs. Query defaul
 alone do not satisfy that gate. Additional retrieval/ranking and result controls
 must be introduced through the same shared core with concrete capabilities and
 bounded work.
+
+## Quiescent backup and restore
+
+Each shared group has two Qdrant collections. Back up both: the state collection
+holds retained silver, source checkpoints, tombstones, node references and group
+configuration; the message collection holds searchable documents and vectors.
+Stop every API writer before taking separate collection snapshots and keep
+writes stopped until both snapshots are captured. These snapshots do not form a
+cross-collection transaction during concurrent publication.
+
+Restore both collections together onto a fresh Qdrant instance before starting
+the API. The recovery contract uses Qdrant 1.19.1 on both sides and uploads
+snapshots with `priority=snapshot`, following the
+[Qdrant snapshot procedure](https://qdrant.tech/documentation/operations/snapshots/).
+Node/server TOML and environment credentials are separate deployment files,
+not part of the database snapshot.
+
+`shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guards`
+uses two synthetic nodes and two groups, a canonical edit/deletion and a gold-only
+replacement. It removes the original database and volume before restoring to a
+new database. It checks retained source state/freshness, canonical message views,
+metadata, filtered lexical/dense retrieval, replaced vectors, group isolation,
+stale source-upload rejection and subsequent indexing. The test uses frozen
+vectors and reuses the real API recovery fixtures; no provider files or model
+downloads are involved. CI runs it alongside the graceful/SIGKILL restart
+contract. This covers quiescent single-node snapshot recovery of small fixtures,
+not concurrent backup consistency, power-loss durability, failover, version
+upgrades or measured full-corpus restore time. No backup daemon or scheduling
+feature is installed.

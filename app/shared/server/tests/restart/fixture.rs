@@ -25,6 +25,33 @@ fn docker(args: &[&str], timeout: u64) -> std::process::Output {
 
 pub(super) struct Database {
     name: String,
+    removed: bool,
+}
+
+pub(super) struct Backup {
+    collection: String,
+    path: std::path::PathBuf,
+}
+
+#[derive(serde::Deserialize)]
+struct SnapshotReply {
+    result: SnapshotName,
+}
+#[derive(serde::Deserialize)]
+struct SnapshotName {
+    name: String,
+}
+#[derive(serde::Deserialize)]
+struct CollectionsReply {
+    result: Collections,
+}
+#[derive(serde::Deserialize)]
+struct Collections {
+    collections: Vec<CollectionName>,
+}
+#[derive(serde::Deserialize)]
+struct CollectionName {
+    name: String,
 }
 impl Database {
     pub(super) fn start() -> Self {
@@ -34,6 +61,7 @@ impl Database {
         let port = "6333";
         let database = Self {
             name: format!("mash-restart-qdrant-{}", hex::encode(nonce)),
+            removed: false,
         };
         let publication = format!("127.0.0.1::{port}");
         let owner = format!(
@@ -114,9 +142,118 @@ impl Database {
         assert!(result.status.success(), "start crashed Qdrant");
         self.ready().await;
     }
+
+    /// Caller stops all owned writers first: collection snapshots are separate,
+    /// and do not provide a cross-collection transaction during publication.
+    pub(super) async fn backup(&self, root: &std::path::Path) -> Vec<Backup> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+        let url = self.endpoint();
+        let collections: CollectionsReply = client
+            .get(format!("{url}/collections"))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let mut backups = Vec::new();
+        for collection in collections.result.collections {
+            let name = collection.name;
+            let snapshot: SnapshotReply = client
+                .post(format!("{url}/collections/{name}/snapshots?wait=true"))
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let bytes = client
+                .get(format!(
+                    "{url}/collections/{name}/snapshots/{}",
+                    snapshot.result.name
+                ))
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap();
+            // Synthetic fixtures only; this is not a real-corpus backup driver.
+            assert!(
+                bytes.len() <= 8 * 1024 * 1024,
+                "fixture snapshot exceeds bound"
+            );
+            let path = root.join(format!("{name}.snapshot"));
+            std::fs::write(&path, bytes).unwrap();
+            backups.push(Backup {
+                collection: name,
+                path,
+            });
+        }
+        backups
+    }
+
+    pub(super) async fn restore(&self, backups: &[Backup]) {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+        let url = self.endpoint();
+        for backup in backups {
+            // Small owned binary fixtures; avoid adding a multipart dependency
+            // or enabling local-file recovery on the database.
+            let boundary = "mash-snapshot-fixture";
+            let mut body = format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"snapshot\"; filename=\"backup.snapshot\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+            ).into_bytes();
+            let bytes = std::fs::read(&backup.path).unwrap();
+            assert!(
+                bytes.len() <= 8 * 1024 * 1024,
+                "fixture snapshot exceeds bound"
+            );
+            body.extend(bytes);
+            body.extend(format!("\r\n--{boundary}--\r\n").bytes());
+            client
+                .post(format!(
+                    "{url}/collections/{}/snapshots/upload?priority=snapshot&wait=true",
+                    backup.collection
+                ))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(body)
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap();
+        }
+    }
+
+    pub(super) fn destroy(mut self) {
+        let result = docker(&["rm", "-f", "-v", &self.name], 15);
+        assert!(
+            result.status.success(),
+            "remove original database and volume"
+        );
+        self.removed = true;
+    }
 }
 impl Drop for Database {
     fn drop(&mut self) {
+        if self.removed {
+            return;
+        }
         let result = docker(&["rm", "-f", "-v", &self.name], 15);
         if !result.status.success() {
             eprintln!("owned restart fixture cleanup failed: {}", self.name);

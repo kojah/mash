@@ -1473,7 +1473,8 @@ shared-backend checks as completion gates. See the
 [measured workflow](benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
 
 CI also runs the [labeled hybrid relevance matrix](benchmarks/2026-10-01-shared-relevance.md)
-with explicitly installed models against local SQLite and all three shared backends.
+with explicitly installed models against local SQLite and shared Qdrant. The
+report retains historical measurements of the removed backends.
 The shared tests require their disposable backend endpoint and
 `MASH_TEST_MODELS_DIR`. To run these checks together with those variables set:
 
@@ -1512,12 +1513,15 @@ use `$CARGO_TARGET_DIR/llvm-cov-target/debug/mash`; without it, the default is
 `target/llvm-cov-target/debug/mash`. An explicit `CARGO_LLVM_COV_TARGET_DIR` instead
 uses that directory directly, as defined by [cargo-llvm-cov 0.9.1](https://github.com/taiki-e/cargo-llvm-cov/blob/v0.9.1/src/cargo.rs#L63).
 The suite builds the binary before running tests, so it need not exist before
-the coverage command starts. Restart contracts
+the coverage command starts. Restart and snapshot-restore contracts
 require Docker and the cached Qdrant image; set `MASH_TEST_DOCKER_SG=1` on Xenia.
 They own their containers and API processes and do not restart the supplied
 backend test services. Use the instrumented binary; forced API termination can
 prevent its final LLVM profile flush, so the contract's runtime checks do not
 guarantee that all child-process execution appears in the coverage report.
+Snapshot restoration stops all fixture writers and restores both group
+collections onto a fresh database after deleting the original database and
+volume. See the [backup scope](docs/silver-gold-configuration.md#quiescent-backup-and-restore).
 
 Then run:
 

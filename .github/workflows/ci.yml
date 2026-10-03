@@ -109,14 +109,14 @@ jobs:
         run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'
         env:
           MASH_TEST_QDRANT_URL: http://localhost:6333
-      - name: Verify persisted Qdrant data after database and API restart
+      - name: Verify Qdrant restart and snapshot restoration
         env:
           MASH_TEST_RESTART_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}-restart
         run: |
           cargo build --locked --bin mash
           MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
             cargo nextest run --profile ci --run-ignored only --no-tests fail -j 1 \
-              -E 'test(shared_backend_persisted_restart_contract)'
+              -E 'test(shared_backend_persisted_restart_contract) or test(shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guards)'
       - name: Clean owned restart fixtures after test failure or timeout
         if: always()
         env:

@@ -353,6 +353,52 @@ async fn verify(api: &Api, revision: i64) -> String {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires Docker, cached Qdrant image, and MASH_TEST_SERVER_BINARY"]
+async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guards() {
+    let database = Database::start();
+    database.ready().await;
+    let root = tempfile::tempdir().unwrap();
+    let api = Api::start(&database, root.path());
+    publish(&api, FIRST, 1, false).await;
+    publish(&api, SECOND, 1, true).await;
+    publish(&api, FIRST, 2, false).await;
+    rebuild_gold(&api).await;
+    let before = verify(&api, 2).await;
+    let states = [
+        api.get::<protocol::NodeState>("state", FIRST).await,
+        api.get::<protocol::NodeState>("state", SECOND).await,
+    ];
+    drop(api);
+    let backups = database.backup(root.path()).await;
+    assert_eq!(
+        backups.len(),
+        4,
+        "both collections for each configured group"
+    );
+    // Destroy the original database and its host volume before restoration.
+    // The downloaded snapshots are now the only source of the acknowledged data.
+    database.destroy();
+    let restored = Database::start();
+    restored.ready().await;
+    restored.restore(&backups).await;
+    let api = Api::start(&restored, root.path());
+    assert_eq!(verify(&api, 2).await, before);
+    verify_gold(&api).await;
+    for (token, state) in [FIRST, SECOND].into_iter().zip(states) {
+        assert_eq!(api.get::<protocol::NodeState>("state", token).await, state);
+    }
+    assert_eq!(
+        api.upload(FIRST, &snapshot(1, false)).await.status(),
+        reqwest::StatusCode::CONFLICT
+    );
+    assert_eq!(verify(&api, 2).await, before);
+    publish(&api, FIRST, 3, false).await;
+    rebuild_gold(&api).await;
+    verify(&api, 3).await;
+    verify_gold(&api).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires Docker, cached Qdrant image, and MASH_TEST_SERVER_BINARY"]
 async fn shared_backend_persisted_restart_contract() {
     let started = std::time::Instant::now();
     let database = Database::start();
