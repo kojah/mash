@@ -54,6 +54,7 @@ impl Data {
             })
             .collect();
         NodeState {
+            silver_coverage: Vec::new(),
             silver_revision: None,
             silver_scans: Vec::new(),
             source_silver: None,
@@ -135,6 +136,7 @@ pub(in crate::shared) fn start(
     };
     if loaded.head.is_none() {
         loaded.head = Some(Head {
+            silver_coverage: Vec::new(),
             silver_revision: None,
             silver_scans: Vec::new(),
             source_silver: None,
@@ -184,11 +186,15 @@ pub(in crate::shared) fn plan(
         removed: 0,
         purged: 0,
     };
+    let mut dirty = HashSet::new();
     if !duplicate {
         if let Some(head) = &mut plan.loaded.head {
             head.source_silver.clone_from(&input.source_silver);
         }
         for id in &input.forgets {
+            if let Some(c) = plan.loaded.data.conversations.get(id) {
+                dirty.insert(c.provider);
+            }
             plan.changed |= forget(&mut plan.loaded.data, id)?;
         }
         if input.snapshot {
@@ -220,6 +226,11 @@ pub(in crate::shared) fn plan(
             continue;
         }
         let data = &mut plan.loaded.data;
+        let affected = super::super::silver_coverage::affected(&event, data);
+        if affected.iter().any(|provider| scans.contains_key(provider)) {
+            return Err(AppError::usage("provider data after silver scan report"));
+        }
+        dirty.extend(affected);
         match event {
             Event::Batch(batch) => {
                 if batch.len() > 128 {
@@ -369,6 +380,14 @@ pub(in crate::shared) fn plan(
         return Err(AppError::usage("missing message context parent"));
     }
     if !duplicate && let Some(head) = &mut plan.loaded.head {
+        head.silver_coverage = super::super::silver_coverage::update(
+            &head.silver_coverage,
+            &scans,
+            &dirty,
+            &plan.loaded.data,
+            revision,
+            input.snapshot,
+        );
         head.silver_scans = scans.into_values().collect();
     }
     Ok(plan)

@@ -179,6 +179,7 @@ impl Store {
                 revision.validate()?;
             }
             nodes.push(NodeFreshness {
+                silver_coverage: h.silver_coverage.clone(),
                 silver_revision: h.silver_revision.clone(),
                 node_id: node_id.clone(),
                 revision: h.revision,
@@ -204,6 +205,7 @@ impl Store {
             if let Some(revision) = &h.silver_revision {
                 revision.validate()?;
             }
+            state.silver_coverage = h.silver_coverage;
             state.silver_revision = h.silver_revision;
             state.instance = Some(h.instance);
             state.revision = h.revision;

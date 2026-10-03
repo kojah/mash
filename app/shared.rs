@@ -10,6 +10,7 @@ mod qdrant_index;
 mod retrieval;
 mod routed;
 pub(crate) mod server;
+mod silver_coverage;
 mod silver_revision;
 mod snapshot;
 mod snapshot_budget;
@@ -60,6 +61,8 @@ pub(crate) struct Freshness {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct NodeFreshness {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    silver_coverage: Vec<silver_coverage::Coverage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     silver_revision: Option<silver_revision::State>,
     node_id: String,

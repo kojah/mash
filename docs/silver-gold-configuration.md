@@ -18,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint and full-snapshot source certificates | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Server-owned completeness for routed silver, shared gold manifests and broader enrichment origins remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Shared provider coverage verifies retained checkpoints independently of vectors. Group-wide build authorization, shared gold manifests and broader enrichment origins remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -192,9 +192,9 @@ uploads never publish a certificate.
 Independently routed ingestion cannot attach a full-local-snapshot certificate:
 its provider allowlist and retained history may differ. Routed updates, replacement
 snapshots without a certificate, and server-side forget operations clear the prior
-source certificate. A server-owned completeness contract for routed ingestion
-remains follow-up work, along with shared gold manifests and
-source-free shared rebuilds.
+source certificate. The scoped retained-coverage contract below supports routed
+ingestion. Group-wide build authorization, shared gold manifests and source-free
+shared rebuilds remain follow-up work.
 
 ### Routed provider scan evidence
 
@@ -210,11 +210,34 @@ Qdrant retains this report list in the atomic head. Each publication replaces th
 full snapshots and server-side forget leave no routed reports. Historical scan
 authority is never inferred from checkpoint presence or vector readiness.
 
-These are node-supplied observations of the latest published scan scope. An
-authoritative cutoff scan does not prove every retained older source was
-interpreted by current rules. A server-owned completeness certificate still needs
-to combine this evidence with retained checkpoint coverage before authorizing
-independent shared gold builds against the canonical revision.
+These are node-supplied observations of the latest published scan scope. They
+remain distinct from durable `silver_coverage`, exposed in node state and shared
+freshness. Each coverage entry contains the acknowledged `scan`, its
+`publication_revision`, and typed interpretation `completeness`.
+
+Coverage survives uploads for other providers and no-op publications. A new
+report replaces only that provider's scope; cutoffs are never unioned or widened.
+An edit to that provider's threads, messages, checkpoints, observations or
+reconciliation without a concluding report revokes its evidence. Canonical data
+after a provider's report is rejected, as are late checkpoint/observation events.
+Full replacement snapshots clear routed coverage and retain their separate local
+source certificate when supplied. Server-side forget conservatively clears all
+routed coverage. Failed uploads and idempotent retries preserve accepted evidence.
+Legacy heads have no coverage; reading them never fabricates it.
+
+An authoritative current-rule report yields `complete` only if **all retained
+checkpoints** for that provider have the current interpretation version and every
+retained thread has a provider-matching checkpoint. Older retained sources outside
+the discovery cutoff are checked too. Missing mappings or legacy versions yield
+`unverified`; non-authoritative discovery yields `incomplete`. A verified empty
+scope can be complete. Embedding coverage, generation and checkpoint `ready` do
+not participate. This verifies admitted-history interpretation, not the truth of
+node-supplied source facts or complete provenance for every metadata field.
+
+`complete` does not mean exhaustive filesystem discovery: the accompanying cutoff
+and authority describe the observed source scope. Consumers must keep these
+scopes and per-node canonical identities when forming a group-wide gold manifest.
+No shared gold build is authorized by this milestone alone.
 
 ## Explicit local gold rebuilding
 

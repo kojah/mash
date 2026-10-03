@@ -229,6 +229,8 @@ pub(crate) struct Tombstone {
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct NodeState {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub silver_coverage: Vec<super::silver_coverage::Coverage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub silver_revision: Option<super::silver_revision::State>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
