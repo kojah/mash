@@ -94,7 +94,7 @@ pub(super) fn affected(event: &super::protocol::Event, data: &Data) -> Vec<Provi
         Event::Source(source) => vec![source.provider],
         Event::Seen { provider, .. } | Event::Reconcile { provider, .. } => vec![*provider],
         Event::Remove { id } => thread(id).into_iter().collect(),
-        Event::Start(_) | Event::Scan(_) | Event::Finish => Vec::new(),
+        Event::Start(_) | Event::Scan(_) | Event::ReuseGold { .. } | Event::Finish => Vec::new(),
     }
 }
 

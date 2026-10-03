@@ -13,6 +13,7 @@ mod publication;
 mod qdrant_index;
 mod rebuild;
 mod retrieval;
+mod reuse;
 mod routed;
 pub(crate) mod server;
 mod silver_coverage;
@@ -24,6 +25,7 @@ mod validation;
 
 pub(crate) use client::{freshness, list_threads, view};
 pub(crate) use exact::search as search_exact;
+pub(crate) use publication::Inference;
 pub(crate) use publication::write_event;
 pub(crate) use publication::{forget_routed, publish, publish_routed, routed_status, status};
 pub(crate) use rebuild::{Rebuilt, rebuild_gold};
@@ -38,6 +40,8 @@ enum PublicationState {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Publication {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preparation: Option<publication::SnapshotWork>,
     state: PublicationState,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -49,12 +53,14 @@ impl Publication {
     }
     pub(crate) const fn published() -> Self {
         Self {
+            preparation: None,
             state: PublicationState::Published,
             error: None,
         }
     }
     pub(crate) const fn pending() -> Self {
         Self {
+            preparation: None,
             state: PublicationState::Pending,
             error: None,
         }

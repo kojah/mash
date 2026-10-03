@@ -18,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Shared provider coverage verifies retained checkpoints independently of vectors. Group-wide build authorization, shared gold manifests and broader enrichment origins remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests; shared lexical readiness is independent of dense readiness. Shared provider coverage verifies retained checkpoints independently of vectors. Group-wide build authorization and broader enrichment origins remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -567,13 +567,12 @@ retryable conflict without staging or acknowledging the upload. An explicit
 empty pin only admits a still-absent head. The existing commit-time conditional
 head update protects changes occurring after this preparation check.
 
-The version already exists in the persisted head. Exposing and pinning it adds
+The version already exists in the persisted head. For routed ingestion, exposing and pinning it adds
 small JSON fields to the existing state response and upload, with no extra
 request, inference or canonical-content copy. With the current 64-character head
 identity, compact JSON adds 89 bytes to node state and 86 bytes to the start
-record. Full-snapshot callers can use the
-same typed guard, but automatic recipe-aware snapshot preparation/vector reuse
-remains unfinished below. This protects a node publication, not a durable
+record. Full-snapshot publication uses the same guard through the plan endpoint
+below. This protects a node publication, not a durable
 group-wide configuration activation.
 
 The server certifies a source upload when its retained vectors already have a
@@ -584,11 +583,89 @@ or explicit retained-silver rebuilding recovers it. Empty bootstrap, idempotent
 snapshots, compatible no-op refreshes and deletion of the last thread retain a
 current recipe manifest. Local and shared recipes remain independent.
 
-The unfiltered default snapshot-publication path still exports local dialogue
-vectors without recipe negotiation. A nondefault shared recipe on that path
-therefore requires explicit shared rebuilding; adapting it without redundant
-full-corpus inference remains pending on `mash-q3e.3.4`. Server configuration is
-still process-local, so durable group activation remains pending on `.3.5`.
+### Recipe-aware full snapshots
+
+Full-snapshot publication first requests the authenticated node-scoped
+`GET /v1/publication-plan`. Its strict typed schema includes the schema version,
+active build, model generation/dimensions, immutable head version, source
+instance/revision and eligible thread dependency fingerprints. Default dialogue
+publication only retrieves the small head: it does not decode or fingerprint
+shared history and continues forwarding existing local vectors unchanged, with
+zero additional inference. Negotiation adds one HTTP round trip to that path.
+
+For a nondefault shared recipe, eligibility requires a current recipe/model/rule
+manifest and valid vectors for every visible message in a thread. The BLAKE3
+dependency stream includes canonical conversation metadata/enrichment and every
+message's identity, ordinal, context, role, canonical body, interpreted dialogue
+and timestamp in thread/ordinal order. Hidden messages participate too. Vectors,
+model identity and source-checkpoint stamps are excluded from the digest; their
+compatibility is checked separately. This conservative dependency also invalidates
+reuse for metadata-only changes. Changed threads are rebuilt as whole threads.
+
+The node captures a consistent read-only SQLite silver snapshot. Nondefault
+preparation does not read local embedding blobs or provider files. One active
+thread hasher and lightweight conversation/fingerprint maps avoid retaining all
+canonical bodies in RAM. Two restrictive temporary streams freeze the read
+snapshot and prepared upload without holding a SQLite transaction during model
+work; both disappear on drop. Inference batches contain at most 32 canonical
+rows, remain inside a thread and count hidden rows before selecting visible
+inputs. They match the retained-silver rebuild schedule. Unchanged eligible
+threads carry canonical rows without vectors plus an explicit `reuse_gold`
+start flag and `reuse_gold` events containing the thread ID and dependency digest.
+
+The server checks the declared recipe and immutable head before parsing changes.
+Reuse requires the explicit flag, a pinned snapshot and matching old/new thread
+dependencies; unknown, changed, duplicated or ambiguously supplied reuse fails
+before staging. Retained vectors move into a gold-only map while old
+canonical rows are discarded; no second old canonical body copy is retained.
+Server digest ordering uses an array of borrowed message references, not cloned
+bodies. Existing snapshot byte/admission budgets and final conditional head
+publication still apply. Interrupted or stale uploads cannot acknowledge local
+publication. A recipe refresh at the same source counter is allowed only when
+the complete canonical fingerprint remains unchanged; ordinary duplicates retain
+their accepted vectors.
+
+CLI/MCP indexing provide model resources through the same core. Forget may reuse
+existing shared vectors, but never initiates model work: if other unpublished
+threads require preparation, publication stays pending until explicit indexing.
+The local deletion remains durable. `shared.preparation` reports reused threads/
+vectors, forwarded vectors, model inferences, model loading/embedding/preparation
+milliseconds and upload bytes. These are operation diagnostics, not CPU/RSS or
+corpus throughput measurements. Server configuration remains process-local;
+durable group activation is still pending on `mash-q3e.3.5`, and representative
+node/server storage, inference and publication-cost acceptance remains `.5`.
+
+The 2026-10-03 unfiltered CLI fixture indexes one Codex and one Claude message,
+switches the shared recipe over unchanged silver, reuses both unchanged threads,
+edits one thread and compares its scores with an explicit retained-silver rebuild.
+It then removes both provider files and forgets one thread without inference.
+Canonical local rows and vectors remain unchanged during the recipe switch.
+The debug Cranelift diagnostic on Xenia reported:
+
+| Operation | Complete CLI time | Shared preparation | Shared model inferences | Reused vectors | Upload bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial dialogue publication | 1,847 ms | 12 ms | 0 | 0 | 5,770 |
+| Switch to title-and-dialogue | 1,723 ms | 1,555 ms | 2 | 0 | 5,886 |
+| Unchanged title-and-dialogue refresh | 96 ms | 17 ms | 0 | 2 | 2,008 |
+| Edit one thread | 3,293 ms | 1,412 ms | 1 | 1 | 3,924 |
+
+Shared model loading accounted for 1,506 ms during the switch and 1,380 ms
+during the edit; shared inference took 16 ms and 8 ms respectively. Complete
+CLI time also includes local indexing and HTTP publication. These are single
+samples from a two-message correctness fixture under host load, not corpus
+throughput, memory, relevance or percentile measurements. The capture is
+`shared-snapshot-recipe-qdrant-ci-20261003.log` in the external artifacts directory.
+
+Validation for this full-snapshot increment passed 640 standard tests and all
+46 disposable-Qdrant contracts. An earlier parallel default-profile run timed
+out in the existing Claude-copy reconciliation fixture; that test passed in
+isolation and in the complete serial CI-profile run. The owned persisted-restart
+contract also passed, including graceful and SIGKILL recovery. Its gold-rebuild
+assertion checks that the immutable publication version advances while the
+remaining node state stays identical. This is process-restart evidence, not
+power-loss, failover or backup/restore validation. Captures are
+`shared-snapshot-recipe-standard-postlint-20261003.log` and
+`shared-snapshot-recipe-restart-final-20261003.log` outside Git.
 
 Retained-silver rebuilding now matches the routed inference schedule: threads
 are separate, rows follow ordinal order, and hidden rows count toward each
@@ -609,7 +686,7 @@ process-inclusive correctness diagnostics with cold model loading, not corpus
 percentiles or quality evidence. Logs are under the external artifact directory
 in `shared-recipe-batch-parity-20261003.log`.
 
-Final validation passed 634 standard tests and 43 disposable-Qdrant contracts,
+Earlier routed-path validation passed 634 standard tests and 43 disposable-Qdrant contracts,
 including the two-provider lifecycle, both recipe guards, source-free rebuilding,
 exact/hybrid queries, concurrent publication and graceful/SIGKILL restart. The
 final Qdrant run is captured in `shared-recipe-ingestion-qdrant-final-20261003.log`.

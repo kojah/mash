@@ -137,7 +137,7 @@ async fn contract(service: Service) {
         .shared
         .unwrap();
     assert!(
-        !crate::shared::publish(paths.db.as_deref().unwrap(), &config)
+        !crate::shared::publish(paths.db.as_deref().unwrap(), &config, None)
             .await
             .is_pending()
     );

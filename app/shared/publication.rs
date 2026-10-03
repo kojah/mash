@@ -4,6 +4,24 @@ use super::protocol::{self, Event, Start};
 use super::{Publication, PublicationState, routed};
 use crate::{AppError, config::SharedConfig, storage::Storage};
 use std::{io::Write, path::Path, time::Duration};
+mod snapshot;
+
+pub(crate) struct Inference<'a> {
+    pub(crate) models_dir: &'a Path,
+    pub(crate) embeddings: Option<&'a crate::semantic::remote::Configuration>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub(crate) struct SnapshotWork {
+    reused_threads: u64,
+    reused_embeddings: u64,
+    forwarded_embeddings: u64,
+    model_inferences: u64,
+    model_load_milliseconds: u64,
+    embedding_milliseconds: u64,
+    preparation_milliseconds: u64,
+    upload_bytes: u64,
+}
 
 pub(super) fn target(config: &SharedConfig) -> String {
     blake3::hash(
@@ -95,6 +113,7 @@ pub(crate) fn status(
     };
     let pending = !path.is_file() || Storage::publication_is_pending(path, &target(config))?;
     Ok(Some(Publication {
+        preparation: None,
         state: if pending {
             PublicationState::Pending
         } else {
@@ -104,10 +123,18 @@ pub(crate) fn status(
     }))
 }
 
-pub(crate) async fn publish(path: &Path, config: &SharedConfig) -> Publication {
-    match publish_result(path, config).await {
-        Ok(()) => Publication::published(),
+pub(crate) async fn publish(
+    path: &Path,
+    config: &SharedConfig,
+    inference: Option<Inference<'_>>,
+) -> Publication {
+    match publish_result(path, config, inference).await {
+        Ok(preparation) => Publication {
+            preparation: Some(preparation),
+            ..Publication::published()
+        },
         Err(error) => Publication {
+            preparation: None,
             state: PublicationState::Pending,
             error: Some(error.error.message),
         },
@@ -184,6 +211,7 @@ pub(crate) async fn publish_routed(
     match attempt {
         Ok(()) => Publication::published(),
         Err(error) => Publication {
+            preparation: None,
             state: PublicationState::Pending,
             error: Some(error.error.message),
         },
@@ -222,6 +250,7 @@ pub(crate) async fn forget_routed(
         Ok(forgotten) => (Publication::published(), forgotten),
         Err(error) => (
             Publication {
+                preparation: None,
                 state: PublicationState::Pending,
                 error: Some(error.error.message),
             },
@@ -230,21 +259,39 @@ pub(crate) async fn forget_routed(
     })
 }
 
-async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppError> {
+async fn publish_result(
+    path: &Path,
+    config: &SharedConfig,
+    inference: Option<Inference<'_>>,
+) -> Result<SnapshotWork, AppError> {
+    let started = std::time::Instant::now();
+    let target: super::reuse::Target =
+        super::client::get(config, Endpoint::PublicationPlan).await?;
+    target.validate()?;
+    if target.build != crate::gold::config::Build::default() {
+        let (file, revision, preparation) =
+            snapshot::prepare(path, &target, inference, started).await?;
+        upload(config, &file).await?;
+        acknowledge(path, config, revision).await?;
+        return Ok(preparation);
+    }
     // Parse and spool before starting a remote transaction. Temporary files contain
     // only the outgoing data, have restrictive permissions, and are deleted on drop.
     let db = path.to_path_buf();
-    let (file, revision) = crate::blocking(move || {
+    let (file, revision, forwarded_embeddings) = crate::blocking(move || {
         crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
             let mut file = tempfile::NamedTempFile::new()
                 .map_err(|_| AppError::internal("create index upload"))?;
             let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
-            let revision = Storage::open_existing(&db)?.with_publication_snapshot(|snapshot| {
+            let mut forwarded_embeddings = 0;
+            let revision = Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
+                snapshot::validate_owner(snapshot, &target)?;
                 write_event(
                     &mut writer,
                     &Event::Start(Start {
-                        expected_version: None,
-                        gold_build: None,
+                        reuse_gold: false,
+                        expected_version: Some(target.publication_version.clone()),
+                        gold_build: Some(target.build.clone()),
                         source_silver: Some(snapshot.source_silver.clone()),
                         instance: snapshot.instance.clone(),
                         revision: Some(snapshot.revision),
@@ -258,7 +305,13 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
                     protocol::BatchKind::Conversations,
                     protocol::BatchKind::Messages,
                 ] {
-                    snapshot.visit(kind, |batch| write_event(&mut writer, &Event::Batch(batch)))?;
+                    snapshot.visit(kind, |batch| {
+                        if let protocol::Batch::Messages { records } = &batch {
+                            forwarded_embeddings +=
+                                records.iter().filter(|m| m.vector.is_some()).count() as u64;
+                        }
+                        write_event(&mut writer, &Event::Batch(batch))
+                    })?;
                 }
                 write_event(&mut writer, &Event::Finish)
             })?;
@@ -266,11 +319,26 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
                 .flush()
                 .map_err(|_| AppError::internal("flush index upload"))?;
             drop(writer);
-            Ok((file, revision))
+            Ok((file, revision, forwarded_embeddings))
         })
     })
     .await?;
+    let preparation = SnapshotWork {
+        reused_threads: 0,
+        reused_embeddings: 0,
+        forwarded_embeddings,
+        model_inferences: 0,
+        model_load_milliseconds: 0,
+        embedding_milliseconds: 0,
+        preparation_milliseconds: crate::progress::milliseconds(started),
+        upload_bytes: file.as_file().metadata().map_err(AppError::io)?.len(),
+    };
     upload(config, &file).await?;
+    acknowledge(path, config, revision).await?;
+    Ok(preparation)
+}
+
+async fn acknowledge(path: &Path, config: &SharedConfig, revision: i64) -> Result<(), AppError> {
     let db = path.to_path_buf();
     let target = target(config);
     crate::blocking(move || Storage::open_existing(&db)?.acknowledge_publication(&target, revision))

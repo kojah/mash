@@ -133,6 +133,7 @@ fn router(app: App) -> Router {
         .route("/v1/status", get(status))
         .route("/v1/state", get(state))
         .route("/v1/silver", get(retained_silver))
+        .route("/v1/publication-plan", get(publication_plan))
         .route("/v1/search", post(search))
         .route("/v1/threads", post(list_threads))
         .route("/v1/view", post(view))
@@ -175,9 +176,25 @@ async fn retained_silver(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
 ) -> Result<Response, ApiError> {
-    use futures_util::StreamExt;
     let permit = admission::reserve(&app.uploads)?;
     let (file, permit) = app.store.silver(&id, permit).await?;
+    stream_snapshot(file, permit)
+}
+
+async fn publication_plan(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+) -> Result<Response, ApiError> {
+    let permit = admission::reserve(&app.uploads)?;
+    let (file, permit) = app.store.publication_plan(&id, permit).await?;
+    stream_snapshot(file, permit)
+}
+
+fn stream_snapshot(
+    file: tempfile::NamedTempFile,
+    permit: tokio::sync::OwnedSemaphorePermit,
+) -> Result<Response, ApiError> {
+    use futures_util::StreamExt;
     let bytes = file.as_file().metadata().map_err(AppError::io)?.len();
     let input = tokio::fs::File::from_std(file.reopen().map_err(AppError::io)?);
     let stream = tokio_util::io::ReaderStream::new(input).map(move |frame| {

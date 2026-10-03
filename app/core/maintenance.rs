@@ -22,7 +22,7 @@ pub(super) async fn forget(
         result.forgotten |= forgotten;
         result.shared = Some(publication);
     } else if let Some(config) = publication_config(configuration) {
-        result.shared = Some(shared::publish(database, config).await);
+        result.shared = Some(shared::publish(database, config, None).await);
     }
     Ok(result)
 }

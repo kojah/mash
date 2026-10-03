@@ -114,7 +114,7 @@ pub(in crate::shared) struct SilverRef<'a> {
     tombstones: &'a BTreeMap<String, Tombstone>,
 }
 #[derive(Serialize)]
-struct MessageRef<'a> {
+pub(in crate::shared) struct MessageRef<'a> {
     id: &'a str,
     conversation_id: &'a str,
     ordinal: i64,
@@ -125,24 +125,26 @@ struct MessageRef<'a> {
     projection: &'a str,
     created_at: Option<i64>,
 }
+impl MessageRecord {
+    pub(in crate::shared) fn silver_ref(&self) -> MessageRef<'_> {
+        MessageRef {
+            id: &self.id,
+            conversation_id: &self.conversation_id,
+            ordinal: self.ordinal,
+            context: self.context,
+            role: &self.role,
+            content: &self.content,
+            projection: &self.projection,
+            created_at: self.created_at,
+        }
+    }
+}
 struct MessagesRef<'a>(&'a BTreeMap<String, MessageRecord>);
 impl Serialize for MessagesRef<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(self.0.len()))?;
         for (id, m) in self.0 {
-            map.serialize_entry(
-                id,
-                &MessageRef {
-                    id: &m.id,
-                    conversation_id: &m.conversation_id,
-                    ordinal: m.ordinal,
-                    context: m.context,
-                    role: &m.role,
-                    content: &m.content,
-                    projection: &m.projection,
-                    created_at: m.created_at,
-                },
-            )?;
+            map.serialize_entry(id, &m.silver_ref())?;
         }
         map.end()
     }

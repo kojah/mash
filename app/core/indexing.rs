@@ -67,7 +67,17 @@ pub(super) async fn run(
             shared::publish_routed(database, configuration, models, &shared_options, full).await,
         );
     } else if let Some(config) = publication_config(configuration) {
-        result.shared = Some(shared::publish(database, config).await);
+        result.shared = Some(
+            shared::publish(
+                database,
+                config,
+                Some(shared::Inference {
+                    models_dir: models,
+                    embeddings: configuration.embeddings.as_ref(),
+                }),
+            )
+            .await,
+        );
     }
     result.total_milliseconds = elapsed_milliseconds(started);
     emit_finished(&result);

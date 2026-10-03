@@ -87,6 +87,7 @@ fn events(revision: i64) -> Vec<Value> {
     other.provider = Provider::ClaudeCode;
     let mut events = vec![
         Event::Start(Start {
+            reuse_gold: false,
             expected_version: None,
             gold_build: None,
             instance: "exact-contract".into(),

@@ -33,6 +33,7 @@ pub(super) enum Endpoint {
     Freshness,
     State,
     Silver,
+    PublicationPlan,
     Gold,
     Search,
     Threads,
@@ -45,7 +46,12 @@ impl Endpoint {
     const fn bulk(self) -> bool {
         matches!(
             self,
-            Self::State | Self::Silver | Self::Gold | Self::Index | Self::Forget
+            Self::State
+                | Self::Silver
+                | Self::PublicationPlan
+                | Self::Gold
+                | Self::Index
+                | Self::Forget
         )
     }
 
@@ -61,6 +67,7 @@ impl Endpoint {
             Self::Freshness => "freshness",
             Self::State => "state",
             Self::Silver => "silver",
+            Self::PublicationPlan => "publication-plan",
             Self::Gold => "gold",
             Self::Search => "search",
             Self::Threads => "threads",
@@ -74,9 +81,12 @@ impl Endpoint {
         match self {
             // Publication can include a large streaming snapshot. Interactive
             // reads must fail promptly so local results remain responsive.
-            Self::Index | Self::Forget | Self::State | Self::Silver | Self::Gold => {
-                Duration::from_secs(600)
-            }
+            Self::Index
+            | Self::Forget
+            | Self::State
+            | Self::Silver
+            | Self::PublicationPlan
+            | Self::Gold => Duration::from_secs(600),
             _ => Duration::from_secs(2),
         }
     }

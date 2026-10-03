@@ -52,6 +52,212 @@ fn source_upload(
     file
 }
 
+fn reuse_upload(
+    fixture: &Fixture,
+    target: &crate::shared::reuse::Target,
+    defect: Option<usize>,
+) -> tempfile::NamedTempFile {
+    let source = source_upload(
+        fixture,
+        target.publication_revision + 1,
+        Some(target.build.clone()),
+        true,
+        false,
+        false,
+    );
+    let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
+        .into_iter::<Event>()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let Event::Start(start) = &mut events[0] else {
+        panic!("start")
+    };
+    start.expected_version = Some(target.publication_version.clone());
+    start.reuse_gold = true;
+    for event in &mut events {
+        if let Event::Batch(Batch::Messages { records }) = event {
+            for message in records {
+                message.vector = None;
+                message.generation = None;
+            }
+        }
+    }
+    let reuse = Event::ReuseGold {
+        conversation_id: "thread".into(),
+        fingerprint: target.threads["thread"].clone(),
+    };
+    events.insert(events.len() - 1, reuse);
+    match defect {
+        Some(0) => {
+            if let Event::Start(start) = &mut events[0] {
+                start.expected_version = None;
+            }
+        }
+        Some(1) => {
+            if let Event::Start(start) = &mut events[0] {
+                start.reuse_gold = false;
+            }
+        }
+        Some(2) => {
+            if let Event::Start(start) = &mut events[0] {
+                start.expected_version = Some("stale".into());
+            }
+        }
+        Some(3) => {
+            if let Event::Batch(Batch::Conversations { records }) = &mut events[1] {
+                records[0].title = Some("new title".into());
+            }
+        }
+        Some(4) => {
+            if let Event::Batch(Batch::Messages { records }) = &mut events[2] {
+                records[0].content.push('!');
+            }
+        }
+        Some(5) => {
+            if let Event::Batch(Batch::Messages { records }) = &mut events[2] {
+                records[0].vector = Some(vec![127.0, 0.0, 0.0, 0.0]);
+            }
+        }
+        Some(6) => {
+            events.insert(
+                events.len() - 1,
+                Event::ReuseGold {
+                    conversation_id: "thread".into(),
+                    fingerprint: target.threads["thread"].clone(),
+                },
+            );
+        }
+        Some(7) => {
+            events.pop();
+        }
+        Some(8) => {
+            if let Event::ReuseGold { fingerprint, .. } = &mut events[3] {
+                *fingerprint = "f".repeat(64);
+            }
+        }
+        Some(9) => {
+            if let Event::ReuseGold {
+                conversation_id, ..
+            } = &mut events[3]
+            {
+                *conversation_id = "missing".into();
+            }
+        }
+        _ => {}
+    }
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    for event in events {
+        crate::shared::write_event(file.as_file_mut(), &event).unwrap();
+    }
+    file
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let build = crate::gold::config::Build {
+        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+    };
+    let store = fixture.store.clone().with_build(build.clone());
+    store
+        .index(
+            &fixture.identity,
+            source_upload(&fixture, 1, Some(build), true, false, false),
+        )
+        .await
+        .unwrap();
+    let loaded = store.load(&fixture.identity).await.unwrap();
+    let before = store.state(&fixture.identity).await.unwrap();
+    let target =
+        crate::shared::reuse::Target::new(&loaded, &fixture.identity, store.build.clone()).unwrap();
+    for defect in 0..10 {
+        assert!(
+            store
+                .index(
+                    &fixture.identity,
+                    reuse_upload(&fixture, &target, Some(defect))
+                )
+                .await
+                .is_err(),
+            "defect {defect}"
+        );
+        assert_eq!(store.state(&fixture.identity).await.unwrap(), before);
+    }
+    store
+        .index(&fixture.identity, reuse_upload(&fixture, &target, None))
+        .await
+        .unwrap();
+    let after = store.load(&fixture.identity).await.unwrap();
+    assert_eq!(
+        after.data.canonical_fingerprint().unwrap(),
+        loaded.data.canonical_fingerprint().unwrap()
+    );
+    assert_eq!(
+        after.head.as_ref().unwrap().silver_revision,
+        loaded.head.as_ref().unwrap().silver_revision
+    );
+    for (id, message) in loaded.data.messages {
+        assert_eq!(after.data.messages[&id].vector, message.vector);
+    }
+    store
+        .search(&fixture.identity, fixture.query())
+        .await
+        .unwrap();
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged_silver() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .store
+        .index(
+            &fixture.identity,
+            source_upload(&fixture, 1, None, true, false, false),
+        )
+        .await
+        .unwrap();
+    let before = fixture.store.state(&fixture.identity).await.unwrap();
+    let build = crate::gold::config::Build {
+        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+    };
+    let store = fixture.store.clone().with_build(build.clone());
+    for changed in [true, false] {
+        let file = source_upload(&fixture, 1, Some(build.clone()), true, false, false);
+        let mut events = serde_json::Deserializer::from_reader(file.reopen().unwrap())
+            .into_iter::<Event>()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let Event::Start(start) = &mut events[0] else {
+            panic!("start")
+        };
+        start.expected_version = Some(before.publication_version.clone());
+        if changed && let Event::Batch(Batch::Conversations { records }) = &mut events[1] {
+            records[0].title = Some("canonical change".into());
+        }
+        let mut outgoing = tempfile::NamedTempFile::new().unwrap();
+        for event in events {
+            crate::shared::write_event(outgoing.as_file_mut(), &event).unwrap();
+        }
+        let result = store.index(&fixture.identity, outgoing).await;
+        if changed {
+            assert!(result.is_err());
+        } else {
+            result.unwrap();
+        }
+    }
+    let after = store.state(&fixture.identity).await.unwrap();
+    assert_eq!(after.revision, before.revision);
+    assert_eq!(after.silver_revision, before.silver_revision);
+    store
+        .search(&fixture.identity, fixture.query())
+        .await
+        .unwrap();
+    fixture.cleanup().await;
+}
+
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vectors() {

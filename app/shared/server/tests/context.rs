@@ -125,6 +125,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
     .collect();
     [
         Event::Start(Start {
+            reuse_gold: false,
             expected_version: None,
             gold_build: None,
             source_silver: None,

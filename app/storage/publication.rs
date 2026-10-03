@@ -37,12 +37,33 @@ impl Snapshot<'_> {
     pub(crate) fn visit(
         &self,
         kind: BatchKind,
+        accept: impl FnMut(Batch) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        self.visit_ordered(kind, false, accept)
+    }
+
+    pub(crate) fn visit_messages_by_thread(
+        &self,
+        accept: impl FnMut(Batch) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        self.visit_ordered(BatchKind::Messages, true, accept)
+    }
+
+    fn visit_ordered(
+        &self,
+        kind: BatchKind,
+        by_thread: bool,
         mut accept: impl FnMut(Batch) -> Result<(), AppError>,
     ) -> Result<(), AppError> {
         let sql = match kind {
             BatchKind::Conversations => {
                 "SELECT c.id,c.provider,c.title,c.created_at,c.updated_at,c.project,c.repository,e.evidence
                  FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id ORDER BY c.id"
+            }
+            BatchKind::Messages if by_thread => {
+                "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
+                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent
+                FROM messages m ORDER BY m.conversation_id, m.ordinal, m.id"
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,

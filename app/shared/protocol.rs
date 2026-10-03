@@ -6,6 +6,8 @@ use crate::storage::{Counts, SearchHit};
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Start {
+    #[serde(default, skip_serializing_if = "no_reuse")]
+    pub reuse_gold: bool,
     /// Immutable head observed while preparing this upload, including gold-only changes.
     /// An empty value pins bootstrap to an absent head; omission does not add this guard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -19,6 +21,11 @@ pub(crate) struct Start {
     pub base_revision: Option<i64>,
     pub snapshot: bool,
     pub forgets: Vec<String>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn no_reuse(value: &bool) -> bool {
+    !value
 }
 
 impl Start {
@@ -73,6 +80,11 @@ mod source_certificate_tests {
 pub(crate) enum Event {
     Start(Start),
     Batch(Batch),
+    /// Full-snapshot reuse of a complete, unchanged thread from the pinned head.
+    ReuseGold {
+        conversation_id: String,
+        fingerprint: String,
+    },
     Source(Checkpoint),
     Scan(ScanReport),
     Seen {

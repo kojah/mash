@@ -7,6 +7,35 @@ use crate::{
 use tokio::sync::OwnedSemaphorePermit;
 
 impl Store {
+    pub(in crate::shared) async fn publication_plan(
+        &self,
+        identity: &Identity,
+        permit: OwnedSemaphorePermit,
+    ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
+        if self.build == crate::gold::config::Build::default() {
+            // Default snapshots retain local vectors. Their negotiation needs
+            // only the small head, without decoding/fingerprinting shared history.
+            let node = self.node(identity).await?;
+            let target = crate::shared::reuse::Target::metadata(
+                node.head.as_ref(),
+                &node.version,
+                identity,
+                self.build.clone(),
+            );
+            return crate::blocking(move || spool_target(&target, permit)).await;
+        }
+        let pending = self.pending_snapshot(identity).await?;
+        let reservation = self.snapshot_budget.reserve(pending.encoded_bytes(), 0)?;
+        let identity = identity.clone();
+        let build = self.build.clone();
+        crate::blocking(move || {
+            let _reservation = reservation;
+            let target = crate::shared::reuse::Target::new(&pending.decode()?, &identity, build)?;
+            spool_target(&target, permit)
+        })
+        .await
+    }
+
     pub(in crate::shared) async fn silver(
         &self,
         identity: &Identity,
@@ -53,4 +82,17 @@ impl Store {
         })
         .await
     }
+}
+
+fn spool_target(
+    target: &crate::shared::reuse::Target,
+    permit: OwnedSemaphorePermit,
+) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
+    let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
+    let mut output = std::io::BufWriter::with_capacity(64 * 1024, file.as_file_mut());
+    serde_json::to_writer(&mut output, target)
+        .map_err(|_| AppError::internal("serialize shared publication plan"))?;
+    std::io::Write::flush(&mut output).map_err(AppError::io)?;
+    drop(output);
+    Ok((file, permit))
 }

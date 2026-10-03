@@ -23,10 +23,12 @@ pub(super) async fn read<T: DeserializeOwned + Send + 'static>(
     endpoint: Endpoint,
     permit: SemaphorePermit<'static>,
 ) -> Result<T, AppError> {
-    if matches!(endpoint, Endpoint::State | Endpoint::Silver)
-        || response
-            .content_length()
-            .is_some_and(|bytes| bytes > PREVIEW_BYTES as u64)
+    if matches!(
+        endpoint,
+        Endpoint::State | Endpoint::Silver | Endpoint::PublicationPlan
+    ) || response
+        .content_length()
+        .is_some_and(|bytes| bytes > PREVIEW_BYTES as u64)
     {
         return streamed(response, Vec::new(), permit).await;
     }

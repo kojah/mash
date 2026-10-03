@@ -83,6 +83,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     }
     let mut events = vec![
         Event::Start(Start {
+            reuse_gold: false,
             expected_version: None,
             gold_build: None,
             source_silver: Some(source_certificate(revision)),
@@ -201,7 +202,7 @@ async fn verify_search(api: &Api) {
 
 async fn rebuild_gold(api: &Api) {
     use crate::shared::gold_rebuild::{Embedding, Event as Gold};
-    let before: protocol::NodeState = api.get("state", FIRST).await;
+    let mut before: protocol::NodeState = api.get("state", FIRST).await;
     let records = ["anchor", "claude"]
         .into_iter()
         .map(|message_id| {
@@ -228,6 +229,10 @@ async fn rebuild_gold(api: &Api) {
         .error_for_status()
         .unwrap();
     let after: protocol::NodeState = api.get("state", FIRST).await;
+    assert_ne!(after.publication_version, before.publication_version);
+    before
+        .publication_version
+        .clone_from(&after.publication_version);
     assert_eq!(after, before);
     verify_gold(api).await;
 }

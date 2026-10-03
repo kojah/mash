@@ -106,6 +106,8 @@ pub(in crate::shared) fn start(
             .as_ref()
             .is_some_and(|v| v.len() > 4096)
         || input.forgets.len() > 10000
+        || (input.reuse_gold
+            && (!input.snapshot || input.expected_version.is_none() || input.gold_build.is_none()))
         || (input.snapshot && (input.base_revision.is_some() || !input.forgets.is_empty()))
     {
         return Err(AppError::usage("invalid index metadata"));
@@ -198,7 +200,7 @@ pub(in crate::shared) fn plan(
     else {
         return Err(AppError::usage("index stream must start with metadata"));
     };
-    let (revision, duplicate) = start(&mut loaded, &input)?;
+    let (revision, same_revision) = start(&mut loaded, &input)?;
     if input
         .gold_build
         .as_ref()
@@ -219,6 +221,26 @@ pub(in crate::shared) fn plan(
             })
             .map(|manifest| manifest.build.clone())
     });
+    let gold_refresh = same_revision
+        && input.expected_version.is_some()
+        && input.gold_build.is_some()
+        && (previous_build.as_ref() != Some(&requested) || {
+            let counts = loaded.data.counts(identity);
+            counts.embeddings != counts.searchable_messages
+        });
+    let previous_canonical = gold_refresh
+        .then(|| loaded.data.canonical_fingerprint())
+        .transpose()?;
+    let duplicate = same_revision && !gold_refresh;
+    let mut retained = if input.reuse_gold
+        && !duplicate
+        && input.expected_version.is_some()
+        && input.gold_build.is_some()
+    {
+        super::super::reuse::Retained::take(&mut loaded, identity, build)?
+    } else {
+        super::super::reuse::Retained::default()
+    };
     let mut plan = Plan {
         source_build: None,
         loaded,
@@ -339,6 +361,13 @@ pub(in crate::shared) fn plan(
                     }
                 }
             }
+            Event::ReuseGold {
+                conversation_id,
+                fingerprint,
+            } if input.reuse_gold => {
+                valid_id(&conversation_id)?;
+                retained.request(conversation_id, &fingerprint)?;
+            }
             Event::Source(s) if !input.snapshot => {
                 valid_id(&s.path_hash)?;
                 if s.size_bytes < 0
@@ -421,6 +450,15 @@ pub(in crate::shared) fn plan(
         matches!(m.context, crate::message_context::MessageContext::Parent { ordinal } if !ordinals.contains(&(&m.conversation_id, ordinal)))
     }) {
         return Err(AppError::usage("missing message context parent"));
+    }
+    retained.restore(&mut plan.loaded.data, identity)?;
+    if let Some(previous) = previous_canonical {
+        if plan.loaded.data.canonical_fingerprint()? != previous {
+            return Err(conflict(
+                "gold refresh cannot change silver at the same source revision",
+            ));
+        }
+        plan.changed = false;
     }
     if !duplicate && let Some(head) = &mut plan.loaded.head {
         head.silver_coverage = super::super::silver_coverage::update(

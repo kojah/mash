@@ -135,6 +135,19 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
     use axum::{Json, Router};
     use tokio::sync::mpsc;
 
+    async fn plan() -> Json<super::reuse::Target> {
+        Json(super::reuse::Target {
+            schema_version: 1,
+            build: crate::gold::config::Build::default(),
+            generation: semantic::SHARED_EMBEDDING_GENERATION.into(),
+            dimensions: 2,
+            publication_version: String::new(),
+            instance: None,
+            publication_revision: 0,
+            threads: std::collections::BTreeMap::new(),
+        })
+    }
+
     async fn capture(
         State(sender): State<mpsc::Sender<Vec<serde_json::Value>>>,
         body: axum::body::Bytes,
@@ -157,9 +170,15 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
-        axum::serve(listener, Router::new().fallback(capture).with_state(sender))
-            .await
-            .unwrap();
+        axum::serve(
+            listener,
+            Router::new()
+                .route("/v1/publication-plan", axum::routing::get(plan))
+                .fallback(capture)
+                .with_state(sender),
+        )
+        .await
+        .unwrap();
     });
     let config = SharedConfig {
         group_id: "test".into(),
@@ -168,7 +187,7 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
         token_env: "HOME".into(),
     };
     assert_eq!(
-        publish(&path, &config).await.state,
+        publish(&path, &config, None).await.state,
         PublicationState::Published
     );
     let events = received.recv().await.unwrap();
@@ -649,7 +668,7 @@ async fn publication_state_survives_failed_delivery_and_forget() {
         api_url: "http://127.0.0.1:9".to_owned(),
         token_env: "MASH_TEST_UNCONFIGURED_TOKEN_71B9".to_owned(),
     };
-    let delivery = publish(&path, &unavailable).await;
+    let delivery = publish(&path, &unavailable, None).await;
     assert_eq!(delivery.state, PublicationState::Pending);
     assert!(delivery.error.is_some());
     assert!(Storage::publication_is_pending(&path, "target").expect("pending"));
