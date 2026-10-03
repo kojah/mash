@@ -54,6 +54,7 @@ impl Data {
             })
             .collect();
         NodeState {
+            silver_scans: Vec::new(),
             source_silver: None,
             instance: None,
             revision: 0,
@@ -133,6 +134,7 @@ pub(in crate::shared) fn start(
     };
     if loaded.head.is_none() {
         loaded.head = Some(Head {
+            silver_scans: Vec::new(),
             source_silver: None,
             snapshot_schema: super::layers::Schema::Layered,
             instance: input.instance.clone(),
@@ -195,7 +197,8 @@ pub(in crate::shared) fn plan(
         }
     }
     let mut seen: HashMap<Provider, HashSet<String>> = HashMap::new();
-    let mut reconciled = HashSet::new();
+    let mut reconciled = HashMap::new();
+    let mut scans = std::collections::BTreeMap::new();
     let mut finished = false;
     for line in lines {
         if finished {
@@ -282,20 +285,26 @@ pub(in crate::shared) fn plan(
             }
             Event::Source(s) if !input.snapshot => {
                 valid_id(&s.path_hash)?;
-                if s.size_bytes < 0 || reconciled.contains(&s.provider) {
+                if s.size_bytes < 0
+                    || reconciled.contains_key(&s.provider)
+                    || scans.contains_key(&s.provider)
+                {
                     return Err(AppError::usage("invalid source checkpoint"));
                 }
                 data.sources
                     .insert(identity_key(s.provider, &s.path_hash), s);
             }
             Event::Seen { provider, hashes } if !input.snapshot => {
-                if hashes.len() > 128 || reconciled.contains(&provider) {
+                if hashes.len() > 128
+                    || reconciled.contains_key(&provider)
+                    || scans.contains_key(&provider)
+                {
                     return Err(AppError::usage("invalid observed sources"));
                 }
                 seen.entry(provider).or_default().extend(hashes);
             }
             Event::Reconcile { provider, cutoff } if !input.snapshot => {
-                if !reconciled.insert(provider) {
+                if scans.contains_key(&provider) || reconciled.insert(provider, cutoff).is_some() {
                     return Err(AppError::usage("duplicate reconciliation"));
                 }
                 let observed = seen.get(&provider);
@@ -329,6 +338,9 @@ pub(in crate::shared) fn plan(
                 plan.purged += c;
                 plan.changed |= c > 0;
             }
+            Event::Scan(report) if !input.snapshot => {
+                protocol::record_scan(&mut scans, report, &reconciled)?;
+            }
             _ => {
                 return Err(AppError::usage(
                     "invalid index event for this indexing mode",
@@ -353,6 +365,9 @@ pub(in crate::shared) fn plan(
         matches!(m.context, crate::message_context::MessageContext::Parent { ordinal } if !ordinals.contains(&(&m.conversation_id, ordinal)))
     }) {
         return Err(AppError::usage("missing message context parent"));
+    }
+    if !duplicate && let Some(head) = &mut plan.loaded.head {
+        head.silver_scans = scans.into_values().collect();
     }
     Ok(plan)
 }

@@ -559,6 +559,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     node_id: "node".into(),
                     version: version.clone(),
                     head: Some(Head {
+                        silver_scans: Vec::new(),
                         source_silver: None,
                         snapshot_schema: crate::shared::snapshot::layers::Schema::Mixed,
                         instance: "instance".into(),

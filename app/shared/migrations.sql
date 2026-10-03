@@ -214,3 +214,10 @@ DO $$ BEGIN
         UPDATE version SET version=19 WHERE singleton;
     END IF;
 END $$;
+
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 19 THEN
+        ALTER TABLE nodes ADD COLUMN IF NOT EXISTS silver_scans TEXT NOT NULL DEFAULT '[]';
+        UPDATE version SET version=20 WHERE singleton;
+    END IF;
+END $$;

@@ -3,10 +3,10 @@
 CREATE TABLE IF NOT EXISTS version (
     singleton BOOLEAN PRIMARY KEY CHECK (singleton), version INTEGER NOT NULL
 );
-INSERT INTO version VALUES (TRUE, 19) ON CONFLICT DO NOTHING;
+INSERT INTO version VALUES (TRUE, 20) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS nodes (
     node_id TEXT PRIMARY KEY, instance TEXT NOT NULL, revision BIGINT NOT NULL,
-    source_silver TEXT
+    source_silver TEXT, silver_scans TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS node_sync (
     node_id TEXT PRIMARY KEY REFERENCES nodes(node_id),

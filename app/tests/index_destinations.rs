@@ -127,6 +127,26 @@ impl Fixture {
         client
     }
 
+    fn assert_claude_scan(&self, node: &str) {
+        let state: Value = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            reqwest::Client::new()
+                .get(format!("{}/v1/state", self.server.as_ref().unwrap().url))
+                .bearer_auth(shared_server::token(node))
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .json()
+                .await
+                .unwrap()
+        });
+        assert_eq!(state["silver_scans"].as_array().unwrap().len(), 1);
+        assert_eq!(state["silver_scans"][0]["provider"], "claude-code");
+        assert_eq!(state["silver_scans"][0]["authoritative"], true);
+        assert!(state["silver_scans"][0]["cutoff"].is_null());
+    }
+
     fn cleanup(&self) {
         if self.redis {
             let client =
@@ -230,6 +250,9 @@ fn claude_copy_reconciliation(redis: bool, routed: bool) {
             .find(|node| node["node_id"] == "split")
             .unwrap();
         assert_eq!(node["messages"], messages);
+        if routed {
+            fixture.assert_claude_scan("split");
+        }
         let connection = rusqlite::Connection::open(&fixture.database).unwrap();
         let rows = connection
             .prepare("SELECT id,content FROM messages ORDER BY ordinal")

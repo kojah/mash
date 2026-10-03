@@ -138,7 +138,7 @@ pub(super) async fn forget(
             .ok_or_else(|| conflict("node revision exhausted"))?,
     );
     tx.execute(
-        "UPDATE nodes SET revision=$2,source_silver=NULL WHERE node_id=$1",
+        "UPDATE nodes SET revision=$2,source_silver=NULL,silver_scans='[]' WHERE node_id=$1",
         &[&node, &revision],
     )
     .await
@@ -266,7 +266,8 @@ pub(super) async fn index(
     let mut removed_messages = 0;
     let mut purged_conversations = 0;
     let mut seen: HashMap<Provider, Vec<String>> = HashMap::new();
-    let mut reconciled = std::collections::HashSet::new();
+    let mut reconciled = HashMap::new();
+    let mut scans = std::collections::BTreeMap::new();
     if !duplicate {
         for id in &start.forgets {
             changed |= forget_in_transaction(&tx, node, id).await?;
@@ -309,13 +310,19 @@ pub(super) async fn index(
             }
             Event::Source(s) if !start.snapshot => {
                 valid_id(&s.path_hash)?;
-                if s.size_bytes < 0 || reconciled.contains(&s.provider) {
+                if s.size_bytes < 0
+                    || reconciled.contains_key(&s.provider)
+                    || scans.contains_key(&s.provider)
+                {
                     return Err(AppError::usage("invalid source checkpoint"));
                 }
                 tx.execute("INSERT INTO direct_sources(node_id,provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint,interpretation_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(node_id,provider,path_hash) DO UPDATE SET size_bytes=$4,modified_ns=$5,conversation_id=$6,fingerprint=$7,interpretation_version=$8", &[&node,&s.provider.as_str(),&s.path_hash,&s.size_bytes,&s.modified_ns,&s.conversation_id,&s.fingerprint,&i64::from(s.interpretation_version)]).await.map_err(pg_error)?;
             }
             Event::Seen { provider, hashes } if !start.snapshot => {
-                if hashes.len() > 128 || reconciled.contains(&provider) {
+                if hashes.len() > 128
+                    || reconciled.contains_key(&provider)
+                    || scans.contains_key(&provider)
+                {
                     return Err(AppError::usage("invalid observed sources"));
                 }
                 let observed = seen.entry(provider).or_default();
@@ -325,7 +332,7 @@ pub(super) async fn index(
                 observed.extend(hashes);
             }
             Event::Reconcile { provider, cutoff } if !start.snapshot => {
-                if !reconciled.insert(provider) {
+                if scans.contains_key(&provider) || reconciled.insert(provider, cutoff).is_some() {
                     return Err(AppError::usage("duplicate reconciliation"));
                 }
                 let observed = seen.get(&provider).cloned().unwrap_or_default();
@@ -350,6 +357,9 @@ pub(super) async fn index(
                 removed_messages += m;
                 purged_conversations += c;
                 changed |= c > 0;
+            }
+            Event::Scan(report) if !start.snapshot => {
+                super::protocol::record_scan(&mut scans, report, &reconciled)?;
             }
             _ => {
                 return Err(AppError::usage(
@@ -376,9 +386,11 @@ pub(super) async fn index(
             .map(serde_json::to_string)
             .transpose()
             .map_err(|_| AppError::internal("serialize silver certificate"))?;
+        let reports = serde_json::to_string(&scans.into_values().collect::<Vec<_>>())
+            .map_err(|_| AppError::internal("serialize silver scan reports"))?;
         tx.execute(
-            "UPDATE nodes SET revision=$2,source_silver=$3 WHERE node_id=$1",
-            &[&node, &revision, &certificate],
+            "UPDATE nodes SET revision=$2,source_silver=$3,silver_scans=$4 WHERE node_id=$1",
+            &[&node, &revision, &certificate, &reports],
         )
         .await
         .map_err(pg_error)?;
@@ -503,7 +515,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 19 {
+        if version != 20 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
@@ -905,7 +917,7 @@ pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState,
         .opt()
         .await
         .map_err(pg_error)?;
-    let (instance, revision, source_silver) = if let Some(row) = node {
+    let (instance, revision, source_silver, silver_scans) = if let Some(row) = node {
         let certificate = row
             .source_silver
             .map(|json| {
@@ -913,9 +925,11 @@ pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState,
                     .map_err(|_| AppError::shared("invalid stored silver certificate"))
             })
             .transpose()?;
-        (Some(row.instance), row.revision, certificate)
+        let reports = serde_json::from_str(&row.silver_scans)
+            .map_err(|_| AppError::shared("invalid stored silver scan reports"))?;
+        (Some(row.instance), row.revision, certificate, reports)
     } else {
-        (None, 0, None)
+        (None, 0, None, Vec::new())
     };
     let mut sources = Vec::new();
     for r in pg::sources()
@@ -958,6 +972,7 @@ pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState,
     }
     tx.commit().await.map_err(pg_error)?;
     Ok(NodeState {
+        silver_scans,
         source_silver,
         instance,
         revision,

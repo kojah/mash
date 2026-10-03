@@ -35,6 +35,7 @@ fn chunked(bytes: Bytes) -> Body {
 
 fn state(records: usize) -> NodeState {
     NodeState {
+        silver_scans: Vec::new(),
         source_silver: None,
         instance: Some("unicode-instance-🧪".into()),
         revision: i64::MAX,

@@ -62,6 +62,7 @@ impl Store {
             state.instance = Some(head.instance);
             state.revision = head.revision;
             state.source_silver = head.source_silver;
+            state.silver_scans = head.silver_scans;
             if head.generation != identity.generation {
                 for source in &mut state.sources {
                     source.ready = false;
@@ -70,6 +71,7 @@ impl Store {
             Ok(state)
         } else {
             Ok(NodeState {
+                silver_scans: Vec::new(),
                 source_silver: None,
                 instance: None,
                 revision: 0,

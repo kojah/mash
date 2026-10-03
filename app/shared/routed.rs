@@ -86,20 +86,29 @@ pub(crate) async fn index(
                 &mut result,
             )
             .await?;
-            continue;
+        } else {
+            ingest_scan(
+                file.as_file_mut(),
+                &state,
+                owner,
+                scan,
+                full,
+                models_dir,
+                embeddings,
+                &mut pool,
+                &mut result,
+            )
+            .await?;
         }
-        ingest_scan(
+        write_event(
             file.as_file_mut(),
-            &state,
-            owner,
-            scan,
-            full,
-            models_dir,
-            embeddings,
-            &mut pool,
-            &mut result,
-        )
-        .await?;
+            &Event::Scan(super::protocol::ScanReport {
+                provider: scan.provider,
+                interpretation_version: silver::certificate::INTERPRETATION_VERSION,
+                authoritative: scan.complete,
+                cutoff: scan.cutoff,
+            }),
+        )?;
     }
     result.summary.changed_messages += result.gold.messages;
     result.ingestion_milliseconds = elapsed(ingestion_started)

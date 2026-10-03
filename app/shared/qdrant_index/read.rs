@@ -200,6 +200,7 @@ impl Store {
             state.instance = Some(h.instance);
             state.revision = h.revision;
             state.source_silver = h.source_silver;
+            state.silver_scans = h.silver_scans;
             if h.generation != identity.generation {
                 for source in &mut state.sources {
                     source.ready = false;

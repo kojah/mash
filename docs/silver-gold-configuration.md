@@ -162,6 +162,27 @@ source certificate. A server-owned silver revision and completeness contract for
 routed ingestion remains follow-up work, along with shared gold manifests and
 source-free shared rebuilds.
 
+### Routed provider scan evidence
+
+Routed publication now ends each verified provider scan with a typed scan report:
+provider, interpretation version, discovery authority and cutoff. The server
+requires authoritative reports to match a completed reconciliation and its cutoff.
+It rejects duplicates, unsupported rule versions and checkpoint/observation events
+after that provider's report. The reports become visible only with the acknowledged
+publication and are returned as `silver_scans` in node state, independently of
+embedding coverage. Partial discovery is explicitly reported as non-authoritative.
+
+PostgreSQL schema 20 stores this small report list on the node; Redis and Qdrant
+retain it in the atomic head. Each publication replaces the list. Legacy uploads,
+full snapshots and server-side forget leave no routed reports. Historical scan
+authority is never inferred from checkpoint presence or vector readiness.
+
+These are node-supplied observations of the latest published scan scope. An
+authoritative cutoff scan does not prove every retained older source was
+interpreted by current rules. A server-owned pure-silver revision and overall
+completeness certificate still need to combine this evidence with retained
+checkpoint coverage before authorizing independent shared gold builds.
+
 ## Explicit local gold rebuilding
 
 `mash index --rebuild-local-gold` builds local FTS and embeddings from retained

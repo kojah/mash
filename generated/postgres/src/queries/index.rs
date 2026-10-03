@@ -125,11 +125,13 @@ pub struct NodeState {
     pub instance: String,
     pub revision: i64,
     pub source_silver: Option<String>,
+    pub silver_scans: String,
 }
 pub struct NodeStateBorrowed<'a> {
     pub instance: &'a str,
     pub revision: i64,
     pub source_silver: Option<&'a str>,
+    pub silver_scans: &'a str,
 }
 impl<'a> From<NodeStateBorrowed<'a>> for NodeState {
     fn from(
@@ -137,12 +139,14 @@ impl<'a> From<NodeStateBorrowed<'a>> for NodeState {
             instance,
             revision,
             source_silver,
+            silver_scans,
         }: NodeStateBorrowed<'a>,
     ) -> Self {
         Self {
             instance: instance.into(),
             revision,
             source_silver: source_silver.map(|v| v.into()),
+            silver_scans: silver_scans.into(),
         }
     }
 }
@@ -1159,7 +1163,7 @@ impl ThreadCatalogStmt {
 pub struct NodeStateStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn node_state() -> NodeStateStmt {
     NodeStateStmt(
-        "SELECT instance, revision, source_silver FROM nodes WHERE node_id=$1",
+        "SELECT instance, revision, source_silver, silver_scans FROM nodes WHERE node_id=$1",
         None,
     )
 }
@@ -1187,6 +1191,7 @@ impl NodeStateStmt {
                         instance: row.try_get(0)?,
                         revision: row.try_get(1)?,
                         source_silver: row.try_get(2)?,
+                        silver_scans: row.try_get(3)?,
                     })
                 },
             mapper: |it| NodeState::from(it),

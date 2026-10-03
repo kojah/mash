@@ -118,6 +118,7 @@ impl Store {
             plan.changed = forgotten;
             if let Some(head) = &mut plan.loaded.head {
                 head.source_silver = None;
+                head.silver_scans.clear();
             }
             Ok((plan, forgotten, reservation))
         })
@@ -294,6 +295,7 @@ impl Store {
                 .await?
         };
         let head = Head {
+            silver_scans: previous.map_or_else(Vec::new, |h| h.silver_scans.clone()),
             source_silver: previous.and_then(|h| h.source_silver.clone()),
             snapshot_schema: crate::shared::snapshot::layers::Schema::Layered,
             instance,
