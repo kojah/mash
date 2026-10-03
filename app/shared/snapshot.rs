@@ -20,6 +20,8 @@ fn identity_key(provider: Provider, id: &str) -> String {
 }
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct Head {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) silver_revision: Option<super::silver_revision::State>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(super) silver_scans: Vec<protocol::ScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -90,4 +92,19 @@ pub(super) struct Plan {
     pub(super) changed: bool,
     pub(super) removed: u64,
     pub(super) purged: u64,
+}
+
+impl Plan {
+    /// Compute on the publication worker, before any stage becomes visible.
+    pub(in crate::shared) fn silver_revision(
+        &self,
+    ) -> Result<super::silver_revision::State, AppError> {
+        super::silver_revision::State::next(
+            self.loaded
+                .head
+                .as_ref()
+                .and_then(|head| head.silver_revision.as_ref()),
+            self.loaded.data.canonical_fingerprint()?,
+        )
+    }
 }

@@ -54,6 +54,7 @@ impl Data {
             })
             .collect();
         NodeState {
+            silver_revision: None,
             silver_scans: Vec::new(),
             source_silver: None,
             instance: None,
@@ -134,6 +135,7 @@ pub(in crate::shared) fn start(
     };
     if loaded.head.is_none() {
         loaded.head = Some(Head {
+            silver_revision: None,
             silver_scans: Vec::new(),
             source_silver: None,
             snapshot_schema: super::layers::Schema::Layered,

@@ -168,6 +168,43 @@ impl Serialize for EmbeddingsRef<'_> {
     }
 }
 impl Data {
+    /// Hash canonical fields in deterministic order without allocating body copies.
+    /// Checkpoints and model vectors are build dependencies, not canonical edits.
+    pub(in crate::shared) fn canonical_fingerprint(&self) -> Result<String, AppError> {
+        #[derive(Serialize)]
+        struct Canonical<'a> {
+            conversations: &'a BTreeMap<String, ConversationRecord>,
+            messages: MessagesRef<'a>,
+            tombstones: &'a BTreeMap<String, Tombstone>,
+        }
+        struct Digest(blake3::Hasher);
+        impl std::io::Write for Digest {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.update(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut digest = Digest(blake3::Hasher::new());
+        digest.0.update(b"mash-shared-silver-v1\0");
+        let mut output = std::io::BufWriter::with_capacity(64 * 1024, &mut digest);
+        serde_json::to_writer(
+            &mut output,
+            &Canonical {
+                conversations: &self.conversations,
+                messages: MessagesRef(&self.messages),
+                tombstones: &self.tombstones,
+            },
+        )
+        .map_err(|_| AppError::internal("fingerprint shared silver"))?;
+        std::io::Write::flush(&mut output)
+            .map_err(|_| AppError::internal("flush shared silver fingerprint"))?;
+        drop(output);
+        Ok(digest.0.finalize().to_hex().to_string())
+    }
+
     pub(in crate::shared) fn layers(&self) -> SnapshotRef<'_> {
         SnapshotRef {
             silver: SilverRef {

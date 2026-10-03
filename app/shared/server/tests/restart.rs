@@ -256,6 +256,22 @@ async fn verify(api: &Api, revision: i64) -> String {
     assert_eq!(freshness.nodes.len(), 2);
     assert_eq!(freshness.nodes[0].revision, revision);
     assert_eq!(freshness.nodes[1].revision, 1);
+    assert_eq!(
+        freshness.nodes[0]
+            .silver_revision
+            .as_ref()
+            .unwrap()
+            .revision,
+        u64::try_from(revision).unwrap()
+    );
+    assert_eq!(
+        freshness.nodes[1]
+            .silver_revision
+            .as_ref()
+            .unwrap()
+            .revision,
+        1
+    );
     serde_json::to_string(&freshness).unwrap()
 }
 

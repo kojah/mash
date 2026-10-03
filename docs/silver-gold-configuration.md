@@ -16,9 +16,9 @@ field. Missing metadata remains optional rather than being invented.
 | Identity and provenance | Provider, canonical thread/message IDs, source path/key/session, fingerprints and checkpoints | Provider identity is normalized; local path is provenance, not a portable repository identity. Exact native record offsets and per-field provenance are not generally retained. |
 | Dialogue | Canonical content, typed role, optional interpreted visible dialogue | Native tool/hidden/injected records are interpreted before gold. Context-only records remain available for viewing. Structured attachments/tool fields are not a general reusable silver model. |
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
-| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to all shared backends | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
+| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; full shared snapshots retain their source certificate | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Server-owned completeness for routed silver, shared gold manifests and broader enrichment origins remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint and full-snapshot source certificates | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Server-owned completeness for routed silver, shared gold manifests and broader enrichment origins remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -131,10 +131,48 @@ until an applicable explicit indexing run replays them. A date cutoff can leave
 older checkpoints unverified; it does not retroactively certify their contents.
 Existing canonical history and gold vectors survive this migration.
 
-This remains the local certificate foundation. The shared pure-silver revision
-and completeness certificate and uniform per-field source-versus-inferred
-metadata evidence are still separate work; versioned shared checkpoints alone
-do not prove either has shipped.
+The shared canonical revision is now tracked independently, as described below.
+Its completeness certificate and uniform per-field source-versus-inferred metadata
+evidence remain separate work; a fingerprint does not prove either has shipped.
+
+### Server-owned shared silver identity
+
+Qdrant publication heads persist an optional typed `silver_revision`, returned
+by `/v1/state` and in each node's `/v1/freshness` entry (also visible through
+CLI/MCP shared status). It contains `schema_version = 1`, a node-scoped `revision`
+and a BLAKE3 `fingerprint`. This is independent of the upload revision, the local
+source certificate's revision, and the embedding generation.
+
+The fingerprint covers deterministic canonical thread metadata and enrichment,
+messages (identity, membership, ordinal, branch context, role, original content,
+interpreted visible dialogue and timestamps) and persistent tombstones. It excludes
+vectors, model generations, source checkpoints and scan bookkeeping. The current
+stored `projection` is interpreted silver dialogue; changing gold text preparation
+must not overwrite it. Canonical edits advance the revision; replacing vectors,
+repeating a snapshot or updating checkpoints alone does not. Forgetting also
+tracks deletion intents, including tombstones for absent history.
+
+Fingerprinting streams on the existing blocking publication worker with a bounded
+64-KiB buffer and no cloned message bodies. The identity becomes visible with the
+same conditional Qdrant head as its data. Failed or stale publication cannot
+advance it. Invalid stored versions/digests or counter overflow fail closed.
+Existing heads leave it absent until an acknowledged publication computes revision
+1 over their retained history. Reading old state never invents a revision.
+
+This identifies the history used by a future shared gold manifest; it does not
+certify interpretation/completeness. Source-silver certificates and provider scan
+evidence remain separate inputs to that pending contract. Group-wide gold builds
+must capture the set of node identities/revisions, rather than treating one node's
+counter as a shared global clock.
+
+The manual `benchmark_canonical_fingerprint_cost` diagnostic used 10,000 synthetic
+messages, repeated Unicode dialogue and 384-dimensional stored vectors. On Xenia's
+debug Cranelift build, snapshot encoding produced 40,046,020 bytes in 4,356 ms;
+the additional canonical fingerprint took 783 ms. This is one serialization-only
+sample, not full ingestion, real-session latency, release performance or a memory
+measurement. Representative complete-ingestion/storage/search measurements remain
+an acceptance gate. Captures use the `silver-revision-*-20261003.log` prefix under
+`/home/james/scratch/mash-artifacts/` outside Git.
 
 ### Source-silver certificates on full shared snapshots
 
@@ -154,8 +192,8 @@ uploads never publish a certificate.
 Independently routed ingestion cannot attach a full-local-snapshot certificate:
 its provider allowlist and retained history may differ. Routed updates, replacement
 snapshots without a certificate, and server-side forget operations clear the prior
-source certificate. A server-owned silver revision and completeness contract for
-routed ingestion remains follow-up work, along with shared gold manifests and
+source certificate. A server-owned completeness contract for routed ingestion
+remains follow-up work, along with shared gold manifests and
 source-free shared rebuilds.
 
 ### Routed provider scan evidence
@@ -174,9 +212,9 @@ authority is never inferred from checkpoint presence or vector readiness.
 
 These are node-supplied observations of the latest published scan scope. An
 authoritative cutoff scan does not prove every retained older source was
-interpreted by current rules. A server-owned pure-silver revision and overall
-completeness certificate still need to combine this evidence with retained
-checkpoint coverage before authorizing independent shared gold builds.
+interpreted by current rules. A server-owned completeness certificate still needs
+to combine this evidence with retained checkpoint coverage before authorizing
+independent shared gold builds against the canonical revision.
 
 ## Explicit local gold rebuilding
 

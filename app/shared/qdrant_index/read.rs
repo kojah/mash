@@ -175,7 +175,11 @@ impl Store {
         let mut nodes = Vec::new();
         for (node_id, node) in &heads {
             let h = node.head.as_ref().ok_or_else(failure)?;
+            if let Some(revision) = &h.silver_revision {
+                revision.validate()?;
+            }
             nodes.push(NodeFreshness {
+                silver_revision: h.silver_revision.clone(),
                 node_id: node_id.clone(),
                 revision: h.revision,
                 last_synced_at: h.last_synced_at.clone(),
@@ -197,6 +201,10 @@ impl Store {
         let loaded = self.load(identity).await?;
         let mut state = loaded.data.state(identity);
         if let Some(h) = loaded.head {
+            if let Some(revision) = &h.silver_revision {
+                revision.validate()?;
+            }
+            state.silver_revision = h.silver_revision;
             state.instance = Some(h.instance);
             state.revision = h.revision;
             state.source_silver = h.source_silver;

@@ -284,9 +284,10 @@ impl Store {
             return Err(AppError::usage("invalid Qdrant revision"));
         }
         let max_bytes = self.max_node_bytes;
-        let (plan, encoded) = crate::blocking(move || {
+        let (plan, encoded, silver_revision) = crate::blocking(move || {
+            let silver_revision = plan.silver_revision()?;
             let encoded = Encoded::new(&plan.loaded.data.layers(), max_bytes)?;
-            Ok((plan, encoded))
+            Ok((plan, encoded, silver_revision))
         })
         .await?;
         let counts = plan.loaded.data.counts(identity);
@@ -298,6 +299,7 @@ impl Store {
         let now = chrono::DateTime::from(std::time::SystemTime::now())
             .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
         let head = Head {
+            silver_revision: Some(silver_revision),
             silver_scans: previous.map_or_else(Vec::new, |h| h.silver_scans.clone()),
             source_silver: previous.and_then(|h| h.source_silver.clone()),
             snapshot_schema: crate::shared::snapshot::layers::Schema::Layered,

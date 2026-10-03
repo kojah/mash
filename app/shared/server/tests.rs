@@ -12,6 +12,7 @@ mod native;
 mod relevance;
 mod restart;
 mod selections;
+mod silver_revision;
 mod silver_scans;
 mod snapshot_budget;
 mod source_silver;

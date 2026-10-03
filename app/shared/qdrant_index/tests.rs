@@ -137,6 +137,7 @@ async fn qdrant_mixed_snapshot_migrates_without_losing_embeddings_or_revision() 
             .unwrap(),
     );
     old.head.as_mut().unwrap().snapshot_schema = crate::shared::snapshot::layers::Schema::Mixed;
+    old.head.as_mut().unwrap().silver_revision = None;
     let old_version = old.version.clone();
     fixture
         .store
@@ -164,6 +165,7 @@ async fn qdrant_mixed_snapshot_migrates_without_losing_embeddings_or_revision() 
     assert_ne!(current.version, old_version);
     let head = current.head.unwrap();
     assert_eq!(head.revision, 1);
+    assert_eq!(head.silver_revision.as_ref().unwrap().revision, 1);
     assert!(matches!(
         head.snapshot_schema,
         crate::shared::snapshot::layers::Schema::Layered
@@ -559,6 +561,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     node_id: "node".into(),
                     version: version.clone(),
                     head: Some(Head {
+                        silver_revision: None,
                         silver_scans: Vec::new(),
                         source_silver: None,
                         snapshot_schema: crate::shared::snapshot::layers::Schema::Mixed,
