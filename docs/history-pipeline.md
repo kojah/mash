@@ -29,7 +29,8 @@ Mash's local application core separates successful indexing into two stages:
 
 Canonical models, provider adapters, discovery and reconciliation live in
 `app/silver.rs` and `app/silver/`; callers import `crate::silver`. The application
-orchestrator invokes the local silver and gold stages in `app/core/indexing/`.
+orchestrator in `app/core/indexing.rs` invokes `app/silver/local.rs` and
+`app/gold/local.rs`. Those builders do not depend on the application core.
 Visible dialogue interpretation lives in `app/silver/dialogue.rs`, and canonical
 messages expose it through `NormalizedMessage::dialogue()`. A message retains
 its complete `content` for context/viewing and an optional `dialogue_text`
@@ -38,9 +39,12 @@ means its canonical text is dialogue. Native hidden turns, injected instructions
 reasoning blocks and tool records are interpreted by silver, not by a query's
 ranking or embedding policy.
 
-Model execution and retrieval remain in `app/semantic/`, while `app/shared/`
-owns transport and server backends. Their remaining layer separation is described
-below.
+Gold model execution and retrieval live in `app/semantic/`; the `app/search_*`
+modules own gold query models, ranking and results, and `app/thread_catalog.rs`
+owns metadata discovery views over silver. Experimental topics are also gold.
+The module groups in `app/lib.rs` identify silver, gold and supporting
+infrastructure. `app/shared/` owns HTTP transport, publication coordination and
+backend adapters supporting both layers.
 
 1. **Silver ingestion** discovers provider history, interprets native records,
    reconciles identities and deletions, and commits canonical conversations,
@@ -73,7 +77,7 @@ no new standalone gold command, and search never implicitly runs either stage.
 Stage spans are `silver_ingest` and `gold_build`; existing progress events and
 response fields remain available.
 
-## Remaining boundaries
+## Interpretation and publication boundaries
 
 The SQLite column historically named `search_projection` stores silver's
 interpreted `dialogue_text`. Its name remains unchanged to preserve the existing
@@ -85,9 +89,9 @@ visibility a retrieval policy.
 Gold rebuilds from canonical records plus their stored interpretation. It does
 not infer hidden/native visibility from arbitrary raw text. Changing native
 interpretation rules requires silver replay; changing retrieval or embedding
-policies must use stored silver without provider replay. Extracting further
-query-oriented text policies and organizing gold modules remains tracked in
-`mash-c0d.3.9`.
+policies must use stored silver without provider replay. Query-oriented policy
+belongs in gold; provider-native visibility is retained in silver rather than
+reconstructed by gold from raw serialized tool bodies.
 
 The ingestion outcome used for readiness is run metadata, not a new persisted
 completion certificate. An independently exposed gold operation would need a
@@ -99,13 +103,15 @@ indexing, with per-index provider allowlists. Every provider forwarded to the
 shared index must also be included locally. Shared publication is optional;
 local search remains available while disconnected from the shared service.
 
-Routed shared publication discovers and reconciles sources on the node. Its gold
+Routed shared publication in `app/shared/routed.rs` discovers and reconciles
+sources on the node, calling silver adapters and canonical provenance storage.
+Its gold
 materializer lives in `app/gold/shared.rs` and receives interpreted silver
 conversations plus model configuration, without provider roots or checkpoints.
 It emits bounded message batches with embeddings into the private upload spool.
 The shared server persists canonical records and vectors together and maintains
-the backend's retrieval indexes. Further organizing the coordinator and server
-boundaries is tracked in `mash-c0d.3.10`.
+the backend's retrieval indexes. Publication coordination supports both layers;
+it is not another data layer and does not connect directly to shared databases.
 
 ## Storage boundary
 
@@ -113,12 +119,12 @@ Both layers may share a database/service, but silver must be independently
 readable and gold independently replaceable from silver plus model configuration.
 Atomic publication must prevent readers from combining different revisions.
 
-| Backend | Current silver storage | Current gold storage | Remaining separation |
-| --- | --- | --- | --- |
-| SQLite | `conversations`, `messages`, provenance and checkpoints | `message_embeddings`, `message_fts`, `semantic_chunks` and retrieval caches | Further module organization; table split already exists |
-| Postgres | `conversations`, `messages`, `direct_sources`, tombstones and node metadata | `message_search`: vectors, model generation and full-text documents | Table split exists; shared pipeline/module organization continues |
-| Redis | Immutable snapshot `silver` section, state and catalog keys | Snapshot `gold.embeddings` section and search documents | Further search-document model/module organization |
-| Qdrant | Snapshot `silver` section in state chunks, node heads and catalog records | Snapshot `gold.embeddings` section and searchable message vectors | Further search-document model/module organization |
+| Backend | Silver storage | Gold storage |
+| --- | --- | --- |
+| SQLite | `conversations`, `messages`, provenance and checkpoints | `message_embeddings`, `message_fts`, `semantic_chunks` and retrieval caches |
+| Postgres | `conversations`, `messages`, `direct_sources`, tombstones and node metadata | `message_search`: vectors, model generation and full-text documents |
+| Redis | Immutable snapshot `silver` section, state and catalog keys | Snapshot `gold.embeddings` section and search documents |
+| Qdrant | Snapshot `silver` section in state chunks, node heads and catalog records | Snapshot `gold.embeddings` section and searchable message vectors |
 
 The current Postgres definitions in `app/shared/schema.sql` explicitly group
 silver and gold tables. Historical bootstrap/upgrades live in
@@ -143,6 +149,22 @@ format are decoded through its typed schema and rewritten into the layered
 form on the next successful publication, including an idempotent retry. The
 in-memory joined planning model is not serializable in production, preventing
 new writes of that old representation. Serialization borrows canonical rows and
-vectors rather than cloning a complete node. Existing retrieval document views
-still include canonical excerpts/metadata; refining their model and module
-ownership remains tracked in `mash-c0d.3.12`.
+vectors rather than cloning a complete node. Retrieval documents are
+denormalized gold views: they may copy canonical excerpts/metadata together with
+derived search fields, while silver remains the canonical source. The Redis
+and Qdrant storage adapters identify these views explicitly in their module
+documentation. Their copies are not another silver store.
+
+## Verified boundary contracts
+
+Local gold tests remove provider files before building, check canonical rows
+remain unchanged, verify model failure preserves durable silver, and cover
+incremental reuse plus recovery after losing temporary queues. Rejected source
+records prevent readiness even when stored vectors are complete.
+
+The Postgres storage lifecycle test preserves silver and gold through historical
+migration and repeated startup, removes/replaces gold without deleting silver,
+and verifies readiness and cascading deletion. Shared snapshot codec and real
+Redis/Qdrant migration tests preserve message/provenance/vector data and revision
+ownership while rewriting the historical mixed format. Backend contracts cover
+filters, all supported providers, branches, authorization and failed publication.

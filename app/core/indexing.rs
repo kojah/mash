@@ -15,8 +15,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
-mod gold;
-mod silver;
+use crate::{gold::local as gold, silver::local as silver};
 
 #[tracing::instrument(name = "index", skip_all)]
 pub(super) async fn run(
@@ -155,35 +154,16 @@ fn emit_index_phase(phase: crate::progress::Phase, summary: &history::IndexSumma
     crate::progress::emit(&event);
 }
 
-fn emit_embedding_progress(progress: semantic::EmbeddingProgress) {
-    crate::progress::emit(&embedding_progress_event(&progress));
-}
-
 #[cfg(test)]
 fn write_embedding_progress(
     writer: &mut dyn Write,
     progress: &semantic::EmbeddingProgress,
 ) -> Result<(), AppError> {
-    let event = embedding_progress_event(progress);
+    let event = crate::progress::Event::embedding(progress);
     serde_json::to_writer(&mut *writer, &event)
         .map_err(|error| AppError::internal(format!("failed to serialize progress: {error}")))?;
     writeln!(writer)
         .map_err(|error| AppError::internal(format!("failed to write progress: {error}")))
-}
-
-fn embedding_progress_event(progress: &semantic::EmbeddingProgress) -> crate::progress::Event {
-    crate::progress::Event {
-        stored_vectors: Some(progress.stored_vectors),
-        total_vectors: Some(progress.total_vectors),
-        model_inferences: Some(progress.model_inferences),
-        reused_vectors: Some(progress.reused_vectors),
-        stored_vectors_per_second: Some(progress.stored_vectors_per_second),
-        ..crate::progress::Event::new(
-            crate::progress::Phase::SemanticEmbeddings,
-            progress.elapsed_milliseconds,
-            progress.eta_seconds,
-        )
-    }
 }
 
 fn resolve_index_options(

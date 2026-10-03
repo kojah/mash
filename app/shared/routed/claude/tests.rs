@@ -42,7 +42,7 @@ impl Fixture {
         let mut storage = Storage::open_writer(&self.database).unwrap();
         silver::index(&mut storage, &self.options).unwrap();
         storage.commit_writer().unwrap();
-        storage.direct_owner("fixture").unwrap().revision
+        storage.routed_owner("fixture").unwrap().revision
     }
 
     fn scan(&self, days: Option<u32>) -> DirectScan {

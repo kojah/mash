@@ -1,7 +1,7 @@
 //! Durable publication state, routing ownership and streaming uploads.
 use super::client::{Endpoint, request, response};
 use super::protocol::{self, Event, Start};
-use super::{Publication, PublicationState, direct};
+use super::{Publication, PublicationState, routed};
 use crate::{AppError, config::SharedConfig, storage::Storage};
 use std::{io::Write, path::Path, time::Duration};
 
@@ -153,9 +153,9 @@ pub(crate) async fn publish_routed(
         let scope = routed_scope(config);
         let db = path.to_path_buf();
         let owner =
-            crate::blocking(move || Storage::open_existing(&db)?.direct_owner(&scope)).await?;
+            crate::blocking(move || Storage::open_existing(&db)?.routed_owner(&scope)).await?;
         let target = routed_target(configuration)?;
-        direct::index(
+        routed::index(
             config,
             path,
             models_dir,
@@ -167,7 +167,7 @@ pub(crate) async fn publish_routed(
         .await?;
         let db = path.to_path_buf();
         crate::blocking(move || {
-            Storage::open_existing(&db)?.acknowledge_direct(&target, &owner, true)
+            Storage::open_existing(&db)?.acknowledge_routed(&target, &owner, true)
         })
         .await?;
         Ok::<_, AppError>(())
@@ -196,15 +196,15 @@ pub(crate) async fn forget_routed(
     let owner = crate::blocking(move || {
         let storage = Storage::open_existing(&db)?;
         storage.queue_shared_forget(&scope, &id)?;
-        storage.direct_owner(&scope)
+        storage.routed_owner(&scope)
     })
     .await?;
     let attempt = async {
         let target = routed_target(configuration)?;
-        let forgotten = direct::flush_forgets(config, &owner).await?;
+        let forgotten = routed::flush_forgets(config, &owner).await?;
         let db = path.to_path_buf();
         crate::blocking(move || {
-            Storage::open_existing(&db)?.acknowledge_direct(&target, &owner, false)
+            Storage::open_existing(&db)?.acknowledge_routed(&target, &owner, false)
         })
         .await?;
         Ok::<_, AppError>(forgotten)

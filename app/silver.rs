@@ -23,6 +23,7 @@ mod gemini;
 mod hermes;
 mod identities;
 mod json;
+pub(crate) mod local;
 pub(crate) mod messages;
 mod native;
 mod openclaw;

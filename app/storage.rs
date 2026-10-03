@@ -1,3 +1,6 @@
+//! Shared SQLite infrastructure for silver history and gold retrieval tables.
+//! Canonical mutation also invalidates dependent gold in the same transaction;
+//! gold/local owns rebuilding. See schema.sql for the physical layer sections.
 use crate::provider::Provider;
 use std::fs;
 use std::path::Path;
@@ -8,15 +11,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+// Gold views and materialized retrieval data.
 mod catalog;
-mod claude_sources;
 pub(crate) mod embedding_plan;
-mod indexing;
-pub(crate) mod publication;
-mod queries;
-mod schema;
 mod semantic;
 mod semantic_chunks;
+
+// Silver mutation/provenance plus atomic invalidation and publication ownership.
+mod claude_sources;
+mod indexing;
+pub(crate) mod publication;
+
+// Connection/schema and generated query infrastructure for both layers.
+mod queries;
+mod schema;
 
 #[cfg(test)]
 use schema::SCHEMA_VERSION;

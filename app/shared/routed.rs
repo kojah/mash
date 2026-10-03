@@ -1,3 +1,5 @@
+//! Coordinate independently routed silver reconciliation and shared gold building.
+//! All publication uses HTTP; this module does not connect to shared databases.
 use super::client::{Endpoint, get, post};
 use super::protocol::{Checkpoint, Event, Forget, Forgotten, NodeState, Start};
 use super::publication::{upload, write_event};
@@ -6,7 +8,7 @@ use crate::config::SharedConfig;
 use crate::semantic::{self, EmbeddingPool, Models};
 use crate::silver::{self, DirectScan, IndexOptions, IndexSummary};
 use crate::storage::Counts;
-use crate::storage::publication::DirectOwner;
+use crate::storage::publication::RoutedOwner;
 use std::path::Path;
 use std::time::Instant;
 mod claude;
@@ -28,7 +30,7 @@ pub(crate) async fn index(
     embeddings: Option<&semantic::remote::Configuration>,
     options: &IndexOptions,
     full: bool,
-    owner: &DirectOwner,
+    owner: &RoutedOwner,
 ) -> Result<IndexResult, AppError> {
     let root = models_dir.to_path_buf();
     let remote = embeddings.cloned();
@@ -118,7 +120,7 @@ pub(crate) async fn index(
 async fn ingest_scan(
     file: &mut std::fs::File,
     state: &NodeState,
-    owner: &DirectOwner,
+    owner: &RoutedOwner,
     scan: &DirectScan,
     full: bool,
     models_dir: &Path,
@@ -253,7 +255,7 @@ async fn ingest_scan(
 }
 pub(crate) async fn flush_forgets(
     config: &SharedConfig,
-    owner: &DirectOwner,
+    owner: &RoutedOwner,
 ) -> Result<bool, AppError> {
     let result: Forgotten = post(
         config,

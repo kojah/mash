@@ -1,4 +1,5 @@
-//! Redis connection/schema setup and internal snapshot representation.
+//! Redis storage adapter: layered silver/gold revisions and gold search hashes.
+//! Search documents are denormalized views, not the canonical silver snapshot.
 mod catalog;
 mod fields;
 mod metadata;

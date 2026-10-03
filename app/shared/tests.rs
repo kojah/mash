@@ -593,22 +593,22 @@ fn routed_forget_acknowledgements_preserve_newer_intents_and_pending_indexing() 
     let path = dir.path().join("local.sqlite3");
     let storage = seed(&path);
     storage.queue_shared_forget("group-node", "first").unwrap();
-    let first = storage.direct_owner("group-node").unwrap();
+    let first = storage.routed_owner("group-node").unwrap();
     storage.queue_shared_forget("group-node", "second").unwrap();
-    storage.acknowledge_direct("routed", &first, true).unwrap();
-    let pending = storage.direct_owner("group-node").unwrap();
+    storage.acknowledge_routed("routed", &first, true).unwrap();
+    let pending = storage.routed_owner("group-node").unwrap();
     assert_eq!(pending.forgets, ["first", "second"]);
     storage
-        .acknowledge_direct("routed", &pending, false)
+        .acknowledge_routed("routed", &pending, false)
         .unwrap();
     assert!(
         Storage::publication_is_pending(&path, "routed").unwrap(),
         "deletion does not acknowledge other unpublished index changes"
     );
-    let indexed = storage.direct_owner("group-node").unwrap();
+    let indexed = storage.routed_owner("group-node").unwrap();
     assert_eq!(indexed.forgets, Vec::<String>::new());
     storage
-        .acknowledge_direct("routed", &indexed, true)
+        .acknowledge_routed("routed", &indexed, true)
         .unwrap();
     assert!(!Storage::publication_is_pending(&path, "routed").unwrap());
 }

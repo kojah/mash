@@ -1,3 +1,4 @@
+//! Gold query models: selection and boolean predicates over silver metadata.
 use crate::provider::Provider;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};

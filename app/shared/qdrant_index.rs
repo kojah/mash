@@ -1,4 +1,5 @@
-//! Qdrant dense/sparse retrieval with immutable, conditionally published node snapshots.
+//! Qdrant storage adapter: layered silver/gold revisions and gold query documents.
+//! Message points are denormalized gold views; state chunks retain silver history.
 mod api;
 mod context;
 mod publish;

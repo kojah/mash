@@ -86,8 +86,8 @@ the shared search service. An explicitly completed empty index is valid.
 
 Local indexing separates durable canonical ingestion (silver) from rebuilding
 retrieval views (gold), reusing the existing stored history. See the
-[history pipeline](docs/history-pipeline.md) for recovery behavior and remaining
-shared/provider boundaries.
+[history pipeline](docs/history-pipeline.md) for layer ownership, storage schemas
+and recovery behavior.
 
 `mash index` reports live progress on stderr, including file/vector counts,
 elapsed time, and an estimated remaining time for the current phase. Estimates
@@ -1484,13 +1484,16 @@ modules are grouped by responsibility:
   and checkpoints. Provider-owned history files are bronze inputs.
   `app/silver/dialogue.rs` interprets visible dialogue independently of retrieval;
   canonical messages retain full context alongside an optional `dialogue_text`.
-- `app/core/indexing/silver.rs` and `app/core/indexing/gold.rs`: local stage
-  boundaries for durable canonical ingestion and rebuildable retrieval state.
+- `app/silver/local.rs` and `app/gold/local.rs`: local stage boundaries for
+  durable canonical ingestion and rebuildable retrieval state. The application
+  core wires those stages together.
 - `app/gold/shared.rs`: node-side embedding and publication-payload materialization
   from interpreted silver conversations; source scanning stays in the shared
   publication coordinator.
-- `app/semantic/`: model installation/cache, embedding batches, Core ML, remote
-  embeddings, and hybrid retrieval.
+- `app/semantic/` and `app/search_*`: gold model execution, embedding batches,
+  Core ML, remote embeddings, hybrid retrieval and query/ranking policies.
+- `app/shared/routed.rs`: HTTP publication coordination for per-index provider
+  routing; source interpretation stays in silver and materialization in gold.
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
   defines persisted silver history and gold embeddings within one atomic revision.
 - `app/shared/qdrant_index/`: typed REST, conditional publication, and dense/sparse retrieval.

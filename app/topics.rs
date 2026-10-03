@@ -1,4 +1,4 @@
-//! Experimental topic discovery. CF compression nodes are not semantic parents.
+//! Experimental gold topic views. CF compression nodes are not semantic parents.
 mod birch;
 #[cfg(test)]
 mod evaluation;

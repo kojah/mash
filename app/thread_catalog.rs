@@ -1,4 +1,4 @@
-//! Metadata-only discovery shared by storage and transport adapters.
+//! Gold metadata view: bounded thread discovery over canonical silver records.
 use crate::AppError;
 use crate::provider::Provider;
 use crate::search_results::ThreadMetadata;

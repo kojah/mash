@@ -1,14 +1,16 @@
-//! Typed shared-index facade used by the common application core.
+//! HTTP transport, publication coordination and storage adapters for both layers.
+//! Silver/gold snapshot schemas live in snapshot/layers.rs; gold builders live
+//! in gold/shared.rs. Backends atomically persist and query their declared views.
 use serde::{Deserialize, Serialize};
 
 mod backend;
 mod client;
-pub(crate) mod direct;
 pub(crate) mod protocol;
 mod publication;
 mod qdrant_index;
 mod redis_index;
 mod retrieval;
+mod routed;
 pub(crate) mod server;
 mod snapshot;
 mod snapshot_budget;

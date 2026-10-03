@@ -11,7 +11,7 @@ pub(crate) struct Snapshot<'a> {
     pub(crate) revision: i64,
 }
 
-pub(crate) struct DirectOwner {
+pub(crate) struct RoutedOwner {
     pub(crate) instance: String,
     pub(crate) revision: i64,
     pub(crate) scope: String,
@@ -181,7 +181,7 @@ impl Storage {
         transaction.commit().map_err(AppError::database)
     }
 
-    pub(crate) fn direct_owner(&self, scope: &str) -> Result<DirectOwner, AppError> {
+    pub(crate) fn routed_owner(&self, scope: &str) -> Result<RoutedOwner, AppError> {
         let transaction = self
             .connection
             .unchecked_transaction()
@@ -202,7 +202,7 @@ impl Storage {
         let forgets = transaction.prepare("SELECT conversation_id FROM shared_forgets WHERE scope=?1 ORDER BY conversation_id").map_err(AppError::database)?
             .query_map([scope], |r| r.get(0)).map_err(AppError::database)?.collect::<Result<Vec<_>, _>>().map_err(AppError::database)?;
         transaction.commit().map_err(AppError::database)?;
-        Ok(DirectOwner {
+        Ok(RoutedOwner {
             instance,
             revision,
             scope: scope.to_owned(),
@@ -210,10 +210,10 @@ impl Storage {
         })
     }
 
-    pub(crate) fn acknowledge_direct(
+    pub(crate) fn acknowledge_routed(
         &self,
         target: &str,
-        owner: &DirectOwner,
+        owner: &RoutedOwner,
         indexed: bool,
     ) -> Result<(), AppError> {
         let transaction = self

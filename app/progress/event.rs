@@ -68,6 +68,21 @@ pub(crate) enum Kind {
 }
 
 impl Event {
+    pub(crate) fn embedding(progress: &crate::semantic::EmbeddingProgress) -> Self {
+        Self {
+            stored_vectors: Some(progress.stored_vectors),
+            total_vectors: Some(progress.total_vectors),
+            model_inferences: Some(progress.model_inferences),
+            reused_vectors: Some(progress.reused_vectors),
+            stored_vectors_per_second: Some(progress.stored_vectors_per_second),
+            ..Self::new(
+                Phase::SemanticEmbeddings,
+                progress.elapsed_milliseconds,
+                progress.eta_seconds,
+            )
+        }
+    }
+
     pub fn new(phase: Phase, elapsed_milliseconds: u64, eta_seconds: Option<u64>) -> Self {
         Self {
             phase,

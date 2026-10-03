@@ -1,4 +1,4 @@
-//! Transport-independent, bounded thread selection followed by evidence ranking.
+//! Gold: bounded thread selection followed by evidence ranking across transports.
 use crate::AppError;
 use crate::search_results::{self, SearchUnit};
 use crate::semantic::Backend;

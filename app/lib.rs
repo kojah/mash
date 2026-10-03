@@ -1,30 +1,35 @@
 // Typed async search futures include transport tracing and concurrent retrieval.
 #![recursion_limit = "256"]
 
-mod cli;
-mod config;
-mod core;
-mod gold;
-mod mcp;
+// Silver canonical history and the vocabulary used by native adapters.
 mod message_context;
-mod observability;
-mod progress;
 mod provider;
 mod role;
-mod scratch;
+mod silver;
+
+// Gold materialization, retrieval models, policies and query-oriented views.
+mod gold;
 mod search_filter;
 mod search_query;
 mod search_ranking;
 mod search_results;
 mod semantic;
-mod shared;
-mod silver;
-mod storage;
-#[cfg(test)]
-mod test_support;
 mod thread_catalog;
 #[cfg(test)]
 mod topics;
+
+// Application composition and infrastructure supporting both layers.
+mod cli;
+mod config;
+mod core;
+mod mcp;
+mod observability;
+mod progress;
+mod scratch;
+mod shared;
+mod storage;
+#[cfg(test)]
+mod test_support;
 mod watch;
 #[cfg(unix)]
 mod worker;

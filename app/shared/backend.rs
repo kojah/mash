@@ -1,3 +1,5 @@
+//! PostgreSQL storage adapter: silver history and the gold `message_search` table.
+//! Schema/migrations own delineation; publication keeps both in one transaction.
 use super::protocol::{
     Batch, Checkpoint, Document, Event, Forget, Forgotten, Indexed, NodeState, Search, Start,
     Tombstone, valid_vector,

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use super::{
-    Checkpoint, DirectOwner, DirectScan, EmbeddingPool, Event, IndexResult, NodeState, write_event,
+    Checkpoint, DirectScan, EmbeddingPool, Event, IndexResult, NodeState, RoutedOwner, write_event,
 };
 use crate::AppError;
 use crate::provider::Provider;
@@ -117,7 +117,7 @@ fn plan(
 pub(super) async fn ingest(
     file: &mut std::fs::File,
     state: &NodeState,
-    owner: &DirectOwner,
+    owner: &RoutedOwner,
     database: &Path,
     scan: &DirectScan,
     full: bool,

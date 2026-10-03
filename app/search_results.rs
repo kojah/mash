@@ -1,4 +1,4 @@
-//! Result granularity and bounded conversation ranking, shared by all transports.
+//! Gold: result granularity and bounded conversation ranking across transports.
 use crate::provider::Provider;
 use crate::storage::SearchHit;
 use rmcp::schemars;

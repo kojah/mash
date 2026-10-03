@@ -1,21 +1,22 @@
-//! Rebuildable retrieval state from stored history; no provider discovery/options.
-use super::{elapsed_milliseconds, emit_embedding_progress, emit_index_phase, silver};
+//! Gold: rebuildable local retrieval state from stored silver history.
 use crate::AppError;
+use crate::progress::milliseconds as elapsed_milliseconds;
 use crate::semantic::{self, Models};
+use crate::silver::local as silver;
 use crate::storage::{Counts, Storage};
 use std::time::Instant;
 
-pub(super) struct Build {
-    pub(super) counts: Counts,
-    pub(super) ready: bool,
-    pub(super) embeddings: semantic::EmbeddingSummary,
-    pub(super) model_load_milliseconds: u64,
-    pub(super) search_refresh_milliseconds: u64,
-    pub(super) embedding_milliseconds: u64,
+pub(crate) struct Build {
+    pub(crate) counts: Counts,
+    pub(crate) ready: bool,
+    pub(crate) embeddings: semantic::EmbeddingSummary,
+    pub(crate) model_load_milliseconds: u64,
+    pub(crate) search_refresh_milliseconds: u64,
+    pub(crate) embedding_milliseconds: u64,
 }
 
 #[tracing::instrument(name = "gold_build", skip_all, fields(source_complete = source.is_complete()))]
-pub(super) fn build(
+pub(crate) fn build(
     storage: &mut Storage,
     models: &Models,
     source: &silver::Ingestion,
@@ -51,12 +52,9 @@ pub(super) fn build(
                 AppError::model("semantic models are not installed; run `mash models install`")
             })?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
-        semantic::rebuild_embeddings(
-            storage,
-            &mut embedding_pool,
-            &generation,
-            emit_embedding_progress,
-        )?
+        semantic::rebuild_embeddings(storage, &mut embedding_pool, &generation, |event| {
+            crate::progress::emit(&crate::progress::Event::embedding(&event));
+        })?
     } else {
         semantic::EmbeddingSummary::default()
     };
@@ -79,3 +77,13 @@ pub(super) fn build(
 
 #[cfg(test)]
 mod tests;
+
+fn emit_index_phase(phase: crate::progress::Phase, summary: &crate::silver::IndexSummary) {
+    crate::progress::emit(&crate::progress::Event::files(
+        phase,
+        summary,
+        0,
+        None,
+        crate::progress::EtaScope::Phase,
+    ));
+}

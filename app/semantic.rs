@@ -1,4 +1,4 @@
-//! Semantic retrieval facade; implementations are grouped by responsibility.
+//! Gold: model execution, embeddings, vector caches and semantic retrieval.
 #[cfg(any(test, all(target_os = "macos", target_arch = "aarch64")))]
 mod coreml;
 mod embeddings;

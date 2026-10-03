@@ -2,19 +2,19 @@
 use crate::{AppError, silver, storage::Storage};
 use std::time::Instant;
 
-pub(super) struct Ingestion {
-    pub(super) summary: silver::IndexSummary,
-    pub(super) milliseconds: u64,
+pub(crate) struct Ingestion {
+    pub(crate) summary: silver::IndexSummary,
+    pub(crate) milliseconds: u64,
 }
 
 impl Ingestion {
-    pub(super) fn is_complete(&self) -> bool {
+    pub(crate) fn is_complete(&self) -> bool {
         self.summary.malformed_records == 0
     }
 }
 
 #[tracing::instrument(name = "silver_ingest", skip_all)]
-pub(super) fn ingest(
+pub(crate) fn ingest(
     storage: &mut Storage,
     options: &silver::IndexOptions,
 ) -> Result<Ingestion, AppError> {
@@ -25,6 +25,6 @@ pub(super) fn ingest(
     storage.commit_and_continue_writer()?;
     Ok(Ingestion {
         summary,
-        milliseconds: super::elapsed_milliseconds(started),
+        milliseconds: crate::progress::milliseconds(started),
     })
 }
