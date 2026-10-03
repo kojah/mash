@@ -316,5 +316,23 @@ transport/admission and the matching server routes. Interactive clients retain
 their two-second deadline. This addresses the observed ten-minute acknowledgement
 timeout without adding a job API or configuration framework. Validation passed
 621 standard tests, strict all-target Clippy, formatting and doctest compilation.
-The currently running preview and Mac still use their old binaries; installing
-the changed budget and rebuilding optimized executables remains deployment work.
+The changed budget is committed in `8fbdda6`. Release and native Mac builds
+both passed. After the admitted mutation finished, the old preview exited
+gracefully and was replaced by the release executable (SHA-256
+`cb46f41ebb3969c70ffcc1bc8945e17cc2ec2cdfd41d19b140abdf1e16c80d0a`).
+Authenticated status and freshness are exactly unchanged across that restart.
+All three node credentials pass capabilities checks and unauthenticated status
+returns 401. The updated staged native Mac executable has SHA-256
+`1d466e2b2e1954c8bf6489cf622b9596538893a4366b6f4c17cde2cfd443811c`.
+
+Post-update native checks returned two `cbioportal` threads for shared exact,
+shared related and combined exact requests, without a shared error. Single
+fresh-process wall times were 2.127 s, 2.839 s and 301.8 ms respectively. Shared
+results identify `dev-macbook`; combined results remain local and diagnostics
+report completion of both sources, consistent with excluding this node from
+remote combined candidates. These are functional smoke samples, not comparable
+percentiles or proof of a release speedup. Private Mac captures begin
+`release-shared-` and `release-combined-`; Xenia restart captures are
+`release-status.json`, `release-freshness.json` and `preview-release.json`.
+The timed-out publication's local acknowledgement and fleet cutover remain
+unfinished. Installed configurations and live Redis have not changed.
