@@ -2,6 +2,113 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_model_generation_switch_preserves_silver_and_requires_rebuilding_gold() {
+    use crate::shared::gold_rebuild::Embedding;
+    let mut fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .store
+        .index(&fixture.identity, certified_source_upload(&fixture))
+        .await
+        .unwrap();
+    let original = fixture.store.load(&fixture.identity).await.unwrap();
+    let silver = serde_json::to_vec(&original.data.silver()).unwrap();
+    let fingerprint = original.data.canonical_fingerprint().unwrap();
+    let original_head = original.head.as_ref().unwrap();
+    let old_identity = fixture.identity.clone();
+    let old_query = fixture.query();
+    let old_version = fixture.store.gold_version(&old_identity).await.unwrap();
+    // Frozen vectors isolate publication/model identity from inference quality.
+    // This contract changes model generation while keeping dimensionality fixed.
+    let vectors = original
+        .data
+        .messages
+        .values()
+        .map(|m| Embedding {
+            message_id: m.id.clone(),
+            vector: m.vector.clone().unwrap(),
+        })
+        .collect::<Vec<_>>();
+    fixture.identity.generation = crate::semantic::model_space("alternate-test", 4);
+    assert!(
+        fixture
+            .store
+            .select_gold(&fixture.identity, false)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        fixture.store.gold_version(&old_identity).await.unwrap(),
+        old_version
+    );
+    fixture
+        .store
+        .select_gold(&fixture.identity, true)
+        .await
+        .unwrap();
+    let stale = fixture.store.freshness(&fixture.identity).await.unwrap();
+    assert!(stale.nodes[0].lexical_current);
+    assert!(!stale.nodes[0].gold_current);
+    assert!(
+        fixture
+            .store
+            .search(&fixture.identity, fixture.query())
+            .await
+            .is_err()
+    );
+    assert!(
+        fixture
+            .store
+            .search(&old_identity, old_query)
+            .await
+            .is_err()
+    );
+    let mut exact = fixture.query();
+    exact.intent = crate::gold::exact::Intent::ExactMention;
+    exact.vector.clear();
+    exact.generation.clear();
+    assert_eq!(
+        fixture
+            .store
+            .search(&fixture.identity, exact)
+            .await
+            .unwrap()
+            .lexical
+            .len(),
+        2
+    );
+
+    for identity in [fixture.identity.clone(), old_identity] {
+        fixture.identity = identity;
+        assert_artifact_switch(
+            &fixture,
+            &original,
+            &vectors,
+            &fingerprint,
+            crate::gold::config::Build::default(),
+        )
+        .await;
+        let after = fixture.store.load(&fixture.identity).await.unwrap();
+        assert_eq!(serde_json::to_vec(&after.data.silver()).unwrap(), silver);
+        let head = after.head.unwrap();
+        assert_eq!(head.revision, original_head.revision);
+        assert_eq!(head.instance, original_head.instance);
+        assert_eq!(head.silver_revision, original_head.silver_revision);
+        assert_eq!(head.source_silver, original_head.source_silver);
+        assert_eq!(head.last_synced_at, original_head.last_synced_at);
+        assert_eq!(head.last_updated_at, original_head.last_updated_at);
+        assert!(
+            after
+                .data
+                .messages
+                .values()
+                .all(|m| m.generation.as_deref() == Some(fixture.identity.generation.as_str()))
+        );
+    }
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
     use crate::gold::config::{Build, Representations};
     use crate::shared::gold_rebuild::Embedding;

@@ -1254,7 +1254,13 @@ metadata up to three times; same-node conflicts and configuration changes cannot
 rebase. The catalogue contains at most 512 node references, without canonical
 bodies or vectors. Recipe changes intentionally require explicit node rebuilds;
 there is no candidate staging or uninterrupted all-node replacement feature.
-Model-dimension migration and broader cost measurements remain separate work.
+Model generations with unchanged dimensions can use explicit activation and
+source-free gold rebuilding. An existing message collection has a fixed dense
+vector size: `--activate-gold` does not resize it, and startup rejects different
+dimensions before activation. A same-group dimension migration preserving silver
+is not implemented yet (`mash-q3e.5.1`). Broader cost measurements remain separate
+work. Frozen-vector contracts establish storage/identity behavior, not model
+quality, inference equivalence or complete native ingestion costs.
 Activating several configured groups is per-group, not one cross-group transaction.
 
 Existing schema-1 groups require explicit `--activate-gold` migration even when

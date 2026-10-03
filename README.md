@@ -1155,6 +1155,10 @@ requires compatible manifests across the group. This preserves canonical history
 but interrupts dense search during replacement. See
 [the activation contract](docs/silver-gold-configuration.md#durable-shared-group-configuration)
 for publication races and remaining lifecycle gates.
+Model changes through this path must retain the existing embedding dimensions.
+`--activate-gold` does not resize the Qdrant collection: a different dimension
+fails schema validation. Preserving the same group through a dimension change
+requires a migration path that is not implemented yet.
 
 Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
 contain credentials, paths, queries or fragments; redirects are disabled so keys
