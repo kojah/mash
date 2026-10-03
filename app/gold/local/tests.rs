@@ -208,6 +208,7 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
         dense_content: crate::gold::config::DenseContent::AllVisible,
+        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: EmbeddingText::TitleAndDialogue,
     };

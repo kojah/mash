@@ -13,6 +13,8 @@ pub(crate) struct Configuration {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Build {
+    #[serde(skip_serializing_if = "RetrievalUnit::is_default")]
+    pub(crate) retrieval_unit: RetrievalUnit,
     #[serde(skip_serializing_if = "DenseContent::is_default")]
     pub(crate) dense_content: DenseContent,
     #[serde(skip_serializing_if = "TextPreparation::is_default")]
@@ -22,6 +24,21 @@ pub(crate) struct Build {
     pub(crate) embedding_text: EmbeddingText,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_embedding_chars: Option<EmbeddingTextBudget>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum RetrievalUnit {
+    #[default]
+    Message,
+    ParentAndMessage,
+}
+
+impl RetrievalUnit {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_default(&self) -> bool {
+        *self == Self::Message
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -148,6 +165,11 @@ impl Build {
         if !self.dense_enabled() {
             return "gold-lexical-v1".into();
         }
+        if self.retrieval_unit == RetrievalUnit::ParentAndMessage {
+            let mut anchor = self.clone();
+            anchor.retrieval_unit = RetrievalUnit::Message;
+            return format!("gold-parent-unit-v1:{}", anchor.generation(model));
+        }
         if self.users_only() {
             let text = match self.embedding_text {
                 EmbeddingText::Dialogue => "dialogue",
@@ -205,6 +227,22 @@ impl Build {
             Some(limit) => prepared.trim().chars().take(limit.0 as usize).collect(),
             None => prepared,
         }
+    }
+
+    pub(crate) fn prepare_unit(
+        &self,
+        mut dialogue: String,
+        title: Option<&str>,
+        parent: Option<&str>,
+    ) -> String {
+        if self.retrieval_unit == RetrievalUnit::ParentAndMessage
+            && !dialogue.is_empty()
+            && let Some(parent) = parent.filter(|text| !text.is_empty())
+        {
+            dialogue.push_str("\n\nParent message:\n");
+            dialogue.extend(parent.chars().take(super::units::PARENT_CHARS));
+        }
+        self.prepare(dialogue, title)
     }
 }
 

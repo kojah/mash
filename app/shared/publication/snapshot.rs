@@ -130,6 +130,7 @@ fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, App
 }
 
 struct Reader {
+    units: crate::gold::units::Stream,
     input: std::io::BufReader<std::fs::File>,
     pending: VecDeque<MessageRecord>,
     done: bool,
@@ -139,6 +140,7 @@ struct Reader {
 impl Reader {
     fn new(input: std::fs::File) -> Result<Self, AppError> {
         Ok(Self {
+            units: crate::gold::units::Stream::default(),
             input: std::io::BufReader::with_capacity(64 * 1024, input),
             pending: VecDeque::new(),
             done: false,
@@ -181,6 +183,35 @@ impl Reader {
     }
 }
 
+async fn prepare_units(
+    mut reader: Reader,
+    batch: Vec<MessageRecord>,
+    recipe: &crate::gold::config::Build,
+    title: Option<String>,
+) -> Result<(Reader, Vec<MessageRecord>, Vec<String>), AppError> {
+    let recipe = recipe.clone();
+    crate::blocking(move || {
+        let mut prepared = Vec::new();
+        for message in &batch {
+            if let Some(text) = reader.units.prepare(
+                &recipe,
+                crate::gold::units::Input {
+                    thread: &message.conversation_id,
+                    ordinal: message.ordinal,
+                    context: message.context,
+                    role: &message.role,
+                    projection: &message.projection,
+                },
+                title.as_deref(),
+            )? {
+                prepared.push(text);
+            }
+        }
+        Ok((reader, batch, prepared))
+    })
+    .await
+}
+
 fn validate_model(target: &Target, inference: &Inference<'_>) -> Result<(), AppError> {
     let (generation, dimensions) = inference.embeddings.map_or_else(
         || (crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned(), 384),
@@ -202,7 +233,7 @@ fn validate_model(target: &Target, inference: &Inference<'_>) -> Result<(), AppE
 async fn embed_batch(
     batch: &mut [MessageRecord],
     target: &Target,
-    title: Option<&str>,
+    prepared: &[String],
     inference: Option<&Inference<'_>>,
     pool: &mut Option<crate::semantic::EmbeddingPool>,
     build: &mut gold::Build,
@@ -210,11 +241,6 @@ async fn embed_batch(
     let inference = inference
         .ok_or_else(|| AppError::shared("shared gold needs preparation; run mash index"))?;
     validate_model(target, inference)?;
-    let prepared = batch
-        .iter()
-        .filter(|m| target.build.includes_dense(&m.role, &m.projection))
-        .map(|m| target.build.prepare(m.projection.clone(), title))
-        .collect::<Vec<_>>();
     let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
     let vectors = gold::embed_texts(
         inference.models_dir,
@@ -296,11 +322,15 @@ pub(super) async fn prepare(
             let title = source
                 .conversations
                 .get(&batch[0].conversation_id)
-                .and_then(|c| c.title.as_deref());
+                .and_then(|c| c.title.clone());
+            let (next, next_batch, prepared) =
+                prepare_units(reader, batch, &target.build, title).await?;
+            reader = next;
+            batch = next_batch;
             embed_batch(
                 &mut batch,
                 target,
-                title,
+                &prepared,
                 inference.as_ref(),
                 &mut pool,
                 &mut build,

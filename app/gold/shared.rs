@@ -94,6 +94,7 @@ pub(crate) async fn materialize(
         }),
     )?;
     let mut messages = conversation.messages.rows()?;
+    let mut units = super::units::Stream::default();
     loop {
         let batch = messages
             .by_ref()
@@ -102,16 +103,9 @@ pub(crate) async fn materialize(
         if batch.is_empty() {
             break;
         }
-        let prepared = batch
-            .iter()
-            .filter(|m| result.recipe.includes_dense(&m.role, m.dialogue()))
-            .map(|m| m.dialogue())
-            .map(|text| {
-                result
-                    .recipe
-                    .prepare(text.to_owned(), conversation.title.as_deref())
-            })
-            .collect::<Vec<_>>();
+        let (next, batch, prepared) =
+            prepare_units(units, batch, conversation, &result.recipe).await?;
+        units = next;
         let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
         let mut vectors = embed_texts(models_dir, embeddings, pool, &texts, result)
             .await?
@@ -120,7 +114,6 @@ pub(crate) async fn materialize(
         drop(texts);
         let mut records = Vec::new();
         for message in batch {
-            let message = message.into_owned();
             let projection = message.dialogue_text.as_deref().unwrap_or(&message.content);
             let vector = if result.recipe.includes_dense(&message.role, projection) {
                 Some(
@@ -171,6 +164,48 @@ pub(crate) async fn materialize(
         });
     }
     Ok(())
+}
+
+async fn prepare_units(
+    mut units: super::units::Stream,
+    batch: Vec<std::borrow::Cow<'_, crate::silver::NormalizedMessage>>,
+    conversation: &Conversation,
+    recipe: &crate::gold::config::Build,
+) -> Result<
+    (
+        super::units::Stream,
+        Vec<crate::silver::NormalizedMessage>,
+        Vec<String>,
+    ),
+    AppError,
+> {
+    let batch = batch
+        .into_iter()
+        .map(std::borrow::Cow::into_owned)
+        .collect::<Vec<_>>();
+    let thread = conversation.id.clone();
+    let title = conversation.title.clone();
+    let recipe = recipe.clone();
+    crate::blocking(move || {
+        let mut prepared = Vec::new();
+        for message in &batch {
+            if let Some(text) = units.prepare(
+                &recipe,
+                super::units::Input {
+                    thread: &thread,
+                    ordinal: message.ordinal,
+                    context: message.context,
+                    role: &message.role,
+                    projection: message.dialogue(),
+                },
+                title.as_deref(),
+            )? {
+                prepared.push(text);
+            }
+        }
+        Ok((units, batch, prepared))
+    })
+    .await
 }
 
 fn conversation_record(conversation: &Conversation) -> Result<ConversationRecord, AppError> {

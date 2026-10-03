@@ -69,20 +69,10 @@ impl EmbeddingPlan {
         let transaction = connection.transaction().map_err(AppError::database)?;
         let mut total = 0_u64;
         {
-            let sql = match build.embedding_text {
-                crate::gold::config::EmbeddingText::Dialogue =>
-                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), NULL, messages.role
-                     FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
-                     ORDER BY pending_embeddings.message_id",
-                crate::gold::config::EmbeddingText::TitleAndDialogue =>
-                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), conversations.title, messages.role
-                     FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
-                     JOIN conversations ON conversations.id = messages.conversation_id
-                     ORDER BY pending_embeddings.message_id",
-            };
+            let sql = plan_sql(build);
             let mut source = storage
                 .connection
-                .prepare(sql)
+                .prepare(&sql)
                 .map_err(AppError::database)?;
             let mut rows = source.query([]).map_err(AppError::database)?;
             let mut insert = transaction
@@ -105,7 +95,21 @@ impl EmbeddingPlan {
                 if !build.includes_dense(&role, &content) {
                     continue;
                 }
-                let content = build.prepare(content, title.as_deref());
+                let parent = if build.retrieval_unit
+                    == crate::gold::config::RetrievalUnit::ParentAndMessage
+                {
+                    let projection: Option<String> =
+                        row.get("parent_projection").map_err(AppError::database)?;
+                    let role: Option<crate::role::Role> =
+                        row.get("parent_role").map_err(AppError::database)?;
+                    projection.filter(|text| {
+                        role.as_ref()
+                            .is_some_and(|role| build.includes_dense(role, text))
+                    })
+                } else {
+                    None
+                };
+                let content = build.prepare_unit(content, title.as_deref(), parent.as_deref());
                 let digest = blake3::hash(content.as_bytes());
                 let length = i64::try_from(content.len())
                     .map_err(|_| AppError::internal("embedding text is too large"))?;
@@ -198,3 +202,36 @@ impl EmbeddingPlan {
 
 #[cfg(test)]
 mod tests;
+
+fn plan_sql(build: &crate::gold::config::Build) -> String {
+    let anchor_sql = match build.embedding_text {
+        crate::gold::config::EmbeddingText::Dialogue =>
+            "SELECT messages.id, COALESCE(messages.search_projection, messages.content), NULL, messages.role
+             FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
+             ORDER BY pending_embeddings.message_id",
+        crate::gold::config::EmbeddingText::TitleAndDialogue =>
+            "SELECT messages.id, COALESCE(messages.search_projection, messages.content), conversations.title, messages.role
+             FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
+             JOIN conversations ON conversations.id = messages.conversation_id
+             ORDER BY pending_embeddings.message_id",
+    };
+    if build.retrieval_unit == crate::gold::config::RetrievalUnit::ParentAndMessage {
+        let title = match build.embedding_text {
+            crate::gold::config::EmbeddingText::Dialogue => "NULL",
+            crate::gold::config::EmbeddingText::TitleAndDialogue => "conversations.title",
+        };
+        format!(
+            "SELECT messages.id, COALESCE(messages.search_projection, messages.content), {title}, messages.role,
+                    COALESCE(parent.search_projection, parent.content) AS parent_projection,
+                    parent.role AS parent_role
+             FROM pending_embeddings JOIN messages ON messages.id=pending_embeddings.message_id
+             JOIN conversations ON conversations.id=messages.conversation_id
+             LEFT JOIN messages parent ON parent.conversation_id=messages.conversation_id
+               AND parent.ordinal=CASE WHEN messages.context_parent IS NULL THEN messages.ordinal-1 ELSE messages.context_parent END
+               AND parent.ordinal >= 0 AND parent.ordinal < messages.ordinal
+             ORDER BY pending_embeddings.message_id"
+        )
+    } else {
+        anchor_sql.to_owned()
+    }
+}

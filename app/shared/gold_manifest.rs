@@ -67,6 +67,7 @@ mod tests {
             max_embedding_chars: None,
             representations: crate::gold::config::Representations::LexicalAndDense,
             dense_content: crate::gold::config::DenseContent::AllVisible,
+            retrieval_unit: crate::gold::config::RetrievalUnit::Message,
             text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         };

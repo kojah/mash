@@ -38,6 +38,71 @@ fn seed(directory: &Path) -> std::path::PathBuf {
 }
 
 #[tokio::test]
+async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and_threads() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = seed(directory.path());
+    let silver = Storage::open_catalog(&database)
+        .unwrap()
+        .silver_certificate()
+        .unwrap();
+    let target = Target {
+        schema_version: 1,
+        build: crate::gold::config::Build {
+            retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+            ..Default::default()
+        },
+        generation: "unused-model".into(),
+        dimensions: 4,
+        publication_version: "pinned".into(),
+        instance: None,
+        publication_revision: 0,
+        threads: BTreeMap::new(),
+    };
+    let source = capture(&database, &target, false).unwrap();
+    let mut reader = Reader::new(source.file.reopen().unwrap()).unwrap();
+    let mut inputs = BTreeMap::new();
+    let mut sizes = Vec::new();
+    loop {
+        let (next, batch) = reader.next().unwrap();
+        reader = next;
+        if batch.is_empty() {
+            break;
+        }
+        sizes.push(batch.len());
+        let (next, batch, prepared) = prepare_units(reader, batch, &target.build, None)
+            .await
+            .unwrap();
+        reader = next;
+        for (row, text) in batch
+            .iter()
+            .filter(|m| !m.projection.is_empty())
+            .zip(prepared)
+        {
+            inputs.insert(row.id.clone(), text);
+        }
+    }
+    assert_eq!(sizes, [32, 5, 2]);
+    assert_eq!(inputs["a-67"], "canonical a message 33");
+    assert_eq!(
+        inputs["a-66"],
+        "canonical a message 34\n\nParent message:\ncanonical a message 33"
+    );
+    assert_eq!(inputs["b-100"], "canonical b message 0");
+    assert_eq!(
+        inputs["b-99"],
+        "canonical b message 1\n\nParent message:\ncanonical b message 0"
+    );
+    assert_eq!(inputs.len(), 29);
+    assert_eq!(
+        Storage::open_catalog(&database)
+            .unwrap()
+            .silver_certificate()
+            .unwrap(),
+        silver
+    );
+}
+
+#[tokio::test]
 async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_batch_boundaries() {
     let directory = tempfile::tempdir().unwrap();
     let database = seed(directory.path());
@@ -51,6 +116,7 @@ async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_bat
             max_embedding_chars: None,
             representations: crate::gold::config::Representations::LexicalAndDense,
             dense_content: crate::gold::config::DenseContent::AllVisible,
+            retrieval_unit: crate::gold::config::RetrievalUnit::Message,
             text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         },

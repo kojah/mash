@@ -43,6 +43,125 @@ fn rows(database: &Path) -> Vec<u8> {
 }
 
 #[test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+fn parent_units_replace_only_gold_and_recover_after_missing_model_build() {
+    use crate::gold::config::RetrievalUnit;
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("provider");
+    let database = directory.path().join("silver.sqlite3");
+    history(&root, ["user", "assistant"]);
+    let mut storage = Storage::open_writer(&database).unwrap();
+    let source = ingest(&mut storage, &options(&root)).unwrap();
+    let silver = storage.silver_certificate().unwrap();
+    storage.commit_writer().unwrap();
+    drop(storage);
+    let before = rows(&database);
+    std::fs::remove_dir_all(&root).unwrap();
+    let models = Models::new(PathBuf::from(
+        std::env::var_os("MASH_TEST_MODELS_DIR").unwrap(),
+    ));
+    let default = Recipe::default();
+    let parent = Recipe {
+        retrieval_unit: RetrievalUnit::ParentAndMessage,
+        ..Default::default()
+    };
+    let mut vectors = Vec::new();
+    for recipe in [&default, &parent, &default] {
+        let mut storage = Storage::open_writer(&database).unwrap();
+        if recipe == &parent {
+            let missing = Models::new(directory.path().join("absent"));
+            assert!(build(&mut storage, &missing, &source.summary, recipe).is_err());
+            assert!(
+                storage
+                    .require_gold_build(recipe, &models.generation())
+                    .is_err()
+            );
+            assert_eq!(storage.silver_certificate().unwrap(), silver);
+        }
+        let result = build(&mut storage, &models, &source.summary, recipe).unwrap();
+        assert!(result.ready);
+        assert_eq!(result.counts.embeddings, 2);
+        assert_eq!(storage.silver_certificate().unwrap(), silver);
+        assert_eq!(storage.gold_manifest().unwrap().unwrap().build, *recipe);
+        storage.commit_writer().unwrap();
+        drop(storage);
+        assert_eq!(rows(&database), before);
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        vectors.push(connection.query_row(
+            "SELECT vector FROM message_embeddings JOIN messages ON messages.id=message_embeddings.message_id WHERE ordinal=1",
+            [], |row| row.get::<_, Vec<u8>>("vector"),
+        ).unwrap());
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM gold_manifest WHERE manifest IS NOT NULL",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        let stored =
+            Storage::open_search(&database, &recipe.generation(&models.generation())).unwrap();
+        assert!(
+            stored
+                .semantic_index_is_ready(&recipe.generation(&models.generation()))
+                .unwrap()
+        );
+        assert!(!root.exists());
+    }
+    assert_ne!(vectors[0], vectors[1]);
+    assert_eq!(vectors[0], vectors[2]);
+}
+
+#[test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+fn parent_edits_reembed_unchanged_child_anchors() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("provider");
+    let database = directory.path().join("silver.sqlite3");
+    let models = Models::new(PathBuf::from(
+        std::env::var_os("MASH_TEST_MODELS_DIR").unwrap(),
+    ));
+    let recipe = Recipe {
+        retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+        ..Default::default()
+    };
+    let mut vectors = Vec::new();
+    let mut revisions = Vec::new();
+    for replacement in [
+        "relational database query optimization",
+        "clinical genomic cancer studies",
+    ] {
+        history(&root, ["user", "assistant"]);
+        let path = root.join("session.jsonl");
+        let original = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, original.replace("reply evidence 0", replacement)).unwrap();
+        let mut storage = Storage::open_writer(&database).unwrap();
+        let source = ingest(&mut storage, &options(&root)).unwrap();
+        storage.commit_writer().unwrap();
+        drop(storage);
+        let before = rows(&database);
+        std::fs::remove_dir_all(&root).unwrap();
+        let mut storage = Storage::open_writer(&database).unwrap();
+        revisions.push(storage.silver_certificate().unwrap().revision);
+        let result = build(&mut storage, &models, &source.summary, &recipe).unwrap();
+        assert!(result.ready);
+        assert_eq!(result.embeddings.model_inferences, 2);
+        storage.commit_writer().unwrap();
+        drop(storage);
+        assert_eq!(rows(&database), before);
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        vectors.push(connection.query_row(
+            "SELECT vector FROM message_embeddings JOIN messages ON messages.id=message_embeddings.message_id WHERE ordinal=1",
+            [], |row| row.get::<_, Vec<u8>>("vector"),
+        ).unwrap());
+    }
+    assert!(revisions[1] > revisions[0]);
+    assert_ne!(vectors[0], vectors[1]);
+}
+
+#[test]
 fn users_only_empty_eligibility_builds_offline_without_inference() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("provider");
@@ -58,6 +177,7 @@ fn users_only_empty_eligibility_builds_offline_without_inference() {
     let models = Models::new(directory.path().join("absent-models"));
     let recipe = Recipe {
         dense_content: DenseContent::UserMessages,
+        retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
         ..Default::default()
     };
     let result = build(&mut storage, &models, &source.summary, &recipe).unwrap();

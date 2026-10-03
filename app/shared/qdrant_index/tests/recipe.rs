@@ -52,6 +52,10 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
             dense_content: crate::gold::config::DenseContent::UserMessages,
             ..Default::default()
         },
+        Build {
+            retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+            ..Default::default()
+        },
         Build::default(),
     ] {
         assert_artifact_switch(&fixture, &original, &vectors, &fingerprint, recipe).await;
@@ -373,6 +377,7 @@ async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams(
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
         dense_content: crate::gold::config::DenseContent::AllVisible,
+        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -442,6 +447,7 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
         max_embedding_chars: Some(256_u32.try_into().unwrap()),
         representations: crate::gold::config::Representations::LexicalAndDense,
         dense_content: crate::gold::config::DenseContent::AllVisible,
+        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -498,6 +504,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
         dense_content: crate::gold::config::DenseContent::AllVisible,
+        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -650,6 +657,7 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
         dense_content: crate::gold::config::DenseContent::AllVisible,
+        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };

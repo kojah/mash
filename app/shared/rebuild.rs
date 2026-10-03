@@ -115,6 +115,7 @@ async fn materialize(
         .peekable();
     let mut result = Build::default();
     let mut pool = None;
+    let mut units = crate::gold::units::Stream::default();
     let started = Instant::now();
     let mut estimate = crate::progress::Estimate::new();
     loop {
@@ -122,20 +123,33 @@ async fn materialize(
         if batch.is_empty() {
             break;
         }
-        let prepared = batch
-            .iter()
-            .filter(|m| retained.build.includes_dense(&m.role, &m.projection))
-            .map(|m| {
-                retained.build.prepare(
-                    m.projection.clone(),
-                    retained
-                        .history
-                        .conversations
-                        .get(&m.conversation_id)
-                        .and_then(|c| c.title.as_deref()),
-                )
-            })
-            .collect::<Vec<_>>();
+        let title = retained
+            .history
+            .conversations
+            .get(&batch[0].conversation_id)
+            .and_then(|c| c.title.clone());
+        let recipe = retained.build.clone();
+        let (next, batch, prepared) = crate::blocking(move || {
+            let mut prepared = Vec::new();
+            for message in &batch {
+                if let Some(text) = units.prepare(
+                    &recipe,
+                    crate::gold::units::Input {
+                        thread: &message.conversation_id,
+                        ordinal: message.ordinal,
+                        context: message.context,
+                        role: &message.role,
+                        projection: &message.projection,
+                    },
+                    title.as_deref(),
+                )? {
+                    prepared.push(text);
+                }
+            }
+            Ok((units, batch, prepared))
+        })
+        .await?;
+        units = next;
         let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
         let vectors = gold::embed_texts(models, embeddings, &mut pool, &texts, &mut result).await?;
         if vectors.len() != prepared.len() {

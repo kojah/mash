@@ -985,6 +985,53 @@ and rejected shared vectors without publication. This option has no claimed
 quality advantage. Broader content selectors, new retrieval units and comparative
 quality/cost evaluation remain tracked follow-ups.
 
+### Message-anchored retrieval units
+
+```toml
+[gold.build]
+retrieval_unit = "parent-and-message" # default: "message"
+```
+
+Both modes keep one dense vector per eligible anchor message. The optional
+parent unit represents the anchor plus up to 2,048 Unicode scalar values of
+its parent's interpreted dialogue. The result ID, role, time and thread refer
+to the anchor. Lexical retrieval and viewing still use canonical message rows;
+the parent input is not a new canonical message or a copied persisted gold body.
+
+For native tree histories, the recorded parent ordinal chooses the context.
+Roots have none. For linear histories, only ordinal minus one is considered.
+Missing, hidden or role-excluded parents contribute nothing; there is no scan
+back to another visible message and no context borrowed from another thread.
+`dense_content="user-messages"` excludes assistant text from both anchors and
+parent context. The anchor precedes the parent in the embedding input; title,
+whitespace preparation and the overall character budget apply afterwards.
+A short overall budget can therefore omit the parent entirely.
+
+This build setting is independent of query result grouping into messages or
+threads. Local and shared indexes may select it independently. Changing it
+requires explicit gold rebuilding, not a search-time override. Local generation
+`gold-parent-unit-v1:<anchor-recipe-generation>` versions the unit rule and cap;
+shared manifests and the durable group build record bind the same typed recipe.
+Default serialized recipes and model generations remain unchanged. Upgrade
+clients and services together before publishing this new enum value.
+
+All node materialization, SQLite snapshot preparation and retained shared
+rebuilds use the same parent-resolution rules. Streaming preparation keeps a
+private disposable SQLite lookup containing at most 2,048 characters per
+eligible parent, with a 2 MiB SQLite page-cache budget and one thread retained
+at a time. It runs on blocking workers; it is deleted after build or failure.
+The default message mode creates no parent database. Local planning resolves
+parents directly from the consistent silver snapshot. Local rebuilds invalidate
+the non-default projection conservatively on silver revision changes; shared
+reuse requires the complete thread fingerprint, including parent text and edges.
+
+This is a configurable construction option, not a demonstrated quality win or
+a new default. Multi-passage vectors, source-offset mappings, broader unit
+selection, and held-out guided-search evaluation remain tracked follow-ups.
+The bounded [local cost comparison](parent-unit-cost-2026-10-03.md) measured
+19.443 s for parent replacement versus 12.684 s for message replacement over
+the same 1,061 anchors, without changing canonical/provenance table hashes.
+
 ## Query intent: exact mentions
 
 `[gold.query] intent = "related-discussion"` retains the existing hybrid retrieval

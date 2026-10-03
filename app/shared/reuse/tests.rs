@@ -11,6 +11,7 @@ fn fixture() -> (Loaded, Identity, Build) {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
         dense_content: crate::gold::config::DenseContent::AllVisible,
+        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -40,6 +41,57 @@ fn fixture() -> (Loaded, Identity, Build) {
         identity,
         build,
     )
+}
+
+#[test]
+fn parent_unit_reuse_requires_the_whole_thread_and_same_unit_recipe() {
+    for change_edge in [false, true] {
+        let (mut loaded, identity, mut build) = fixture();
+        build.retrieval_unit = crate::gold::config::RetrievalUnit::ParentAndMessage;
+        let child = loaded.data.messages.get_mut("a-hidden").unwrap();
+        child.role = crate::role::Role::User;
+        child.projection = "child".into();
+        child.context = crate::message_context::MessageContext::Parent { ordinal: 0 };
+        child.vector = Some(vec![0.0, 127.0]);
+        child.generation = Some("model".into());
+        let head = loaded.head.as_mut().unwrap();
+        head.counts.searchable_messages = 2;
+        head.counts.embeddings = 2;
+        head.gold_manifest = Some(crate::shared::gold_manifest::Manifest::new(
+            build.clone(),
+            "model".into(),
+            head.silver_revision.clone().unwrap(),
+        ));
+        let target = Target::new(&loaded, &identity, build.clone()).unwrap();
+        assert_eq!(target.threads.len(), 1);
+        let mut different = build.clone();
+        different.retrieval_unit = crate::gold::config::RetrievalUnit::Message;
+        assert!(
+            Target::new(&loaded, &identity, different)
+                .unwrap()
+                .threads
+                .is_empty()
+        );
+        let mut retained = Retained::take(&mut loaded, &identity, &build).unwrap();
+        for message in loaded.data.messages.values_mut() {
+            message.generation = None;
+        }
+        retained
+            .request("thread".into(), &target.threads["thread"])
+            .unwrap();
+        if change_edge {
+            loaded.data.messages.get_mut("a-hidden").unwrap().context =
+                crate::message_context::MessageContext::Root;
+        } else {
+            loaded
+                .data
+                .messages
+                .get_mut("z-visible")
+                .unwrap()
+                .projection = "edited parent".into();
+        }
+        assert!(retained.restore(&mut loaded.data, &identity).is_err());
+    }
 }
 
 #[test]

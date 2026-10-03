@@ -3,6 +3,86 @@ use crate::storage::tests::conversation_with_messages;
 use std::collections::BTreeMap;
 
 #[test]
+fn local_unit_plan_matches_streaming_parent_resolution_and_preserves_silver() {
+    use crate::gold::{
+        config::{Build, DenseContent, RetrievalUnit},
+        units::{Input, Stream},
+    };
+    use crate::{message_context::MessageContext, role::Role};
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("silver.sqlite3")).unwrap();
+    let mut thread = conversation_with_messages(&[
+        ("root", "root text"),
+        ("hidden", "secret"),
+        ("branch", "branch text"),
+        ("linear", "linear text"),
+        ("restart", "restart text"),
+    ]);
+    let rows = thread.messages.inline_mut();
+    rows[0].context = MessageContext::Root;
+    rows[0].role = Role::Assistant;
+    rows[1].dialogue_text = Some(String::new());
+    rows[2].context = MessageContext::Parent { ordinal: 0 };
+    rows[3].role = Role::User;
+    rows[4].context = MessageContext::Root;
+    storage.replace_conversation(&thread).unwrap();
+    let before = serde_json::to_vec(&storage.view("root", 10).unwrap()).unwrap();
+    for content in [DenseContent::AllVisible, DenseContent::UserMessages] {
+        let recipe = Build {
+            retrieval_unit: RetrievalUnit::ParentAndMessage,
+            dense_content: content,
+            ..Default::default()
+        };
+        let mut stream = Stream::default();
+        let mut expected = BTreeMap::new();
+        for row in thread.messages.rows().unwrap() {
+            let row = row.unwrap();
+            if let Some(text) = stream
+                .prepare(
+                    &recipe,
+                    Input {
+                        thread: &thread.id,
+                        ordinal: row.ordinal,
+                        context: row.context,
+                        role: &row.role,
+                        projection: row.dialogue(),
+                    },
+                    thread.title.as_deref(),
+                )
+                .unwrap()
+            {
+                expected.insert(row.id.clone(), text);
+            }
+        }
+        let mut plan = EmbeddingPlan::with_build(&storage, &recipe).unwrap();
+        let mut actual = BTreeMap::new();
+        for text in plan.next_wave(10).unwrap() {
+            for id in plan.message_ids(text.group_id, None).unwrap() {
+                actual.insert(id, text.content.clone());
+            }
+        }
+        assert_eq!(actual, expected);
+        assert_eq!(actual["restart"], "restart text");
+        assert_eq!(
+            actual["linear"],
+            "linear text\n\nParent message:\nbranch text"
+        );
+        assert_eq!(
+            actual["branch"],
+            if recipe.users_only() {
+                "branch text"
+            } else {
+                "branch text\n\nParent message:\nroot text"
+            }
+        );
+        assert_eq!(
+            serde_json::to_vec(&storage.view("root", 10).unwrap()).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
 fn budgeted_dense_plan_preserves_full_silver_and_lexical_evidence() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
@@ -55,6 +135,7 @@ fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() 
             max_embedding_chars: None,
             representations: crate::gold::config::Representations::LexicalAndDense,
             dense_content: crate::gold::config::DenseContent::AllVisible,
+            retrieval_unit: crate::gold::config::RetrievalUnit::Message,
             text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: EmbeddingText::TitleAndDialogue,
         },

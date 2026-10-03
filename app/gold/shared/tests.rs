@@ -62,6 +62,8 @@ fn conversation() -> Conversation {
                     ordinal,
                     context: if ordinal == 0 {
                         MessageContext::Root
+                    } else if ordinal == 35 {
+                        MessageContext::Parent { ordinal: 1 }
                     } else {
                         MessageContext::Parent { ordinal: 0 }
                     },
@@ -215,12 +217,34 @@ async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_gr
                         max_embedding_chars: budget,
                         representations: crate::gold::config::Representations::LexicalAndDense,
                         dense_content: content,
+                        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
                         text_preparation: preparation,
                         embedding_text: recipe,
                     })
                     .await;
                 }
             }
+        }
+    }
+}
+
+#[tokio::test]
+async fn parent_unit_materialization_keeps_branches_across_inference_batches() {
+    for content in [
+        crate::gold::config::DenseContent::AllVisible,
+        crate::gold::config::DenseContent::UserMessages,
+    ] {
+        for preparation in [
+            crate::gold::config::TextPreparation::Preserve,
+            crate::gold::config::TextPreparation::CollapseWhitespace,
+        ] {
+            verify_materialization(crate::gold::config::Build {
+                retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+                dense_content: content,
+                text_preparation: preparation,
+                ..Default::default()
+            })
+            .await;
         }
     }
 }
@@ -271,7 +295,13 @@ async fn verify_materialization(recipe: crate::gold::config::Build) {
     let expected = (0..37)
         .filter(|ordinal| ordinal % 4 != 0)
         .filter(|ordinal| !recipe.users_only() || ordinal % 3 != 0)
-        .map(|ordinal| recipe.prepare(projection(ordinal), Some("title")))
+        .map(|ordinal| {
+            recipe.prepare_unit(
+                projection(ordinal),
+                Some("title"),
+                (ordinal == 35).then(|| projection(1)).as_deref(),
+            )
+        })
         .collect::<Vec<_>>();
     let requests = requests.lock().unwrap();
     if recipe.text_preparation == crate::gold::config::TextPreparation::CollapseWhitespace {
@@ -352,6 +382,8 @@ fn assert_published_silver(events: Vec<Event>, recipe: &crate::gold::config::Bui
             message.context,
             if ordinal == 0 {
                 MessageContext::Root
+            } else if ordinal == 35 {
+                MessageContext::Parent { ordinal: 1 }
             } else {
                 MessageContext::Parent { ordinal: 0 }
             }
