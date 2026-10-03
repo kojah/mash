@@ -143,7 +143,7 @@ pub(crate) async fn publish_routed(
     path: &Path,
     configuration: &crate::config::ResolvedConfig,
     models_dir: &Path,
-    options: &crate::ingestion::IndexOptions,
+    options: &crate::silver::IndexOptions,
     full: bool,
 ) -> Publication {
     let attempt = async {

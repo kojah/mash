@@ -1,6 +1,6 @@
 use super::*;
-use crate::ingestion::IndexOptions;
 use crate::provider::Provider;
+use crate::silver::IndexOptions;
 use std::path::{Path, PathBuf};
 
 struct Fixture {

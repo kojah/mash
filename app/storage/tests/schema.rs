@@ -28,8 +28,8 @@ fn identity_only_migration_preserves_readiness_vectors_and_unrelated_checkpoints
             storage.mark_derived_search_dirty().unwrap();
             storage.mark_semantic_index_incomplete().unwrap();
         }
-        let source = crate::ingestion::SourceIdentity::file("/fixture/source.jsonl");
-        let stamp = crate::ingestion::SourceStamp::file(10, 20);
+        let source = crate::silver::SourceIdentity::file("/fixture/source.jsonl");
+        let stamp = crate::silver::SourceStamp::file(10, 20);
         for provider in [
             crate::provider::Provider::ClaudeCode,
             crate::provider::Provider::Codex,
@@ -100,8 +100,8 @@ fn identity_migration_failure_keeps_version_and_checkpoints_for_retry() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
     let mut storage = Storage::open_writer(&path).unwrap();
-    let source = crate::ingestion::SourceIdentity::file("/fixture/source.jsonl");
-    let stamp = crate::ingestion::SourceStamp::file(10, 20);
+    let source = crate::silver::SourceIdentity::file("/fixture/source.jsonl");
+    let stamp = crate::silver::SourceStamp::file(10, 20);
     storage
         .record_source_checkpoint(crate::provider::Provider::ClaudeCode, &source, &stamp)
         .unwrap();
@@ -244,8 +244,8 @@ fn provider_schema_migration(version: i64) {
         !storage
             .source_checkpoint_matches(
                 crate::provider::Provider::Pi,
-                &crate::ingestion::SourceIdentity::file("/tmp/pi.jsonl"),
-                &crate::ingestion::SourceStamp::file(100, 200)
+                &crate::silver::SourceIdentity::file("/tmp/pi.jsonl"),
+                &crate::silver::SourceStamp::file(100, 200)
             )
             .unwrap()
     );
@@ -254,8 +254,8 @@ fn provider_schema_migration(version: i64) {
 
 #[test]
 fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
-    use crate::ingestion::SourceIdentity;
     use crate::provider::Provider;
+    use crate::silver::SourceIdentity;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("old.sqlite3");
     let connection = Connection::open(&path).unwrap();
@@ -292,7 +292,7 @@ fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
             .source_checkpoint_matches(
                 Provider::Codex,
                 &SourceIdentity::file("/tmp/history.jsonl"),
-                &crate::ingestion::SourceStamp::file(100, 200)
+                &crate::silver::SourceStamp::file(100, 200)
             )
             .unwrap()
     );
@@ -317,7 +317,7 @@ fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
         .record_source_checkpoint(
             Provider::Codex,
             &SourceIdentity::file("/tmp/history.jsonl"),
-            &crate::ingestion::SourceStamp::file(100, 200),
+            &crate::silver::SourceStamp::file(100, 200),
         )
         .unwrap();
     storage.commit_writer().unwrap();
@@ -328,7 +328,7 @@ fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
             .source_checkpoint_matches(
                 Provider::Codex,
                 &SourceIdentity::file("/tmp/history.jsonl"),
-                &crate::ingestion::SourceStamp::file(100, 200)
+                &crate::silver::SourceStamp::file(100, 200)
             )
             .unwrap()
     );
@@ -355,8 +355,8 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
     storage
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
-            &crate::ingestion::SourceIdentity::file("/tmp/old.jsonl"),
-            &crate::ingestion::SourceStamp::file(10, 20),
+            &crate::silver::SourceIdentity::file("/tmp/old.jsonl"),
+            &crate::silver::SourceStamp::file(10, 20),
         )
         .unwrap();
     storage.commit_writer().unwrap();
@@ -369,8 +369,8 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
         !storage
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
-                &crate::ingestion::SourceIdentity::file("/tmp/old.jsonl"),
-                &crate::ingestion::SourceStamp::file(10, 20)
+                &crate::silver::SourceIdentity::file("/tmp/old.jsonl"),
+                &crate::silver::SourceStamp::file(10, 20)
             )
             .unwrap()
     );
@@ -403,8 +403,8 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
     storage
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
-            &crate::ingestion::SourceIdentity::file("/tmp/source.jsonl"),
-            &crate::ingestion::SourceStamp::file(10, 20),
+            &crate::silver::SourceIdentity::file("/tmp/source.jsonl"),
+            &crate::silver::SourceStamp::file(10, 20),
         )
         .unwrap();
     storage.commit_writer().unwrap();
@@ -420,8 +420,8 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
         !storage
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
-                &crate::ingestion::SourceIdentity::file("/tmp/source.jsonl"),
-                &crate::ingestion::SourceStamp::file(10, 20)
+                &crate::silver::SourceIdentity::file("/tmp/source.jsonl"),
+                &crate::silver::SourceStamp::file(10, 20)
             )
             .unwrap()
     );

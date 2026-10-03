@@ -6,8 +6,8 @@ use super::protocol::{
 use super::publication::{upload, write_event};
 use crate::AppError;
 use crate::config::SharedConfig;
-use crate::ingestion::{self, Conversation, DirectScan, IndexOptions, IndexSummary};
 use crate::semantic::{self, EmbeddingPool, EmbeddingSummary, Models};
+use crate::silver::{self, Conversation, DirectScan, IndexOptions, IndexSummary};
 use crate::storage::Counts;
 use crate::storage::publication::DirectOwner;
 use std::path::Path;
@@ -43,7 +43,7 @@ pub(crate) async fn index(
     let input = options.clone();
     let scans = crate::blocking(move || {
         Models::new(root).with_remote(remote).require_indexer()?;
-        ingestion::direct_scans(&input)
+        silver::direct_scans(&input)
     })
     .await?;
     let state: NodeState = get(config, Endpoint::State).await?;

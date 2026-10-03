@@ -15,11 +15,11 @@ fn database(directory: &Path) -> std::path::PathBuf {
     let path = directory.join("index.sqlite3");
     let mut storage = Storage::open_writer(&path).unwrap();
     storage
-        .replace_conversation(&crate::ingestion::Conversation {
+        .replace_conversation(&crate::silver::Conversation {
             id: "thread-105".into(),
             provider: Provider::Codex,
             claude_lineage: None,
-            source: crate::ingestion::SourceIdentity::file("local"),
+            source: crate::silver::SourceIdentity::file("local"),
             title: Some("local".into()),
             project: None,
             repository: None,

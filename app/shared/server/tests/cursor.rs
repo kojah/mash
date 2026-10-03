@@ -2,8 +2,8 @@
 use super::*;
 use crate::shared::protocol::{Candidates, Search, View};
 use crate::{
-    ingestion::{DirectScan, IndexOptions, direct_scans},
     provider::Provider,
+    silver::{DirectScan, IndexOptions, direct_scans},
 };
 use serde::Deserialize;
 

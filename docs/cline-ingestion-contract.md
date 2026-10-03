@@ -187,7 +187,7 @@ pins the remaining first-party imports. Dependency installation runs no lifecycl
 scripts and does not modify the upstream checkout.
 
 Frozen native writer outputs and their SHA-256 inventory are under
-`app/ingestion/cline/tests/fixtures/native-helper`. The initial, compacted and
+`app/silver/cline/tests/fixtures/native-helper`. The initial, compacted and
 regenerated snapshots exercise different upstream-generated SDK IDs and explicitly
 regenerated IDs/timestamps. Capture timestamps and random IDs are volatile on
 recapture; artifact hashes identify the checked-in capture, not a promise of

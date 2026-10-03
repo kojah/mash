@@ -1479,8 +1479,11 @@ for CLI and MCP operations.
 CLI and MCP translate inputs into typed application-core requests. Implementation
 modules are grouped by responsibility:
 
-- `app/ingestion/`: history discovery, typed provider records, and normalization;
-  `app/ingestion.rs` coordinates ingestion and checkpoints.
+- `app/silver/`: canonical models, typed provider records, history discovery,
+  normalization and source reconciliation; `app/silver.rs` coordinates ingestion
+  and checkpoints. Provider-owned history files are bronze inputs.
+- `app/core/indexing/silver.rs` and `app/core/indexing/gold.rs`: local stage
+  boundaries for durable canonical ingestion and rebuildable retrieval state.
 - `app/semantic/`: model installation/cache, embedding batches, Core ML, remote
   embeddings, and hybrid retrieval.
 - `app/shared/snapshot/`: backend-independent canonical upload validation.

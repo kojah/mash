@@ -9,7 +9,7 @@ use crate::config::{self, ResolvedConfig};
 use crate::provider::Provider;
 use crate::semantic::{self, Models};
 use crate::storage::Storage;
-use crate::{ingestion, shared};
+use crate::{shared, silver as history};
 #[cfg(test)]
 use std::io::Write;
 use std::path::Path;
@@ -43,7 +43,7 @@ pub(super) async fn run(
     let embeddings = configuration.embeddings.clone();
     let all_sources = options.clone();
     let mut result = crate::blocking(move || {
-        ingestion::validate_output_path(&db, &all_sources)?;
+        history::validate_output_path(&db, &all_sources)?;
         index(&db, &root, embeddings, full, &local_options)
     })
     .await?;
@@ -84,7 +84,7 @@ fn index(
     models_dir: &Path,
     embeddings_config: Option<semantic::remote::Configuration>,
     full: bool,
-    options: &ingestion::IndexOptions,
+    options: &history::IndexOptions,
 ) -> Result<IndexResponse, AppError> {
     let total_started = Instant::now();
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
@@ -149,7 +149,7 @@ fn elapsed_milliseconds(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-fn emit_index_phase(phase: crate::progress::Phase, summary: &ingestion::IndexSummary) {
+fn emit_index_phase(phase: crate::progress::Phase, summary: &history::IndexSummary) {
     let event =
         crate::progress::Event::files(phase, summary, 0, None, crate::progress::EtaScope::Phase);
     crate::progress::emit(&event);
@@ -191,7 +191,7 @@ fn resolve_index_options(
     requested_providers: &[Provider],
     since_days: Option<u32>,
     all_history: bool,
-) -> Result<ingestion::IndexOptions, AppError> {
+) -> Result<history::IndexOptions, AppError> {
     if since_days.is_some() && all_history {
         return Err(AppError::usage(
             "--since-days and --all-history cannot be used together",
@@ -217,7 +217,7 @@ fn resolve_index_options(
             .collect::<Result<_, _>>()?
     };
 
-    Ok(ingestion::IndexOptions {
+    Ok(history::IndexOptions {
         providers,
         roots_are_authoritative: configuration.loaded,
         since_days: if all_history {
@@ -251,7 +251,7 @@ pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, 
         if enabled {
             let mut selected = options.clone();
             config::IndexFilter::apply(filter.as_ref(), &mut selected);
-            roots.extend(ingestion::watch_roots(&selected));
+            roots.extend(history::watch_roots(&selected));
         }
     }
     roots.sort();

@@ -1,6 +1,38 @@
 # Canonical history and retrieval views
 
+## Layer ownership
+
+| Area | Layer | Responsibility |
+| --- | --- | --- |
+| Provider-owned session files/databases | Bronze | Original source records |
+| Native adapters | Silver | Interpret formats, branches, tool records and visibility |
+| Canonical threads/messages | Silver | Stable identities, text, roles, timestamps, relationships and project metadata |
+| Reconciliation | Silver | Deduplication, provenance, edits/deletions, checkpoints and ingestion completeness |
+| Search text | Gold | Rebuildable cleaning and query-oriented projections of silver |
+| Retrieval | Gold | FTS, embeddings, vector indexes, ranking and retrieval caches |
+| Thread search | Gold | Searchable thread views and ranked excerpts |
+| Topics | Gold | Derived memberships, labels and topic-filtering views |
+
+The intended invariant is that gold can be rebuilt from silver without reading
+bronze. Silver retains the native interpretation required to distinguish visible
+dialogue from context-only records; gold decides how that interpreted history is
+represented for retrieval. Changing an embedding model or topic algorithm must
+not rewrite canonical history.
+
+CLI/MCP adapters, HTTP transport, configuration and database connections support
+the pipeline. They are not additional data layers. A storage module can hold both
+silver records and gold tables while exposing distinct responsibilities.
+
+## Current local stages
+
 Mash's local application core separates successful indexing into two stages:
+
+Canonical models, provider adapters, discovery and reconciliation live in
+`app/silver.rs` and `app/silver/`; callers import `crate::silver`. The application
+orchestrator invokes the local silver and gold stages in `app/core/indexing/`.
+Model execution and retrieval remain in `app/semantic/`, while `app/shared/`
+owns transport and server backends. Their remaining layer separation is described
+below.
 
 1. **Silver ingestion** discovers provider history, interprets native records,
    reconciles identities and deletions, and commits canonical conversations,

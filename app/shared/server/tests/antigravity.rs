@@ -1,13 +1,13 @@
 use super::*;
 use crate::shared::protocol::{Candidates, Search, View};
 use crate::{
-    ingestion::{DirectScan, IndexOptions, direct_scans},
     provider::Provider,
+    silver::{DirectScan, IndexOptions, direct_scans},
 };
 
 async fn contract(service: Service) {
     let directory = tempfile::tempdir().unwrap();
-    let path = crate::ingestion::write_antigravity_fixture(directory.path());
+    let path = crate::silver::write_antigravity_fixture(directory.path());
     let options = IndexOptions {
         providers: [(Provider::Antigravity, vec![path])].into(),
         since_days: None,

@@ -5,11 +5,11 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 struct Summary {
     malformed_records: u64,
-    record_diagnostics: crate::ingestion::diagnostics::Diagnostics,
+    record_diagnostics: crate::silver::diagnostics::Diagnostics,
 }
 
 fn assert_diagnostics(
-    diagnostics: &crate::ingestion::diagnostics::Diagnostics,
+    diagnostics: &crate::silver::diagnostics::Diagnostics,
     source: &std::path::Path,
     malformed: u64,
 ) {
@@ -19,10 +19,7 @@ fn assert_diagnostics(
         assert_eq!(issue.source, source);
         assert_eq!(issue.line, 2);
         assert_eq!(issue.provider, crate::provider::Provider::ClaudeCode);
-        assert_eq!(
-            issue.category,
-            crate::ingestion::diagnostics::Category::Data
-        );
+        assert_eq!(issue.category, crate::silver::diagnostics::Category::Data);
     }
 }
 

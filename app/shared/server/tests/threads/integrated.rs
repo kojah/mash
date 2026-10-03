@@ -29,11 +29,11 @@ fn configuration(directory: &Path, service: &Service) -> Paths {
 fn local_copy(path: &Path) {
     let mut storage = Storage::open_writer(path).unwrap();
     storage
-        .replace_conversation(&crate::ingestion::Conversation {
+        .replace_conversation(&crate::silver::Conversation {
             id: "a".into(),
             provider: Provider::Codex,
             claude_lineage: None,
-            source: crate::ingestion::SourceIdentity::file("local"),
+            source: crate::silver::SourceIdentity::file("local"),
             title: Some("Local Alpha".into()),
             project: None,
             repository: None,

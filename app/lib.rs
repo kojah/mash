@@ -4,7 +4,6 @@
 mod cli;
 mod config;
 mod core;
-mod ingestion;
 mod mcp;
 mod message_context;
 mod observability;
@@ -19,6 +18,7 @@ mod search_results;
 mod search_text;
 mod semantic;
 mod shared;
+mod silver;
 mod storage;
 #[cfg(test)]
 mod test_support;

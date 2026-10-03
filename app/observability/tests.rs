@@ -123,12 +123,12 @@ fn parser_threads_inherit_request_context_without_recording_source_content() {
             let mut storage =
                 crate::storage::Storage::open_writer(&directory.path().join("index.sqlite3"))
                     .unwrap();
-            let options = crate::ingestion::IndexOptions {
+            let options = crate::silver::IndexOptions {
                 providers: [(crate::provider::Provider::ClaudeCode, vec![source])].into(),
                 roots_are_authoritative: true,
                 since_days: None,
             };
-            crate::ingestion::index(&mut storage, &options).unwrap();
+            crate::silver::index(&mut storage, &options).unwrap();
         });
     });
     let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();

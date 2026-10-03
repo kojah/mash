@@ -63,7 +63,7 @@ fn destinations_and_independent_provider_filters_are_validated() {
         };
         let parsed = parse_document(&toml::to_string(&document).unwrap().into_bytes()).unwrap();
         assert_eq!(parsed.destination, expected);
-        let options = crate::ingestion::IndexOptions {
+        let options = crate::silver::IndexOptions {
             providers: parsed.providers,
             since_days: None,
             roots_are_authoritative: true,

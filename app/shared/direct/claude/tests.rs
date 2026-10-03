@@ -1,5 +1,5 @@
 use super::*;
-use crate::ingestion::{self, IndexOptions, SourceIdentity};
+use crate::silver::{self, IndexOptions, SourceIdentity};
 
 struct Fixture {
     directory: tempfile::TempDir,
@@ -40,7 +40,7 @@ impl Fixture {
 
     fn refresh(&self) -> i64 {
         let mut storage = Storage::open_writer(&self.database).unwrap();
-        ingestion::index(&mut storage, &self.options).unwrap();
+        silver::index(&mut storage, &self.options).unwrap();
         storage.commit_writer().unwrap();
         storage.direct_owner("fixture").unwrap().revision
     }
@@ -50,7 +50,7 @@ impl Fixture {
             since_days: days,
             ..self.options.clone()
         };
-        ingestion::direct_scans(&options).unwrap().remove(0)
+        silver::direct_scans(&options).unwrap().remove(0)
     }
 
     fn messages(&self, plan: &Plan) -> Vec<String> {

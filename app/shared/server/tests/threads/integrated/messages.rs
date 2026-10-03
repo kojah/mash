@@ -9,10 +9,10 @@ async fn qdrant_core_scoped_message_search_uses_thread_discovery() {
     )
     .await;
 }
-use crate::ingestion::{Conversation, NormalizedMessage, SourceIdentity};
 use crate::search_filter::Selection;
 use crate::search_results::{Results, SearchUnit};
 use crate::semantic::{self, Models};
+use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
 
 fn conversation(id: &str, provider: Provider) -> Conversation {
     Conversation {

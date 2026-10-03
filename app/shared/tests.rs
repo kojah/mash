@@ -3,9 +3,9 @@ use super::publication::{target, upload};
 use super::retrieval::{CONTEXT_DEADLINE, context_documents, prepare_search, search_prepared};
 use super::*;
 use crate::config::SharedConfig;
-use crate::ingestion::{Conversation, NormalizedMessage};
 use crate::search_results::SearchUnit;
 use crate::semantic::{self, Models};
+use crate::silver::{Conversation, NormalizedMessage};
 use crate::storage::{EmbeddingWrite, Message, SearchHit, Storage};
 use std::io::Write;
 use std::path::Path;
@@ -427,7 +427,7 @@ fn seed(path: &Path) -> Storage {
             id: "conversation".to_owned(),
             provider: crate::provider::Provider::Codex,
             claude_lineage: None,
-            source: crate::ingestion::SourceIdentity::file("/tmp/shared-fixture.jsonl"),
+            source: crate::silver::SourceIdentity::file("/tmp/shared-fixture.jsonl"),
             project: None,
             repository: None,
             title: Some("fixture".to_owned()),
@@ -516,7 +516,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         id: "conversation".into(),
         provider: crate::provider::Provider::Codex,
         claude_lineage: None,
-        source: crate::ingestion::SourceIdentity::file("/tmp/filters.jsonl"),
+        source: crate::silver::SourceIdentity::file("/tmp/filters.jsonl"),
         project: Some("/work/o'reilly".into()),
         repository: Some("repo://alpha".into()),
         title: None,

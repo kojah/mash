@@ -1,5 +1,5 @@
 use super::*;
-use crate::ingestion::messages::Messages;
+use crate::silver::messages::Messages;
 
 #[test]
 fn staged_refresh_preserves_vectors_and_reconciles_removed_and_moved_messages() {

@@ -8,7 +8,7 @@ use super::generated as sql;
 use super::semantic_chunks::{SEMANTIC_CHUNK_ROWS, rebuild_semantic_chunk};
 use super::{ConversationChange, FtsRefreshStrategy, SearchUpdates, Storage};
 use crate::AppError;
-use crate::ingestion::Conversation;
+use crate::silver::Conversation;
 
 const FTS_BULK_REBUILD_PERCENT: u64 = 90;
 
@@ -362,8 +362,8 @@ impl Storage {
     pub(crate) fn source_checkpoint_matches(
         &self,
         provider: Provider,
-        source: &crate::ingestion::SourceIdentity,
-        stamp: &crate::ingestion::SourceStamp,
+        source: &crate::silver::SourceIdentity,
+        stamp: &crate::silver::SourceStamp,
     ) -> Result<bool, AppError> {
         Ok(self
             .connection
@@ -388,8 +388,8 @@ impl Storage {
     pub(crate) fn record_source_checkpoint(
         &mut self,
         provider: Provider,
-        source: &crate::ingestion::SourceIdentity,
-        stamp: &crate::ingestion::SourceStamp,
+        source: &crate::silver::SourceIdentity,
+        stamp: &crate::silver::SourceStamp,
     ) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection
@@ -683,7 +683,7 @@ impl Storage {
     pub(crate) fn remove_source(
         &mut self,
         provider: Provider,
-        source: &crate::ingestion::SourceIdentity,
+        source: &crate::silver::SourceIdentity,
     ) -> Result<bool, AppError> {
         self.require_writer()?;
         if provider == Provider::ClaudeCode
@@ -915,7 +915,7 @@ fn conversation_fingerprint(conversation: &Conversation) -> Result<String, AppEr
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-fn message_fingerprint(message: &crate::ingestion::NormalizedMessage) -> String {
+fn message_fingerprint(message: &crate::silver::NormalizedMessage) -> String {
     let mut hasher = blake3::Hasher::new();
     update_hash(&mut hasher, &message.id);
     update_hash(&mut hasher, &message.ordinal.to_string());
@@ -939,7 +939,7 @@ fn message_fingerprint(message: &crate::ingestion::NormalizedMessage) -> String 
     hasher.finalize().to_hex().to_string()
 }
 
-fn message_search_text(message: &crate::ingestion::NormalizedMessage) -> &str {
+fn message_search_text(message: &crate::silver::NormalizedMessage) -> &str {
     message
         .search_projection
         .as_deref()

@@ -34,8 +34,8 @@ fn fixture(path: &Path) {
             .unwrap();
     }
     storage.mark_semantic_index_ready("fixture").unwrap();
-    let source = crate::ingestion::SourceIdentity::file("/fixture/source.jsonl");
-    let stamp = crate::ingestion::SourceStamp::file(10, 20);
+    let source = crate::silver::SourceIdentity::file("/fixture/source.jsonl");
+    let stamp = crate::silver::SourceStamp::file(10, 20);
     for provider in [Provider::Cline, Provider::Codex] {
         storage
             .record_source_checkpoint(provider, &source, &stamp)
@@ -92,8 +92,8 @@ fn projection_upgrade_preserves_canonical_rows_and_only_invalidates_changed_vect
                 127.0,
             );
         }
-        let source = crate::ingestion::SourceIdentity::file("/fixture/source.jsonl");
-        let stamp = crate::ingestion::SourceStamp::file(10, 20);
+        let source = crate::silver::SourceIdentity::file("/fixture/source.jsonl");
+        let stamp = crate::silver::SourceStamp::file(10, 20);
         assert!(
             !storage
                 .source_checkpoint_matches(Provider::Cline, &source, &stamp)

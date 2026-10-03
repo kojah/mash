@@ -16,7 +16,7 @@ struct Measurement {
     elapsed_milliseconds: u64,
 }
 
-fn digest(messages: &crate::ingestion::messages::Messages, lineage: &claude::Lineage) -> String {
+fn digest(messages: &crate::silver::messages::Messages, lineage: &claude::Lineage) -> String {
     let mut hasher = blake3::Hasher::new();
     for message in messages.rows().unwrap() {
         let message = message.unwrap();

@@ -2,9 +2,7 @@
 use super::*;
 use crate::shared::protocol::{Batch, ConversationRecord, Event, MessageRecord, Start};
 
-pub(super) fn publication(
-    conversation: crate::ingestion::Conversation,
-) -> (Vec<Value>, Vec<String>) {
+pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Value>, Vec<String>) {
     let ids = conversation
         .messages
         .inline()

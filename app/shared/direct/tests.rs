@@ -1,7 +1,7 @@
 use super::*;
-use crate::ingestion::{NormalizedMessage, SourceIdentity, messages::Messages};
 use crate::message_context::MessageContext;
 use crate::role::Role;
+use crate::silver::{NormalizedMessage, SourceIdentity, messages::Messages};
 use std::sync::{Arc, Mutex};
 
 #[derive(serde::Deserialize)]

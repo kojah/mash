@@ -79,11 +79,11 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     let models = directory.path().join("models");
     let mut storage = crate::storage::Storage::open_writer(&database).unwrap();
     storage
-        .replace_conversation(&crate::ingestion::Conversation {
+        .replace_conversation(&crate::silver::Conversation {
             id: "orientation".into(),
             provider: Provider::Codex,
             claude_lineage: None,
-            source: crate::ingestion::SourceIdentity::file("history"),
+            source: crate::silver::SourceIdentity::file("history"),
             title: Some("cBioPortal migration".into()),
             project: Some("/work/cbioportal".into()),
             repository: None,

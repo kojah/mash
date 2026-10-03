@@ -6,8 +6,8 @@ use super::generated as sql;
 use super::indexing::source_is_in_reconciliation_scope;
 use super::{ConversationChange, Storage};
 use crate::AppError;
-use crate::ingestion::{Conversation, NormalizedMessage, SourceIdentity, claude};
 use crate::provider::Provider;
+use crate::silver::{Conversation, NormalizedMessage, SourceIdentity, claude};
 
 pub(crate) struct ClaudeSourceRef {
     pub(crate) source: SourceIdentity,

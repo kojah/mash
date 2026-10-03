@@ -29,7 +29,7 @@ impl Snapshot<'_> {
         &self,
         id: &str,
         sources: &std::collections::BTreeSet<String>,
-    ) -> Result<Option<crate::ingestion::Conversation>, AppError> {
+    ) -> Result<Option<crate::silver::Conversation>, AppError> {
         super::claude_sources::claude_thread(self.connection, id, Some(sources))
     }
     /// Bound each network batch without materializing the complete local history.

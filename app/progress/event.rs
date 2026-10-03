@@ -24,7 +24,7 @@ pub(crate) struct Event {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub malformed_records: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub record_diagnostics: Option<crate::ingestion::diagnostics::Diagnostics>,
+    pub record_diagnostics: Option<crate::silver::diagnostics::Diagnostics>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages_per_second: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,7 +80,7 @@ impl Event {
 
     pub fn files(
         phase: Phase,
-        summary: &crate::ingestion::IndexSummary,
+        summary: &crate::silver::IndexSummary,
         elapsed_ms: u64,
         eta: Option<u64>,
         scope: EtaScope,

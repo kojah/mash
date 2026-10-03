@@ -1,20 +1,20 @@
 use super::*;
 use std::path::PathBuf;
 
-use crate::ingestion::Conversation;
+use crate::silver::Conversation;
 
 fn conversation(content: &str) -> Conversation {
     Conversation {
         id: "session-1".to_owned(),
         provider: crate::provider::Provider::Codex,
         claude_lineage: None,
-        source: crate::ingestion::SourceIdentity::file(PathBuf::from("/tmp/session-1.jsonl")),
+        source: crate::silver::SourceIdentity::file(PathBuf::from("/tmp/session-1.jsonl")),
         project: None,
         repository: None,
         title: Some("session".to_owned()),
         created_at: Some(1),
         updated_at: Some(2),
-        messages: vec![crate::ingestion::NormalizedMessage {
+        messages: vec![crate::silver::NormalizedMessage {
             id: "message-1".to_owned(),
             ordinal: 0,
             context: crate::message_context::MessageContext::Linear,
@@ -33,7 +33,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
         .iter()
         .enumerate()
         .map(
-            |(ordinal, (id, content))| crate::ingestion::NormalizedMessage {
+            |(ordinal, (id, content))| crate::silver::NormalizedMessage {
                 id: (*id).to_owned(),
                 ordinal: i64::try_from(ordinal).expect("test ordinal"),
                 context: crate::message_context::MessageContext::Linear,

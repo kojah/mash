@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::ingestion::SourceStamp;
+use crate::silver::SourceStamp;
 use std::collections::BTreeSet;
 
 #[test]
@@ -43,8 +43,8 @@ fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_p
 
 #[test]
 fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
-    use crate::ingestion::SourceIdentity;
     use crate::provider::Provider;
+    use crate::silver::SourceIdentity;
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("mash.sqlite3");
     let physical = directory.path().join("history.db");
@@ -195,7 +195,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
     writer
         .record_source_checkpoint(
             crate::provider::Provider::Codex,
-            &crate::ingestion::SourceIdentity::file("/tmp/session-1.jsonl"),
+            &crate::silver::SourceIdentity::file("/tmp/session-1.jsonl"),
             &SourceStamp::file(100, 200),
         )
         .expect("durable source checkpoint");
@@ -217,7 +217,7 @@ fn writer_checkpoint_survives_a_later_rollback() {
         storage
             .source_checkpoint_matches(
                 crate::provider::Provider::Codex,
-                &crate::ingestion::SourceIdentity::file("/tmp/session-1.jsonl"),
+                &crate::silver::SourceIdentity::file("/tmp/session-1.jsonl"),
                 &SourceStamp::file(100, 200)
             )
             .expect("read checkpoint")
@@ -634,7 +634,7 @@ fn benchmark_fts_refresh_crossover() {
     } else {
         let mut writer = Storage::open_writer(&benchmark_path).expect("writer");
         let messages = (0..25_000)
-            .map(|index| crate::ingestion::NormalizedMessage {
+            .map(|index| crate::silver::NormalizedMessage {
                 id: format!("message-{index:05}"),
                 ordinal: i64::from(index),
                 context: crate::message_context::MessageContext::Linear,
@@ -837,7 +837,7 @@ fn conversation_reconciliation_replaces_a_changed_message_id_at_the_same_ordinal
 
 #[test]
 fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context() {
-    fn history(insert: bool) -> crate::ingestion::Conversation {
+    fn history(insert: bool) -> crate::silver::Conversation {
         let mut value = conversation("original request");
         let shift = i64::from(insert);
         value.messages.inline_mut()[0].context = crate::message_context::MessageContext::Root;
@@ -845,7 +845,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
         value
             .messages
             .inline_mut()
-            .push(crate::ingestion::NormalizedMessage {
+            .push(crate::silver::NormalizedMessage {
                 id: "reply".into(),
                 ordinal: shift + 1,
                 content: "original reply".into(),
@@ -857,7 +857,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
         if insert {
             value.messages.inline_mut().insert(
                 0,
-                crate::ingestion::NormalizedMessage {
+                crate::silver::NormalizedMessage {
                     id: "inserted".into(),
                     ordinal: 0,
                     content: "recovered dialogue".into(),

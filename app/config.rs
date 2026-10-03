@@ -36,7 +36,7 @@ pub(crate) struct IndexFilter {
 }
 
 impl IndexFilter {
-    pub(crate) fn apply(filter: Option<&Self>, options: &mut crate::ingestion::IndexOptions) {
+    pub(crate) fn apply(filter: Option<&Self>, options: &mut crate::silver::IndexOptions) {
         if let Some(filter) = filter {
             options
                 .providers
