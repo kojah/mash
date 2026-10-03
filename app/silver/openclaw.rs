@@ -316,6 +316,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             ),
             provider: Provider::Openclaw,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: source.clone(),
             project,

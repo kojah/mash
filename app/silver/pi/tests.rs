@@ -6,6 +6,7 @@ use crate::{
 use serde_json::{Value, json};
 use std::io::Write;
 mod enrichment;
+mod timestamps;
 
 fn header() -> Value {
     json!({"type":"session","version":3,"id":"pi-session","timestamp":"2026-09-30T10:00:00Z","cwd":"/work/cbioportal"})

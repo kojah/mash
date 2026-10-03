@@ -7,6 +7,7 @@ fn selected_message_boundaries_are_traceable_and_legacy_evidence_is_not_invented
         provider: Provider::Codex,
         source: super::super::SourceIdentity::file("fixture"),
         title_origin: None,
+        timestamp_origins: None,
         claude_lineage: None,
         title: None,
         project: None,
@@ -76,6 +77,30 @@ fn selected_message_boundaries_are_traceable_and_legacy_evidence_is_not_invented
 
 #[test]
 fn timestamp_rules_and_references_are_validated_without_reinterpreting_values() {
+    for (provider, field) in [
+        (Provider::Hermes, TimestampField::SessionTimestamp),
+        (Provider::Pi, TimestampField::SessionsStartedAt),
+    ] {
+        for origin in [
+            TimestampOrigin::Unknown,
+            TimestampOrigin::SourceMetadata {
+                field,
+                rule_version: VERSION,
+            },
+            TimestampOrigin::MessageBoundary {
+                message_id: "message".into(),
+                selection: Boundary::Minimum,
+                rule_version: VERSION,
+            },
+        ] {
+            let times = Timestamps {
+                created_at: None,
+                updated_at: Some(origin),
+            };
+            assert!(times.is_current());
+            assert!(!times.is_current_for(provider));
+        }
+    }
     for origin in [
         TimestampOrigin::SourceMetadata {
             field: TimestampField::SessionTimeCreated,

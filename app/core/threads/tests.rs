@@ -19,6 +19,7 @@ fn database(directory: &Path) -> std::path::PathBuf {
             id: "thread-105".into(),
             provider: Provider::Codex,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: crate::silver::SourceIdentity::file("local"),
             title: Some("local".into()),

@@ -51,9 +51,54 @@ pub(crate) enum TimestampField {
     SessionTimeCreated,
     #[serde(rename = "session.time_updated")]
     SessionTimeUpdated,
+    #[serde(rename = "sessions.started_at")]
+    SessionsStartedAt,
+    #[serde(rename = "sessions.ended_at")]
+    SessionsEndedAt,
+    #[serde(rename = "sessions.last_activity_at")]
+    SessionsLastActivityAt,
+    #[serde(rename = "session.timestamp")]
+    SessionTimestamp,
 }
 
 impl Timestamps {
+    pub(crate) fn matches_values(&self, created_at: Option<i64>, updated_at: Option<i64>) -> bool {
+        self.created_at.is_some() == created_at.is_some()
+            && self.updated_at.is_some() == updated_at.is_some()
+    }
+
+    fn validate_selection(&self, conversation: &Conversation) -> Result<(), AppError> {
+        if !self.matches_values(conversation.created_at, conversation.updated_at)
+            || !self.is_current_for(conversation.provider)
+        {
+            return Err(AppError::internal(
+                "timestamp origin does not match selected metadata",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn maximum_message(
+        messages: &[super::NormalizedMessage],
+    ) -> Option<(i64, TimestampOrigin)> {
+        let message = messages
+            .iter()
+            .filter(|m| m.created_at.is_some())
+            .max_by(|a, b| {
+                a.created_at
+                    .cmp(&b.created_at)
+                    .then_with(|| b.id.cmp(&a.id))
+            })?;
+        Some((
+            message.created_at?,
+            TimestampOrigin::MessageBoundary {
+                message_id: message.id.clone(),
+                selection: Boundary::Maximum,
+                rule_version: VERSION,
+            },
+        ))
+    }
+
     fn is_current(&self) -> bool {
         [&self.created_at, &self.updated_at]
             .into_iter()
@@ -83,6 +128,46 @@ impl Timestamps {
                     TimestampOrigin::MessageBoundary { selection, .. } if *selection == boundary),
                     Provider::Opencode => matches!(origin,
                     TimestampOrigin::SourceMetadata { field, .. } if *field == expected),
+                    Provider::Hermes => match boundary {
+                        Boundary::Minimum => matches!(
+                            origin,
+                            TimestampOrigin::SourceMetadata {
+                                field: TimestampField::SessionsStartedAt,
+                                ..
+                            }
+                        ),
+                        Boundary::Maximum => matches!(
+                            origin,
+                            TimestampOrigin::SourceMetadata {
+                                field: TimestampField::SessionsStartedAt
+                                    | TimestampField::SessionsEndedAt
+                                    | TimestampField::SessionsLastActivityAt,
+                                ..
+                            } | TimestampOrigin::MessageBoundary {
+                                selection: Boundary::Maximum,
+                                ..
+                            }
+                        ),
+                    },
+                    Provider::Pi => match boundary {
+                        Boundary::Minimum => matches!(
+                            origin,
+                            TimestampOrigin::SourceMetadata {
+                                field: TimestampField::SessionTimestamp,
+                                ..
+                            }
+                        ),
+                        Boundary::Maximum => matches!(
+                            origin,
+                            TimestampOrigin::SourceMetadata {
+                                field: TimestampField::SessionTimestamp,
+                                ..
+                            } | TimestampOrigin::MessageBoundary {
+                                selection: Boundary::Maximum,
+                                ..
+                            }
+                        ),
+                    },
                     _ => true,
                 })
             })
@@ -175,7 +260,11 @@ impl Evidence {
                 Some(times) => times.is_current_for(provider),
                 None => !matches!(
                     provider,
-                    Provider::Codex | Provider::ClaudeCode | Provider::Opencode
+                    Provider::Codex
+                        | Provider::ClaudeCode
+                        | Provider::Opencode
+                        | Provider::Hermes
+                        | Provider::Pi
                 ),
             }
             && self.title.as_ref().is_none_or(|origin| match provider {
@@ -296,6 +385,10 @@ impl Evidence {
             }
             evidence.title = Some(origin.clone());
         }
+        if let Some(times) = &conversation.timestamp_origins {
+            times.validate_selection(conversation)?;
+            evidence.timestamps = Some(times.clone());
+        }
         if !evidence.is_current() {
             return Err(AppError::internal("invalid adapter metadata evidence"));
         }
@@ -346,6 +439,7 @@ mod tests {
             provider: Provider::Codex,
             source: super::super::SourceIdentity::file("fixture"),
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             title: Some("qdrant filtering".into()),
             project: Some("/work/project".into()),

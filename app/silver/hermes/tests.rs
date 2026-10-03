@@ -1,6 +1,7 @@
 use super::*;
 use crate::silver::{IndexOptions, index, source_stamp_for};
 use crate::storage::Storage;
+mod timestamps;
 
 // Columns consumed from upstream hermes_state_common.SCHEMA_SQL; extra native
 // columns are intentionally irrelevant to this adapter's read-only queries.

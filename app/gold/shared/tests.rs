@@ -48,6 +48,7 @@ fn conversation() -> Conversation {
         provider: crate::provider::Provider::Codex,
         source: SourceIdentity::file("fixture.jsonl"),
         title_origin: None,
+        timestamp_origins: None,
         claude_lineage: None,
         project: Some("project".to_owned()),
         repository: Some("repository".to_owned()),

@@ -88,6 +88,7 @@ pub(super) fn parse(source: &HistorySource) -> Result<ParsedFile, AppError> {
             provider: Provider::Copilot,
             source: source.identity.clone(),
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             title: session
                 .custom_title

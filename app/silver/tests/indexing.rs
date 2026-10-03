@@ -627,6 +627,7 @@ fn purge_requires_a_complete_provider_scan() {
             id: "old-session".to_owned(),
             provider: Provider::ClaudeCode,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: SourceIdentity::file(missing_source),
             project: None,

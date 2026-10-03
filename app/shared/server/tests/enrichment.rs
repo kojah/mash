@@ -105,14 +105,27 @@ async fn qdrant_timestamp_evidence_round_trips_and_rejects_invalid_rules_and_ids
         crate::provider::Provider::Codex,
         crate::provider::Provider::ClaudeCode,
         crate::provider::Provider::Opencode,
+        crate::provider::Provider::Hermes,
+        crate::provider::Provider::Pi,
     ] {
         let mut expected = evidence();
-        let origins = if provider == crate::provider::Provider::Opencode {
-            [
+        let native_fields = match provider {
+            crate::provider::Provider::Opencode => Some([
                 TimestampField::SessionTimeCreated,
                 TimestampField::SessionTimeUpdated,
-            ]
-            .map(|field| TimestampOrigin::SourceMetadata {
+            ]),
+            crate::provider::Provider::Hermes => Some([
+                TimestampField::SessionsStartedAt,
+                TimestampField::SessionsEndedAt,
+            ]),
+            crate::provider::Provider::Pi => Some([
+                TimestampField::SessionTimestamp,
+                TimestampField::SessionTimestamp,
+            ]),
+            _ => None,
+        };
+        let origins = if let Some(fields) = native_fields {
+            fields.map(|field| TimestampOrigin::SourceMetadata {
                 field,
                 rule_version: VERSION,
             })

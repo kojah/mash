@@ -3144,11 +3144,15 @@ impl<'a> LexicalManifestBuilder<'a, ()> {
 }
 pub struct SourceEnrichmentRow {
     pub evidence: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
 }
 impl SourceEnrichmentRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             evidence: row.get(0)?,
+            created_at: row.get(1)?,
+            updated_at: row.get(2)?,
         })
     }
 }
@@ -3157,7 +3161,7 @@ pub struct SourceEnrichment<'a> {
     source_key: &'a str,
 }
 impl<'a> SourceEnrichment<'a> {
-    pub const QUERY: &'static str = r"SELECT e.evidence FROM conversations AS c
+    pub const QUERY: &'static str = r"SELECT e.evidence,c.created_at,c.updated_at FROM conversations AS c
 LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id
 WHERE c.provider=?1 AND c.source_key=?2";
     pub fn query_str(&self) -> &str {

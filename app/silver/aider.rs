@@ -159,6 +159,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             ),
             provider: Provider::Aider,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: super::SourceIdentity::file(path),
             title,

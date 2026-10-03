@@ -46,6 +46,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             id: parsers::stable_id("session", &[Provider::Windsurf.as_str(), session]),
             provider: Provider::Windsurf,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: SourceIdentity::file(path),
             project: location(workspaces.iter().map(|w| w.project.as_str())),

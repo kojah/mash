@@ -33,6 +33,7 @@ fn local_copy(path: &Path) {
             id: "a".into(),
             provider: Provider::Codex,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: crate::silver::SourceIdentity::file("local"),
             title: Some("Local Alpha".into()),

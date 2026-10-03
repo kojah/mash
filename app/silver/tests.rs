@@ -8,6 +8,7 @@ use std::time::UNIX_EPOCH;
 mod claude_copies;
 mod indexing;
 mod parsing;
+pub(super) mod timestamps;
 
 fn write_claude_session(path: &Path, session: &str, message: &str) {
     fs::write(
@@ -29,6 +30,7 @@ fn test_conversation(
         id: id.to_owned(),
         provider,
         title_origin: None,
+        timestamp_origins: None,
         claude_lineage: None,
         source: SourceIdentity::file(source_path),
         project: None,

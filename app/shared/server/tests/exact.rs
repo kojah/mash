@@ -310,6 +310,7 @@ fn seed_core(database: &std::path::Path) {
             provider: Provider::Codex,
             source: crate::silver::SourceIdentity::file("missing.jsonl"),
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             title: Some("title-only-marker".into()),
             project: Some("/work/mash".into()),

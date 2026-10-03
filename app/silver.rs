@@ -110,6 +110,8 @@ pub(crate) struct Conversation {
     pub(crate) claude_lineage: Option<claude::Lineage>,
     /// Adapter-selected title provenance before native/fallback choices flatten.
     pub(crate) title_origin: Option<enrichment::Origin>,
+    /// Adapter-selected timestamp provenance before fallback choices flatten.
+    pub(crate) timestamp_origins: Option<enrichment::Timestamps>,
     pub(crate) project: Option<String>,
     pub(crate) repository: Option<String>,
     pub(crate) title: Option<String>,

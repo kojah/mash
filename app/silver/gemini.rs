@@ -345,6 +345,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             ),
             provider: Provider::GeminiCli,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: SourceIdentity::file(path),
             project: Some(project(path, &state.project)?),

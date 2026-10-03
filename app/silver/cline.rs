@@ -288,6 +288,7 @@ fn parse_native(source: &SourceIdentity, legacy_ui: Option<&Path>) -> Result<Par
             id: super::parsers::stable_id("session", &[Provider::Cline.as_str(), &session.id]),
             provider: Provider::Cline,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: source.clone(),
             project: session.project,

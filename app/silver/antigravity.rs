@@ -73,6 +73,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             id: parsers::stable_id("session", &[Provider::Antigravity.as_str(), &root.cascade]),
             provider: Provider::Antigravity,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: source.clone(),
             project: location(metadata.workspaces.iter().map(|w| w.project.as_str())),

@@ -1,4 +1,5 @@
 //! Pi v3 append-only JSONL sessions: keep all branches, each native entry once.
+use super::enrichment::{TimestampField, TimestampOrigin, Timestamps, VERSION};
 use super::{Conversation, NormalizedMessage, ParsedFile, SourceIdentity, json, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider, role::Role};
 use serde::Deserialize;
@@ -278,16 +279,22 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     }
     let (title, title_origin) =
         SelectedTitle::split(title.or_else(|| SelectedTitle::first_user(&messages)));
-    let updated_at = messages
-        .iter()
-        .filter_map(|m| m.created_at)
-        .max()
-        .unwrap_or(created_at);
+    let header_origin = TimestampOrigin::SourceMetadata {
+        field: TimestampField::SessionTimestamp,
+        rule_version: VERSION,
+    };
+    let (updated_at, updated_origin) =
+        Timestamps::maximum_message(&messages).unwrap_or((created_at, header_origin.clone()));
+    let timestamp_origins = Some(Timestamps {
+        created_at: Some(header_origin),
+        updated_at: Some(updated_origin),
+    });
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id: conversation_id,
             provider: Provider::Pi,
             title_origin,
+            timestamp_origins,
             claude_lineage: None,
             source: SourceIdentity::file(path),
             project: header.cwd.filter(|s| !s.is_empty()),

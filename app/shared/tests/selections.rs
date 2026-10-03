@@ -13,6 +13,7 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
                 id: id.into(),
                 provider,
                 title_origin: None,
+                timestamp_origins: None,
                 claude_lineage: None,
                 source: crate::silver::SourceIdentity::file(id),
                 project: None,

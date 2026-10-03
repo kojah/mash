@@ -116,6 +116,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
             id: "orientation".into(),
             provider: Provider::Codex,
             title_origin: None,
+            timestamp_origins: None,
             claude_lineage: None,
             source: crate::silver::SourceIdentity::file("history"),
             title: Some("cBioPortal migration".into()),

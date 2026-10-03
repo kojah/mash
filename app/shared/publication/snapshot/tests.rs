@@ -10,6 +10,7 @@ fn seed(directory: &Path) -> std::path::PathBuf {
                 id: thread.into(),
                 provider: crate::provider::Provider::Codex,
                 title_origin: None,
+                timestamp_origins: None,
                 claude_lineage: None,
                 source: SourceIdentity::file(format!("/nonexistent/mash-{thread}.jsonl")),
                 project: None,

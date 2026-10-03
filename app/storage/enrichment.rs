@@ -37,7 +37,13 @@ impl Storage {
             let Some(json) = row.evidence else {
                 return Ok(false);
             };
-            if !decode(&json)?.is_current_for(provider) {
+            let evidence = decode(&json)?;
+            if !evidence.is_current_for(provider)
+                || evidence
+                    .timestamps
+                    .as_ref()
+                    .is_some_and(|times| !times.matches_values(row.created_at, row.updated_at))
+            {
                 return Ok(false);
             }
         }

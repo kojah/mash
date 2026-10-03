@@ -50,12 +50,39 @@ selection, and rule version 1. Equal timestamps choose the lexicographically
 smallest message ID, independently of inline/spooled storage. OpenCode retains
 `source-metadata` origins for `session.time_created` and `session.time_updated`;
 rule version 1 selects the existing native millisecond integers unchanged.
-Missing selected times have no origin. Other adapters remain explicitly unknown.
+Missing selected times have no origin. Hermes and Pi also retain adapter-selected
+timestamp provenance before their fallback choices flatten into final values.
+
+Hermes creation selects `sessions.started_at`. Its update candidate preserves SQL
+`COALESCE(ended_at, last_activity_at, started_at)` priority, rather than taking the
+maximum of those three native fields. It then selects the maximum of that candidate
+and retained normalized message times. The native candidate wins ties after the
+existing seconds-to-milliseconds conversion (bounded, finite, truncated). Message
+ties use the smallest canonical message ID. Native origins identify the selected
+`sessions.ended_at`, `sessions.last_activity_at` or `sessions.started_at` field;
+message origins retain the selected ID and maximum boundary. Unselected native
+values are not newly decoded. Missing native and message times remain absent.
+
+Pi creation selects the RFC3339 `session.timestamp` header converted to milliseconds.
+Update selects the maximum retained normalized message timestamp, using the smallest
+canonical message ID on ties; only an empty timestamp set falls back to the header.
+In particular, a message time before the header can remain the update time, as in
+the existing adapter. Per-message native integer versus entry-time fallback remains
+an unaudited finer provenance boundary. These rule-version-1 annotations preserve
+existing timestamp values and add no inference or extra corpus scan.
+
+Other adapters remain explicitly unknown.
 
 The optional timestamp container is additive to evidence version 1. Older records
 without it remain readable and publishable, without manufacturing provenance
 during source-free gold rebuilds. Explicit ingestion of these three audited
-providers requires source replay before a checkpoint can certify current evidence.
+providers, plus Hermes and Pi, requires source replay before a checkpoint can certify
+current evidence. The latter two also replay old timestamp containers containing
+unknown origins when selected times are present.
+Local checkpoint freshness compares timestamp-origin presence with the retained
+creation/update values using the generated SQLite query. Empty origin slots do not
+certify present timestamp values. Legacy reads, publication snapshots and source-free
+gold rebuilding preserve the stored evidence; explicit ingestion repairs it.
 Replay repairs annotations and advances silver's revision without changing
 canonical message history. Shared publication validates rule versions and bounded
 message references; it does not independently authenticate source claims or prove

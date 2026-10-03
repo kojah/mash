@@ -1,4 +1,5 @@
 //! Native Hermes state.db histories. Sources are read-only; no upstream repairs run.
+use super::enrichment::{TimestampField, TimestampOrigin, Timestamps, VERSION};
 use super::sqlite_source::{MAX_RECORD_BYTES, open};
 use super::{Conversation, HistorySource, NormalizedMessage, ParsedFile, SourceIdentity};
 use crate::{AppError, provider::Provider, role::Role};
@@ -59,6 +60,16 @@ struct Session {
     repository: Option<String>,
     created_at: Option<i64>,
     updated_at: Option<i64>,
+    updated_origin: Option<TimestampOrigin>,
+}
+
+struct NativeSession {
+    title: Option<String>,
+    project: Option<String>,
+    repository: Option<String>,
+    started_seconds: Option<f64>,
+    updated_seconds: Option<f64>,
+    updated_field: TimestampField,
 }
 
 fn epoch(value: Option<f64>) -> Result<Option<i64>, AppError> {
@@ -97,20 +108,47 @@ SELECT id,role,content,tool_calls,timestamp,position,length(CAST(content AS BLOB
   FROM ranked WHERE representative=1 ORDER BY position";
 
 fn read_session(connection: &Connection, session_id: &str) -> Result<Session, AppError> {
-    let session = connection.query_row(
-        "SELECT title,cwd,git_repo_root,started_at,COALESCE(ended_at,last_activity_at,started_at) AS updated_at
-           FROM sessions WHERE id=?1", [session_id], |row| {
-            Ok((row.get::<_, Option<String>>("title")?, row.get::<_, Option<String>>("cwd")?,
-                row.get::<_, Option<String>>("git_repo_root")?, row.get::<_, Option<f64>>("started_at")?,
-                row.get::<_, Option<f64>>("updated_at")?))
-        }).optional().map_err(AppError::database)?
-        .ok_or_else(|| AppError::configuration("Hermes session disappeared while indexing; retry index"))?;
+    let session = connection
+        .query_row(
+            "SELECT title,cwd,git_repo_root,started_at,
+              COALESCE(ended_at,last_activity_at,started_at) AS updated_at,
+              ended_at IS NOT NULL AS ended_selected,
+              last_activity_at IS NOT NULL AS activity_selected
+           FROM sessions WHERE id=?1",
+            [session_id],
+            |row| {
+                Ok(NativeSession {
+                    title: row.get("title")?,
+                    project: row.get("cwd")?,
+                    repository: row.get("git_repo_root")?,
+                    started_seconds: row.get("started_at")?,
+                    updated_seconds: row.get("updated_at")?,
+                    updated_field: if row.get::<_, bool>("ended_selected")? {
+                        TimestampField::SessionsEndedAt
+                    } else if row.get::<_, bool>("activity_selected")? {
+                        TimestampField::SessionsLastActivityAt
+                    } else {
+                        TimestampField::SessionsStartedAt
+                    },
+                })
+            },
+        )
+        .optional()
+        .map_err(AppError::database)?
+        .ok_or_else(|| {
+            AppError::configuration("Hermes session disappeared while indexing; retry index")
+        })?;
+    let updated_at = epoch(session.updated_seconds)?;
     Ok(Session {
-        title: session.0,
-        project: session.1,
-        repository: session.2,
-        created_at: epoch(session.3)?,
-        updated_at: epoch(session.4)?,
+        title: session.title,
+        project: session.project,
+        repository: session.repository,
+        created_at: epoch(session.started_seconds)?,
+        updated_at,
+        updated_origin: updated_at.map(|_| TimestampOrigin::SourceMetadata {
+            field: session.updated_field,
+            rule_version: VERSION,
+        }),
     })
 }
 
@@ -201,11 +239,27 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         })
         .or_else(|| SelectedTitle::first_user(&messages));
     let (title, title_origin) = SelectedTitle::split(selected);
-    let updated_at = messages
-        .iter()
-        .filter_map(|m| m.created_at)
-        .chain(session.updated_at)
-        .max();
+    let updated = match (
+        Timestamps::maximum_message(&messages),
+        session.updated_at.zip(session.updated_origin),
+    ) {
+        (Some(message), Some(native)) => Some(if native.0 >= message.0 {
+            native
+        } else {
+            message
+        }),
+        (message, native) => native.or(message),
+    };
+    let (updated_at, updated_origin) = updated
+        .map(|(time, origin)| (Some(time), Some(origin)))
+        .unwrap_or_default();
+    let timestamp_origins = Some(Timestamps {
+        created_at: session.created_at.map(|_| TimestampOrigin::SourceMetadata {
+            field: TimestampField::SessionsStartedAt,
+            rule_version: VERSION,
+        }),
+        updated_at: updated_origin,
+    });
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id: super::parsers::stable_id(
@@ -214,6 +268,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             ),
             provider: Provider::Hermes,
             title_origin,
+            timestamp_origins,
             claude_lineage: None,
             source: source.clone(),
             project: session.project,

@@ -16,6 +16,7 @@ fn conversation(id: &str, provider: Provider) -> Conversation {
         id: id.into(),
         provider,
         title_origin: None,
+        timestamp_origins: None,
         claude_lineage: None,
         source: SourceIdentity::file(id),
         title: Some(format!("Authentication {id}")),

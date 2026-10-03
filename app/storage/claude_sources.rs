@@ -85,6 +85,7 @@ pub(super) fn claude_thread(
         provider: Provider::ClaudeCode,
         source: SourceIdentity::file(metadata.source_path),
         title_origin: None,
+        timestamp_origins: None,
         claude_lineage: Some(lineage),
         title: metadata.title,
         project: metadata.project,
