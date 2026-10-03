@@ -5,6 +5,7 @@ pub(crate) struct Summary {
     pub(crate) created_at: Option<i64>,
     pub(crate) updated_at: Option<i64>,
     pub(crate) title: Option<String>,
+    pub(crate) title_message_id: Option<String>,
     pub(crate) searchable: u64,
 }
 
@@ -24,6 +25,9 @@ impl Summary {
         self.searchable += u64::from(!projection.is_empty());
         if self.title.is_none() && message.role == crate::role::Role::User {
             self.title = crate::silver::dialogue::title(projection);
+            if self.title.is_some() {
+                self.title_message_id = Some(message.id.clone());
+            }
         }
     }
 }

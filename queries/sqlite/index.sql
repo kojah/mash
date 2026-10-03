@@ -129,3 +129,11 @@ WHERE provider=sqlc.arg(provider) ORDER BY source_key;
 
 -- name: GoldManifest :one
 SELECT manifest FROM gold_manifest WHERE singleton=1;
+
+-- name: SourceEnrichment :many
+SELECT e.evidence FROM conversations AS c
+LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id
+WHERE c.provider=sqlc.arg(provider) AND c.source_key=sqlc.arg(source_key);
+
+-- name: ConversationEnrichment :one
+SELECT evidence FROM conversation_enrichment WHERE conversation_id=sqlc.arg(conversation_id);

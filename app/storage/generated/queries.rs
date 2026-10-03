@@ -3078,3 +3078,166 @@ impl<'a> GoldManifestBuilder<'a, ()> {
         GoldManifest {}
     }
 }
+pub struct SourceEnrichmentRow {
+    pub evidence: Option<String>,
+}
+impl SourceEnrichmentRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            evidence: row.get(0)?,
+        })
+    }
+}
+pub struct SourceEnrichment<'a> {
+    provider: &'a str,
+    source_key: &'a str,
+}
+impl<'a> SourceEnrichment<'a> {
+    pub const QUERY: &'static str = r"SELECT e.evidence FROM conversations AS c
+LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id
+WHERE c.provider=?1 AND c.source_key=?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> SourceEnrichment<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<SourceEnrichmentRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), SourceEnrichmentRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.provider, self.source_key)
+    }
+}
+impl<'a> SourceEnrichment<'a> {
+    pub const fn builder() -> SourceEnrichmentBuilder<'a, ((), ())> {
+        SourceEnrichmentBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct SourceEnrichmentBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, SourceKey> SourceEnrichmentBuilder<'a, ((), SourceKey)> {
+    pub fn provider(self, provider: &'a str) -> SourceEnrichmentBuilder<'a, (&'a str, SourceKey)> {
+        let ((), source_key) = self.fields;
+        let _phantom = self._phantom;
+        SourceEnrichmentBuilder {
+            fields: (provider, source_key),
+            _phantom,
+        }
+    }
+}
+impl<'a, Provider> SourceEnrichmentBuilder<'a, (Provider, ())> {
+    pub fn source_key(
+        self,
+        source_key: &'a str,
+    ) -> SourceEnrichmentBuilder<'a, (Provider, &'a str)> {
+        let (provider, ()) = self.fields;
+        let _phantom = self._phantom;
+        SourceEnrichmentBuilder {
+            fields: (provider, source_key),
+            _phantom,
+        }
+    }
+}
+impl<'a> SourceEnrichmentBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> SourceEnrichment<'a> {
+        let (provider, source_key) = self.fields;
+        SourceEnrichment {
+            provider,
+            source_key,
+        }
+    }
+}
+pub struct ConversationEnrichmentRow {
+    pub evidence: String,
+}
+impl ConversationEnrichmentRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            evidence: row.get(0)?,
+        })
+    }
+}
+pub struct ConversationEnrichment<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> ConversationEnrichment<'a> {
+    pub const QUERY: &'static str =
+        r"SELECT evidence FROM conversation_enrichment WHERE conversation_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConversationEnrichment<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<ConversationEnrichmentRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConversationEnrichmentRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConversationEnrichmentRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConversationEnrichmentRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> ConversationEnrichment<'a> {
+    pub const fn builder() -> ConversationEnrichmentBuilder<'a, ((),)> {
+        ConversationEnrichmentBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConversationEnrichmentBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConversationEnrichmentBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> ConversationEnrichmentBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConversationEnrichmentBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConversationEnrichmentBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ConversationEnrichment<'a> {
+        let (conversation_id,) = self.fields;
+        ConversationEnrichment { conversation_id }
+    }
+}

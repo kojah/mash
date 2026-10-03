@@ -5,6 +5,11 @@ CREATE TABLE IF NOT EXISTS gold_manifest (
     manifest TEXT
 );
 INSERT OR IGNORE INTO gold_manifest(singleton) VALUES (1);
+-- Silver metadata evidence; no copied canonical content or retrieval settings.
+CREATE TABLE IF NOT EXISTS conversation_enrichment (
+    conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    evidence TEXT NOT NULL
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS silver_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),

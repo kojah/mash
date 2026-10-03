@@ -313,6 +313,19 @@ fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
     assert!(storage.derived_search_is_dirty().unwrap());
     assert!(!storage.semantic_index_is_ready("fixture").unwrap());
     assert_eq!(storage.search("durable", 10, None, None).unwrap().len(), 1);
+    // Simulate the metadata evidence produced by explicit source replay. A new
+    // file checkpoint alone cannot certify a thread's missing enrichment row.
+    storage
+        .store_enrichment(
+            "existing",
+            &crate::silver::enrichment::Evidence {
+                version: crate::silver::enrichment::VERSION,
+                title: None,
+                project: Some(crate::silver::enrichment::Origin::Unknown),
+                repository: Some(crate::silver::enrichment::Origin::Unknown),
+            },
+        )
+        .unwrap();
     storage
         .record_source_checkpoint(
             Provider::Codex,

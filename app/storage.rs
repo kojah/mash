@@ -20,6 +20,7 @@ mod semantic_chunks;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.
 mod claude_sources;
+mod enrichment;
 mod indexing;
 pub(crate) mod publication;
 mod silver_state;

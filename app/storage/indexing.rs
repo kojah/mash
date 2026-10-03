@@ -255,7 +255,8 @@ impl Storage {
 
         let repaired_messages = self.repair_claude_source_identity(conversation)?;
 
-        let source_fingerprint = conversation_fingerprint(conversation)?;
+        let enrichment = crate::silver::enrichment::Evidence::capture(conversation)?;
+        let source_fingerprint = conversation_fingerprint(conversation, &enrichment)?;
         let existing_source_fingerprint: Option<String> = self
             .connection
             .query_row(
@@ -266,6 +267,9 @@ impl Storage {
             .optional()
             .map_err(AppError::database)?;
         if existing_source_fingerprint.as_deref() == Some(source_fingerprint.as_str()) {
+            // A metadata-only migration can lose evidence while retaining the
+            // same history fingerprint. Explicit replay must repair that row.
+            self.store_enrichment(&conversation.id, &enrichment)?;
             return Ok(ConversationChange {
                 unchanged: true,
                 ..ConversationChange::default()
@@ -311,6 +315,7 @@ impl Storage {
             )
             .map_err(AppError::database)?;
 
+        self.store_enrichment(&conversation.id, &enrichment)?;
         let (changed_message_ids, removed_messages) =
             self.reconcile_messages(conversation, &existing_messages)?;
         if !changed_message_ids.is_empty() {
@@ -365,6 +370,9 @@ impl Storage {
         source: &crate::silver::SourceIdentity,
         stamp: &crate::silver::SourceStamp,
     ) -> Result<bool, AppError> {
+        if !self.source_enrichment_is_current(provider, &source.key())? {
+            return Ok(false);
+        }
         Ok(self
             .connection
             .query_row(
@@ -927,8 +935,16 @@ pub(super) fn source_is_in_reconciliation_scope(
     }
     cutoff_modified_ns.is_none_or(|cutoff| modified_ns.is_some_and(|value| value >= cutoff))
 }
-fn conversation_fingerprint(conversation: &Conversation) -> Result<String, AppError> {
+fn conversation_fingerprint(
+    conversation: &Conversation,
+    enrichment: &crate::silver::enrichment::Evidence,
+) -> Result<String, AppError> {
     let mut hasher = blake3::Hasher::new();
+    update_hash(
+        &mut hasher,
+        &serde_json::to_string(enrichment)
+            .map_err(|_| AppError::internal("serialize silver enrichment evidence"))?,
+    );
     update_hash(&mut hasher, conversation.provider.as_str());
     update_hash(&mut hasher, &conversation.id);
     update_hash(&mut hasher, &conversation.source.key());

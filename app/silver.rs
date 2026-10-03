@@ -20,6 +20,7 @@ mod cursor;
 pub(crate) mod diagnostics;
 pub(crate) mod dialogue;
 mod discovery;
+pub(crate) mod enrichment;
 mod gemini;
 mod hermes;
 mod identities;

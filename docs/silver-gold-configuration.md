@@ -16,7 +16,7 @@ field. Missing metadata remains optional rather than being invented.
 | Identity and provenance | Provider, canonical thread/message IDs, source path/key/session, fingerprints and checkpoints | Provider identity is normalized; local path is provenance, not a portable repository identity. Exact native record offsets and per-field provenance are not generally retained. |
 | Dialogue | Canonical content, typed role, optional interpreted visible dialogue | Native tool/hidden/injected records are interpreted before gold. Context-only records remain available for viewing. Structured attachments/tool fields are not a general reusable silver model. |
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
-| Thread metadata | Title, project, repository, creation/update times | Adapter-normalized metadata can be absent or derived. Source facts and inferred annotations do not yet have a uniform per-field origin/confidence model. |
+| Thread metadata | Title, project, repository, creation/update times; versioned local metadata evidence | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage, timestamps and shared propagation remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
 | Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Shared certificate/manifest propagation and per-field enrichment origins remain pending. |
 
@@ -34,6 +34,41 @@ formats. Adding finer retrieval units may require source-offset/segment mappings
 that requirement must be audited before a chunk schema is finalized.
 
 ## Durable local silver certificate
+
+### Local metadata evidence
+
+SQLite schema 38 adds `conversation_enrichment`, keyed by canonical thread ID
+with cascading deletion. Its strict typed JSON contains an evidence `version`
+and optional `title`, `project` and `repository` origins. An absent field value
+has no origin. A present value without audited provenance has `kind = "unknown"`;
+no confidence score or source fact is invented.
+
+For Codex and Claude Code, titles selected by the native interpretation pipeline
+record `kind = "first-visible-user-message"`, the canonical `message_id` and
+`rule_version = 1`. Hidden context does not supply a title. Native project paths
+record `kind = "source-metadata"`, `field = "cwd"`; the existing thread source
+identity locates the underlying provider record stream. Repository origins are
+currently unknown because the adapter may use native metadata or a Git-config
+fallback. Other adapters can mix native titles, catalogue metadata and message
+fallbacks; equality of their final title text is not treated as provenance.
+
+Evidence contains references and small enums, without copied dialogue. It is
+fingerprinted with canonical metadata and advances silver's revision when it
+changes. Gold building leaves this table unchanged. Native message-summary
+staging retains the identity of the first visible title-bearing user message.
+
+Migration preserves history and leaves prior evidence absent. It never guesses
+old origins. Missing or outdated evidence prevents a stored source checkpoint
+from skipping an applicable explicit ingestion replay; malformed evidence is a
+typed database error. Clean replay fills or repairs evidence even if canonical
+message text is unchanged. Date cutoffs still apply. Source-free gold rebuilding
+does not replay providers or invent missing evidence.
+
+This is a local persisted foundation. Shared storage/API propagation, exposing
+origins through thread metadata, remaining adapter fields, timestamp derivation
+and precise native offsets remain tracked follow-ups. The interpretation
+certificate continues to certify history ingestion, not complete provenance
+coverage for every metadata field.
 
 SQLite schema 36 stores a canonical `silver_state.revision`, interpretation-rule
 version, per-provider `silver_scans` and source-keyed `silver_rejections`.

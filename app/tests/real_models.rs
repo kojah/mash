@@ -92,6 +92,7 @@ fn assert_source_independent_gold_rebuild(
 ) {
     let connection = Connection::open(database).unwrap();
     let silver_tables = [
+        "conversation_enrichment",
         "conversations",
         "messages",
         "tombstones",

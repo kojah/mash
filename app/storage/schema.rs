@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 37;
+pub(super) const SCHEMA_VERSION: i64 = 38;
 mod cline;
 
 const SCHEMA: &str = include_str!("schema.sql");
@@ -24,7 +24,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if matches!(version, 32..=36) {
+    if matches!(version, 32..=37) {
         return migrate_current_projections(connection, version);
     }
 
@@ -189,6 +189,7 @@ fn install_silver_contract(connection: &Connection) -> Result<(), AppError> {
         "tombstones",
         "claude_sources",
         "claude_source_messages",
+        "conversation_enrichment",
     ] {
         for operation in ["INSERT", "UPDATE", "DELETE"] {
             connection
