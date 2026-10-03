@@ -31,6 +31,30 @@ pub(crate) enum Origin {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SourceField {
     Cwd,
+    #[serde(rename = "git_repo_root")]
+    GitRepoRoot,
+    #[serde(rename = "session.title")]
+    SessionTitle,
+    #[serde(rename = "session.directory")]
+    SessionDirectory,
+    #[serde(rename = "project.worktree")]
+    ProjectWorktree,
+}
+
+// Only unconditional native field selections belong here. Native-title versus
+// message-summary fallbacks require adapter-level evidence, not value equality.
+fn native_fields(provider: Provider) -> [Option<SourceField>; 3] {
+    use SourceField::{Cwd, GitRepoRoot, ProjectWorktree, SessionDirectory, SessionTitle};
+    match provider {
+        Provider::Codex | Provider::ClaudeCode | Provider::Pi => [None, Some(Cwd), None],
+        Provider::Hermes => [None, Some(Cwd), Some(GitRepoRoot)],
+        Provider::Opencode => [
+            Some(SessionTitle),
+            Some(SessionDirectory),
+            Some(ProjectWorktree),
+        ],
+        _ => [None; 3],
+    }
 }
 
 impl Evidence {
@@ -38,6 +62,22 @@ impl Evidence {
         self.version == VERSION && [&self.title, &self.project, &self.repository].into_iter().all(|origin| {
             !matches!(origin, Some(Origin::FirstVisibleUserMessage { message_id, rule_version }) if message_id.is_empty() || *rule_version != VERSION)
         })
+    }
+
+    /// Source checkpoint freshness includes the audited native origins. Old
+    /// unknown evidence stays readable for source-free gold builds and viewing.
+    pub(crate) fn is_current_for(&self, provider: Provider) -> bool {
+        self.is_current()
+            && [&self.title, &self.project, &self.repository]
+                .into_iter()
+                .zip(native_fields(provider))
+                .all(|(origin, field)| {
+                    field.is_none_or(|expected| {
+                        origin.as_ref().is_none_or(|origin| {
+                            matches!(origin, Origin::SourceMetadata { field } if *field == expected)
+                        })
+                    })
+                })
     }
 
     pub(crate) fn capture(conversation: &Conversation) -> Result<Self, AppError> {
@@ -62,12 +102,18 @@ impl Evidence {
                     rule_version: VERSION,
                 });
             }
-            evidence.project = conversation
-                .project
-                .as_ref()
-                .map(|_| Origin::SourceMetadata {
-                    field: SourceField::Cwd,
-                });
+        }
+        for (origin, field) in [
+            &mut evidence.title,
+            &mut evidence.project,
+            &mut evidence.repository,
+        ]
+        .into_iter()
+        .zip(native_fields(conversation.provider))
+        {
+            if let (Some(origin), Some(field)) = (origin.as_mut(), field) {
+                *origin = Origin::SourceMetadata { field };
+            }
         }
         Ok(evidence)
     }

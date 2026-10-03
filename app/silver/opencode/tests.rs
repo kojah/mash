@@ -2,6 +2,7 @@ use super::*;
 use crate::silver::{IndexOptions, index, source_stamp_for};
 use crate::storage::Storage;
 
+mod enrichment;
 mod memory;
 
 // Required columns from upstream core/session/sql.ts and core/project/sql.ts.

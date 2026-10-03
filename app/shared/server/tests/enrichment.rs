@@ -4,7 +4,41 @@ use crate::silver::enrichment::{Evidence, Origin, SourceField, VERSION};
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_enrichment_catalog_search_replacement_and_validation() {
-    contract(Service::qdrant(384).await).await;
+    contract(
+        Service::qdrant(384).await,
+        crate::provider::Provider::Codex,
+        evidence(),
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_native_field_origins_round_trip_in_catalog_search_and_replacement() {
+    use crate::provider::Provider;
+    for (provider, title, project, repository) in [
+        (
+            Provider::Opencode,
+            Some(SourceField::SessionTitle),
+            SourceField::SessionDirectory,
+            Some(SourceField::ProjectWorktree),
+        ),
+        (
+            Provider::Hermes,
+            None,
+            SourceField::Cwd,
+            Some(SourceField::GitRepoRoot),
+        ),
+        (Provider::Pi, None, SourceField::Cwd, None),
+    ] {
+        let expected = Evidence {
+            version: VERSION,
+            title: Some(title.map_or(Origin::Unknown, |field| Origin::SourceMetadata { field })),
+            project: Some(Origin::SourceMetadata { field: project }),
+            repository: repository.map(|field| Origin::SourceMetadata { field }),
+        };
+        contract(Service::qdrant(384).await, provider, expected).await;
+    }
 }
 
 fn evidence() -> Evidence {
@@ -35,14 +69,19 @@ async fn metadata(service: &Service) -> crate::thread_catalog::Page {
         .unwrap()
 }
 
-async fn contract(service: Service) {
+async fn contract(service: Service, provider: crate::provider::Provider, expected: Evidence) {
     let mut events = snapshot(1);
     let mut batch: protocol::Event = serde_json::from_value(events[1].clone()).unwrap();
     let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
         panic!("conversation fixture")
     };
     records[0].title = Some("hello shared history".into());
-    records[0].enrichment = Some(evidence());
+    records[0].provider = provider;
+    records[0].repository = expected
+        .repository
+        .as_ref()
+        .map(|_| "/work/repository".into());
+    records[0].enrichment = Some(expected.clone());
     events[1] = serde_json::to_value(batch).unwrap();
     assert_eq!(
         service.upload(FIRST, &events).await.status(),
@@ -50,7 +89,7 @@ async fn contract(service: Service) {
     );
     assert_eq!(
         metadata(&service).await.threads[0].metadata.enrichment,
-        Some(evidence())
+        Some(expected.clone())
     );
     let mut vector = vec![0.0; 384];
     vector[0] = 1.0;
@@ -72,7 +111,7 @@ async fn contract(service: Service) {
             .lexical
             .iter()
             .chain(&found.semantic)
-            .all(|hit| hit.metadata.enrichment == Some(evidence()))
+            .all(|hit| hit.metadata.enrichment.as_ref() == Some(&expected))
     );
     let mut rejected = events.clone();
     rejected[0]["revision"] = json!(2);
@@ -83,11 +122,19 @@ async fn contract(service: Service) {
     );
     assert_eq!(
         metadata(&service).await.threads[0].metadata.enrichment,
-        Some(evidence())
+        Some(expected)
     );
     // Old records have no evidence; replacement must clear stale annotations.
+    let mut cleared = events;
+    cleared[0]["revision"] = json!(2);
+    let mut batch: protocol::Event = serde_json::from_value(cleared[1].clone()).unwrap();
+    let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
+        panic!("conversation fixture")
+    };
+    records[0].enrichment = None;
+    cleared[1] = serde_json::to_value(batch).unwrap();
     assert_eq!(
-        service.upload(FIRST, &snapshot(2)).await.status(),
+        service.upload(FIRST, &cleared).await.status(),
         StatusCode::OK
     );
     assert!(

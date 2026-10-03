@@ -120,6 +120,24 @@ fn options(path: &Path) -> IndexOptions {
 }
 
 #[test]
+fn native_header_cwd_has_evidence_without_guessing_the_session_title_origin() {
+    use crate::silver::enrichment::{Evidence, Origin, SourceField};
+    let file = tempfile::NamedTempFile::new().unwrap();
+    fixture(file.path());
+    let parsed = parse(file.path()).unwrap().conversation.unwrap();
+    let evidence = Evidence::capture(&parsed).unwrap();
+    assert_eq!(
+        evidence.project,
+        Some(Origin::SourceMetadata {
+            field: SourceField::Cwd
+        })
+    );
+    assert_eq!(evidence.title, Some(Origin::Unknown));
+    assert!(evidence.repository.is_none());
+    assert!(evidence.is_current_for(Provider::Pi));
+}
+
+#[test]
 fn native_tree_keeps_unique_branches_and_context_without_model_only_edits() {
     let file = tempfile::NamedTempFile::new().unwrap();
     fixture(file.path());

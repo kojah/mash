@@ -16,7 +16,7 @@ field. Missing metadata remains optional rather than being invented.
 | Identity and provenance | Provider, canonical thread/message IDs, source path/key/session, fingerprints and checkpoints | Provider identity is normalized; local path is provenance, not a portable repository identity. Exact native record offsets and per-field provenance are not generally retained. |
 | Dialogue | Canonical content, typed role, optional interpreted visible dialogue | Native tool/hidden/injected records are interpreted before gold. Context-only records remain available for viewing. Structured attachments/tool fields are not a general reusable silver model. |
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
-| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
+| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude summary-title and cwd origins, OpenCode native title/directory/worktree, Hermes cwd/repository root and Pi cwd are recorded. Ambiguous origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
 | Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests; shared lexical readiness is independent of dense readiness. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; atomic all-node replacement and broader enrichment origins remain pending. |
 
@@ -56,6 +56,36 @@ Evidence contains references and small enums, without copied dialogue. It is
 fingerprinted with canonical metadata and advances silver's revision when it
 changes. Gold building leaves this table unchanged. Native message-summary
 staging retains the identity of the first visible title-bearing user message.
+
+Audited native fields also retain `kind = "source-metadata"` origins:
+
+| Provider | Metadata | Native `field` |
+| --- | --- | --- |
+| OpenCode | Title | `session.title` |
+| OpenCode | Project | `session.directory` |
+| OpenCode | Repository | `project.worktree` (selected only when `project.vcs` is `git`) |
+| Hermes | Project | `cwd` from `sessions` |
+| Hermes | Repository | `git_repo_root` from `sessions` |
+| Pi | Project | `cwd` from the session header |
+
+These origins describe existing adapter selections, not newly inferred values.
+OpenCode always takes its native title, even when its text equals a user message.
+Hermes and Pi mix native titles and message fallbacks, so their title origins remain
+unknown until that selection path is retained explicitly. Absent metadata keeps
+an absent origin. Repository roots/worktrees remain native paths, not portable
+repository identities. Native source/session identity locates the record; precise
+record offsets and timestamp derivations remain unaudited.
+
+The evidence schema and existing inference rule remain version 1; these are typed
+additions to the native-field vocabulary. Source checkpoint freshness additionally
+requires the audited origins for present annotated fields on the applicable
+provider. Stored unknown or differently labelled origins cause an explicit source
+replay even when the native source stamp has not changed. Replay changes evidence
+and its silver revision without changing canonical dialogue. It does not rewrite
+old evidence during reads: structurally valid unknown evidence remains usable for
+viewing, publication and source-free gold rebuilding. A silver certificate does
+not certify complete provenance coverage, and the shared API validates structure,
+not the truth of node-supplied origins.
 
 Migration preserves history and leaves prior evidence absent. It never guesses
 old origins. Missing or outdated evidence prevents a stored source checkpoint

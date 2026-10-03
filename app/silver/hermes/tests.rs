@@ -29,6 +29,43 @@ fn options(path: &Path) -> IndexOptions {
 }
 
 #[test]
+fn native_cwd_and_repository_origins_do_not_guess_title_fallback_provenance() {
+    use crate::silver::enrichment::{Evidence, Origin, SourceField};
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("state.db");
+    let upstream = fixture(&path);
+    let source = SourceIdentity {
+        path,
+        session: Some("alpha".into()),
+    };
+    for native_title in [Some("Fix the cBioPortal importer"), None] {
+        upstream
+            .execute(
+                "UPDATE sessions SET title=?1 WHERE id='alpha'",
+                [native_title],
+            )
+            .unwrap();
+        let parsed = parse(&source).unwrap().conversation.unwrap();
+        assert_eq!(parsed.title.as_deref(), Some("Fix the cBioPortal importer"));
+        let evidence = Evidence::capture(&parsed).unwrap();
+        assert_eq!(evidence.title, Some(Origin::Unknown));
+        assert_eq!(
+            evidence.project,
+            Some(Origin::SourceMetadata {
+                field: SourceField::Cwd
+            })
+        );
+        assert_eq!(
+            evidence.repository,
+            Some(Origin::SourceMetadata {
+                field: SourceField::GitRepoRoot
+            })
+        );
+        assert!(evidence.is_current_for(Provider::Hermes));
+    }
+}
+
+#[test]
 fn native_display_history_is_read_only_and_excludes_compaction_copies_and_hidden_rows() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("state.db");

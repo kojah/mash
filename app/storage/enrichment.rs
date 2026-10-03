@@ -37,7 +37,7 @@ impl Storage {
             let Some(json) = row.evidence else {
                 return Ok(false);
             };
-            if !decode(&json)?.is_current() {
+            if !decode(&json)?.is_current_for(provider) {
                 return Ok(false);
             }
         }
