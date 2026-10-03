@@ -4,6 +4,7 @@ mod api;
 mod context;
 mod publish;
 mod read;
+mod silver;
 #[cfg(test)]
 mod tests;
 

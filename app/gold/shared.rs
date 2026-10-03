@@ -23,7 +23,7 @@ fn elapsed(started: Instant) -> u64 {
 #[cfg(test)]
 mod tests;
 
-async fn embed_texts(
+pub(crate) async fn embed_texts(
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     pool: &mut Option<EmbeddingPool>,

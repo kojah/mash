@@ -8,10 +8,12 @@ mod gold_rebuild;
 pub(crate) mod protocol;
 mod publication;
 mod qdrant_index;
+mod rebuild;
 mod retrieval;
 mod routed;
 pub(crate) mod server;
 mod silver_coverage;
+mod silver_read;
 mod silver_revision;
 mod snapshot;
 mod snapshot_budget;
@@ -20,6 +22,7 @@ mod validation;
 pub(crate) use client::{freshness, list_threads, view};
 pub(crate) use publication::write_event;
 pub(crate) use publication::{forget_routed, publish, publish_routed, routed_status, status};
+pub(crate) use rebuild::{Rebuilt, rebuild_gold};
 pub(crate) use retrieval::search;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]

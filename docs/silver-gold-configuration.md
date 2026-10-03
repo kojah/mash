@@ -276,12 +276,60 @@ old rebuild fail or leave it hidden; a failed build preserves the active index.
 There is one active node head; obsolete physical staging cleanup does not make a
 second maintained projection.
 
-This establishes the safe storage mutation needed by shared source-free builds.
-Stored-silver download, node-side rebuild commands/progress, independently
-configurable shared recipes, build manifests and group-wide configuration
-activation remain in the parent implementation scope. The existing client search
-and ingestion behavior is unchanged; this endpoint does not claim that the
-shared configuration acceptance criteria are complete.
+`GET /v1/silver` returns the authenticated node's retained canonical history and
+its silver identity, source-upload revision, target model generation and dimensions.
+The strict history model contains threads, canonical messages/visible dialogue,
+checkpoints and tombstones. It has no vectors or gold generations. Uncertified or
+legacy history without a canonical identity is rejected. Other nodes' data cannot
+be selected through this route.
+
+The service captures and decodes one immutable snapshot, then serializes borrowed
+silver rows on a blocking worker into a temporary file. The HTTP body streams that
+file. It neither copies all content into a JSON buffer nor repeatedly decodes the
+whole node for separate pages. Snapshot-work admission covers decoding/encoding;
+the upload concurrency permit follows the blocking worker and response body until
+completion or cancellation. Temporary files are removed when the body is released.
+The client uses bulk HTTP admission and streamed typed decoding, separate from
+interactive search/context slots. It currently retains the node's decoded silver
+in memory; inference and vector-output batches are bounded, not the entire corpus.
+
+`mash index --rebuild-shared-gold` and MCP `index` with
+`rebuild_shared_gold = true` call the same typed core. They require an existing
+local SQLite database with the current metadata schema and the `both` destination.
+The local preflight opens read-only and never initializes or migrates SQLite.
+They do not mutate local history,
+local vectors, local manifests or publication bookkeeping. They download retained
+shared silver, verify matching embedding settings, embed only visible dialogue
+in batches of 32 with the configured local or remote inference, then call the
+gold-only publication operation. Provider directories are never discovered or
+parsed. Missing models fail without downloading or publishing; concurrent source
+changes fail the final identity check rather than overwriting new silver.
+
+Local and shared rebuild flags are mutually exclusive and cannot be combined with
+provider/time selectors or watching. `--full` is accepted, but this explicit
+shared operation always replaces complete vector coverage. The core uses a typed
+indexing-mode enum; wrappers retain ergonomic CLI/MCP flags. Progress includes
+`shared-silver-read` with periodic elapsed updates, model loading, shared embedding
+counts and phase ETA, upload/commit, and completion. MCP streams these through the
+existing progress-token notifications. The response identifies the shared counts,
+silver revision, model generation, inference counts and download/model/build/
+publication/total timings; it does not report a fictitious local ingestion run.
+
+A one-message functional fixture on Xenia with real MiniLM assets and disposable
+Qdrant measured a CLI rebuild at 2,411 ms: 2,233 ms model loading, 39 ms retained
+silver download/decode, 6 ms inference and 56 ms publication, plus orchestration
+and serialization. This used the debug Cranelift build on the concurrent test
+host. CLI and MCP succeeded after provider folders were removed; all compared
+local canonical, embedding, manifest and publication tables remained unchanged.
+The tiny fixture verifies the workflow and timing fields, not real-corpus
+throughput, peak memory or the full storage/build/search cost acceptance gate.
+Evidence is in the external artifact
+`shared-rebuild-client-readonly-final-20261003.log`.
+
+Independent shared recipes, build manifests and group-wide configuration
+activation remain in the parent implementation scope. This client operation
+rebuilds the existing dialogue recipe and preserves current search behavior; it
+does not claim that shared configuration acceptance criteria are complete.
 
 `mash index --rebuild-local-gold` builds local FTS and embeddings from retained
 silver. Add `--full` to force replacement of local derived state. MCP exposes the

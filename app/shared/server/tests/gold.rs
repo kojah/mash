@@ -88,42 +88,15 @@ async fn qdrant_gold_only_rebuild_preserves_silver_and_rejects_invalid_replaceme
         .unwrap();
     let before = state(&service).await;
     let freshness = service.get("freshness", FIRST).await;
+    let canonical_read = retained(&service).await;
     assert_eq!(best(&service).await, "searchable");
     let events = replacement(&before);
-    for defect in 0..13 {
-        let mut invalid = events.clone();
-        match defect {
-            0 => {
-                invalid.pop();
-            }
-            1 => {
-                invalid[1]["records"].as_array_mut().unwrap().pop();
-            }
-            2 => invalid[1]["records"][0]["message_id"] = json!("context"),
-            3 => invalid[1]["records"][0]["message_id"] = json!("unknown"),
-            4 => invalid[1]["records"][1]["message_id"] = json!("searchable"),
-            5 => invalid[1]["records"][0]["vector"] = json!([1]),
-            6 => {
-                invalid.insert(2, canonical[1].clone());
-            }
-            7 => invalid[0]["silver"]["revision"] = json!(999),
-            8 => invalid[0]["generation"] = json!("wrong-model"),
-            9 => invalid[0]["publication_revision"] = json!(999),
-            10 => invalid[1]["records"][0]["vector"] = json!(vec![0; 384]),
-            11 => invalid.push(json!({"type":"finish"})),
-            _ => invalid[1]["records"][0]["content"] = json!("canonical mutation forbidden"),
-        }
-        assert!(
-            !upload(&service, &invalid).await.status().is_success(),
-            "defect {defect}"
-        );
-        assert_eq!(state(&service).await, before);
-        assert_eq!(best(&service).await, "searchable");
-    }
+    assert_rejected_replacements(&service, &events, &before).await;
     upload(&service, &events).await.error_for_status().unwrap();
     assert_eq!(state(&service).await, before);
     assert_eq!(service.get("freshness", FIRST).await, freshness);
     assert_eq!(best(&service).await, "opposite");
+    assert_eq!(retained(&service).await, canonical_read);
     // The next SQLite snapshot revision still publishes its canonical edit.
     canonical[0]["revision"] = json!(3);
     canonical[1]["records"][0]["title"] = json!("new canonical title");
@@ -141,4 +114,54 @@ async fn qdrant_gold_only_rebuild_preserves_silver_and_rejects_invalid_replaceme
         before.silver_revision
     );
     service.cleanup().await;
+}
+
+async fn assert_rejected_replacements(service: &Service, events: &[Value], before: &NodeState) {
+    for defect in 0..13 {
+        let mut invalid = events.to_vec();
+        match defect {
+            0 => {
+                invalid.pop();
+            }
+            1 => {
+                invalid[1]["records"].as_array_mut().unwrap().pop();
+            }
+            2 => invalid[1]["records"][0]["message_id"] = json!("context"),
+            3 => invalid[1]["records"][0]["message_id"] = json!("unknown"),
+            4 => invalid[1]["records"][1]["message_id"] = json!("searchable"),
+            5 => invalid[1]["records"][0]["vector"] = json!([1]),
+            6 => {
+                invalid.insert(2, snapshot(1)[1].clone());
+            }
+            7 => invalid[0]["silver"]["revision"] = json!(999),
+            8 => invalid[0]["generation"] = json!("wrong-model"),
+            9 => invalid[0]["publication_revision"] = json!(999),
+            10 => invalid[1]["records"][0]["vector"] = json!(vec![0; 384]),
+            11 => invalid.push(json!({"type":"finish"})),
+            _ => invalid[1]["records"][0]["content"] = json!("canonical mutation forbidden"),
+        }
+        assert!(
+            !upload(service, &invalid).await.status().is_success(),
+            "defect {defect}"
+        );
+        assert_eq!(state(service).await, *before);
+        assert_eq!(best(service).await, "searchable");
+    }
+}
+
+async fn retained(service: &Service) -> Value {
+    let data = service.get("silver", FIRST).await;
+    let decoded: crate::shared::silver_read::Retained =
+        serde_json::from_value(data.clone()).unwrap();
+    assert_eq!(decoded.dimensions, 384);
+    assert_eq!(decoded.history.messages.len(), 3);
+    assert_eq!(decoded.history.messages["context"].projection, "");
+    for message in data["history"]["messages"].as_object().unwrap().values() {
+        assert!(message.get("vector").is_none() && message.get("generation").is_none());
+    }
+    assert_eq!(
+        decoded.history.messages["searchable"].content,
+        "hello shared history"
+    );
+    data
 }

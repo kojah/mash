@@ -32,6 +32,8 @@ pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppErr
 pub(super) enum Endpoint {
     Freshness,
     State,
+    Silver,
+    Gold,
     Search,
     Threads,
     View,
@@ -41,7 +43,10 @@ pub(super) enum Endpoint {
 
 impl Endpoint {
     const fn bulk(self) -> bool {
-        matches!(self, Self::State | Self::Index | Self::Forget)
+        matches!(
+            self,
+            Self::State | Self::Silver | Self::Gold | Self::Index | Self::Forget
+        )
     }
 
     fn capacity(self, admission: &'static Admission) -> &'static Semaphore {
@@ -55,6 +60,8 @@ impl Endpoint {
         match self {
             Self::Freshness => "freshness",
             Self::State => "state",
+            Self::Silver => "silver",
+            Self::Gold => "gold",
             Self::Search => "search",
             Self::Threads => "threads",
             Self::View => "view",
@@ -67,7 +74,9 @@ impl Endpoint {
         match self {
             // Publication can include a large streaming snapshot. Interactive
             // reads must fail promptly so local results remain responsive.
-            Self::Index | Self::Forget | Self::State => Duration::from_secs(600),
+            Self::Index | Self::Forget | Self::State | Self::Silver | Self::Gold => {
+                Duration::from_secs(600)
+            }
             _ => Duration::from_secs(2),
         }
     }

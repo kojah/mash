@@ -49,8 +49,11 @@ enum Command {
     /// Discover and index supported local histories.
     Index {
         /// Build local retrieval state from certified stored silver, offline.
-        #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history"])]
+        #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history", "rebuild_shared_gold"])]
         rebuild_local_gold: bool,
+        /// Rebuild this node's shared retrieval state from retained shared silver.
+        #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history", "rebuild_local_gold"])]
+        rebuild_shared_gold: bool,
         /// Recreate all derived search state.
         #[arg(long, conflicts_with = "watch")]
         full: bool,
@@ -232,13 +235,17 @@ impl Cli {
             },
             Command::Index {
                 rebuild_local_gold,
+                rebuild_shared_gold,
                 full,
                 provider,
                 since_days,
                 all_history,
                 ..
             } => Operation::Index(IndexRequest {
-                rebuild_local_gold,
+                mode: crate::core::IndexMode::from_rebuild_flags(
+                    rebuild_local_gold,
+                    rebuild_shared_gold,
+                )?,
                 full,
                 provider,
                 since_days,

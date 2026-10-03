@@ -66,10 +66,17 @@ struct View {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "SDK arguments mirror CLI flags; core validates and uses enum-selected indexing modes"
+)]
 struct Index {
     /// Rebuild only local gold from certified stored silver, without provider reads or shared publication.
     #[serde(default)]
     rebuild_local_gold: bool,
+    /// Rebuild only this node's shared gold from retained shared silver, without provider or local index writes.
+    #[serde(default)]
+    rebuild_shared_gold: bool,
     #[serde(default)]
     full: bool,
     #[serde(default)]
@@ -278,16 +285,23 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads; incompatible with provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
+        description = "Explicitly index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads; or rebuild_shared_gold to rebuild this node's shared retrieval state from retained shared silver, requiring local SQLite and matching embedding settings. Both rebuild modes are incompatible with each other and provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
     async fn index(
         &self,
         Parameters(request): Parameters<Index>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> CallToolResult {
+        let mode = match core::IndexMode::from_rebuild_flags(
+            request.rebuild_local_gold,
+            request.rebuild_shared_gold,
+        ) {
+            Ok(mode) => mode,
+            Err(error) => return tool_result(Err(error)),
+        };
         self.execute_with_progress(
             Operation::Index(IndexRequest {
-                rebuild_local_gold: request.rebuild_local_gold,
+                mode,
                 full: request.full,
                 provider: request.provider,
                 since_days: request.since_days,
@@ -300,7 +314,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = true),
-        description = "Forget a conversation owned by this node in its configured indexes. Shared-only deletes directly in PostgreSQL. Other nodes' copies are unaffected. Check shared.state for deferred deletion."
+        description = "Forget a conversation owned by this node in its configured indexes. Other nodes' copies are unaffected. Check shared.state for deferred deletion."
     )]
     async fn forget(&self, Parameters(request): Parameters<Forget>) -> CallToolResult {
         self.execute(Operation::Forget {

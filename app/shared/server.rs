@@ -132,6 +132,7 @@ fn router(app: App) -> Router {
         .route("/v1/freshness", get(freshness))
         .route("/v1/status", get(status))
         .route("/v1/state", get(state))
+        .route("/v1/silver", get(retained_silver))
         .route("/v1/search", post(search))
         .route("/v1/threads", post(list_threads))
         .route("/v1/view", post(view))
@@ -168,6 +169,29 @@ async fn state(
     Extension(id): Extension<Identity>,
 ) -> Result<Json<protocol::NodeState>, ApiError> {
     Ok(Json(app.store.state(&id).await?))
+}
+
+async fn retained_silver(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+) -> Result<Response, ApiError> {
+    use futures_util::StreamExt;
+    let permit = admission::reserve(&app.uploads)?;
+    let (file, permit) = app.store.silver(&id, permit).await?;
+    let bytes = file.as_file().metadata().map_err(AppError::io)?.len();
+    let input = tokio::fs::File::from_std(file.reopen().map_err(AppError::io)?);
+    let stream = tokio_util::io::ReaderStream::new(input).map(move |frame| {
+        let _retain = (&file, &permit);
+        frame
+    });
+    Ok((
+        [
+            ("content-type", "application/json".to_owned()),
+            ("content-length", bytes.to_string()),
+        ],
+        axum::body::Body::from_stream(stream),
+    )
+        .into_response())
 }
 async fn search(
     State(app): State<App>,

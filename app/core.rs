@@ -14,7 +14,8 @@ mod threads;
 
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
-    IndexRequest, Operation, Paths, Request, Response, SearchMode, SearchResponse, ViewResponse,
+    IndexMode, IndexRequest, Operation, Paths, Request, Response, SearchMode, SearchResponse,
+    ViewResponse,
 };
 
 pub(crate) async fn execute(request: Request) -> Result<Response, AppError> {
@@ -99,6 +100,11 @@ async fn dispatch(
         } => threads::run(configuration, database, *input, local, shared)
             .await
             .map(Response::ListThreads),
+        Operation::Index(request) if request.mode == IndexMode::SharedGold => {
+            indexing::rebuild_shared(configuration, database, models, request)
+                .await
+                .map(Response::SharedGoldRebuild)
+        }
         Operation::Index(request) => indexing::run(configuration, database, models, request)
             .await
             .map(Response::Index),

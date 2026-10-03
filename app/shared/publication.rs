@@ -28,6 +28,14 @@ pub(super) async fn upload(
     config: &SharedConfig,
     file: &tempfile::NamedTempFile,
 ) -> Result<protocol::Indexed, AppError> {
+    upload_to(config, file, Endpoint::Index).await
+}
+
+pub(super) async fn upload_to(
+    config: &SharedConfig,
+    file: &tempfile::NamedTempFile,
+    endpoint: Endpoint,
+) -> Result<protocol::Indexed, AppError> {
     use futures_util::StreamExt;
     use std::sync::{
         Arc,
@@ -49,10 +57,10 @@ pub(super) async fn upload(
             }
         });
     let request = response(
-        request(config, reqwest::Method::POST, Endpoint::Index)?
+        request(config, reqwest::Method::POST, endpoint)?
             .header(reqwest::header::CONTENT_TYPE, "application/x-ndjson")
             .body(reqwest::Body::wrap_stream(stream)),
-        Endpoint::Index,
+        endpoint,
     );
     tokio::pin!(request);
     let started = std::time::Instant::now();

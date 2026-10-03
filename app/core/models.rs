@@ -20,11 +20,33 @@ pub(crate) struct Request {
     pub(crate) operation: Operation,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum IndexMode {
+    #[default]
+    ProviderFiles,
+    LocalGold,
+    SharedGold,
+}
+
+impl IndexMode {
+    pub(crate) fn from_rebuild_flags(local: bool, shared: bool) -> Result<Self, crate::AppError> {
+        match (local, shared) {
+            (false, false) => Ok(Self::ProviderFiles),
+            (true, false) => Ok(Self::LocalGold),
+            (false, true) => Ok(Self::SharedGold),
+            (true, true) => Err(crate::AppError::usage(
+                "local and shared gold rebuilds are mutually exclusive",
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IndexRequest {
     #[serde(default)]
-    pub(crate) rebuild_local_gold: bool,
+    pub(crate) mode: IndexMode,
     pub(crate) full: bool,
     pub(crate) provider: Vec<Provider>,
     pub(crate) since_days: Option<u32>,
@@ -65,6 +87,7 @@ pub(crate) enum Operation {
 #[serde(untagged)]
 pub(crate) enum Response {
     Index(IndexResponse),
+    SharedGoldRebuild(shared::Rebuilt),
     ListThreads(super::threads::Response),
     Search(SearchResponse),
     View(ViewResponse),

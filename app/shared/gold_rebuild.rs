@@ -31,7 +31,7 @@ pub(super) struct Embedding {
     pub(super) vector: Vec<f64>,
 }
 
-fn certified(loaded: &Loaded) -> bool {
+pub(super) fn certified(loaded: &Loaded) -> bool {
     let Some(head) = &loaded.head else {
         return false;
     };

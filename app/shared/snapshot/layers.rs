@@ -20,26 +20,26 @@ pub(in crate::shared) struct Snapshot {
     silver: Silver,
     gold: Gold,
 }
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Silver {
-    conversations: BTreeMap<String, ConversationRecord>,
-    messages: BTreeMap<String, Message>,
-    sources: BTreeMap<String, Checkpoint>,
-    tombstones: BTreeMap<String, Tombstone>,
+pub(in crate::shared) struct Silver {
+    pub(in crate::shared) conversations: BTreeMap<String, ConversationRecord>,
+    pub(in crate::shared) messages: BTreeMap<String, Message>,
+    pub(in crate::shared) sources: BTreeMap<String, Checkpoint>,
+    pub(in crate::shared) tombstones: BTreeMap<String, Tombstone>,
 }
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Message {
-    id: String,
-    conversation_id: String,
-    ordinal: i64,
+pub(in crate::shared) struct Message {
+    pub(in crate::shared) id: String,
+    pub(in crate::shared) conversation_id: String,
+    pub(in crate::shared) ordinal: i64,
     #[serde(default)]
-    context: MessageContext,
-    role: Role,
-    content: String,
-    projection: String,
-    created_at: Option<i64>,
+    pub(in crate::shared) context: MessageContext,
+    pub(in crate::shared) role: Role,
+    pub(in crate::shared) content: String,
+    pub(in crate::shared) projection: String,
+    pub(in crate::shared) created_at: Option<i64>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -100,7 +100,7 @@ pub(in crate::shared) struct SnapshotRef<'a> {
     gold: GoldRef<'a>,
 }
 #[derive(Serialize)]
-struct SilverRef<'a> {
+pub(in crate::shared) struct SilverRef<'a> {
     conversations: &'a BTreeMap<String, ConversationRecord>,
     messages: MessagesRef<'a>,
     sources: &'a BTreeMap<String, Checkpoint>,
@@ -203,6 +203,15 @@ impl Data {
             .map_err(|_| AppError::internal("flush shared silver fingerprint"))?;
         drop(output);
         Ok(digest.0.finalize().to_hex().to_string())
+    }
+
+    pub(in crate::shared) fn silver(&self) -> SilverRef<'_> {
+        SilverRef {
+            conversations: &self.conversations,
+            messages: MessagesRef(&self.messages),
+            sources: &self.sources,
+            tombstones: &self.tombstones,
+        }
     }
 
     pub(in crate::shared) fn layers(&self) -> SnapshotRef<'_> {

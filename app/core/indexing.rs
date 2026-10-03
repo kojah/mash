@@ -29,7 +29,7 @@ pub(super) async fn run(
     models: &Path,
     request: IndexRequest,
 ) -> Result<IndexResponse, AppError> {
-    if request.rebuild_local_gold {
+    if request.mode == super::IndexMode::LocalGold {
         return rebuild_local(configuration, database, models, request).await;
     }
     let full = request.full;
@@ -126,6 +126,29 @@ async fn rebuild_local(
     .await?;
     emit_finished(&result);
     Ok(result)
+}
+
+pub(super) async fn rebuild_shared(
+    configuration: &ResolvedConfig,
+    database: &Path,
+    models: &Path,
+    request: IndexRequest,
+) -> Result<shared::Rebuilt, AppError> {
+    if !request.provider.is_empty() || request.since_days.is_some() || request.all_history {
+        return Err(AppError::usage(
+            "rebuild-shared-gold cannot be combined with local gold rebuild or provider/time selectors",
+        ));
+    }
+    let config = super::required_shared(configuration)?;
+    if configuration.destination == config::IndexDestination::Local {
+        return Err(AppError::configuration(
+            "shared gold rebuild requires the both index destination",
+        ));
+    }
+    let db = database.to_path_buf();
+    crate::blocking(move || Storage::open_catalog(&db).map(|_| ())).await?;
+    let _progress = crate::progress::Session;
+    shared::rebuild_gold(config, models, configuration.embeddings.as_ref()).await
 }
 
 #[tracing::instrument(name = "local_index", skip_all)]
@@ -293,7 +316,7 @@ fn resolve_index_options(
 pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, AppError> {
     let configuration = config::load(request.paths.config.as_deref())?;
     let Operation::Index(IndexRequest {
-        rebuild_local_gold,
+        mode,
         provider,
         since_days,
         all_history,
@@ -302,8 +325,8 @@ pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, 
     else {
         return Err(AppError::usage("watch requires an index request"));
     };
-    if *rebuild_local_gold {
-        return Err(AppError::usage("watch cannot rebuild only local gold"));
+    if *mode != super::IndexMode::ProviderFiles {
+        return Err(AppError::usage("watch cannot rebuild only gold"));
     }
     let options = resolve_index_options(&configuration, provider, *since_days, *all_history)?;
     let mut roots = Vec::new();
