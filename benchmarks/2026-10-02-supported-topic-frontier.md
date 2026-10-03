@@ -1,5 +1,11 @@
 # Supported/cohesive consolidation does not resolve topic fragmentation
 
+Historical control: the frontier prototype, artifact auditor and their test
+were retired after the hierarchy requirement was dropped and the user requested
+removal of unnecessary machinery. Their source remains reproducible by checking
+out commit `8304e2d`; the captures, negative results and manuscript evidence are
+retained. This report does not authorize more hierarchy experiments.
+
 This experiment reuses the frozen deferred prototype's 149 sources, including
 74 stored embeddings and 75 absent vectors. All 75 have explicit empty search
 projections, so admitted-text coverage is complete (74/74); they must not be

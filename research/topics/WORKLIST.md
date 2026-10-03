@@ -10,6 +10,12 @@ There is no fixed percentage overhead rejection gate; report full ingestion
 cost, memory and publication lag, and require bounded sustained-arrival backlog.
 The finite experiment cap remains in force.
 
+The obsolete hierarchy-frontier prototype, auditor and test have been removed
+from the active tree. Their source is retained in Git at `8304e2d` and their
+[negative-results report](../../benchmarks/2026-10-02-supported-topic-frontier.md)
+remains available. Current flat-topic references and quality/parity checks are
+unchanged; historical experiment reports are evidence, not the execution queue.
+
 Explicit follow-up requested by the user: `mash-c0d.19.2.40` tracks a bounded
 online ensemble evaluation (unchanged phrase baseline versus one frozen
 phrase/dense hybrid, plus exact repeat). This is a separate authorized comparison,
