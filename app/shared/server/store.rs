@@ -1,6 +1,6 @@
 //! Shared service initialization for the sole Qdrant backend.
+use super::Identity;
 use super::configuration::{Configuration, env_name};
-use super::{Identity, Startup};
 use crate::AppError;
 pub(super) use crate::shared::qdrant_index::Store;
 use std::collections::{HashMap, HashSet};
@@ -8,15 +8,9 @@ use std::collections::{HashMap, HashSet};
 pub(super) async fn initialize(
     config: &Configuration,
     identities: &HashMap<blake3::Hash, Identity>,
-    startup: Startup,
+    activate_gold: bool,
+    activate_query: bool,
 ) -> Result<Store, AppError> {
-    let (activate_gold, activate_query) = match startup {
-        Startup::Current {
-            activate_gold,
-            activate_query,
-        } => (activate_gold, activate_query),
-        Startup::Stage | Startup::Discard => (false, false),
-    };
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
     let groups = groups.into_iter().collect::<Vec<_>>();
     let budget = crate::shared::snapshot_budget::Budget::new(config.max_mutation_snapshot_mib)?;
@@ -36,7 +30,7 @@ pub(super) async fn initialize(
                 .map_err(|_| AppError::configuration(format!("set {name} to the Qdrant API key")))
         })
         .transpose()?;
-    let mut store = Store::connect(
+    let store = Store::connect(
         &url,
         key.as_deref(),
         &groups,
@@ -53,9 +47,6 @@ pub(super) async fn initialize(
     .await?
     .with_snapshot_budget(budget)
     .with_build(config.gold.build.clone());
-    if matches!(startup, Startup::Stage) {
-        store = stage_candidates(store, identities).await?;
-    }
     let mut selected = HashSet::new();
     for identity in identities.values() {
         if selected.insert(&identity.group_id) {
@@ -70,38 +61,7 @@ pub(super) async fn initialize(
             );
             group_store.select_gold(identity, activate_gold).await?;
             group_store.select_query(identity, activate_query).await?;
-            if matches!(startup, Startup::Discard) {
-                group_store.discard_candidate(identity).await?;
-            }
         }
     }
     Ok(store)
-}
-
-async fn stage_candidates(
-    store: Store,
-    identities: &HashMap<blake3::Hash, Identity>,
-) -> Result<Store, AppError> {
-    let mut groups = std::collections::BTreeMap::new();
-    for identity in identities.values() {
-        groups.entry(&identity.group_id).or_insert(identity);
-    }
-    let mut active_build = None;
-    // Validate the shared server's common active recipe before staging any group.
-    for identity in groups.values() {
-        let active = store.stage_base(identity).await?;
-        if active_build.as_ref().is_some_and(|build| build != &active) {
-            return Err(AppError::configuration(
-                "stage-gold requires the same active recipe for all groups served by this process",
-            ));
-        }
-        active_build = Some(active);
-    }
-    for identity in groups.values() {
-        store.stage_gold(identity).await?;
-    }
-    Ok(store.with_build(
-        active_build
-            .ok_or_else(|| AppError::configuration("stage-gold requires a configured group"))?,
-    ))
 }

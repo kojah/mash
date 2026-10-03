@@ -117,6 +117,20 @@ fn removed_commands_are_rejected() {
             .assert()
             .failure();
     }
+    for option in ["--stage-gold", "--discard-staged-gold"] {
+        let output = Command::cargo_bin("mash")
+            .expect("mash binary")
+            .args([
+                "serve",
+                "--server-config",
+                "nonexistent-server.toml",
+                option,
+            ])
+            .output()
+            .expect("mash serve");
+        assert!(!output.status.success());
+        assert_eq!(super::error_kind(&output), "usage");
+    }
 }
 
 #[test]

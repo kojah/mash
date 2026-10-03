@@ -133,7 +133,6 @@ fn router(app: App) -> Router {
         .route("/v1/status", get(status))
         .route("/v1/state", get(state))
         .route("/v1/capabilities", get(capabilities))
-        .route("/v1/gold-candidate", get(gold_candidate))
         .route("/v1/silver", get(retained_silver))
         .route("/v1/publication-plan", get(publication_plan))
         .route("/v1/search", post(search))
@@ -179,13 +178,6 @@ async fn capabilities(
     Extension(id): Extension<Identity>,
 ) -> Result<Json<crate::gold::config::Build>, ApiError> {
     Ok(Json(app.store.capabilities(&id).await?))
-}
-
-async fn gold_candidate(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-) -> Result<Json<Option<crate::shared::qdrant_index::CandidateStatus>>, ApiError> {
-    Ok(Json(app.store.candidate_status(&id).await?))
 }
 
 async fn retained_silver(
@@ -261,10 +253,7 @@ async fn forget(
     let input = json(input)?;
     let permit = admission::reserve(&app.uploads)?;
     Ok(Json(
-        Box::pin(admission::run(permit, async move {
-            app.store.forget(&id, input).await
-        }))
-        .await?,
+        admission::run(permit, async move { app.store.forget(&id, input).await }).await?,
     ))
 }
 async fn index(
@@ -290,20 +279,14 @@ async fn index(
         .await?,
     ))
 }
-#[derive(Clone, Copy)]
-pub(crate) enum Startup {
-    Current {
-        activate_gold: bool,
-        activate_query: bool,
-    },
-    Stage,
-    Discard,
-}
-
-pub(crate) async fn run(path: &Path, startup: Startup) -> Result<(), AppError> {
+pub(crate) async fn run(
+    path: &Path,
+    activate_gold: bool,
+    activate_query: bool,
+) -> Result<(), AppError> {
     let config = configuration::load(path).await?;
     let identities = configuration::identities(&config)?;
-    let store = store::initialize(&config, &identities, startup).await?;
+    let store = store::initialize(&config, &identities, activate_gold, activate_query).await?;
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| AppError::configuration("could not bind HTTP listener"))?;

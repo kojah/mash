@@ -1,50 +1,5 @@
 # Silver enrichment and active gold configuration
 
-## Durable shared gold candidates
-
-`mash serve --server-config /absolute/path/to/target.toml --stage-gold` pins a
-replacement recipe without selecting it for search. The target TOML contains
-the desired `[gold.build]`. This milestone persists ownership metadata only:
-it does not build candidate vectors or activate a replacement. The service
-continues using the group's active build for capabilities, indexing and search.
-No provider files, model inference or canonical content copies are involved.
-
-Staging requires an existing ready schema-2 group, a different requested build,
-unchanged model generation/dimensions, and certified silver identities for every
-accepted node. All groups served by that process must share the same active
-build. Each group is preflighted before metadata writes; staging is atomic per
-group, rather than a transaction across groups. An interrupted multi-group
-operation can leave pinned candidates in earlier groups and can be retried.
-
-Authenticated `GET /v1/gold-candidate` returns `null` when absent, or a typed
-`candidate` and `validity`. The version-1 candidate includes its random ownership
-ID, creation time, active base epoch, requested build, model identity and exact
-node publication/silver pins. `pinned` means those pins still match, **not** that
-replacement artifacts are ready. `invalidated` means the epoch or accepted node
-set changed. Source edits, new accepted nodes, forgets and even a new publication
-of unchanged silver invalidate the pin; query-only policy changes preserve it.
-Stale candidates remain inspectable and never select search data.
-
-Restaging the same still-pinned recipe is idempotent across API restarts. A
-different or invalidated candidate requires explicit discard. Start with the
-active recipe and `--discard-staged-gold` to discard only the observed owner;
-conditional catalogue writes prevent competing ownership from being overwritten.
-Staging/discard flags conflict with each other and with `--activate-gold` or
-`--activate-query`. Candidate absence is omitted from persisted records; upgrade
-every API process before staging, since older strict readers reject the new
-field when present.
-
-`--activate-gold` retains its existing immediate recipe-switch behavior and
-subsequent per-node rebuild requirement. It does not complete this candidate.
-Candidate materialization from retained silver, full coverage validation,
-atomic all-node activation, reader fencing, interrupted artifact reclamation
-and measured temporary storage remain required work in `mash-q3e.3.5.3`.
-
-Validation covers unchanged active history/results, restart and query changes,
-edit/new-node invalidation, concurrent candidate ownership, incompatible model
-space, corrupt persisted identities, authenticated reporting, explicit discard
-and CLI startup conflicts using disposable Qdrant 1.19.1.
-
 Silver is reusable interpreted history. Gold is a replaceable retrieval
 representation of that history. Each index has one active gold configuration;
 switching configurations replaces that index's projection. Optional saved
@@ -63,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude summary-title, cwd and message-boundary times; OpenCode native title/directory/worktree/session times; Hermes title/cwd/repository root and Pi title/cwd are recorded. Unaudited origins remain explicitly unknown; full adapter and individual-message timestamp coverage remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests and independent lexical publication contracts. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; atomic all-node replacement and broader enrichment origins remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests and independent lexical publication contracts. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; explicit rebuilds refresh gold after a switch. Unaudited origins remain unknown. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -1261,9 +1216,9 @@ Activation and node publication now conditionally replace the same catalogue
 point, fencing delayed publications at storage. Different-node updates may rebase
 metadata up to three times; same-node conflicts and configuration changes cannot
 rebase. The catalogue contains at most 512 node references, without canonical
-bodies or vectors. Search availability during replacement, cleanup of interrupted
-transitions, model-dimension
-migration and representative cost measurements remain in `mash-q3e.3.5`/`.5`.
+bodies or vectors. Recipe changes intentionally require explicit node rebuilds;
+there is no candidate staging or uninterrupted all-node replacement feature.
+Model-dimension migration and broader cost measurements remain separate work.
 Activating several configured groups is per-group, not one cross-group transaction.
 
 Existing schema-1 groups require explicit `--activate-gold` migration even when
@@ -1384,7 +1339,7 @@ The local deletion remains durable. `shared.preparation` reports reused threads/
 vectors, forwarded vectors, model inferences, model loading/embedding/preparation
 milliseconds and upload bytes. These are operation diagnostics, not CPU/RSS or
 corpus throughput measurements. Group selection now has durable authority;
-atomic all-node replacement is still pending on `mash-q3e.3.5`, and representative
+group switches use explicit per-node rebuilds, and representative
 node/server storage, inference and publication-cost acceptance remains `.5`.
 
 The 2026-10-03 unfiltered CLI fixture indexes one Codex and one Claude message,
@@ -1504,9 +1459,9 @@ Build settings must be separate from `gold.query`: content selection, retrieval
 units, text preparation, representation/model selection and index strategy.
 Operational backend URLs, credentials, limits and deployment remain separate.
 Do not expose settings whose runtime behavior has not been implemented.
-Physical strategy construction and safe replacement follow the
-[physical index contract](physical-index-replacement.md). Current Qdrant graph
-topology is fixed; query-time exact/HNSW controls do not configure its build.
+Qdrant graph topology remains fixed at HNSW `m=16`, `ef_construct=200`.
+Query-time exact/HNSW controls choose how to search those existing vectors;
+there is no physical-generation replacement framework or topology build option.
 
 A build manifest must identify silver revision/completeness, interpretation
 version, normalized build settings, model generation and projection schema.

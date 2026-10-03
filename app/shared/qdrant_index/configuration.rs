@@ -5,12 +5,8 @@ use crate::shared::validation::conflict;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-mod candidate;
 mod catalogue;
 mod migration;
-pub(in crate::shared) use candidate::Status as CandidateStatus;
-#[cfg(test)]
-pub(super) use candidate::Validity as CandidateValidity;
 pub(super) use catalogue::ready_nodes as catalogue_nodes;
 
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -23,8 +19,6 @@ pub(super) enum Phase {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Configuration {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) candidate: Option<candidate::Candidate>,
     pub(super) kind: PointKind,
     pub(super) schema_version: u32,
     pub(super) version: String,
@@ -49,9 +43,6 @@ impl Configuration {
     }
 
     fn validate(&self) -> Result<(), AppError> {
-        if let Some(candidate) = &self.candidate {
-            candidate.validate(self)?;
-        }
         self.vector_search.validate().map_err(|_| failure())?;
         if self.kind != PointKind::Configuration
             || !valid_version(&self.version)
@@ -177,7 +168,6 @@ impl Store {
             }
         }
         let configuration = Configuration {
-            candidate: None,
             kind: PointKind::Configuration,
             schema_version: 2,
             version: super::publish::staging_version()?,
