@@ -4,6 +4,7 @@ use std::io::Write;
 mod configuration;
 mod exact;
 mod memory;
+mod physical;
 mod publication;
 mod recipe;
 

@@ -1443,6 +1443,9 @@ Build settings must be separate from `gold.query`: content selection, retrieval
 units, text preparation, representation/model selection and index strategy.
 Operational backend URLs, credentials, limits and deployment remain separate.
 Do not expose settings whose runtime behavior has not been implemented.
+Physical strategy construction and safe replacement follow the
+[physical index contract](physical-index-replacement.md). Current Qdrant graph
+topology is fixed; query-time exact/HNSW controls do not configure its build.
 
 A build manifest must identify silver revision/completeness, interpretation
 version, normalized build settings, model generation and projection schema.

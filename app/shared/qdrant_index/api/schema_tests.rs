@@ -47,3 +47,17 @@ fn explicit_memory_precedes_deprecated_on_disk_without_accepting_unknown_tiers()
     assert!(placement.matches(MemoryTier::Cold));
     assert!(serde_json::from_str::<Placement>(r#"{"memory":"unknown"}"#).is_err());
 }
+
+#[test]
+fn physical_graph_topology_is_not_a_query_override_or_an_implicit_migration() {
+    for (m, ef_construct) in [(0, 200), (32, 200), (16, 100), (16, 400)] {
+        let mut document = legacy();
+        document["config"]["hnsw_config"]["m"] = m.into();
+        document["config"]["hnsw_config"]["ef_construct"] = ef_construct.into();
+        let info: Info = serde_json::from_value(document).unwrap();
+        assert!(
+            schema_fields(&info, Some(4), MemoryTier::Cached).is_err(),
+            "accepted m={m}, ef_construct={ef_construct}"
+        );
+    }
+}
