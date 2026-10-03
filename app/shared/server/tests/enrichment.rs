@@ -55,6 +55,46 @@ fn evidence() -> Evidence {
     }
 }
 
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_selected_title_origins_round_trip_and_reject_invalid_record_references() {
+    use crate::provider::Provider;
+    for (provider, origin) in [
+        (
+            Provider::Hermes,
+            Origin::SourceMetadata {
+                field: SourceField::SessionsTitle,
+            },
+        ),
+        (
+            Provider::Hermes,
+            Origin::FirstVisibleUserMessage {
+                message_id: "searchable".into(),
+                rule_version: VERSION,
+            },
+        ),
+        (
+            Provider::Pi,
+            Origin::SourceRecord {
+                field: SourceField::SessionInfoName,
+                record_id: "0123456789abcdef01234567".into(),
+                rule_version: VERSION,
+            },
+        ),
+        (
+            Provider::Pi,
+            Origin::FirstVisibleUserMessage {
+                message_id: "searchable".into(),
+                rule_version: VERSION,
+            },
+        ),
+    ] {
+        let mut expected = evidence();
+        expected.title = Some(origin);
+        contract(Service::qdrant(384).await, provider, expected).await;
+    }
+}
+
 async fn metadata(service: &Service) -> crate::thread_catalog::Page {
     service
         .request("threads", FIRST)
@@ -122,6 +162,11 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
     );
     assert_eq!(
         metadata(&service).await.threads[0].metadata.enrichment,
+        Some(expected.clone())
+    );
+    reject_invalid_record_references(&service, &events).await;
+    assert_eq!(
+        metadata(&service).await.threads[0].metadata.enrichment,
         Some(expected)
     );
     // Old records have no evidence; replacement must clear stale annotations.
@@ -144,4 +189,28 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
             .is_none()
     );
     service.cleanup().await;
+}
+
+async fn reject_invalid_record_references(service: &Service, events: &[Value]) {
+    for (record_id, rule_version) in [
+        ("bad-key", VERSION),
+        ("0123456789abcdef01234567", VERSION + 1),
+    ] {
+        let mut rejected = events.to_vec();
+        rejected[0]["revision"] = json!(2);
+        let mut batch: protocol::Event = serde_json::from_value(rejected[1].clone()).unwrap();
+        let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
+            panic!("conversation fixture")
+        };
+        records[0].enrichment.as_mut().unwrap().title = Some(Origin::SourceRecord {
+            field: SourceField::SessionInfoName,
+            record_id: record_id.into(),
+            rule_version,
+        });
+        rejected[1] = serde_json::to_value(batch).unwrap();
+        assert_eq!(
+            service.upload(FIRST, &rejected).await.status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
 }

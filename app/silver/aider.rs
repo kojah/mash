@@ -158,6 +158,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 &[Provider::Aider.as_str(), &path.to_string_lossy()],
             ),
             provider: Provider::Aider,
+            title_origin: None,
             claude_lineage: None,
             source: super::SourceIdentity::file(path),
             title,

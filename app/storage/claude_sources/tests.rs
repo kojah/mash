@@ -103,6 +103,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
         id: "thread".to_owned(),
         provider: Provider::ClaudeCode,
         source: SourceIdentity::file(directory.path().join("a.jsonl")),
+        title_origin: None,
         claude_lineage: Some(claude::Lineage::from([
             ("root".to_owned(), None),
             ("z-late".to_owned(), Some("root".to_owned())),

@@ -7,6 +7,7 @@ fn conversation(content: &str) -> Conversation {
     Conversation {
         id: "session-1".to_owned(),
         provider: crate::provider::Provider::Codex,
+        title_origin: None,
         claude_lineage: None,
         source: crate::silver::SourceIdentity::file(PathBuf::from("/tmp/session-1.jsonl")),
         project: None,

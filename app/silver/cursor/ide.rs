@@ -150,6 +150,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 &[Provider::Cursor.as_str(), "ide", id],
             ),
             provider: Provider::Cursor,
+            title_origin: None,
             claude_lineage: None,
             source: source.clone(),
             project,

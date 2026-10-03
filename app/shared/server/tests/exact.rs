@@ -311,6 +311,7 @@ async fn verify_core(service: &Service) {
             id: "conversation".into(),
             provider: Provider::Codex,
             source: crate::silver::SourceIdentity::file("missing.jsonl"),
+            title_origin: None,
             claude_lineage: None,
             title: Some("title-only-marker".into()),
             project: Some("/work/mash".into()),

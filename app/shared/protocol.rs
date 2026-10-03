@@ -158,7 +158,7 @@ impl ConversationRecord {
         if let Some(evidence) = &self.enrichment {
             if !evidence.is_current() {
                 return Err(crate::AppError::usage(
-                    "unsupported silver enrichment evidence version",
+                    "unsupported or invalid silver enrichment evidence",
                 ));
             }
             for origin in [&evidence.title, &evidence.project, &evidence.repository] {

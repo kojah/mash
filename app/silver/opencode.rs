@@ -468,6 +468,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 &[Provider::Opencode.as_str(), &source.key()],
             ),
             provider: Provider::Opencode,
+            title_origin: None,
             claude_lineage: None,
             source: source.clone(),
             title: Some(metadata.title),

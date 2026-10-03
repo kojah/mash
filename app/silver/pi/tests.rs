@@ -5,6 +5,7 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::io::Write;
+mod enrichment;
 
 fn header() -> Value {
     json!({"type":"session","version":3,"id":"pi-session","timestamp":"2026-09-30T10:00:00Z","cwd":"/work/cbioportal"})
@@ -120,7 +121,7 @@ fn options(path: &Path) -> IndexOptions {
 }
 
 #[test]
-fn native_header_cwd_has_evidence_without_guessing_the_session_title_origin() {
+fn native_header_cwd_and_selected_title_entry_have_evidence() {
     use crate::silver::enrichment::{Evidence, Origin, SourceField};
     let file = tempfile::NamedTempFile::new().unwrap();
     fixture(file.path());
@@ -132,7 +133,17 @@ fn native_header_cwd_has_evidence_without_guessing_the_session_title_origin() {
             field: SourceField::Cwd
         })
     );
-    assert_eq!(evidence.title, Some(Origin::Unknown));
+    assert_eq!(
+        evidence.title,
+        Some(Origin::SourceRecord {
+            field: SourceField::SessionInfoName,
+            record_id: super::super::parsers::stable_id(
+                "source-record",
+                &["pi", &parsed.id, "name"]
+            ),
+            rule_version: crate::silver::enrichment::VERSION,
+        })
+    );
     assert!(evidence.repository.is_none());
     assert!(evidence.is_current_for(Provider::Pi));
 }

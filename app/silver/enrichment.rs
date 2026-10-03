@@ -21,6 +21,11 @@ pub(crate) enum Origin {
     SourceMetadata {
         field: SourceField,
     },
+    SourceRecord {
+        field: SourceField,
+        record_id: String,
+        rule_version: u32,
+    },
     FirstVisibleUserMessage {
         message_id: String,
         rule_version: u32,
@@ -35,6 +40,10 @@ pub(crate) enum SourceField {
     GitRepoRoot,
     #[serde(rename = "session.title")]
     SessionTitle,
+    #[serde(rename = "sessions.title")]
+    SessionsTitle,
+    #[serde(rename = "session_info.name")]
+    SessionInfoName,
     #[serde(rename = "session.directory")]
     SessionDirectory,
     #[serde(rename = "project.worktree")]
@@ -59,15 +68,49 @@ fn native_fields(provider: Provider) -> [Option<SourceField>; 3] {
 
 impl Evidence {
     pub(crate) fn is_current(&self) -> bool {
-        self.version == VERSION && [&self.title, &self.project, &self.repository].into_iter().all(|origin| {
-            !matches!(origin, Some(Origin::FirstVisibleUserMessage { message_id, rule_version }) if message_id.is_empty() || *rule_version != VERSION)
-        })
+        self.version == VERSION
+            && [&self.title, &self.project, &self.repository]
+                .into_iter()
+                .all(|origin| match origin {
+                    Some(Origin::FirstVisibleUserMessage {
+                        message_id,
+                        rule_version,
+                    }) => !message_id.is_empty() && *rule_version == VERSION,
+                    Some(Origin::SourceRecord {
+                        record_id,
+                        rule_version,
+                        ..
+                    }) => {
+                        *rule_version == VERSION
+                            && record_id.len() == 24
+                            && record_id
+                                .bytes()
+                                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    }
+                    _ => true,
+                })
     }
 
     /// Source checkpoint freshness includes the audited native origins. Old
     /// unknown evidence stays readable for source-free gold builds and viewing.
     pub(crate) fn is_current_for(&self, provider: Provider) -> bool {
         self.is_current()
+            && self.title.as_ref().is_none_or(|origin| match provider {
+                Provider::Hermes => matches!(
+                    origin,
+                    Origin::SourceMetadata {
+                        field: SourceField::SessionsTitle
+                    } | Origin::FirstVisibleUserMessage { .. }
+                ),
+                Provider::Pi => matches!(
+                    origin,
+                    Origin::SourceRecord {
+                        field: SourceField::SessionInfoName,
+                        ..
+                    } | Origin::FirstVisibleUserMessage { .. }
+                ),
+                _ => true,
+            })
             && [&self.title, &self.project, &self.repository]
                 .into_iter()
                 .zip(native_fields(provider))
@@ -115,7 +158,44 @@ impl Evidence {
                 *origin = Origin::SourceMetadata { field };
             }
         }
+        if let Some(origin) = &conversation.title_origin {
+            if conversation.title.is_none() {
+                return Err(AppError::internal("title origin has no selected title"));
+            }
+            evidence.title = Some(origin.clone());
+        }
+        if !evidence.is_current() {
+            return Err(AppError::internal("invalid adapter metadata evidence"));
+        }
         Ok(evidence)
+    }
+}
+
+pub(super) struct SelectedTitle {
+    pub(super) text: String,
+    pub(super) origin: Origin,
+}
+
+impl SelectedTitle {
+    pub(super) fn first_user(messages: &[super::NormalizedMessage]) -> Option<Self> {
+        messages
+            .iter()
+            .filter(|m| m.role == crate::role::Role::User)
+            .find_map(|message| {
+                super::dialogue::title(message.dialogue()).map(|text| Self {
+                    text,
+                    origin: Origin::FirstVisibleUserMessage {
+                        message_id: message.id.clone(),
+                        rule_version: VERSION,
+                    },
+                })
+            })
+    }
+
+    pub(super) fn split(title: Option<Self>) -> (Option<String>, Option<Origin>) {
+        title
+            .map(|selected| (selected.text, selected.origin))
+            .unzip()
     }
 }
 
@@ -129,6 +209,7 @@ mod tests {
             id: "thread".into(),
             provider: Provider::Codex,
             source: super::super::SourceIdentity::file("fixture"),
+            title_origin: None,
             claude_lineage: None,
             title: Some("qdrant filtering".into()),
             project: Some("/work/project".into()),

@@ -12,6 +12,7 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
             .replace_conversation(&Conversation {
                 id: id.into(),
                 provider,
+                title_origin: None,
                 claude_lineage: None,
                 source: crate::silver::SourceIdentity::file(id),
                 project: None,

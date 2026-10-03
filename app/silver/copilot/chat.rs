@@ -87,6 +87,7 @@ pub(super) fn parse(source: &HistorySource) -> Result<ParsedFile, AppError> {
             id: super::super::parsers::stable_id("session", &["copilot-chat", id]),
             provider: Provider::Copilot,
             source: source.identity.clone(),
+            title_origin: None,
             claude_lineage: None,
             title: session
                 .custom_title

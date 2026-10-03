@@ -28,6 +28,7 @@ fn test_conversation(
     Conversation {
         id: id.to_owned(),
         provider,
+        title_origin: None,
         claude_lineage: None,
         source: SourceIdentity::file(source_path),
         project: None,

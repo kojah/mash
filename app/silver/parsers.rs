@@ -147,6 +147,7 @@ fn parse_jsonl(
             id,
             provider,
             claude_lineage,
+            title_origin: None,
             source: super::SourceIdentity::file(path),
             repository: repository.or_else(|| project.as_deref().and_then(repository_origin)),
             project,

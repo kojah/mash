@@ -29,7 +29,7 @@ fn options(path: &Path) -> IndexOptions {
 }
 
 #[test]
-fn native_cwd_and_repository_origins_do_not_guess_title_fallback_provenance() {
+fn native_cwd_and_repository_origins_preserve_title_selection_provenance() {
     use crate::silver::enrichment::{Evidence, Origin, SourceField};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("state.db");
@@ -48,7 +48,18 @@ fn native_cwd_and_repository_origins_do_not_guess_title_fallback_provenance() {
         let parsed = parse(&source).unwrap().conversation.unwrap();
         assert_eq!(parsed.title.as_deref(), Some("Fix the cBioPortal importer"));
         let evidence = Evidence::capture(&parsed).unwrap();
-        assert_eq!(evidence.title, Some(Origin::Unknown));
+        assert_eq!(
+            evidence.title,
+            Some(native_title.map_or_else(
+                || Origin::FirstVisibleUserMessage {
+                    message_id: parsed.messages.inline()[0].id.clone(),
+                    rule_version: crate::silver::enrichment::VERSION,
+                },
+                |_| Origin::SourceMetadata {
+                    field: SourceField::SessionsTitle
+                },
+            ))
+        );
         assert_eq!(
             evidence.project,
             Some(Origin::SourceMetadata {

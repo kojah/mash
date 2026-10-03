@@ -32,6 +32,7 @@ fn local_copy(path: &Path) {
         .replace_conversation(&crate::silver::Conversation {
             id: "a".into(),
             provider: Provider::Codex,
+            title_origin: None,
             claude_lineage: None,
             source: crate::silver::SourceIdentity::file("local"),
             title: Some("Local Alpha".into()),

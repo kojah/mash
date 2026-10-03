@@ -115,6 +115,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
         .replace_conversation(&crate::silver::Conversation {
             id: "orientation".into(),
             provider: Provider::Codex,
+            title_origin: None,
             claude_lineage: None,
             source: crate::silver::SourceIdentity::file("history"),
             title: Some("cBioPortal migration".into()),

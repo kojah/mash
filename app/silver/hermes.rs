@@ -183,6 +183,7 @@ fn read_messages(
 }
 
 pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
+    use super::enrichment::{Origin, SelectedTitle, SourceField};
     let session_id = source
         .session
         .as_deref()
@@ -190,14 +191,16 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
     let connection = open(&source.path)?;
     let session = read_session(&connection, session_id)?;
     let messages = read_messages(&connection, source, session_id)?;
-    let title = session.title.or_else(|| {
-        messages
-            .iter()
-            .filter(|m| m.role == Role::User)
-            .find_map(|m| {
-                crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or(&m.content))
-            })
-    });
+    let selected = session
+        .title
+        .map(|text| SelectedTitle {
+            text,
+            origin: Origin::SourceMetadata {
+                field: SourceField::SessionsTitle,
+            },
+        })
+        .or_else(|| SelectedTitle::first_user(&messages));
+    let (title, title_origin) = SelectedTitle::split(selected);
     let updated_at = messages
         .iter()
         .filter_map(|m| m.created_at)
@@ -210,6 +213,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 &[Provider::Hermes.as_str(), &source.key()],
             ),
             provider: Provider::Hermes,
+            title_origin,
             claude_lineage: None,
             source: source.clone(),
             project: session.project,

@@ -16,7 +16,7 @@ field. Missing metadata remains optional rather than being invented.
 | Identity and provenance | Provider, canonical thread/message IDs, source path/key/session, fingerprints and checkpoints | Provider identity is normalized; local path is provenance, not a portable repository identity. Exact native record offsets and per-field provenance are not generally retained. |
 | Dialogue | Canonical content, typed role, optional interpreted visible dialogue | Native tool/hidden/injected records are interpreted before gold. Context-only records remain available for viewing. Structured attachments/tool fields are not a general reusable silver model. |
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
-| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude summary-title and cwd origins, OpenCode native title/directory/worktree, Hermes cwd/repository root and Pi cwd are recorded. Ambiguous origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
+| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude summary-title and cwd origins, OpenCode native title/directory/worktree, Hermes title/cwd/repository root and Pi title/cwd are recorded. Unaudited origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
 | Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests; shared lexical readiness is independent of dense readiness. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; atomic all-node replacement and broader enrichment origins remain pending. |
 
@@ -67,17 +67,42 @@ Audited native fields also retain `kind = "source-metadata"` origins:
 | Hermes | Project | `cwd` from `sessions` |
 | Hermes | Repository | `git_repo_root` from `sessions` |
 | Pi | Project | `cwd` from the session header |
+| Hermes | Native title | `sessions.title` |
 
 These origins describe existing adapter selections, not newly inferred values.
 OpenCode always takes its native title, even when its text equals a user message.
-Hermes and Pi mix native titles and message fallbacks, so their title origins remain
-unknown until that selection path is retained explicitly. Absent metadata keeps
+Hermes and Pi retain their title selection at the adapter boundary. Hermes uses
+`source-metadata` with `field = "sessions.title"` for a native value; a missing
+native title uses `first-visible-user-message`, referencing its canonical message
+ID and the existing title rule version. Native empty strings retain the existing
+native selection; they do not silently become message fallbacks.
+
+Pi retains the last nonblank selected `session_info.name` as `source-record`:
+`field = "session_info.name"`, `record_id` and `rule_version = 1`. The record ID
+is a normalized reference, not a canonical message ID or the raw native ID.
+It uses the existing BLAKE3 ID scheme: hash domain `source-record`, then each
+NUL-separated part (provider `pi`, normalized thread ID, native entry ID), keeping
+the first 24 lowercase hex characters. This remains stable across file moves,
+distinguishes replacement name entries with equal text, and keeps provenance
+bounded for large native IDs. The normalized thread ID is computed once per
+parse, avoiding repeated hashing of a large session header for each name entry.
+The reference can be resolved by recomputing keys over that source's native
+entries; ordinary message viewing does not resolve metadata-record references.
+
+A later null or blank Pi name clears the native choice and uses the first visible
+user message. Context-only user records do not supply fallback titles. No visible
+user and no native title leaves both title and origin absent. Both adapters
+preserve the previous title text and message/relationship interpretation; equal
+native and inferred text retain different origins. Absent metadata keeps
 an absent origin. Repository roots/worktrees remain native paths, not portable
 repository identities. Native source/session identity locates the record; precise
 record offsets and timestamp derivations remain unaudited.
 
-The evidence schema and existing inference rule remain version 1; these are typed
-additions to the native-field vocabulary. Source checkpoint freshness additionally
+The evidence schema and existing title inference rule remain version 1; these are
+typed additions to the native-field/reference vocabulary. `source-record` rule 1
+requires a 24-character lowercase hex reference; unsupported rule versions and
+malformed keys fail shared publication before acknowledgement.
+Source checkpoint freshness additionally
 requires the audited origins for present annotated fields on the applicable
 provider. Stored unknown or differently labelled origins cause an explicit source
 replay even when the native source stamp has not changed. Replay changes evidence
@@ -86,6 +111,13 @@ old evidence during reads: structurally valid unknown evidence remains usable fo
 viewing, publication and source-free gold rebuilding. A silver certificate does
 not certify complete provenance coverage, and the shared API validates structure,
 not the truth of node-supplied origins.
+
+Hermes/Pi title freshness also requires the retained native or inferred selection.
+Historical unknown titles stay readable and publishable without retroactive
+inference; an explicit applicable ingestion replay fills them. Gold rebuilds use
+stored evidence and never reselect titles from provider files. Other adapters'
+selection paths, general native-record offsets and timestamp provenance remain
+follow-up work.
 
 Migration preserves history and leaves prior evidence absent. It never guesses
 old origins. Missing or outdated evidence prevents a stored source checkpoint

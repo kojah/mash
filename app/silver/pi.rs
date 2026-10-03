@@ -190,13 +190,37 @@ fn read_header(
     Ok(header)
 }
 
+fn named_title(
+    name: Option<String>,
+    conversation: &str,
+    record: &str,
+) -> Option<super::enrichment::SelectedTitle> {
+    use super::enrichment::{Origin, SelectedTitle, SourceField, VERSION};
+    name.map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .map(|text| SelectedTitle {
+            text,
+            origin: Origin::SourceRecord {
+                field: SourceField::SessionInfoName,
+                record_id: super::parsers::stable_id(
+                    "source-record",
+                    &[Provider::Pi.as_str(), conversation, record],
+                ),
+                rule_version: VERSION,
+            },
+        })
+}
+
 pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
+    use super::enrichment::SelectedTitle;
     let mut lines = records::Lines::new(BufReader::new(File::open(path).map_err(AppError::io)?))
         .filter(|line| match line {
             Ok(line) => !line.trim().is_empty(),
             Err(_) => true,
         });
     let header = read_header(&mut lines)?;
+    let conversation_id =
+        super::parsers::stable_id("session", &[Provider::Pi.as_str(), &header.id]);
     let created_at = timestamp(&header.timestamp)?;
     let mut messages = Vec::<NormalizedMessage>::new();
     let mut nearest = HashMap::<String, Option<i64>>::new();
@@ -226,7 +250,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 display: true,
             } => Text::content(Role::System, &content, None),
             Data::SessionInfo { name } => {
-                title = name.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+                title = named_title(name, &conversation_id, &record.id);
                 None
             }
             Data::CustomMessage { display: false, .. } | Data::State => None,
@@ -252,14 +276,8 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         }
         nearest.insert(record.id, parent);
     }
-    let title = title.or_else(|| {
-        messages
-            .iter()
-            .filter(|m| m.role == Role::User)
-            .find_map(|m| {
-                crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or(&m.content))
-            })
-    });
+    let (title, title_origin) =
+        SelectedTitle::split(title.or_else(|| SelectedTitle::first_user(&messages)));
     let updated_at = messages
         .iter()
         .filter_map(|m| m.created_at)
@@ -267,8 +285,9 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         .unwrap_or(created_at);
     Ok(ParsedFile {
         conversation: Some(Conversation {
-            id: super::parsers::stable_id("session", &[Provider::Pi.as_str(), &header.id]),
+            id: conversation_id,
             provider: Provider::Pi,
+            title_origin,
             claude_lineage: None,
             source: SourceIdentity::file(path),
             project: header.cwd.filter(|s| !s.is_empty()),
