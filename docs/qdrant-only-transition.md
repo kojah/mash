@@ -136,3 +136,29 @@ Silver remains incomplete and gold unavailable. The fix does not ignore
 malformed records, change provider files, publish to Qdrant, or switch the live
 Redis service. Private captures are `xenia-silver-prefix.json` and
 `xenia-silver-prefix.log` in the migration artifact directory above.
+
+### Current dev MacBook replay
+
+The dev MacBook received archived source `d5ac7ac`, including verified JSONL
+captures and the removal of unselected Rust topic prototypes. The native locked
+Cranelift incremental build passed in 18.44 seconds. Its binary SHA-256 is
+`3e7c346dbb7d8fa2291f7b7a499750da207d34b63fa84049f325d1e1a07c2b8e`.
+
+An explicit local-only, lexical-only replay used a separate `dev.sqlite3` and
+private configuration under `~/.local/share/mash/qdrant-migration/`. It exited
+with code 9 on a Claude native ancestry conflict; its last progress report was
+58.197 seconds, 1,101 scanned files and 745,043,233 processed bytes. The new
+schema-39 database has zero committed threads/messages after rollback. The
+preserved schema-15 legacy snapshot still has 2,252 threads and 301,838 messages.
+Installed configuration, database and binary remain unchanged.
+
+Two occurrences of the rejected message have identical full message hashes and
+timestamps, but different parents. They precede an explicit root compaction
+boundary in Claude 2.1.219 with matching logical parent and preserved-segment
+tail. That tail is a new system record, so a replayed tail is not the explanation.
+`mash-847.3` tracks inspection of intervening preserved records and the parser's
+pending replay state before defining a narrowly proven recovery rule. Existing
+payload and unrelated-ancestry conflict checks must remain intact. Private
+captures are `silver-prefix.json`, `silver-prefix.log` and metadata-only
+`ancestry-diagnostic.json` in the Mac migration directory. No shared data was
+published by this attempt.
