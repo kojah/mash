@@ -12,7 +12,7 @@ use std::io::Write;
 
 const SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Target {
     pub(super) schema_version: u32,

@@ -14,6 +14,7 @@ use std::time::Duration;
 mod correlation;
 mod decoding;
 mod diagnostics;
+mod publication_recovery;
 mod selections;
 
 #[tokio::test]

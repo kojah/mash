@@ -336,3 +336,19 @@ percentiles or proof of a release speedup. Private Mac captures begin
 `release-status.json`, `release-freshness.json` and `preview-release.json`.
 The timed-out publication's local acknowledgement and fleet cutover remain
 unfinished. Installed configurations and live Redis have not changed.
+
+### Avoid repeating an accepted full snapshot
+
+Full-snapshot publication now checks existing publication-plan and freshness
+responses before preparing a body. When the local source instance/revision is
+already accepted, silver is complete under the current interpretation, and both
+lexical and configured gold manifests are current, it rechecks the immutable
+publication head and conditionally acknowledges that local revision. The client
+does not scan message bodies, upload data or perform model inference. A changed
+head or stale artifact takes the existing conditional upload path. Local changes
+after the check cannot be acknowledged by the old revision.
+
+This uses the existing typed API contracts and adds no endpoint or background
+job. It also covers a lost HTTP acknowledgement after successful server commit.
+The new client has not yet been deployed to the staged Mac; its pending local
+acknowledgement and the fleet migration remain open.

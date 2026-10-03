@@ -11,16 +11,16 @@ pub(crate) struct Inference<'a> {
     pub(crate) embeddings: Option<&'a crate::semantic::remote::Configuration>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
 pub(crate) struct SnapshotWork {
     reused_threads: u64,
     reused_embeddings: u64,
     forwarded_embeddings: u64,
-    model_inferences: u64,
+    pub(super) model_inferences: u64,
     model_load_milliseconds: u64,
     embedding_milliseconds: u64,
     preparation_milliseconds: u64,
-    upload_bytes: u64,
+    pub(super) upload_bytes: u64,
 }
 
 pub(super) fn target(config: &SharedConfig) -> String {
@@ -268,6 +268,13 @@ async fn publish_result(
     let target: super::reuse::Target =
         super::client::get(config, Endpoint::PublicationPlan).await?;
     target.validate()?;
+    if let Some(revision) = already_published(path, config, &target).await? {
+        acknowledge(path, config, revision).await?;
+        return Ok(SnapshotWork {
+            preparation_milliseconds: crate::progress::milliseconds(started),
+            ..SnapshotWork::default()
+        });
+    }
     if target.build != crate::gold::config::Build::default() {
         let (file, revision, preparation) =
             snapshot::prepare(path, &target, inference, started).await?;
@@ -343,4 +350,71 @@ async fn acknowledge(path: &Path, config: &SharedConfig, revision: i64) -> Resul
     let target = target(config);
     crate::blocking(move || Storage::open_existing(&db)?.acknowledge_publication(&target, revision))
         .await
+}
+
+/// Recover a lost acknowledgement without reading or uploading canonical bodies.
+/// Bracket readiness with the immutable publication head: a concurrent rebuild,
+/// forget, or replacement must fall back to the normal conditional publication.
+async fn already_published(
+    path: &Path,
+    config: &SharedConfig,
+    target: &super::reuse::Target,
+) -> Result<Option<i64>, AppError> {
+    let db = path.to_path_buf();
+    let instance = target.instance.clone();
+    let revision = target.publication_revision;
+    let same_source = crate::blocking(move || {
+        let mut same = false;
+        Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
+            same = instance.as_deref() == Some(snapshot.instance.as_str())
+                && revision == snapshot.revision
+                && snapshot.source_silver.is_complete()
+                && snapshot.source_silver.interpretation_version
+                    == crate::silver::certificate::INTERPRETATION_VERSION;
+            Ok(())
+        })?;
+        Ok(same)
+    })
+    .await?;
+    if !same_source {
+        return Ok(None);
+    }
+    let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
+    if !published_artifacts_current(&freshness, config, target) {
+        return Ok(None);
+    }
+    let confirmed: super::reuse::Target =
+        super::client::get(config, Endpoint::PublicationPlan).await?;
+    confirmed.validate()?;
+    Ok((confirmed == *target).then_some(revision))
+}
+
+fn published_artifacts_current(
+    freshness: &super::Freshness,
+    config: &SharedConfig,
+    target: &super::reuse::Target,
+) -> bool {
+    freshness.group_id == config.group_id
+        && freshness.group_gold.as_ref().is_some_and(|group| {
+            group.build == target.build
+                && group.generation == target.generation
+                && group.dimensions == target.dimensions
+        })
+        && freshness.nodes.iter().any(|node| {
+            node.node_id == config.node_id
+                && node.revision == target.publication_revision
+                && node.lexical_current
+                && node.gold_current
+                && node
+                    .lexical_manifest
+                    .as_ref()
+                    .is_some_and(|manifest| manifest.matches(node.silver_revision.as_ref()))
+                && node.gold_manifest.as_ref().is_some_and(|manifest| {
+                    manifest.matches(
+                        &target.build,
+                        &target.generation,
+                        node.silver_revision.as_ref(),
+                    )
+                })
+        })
 }
