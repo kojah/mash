@@ -1,5 +1,50 @@
 # Silver enrichment and active gold configuration
 
+## Durable shared gold candidates
+
+`mash serve --server-config /absolute/path/to/target.toml --stage-gold` pins a
+replacement recipe without selecting it for search. The target TOML contains
+the desired `[gold.build]`. This milestone persists ownership metadata only:
+it does not build candidate vectors or activate a replacement. The service
+continues using the group's active build for capabilities, indexing and search.
+No provider files, model inference or canonical content copies are involved.
+
+Staging requires an existing ready schema-2 group, a different requested build,
+unchanged model generation/dimensions, and certified silver identities for every
+accepted node. All groups served by that process must share the same active
+build. Each group is preflighted before metadata writes; staging is atomic per
+group, rather than a transaction across groups. An interrupted multi-group
+operation can leave pinned candidates in earlier groups and can be retried.
+
+Authenticated `GET /v1/gold-candidate` returns `null` when absent, or a typed
+`candidate` and `validity`. The version-1 candidate includes its random ownership
+ID, creation time, active base epoch, requested build, model identity and exact
+node publication/silver pins. `pinned` means those pins still match, **not** that
+replacement artifacts are ready. `invalidated` means the epoch or accepted node
+set changed. Source edits, new accepted nodes, forgets and even a new publication
+of unchanged silver invalidate the pin; query-only policy changes preserve it.
+Stale candidates remain inspectable and never select search data.
+
+Restaging the same still-pinned recipe is idempotent across API restarts. A
+different or invalidated candidate requires explicit discard. Start with the
+active recipe and `--discard-staged-gold` to discard only the observed owner;
+conditional catalogue writes prevent competing ownership from being overwritten.
+Staging/discard flags conflict with each other and with `--activate-gold` or
+`--activate-query`. Candidate absence is omitted from persisted records; upgrade
+every API process before staging, since older strict readers reject the new
+field when present.
+
+`--activate-gold` retains its existing immediate recipe-switch behavior and
+subsequent per-node rebuild requirement. It does not complete this candidate.
+Candidate materialization from retained silver, full coverage validation,
+atomic all-node activation, reader fencing, interrupted artifact reclamation
+and measured temporary storage remain required work in `mash-q3e.3.5.3`.
+
+Validation covers unchanged active history/results, restart and query changes,
+edit/new-node invalidation, concurrent candidate ownership, incompatible model
+space, corrupt persisted identities, authenticated reporting, explicit discard
+and CLI startup conflicts using disposable Qdrant 1.19.1.
+
 Silver is reusable interpreted history. Gold is a replaceable retrieval
 representation of that history. Each index has one active gold configuration;
 switching configurations replaces that index's projection. Optional saved

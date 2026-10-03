@@ -1,6 +1,7 @@
 use super::*;
 use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRecord, Start};
 use std::io::Write;
+mod candidate;
 mod configuration;
 mod exact;
 mod memory;
@@ -583,6 +584,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
             vec![Record {
                 id: input.ids[0].clone(),
                 payload: super::configuration::Configuration {
+                    candidate: None,
                     kind: PointKind::Configuration,
                     schema_version: 2,
                     version: "a".repeat(64),

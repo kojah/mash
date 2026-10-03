@@ -10,14 +10,146 @@ pub struct Server {
     child: Child,
     pub url: String,
 }
+#[derive(Clone, Copy)]
+enum Startup {
+    Current,
+    Activate,
+    Stage,
+    Discard,
+}
+
+#[test]
+fn gold_candidate_startup_modes_are_mutually_exclusive_before_network_access() {
+    for flags in [
+        vec!["--stage-gold", "--activate-gold"],
+        vec!["--stage-gold", "--activate-query"],
+        vec!["--stage-gold", "--discard-staged-gold"],
+        vec!["--discard-staged-gold", "--activate-gold"],
+    ] {
+        let output = assert_cmd::Command::cargo_bin("mash")
+            .unwrap()
+            .args(["serve", "--server-config", "nonexistent-server.toml"])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert_eq!(super::error_kind(&output), "usage");
+    }
+}
+
+async fn report<T: serde::de::DeserializeOwned>(server: &Server, endpoint: &str) -> T {
+    reqwest::Client::new()
+        .get(format!("{}{endpoint}", server.url))
+        .bearer_auth(token("node"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+#[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+struct CandidateReport {
+    candidate: CandidateIdentity,
+    validity: CandidateValidity,
+}
+#[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+struct CandidateIdentity {
+    id: String,
+    build: CandidateBuild,
+}
+#[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+struct CandidateBuild {
+    embedding_text: EmbeddingRecipe,
+}
+#[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum CandidateValidity {
+    Pinned,
+    Invalidated,
+}
+#[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum EmbeddingRecipe {
+    Dialogue,
+    TitleAndDialogue,
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_cli_stage_and_discard_keep_serving_active_gold_after_restart() {
+    let root = tempfile::tempdir().unwrap();
+    let group = format!(
+        "gold-candidate-{}",
+        root.path().file_name().unwrap().to_string_lossy()
+    );
+    let active = Server::new(root.path(), &group, &["node"]);
+    let before: serde_json::Value = report(&active, "/v1/freshness").await;
+    let staged = Server::stage(root.path(), &group, &["node"], "title-and-dialogue");
+    let candidate: CandidateReport = report(&staged, "/v1/gold-candidate").await;
+    assert_eq!(candidate.validity, CandidateValidity::Pinned);
+    assert_eq!(
+        candidate.candidate.build.embedding_text,
+        EmbeddingRecipe::TitleAndDialogue
+    );
+    assert_eq!(
+        report::<serde_json::Value>(&staged, "/v1/freshness").await,
+        before
+    );
+    assert_eq!(
+        report::<serde_json::Value>(&active, "/v1/freshness").await,
+        before
+    );
+    let unauthenticated = reqwest::Client::new()
+        .get(format!("{}/v1/gold-candidate", staged.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated.status(), reqwest::StatusCode::UNAUTHORIZED);
+    drop(staged);
+    let restarted = Server::stage(root.path(), &group, &["node"], "title-and-dialogue");
+    assert_eq!(
+        report::<CandidateReport>(&restarted, "/v1/gold-candidate").await,
+        candidate
+    );
+    assert_eq!(
+        report::<serde_json::Value>(&restarted, "/v1/freshness").await,
+        before
+    );
+    drop(restarted);
+    let discarded = Server::discard(root.path(), &group, &["node"]);
+    assert!(
+        report::<Option<CandidateReport>>(&discarded, "/v1/gold-candidate")
+            .await
+            .is_none()
+    );
+    assert_eq!(
+        report::<serde_json::Value>(&discarded, "/v1/freshness").await,
+        before
+    );
+    drop(discarded);
+    drop(active);
+    tokio::task::spawn_blocking(move || cleanup_group(&group))
+        .await
+        .unwrap();
+}
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, "dialogue", false)
+        Self::start(root, group, nodes, "dialogue", Startup::Current)
     }
     pub fn with_recipe(root: &Path, group: &str, nodes: &[&str], recipe: &str) -> Self {
-        Self::start(root, group, nodes, recipe, true)
+        Self::start(root, group, nodes, recipe, Startup::Activate)
     }
-    fn start(root: &Path, group: &str, nodes: &[&str], recipe: &str, activate: bool) -> Self {
+    fn stage(root: &Path, group: &str, nodes: &[&str], recipe: &str) -> Self {
+        Self::start(root, group, nodes, recipe, Startup::Stage)
+    }
+    fn discard(root: &Path, group: &str, nodes: &[&str]) -> Self {
+        Self::start(root, group, nodes, "dialogue", Startup::Discard)
+    }
+    fn start(root: &Path, group: &str, nodes: &[&str], recipe: &str, startup: Startup) -> Self {
         let path = root.join("server.toml");
         let credentials: Vec<_> = nodes
             .iter()
@@ -47,8 +179,17 @@ impl Server {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
-        if activate {
-            command.arg("--activate-gold");
+        match startup {
+            Startup::Current => {}
+            Startup::Activate => {
+                command.arg("--activate-gold");
+            }
+            Startup::Stage => {
+                command.arg("--stage-gold");
+            }
+            Startup::Discard => {
+                command.arg("--discard-staged-gold");
+            }
         }
         for (i, node) in nodes.iter().enumerate() {
             command.env(format!("MASH_TEST_TOKEN_{i}"), token(node));
@@ -225,7 +366,13 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
     );
     assert_eq!(before["nodes"], serde_json::json!([]));
     drop(active);
-    let restarted = Server::start(root.path(), &group, &["node"], "title-and-dialogue", false);
+    let restarted = Server::start(
+        root.path(),
+        &group,
+        &["node"],
+        "title-and-dialogue",
+        Startup::Current,
+    );
     let after: serde_json::Value = client
         .get(format!("{}/v1/freshness", restarted.url))
         .bearer_auth(token("node"))

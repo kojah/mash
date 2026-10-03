@@ -156,6 +156,12 @@ enum Command {
         /// Explicitly replace persisted shared group gold settings from this TOML.
         #[arg(long)]
         activate_gold: bool,
+        /// Pin replacement metadata only; continue serving active gold without rebuilding.
+        #[arg(long, conflicts_with_all = ["activate_gold", "activate_query", "discard_staged_gold"])]
+        stage_gold: bool,
+        /// Discard the observed replacement candidate without changing active gold.
+        #[arg(long, conflicts_with_all = ["activate_gold", "activate_query", "stage_gold"])]
+        discard_staged_gold: bool,
         /// Explicitly replace persisted shared group query defaults without indexing.
         #[arg(long)]
         activate_query: bool,
@@ -375,13 +381,21 @@ where
         server_config,
         activate_gold,
         activate_query,
+        stage_gold,
+        discard_staged_gold,
     } = cli.command
     {
-        runtime.block_on(crate::shared::server::run(
-            &server_config,
-            activate_gold,
-            activate_query,
-        ))?;
+        let startup = if stage_gold {
+            crate::shared::server::Startup::Stage
+        } else if discard_staged_gold {
+            crate::shared::server::Startup::Discard
+        } else {
+            crate::shared::server::Startup::Current {
+                activate_gold,
+                activate_query,
+            }
+        };
+        runtime.block_on(crate::shared::server::run(&server_config, startup))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp { watch, debounce_ms } = cli.command {
         let paths = Paths {

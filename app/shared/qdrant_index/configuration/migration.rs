@@ -19,6 +19,7 @@ impl Store {
         }
         let sealed = if previous.schema_version == 1 {
             let sealed = Configuration {
+                candidate: None,
                 kind: PointKind::Configuration,
                 schema_version: 2,
                 version: super::super::publish::staging_version()?,

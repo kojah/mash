@@ -7,6 +7,9 @@ mod exact;
 mod publish;
 mod read;
 mod silver;
+pub(in crate::shared) use configuration::CandidateStatus;
+#[cfg(test)]
+use configuration::CandidateValidity;
 #[cfg(test)]
 mod tests;
 

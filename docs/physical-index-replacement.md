@@ -27,6 +27,13 @@ independent lexical search remains usable. This is durable authority and fencing
 but not staged all-node replacement with uninterrupted related search. The
 remaining activation work is `mash-q3e.3.5`.
 
+Durable candidate ownership is now available through `serve --stage-gold`, with
+an authenticated `/v1/gold-candidate` report. This pins the active epoch and exact
+accepted node/silver set while preserving active search. It stages metadata
+only; candidate vectors, completeness checks and atomic all-node activation are
+still required by `mash-q3e.3.5.3`. See the
+[operator contract](silver-gold-configuration.md#durable-shared-gold-candidates).
+
 An in-place collection PATCH would change construction for the active revision
 and every candidate simultaneously. A new collection alone is also insufficient:
 exact search, context viewing and obsolete-version cleanup currently address
