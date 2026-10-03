@@ -18,6 +18,7 @@ pub(super) struct Identity {
     parents: Parents,
     keys: Keys,
     agent: Option<String>,
+    conflicting_agents: bool,
     session: Option<String>,
     sessions: BTreeSet<String>,
     transitions: BTreeSet<usize>,
@@ -49,11 +50,9 @@ impl Identity {
                 .as_ref()
                 .is_some_and(|previous| previous != agent)
             {
-                return Err(AppError::configuration(
-                    "Claude transcript contains multiple agent identities",
-                ));
+                self.conflicting_agents = true;
             }
-            self.agent = Some(agent.clone());
+            self.agent.get_or_insert_with(|| agent.clone());
         }
         self.replay.observe(record, &mut self.parents)?;
         Ok(())
@@ -91,6 +90,13 @@ impl Identity {
         thread: &str,
         messages: Messages,
     ) -> Result<(Messages, Lineage), AppError> {
+        // Event-only workflow journals can name many agents without containing
+        // a chat. Keep transcript identity rules once dialogue is retained.
+        if self.conflicting_agents {
+            return Err(AppError::configuration(
+                "Claude transcript contains multiple agent identities",
+            ));
+        }
         normalize(
             thread,
             messages,

@@ -155,6 +155,7 @@ fn claude_copy_reconciliation(routed: bool) {
     let root = fixture.directory.path().join("claude");
     let a = root.join("session.jsonl");
     let b = root.join("copy.jsonl");
+    std::fs::write(root.join("journal.jsonl"), "{\"type\":\"started\",\"agentId\":\"alpha\"}\n{\"type\":\"result\",\"agentId\":\"beta\"}\n").unwrap();
     let write = |path: &Path, branch: Option<&str>| {
         let mut rows = vec![
             serde_json::json!({"type":"user","sessionId":"claude-session","uuid":"common","parentUuid":null,"message":{"role":"user","content":"common sentinel"}}),

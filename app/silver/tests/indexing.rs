@@ -3,6 +3,43 @@ use super::*;
 mod malformed;
 
 #[test]
+fn event_only_claude_sources_remove_old_contributions_and_keep_restart_checkpoints() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("history.jsonl");
+    let database = directory.path().join("index.sqlite3");
+    let options = IndexOptions {
+        providers: [(Provider::ClaudeCode, vec![directory.path().to_path_buf()])].into(),
+        roots_are_authoritative: true,
+        since_days: None,
+    };
+    write_claude_session(&path, "session", "old dialogue sentinel");
+    let mut storage = Storage::open_writer(&database).unwrap();
+    index(&mut storage, &options).unwrap();
+    storage.commit_writer().unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 1);
+    drop(storage);
+    fs::write(&path, "{\"type\":\"started\",\"agentId\":\"alpha\"}\n{\"type\":\"result\",\"agentId\":\"beta\"}\n").unwrap();
+    for restart in [false, true] {
+        let mut storage = Storage::open_writer(&database).unwrap();
+        let summary = index(&mut storage, &options).unwrap();
+        assert_eq!(summary.malformed_records, 0);
+        assert_eq!(summary.checkpoint_skipped_sources, u64::from(restart));
+        storage.commit_writer().unwrap();
+        assert_eq!(storage.counts().unwrap().messages, 0);
+        assert_eq!(storage.counts().unwrap().conversations, 0);
+        assert!(
+            storage
+                .source_checkpoint_matches(
+                    Provider::ClaudeCode,
+                    &SourceIdentity::file(&path),
+                    &source_stamp(&path).unwrap()
+                )
+                .unwrap()
+        );
+    }
+}
+
+#[test]
 fn identity_migration_reparses_checkpointed_claude_parent_and_agent() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("index.sqlite3");

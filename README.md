@@ -229,7 +229,10 @@ reprocessing changed Claude transcripts updates their derived data normally.
 
 Claude message UUIDs are scoped to their native session and agent, independent
 of the transcript's physical path. SQLite retains each physical source's
-contribution and derives one logical thread from their union. Matching copies
+contribution and derives one logical thread from their union. Event-only workflow
+journals do not create threads or require
+a single agent identity. Agent consistency is enforced when the source contains
+retained dialogue, including identity supplied by metadata records. Matching copies
 are deduplicated; divergent branches retain their own causal context. Rewinding,
 emptying, or deleting one copy removes only that copy's contribution. Conflicting
 payloads or ancestry for the same native message UUID fail transactionally.

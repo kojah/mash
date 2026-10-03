@@ -197,6 +197,42 @@ fn claude_agent_identity_uses_native_session_and_agent_not_file_location() {
 }
 
 #[test]
+fn claude_workflow_events_require_agent_consistency_only_when_dialogue_exists() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.jsonl");
+    let events = r#"{"type":"started","agentId":"alpha"}
+{"type":"result","agentId":"beta"}"#;
+    fs::write(&path, events).unwrap();
+    let empty = parse_claude(&path).unwrap();
+    assert!(empty.conversation.is_none());
+    assert_eq!(empty.malformed_records, 0);
+
+    let message = r#"{"type":"user","sessionId":"chat","agentId":"dialogue-agent","uuid":"message","parentUuid":null,"message":{"role":"user","content":"retained dialogue"}}"#;
+    fs::write(&path, message).unwrap();
+    let plain = parse_claude(&path).unwrap().conversation.unwrap();
+    fs::write(&path, format!("{events}\n{message}\n{events}")).unwrap();
+    assert!(
+        parse_claude(&path)
+            .err()
+            .unwrap()
+            .error
+            .message
+            .contains("multiple agent identities")
+    );
+    let consistent = r#"{"type":"started","agentId":"dialogue-agent"}"#;
+    let metadata_identified = message.replace("\"agentId\":\"dialogue-agent\",", "");
+    fs::write(&path, format!("{consistent}\n{metadata_identified}")).unwrap();
+    let mixed = parse_claude(&path).unwrap().conversation.unwrap();
+    assert_eq!(plain.id, mixed.id);
+    assert_eq!(plain.messages.inline(), mixed.messages.inline());
+
+    fs::write(&path, format!("{events}\n{{broken")).unwrap();
+    let malformed = parse_claude(&path).unwrap();
+    assert!(malformed.conversation.is_none());
+    assert_eq!(malformed.malformed_records, 1);
+}
+
+#[test]
 fn claude_parser_reports_malformed_lines_without_normalized_fragments() {
     let mut file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(file, "not-json").expect("malformed line");

@@ -189,3 +189,26 @@ and no malformed JSON. `mash-847.4` tracks handling of event-only sources withou
 rejecting them as chat transcripts or guessing from filenames. The migration
 database remains empty after rollback, and the installed index remains unchanged.
 No shared publication or live endpoint cutover has occurred.
+
+### Event-only workflow journal validation
+
+Agent identity conflicts are now collected during parsing and rejected when
+retained dialogue is normalized. A source with no retained dialogue can contain
+events from many agents without being treated as one chat. Previously accepted
+transcript identities, including identity supplied by metadata, are unchanged.
+Mixed-agent dialogue and malformed records still reject the source; no filename
+exclusion or provider-file repair is involved.
+
+The existing checkpoint/contribution path handles event-only sources: replacing
+a source's chat content with events removes its old contribution and preserves a
+checkpoint across restart. Validation passed 621 standard tests and three
+Qdrant source-lifecycle/routed-copy/snapshot-copy contracts. Publication fixtures
+now include the event-only journal alongside dialogue.
+
+The native Mac build of the verified working-tree fix scanned the actual journal
+in isolation with exit code 0, complete silver, zero rejected sources and zero
+threads/messages. Its 41 ms duration is a tiny-source functional diagnostic,
+not a corpus throughput measurement. Private captures are `workflow-case.json`
+and `workflow-case.log` in the Mac migration directory. The full replay uses
+`silver-workflow.json` and `silver-workflow.log`; it has progressed beyond the
+earlier journal rejection but completion is not established by the isolated case.
