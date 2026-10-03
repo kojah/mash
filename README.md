@@ -1292,6 +1292,8 @@ timestamps:
   changed data preserves this timestamp.
 
 The API records these timestamps in the atomically published Qdrant node head.
+It captures server time after staging, before conditional publication; this
+excludes bulk staging time but is not an exact database commit timestamp.
 Failed uploads leave them unchanged. They describe received
 index data, not the newest source message's timestamp or proof that a node is
 currently online. Older nodes can have null timestamps until they publish with

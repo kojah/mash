@@ -378,6 +378,20 @@ impl Store {
         let previous = plan.loaded.head.as_ref();
         let (gold_manifest, lexical_manifest) =
             publication_manifests(&plan, identity, &silver_revision, checked);
+        let manifest = match self
+            .stage(identity, &plan.loaded.data, &encoded, &version)
+            .await
+        {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                outcome(PublicationOutcome::StagingFailed);
+                self.cleanup(identity, &version).await;
+                return Err(error);
+            }
+        };
+        // Record publication preparation after staging, which can take minutes.
+        // The subsequent conditional write remains the visibility boundary;
+        // this application timestamp is not an exact database commit time.
         let now = publication_timestamp();
         let head = Head {
             lexical_manifest: Some(lexical_manifest),
@@ -404,17 +418,6 @@ impl Store {
             },
             metadata_ready: true,
             catalog_ready: true,
-        };
-        let manifest = match self
-            .stage(identity, &plan.loaded.data, &encoded, &version)
-            .await
-        {
-            Ok(manifest) => manifest,
-            Err(error) => {
-                outcome(PublicationOutcome::StagingFailed);
-                self.cleanup(identity, &version).await;
-                return Err(error);
-            }
         };
         let node = NodeHead {
             kind: PointKind::Head,
