@@ -39,10 +39,13 @@ impl Storage {
             };
             let evidence = decode(&json)?;
             if !evidence.is_current_for(provider)
-                || evidence
-                    .timestamps
-                    .as_ref()
-                    .is_some_and(|times| !times.matches_values(row.created_at, row.updated_at))
+                || !evidence.matches_metadata_values(
+                    row.title.as_deref(),
+                    row.project.as_deref(),
+                    row.repository.as_deref(),
+                    row.created_at,
+                    row.updated_at,
+                )
             {
                 return Ok(false);
             }

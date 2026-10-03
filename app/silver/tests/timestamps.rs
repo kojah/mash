@@ -1,7 +1,50 @@
-//! Shared lifecycle contract for audited native timestamp adapters.
+//! Shared replay contract for native timestamp and metadata evidence.
 use super::*;
 use crate::gold::config::{Build, Representations};
-use crate::silver::enrichment::{Evidence, TimestampOrigin};
+use crate::silver::enrichment::{Evidence, Origin, TimestampOrigin};
+
+fn replay_defects(expected: &Evidence) -> Vec<Evidence> {
+    let times = expected.timestamps.as_ref().unwrap();
+    let mut defects = [
+        None,
+        Some(crate::silver::enrichment::Timestamps {
+            created_at: times.created_at.as_ref().map(|_| TimestampOrigin::Unknown),
+            updated_at: times.updated_at.as_ref().map(|_| TimestampOrigin::Unknown),
+        }),
+        Some(crate::silver::enrichment::Timestamps {
+            created_at: None,
+            updated_at: None,
+        }),
+    ]
+    .into_iter()
+    .map(|timestamps| {
+        let mut legacy = expected.clone();
+        legacy.timestamps = timestamps;
+        legacy
+    })
+    .collect::<Vec<_>>();
+    for field in [
+        OriginField::Title,
+        OriginField::Project,
+        OriginField::Repository,
+    ] {
+        let mut legacy = expected.clone();
+        let origin = match field {
+            OriginField::Title => &mut legacy.title,
+            OriginField::Project => &mut legacy.project,
+            OriginField::Repository => &mut legacy.repository,
+        };
+        *origin = origin.is_none().then_some(Origin::Unknown);
+        defects.push(legacy);
+    }
+    defects
+}
+
+enum OriginField {
+    Title,
+    Project,
+    Repository,
+}
 
 pub(in crate::silver) fn assert_replay(
     provider: Provider,
@@ -26,19 +69,7 @@ pub(in crate::silver) fn assert_replay(
     let expected = Evidence::capture(&parsed).unwrap();
     let stamp = source_stamp_for(source).unwrap();
     let before = fs::read(&source.path).unwrap();
-    for timestamps in [
-        None,
-        Some(crate::silver::enrichment::Timestamps {
-            created_at: parsed.created_at.map(|_| TimestampOrigin::Unknown),
-            updated_at: parsed.updated_at.map(|_| TimestampOrigin::Unknown),
-        }),
-        Some(crate::silver::enrichment::Timestamps {
-            created_at: None,
-            updated_at: None,
-        }),
-    ] {
-        let mut legacy = expected.clone();
-        legacy.timestamps = timestamps;
+    for legacy in replay_defects(&expected) {
         assert!(legacy.is_current());
         rusqlite::Connection::open(&database)
             .unwrap()

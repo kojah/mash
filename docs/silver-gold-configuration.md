@@ -83,6 +83,21 @@ Local checkpoint freshness compares timestamp-origin presence with the retained
 creation/update values using the generated SQLite query. Empty origin slots do not
 certify present timestamp values. Legacy reads, publication snapshots and source-free
 gold rebuilding preserve the stored evidence; explicit ingestion repairs it.
+The same checkpoint query now includes title, project and repository values.
+Each present value, including an empty string, requires a present origin; an
+explicit `unknown` origin distinguishes unaudited provenance from absence.
+Origins without corresponding values also require replay. This check concerns
+presence, not value equality, and never infers source provenance from metadata.
+
+New shared conversation publications validate this correspondence for all five
+metadata fields. Contradictions return a usage error before publication and do
+not advance the acknowledged revision. A whole missing enrichment object or a
+missing additive timestamp container remains supported for legacy snapshots.
+Once a timestamp container is present, its origin slots must correspond to the
+creation/update values. Existing stored evidence remains readable and untouched
+by source-free gold construction; publishing contradictory evidence requires
+explicit source replay. These structural checks do not authenticate source claims
+or prove that message/record references belong to the declared thread.
 Replay repairs annotations and advances silver's revision without changing
 canonical message history. Shared publication validates rule versions and bounded
 message references; it does not independently authenticate source claims or prove

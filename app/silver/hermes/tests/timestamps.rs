@@ -9,7 +9,7 @@ fn native(field: TimestampField) -> TimestampOrigin {
 }
 
 #[test]
-fn legacy_timestamp_evidence_requires_explicit_replay_and_survives_gold_rebuild() {
+fn legacy_metadata_evidence_requires_explicit_replay_and_survives_gold_rebuild() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("state.db");
     drop(fixture(&path));

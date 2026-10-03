@@ -156,7 +156,15 @@ pub(crate) struct ConversationRecord {
 impl ConversationRecord {
     pub(crate) fn validate_enrichment(&self) -> Result<(), crate::AppError> {
         if let Some(evidence) = &self.enrichment {
-            if !evidence.is_current() {
+            if !evidence.is_current()
+                || !evidence.matches_metadata_values(
+                    self.title.as_deref(),
+                    self.project.as_deref(),
+                    self.repository.as_deref(),
+                    self.created_at,
+                    self.updated_at,
+                )
+            {
                 return Err(crate::AppError::usage(
                     "unsupported or invalid silver enrichment evidence",
                 ));

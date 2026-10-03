@@ -52,7 +52,7 @@ fn equal_message_times_choose_stable_canonical_id_independently_of_arrival_order
 }
 
 #[test]
-fn legacy_timestamp_evidence_requires_explicit_replay_and_survives_gold_rebuild() {
+fn legacy_metadata_evidence_requires_explicit_replay_and_survives_gold_rebuild() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("session.jsonl");
     fixture(&path);

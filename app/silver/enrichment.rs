@@ -227,6 +227,40 @@ fn native_fields(provider: Provider) -> [Option<SourceField>; 3] {
 }
 
 impl Evidence {
+    fn validate_selected_metadata(&self, conversation: &Conversation) -> Result<(), AppError> {
+        if self.is_current()
+            && self.matches_metadata_values(
+                conversation.title.as_deref(),
+                conversation.project.as_deref(),
+                conversation.repository.as_deref(),
+                conversation.created_at,
+                conversation.updated_at,
+            )
+        {
+            Ok(())
+        } else {
+            Err(AppError::internal("invalid adapter metadata evidence"))
+        }
+    }
+
+    pub(crate) fn matches_metadata_values(
+        &self,
+        title: Option<&str>,
+        project: Option<&str>,
+        repository: Option<&str>,
+        created_at: Option<i64>,
+        updated_at: Option<i64>,
+    ) -> bool {
+        [&self.title, &self.project, &self.repository]
+            .into_iter()
+            .zip([title.is_some(), project.is_some(), repository.is_some()])
+            .all(|(origin, present)| origin.is_some() == present)
+            && self
+                .timestamps
+                .as_ref()
+                .is_none_or(|times| times.matches_values(created_at, updated_at))
+    }
+
     pub(crate) fn is_current(&self) -> bool {
         self.version == VERSION
             && self.timestamps.as_ref().is_none_or(Timestamps::is_current)
@@ -389,9 +423,7 @@ impl Evidence {
             times.validate_selection(conversation)?;
             evidence.timestamps = Some(times.clone());
         }
-        if !evidence.is_current() {
-            return Err(AppError::internal("invalid adapter metadata evidence"));
-        }
+        evidence.validate_selected_metadata(conversation)?;
         Ok(evidence)
     }
 }

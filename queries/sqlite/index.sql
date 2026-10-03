@@ -135,7 +135,7 @@ SELECT manifest FROM gold_manifest WHERE singleton=1;
 SELECT manifest FROM lexical_manifest WHERE singleton=1;
 
 -- name: SourceEnrichment :many
-SELECT e.evidence,c.created_at,c.updated_at FROM conversations AS c
+SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at FROM conversations AS c
 LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id
 WHERE c.provider=sqlc.arg(provider) AND c.source_key=sqlc.arg(source_key);
 

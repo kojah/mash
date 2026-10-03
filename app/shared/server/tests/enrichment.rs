@@ -1,5 +1,6 @@
 use super::*;
 use crate::silver::enrichment::{Evidence, Origin, SourceField, VERSION};
+mod presence;
 
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
@@ -262,7 +263,7 @@ async fn reject_invalid_record_references(service: &Service, events: &[Value]) {
                 selection: Boundary::Minimum,
                 rule_version,
             }),
-            updated_at: None,
+            updated_at: Some(TimestampOrigin::Unknown),
         });
         rejected[1] = serde_json::to_value(batch).unwrap();
         assert_eq!(
