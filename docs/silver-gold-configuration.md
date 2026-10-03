@@ -95,7 +95,7 @@ selection, and rule version 1. Equal timestamps choose the lexicographically
 smallest message ID, independently of inline/spooled storage. OpenCode retains
 `source-metadata` origins for `session.time_created` and `session.time_updated`;
 rule version 1 selects the existing native millisecond integers unchanged.
-Missing selected times have no origin. Hermes and Pi also retain adapter-selected
+Missing selected times have no origin. Hermes, Pi and Gemini also retain adapter-selected
 timestamp provenance before their fallback choices flatten into final values.
 
 Hermes creation selects `sessions.started_at`. Its update candidate preserves SQL
@@ -116,13 +116,24 @@ the existing adapter. Per-message native integer versus entry-time fallback rema
 an unaudited finer provenance boundary. These rule-version-1 annotations preserve
 existing timestamp values and add no inference or extra corpus scan.
 
+Gemini preserves native RFC3339 `session.startTime` and `session.lastUpdated`
+after header/update replay, converting them to milliseconds. A present native
+field wins even when it equals or precedes retained message times. Missing
+creation falls back to the minimum retained canonical message time; missing
+update falls back to the maximum, then the selected creation time when no
+message time exists. Equal boundary times retain the lexicographically smallest
+canonical message ID. Empty history with no native times has no values or
+origins. These rule-version-1 annotations preserve existing parser values and
+do not add model work. The typed native field names are additive: update API
+readers before replaying Gemini sources that publish them.
+
 Other adapters remain explicitly unknown.
 
 The optional timestamp container is additive to evidence version 1. Older records
 without it remain readable and publishable, without manufacturing provenance
 during source-free gold rebuilds. Explicit ingestion of these three audited
-providers, plus Hermes and Pi, requires source replay before a checkpoint can certify
-current evidence. The latter two also replay old timestamp containers containing
+providers, plus Hermes, Pi and Gemini, requires source replay before a checkpoint can certify
+current evidence. The latter three also replay old timestamp containers containing
 unknown origins when selected times are present.
 Local checkpoint freshness compares timestamp-origin presence with the retained
 creation/update values using the generated SQLite query. Empty origin slots do not

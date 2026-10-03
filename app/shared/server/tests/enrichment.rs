@@ -108,6 +108,7 @@ async fn qdrant_timestamp_evidence_round_trips_and_rejects_invalid_rules_and_ids
         crate::provider::Provider::Opencode,
         crate::provider::Provider::Hermes,
         crate::provider::Provider::Pi,
+        crate::provider::Provider::GeminiCli,
     ] {
         let mut expected = evidence();
         let native_fields = match provider {
@@ -122,6 +123,10 @@ async fn qdrant_timestamp_evidence_round_trips_and_rejects_invalid_rules_and_ids
             crate::provider::Provider::Pi => Some([
                 TimestampField::SessionTimestamp,
                 TimestampField::SessionTimestamp,
+            ]),
+            crate::provider::Provider::GeminiCli => Some([
+                TimestampField::SessionStartTime,
+                TimestampField::SessionLastUpdated,
             ]),
             _ => None,
         };

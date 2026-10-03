@@ -2,6 +2,7 @@ use super::*;
 mod compaction;
 mod memory;
 mod pipeline;
+mod timestamps;
 mod tool_history;
 use crate::{
     provider::Provider,

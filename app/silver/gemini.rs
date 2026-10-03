@@ -1,4 +1,5 @@
 //! Replay native Gemini recording updates and inclusive rewind records.
+use super::enrichment::{TimestampField, TimestampOrigin, Timestamps, VERSION};
 use super::{Conversation, NormalizedMessage, ParsedFile, SourceIdentity, records};
 use crate::{AppError, message_context::MessageContext, provider::Provider};
 use models::{Header, Message, Record, SessionKind, Update};
@@ -318,13 +319,8 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         );
     }
     let messages = state.messages;
-    let created_at = state
-        .created_at
-        .or_else(|| messages.iter().filter_map(|m| m.created_at).min());
-    let updated_at = state
-        .updated_at
-        .or_else(|| messages.iter().filter_map(|m| m.created_at).max())
-        .or(created_at);
+    let (created_at, updated_at, timestamp_origins) =
+        selected_timestamps(state.created_at, state.updated_at, &messages);
     let title = state
         .summary
         .as_deref()
@@ -345,7 +341,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             ),
             provider: Provider::GeminiCli,
             title_origin: None,
-            timestamp_origins: None,
+            timestamp_origins: Some(timestamp_origins),
             claude_lineage: None,
             source: SourceIdentity::file(path),
             project: Some(project(path, &state.project)?),
@@ -358,4 +354,35 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         malformed_records: 0,
         first_record_issue: None,
     })
+}
+
+fn selected_timestamps(
+    native_start: Option<i64>,
+    native_updated: Option<i64>,
+    messages: &[NormalizedMessage],
+) -> (Option<i64>, Option<i64>, Timestamps) {
+    let native = |value: i64, field| {
+        (
+            value,
+            TimestampOrigin::SourceMetadata {
+                field,
+                rule_version: VERSION,
+            },
+        )
+    };
+    let start = native_start
+        .map(|time| native(time, TimestampField::SessionStartTime))
+        .or_else(|| Timestamps::minimum_message(messages));
+    let updated = native_updated
+        .map(|time| native(time, TimestampField::SessionLastUpdated))
+        .or_else(|| Timestamps::maximum_message(messages))
+        .or_else(|| start.clone());
+    (
+        start.as_ref().map(|(time, _)| *time),
+        updated.as_ref().map(|(time, _)| *time),
+        Timestamps {
+            created_at: start.map(|(_, origin)| origin),
+            updated_at: updated.map(|(_, origin)| origin),
+        },
+    )
 }

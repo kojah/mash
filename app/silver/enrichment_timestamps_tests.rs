@@ -80,6 +80,7 @@ fn timestamp_rules_and_references_are_validated_without_reinterpreting_values() 
     for (provider, field) in [
         (Provider::Hermes, TimestampField::SessionTimestamp),
         (Provider::Pi, TimestampField::SessionsStartedAt),
+        (Provider::GeminiCli, TimestampField::SessionTimestamp),
     ] {
         for origin in [
             TimestampOrigin::Unknown,

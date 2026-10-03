@@ -59,6 +59,10 @@ pub(crate) enum TimestampField {
     SessionsLastActivityAt,
     #[serde(rename = "session.timestamp")]
     SessionTimestamp,
+    #[serde(rename = "session.startTime")]
+    SessionStartTime,
+    #[serde(rename = "session.lastUpdated")]
+    SessionLastUpdated,
 }
 
 impl Timestamps {
@@ -81,19 +85,35 @@ impl Timestamps {
     pub(super) fn maximum_message(
         messages: &[super::NormalizedMessage],
     ) -> Option<(i64, TimestampOrigin)> {
+        Self::message_boundary(messages, Boundary::Maximum)
+    }
+
+    pub(super) fn minimum_message(
+        messages: &[super::NormalizedMessage],
+    ) -> Option<(i64, TimestampOrigin)> {
+        Self::message_boundary(messages, Boundary::Minimum)
+    }
+
+    fn message_boundary(
+        messages: &[super::NormalizedMessage],
+        selection: Boundary,
+    ) -> Option<(i64, TimestampOrigin)> {
         let message = messages
             .iter()
             .filter(|m| m.created_at.is_some())
             .max_by(|a, b| {
-                a.created_at
-                    .cmp(&b.created_at)
-                    .then_with(|| b.id.cmp(&a.id))
+                let order = a.created_at.cmp(&b.created_at);
+                (match selection {
+                    Boundary::Minimum => order.reverse(),
+                    Boundary::Maximum => order,
+                })
+                .then_with(|| b.id.cmp(&a.id))
             })?;
         Some((
             message.created_at?,
             TimestampOrigin::MessageBoundary {
                 message_id: message.id.clone(),
-                selection: Boundary::Maximum,
+                selection,
                 rule_version: VERSION,
             },
         ))
@@ -161,6 +181,29 @@ impl Timestamps {
                             origin,
                             TimestampOrigin::SourceMetadata {
                                 field: TimestampField::SessionTimestamp,
+                                ..
+                            } | TimestampOrigin::MessageBoundary {
+                                selection: Boundary::Maximum,
+                                ..
+                            }
+                        ),
+                    },
+                    Provider::GeminiCli => match boundary {
+                        Boundary::Minimum => matches!(
+                            origin,
+                            TimestampOrigin::SourceMetadata {
+                                field: TimestampField::SessionStartTime,
+                                ..
+                            } | TimestampOrigin::MessageBoundary {
+                                selection: Boundary::Minimum,
+                                ..
+                            }
+                        ),
+                        Boundary::Maximum => matches!(
+                            origin,
+                            TimestampOrigin::SourceMetadata {
+                                field: TimestampField::SessionStartTime
+                                    | TimestampField::SessionLastUpdated,
                                 ..
                             } | TimestampOrigin::MessageBoundary {
                                 selection: Boundary::Maximum,
@@ -299,6 +342,7 @@ impl Evidence {
                         | Provider::Opencode
                         | Provider::Hermes
                         | Provider::Pi
+                        | Provider::GeminiCli
                 ),
             }
             && self.title.as_ref().is_none_or(|origin| match provider {
