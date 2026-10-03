@@ -54,6 +54,7 @@ impl Data {
             })
             .collect();
         NodeState {
+            source_silver: None,
             instance: None,
             revision: 0,
             sources,
@@ -91,6 +92,7 @@ pub(in crate::shared) fn start(
     loaded: &mut Loaded,
     input: &Start,
 ) -> Result<(i64, bool), AppError> {
+    input.validate_source_silver()?;
     valid_id(&input.instance)?;
     if input.revision.is_some_and(|r| r < 1)
         || input.base_revision.is_some_and(|r| r < 0)
@@ -131,6 +133,7 @@ pub(in crate::shared) fn start(
     };
     if loaded.head.is_none() {
         loaded.head = Some(Head {
+            source_silver: None,
             snapshot_schema: super::layers::Schema::Layered,
             instance: input.instance.clone(),
             generation: semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
@@ -178,6 +181,9 @@ pub(in crate::shared) fn plan(
         purged: 0,
     };
     if !duplicate {
+        if let Some(head) = &mut plan.loaded.head {
+            head.source_silver.clone_from(&input.source_silver);
+        }
         for id in &input.forgets {
             plan.changed |= forget(&mut plan.loaded.data, id)?;
         }

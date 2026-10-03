@@ -53,6 +53,7 @@ impl Fixture {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         let events = vec![
             Event::Start(Start {
+                source_silver: None,
                 instance: "instance".into(),
                 revision: Some(revision),
                 base_revision: None,
@@ -558,6 +559,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     node_id: "node".into(),
                     version: version.clone(),
                     head: Some(Head {
+                        source_silver: None,
                         snapshot_schema: crate::shared::snapshot::layers::Schema::Mixed,
                         instance: "instance".into(),
                         generation: "test".into(),

@@ -6,6 +6,7 @@ use super::Storage;
 use crate::AppError;
 
 pub(crate) struct Snapshot<'a> {
+    pub(crate) source_silver: crate::silver::certificate::Certificate,
     connection: &'a Connection,
     pub(crate) instance: String,
     pub(crate) revision: i64,
@@ -266,6 +267,7 @@ impl Storage {
             )
             .map_err(AppError::database)?;
         publish(&Snapshot {
+            source_silver: self.silver_certificate()?,
             connection: &transaction,
             instance,
             revision,

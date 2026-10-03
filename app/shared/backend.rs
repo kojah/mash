@@ -37,7 +37,7 @@ async fn lock_node(
         return Err(AppError::usage("invalid node revision"));
     }
     tx.execute(
-        "INSERT INTO nodes VALUES($1,$2,0) ON CONFLICT DO NOTHING",
+        "INSERT INTO nodes(node_id,instance,revision) VALUES($1,$2,0) ON CONFLICT DO NOTHING",
         &[&node, &start.instance],
     )
     .await
@@ -117,7 +117,7 @@ pub(super) async fn forget(
     // Locks protect forget across node processes, while revisions reject restored databases.
     let node = &identity.node_id;
     tx.execute(
-        "INSERT INTO nodes VALUES($1,$2,0) ON CONFLICT DO NOTHING",
+        "INSERT INTO nodes(node_id,instance,revision) VALUES($1,$2,0) ON CONFLICT DO NOTHING",
         &[&node, &input.instance],
     )
     .await
@@ -138,7 +138,7 @@ pub(super) async fn forget(
             .ok_or_else(|| conflict("node revision exhausted"))?,
     );
     tx.execute(
-        "UPDATE nodes SET revision=$2 WHERE node_id=$1",
+        "UPDATE nodes SET revision=$2,source_silver=NULL WHERE node_id=$1",
         &[&node, &revision],
     )
     .await
@@ -252,6 +252,7 @@ pub(super) async fn index(
     else {
         return Err(AppError::usage("index stream must start with metadata"));
     };
+    start.validate_source_silver()?;
     if start.forgets.len() > 10000
         || (start.snapshot && (start.base_revision.is_some() || !start.forgets.is_empty()))
     {
@@ -369,9 +370,15 @@ pub(super) async fn index(
         return Err(AppError::usage("missing message context parent"));
     }
     if !duplicate {
+        let certificate = start
+            .source_silver
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|_| AppError::internal("serialize silver certificate"))?;
         tx.execute(
-            "UPDATE nodes SET revision=$2 WHERE node_id=$1",
-            &[&node, &revision],
+            "UPDATE nodes SET revision=$2,source_silver=$3 WHERE node_id=$1",
+            &[&node, &revision, &certificate],
         )
         .await
         .map_err(pg_error)?;
@@ -496,7 +503,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 18 {
+        if version != 19 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
@@ -898,10 +905,17 @@ pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState,
         .opt()
         .await
         .map_err(pg_error)?;
-    let (instance, revision) = if let Some(row) = node {
-        (Some(row.instance), row.revision)
+    let (instance, revision, source_silver) = if let Some(row) = node {
+        let certificate = row
+            .source_silver
+            .map(|json| {
+                serde_json::from_str(&json)
+                    .map_err(|_| AppError::shared("invalid stored silver certificate"))
+            })
+            .transpose()?;
+        (Some(row.instance), row.revision, certificate)
     } else {
-        (None, 0)
+        (None, 0, None)
     };
     let mut sources = Vec::new();
     for r in pg::sources()
@@ -944,6 +958,7 @@ pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState,
     }
     tx.commit().await.map_err(pg_error)?;
     Ok(NodeState {
+        source_silver,
         instance,
         revision,
         sources,

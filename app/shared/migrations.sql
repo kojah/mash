@@ -206,3 +206,11 @@ DO $$ BEGIN
         UPDATE version SET version=18 WHERE singleton;
     END IF;
 END $$;
+
+-- Source certificates are absent for historical or independently routed data.
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 18 THEN
+        ALTER TABLE nodes ADD COLUMN IF NOT EXISTS source_silver TEXT;
+        UPDATE version SET version=19 WHERE singleton;
+    END IF;
+END $$;

@@ -15,6 +15,7 @@ mod relevance;
 mod restart;
 mod selections;
 mod snapshot_budget;
+mod source_silver;
 mod storage_layers;
 mod threads;
 mod windsurf;
@@ -56,6 +57,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
         .collect();
     [
         Event::Start(Start {
+            source_silver: None,
             instance: "provider-contract".into(),
             revision: Some(revision),
             base_revision: None,
@@ -199,6 +201,7 @@ async fn wal_checkpoint_contract(service: Service) {
     };
     let events = [
         Event::Start(Start {
+            source_silver: None,
             instance: "native-session-test".into(),
             revision: None,
             base_revision: Some(0),
@@ -232,6 +235,7 @@ async fn wal_checkpoint_contract(service: Service) {
         source.ready = true;
         let events = [
             Event::Start(Start {
+                source_silver: None,
                 instance: "native-session-test".into(),
                 revision: None,
                 base_revision: Some(state.revision),
@@ -1216,7 +1220,7 @@ async fn postgres_publication_migrates_existing_array_vectors_without_losing_his
     let service = Service::new(true).await;
     let client = service.pool.get().await.unwrap();
     let schema = backend::group_schema(&service.group);
-    client.batch_execute(&format!("SET search_path={schema},public; DROP TABLE message_search; ALTER TABLE messages ADD COLUMN generation TEXT, ADD COLUMN vector double precision[], ADD COLUMN document TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple',projection)) STORED; INSERT INTO nodes VALUES('legacy','old',1); INSERT INTO conversations(node_id,id,provider) VALUES('legacy','conversation','codex'); UPDATE version SET version=1;")).await.unwrap();
+    client.batch_execute(&format!("SET search_path={schema},public; DROP TABLE message_search; ALTER TABLE messages ADD COLUMN generation TEXT, ADD COLUMN vector double precision[], ADD COLUMN document TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple',projection)) STORED; INSERT INTO nodes(node_id,instance,revision) VALUES('legacy','old',1); INSERT INTO conversations(node_id,id,provider) VALUES('legacy','conversation','codex'); UPDATE version SET version=1;")).await.unwrap();
     for (id, vector) in [
         ("complete", vec![1.0f64; 384]),
         ("incomplete", vec![1.0; 2]),

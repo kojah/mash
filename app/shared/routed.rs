@@ -54,6 +54,7 @@ pub(crate) async fn index(
     write_event(
         file.as_file_mut(),
         &Event::Start(Start {
+            source_silver: None,
             instance: instance.to_owned(),
             revision: Some(owner.revision),
             base_revision: Some(state.revision),

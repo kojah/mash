@@ -6,11 +6,60 @@ use crate::storage::{Counts, SearchHit};
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Start {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_silver: Option<crate::silver::certificate::Certificate>,
     pub instance: String,
     pub revision: Option<i64>,
     pub base_revision: Option<i64>,
     pub snapshot: bool,
     pub forgets: Vec<String>,
+}
+
+impl Start {
+    pub(super) fn validate_source_silver(&self) -> Result<(), crate::AppError> {
+        if let Some(certificate) = &self.source_silver
+            && (!self.snapshot
+                || certificate.interpretation_version
+                    != crate::silver::certificate::INTERPRETATION_VERSION
+                || (certificate.is_complete() && certificate.rejected_sources != 0))
+        {
+            return Err(crate::AppError::usage("invalid source silver certificate"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod source_certificate_tests {
+    use super::*;
+    use crate::silver::certificate::{Certificate, Completeness, INTERPRETATION_VERSION};
+
+    #[test]
+    fn source_certificates_are_typed_scoped_and_not_gold_readiness() {
+        let mut start: Start = serde_json::from_str(
+            r#"{"instance":"node","revision":1,"base_revision":null,"snapshot":true,"forgets":[]}"#,
+        )
+        .unwrap();
+        assert!(start.source_silver.is_none());
+        start.source_silver = Some(Certificate {
+            revision: 0,
+            interpretation_version: INTERPRETATION_VERSION,
+            completeness: Completeness::Pending,
+            rejected_sources: 1,
+        });
+        start.validate_source_silver().unwrap();
+        start.source_silver.as_mut().unwrap().completeness = Completeness::Complete;
+        assert!(start.validate_source_silver().is_err());
+        start.source_silver.as_mut().unwrap().rejected_sources = 0;
+        start.validate_source_silver().unwrap();
+        start.snapshot = false;
+        assert!(start.validate_source_silver().is_err());
+        start.snapshot = true;
+        start.source_silver.as_mut().unwrap().interpretation_version += 1;
+        assert!(start.validate_source_silver().is_err());
+        let malformed = r#"{"revision":0,"interpretation_version":1,"completeness":"complete","rejected_sources":0,"gold_model":"invented"}"#;
+        assert!(serde_json::from_str::<Certificate>(malformed).is_err());
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -160,6 +209,8 @@ pub(crate) struct Tombstone {
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct NodeState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_silver: Option<crate::silver::certificate::Certificate>,
     pub instance: Option<String>,
     pub revision: i64,
     pub sources: Vec<Checkpoint>,

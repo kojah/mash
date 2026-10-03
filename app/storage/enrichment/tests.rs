@@ -104,6 +104,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     assert_eq!(threads[0].metadata.enrichment, Some(evidence.clone()));
     stored
         .with_publication_snapshot(|snapshot| {
+            assert_eq!(snapshot.source_silver, stored.silver_certificate().unwrap());
             snapshot.visit(crate::shared::protocol::BatchKind::Conversations, |batch| {
                 let crate::shared::protocol::Batch::Conversations { records } = batch else {
                     panic!("conversation batch")

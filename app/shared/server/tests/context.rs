@@ -125,6 +125,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
     .collect();
     [
         Event::Start(Start {
+            source_silver: None,
             instance: "branch-test".into(),
             revision: Some(revision),
             base_revision: None,

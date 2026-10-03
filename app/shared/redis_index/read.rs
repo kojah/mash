@@ -61,6 +61,7 @@ impl Store {
             let mut state: NodeState = decode(&state)?;
             state.instance = Some(head.instance);
             state.revision = head.revision;
+            state.source_silver = head.source_silver;
             if head.generation != identity.generation {
                 for source in &mut state.sources {
                     source.ready = false;
@@ -69,6 +70,7 @@ impl Store {
             Ok(state)
         } else {
             Ok(NodeState {
+                source_silver: None,
                 instance: None,
                 revision: 0,
                 sources: Vec::new(),

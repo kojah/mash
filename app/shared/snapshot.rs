@@ -20,6 +20,8 @@ fn identity_key(provider: Provider, id: &str) -> String {
 }
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct Head {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) source_silver: Option<crate::silver::certificate::Certificate>,
     #[serde(default)]
     pub(super) snapshot_schema: layers::Schema,
     pub(super) instance: String,

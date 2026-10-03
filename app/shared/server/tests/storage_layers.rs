@@ -2,6 +2,46 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires disposable PostgreSQL with pgvector"]
+async fn postgres_source_certificate_migration_preserves_history_and_absence() {
+    let service = Service::new(true).await;
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    let client = service.pool.get().await.unwrap();
+    let schema = backend::group_schema(&service.group);
+    client
+        .batch_execute(&format!(
+            "SET search_path={schema},public;
+        CREATE TEMP TABLE expected_messages AS SELECT * FROM messages;
+        CREATE TEMP TABLE expected_gold AS SELECT * FROM message_search;
+        ALTER TABLE nodes DROP COLUMN source_silver;
+        UPDATE version SET version=18;"
+        ))
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        backend::initialize(&service.pool, std::slice::from_ref(&service.group))
+            .await
+            .unwrap();
+    }
+    let state: protocol::NodeState =
+        serde_json::from_value(service.get("state", FIRST).await).unwrap();
+    assert_eq!(state.revision, 1);
+    assert!(state.source_silver.is_none());
+    for (table, expected) in [
+        ("messages", "expected_messages"),
+        ("message_search", "expected_gold"),
+    ] {
+        let unchanged = client.query_one(&format!("SELECT NOT EXISTS(SELECT * FROM {table} EXCEPT SELECT * FROM {expected}) AND NOT EXISTS(SELECT * FROM {expected} EXCEPT SELECT * FROM {table})"), &[]).await.unwrap();
+        assert!(unchanged.get::<_, bool>(0));
+    }
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL with pgvector"]
 async fn postgres_previous_schema_enrichment_migration_preserves_history_and_vectors() {
     let service = Service::new(true).await;
     service

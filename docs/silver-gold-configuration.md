@@ -18,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to all shared backends | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Shared certificate/manifest propagation and per-field enrichment origins remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; full shared snapshots retain their source certificate | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Server-owned completeness for routed silver, shared gold manifests and broader enrichment origins remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -138,6 +138,29 @@ This remains the local certificate foundation. The shared pure-silver revision
 and completeness certificate and uniform per-field source-versus-inferred
 metadata evidence are still separate work; versioned shared checkpoints alone
 do not prove either has shipped.
+
+### Source-silver certificates on full shared snapshots
+
+Full local snapshot publication includes a typed `source_silver` certificate
+read in the same SQLite transaction as the outgoing history. Its revision is
+the source silver revision, distinct from the publication revision. The server
+persists it atomically with the accepted snapshot and returns it from the node
+state endpoint. PostgreSQL schema 19 adds a nullable node field; Redis and
+Qdrant store it in their existing atomic publication heads. Historical snapshots
+leave it absent. A duplicate publication preserves its accepted certificate.
+
+This is a node-supplied statement about the source history, independent of vector
+coverage or embedding generation. It does not by itself authorize gold search
+or certify full enrichment coverage. Unsupported interpretation versions and
+contradictory complete-with-rejections certificates are rejected. Interrupted
+uploads never publish a certificate.
+
+Independently routed ingestion cannot attach a full-local-snapshot certificate:
+its provider allowlist and retained history may differ. Routed updates, replacement
+snapshots without a certificate, and server-side forget operations clear the prior
+source certificate. A server-owned silver revision and completeness contract for
+routed ingestion remains follow-up work, along with shared gold manifests and
+source-free shared rebuilds.
 
 ## Explicit local gold rebuilding
 

@@ -199,6 +199,7 @@ impl Store {
         if let Some(h) = loaded.head {
             state.instance = Some(h.instance);
             state.revision = h.revision;
+            state.source_silver = h.source_silver;
             if h.generation != identity.generation {
                 for source in &mut state.sources {
                     source.ready = false;

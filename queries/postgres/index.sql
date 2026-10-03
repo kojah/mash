@@ -5,8 +5,8 @@ SELECT instance, revision FROM nodes WHERE node_id=:node FOR UPDATE;
 SELECT node_id,id,provider,title,project,repository,created_at,updated_at,enrichment
 FROM conversations;
 
---! node_state
-SELECT instance, revision FROM nodes WHERE node_id=:node;
+--! node_state : (source_silver?)
+SELECT instance, revision, source_silver FROM nodes WHERE node_id=:node;
 
 --! version
 SELECT version FROM version WHERE singleton;

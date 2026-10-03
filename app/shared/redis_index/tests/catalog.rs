@@ -41,6 +41,7 @@ impl Fixture {
         vector[0] = 127.0;
         let events = [
             Event::Start(Start {
+                source_silver: None,
                 instance: "catalog-instance".into(),
                 revision: Some(revision),
                 base_revision: None,

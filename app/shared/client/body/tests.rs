@@ -35,6 +35,7 @@ fn chunked(bytes: Bytes) -> Body {
 
 fn state(records: usize) -> NodeState {
     NodeState {
+        source_silver: None,
         instance: Some("unicode-instance-🧪".into()),
         revision: i64::MAX,
         sources: (0..records)

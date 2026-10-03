@@ -12,6 +12,14 @@ fn vector() -> Vec<f64> {
     vector[0] = 127.0;
     vector
 }
+fn source_certificate(revision: i64) -> crate::silver::certificate::Certificate {
+    crate::silver::certificate::Certificate {
+        revision: u64::try_from(revision).unwrap() * 10,
+        interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
+        completeness: crate::silver::certificate::Completeness::Complete,
+        rejected_sources: 0,
+    }
+}
 fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     let providers = if second {
         vec![Provider::Hermes]
@@ -75,6 +83,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     }
     vec![
         Event::Start(Start {
+            source_silver: Some(source_certificate(revision)),
             instance: "restart-instance".into(),
             revision: Some(revision),
             base_revision: None,
@@ -162,6 +171,8 @@ async fn verify_search(api: &Api) {
 }
 
 async fn verify(api: &Api, revision: i64) -> String {
+    let state: protocol::NodeState = api.get("state", FIRST).await;
+    assert_eq!(state.source_silver, Some(source_certificate(revision)));
     for (token, expected) in [
         (FIRST, (2, 3, 2, 2)),
         (SECOND, (1, 1, 1, 1)),
