@@ -476,8 +476,12 @@ Its cache identity includes ranking: switching ranking reloads a matching
 backend instead of retaining an unused reranker. Remote fusion loads neither
 local model and needs no local asset installation; it validates remote settings
 and credentials instead. Status distinguishes physical `models_installed` from
-effective `query_models` (`"available"` or `"unavailable"`) for current TOML
-query defaults. Query resource selection does not change
+effective `query_models` (`"available"`, `"unavailable"`, or `"not-required"`) for current TOML
+query defaults. Exact-mention status checks certified, current lexical data without
+requiring models or matching the configured dense recipe; it reports lexical
+readiness even when dense coverage is incomplete. Missing, dirty or stale lexical
+data still requires explicit indexing. This is local readiness; shared inspection
+remains separate. Query resource selection does not change
 build identity or vectors. CLI `search --ranking fusion` or
 MCP `search` with `"ranking":"fusion"` overrides ranking for one request;
 `"contextual-rerank"` is also accepted. Omission inherits current TOML, including

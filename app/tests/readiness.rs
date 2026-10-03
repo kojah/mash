@@ -172,6 +172,50 @@ fn status_with_completed_embeddings_reports_hybrid_readiness() {
 }
 
 #[test]
+fn exact_status_uses_lexical_certification_without_models_or_dense_coverage() {
+    let fixture = NodeFixture::new();
+    let config = fixture.database.with_extension("toml");
+    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nembedding_text='title-and-dialogue'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    let missing_models = fixture.database.with_extension("missing-models");
+    let status = || {
+        run_json(&[
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            fixture.database.to_str().unwrap(),
+            "--models-dir",
+            missing_models.to_str().unwrap(),
+            "status",
+        ])
+    };
+    let absent = status();
+    assert_eq!(absent["query_models"], "not-required");
+    assert_eq!(absent["ready"], false);
+    assert_eq!(absent["recommended_action"], "index");
+    assert!(!fixture.database.exists());
+    fixture.seed(None);
+    assert_eq!(status()["ready"], false); // unpublished current silver
+    fixture.complete_index();
+    let before = std::fs::read(&fixture.database).unwrap();
+    let complete = status();
+    assert_eq!(complete["ready"], true);
+    assert_eq!(complete["realized_mode"], "lexical");
+    assert_eq!(complete["query_models"], "not-required");
+    assert_eq!(complete["models_installed"], false);
+    assert_eq!(complete["embeddings"], 0);
+    assert!(complete["recommended_action"].is_null());
+    assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
+    let connection = Connection::open(&fixture.database).unwrap();
+    connection
+        .execute_batch("UPDATE derived_state SET search_dirty=1 WHERE singleton=1")
+        .unwrap();
+    assert_eq!(status()["ready"], false);
+    connection.execute_batch("UPDATE derived_state SET search_dirty=0 WHERE singleton=1; UPDATE silver_state SET revision=revision+1 WHERE singleton=1").unwrap();
+    assert_eq!(status()["ready"], false);
+    assert!(!missing_models.exists());
+}
+
+#[test]
 fn status_with_completed_context_only_index_needs_no_embeddings() {
     let fixture = NodeFixture::new();
     fixture.seed(Some(""));

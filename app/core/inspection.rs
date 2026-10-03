@@ -54,13 +54,9 @@ fn local_status(
     let models =
         Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
     let models_installed = models.is_installed();
-    let query_models_available = match models.require_search(configuration.gold.query.ranking) {
-        Ok(()) => true,
-        Err(error) if matches!(error.error.kind, crate::ErrorKind::Configuration) => {
-            return Err(error);
-        }
-        Err(_) => false,
-    };
+    let exact = configuration.gold.query.intent == crate::gold::exact::Intent::ExactMention;
+    let query_models = query_model_availability(&models, &configuration.gold.query)?;
+    let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
             gold: None,
@@ -73,11 +69,7 @@ fn local_status(
             embeddings: 0,
             stored_embeddings: 0,
             models_installed,
-            query_models: if query_models_available {
-                ModelAvailability::Available
-            } else {
-                ModelAvailability::Unavailable
-            },
+            query_models,
             semantic_support: true,
             realized_mode: SearchMode::Unavailable,
             recommended_action: Some(if query_models_available {
@@ -109,10 +101,17 @@ fn local_status(
         && snapshot.derived_clean
         && snapshot.exact_semantic_coverage
         && manifest_matches;
+    let lexical_ready = snapshot.derived_clean
+        && snapshot
+            .gold
+            .as_ref()
+            .zip(snapshot.silver.as_ref())
+            .is_some_and(|(m, s)| m.matches(&m.build, &m.model_generation, s));
+    let ready = if exact { lexical_ready } else { hybrid_ready };
     Ok(StatusResponse {
         gold: snapshot.gold,
         silver: snapshot.silver,
-        ready: hybrid_ready,
+        ready,
         database_path: Some(database_path.to_path_buf()),
         conversations: counts.conversations,
         messages: counts.messages,
@@ -120,20 +119,18 @@ fn local_status(
         embeddings: current_embeddings,
         stored_embeddings: counts.embeddings,
         models_installed,
-        query_models: if query_models_available {
-            ModelAvailability::Available
-        } else {
-            ModelAvailability::Unavailable
-        },
+        query_models,
         semantic_support: true,
-        realized_mode: if hybrid_ready {
+        realized_mode: if ready && exact {
+            SearchMode::Lexical
+        } else if ready {
             SearchMode::Hybrid
         } else {
             SearchMode::Unavailable
         },
         recommended_action: if !query_models_available {
             Some(crate::Action::ModelsInstall)
-        } else if hybrid_ready {
+        } else if ready {
             None
         } else {
             Some(crate::Action::Index)
@@ -146,6 +143,20 @@ fn local_status(
         },
         shared_index: None,
     })
+}
+
+fn query_model_availability(
+    models: &Models,
+    query: &crate::gold::config::Query,
+) -> Result<ModelAvailability, AppError> {
+    if query.intent == crate::gold::exact::Intent::ExactMention {
+        return Ok(ModelAvailability::NotRequired);
+    }
+    match models.require_search(query.ranking) {
+        Ok(()) => Ok(ModelAvailability::Available),
+        Err(error) if matches!(error.error.kind, crate::ErrorKind::Configuration) => Err(error),
+        Err(_) => Ok(ModelAvailability::Unavailable),
+    }
 }
 
 #[cfg(test)]

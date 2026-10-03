@@ -218,6 +218,7 @@ pub(crate) struct StatusResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum ModelAvailability {
+    NotRequired,
     Available,
     Unavailable,
 }
