@@ -610,8 +610,8 @@ recipe declares lexical-only. Artifact switches do not publish a second profile.
 
 Tests cover local CLI/MCP model-free indexing, fixed-vector shared replacement,
 real local inference when returning to dense gold, and silver invariance. These
-are correctness fixtures; representative corpus storage, indexing and search
-costs, including the capabilities round trip, remain an acceptance gate.
+are correctness fixtures; the measurements below supply bounded real-session
+storage, indexing and search costs, including the capabilities round trip.
 The [bounded local cost measurement](local-gold-cost-2026-10-03.md) records
 real-session construction, representation switching, storage and fresh-process
 CLI costs without changing silver. It does not close shared/fleet or quality gates.
@@ -620,6 +620,15 @@ the explicit dense/lexical-only/dense rebuild path on the same certified sample,
 including authenticated HTTP searches and provider filtering. Silver hashes and
 source revisions remain unchanged. Server/backend resources, steady-state
 storage after compaction, fleet latency and held-out quality remain open.
+
+The lexical/dense configuration task `mash-q3e.6.2` is complete: its implementation
+and local/shared cost children establish the two enabled builds, source-free
+replacement, model-free lexical operation, capability errors and measured costs.
+The native Mac rebuild described in [the migration record](qdrant-only-transition.md)
+also preserves all ten silver table hashes on a larger corpus. This does not
+complete shared migration, topic integration or broader lifecycle/quality work
+in `.5` and `.4.5`. Fleet resource, sustained-load and recovery work belong to
+those tasks rather than repeatedly extending this configuration milestone.
 
 Query resource selection does not change
 build identity or vectors. CLI `search --ranking fusion` or

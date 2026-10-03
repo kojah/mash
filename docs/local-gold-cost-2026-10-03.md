@@ -121,8 +121,14 @@ are private. The measured capture remains in
 published here. Re-running samples current local files, so source hashes may
 change. The private manifest is required to identify this exact corpus.
 
-Follow-ups remain for full-corpus and MacBook measurements, shared Qdrant/HTTP
-costs and capabilities overhead, warm/mixed-policy workers, incremental
-edits/deletions, model/dimension migrations, backup recovery and held-out
-retrieval quality. Those gates stay open under `mash-q3e.6.2`, `.4.2.4`, `.4.5`
-and `.5`; this closes only the bounded local measurement child `.6.2.2`.
+The subsequent [shared measurement](shared-gold-cost-2026-10-03.md) covers
+Qdrant/HTTP costs and the capabilities path on this same sample. The
+[native Mac migration record](qdrant-only-transition.md) adds a larger source-free
+local dense rebuild with unchanged silver hashes; it is not a controlled
+cross-machine comparison. Together with correctness contracts, these complete
+the lexical/dense configuration milestone `mash-q3e.6.2`.
+
+Warm/mixed-policy workers, incremental edits/deletions, model/dimension migrations,
+backup recovery, fleet resources and held-out retrieval quality remain separate
+work under `.4.2.4`, `.4.5` and `.5`. Completing this bounded measurement does
+not establish those results or select a new default ranking policy.
