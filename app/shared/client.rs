@@ -80,16 +80,10 @@ impl Endpoint {
     }
 
     pub(super) const fn timeout(self) -> Duration {
-        match self {
-            // Publication can include a large streaming snapshot. Interactive
-            // reads must fail promptly so local results remain responsive.
-            Self::Index
-            | Self::Forget
-            | Self::State
-            | Self::Silver
-            | Self::PublicationPlan
-            | Self::Gold => Duration::from_secs(600),
-            _ => Duration::from_secs(2),
+        if self.bulk() {
+            super::BULK_TIMEOUT
+        } else {
+            Duration::from_secs(2)
         }
     }
 }
@@ -101,7 +95,7 @@ static HTTP_CLIENT: LazyLock<Result<reqwest::Client, reqwest::Error>> = LazyLock
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(600))
+        .timeout(super::BULK_TIMEOUT)
         .build()
 });
 

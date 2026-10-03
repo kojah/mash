@@ -313,7 +313,7 @@ the child measures parsing; in `streamed` mode it also includes waiting for body
 frames. Streamed byte counts include reader read-ahead. The request span records `queue_ms`, the fixed `endpoint` name and
 `admission` class. Each process admits up to eight interactive requests and one
 bulk state/publication request. They use separate capacity, acquired before
-sending HTTP. The existing 2-second interactive or 600-second bulk deadline
+sending HTTP. The 2-second interactive or 30-minute bulk deadline
 includes queueing and waiting for decoding. A canceled decoder retains its
 capacity until the blocking work finishes; cancellation does not interrupt
 already-running JSON parsing. This bounds concurrent response work, not response
@@ -947,8 +947,11 @@ publishing node for `view --shared NODE_ID`. Plain `view` always reads SQLite.
 Interactive shared reads have a two-second HTTP deadline. Fetching nearby shared
 context has a one-second total budget, preserving completed responses and using
 available message evidence for the rest. Transport failures appear in shared
-search status; combined search retains local results. Streaming publication has
-a separate ten-minute budget.
+search status; combined search retains local results. Bulk publication and
+retained-history operations have a separate thirty-minute budget, covering
+upload, validation and staging. The service uses the same bulk budget. A timed-out
+or disconnected requester does not cancel an already admitted mutation: it keeps
+its capacity until completion, and staged data remains invisible until publication.
 
 Search defaults to `unit = "threads"` in CLI and MCP. Each thread result includes
 its conversation ID, provider, representative node, available title/project/repository

@@ -117,7 +117,16 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
         }
     }
     request.extensions_mut().insert(identity.clone());
-    tokio::time::timeout(Duration::from_secs(600), next.run(request))
+    let timeout = match request.uri().path() {
+        "/v1/index"
+        | "/v1/gold"
+        | "/v1/forget"
+        | "/v1/state"
+        | "/v1/silver"
+        | "/v1/publication-plan" => super::BULK_TIMEOUT,
+        _ => Duration::from_secs(600),
+    };
+    tokio::time::timeout(timeout, next.run(request))
         .await
         .unwrap_or_else(|_| {
             ApiError(

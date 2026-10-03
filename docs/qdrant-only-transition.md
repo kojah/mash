@@ -290,3 +290,31 @@ The preview status request returned in 22.5 ms with zero published rows. These
 single smoke checks show read availability during this operation; they are not
 latency percentiles, a concurrency load test or shared publication acceptance.
 The local capture is `during-publication-search.json` in the private Mac directory.
+
+### Preview publication completed after the client deadline
+
+The detached mutation reached terminal `outcome = ok` at 20:21:38 UTC. The
+preview now exposes 3,018 threads, 434,486 messages, 68,731 searchable messages
+and 68,731 embeddings, matching the staged Mac. Freshness identifies node
+`dev-macbook`, source publication revision 506,236 and shared silver revision 1;
+both lexical and dense manifests are current. Captures are `published-status.json`
+and `published-freshness.json` in the private Xenia migration directory.
+This verifies server publication, not the timed-out command's local acknowledgement
+or complete group migration. The other two nodes have not been published here.
+
+Native Mac shared-only `cbioportal` checks returned two threads for each intent:
+exact-mention used lexical mode in 305.8 ms, and related-discussion used hybrid
+mode in 3.877 seconds. Both reported successful shared retrieval without a shared
+error; diagnostics selected the expected lexical versus lexical+dense artifacts.
+These single fresh-process smoke timings use the existing debug binaries and
+do not establish quality, percentiles or optimized production performance.
+Captures are `published-exact-mention.json` and `published-related-discussion.json`
+in the private Mac directory.
+
+The application bulk budget is now thirty minutes, shared between client
+transport/admission and the matching server routes. Interactive clients retain
+their two-second deadline. This addresses the observed ten-minute acknowledgement
+timeout without adding a job API or configuration framework. Validation passed
+621 standard tests, strict all-target Clippy, formatting and doctest compilation.
+The currently running preview and Mac still use their old binaries; installing
+the changed budget and rebuilding optimized executables remains deployment work.

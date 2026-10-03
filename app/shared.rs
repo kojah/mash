@@ -3,6 +3,10 @@
 //! in gold/shared.rs. Backends atomically persist and query their declared views.
 use serde::{Deserialize, Serialize};
 
+// Full-history upload, validation and staging share one bounded request budget.
+// Keep interactive client deadlines separate so ordinary search falls back promptly.
+const BULK_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(30);
+
 mod client;
 mod exact;
 mod gold_manifest;
