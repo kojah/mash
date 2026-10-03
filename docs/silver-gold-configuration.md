@@ -535,6 +535,9 @@ Tests cover local CLI/MCP model-free indexing, fixed-vector shared replacement,
 real local inference when returning to dense gold, and silver invariance. These
 are correctness fixtures; representative corpus storage, indexing and search
 costs, including the capabilities round trip, remain an acceptance gate.
+The [bounded local cost measurement](local-gold-cost-2026-10-03.md) records
+real-session construction, representation switching, storage and fresh-process
+CLI costs without changing silver. It does not close shared/fleet or quality gates.
 
 Query resource selection does not change
 build identity or vectors. CLI `search --ranking fusion` or
