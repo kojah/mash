@@ -83,6 +83,7 @@ impl Storage {
                 gold: None,
                 silver: None,
                 counts: Counts {
+                    searchable_user_messages: None,
                     conversations: readonly_table_count(&connection, "conversations")?,
                     messages: readonly_table_count(&connection, "messages")?,
                     searchable_messages: readonly_table_count(&connection, "messages")?,
@@ -115,6 +116,7 @@ impl Storage {
             .query_one(&self.connection)
             .map_err(AppError::database)?;
         Ok(Counts {
+            searchable_user_messages: None,
             conversations: u64::try_from(counts.conversations)
                 .map_err(|_| AppError::internal("negative conversation count"))?,
             messages: u64::try_from(counts.messages)

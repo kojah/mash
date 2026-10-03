@@ -178,7 +178,7 @@ fn index(
         require_certified_silver(&Storage::open_certified_silver(database_path)?)?;
     }
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
-    if build.dense_enabled() {
+    if build.dense_enabled() && !build.users_only() {
         models.require_indexer()?;
     }
     let storage_started = Instant::now();

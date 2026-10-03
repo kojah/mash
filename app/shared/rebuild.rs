@@ -106,7 +106,7 @@ async fn materialize(
         .history
         .messages
         .values()
-        .filter(|m| retained.build.dense_enabled() && !m.projection.is_empty())
+        .filter(|m| retained.build.includes_dense(&m.role, &m.projection))
         .count() as u64;
     // Match node-side inference batches, including hidden rows in the 32-row
     // boundary. Quantized inference can depend on batch composition.
@@ -124,7 +124,7 @@ async fn materialize(
         }
         let prepared = batch
             .iter()
-            .filter(|m| retained.build.dense_enabled() && !m.projection.is_empty())
+            .filter(|m| retained.build.includes_dense(&m.role, &m.projection))
             .map(|m| {
                 retained.build.prepare(
                     m.projection.clone(),
@@ -146,7 +146,7 @@ async fn materialize(
         result.embeddings.stored_vectors += vectors.len() as u64;
         let records = batch
             .into_iter()
-            .filter(|m| !m.projection.is_empty())
+            .filter(|m| retained.build.includes_dense(&m.role, &m.projection))
             .zip(vectors)
             .map(|(m, vector)| Embedding {
                 message_id: m.id,

@@ -46,6 +46,18 @@ impl Storage {
     }
 
     pub(crate) fn semantic_coverage_is_complete(&self, generation: &str) -> Result<bool, AppError> {
+        self.semantic_coverage_for_selection(generation, self.dense_users_only()?)
+    }
+
+    fn dense_users_only(&self) -> Result<bool, AppError> {
+        Ok(self.gold_manifest()?.is_some_and(|m| m.build.users_only()))
+    }
+
+    fn semantic_coverage_for_selection(
+        &self,
+        generation: &str,
+        users_only: bool,
+    ) -> Result<bool, AppError> {
         self.connection
             .query_row(
                 "SELECT NOT EXISTS (
@@ -54,15 +66,16 @@ impl Storage {
                       LEFT JOIN message_embeddings e
                         ON e.message_id = m.id AND e.generation = ?1
                      WHERE COALESCE(m.search_projection, m.content) <> ''
+                       AND (?2 = 0 OR m.role = 'user')
                        AND e.message_id IS NULL
                     UNION ALL
                     SELECT 1
                       FROM message_embeddings e
                       JOIN messages m ON m.id = e.message_id
                      WHERE e.generation = ?1
-                       AND COALESCE(m.search_projection, m.content) = ''
+                       AND (COALESCE(m.search_projection, m.content) = '' OR (?2 = 1 AND m.role <> 'user'))
                  )",
-                [generation],
+                params![generation, users_only],
                 |row| row.get(0),
             )
             .map_err(AppError::database)
@@ -80,15 +93,16 @@ impl Storage {
             )
             .map_err(AppError::database)?;
         if ready_generation.as_deref() == Some(generation) {
+            let users_only = self.dense_users_only()?;
             return self
                 .connection
                 .query_row(
                     "SELECT
                         (SELECT count(*) FROM messages
-                          WHERE COALESCE(search_projection, content) <> '') =
+                          WHERE COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user')) =
                         (SELECT COALESCE(sum(vector_count), 0)
                            FROM semantic_chunks WHERE generation = ?1)",
-                    [generation],
+                    params![generation, users_only],
                     |row| row.get(0),
                 )
                 .map_err(AppError::database);
@@ -111,9 +125,29 @@ impl Storage {
             .map_err(AppError::database)
     }
 
+    #[cfg(test)]
     pub(crate) fn mark_semantic_index_ready(&mut self, generation: &str) -> Result<(), AppError> {
+        self.mark_semantic_build_ready(generation, &crate::gold::config::Build::default())
+    }
+
+    pub(crate) fn restrict_dense_queue(
+        &self,
+        build: &crate::gold::config::Build,
+    ) -> Result<(), AppError> {
         self.require_writer()?;
-        if !self.semantic_coverage_is_complete(generation)? {
+        if build.users_only() {
+            self.connection.execute("DELETE FROM pending_embeddings WHERE message_id IN (SELECT id FROM messages WHERE role <> 'user')", []).map_err(AppError::database)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn mark_semantic_build_ready(
+        &mut self,
+        generation: &str,
+        build: &crate::gold::config::Build,
+    ) -> Result<(), AppError> {
+        self.require_writer()?;
+        if !self.semantic_coverage_for_selection(generation, build.users_only())? {
             return Err(AppError::search_not_ready(
                 "semantic embedding coverage is incomplete",
             ));
@@ -123,8 +157,8 @@ impl Storage {
             .connection
             .query_row(
                 "SELECT count(*) FROM messages
-                  WHERE COALESCE(search_projection, content) <> ''",
-                [],
+                  WHERE COALESCE(search_projection, content) <> '' AND (?1=0 OR role='user')",
+                [build.users_only()],
                 |row| row.get(0),
             )
             .map_err(AppError::database)?;

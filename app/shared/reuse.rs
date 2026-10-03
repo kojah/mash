@@ -176,7 +176,7 @@ fn eligible(
         .data
         .messages
         .values()
-        .filter(|m| !m.projection.is_empty())
+        .filter(|m| build.includes_dense(&m.role, &m.projection))
     {
         if message.generation.as_deref() != Some(&identity.generation)
             || message
@@ -192,6 +192,7 @@ fn eligible(
 
 #[derive(Default)]
 pub(super) struct Retained {
+    build: Build,
     hashes: BTreeMap<String, String>,
     vectors: BTreeMap<String, Vec<f64>>,
     requests: BTreeSet<String>,
@@ -213,6 +214,7 @@ impl Retained {
             }
         }
         Ok(Self {
+            build: build.clone(),
             hashes,
             vectors,
             requests: BTreeSet::new(),
@@ -239,11 +241,10 @@ impl Retained {
                 return Err(conflict("shared gold dependencies changed; retry indexing"));
             }
         }
-        for message in data
-            .messages
-            .values_mut()
-            .filter(|m| self.requests.contains(&m.conversation_id) && !m.projection.is_empty())
-        {
+        for message in data.messages.values_mut().filter(|m| {
+            self.requests.contains(&m.conversation_id)
+                && self.build.includes_dense(&m.role, &m.projection)
+        }) {
             if message.vector.is_some() || message.generation.is_some() {
                 return Err(AppError::usage(
                     "reused thread also supplies gold embeddings",

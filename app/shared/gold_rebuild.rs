@@ -136,8 +136,7 @@ pub(super) fn plan(
                         .messages
                         .get_mut(&record.message_id)
                         .ok_or_else(|| AppError::usage("gold embedding has no silver message"))?;
-                    if !build.dense_enabled()
-                        || message.projection.is_empty()
+                    if !build.includes_dense(&message.role, &message.projection)
                         || !protocol::valid_vector(&record.vector, dimensions)
                         || !seen.insert(record.message_id)
                     {
@@ -165,8 +164,8 @@ pub(super) fn plan(
 }
 
 fn clear_disabled_vectors(loaded: &mut Loaded, build: &crate::gold::config::Build) {
-    if !build.dense_enabled() {
-        for message in loaded.data.messages.values_mut() {
+    for message in loaded.data.messages.values_mut() {
+        if !build.includes_dense(&message.role, &message.projection) {
             message.vector = None;
             message.generation = None;
         }
@@ -178,7 +177,7 @@ fn embedding_coverage(loaded: &Loaded, seen: usize, build: &crate::gold::config:
         .data
         .messages
         .values()
-        .filter(|m| !m.projection.is_empty())
+        .filter(|m| build.includes_dense(&m.role, &m.projection))
         .count() as u64;
     seen as u64 == build.expected_embeddings(searchable)
 }

@@ -902,6 +902,47 @@ code indentation may remove useful structure. Held-out quality and representativ
 storage/build/search cost comparisons remain open; content selection and new
 retrieval units are also separate unfinished work.
 
+### Dense content selection
+
+Local node and shared server TOML independently accept:
+
+```toml
+[gold.build]
+dense_content = "user-messages"
+```
+
+The default `all-visible` retains existing behavior. `user-messages` embeds only
+nonempty interpreted dialogue whose normalized silver role is `user`. Assistant,
+system, developer, tool and unknown roles remain in canonical silver and lexical
+search, but receive no dense vectors. This is a gold build policy, distinct from
+the provider allowlists that control ingestion. It neither rewrites displayed
+history nor removes messages or thread metadata.
+
+The selection is recorded in the active manifest and dense generation together
+with text preparation, title enrichment, character budget and model identity.
+Switching requires an explicit gold rebuild from retained silver. Search never
+builds it automatically, and request overrides cannot change dense eligibility.
+Replacement keeps one active projection. Coverage and readiness count eligible
+messages rather than every visible message; shared heads carry an optional
+visible-user count. Legacy heads lacking this count cannot certify a user-only
+build until rebuilt. Invalid counts and vectors for excluded messages fail closed.
+
+A user-only index with no eligible messages completes without loading inference
+assets. If eligible messages exist, missing assets still prevent dense completion;
+canonical ingestion and lexical construction may already have succeeded. Related
+search still needs query-model assets even when the index contains no dense
+vectors. Exact-mention search remains available offline without model assets and
+includes assistant messages.
+
+Deploy clients and the HTTP service that understand this field before enabling
+it; strict configuration decoding intentionally rejects unknown build settings.
+
+Tests cover unchanged canonical history across replacement, mixed-role inference
+batches, empty eligibility, source-free rebuilding, role edits, restart, forgetting
+and rejected shared vectors without publication. This option has no claimed
+quality advantage. Broader content selectors, new retrieval units and comparative
+quality/cost evaluation remain tracked follow-ups.
+
 ## Query intent: exact mentions
 
 `[gold.query] intent = "related-discussion"` retains the existing hybrid retrieval

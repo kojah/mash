@@ -207,6 +207,7 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
     let titled = Recipe {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        dense_content: crate::gold::config::DenseContent::AllVisible,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: EmbeddingText::TitleAndDialogue,
     };

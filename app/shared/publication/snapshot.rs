@@ -99,7 +99,11 @@ fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, App
                         if let Some((_, fingerprint)) = &mut active {
                             fingerprint.push(message)?;
                         }
-                        visible += u64::from(!message.projection.is_empty());
+                        visible += u64::from(
+                            target
+                                .build
+                                .includes_dense(&message.role, &message.projection),
+                        );
                         // Local gold has a different recipe. Only canonical rows enter
                         // this temporary stream; shared reuse/preparation follows below.
                         message.vector = None;
@@ -208,7 +212,7 @@ async fn embed_batch(
     validate_model(target, inference)?;
     let prepared = batch
         .iter()
-        .filter(|m| !m.projection.is_empty())
+        .filter(|m| target.build.includes_dense(&m.role, &m.projection))
         .map(|m| target.build.prepare(m.projection.clone(), title))
         .collect::<Vec<_>>();
     let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
@@ -230,13 +234,27 @@ async fn embed_batch(
     build.embeddings.model_inferences += vectors.len() as u64;
     for (message, vector) in batch
         .iter_mut()
-        .filter(|m| !m.projection.is_empty())
+        .filter(|m| target.build.includes_dense(&m.role, &m.projection))
         .zip(vectors)
     {
         message.vector = Some(vector);
         message.generation = Some(target.generation.clone());
     }
     Ok(())
+}
+
+fn capture_metadata(target: &Target) -> Target {
+    // Serialize only the lightweight target across the blocking capture boundary.
+    Target {
+        schema_version: target.schema_version,
+        build: target.build.clone(),
+        generation: target.generation.clone(),
+        dimensions: target.dimensions,
+        publication_version: target.publication_version.clone(),
+        instance: target.instance.clone(),
+        publication_revision: target.publication_revision,
+        threads: BTreeMap::new(),
+    }
 }
 
 pub(super) async fn prepare(
@@ -246,17 +264,7 @@ pub(super) async fn prepare(
     started: Instant,
 ) -> Result<(tempfile::NamedTempFile, i64, SnapshotWork), AppError> {
     let path = path.to_path_buf();
-    // Serialize only the lightweight target across the blocking capture boundary.
-    let metadata = Target {
-        schema_version: target.schema_version,
-        build: target.build.clone(),
-        generation: target.generation.clone(),
-        dimensions: target.dimensions,
-        publication_version: target.publication_version.clone(),
-        instance: target.instance.clone(),
-        publication_revision: target.publication_revision,
-        threads: BTreeMap::new(),
-    };
+    let metadata = capture_metadata(target);
     let reuse_gold = !target.threads.is_empty();
     let source = crate::blocking(move || capture(&path, &metadata, reuse_gold)).await?;
     let reusable: BTreeMap<_, _> = source
@@ -278,7 +286,10 @@ pub(super) async fn prepare(
             break;
         }
         let reusable_thread = reusable.contains_key(&batch[0].conversation_id);
-        let visible = batch.iter().filter(|m| !m.projection.is_empty()).count();
+        let visible = batch
+            .iter()
+            .filter(|m| target.build.includes_dense(&m.role, &m.projection))
+            .count();
         if reusable_thread {
             reused_embeddings += visible as u64;
         } else if visible > 0 && target.build.dense_enabled() {

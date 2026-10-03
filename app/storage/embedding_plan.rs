@@ -71,11 +71,11 @@ impl EmbeddingPlan {
         {
             let sql = match build.embedding_text {
                 crate::gold::config::EmbeddingText::Dialogue =>
-                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), NULL
+                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), NULL, messages.role
                      FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
                      ORDER BY pending_embeddings.message_id",
                 crate::gold::config::EmbeddingText::TitleAndDialogue =>
-                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), conversations.title
+                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), conversations.title, messages.role
                      FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
                      JOIN conversations ON conversations.id = messages.conversation_id
                      ORDER BY pending_embeddings.message_id",
@@ -101,6 +101,10 @@ impl EmbeddingPlan {
                 let id: String = row.get(0).map_err(AppError::database)?;
                 let content: String = row.get(1).map_err(AppError::database)?;
                 let title: Option<String> = row.get(2).map_err(AppError::database)?;
+                let role: crate::role::Role = row.get("role").map_err(AppError::database)?;
+                if !build.includes_dense(&role, &content) {
+                    continue;
+                }
                 let content = build.prepare(content, title.as_deref());
                 let digest = blake3::hash(content.as_bytes());
                 let length = i64::try_from(content.len())

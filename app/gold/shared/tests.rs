@@ -64,7 +64,11 @@ fn conversation() -> Conversation {
                     } else {
                         MessageContext::Parent { ordinal: 0 }
                     },
-                    role: Role::User,
+                    role: if ordinal % 3 == 0 {
+                        Role::Assistant
+                    } else {
+                        Role::User
+                    },
                     content: format!("canonical {ordinal}"),
                     dialogue_text: Some(if ordinal % 4 == 0 {
                         String::new()
@@ -149,6 +153,49 @@ fn canonical_rows(conversation: &Conversation) -> Vec<u8> {
 }
 
 #[tokio::test]
+async fn users_only_with_no_eligible_rows_preserves_history_without_loading_models() {
+    let mut silver = conversation();
+    silver.messages = silver
+        .messages
+        .into_rows()
+        .unwrap()
+        .map(|row| {
+            let mut row = row.unwrap();
+            row.role = Role::Assistant;
+            row
+        })
+        .collect::<Vec<_>>()
+        .into();
+    let before = canonical_rows(&silver);
+    let root = tempfile::tempdir().unwrap();
+    let absent = root.path().join("absent-models");
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    let mut result = Build {
+        recipe: crate::gold::config::Build {
+            dense_content: crate::gold::config::DenseContent::UserMessages,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    materialize(
+        file.as_file_mut(),
+        &silver,
+        &absent,
+        None,
+        &mut None,
+        &mut result,
+    )
+    .await
+    .unwrap();
+    assert_eq!(canonical_rows(&silver), before);
+    assert_eq!(result.messages, 37);
+    assert_eq!(result.embeddings.stored_vectors, 0);
+    assert_eq!(result.embeddings.model_inferences, 0);
+    assert_eq!(result.model_load_milliseconds, 0);
+    assert!(!absent.exists());
+}
+
+#[tokio::test]
 async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_groups() {
     for recipe in [
         crate::gold::config::EmbeddingText::Dialogue,
@@ -159,13 +206,19 @@ async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_gr
                 crate::gold::config::TextPreparation::Preserve,
                 crate::gold::config::TextPreparation::CollapseWhitespace,
             ] {
-                verify_materialization(crate::gold::config::Build {
-                    max_embedding_chars: budget,
-                    representations: crate::gold::config::Representations::LexicalAndDense,
-                    text_preparation: preparation,
-                    embedding_text: recipe,
-                })
-                .await;
+                for content in [
+                    crate::gold::config::DenseContent::AllVisible,
+                    crate::gold::config::DenseContent::UserMessages,
+                ] {
+                    verify_materialization(crate::gold::config::Build {
+                        max_embedding_chars: budget,
+                        representations: crate::gold::config::Representations::LexicalAndDense,
+                        dense_content: content,
+                        text_preparation: preparation,
+                        embedding_text: recipe,
+                    })
+                    .await;
+                }
             }
         }
     }
@@ -213,9 +266,10 @@ async fn verify_materialization(recipe: crate::gold::config::Build) {
         .into_iter::<Event>()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert_published_silver(events);
+    assert_published_silver(events, &recipe);
     let expected = (0..37)
         .filter(|ordinal| ordinal % 4 != 0)
+        .filter(|ordinal| !recipe.users_only() || ordinal % 3 != 0)
         .map(|ordinal| recipe.prepare(projection(ordinal), Some("title")))
         .collect::<Vec<_>>();
     let requests = requests.lock().unwrap();
@@ -235,17 +289,25 @@ async fn verify_materialization(recipe: crate::gold::config::Build) {
                 .all(|text| text.chars().count() == 256 && !text.contains("trailingevidence"))
         );
     }
-    assert_eq!(requests.iter().map(Vec::len).collect::<Vec<_>>(), [24, 3]);
+    assert_eq!(
+        requests.iter().map(Vec::len).collect::<Vec<_>>(),
+        if recipe.users_only() {
+            vec![16, 2]
+        } else {
+            vec![24, 3]
+        }
+    );
     assert_eq!(
         requests.iter().flatten().cloned().collect::<Vec<_>>(),
         expected
     );
-    assert_eq!(result.embeddings.stored_vectors, 27);
-    assert_eq!(result.embeddings.model_inferences, 27);
+    let selected = if recipe.users_only() { 18 } else { 27 };
+    assert_eq!(result.embeddings.stored_vectors, selected);
+    assert_eq!(result.embeddings.model_inferences, selected);
     server.abort();
 }
 
-fn assert_published_silver(events: Vec<Event>) {
+fn assert_published_silver(events: Vec<Event>, recipe: &crate::gold::config::Build) {
     let mut sizes = Vec::new();
     let mut messages = Vec::new();
     for event in events {
@@ -273,7 +335,18 @@ fn assert_published_silver(events: Vec<Event>) {
                 projection(i64::try_from(ordinal).unwrap())
             }
         );
-        assert_eq!(message.vector.is_none(), ordinal % 4 == 0);
+        assert_eq!(
+            message.role,
+            if ordinal % 3 == 0 {
+                Role::Assistant
+            } else {
+                Role::User
+            }
+        );
+        assert_eq!(
+            message.vector.is_none(),
+            ordinal % 4 == 0 || (recipe.users_only() && ordinal % 3 == 0)
+        );
         assert_eq!(
             message.context,
             if ordinal == 0 {

@@ -66,6 +66,7 @@ pub(crate) fn build(
     emit_index_phase(crate::progress::Phase::SemanticEmbeddings, summary);
     let embedding_started = Instant::now();
     let generation = build.generation(&model);
+    storage.restrict_dense_queue(build)?;
     if !source_complete {
         storage.resume_unchanged_semantic_snapshot(&generation)?;
     }
@@ -73,6 +74,7 @@ pub(crate) fn build(
         && !storage.has_pending_embeddings()?;
     if !already_published {
         storage.invalidate_embedding_generation(&generation)?;
+        storage.restrict_dense_queue(build)?;
     }
     let embeddings = if !already_published && storage.has_pending_embeddings()? {
         storage.commit_and_continue_writer()?;
@@ -104,7 +106,7 @@ pub(crate) fn build(
     let counts = storage.counts()?;
     if !already_published && source_complete {
         crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
-            storage.mark_semantic_index_ready(&generation)
+            storage.mark_semantic_build_ready(&generation, build)
         })?;
     }
     if source_complete {
@@ -120,6 +122,8 @@ pub(crate) fn build(
     })
 }
 
+#[cfg(test)]
+mod selection_tests;
 #[cfg(test)]
 mod tests;
 

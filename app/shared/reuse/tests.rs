@@ -10,6 +10,7 @@ fn fixture() -> (Loaded, Identity, Build) {
     let build = Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        dense_content: crate::gold::config::DenseContent::AllVisible,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -39,6 +40,40 @@ fn fixture() -> (Loaded, Identity, Build) {
         identity,
         build,
     )
+}
+
+#[test]
+fn users_only_reuse_retains_assistant_history_without_requiring_its_vector() {
+    let (mut loaded, identity, mut build) = fixture();
+    build.dense_content = crate::gold::config::DenseContent::UserMessages;
+    let assistant = loaded.data.messages.get_mut("a-hidden").unwrap();
+    assistant.role = crate::role::Role::Assistant;
+    assistant.projection = "assistant dialogue".into();
+    let head = loaded.head.as_mut().unwrap();
+    head.counts.searchable_messages = 2;
+    head.counts.searchable_user_messages = Some(1);
+    head.gold_manifest = Some(crate::shared::gold_manifest::Manifest::new(
+        build.clone(),
+        "model".into(),
+        head.silver_revision.clone().unwrap(),
+    ));
+    let before = loaded.data.canonical_fingerprint().unwrap();
+    let target = Target::new(&loaded, &identity, build.clone()).unwrap();
+    assert!(target.threads.contains_key("thread"));
+    let mut retained = Retained::take(&mut loaded, &identity, &build).unwrap();
+    loaded
+        .data
+        .messages
+        .get_mut("z-visible")
+        .unwrap()
+        .generation = None;
+    retained
+        .request("thread".into(), &target.threads["thread"])
+        .unwrap();
+    retained.restore(&mut loaded.data, &identity).unwrap();
+    assert!(loaded.data.messages["z-visible"].vector.is_some());
+    assert!(loaded.data.messages["a-hidden"].vector.is_none());
+    assert_eq!(loaded.data.canonical_fingerprint().unwrap(), before);
 }
 
 #[test]

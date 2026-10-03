@@ -150,7 +150,12 @@ fn missing_checkpoint_versions_remain_unverified_after_snapshot_decode() {
         generation: "model".into(),
         dimensions: 3,
     };
-    assert!(!data.state(&identity).sources[0].ready);
+    assert!(
+        !data
+            .state(&identity, &crate::gold::config::Build::default())
+            .sources[0]
+            .ready
+    );
 }
 
 #[test]
@@ -259,13 +264,26 @@ fn source_facts_are_independent_of_gold_and_input_readiness_claims() {
     };
     let silver = serde_json::to_value(data.silver()).unwrap();
     assert!(silver["sources"]["source"].get("ready").is_none());
-    assert!(data.state(&identity).sources[0].ready);
+    assert!(
+        data.state(&identity, &crate::gold::config::Build::default())
+            .sources[0]
+            .ready
+    );
     data.sources.get_mut("source").unwrap().ready = false;
     assert_eq!(serde_json::to_value(data.silver()).unwrap(), silver);
-    assert!(data.state(&identity).sources[0].ready);
+    assert!(
+        data.state(&identity, &crate::gold::config::Build::default())
+            .sources[0]
+            .ready
+    );
     data.messages.get_mut("message").unwrap().vector = None;
     assert_eq!(serde_json::to_value(data.silver()).unwrap(), silver);
-    assert!(!data.state(&identity).sources[0].ready);
+    assert!(
+        !data
+            .state(&identity, &crate::gold::config::Build::default())
+            .sources[0]
+            .ready
+    );
 
     // Existing snapshots may carry this known transport field. It never
     // supplies readiness when joining source facts with current gold.
@@ -278,7 +296,12 @@ fn source_facts_are_independent_of_gold_and_input_readiness_claims() {
             .unwrap();
         assert_eq!(serde_json::to_value(decoded.silver()).unwrap(), silver);
         assert!(!decoded.sources["source"].ready);
-        assert!(!decoded.state(&identity).sources[0].ready);
+        assert!(
+            !decoded
+                .state(&identity, &crate::gold::config::Build::default())
+                .sources[0]
+                .ready
+        );
     }
     let mut invalid = serde_json::to_value(data.layers()).unwrap();
     invalid["silver"]["sources"]["source"]["generation"] = json!("model");

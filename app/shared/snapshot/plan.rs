@@ -7,6 +7,12 @@ use std::collections::{HashMap, HashSet};
 impl Data {
     pub(in crate::shared) fn counts(&self, identity: &Identity) -> Counts {
         Counts {
+            searchable_user_messages: Some(
+                self.messages
+                    .values()
+                    .filter(|m| !m.projection.is_empty() && m.role == crate::role::Role::User)
+                    .count() as u64,
+            ),
             conversations: self.conversations.len() as u64,
             messages: self.messages.len() as u64,
             searchable_messages: self
@@ -27,12 +33,16 @@ impl Data {
                 .count() as u64,
         }
     }
-    pub(in crate::shared) fn state(&self, identity: &Identity) -> NodeState {
+    pub(in crate::shared) fn state(
+        &self,
+        identity: &Identity,
+        build: &crate::gold::config::Build,
+    ) -> NodeState {
         let incompatible: HashSet<_> = self
             .messages
             .values()
             .filter(|m| {
-                !m.projection.is_empty()
+                build.includes_dense(&m.role, &m.projection)
                     && (m.generation.as_deref() != Some(identity.generation.as_str())
                         || m.vector
                             .as_ref()
@@ -45,8 +55,9 @@ impl Data {
             .values()
             .map(|s| {
                 let mut s = s.clone();
-                s.ready = s.interpretation_version
-                    == crate::silver::certificate::INTERPRETATION_VERSION
+                s.ready = build.dense_enabled()
+                    && s.interpretation_version
+                        == crate::silver::certificate::INTERPRETATION_VERSION
                     && s.conversation_id
                         .as_deref()
                         .is_none_or(|id| !incompatible.contains(id));
@@ -226,7 +237,7 @@ pub(in crate::shared) fn plan(
         && input.gold_build.is_some()
         && (previous_build.as_ref() != Some(&requested) || {
             let counts = loaded.data.counts(identity);
-            counts.embeddings != requested.expected_embeddings(counts.searchable_messages)
+            Some(counts.embeddings) != counts.expected_dense(&requested)
         });
     let previous_canonical = gold_refresh
         .then(|| loaded.data.canonical_fingerprint())
@@ -340,7 +351,7 @@ pub(in crate::shared) fn plan(
                             valid_id(&m.id)?;
                             valid_id(&m.conversation_id)?;
                             if m.ordinal < 0
-                                || (!build.dense_enabled()
+                                || (!build.includes_dense(&m.role, &m.projection)
                                     && (m.vector.is_some() || m.generation.is_some()))
                                 || !m.context.valid(m.ordinal)
                                 || m.vector.as_ref().is_some_and(|v| {

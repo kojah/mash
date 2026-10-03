@@ -367,6 +367,7 @@ async fn exercise(outcome: Outcome) {
         fixture.store = fixture.store.with_build(crate::gold::config::Build {
             max_embedding_chars: None,
             representations: crate::gold::config::Representations::LexicalAndDense,
+            dense_content: crate::gold::config::DenseContent::AllVisible,
             text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         });

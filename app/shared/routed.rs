@@ -33,7 +33,7 @@ pub(crate) async fn index(
     owner: &RoutedOwner,
 ) -> Result<IndexResult, AppError> {
     let state: NodeState = get(config, Endpoint::State).await?;
-    let dense = state.gold_build.dense_enabled();
+    let dense = state.gold_build.dense_enabled() && !state.gold_build.users_only();
     let root = models_dir.to_path_buf();
     let remote = embeddings.cloned();
     let input = options.clone();

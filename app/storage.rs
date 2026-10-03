@@ -67,7 +67,22 @@ pub(crate) struct Counts {
     pub(crate) conversations: u64,
     pub(crate) messages: u64,
     pub(crate) searchable_messages: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) searchable_user_messages: Option<u64>,
     pub(crate) embeddings: u64,
+}
+
+impl Counts {
+    pub(crate) fn expected_dense(&self, build: &crate::gold::config::Build) -> Option<u64> {
+        if !build.dense_enabled() {
+            Some(0)
+        } else if build.users_only() {
+            self.searchable_user_messages
+                .filter(|users| *users <= self.searchable_messages)
+        } else {
+            Some(self.searchable_messages)
+        }
+    }
 }
 
 pub(crate) struct StatusSnapshot {

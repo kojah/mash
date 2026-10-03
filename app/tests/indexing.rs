@@ -4,6 +4,54 @@ mod incomplete;
 mod rebuild;
 
 #[test]
+fn users_only_cli_index_keeps_assistant_lexical_search_without_model_assets() {
+    let root = tempfile::tempdir().unwrap();
+    let provider = root.path().join("provider");
+    std::fs::create_dir(&provider).unwrap();
+    std::fs::write(provider.join("session.jsonl"), concat!(
+        "{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\"}}\n",
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"id\":\"reply\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"needle assistant evidence\"}]}}\n",
+    )).unwrap();
+    let config = root.path().join("node.toml");
+    std::fs::write(&config, format!("version=1\n[providers]\ncodex={{roots=[{}]}}\n[gold.build]\ndense_content='user-messages'\n[gold.query]\nintent='exact-mention'\n", toml::Value::String(provider.to_str().unwrap().into()))).unwrap();
+    let database = root.path().join("silver.sqlite3");
+    let models = root.path().join("absent-models");
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    let indexed = run_json(&[base.as_slice(), &["index"]].concat());
+    assert_eq!(indexed["model_inferences"], 0);
+    assert_eq!(indexed["embeddings"], 0);
+    assert_eq!(indexed["searchable_messages"], 1);
+    assert_eq!(indexed["gold"]["build"]["dense_content"], "user-messages");
+    std::fs::remove_dir_all(provider).unwrap();
+    let before = std::fs::read(&database).unwrap();
+    let result = run_json(
+        &[
+            base.as_slice(),
+            &[
+                "search",
+                "needle",
+                "--local",
+                "--no-worker",
+                "--unit",
+                "messages",
+            ],
+        ]
+        .concat(),
+    );
+    assert_eq!(result["results"].as_array().unwrap().len(), 1);
+    assert_eq!(result["results"][0]["role"], "assistant");
+    assert_eq!(std::fs::read(&database).unwrap(), before);
+    assert!(!models.exists());
+}
+
+#[test]
 fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("node.toml");

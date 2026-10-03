@@ -225,8 +225,8 @@ impl Store {
                         &identity.generation,
                         h.silver_revision.as_ref(),
                     )
-                }) && h.counts.embeddings
-                    == self.build.expected_embeddings(h.counts.searchable_messages),
+                }) && Some(h.counts.embeddings)
+                    == h.counts.expected_dense(&self.build),
                 silver_coverage: h.silver_coverage.clone(),
                 silver_revision: h.silver_revision.clone(),
                 node_id: node_id.clone(),
@@ -250,7 +250,7 @@ impl Store {
         identity: &Identity,
     ) -> Result<protocol::NodeState, AppError> {
         let loaded = self.load(identity).await?;
-        let mut state = loaded.data.state(identity);
+        let mut state = loaded.data.state(identity, &self.build);
         state.gold_build.clone_from(&self.build);
         state.publication_version = loaded.expected;
         if let Some(h) = loaded.head {
@@ -351,7 +351,7 @@ impl Store {
         if active.values().any(|node| {
             node.head.as_ref().is_none_or(|h| {
                 h.generation != identity.generation
-                    || h.counts.embeddings != h.counts.searchable_messages
+                    || Some(h.counts.embeddings) != h.counts.expected_dense(&self.build)
             })
         }) {
             return Err(AppError::shared(
@@ -401,8 +401,8 @@ impl Store {
             self.api.query::<Document>(&name, &lexical_query),
             self.api.query::<Document>(&name, &semantic_query)
         )?;
-        let lexical = hits(lexical, true, identity, &active)?;
-        let semantic = hits(semantic, false, identity, &active)?;
+        let lexical = hits(lexical, true, identity, &active, &self.build)?;
+        let semantic = hits(semantic, false, identity, &active, &self.build)?;
         self.stable_heads(identity, &heads).await?;
         let documents: BTreeMap<_, _> = lexical
             .iter()
@@ -488,6 +488,7 @@ fn hits(
     lexical: bool,
     identity: &Identity,
     active: &BTreeMap<&String, &NodeHead>,
+    build: &crate::gold::config::Build,
 ) -> Result<Vec<SearchHit>, AppError> {
     let mut output = Vec::new();
     let mut seen = BTreeSet::new();
@@ -507,10 +508,14 @@ fn hits(
             || d.created_at != m.created_at
             || d.tokens != tokens(&m.projection)
             || m.projection.is_empty()
-            || m.generation.as_deref() != Some(&identity.generation)
-            || m.vector
-                .as_ref()
-                .is_none_or(|v| !protocol::valid_vector(v, identity.dimensions))
+            || if build.includes_dense(&m.role, &m.projection) {
+                m.generation.as_deref() != Some(&identity.generation)
+                    || m.vector
+                        .as_ref()
+                        .is_none_or(|v| !protocol::valid_vector(v, identity.dimensions))
+            } else {
+                !lexical || m.vector.is_some() || m.generation.is_some()
+            }
             || !seen.insert((d.node_id.clone(), m.id.clone()))
         {
             return Err(failure());

@@ -4,9 +4,22 @@ use super::*;
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
     use crate::gold::config::{Build, Representations};
-    use crate::shared::gold_rebuild::{Embedding, Event as GoldEvent};
+    use crate::shared::gold_rebuild::Embedding;
     let fixture = Fixture::new(VectorIndex::default()).await;
     let source = certified_source_upload(&fixture);
+    let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
+        .into_iter::<Event>()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    for event in &mut events {
+        if let Event::Batch(Batch::Messages { records }) = event {
+            records[1].role = crate::role::Role::Assistant;
+        }
+    }
+    let mut source = tempfile::NamedTempFile::new().unwrap();
+    for event in events {
+        crate::shared::write_event(source.as_file_mut(), &event).unwrap();
+    }
     fixture
         .store
         .index(&fixture.identity, source)
@@ -31,69 +44,144 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
         },
         Build::default(),
         Build {
+            dense_content: crate::gold::config::DenseContent::AllVisible,
             text_preparation: crate::gold::config::TextPreparation::CollapseWhitespace,
+            ..Default::default()
+        },
+        Build {
+            dense_content: crate::gold::config::DenseContent::UserMessages,
             ..Default::default()
         },
         Build::default(),
     ] {
-        let store = fixture.store.clone().with_build(recipe.clone());
-        store.select_gold(&fixture.identity, true).await.unwrap();
-        let loaded = store.load(&fixture.identity).await.unwrap();
-        let head = loaded.head.as_ref().unwrap();
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        serde_json::to_writer(
-            file.as_file_mut(),
-            &GoldEvent::Start {
-                publication_revision: head.revision,
-                silver: head.silver_revision.clone().unwrap(),
-                generation: fixture.identity.generation.clone(),
-                build: recipe.clone(),
-            },
-        )
-        .unwrap();
+        assert_artifact_switch(&fixture, &original, &vectors, &fingerprint, recipe).await;
+    }
+    fixture.cleanup().await;
+}
+
+async fn assert_artifact_switch(
+    fixture: &Fixture,
+    original: &Loaded,
+    vectors: &[crate::shared::gold_rebuild::Embedding],
+    fingerprint: &str,
+    recipe: crate::gold::config::Build,
+) {
+    use crate::shared::gold_rebuild::{Embedding, Event as GoldEvent};
+    let store = fixture.store.clone().with_build(recipe.clone());
+    store.select_gold(&fixture.identity, true).await.unwrap();
+    let loaded = store.load(&fixture.identity).await.unwrap();
+    let head = loaded.head.as_ref().unwrap();
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    serde_json::to_writer(
+        file.as_file_mut(),
+        &GoldEvent::Start {
+            publication_revision: head.revision,
+            silver: head.silver_revision.clone().unwrap(),
+            generation: fixture.identity.generation.clone(),
+            build: recipe.clone(),
+        },
+    )
+    .unwrap();
+    writeln!(file).unwrap();
+    if recipe.users_only() {
+        assert_excluded_vectors_rejected(&store, fixture, head, &file, vectors, fingerprint).await;
+    }
+    if recipe.dense_enabled() {
+        let records = vectors
+            .iter()
+            .filter(|v| {
+                let message = &original.data.messages[&v.message_id];
+                recipe.includes_dense(&message.role, &message.projection)
+            })
+            .map(|v| Embedding {
+                message_id: v.message_id.clone(),
+                vector: v.vector.clone(),
+            })
+            .collect();
+        serde_json::to_writer(file.as_file_mut(), &GoldEvent::Embeddings { records }).unwrap();
         writeln!(file).unwrap();
-        if recipe.dense_enabled() {
-            let records = vectors
+    }
+    serde_json::to_writer(file.as_file_mut(), &GoldEvent::Finish).unwrap();
+    writeln!(file).unwrap();
+    let indexed = store.rebuild_gold(&fixture.identity, file).await.unwrap();
+    assert_eq!(
+        indexed.counts.embeddings,
+        indexed.counts.expected_dense(&recipe).unwrap()
+    );
+    let loaded = store.load(&fixture.identity).await.unwrap();
+    assert_eq!(loaded.data.canonical_fingerprint().unwrap(), fingerprint);
+    if recipe.users_only() {
+        assert_eq!(indexed.counts.embeddings, 1);
+        assert_eq!(indexed.counts.searchable_user_messages, Some(1));
+        assert!(loaded.data.messages["message-1"].vector.is_none());
+        assert!(loaded.data.messages["message-0"].vector.is_some());
+        assert!(
+            store
+                .state(&fixture.identity)
+                .await
+                .unwrap()
+                .sources
+                .iter()
+                .all(|s| s.ready)
+        );
+    }
+    assert_eq!(store.capabilities(&fixture.identity).await.unwrap(), recipe);
+    assert!(store.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
+    let mut exact = fixture.query();
+    exact.intent = crate::gold::exact::Intent::ExactMention;
+    exact.vector.clear();
+    assert!(
+        !store
+            .search(&fixture.identity, exact)
+            .await
+            .unwrap()
+            .lexical
+            .is_empty()
+    );
+    let searched = store.search(&fixture.identity, fixture.query()).await;
+    assert_eq!(
+        searched.is_ok(),
+        recipe.dense_enabled(),
+        "recipe {recipe:?}: {searched:?}"
+    );
+}
+
+async fn assert_excluded_vectors_rejected(
+    store: &Store,
+    fixture: &Fixture,
+    head: &Head,
+    file: &tempfile::NamedTempFile,
+    vectors: &[crate::shared::gold_rebuild::Embedding],
+    fingerprint: &str,
+) {
+    use crate::shared::gold_rebuild::{Embedding, Event as GoldEvent};
+    let mut rejected = tempfile::NamedTempFile::new().unwrap();
+    std::io::copy(&mut file.reopen().unwrap(), rejected.as_file_mut()).unwrap();
+    serde_json::to_writer(
+        rejected.as_file_mut(),
+        &GoldEvent::Embeddings {
+            records: vectors
                 .iter()
                 .map(|v| Embedding {
                     message_id: v.message_id.clone(),
                     vector: v.vector.clone(),
                 })
-                .collect();
-            serde_json::to_writer(file.as_file_mut(), &GoldEvent::Embeddings { records }).unwrap();
-            writeln!(file).unwrap();
-        }
-        serde_json::to_writer(file.as_file_mut(), &GoldEvent::Finish).unwrap();
-        writeln!(file).unwrap();
-        let indexed = store.rebuild_gold(&fixture.identity, file).await.unwrap();
-        assert_eq!(
-            indexed.counts.embeddings,
-            recipe.expected_embeddings(indexed.counts.searchable_messages)
-        );
-        let loaded = store.load(&fixture.identity).await.unwrap();
-        assert_eq!(loaded.data.canonical_fingerprint().unwrap(), fingerprint);
-        assert_eq!(store.capabilities(&fixture.identity).await.unwrap(), recipe);
-        assert!(store.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
-        let mut exact = fixture.query();
-        exact.intent = crate::gold::exact::Intent::ExactMention;
-        exact.vector.clear();
-        assert!(
-            !store
-                .search(&fixture.identity, exact)
-                .await
-                .unwrap()
-                .lexical
-                .is_empty()
-        );
-        assert_eq!(
-            store
-                .search(&fixture.identity, fixture.query())
-                .await
-                .is_ok(),
-            recipe.dense_enabled()
-        );
-    }
-    fixture.cleanup().await;
+                .collect(),
+        },
+    )
+    .unwrap();
+    writeln!(rejected).unwrap();
+    serde_json::to_writer(rejected.as_file_mut(), &GoldEvent::Finish).unwrap();
+    writeln!(rejected).unwrap();
+    assert!(
+        store
+            .rebuild_gold(&fixture.identity, rejected)
+            .await
+            .is_err()
+    );
+    let unchanged = store.load(&fixture.identity).await.unwrap();
+    assert_eq!(unchanged.head.as_ref().unwrap().revision, head.revision);
+    assert_eq!(unchanged.data.canonical_fingerprint().unwrap(), fingerprint);
 }
 
 fn certified_source_upload(fixture: &Fixture) -> tempfile::NamedTempFile {
@@ -284,6 +372,7 @@ async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams(
     let build = crate::gold::config::Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        dense_content: crate::gold::config::DenseContent::AllVisible,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -352,6 +441,7 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
     let build = crate::gold::config::Build {
         max_embedding_chars: Some(256_u32.try_into().unwrap()),
         representations: crate::gold::config::Representations::LexicalAndDense,
+        dense_content: crate::gold::config::DenseContent::AllVisible,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -407,6 +497,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
     let title = crate::gold::config::Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        dense_content: crate::gold::config::DenseContent::AllVisible,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
@@ -558,6 +649,7 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
     let title = crate::gold::config::Build {
         max_embedding_chars: None,
         representations: crate::gold::config::Representations::LexicalAndDense,
+        dense_content: crate::gold::config::DenseContent::AllVisible,
         text_preparation: crate::gold::config::TextPreparation::Preserve,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };

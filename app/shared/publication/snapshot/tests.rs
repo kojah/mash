@@ -49,6 +49,7 @@ async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_bat
         build: crate::gold::config::Build {
             max_embedding_chars: None,
             representations: crate::gold::config::Representations::LexicalAndDense,
+            dense_content: crate::gold::config::DenseContent::AllVisible,
             text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         },

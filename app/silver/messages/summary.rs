@@ -9,6 +9,7 @@ pub(crate) struct Summary {
     pub(crate) title: Option<String>,
     pub(crate) title_message_id: Option<String>,
     pub(crate) searchable: u64,
+    pub(crate) searchable_users: u64,
 }
 
 impl Summary {
@@ -43,6 +44,8 @@ impl Summary {
         }
         let projection = message.dialogue_text.as_deref().unwrap_or(&message.content);
         self.searchable += u64::from(!projection.is_empty());
+        self.searchable_users +=
+            u64::from(!projection.is_empty() && message.role == crate::role::Role::User);
         if self.title.is_none() && message.role == crate::role::Role::User {
             self.title = crate::silver::dialogue::title(projection);
             if self.title.is_some() {

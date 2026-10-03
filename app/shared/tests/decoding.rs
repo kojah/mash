@@ -43,6 +43,7 @@ async fn busy_response_decoder_does_not_block_another_shared_read() {
             "/healthy",
             get(|| async {
                 Json(crate::storage::Counts {
+                    searchable_user_messages: None,
                     conversations: 2,
                     messages: 5,
                     searchable_messages: 4,

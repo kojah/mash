@@ -77,7 +77,12 @@ pub(crate) async fn materialize(
     pool: &mut Option<EmbeddingPool>,
     result: &mut Build,
 ) -> Result<(), AppError> {
-    let searchable = conversation.messages.summary()?.searchable;
+    let summary = conversation.messages.summary()?;
+    let searchable = if result.recipe.users_only() {
+        summary.searchable_users
+    } else {
+        summary.searchable
+    };
     let total_vectors = result.recipe.expected_embeddings(searchable);
     let started = Instant::now();
     let initial_vectors = result.embeddings.stored_vectors;
@@ -85,16 +90,7 @@ pub(crate) async fn materialize(
     write_event(
         file,
         &Event::Batch(Batch::Conversations {
-            records: vec![ConversationRecord {
-                enrichment: Some(crate::silver::enrichment::Evidence::capture(conversation)?),
-                id: conversation.id.clone(),
-                provider: conversation.provider,
-                title: conversation.title.clone(),
-                project: conversation.project.clone(),
-                repository: conversation.repository.clone(),
-                created_at: conversation.created_at,
-                updated_at: conversation.updated_at,
-            }],
+            records: vec![conversation_record(conversation)?],
         }),
     )?;
     let mut messages = conversation.messages.rows()?;
@@ -108,8 +104,8 @@ pub(crate) async fn materialize(
         }
         let prepared = batch
             .iter()
+            .filter(|m| result.recipe.includes_dense(&m.role, m.dialogue()))
             .map(|m| m.dialogue())
-            .filter(|t| result.recipe.dense_enabled() && !t.is_empty())
             .map(|text| {
                 result
                     .recipe
@@ -126,14 +122,14 @@ pub(crate) async fn materialize(
         for message in batch {
             let message = message.into_owned();
             let projection = message.dialogue_text.as_deref().unwrap_or(&message.content);
-            let vector = if projection.is_empty() || !result.recipe.dense_enabled() {
-                None
-            } else {
+            let vector = if result.recipe.includes_dense(&message.role, projection) {
                 Some(
                     vectors
                         .next()
                         .ok_or_else(|| AppError::model("missing shared message embedding"))?,
                 )
+            } else {
+                None
             };
             let generation = vector.as_ref().map(|_| {
                 embeddings.map_or_else(
@@ -175,4 +171,17 @@ pub(crate) async fn materialize(
         });
     }
     Ok(())
+}
+
+fn conversation_record(conversation: &Conversation) -> Result<ConversationRecord, AppError> {
+    Ok(ConversationRecord {
+        enrichment: Some(crate::silver::enrichment::Evidence::capture(conversation)?),
+        id: conversation.id.clone(),
+        provider: conversation.provider,
+        title: conversation.title.clone(),
+        project: conversation.project.clone(),
+        repository: conversation.repository.clone(),
+        created_at: conversation.created_at,
+        updated_at: conversation.updated_at,
+    })
 }

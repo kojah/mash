@@ -13,6 +13,8 @@ pub(crate) struct Configuration {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Build {
+    #[serde(skip_serializing_if = "DenseContent::is_default")]
+    pub(crate) dense_content: DenseContent,
     #[serde(skip_serializing_if = "TextPreparation::is_default")]
     pub(crate) text_preparation: TextPreparation,
     #[serde(skip_serializing_if = "Representations::is_default")]
@@ -20,6 +22,21 @@ pub(crate) struct Build {
     pub(crate) embedding_text: EmbeddingText,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_embedding_chars: Option<EmbeddingTextBudget>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum DenseContent {
+    #[default]
+    AllVisible,
+    UserMessages,
+}
+
+impl DenseContent {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_default(&self) -> bool {
+        *self == Self::AllVisible
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -97,13 +114,22 @@ pub(crate) enum EmbeddingText {
 }
 
 impl Build {
+    pub(crate) fn includes_dense(&self, role: &crate::role::Role, projection: &str) -> bool {
+        self.dense_enabled()
+            && !projection.is_empty()
+            && (self.dense_content == DenseContent::AllVisible || *role == crate::role::Role::User)
+    }
+
+    pub(crate) fn users_only(&self) -> bool {
+        self.dense_content == DenseContent::UserMessages
+    }
     pub(crate) fn dense_enabled(&self) -> bool {
         self.representations == Representations::LexicalAndDense
     }
 
-    pub(crate) fn expected_embeddings(&self, searchable_messages: u64) -> u64 {
+    pub(crate) fn expected_embeddings(&self, eligible_messages: u64) -> u64 {
         if self.dense_enabled() {
-            searchable_messages
+            eligible_messages
         } else {
             0
         }
@@ -121,6 +147,20 @@ impl Build {
     pub(crate) fn generation(&self, model: &str) -> String {
         if !self.dense_enabled() {
             return "gold-lexical-v1".into();
+        }
+        if self.users_only() {
+            let text = match self.embedding_text {
+                EmbeddingText::Dialogue => "dialogue",
+                EmbeddingText::TitleAndDialogue => "title-and-dialogue",
+            };
+            let preparation = match self.text_preparation {
+                TextPreparation::Preserve => "preserve",
+                TextPreparation::CollapseWhitespace => "collapse-whitespace",
+            };
+            return format!(
+                "gold-users-v1:{text}:{preparation}:{}:{model}",
+                self.max_embedding_chars.map_or(0, |b| b.0)
+            );
         }
         if self.text_preparation == TextPreparation::CollapseWhitespace {
             let recipe = match self.embedding_text {
@@ -378,6 +418,47 @@ mod tests {
                 "accepted {text}"
             );
         }
+    }
+
+    #[test]
+    fn dense_content_selects_known_user_role_without_changing_other_artifacts() {
+        let recipe: Build = toml::from_str("dense_content='user-messages'").unwrap();
+        assert!(recipe.includes_dense(&crate::role::Role::User, "visible"));
+        assert!(!recipe.includes_dense(&crate::role::Role::User, ""));
+        for role in [
+            crate::role::Role::Assistant,
+            crate::role::Role::System,
+            crate::role::Role::Developer,
+            crate::role::Role::Tool,
+            crate::role::Role::Other("reviewer".into()),
+        ] {
+            assert!(!recipe.includes_dense(&role, "visible"));
+            assert!(Build::default().includes_dense(&role, "visible"));
+        }
+        assert_ne!(
+            recipe.generation("model"),
+            Build::default().generation("model")
+        );
+        let counts = crate::storage::Counts {
+            searchable_messages: 5,
+            searchable_user_messages: Some(2),
+            ..Default::default()
+        };
+        assert_eq!(counts.expected_dense(&recipe), Some(2));
+        assert_eq!(counts.expected_dense(&Build::default()), Some(5));
+        let unknown = crate::storage::Counts {
+            searchable_messages: 5,
+            ..Default::default()
+        };
+        assert_eq!(unknown.expected_dense(&recipe), None);
+        let invalid = crate::storage::Counts {
+            searchable_messages: 5,
+            searchable_user_messages: Some(6),
+            ..Default::default()
+        };
+        assert_eq!(invalid.expected_dense(&recipe), None);
+        assert!(toml::from_str::<Build>("dense_content='assistant'").is_err());
+        assert!(toml::from_str::<Build>("dense_content=true").is_err());
     }
 
     #[test]
