@@ -40,6 +40,12 @@ fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
         let snippet = anchor["snippet"].as_str().unwrap();
         assert!(snippet.contains("(IF)"));
         assert!(!snippet.contains("gift"));
+        let start =
+            usize::try_from(anchor["projection_span"]["start_char"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(anchor["projection_span"]["end_char"].as_u64().unwrap()).unwrap();
+        // This fixture's faithful user projection equals its canonical text.
+        let excerpt: String = content.chars().skip(start).take(end - start).collect();
+        assert_eq!(snippet, format!("…{excerpt}…"));
         let viewed = run_json(
             &[
                 base.as_slice(),

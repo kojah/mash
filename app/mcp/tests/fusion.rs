@@ -261,6 +261,46 @@ async fn indexed_fixture() -> (Mash, tempfile::TempDir) {
 
 #[tokio::test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+async fn real_models_mcp_thread_excerpts_preserve_projection_locations() {
+    let (server, root) = indexed_fixture().await;
+    let database = root.path().join("index.sqlite3");
+    let before = std::fs::read(&database).unwrap();
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    let task = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
+    let client = ().serve(client_io).await.unwrap();
+    let service = task.await.unwrap();
+    let args =
+        json!({"query":"cache model", "intent":"exact-mention", "unit":"threads", "local":true});
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("search").with_arguments(args.as_object().unwrap().clone()),
+        )
+        .await
+        .unwrap();
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    let data = result.structured_content.unwrap();
+    let crate::search_results::Results::Threads(threads) =
+        serde_json::from_value(data["results"].clone()).unwrap()
+    else {
+        panic!("threads")
+    };
+    assert_eq!(threads.len(), 1);
+    let anchor = &threads[0].matches[0];
+    assert_eq!(anchor.snippet, "cache model");
+    assert_eq!(
+        anchor.projection_span,
+        crate::search_results::ProjectionSpan {
+            start_char: 0,
+            end_char: 11
+        }
+    );
+    assert_eq!(std::fs::read(database).unwrap(), before);
+    client.cancel().await.unwrap();
+    service.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
 async fn real_models_mcp_ranking_defaults_reload_without_indexing() {
     let (server, root) = indexed_fixture().await;
     let database = root.path().join("index.sqlite3");

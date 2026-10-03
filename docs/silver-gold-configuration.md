@@ -927,6 +927,26 @@ guards. No unfiltered baseline query or per-predicate rejection count is added.
 The same typed core response passes through CLI, worker and MCP, and ordinary
 responses continue to omit diagnostics.
 
+Thread matches expose `projection_span = {start_char, end_char}` alongside
+`snippet`, `message_id` and `node_id`. This half-open range uses Unicode scalar
+character offsets into the primary message's stored search projection. It covers
+the excerpt's source text and excludes the ellipses added for display. Exact
+intent anchors the window to the verified literal; related-discussion retains
+its existing query-evidence window or the message start for semantic-only hits.
+Snippet text, ranking, match caps and canonical history are unchanged.
+
+These are not UTF-8 byte offsets, grapheme indices, positions in prepared model
+input, or canonical-message offsets. Canonical text can contain content removed
+from the search projection, so `view` still returns the original message and the
+range must not be used to slice that canonical text. The range belongs to the
+primary `message_id`/`node_id`, not to alternate deduplicated `copies`, whose
+projection formatting can differ. This records locations for the existing
+extractive presentation; it does not implement multi-passage gold units,
+projection-to-canonical mappings, summaries or topic memberships.
+Spans describe the projection observed by that search; subsequent edits can
+change it. Verify the excerpt against the current projection before reusing
+saved coordinates.
+
 The ordinary outcome correction passed 647 standard tests, four real-model
 contracts, strict all-target Clippy, formatting and doctest compilation on
 2026-10-03. The context-failure matrix verified combined/shared-only modes

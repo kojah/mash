@@ -416,6 +416,7 @@ fn exact_excerpts_show_verified_literals_instead_of_earlier_partial_decoys() {
             "界".repeat(1200)
         );
         evidence.lexical_score = None;
+        let projection = evidence.content.clone();
         let mut wrong = hit("wrong", "wrong");
         wrong.content = decoy.into();
         let Results::Threads(results) =
@@ -430,6 +431,7 @@ fn exact_excerpts_show_verified_literals_instead_of_earlier_partial_decoys() {
         assert!(!anchor.snippet.contains(decoy), "{query}");
         assert!(anchor.snippet.starts_with('…') && anchor.snippet.ends_with('…'));
         assert!(anchor.snippet.chars().count() <= 802);
+        assert_projection_span(&projection, &anchor.snippet, &anchor.projection_span);
     }
 }
 
@@ -440,10 +442,42 @@ fn excerpts_are_bounded_unicode_safe_and_focus_on_query_evidence() {
         "🦀".repeat(1200),
         "界".repeat(1200)
     );
-    let result = excerpt(&content, "cbioportal");
+    let (result, span) = evidence_excerpt(&content, "cbioportal", 800);
     assert!(result.contains("cBioPortal importer"));
     assert!(result.starts_with('…') && result.ends_with('…'));
     assert!(result.chars().count() <= 802);
+    assert_projection_span(&content, &result, &span);
+}
+
+fn assert_projection_span(projection: &str, snippet: &str, span: &ProjectionSpan) {
+    let characters: Vec<_> = projection.chars().collect();
+    assert!(span.start_char <= span.end_char && span.end_char <= characters.len());
+    let excerpt: String = characters[span.start_char..span.end_char].iter().collect();
+    let rendered = format!(
+        "{}{}{}",
+        if span.start_char > 0 { "…" } else { "" },
+        excerpt,
+        if span.end_char < characters.len() {
+            "…"
+        } else {
+            ""
+        }
+    );
+    assert_eq!(snippet, rendered);
+}
+
+#[test]
+fn projection_spans_cover_empty_short_edge_and_combining_character_windows() {
+    for (text, query) in [
+        (String::new(), "missing"),
+        ("…cafe\u{301} 🦀…".into(), "missing"),
+        (format!("{}target", "界".repeat(1000)), "target"),
+        (format!("target{}", "🦀".repeat(1000)), "target"),
+    ] {
+        let (snippet, span) = evidence_excerpt(&text, query, 800);
+        assert_projection_span(&text, &snippet, &span);
+        assert!(span.end_char - span.start_char <= 800);
+    }
 }
 
 #[test]
@@ -461,4 +495,11 @@ fn thread_metadata_and_view_anchors_survive_worker_serialization() {
     assert_eq!(decoded[0].metadata.title.as_deref(), Some("chat"));
     assert_eq!(decoded[0].matches[0].message_id, "message");
     assert_eq!(decoded[0].matches[0].created_at, Some(123));
+    assert_eq!(
+        decoded[0].matches[0].projection_span,
+        ProjectionSpan {
+            start_char: 0,
+            end_char: decoded[0].matches[0].snippet.chars().count()
+        }
+    );
 }

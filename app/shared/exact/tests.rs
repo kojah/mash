@@ -65,6 +65,27 @@ fn hit() -> SearchHit {
     }
 }
 
+async fn assert_thread_projection(mut request: Request) {
+    let Operation::Search { unit, .. } = &mut request.operation else {
+        panic!("search")
+    };
+    *unit = Some(SearchUnit::Threads);
+    let Response::Search(threads) = core::execute(request).await.unwrap() else {
+        panic!("search")
+    };
+    let crate::search_results::Results::Threads(threads) = threads.results else {
+        panic!("threads")
+    };
+    let anchor = &threads[0].matches[0];
+    assert_eq!(anchor.node_id.as_deref(), Some("peer"));
+    assert_eq!(anchor.message_id, "peer-message");
+    assert_eq!(anchor.projection_span.start_char, 0);
+    assert_eq!(
+        anchor.projection_span.end_char,
+        hit().content.chars().count()
+    );
+}
+
 async fn reply(
     State(mode): State<Arc<AtomicUsize>>,
     Json(input): Json<protocol::Search>,
@@ -169,12 +190,13 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
         "shared-only cannot fall back"
     );
     mode.store(0, Ordering::SeqCst);
-    let Response::Search(response) = core::execute(shared).await.unwrap() else {
+    let Response::Search(response) = core::execute(shared.clone()).await.unwrap() else {
         panic!("search response")
     };
     assert!(matches!(response.realized_mode, SearchMode::Lexical));
     assert!(response.shared);
     assert_diagnostics(&response, Scope::Shared, false, 1);
+    assert_thread_projection(shared).await;
     server.abort();
     assert_eq!(std::fs::read(database).unwrap(), before);
     assert!(!root.path().join("missing-models").exists());

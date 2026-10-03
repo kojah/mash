@@ -76,10 +76,19 @@ pub(crate) struct ThreadMatch {
     pub(crate) role: crate::role::Role,
     pub(crate) created_at: Option<i64>,
     pub(crate) snippet: String,
+    /// Primary message's search projection; excludes display ellipses.
+    pub(crate) projection_span: ProjectionSpan,
     pub(crate) rerank_score: Option<f32>,
     pub(crate) fusion_score: f32,
     /// Other indexed copies of this evidence, usable as view anchors.
     pub(crate) copies: Vec<MessageReference>,
+}
+
+/// Half-open Unicode-scalar character offsets, not bytes or canonical offsets.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub(crate) struct ProjectionSpan {
+    pub(crate) start_char: usize,
+    pub(crate) end_char: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -298,21 +307,23 @@ fn collect_inner(
             };
             thread.score = best + budget * weight;
         }
+        let (snippet, projection_span) = literal.map_or_else(
+            || evidence_excerpt(&hit.content, query, 800),
+            |literal| {
+                evidence_window_at(
+                    &hit.content,
+                    literal.find(&hit.content).map_or(0, |range| range.start),
+                    800,
+                )
+            },
+        );
         thread.matches.push(ThreadMatch {
             message_id: hit.id,
             node_id: hit.node_id,
             role: hit.role,
             created_at: hit.created_at,
-            snippet: literal.map_or_else(
-                || excerpt(&hit.content, query),
-                |literal| {
-                    evidence_window_at(
-                        &hit.content,
-                        literal.find(&hit.content).map_or(0, |range| range.start),
-                        800,
-                    )
-                },
-            ),
+            snippet,
+            projection_span,
             rerank_score: hit.rerank_score,
             fusion_score: hit.fusion_score,
             copies: hit.copies,
@@ -326,11 +337,6 @@ fn collect_inner(
     });
     threads.truncate(limit.min(1000));
     Results::Threads(threads)
-}
-
-/// Prefer a window around lexical evidence; semantic-only matches use the start.
-fn excerpt(content: &str, query: &str) -> String {
-    evidence_window(content, query, 800)
 }
 
 /// Keep the query evidence visible to the 512-token reranker on long messages.
@@ -382,6 +388,11 @@ pub(crate) fn contextual_document(
 }
 
 pub(crate) fn evidence_window(content: &str, query: &str, length: usize) -> String {
+    evidence_excerpt(content, query, length).0
+}
+
+/// Prefer lexical evidence; semantic-only matches use the projection's start.
+fn evidence_excerpt(content: &str, query: &str, length: usize) -> (String, ProjectionSpan) {
     let offset = query
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.len() >= 3 && word.is_ascii())
@@ -397,7 +408,7 @@ pub(crate) fn evidence_window(content: &str, query: &str, length: usize) -> Stri
     evidence_window_at(content, offset, length)
 }
 
-fn evidence_window_at(content: &str, offset: usize, length: usize) -> String {
+fn evidence_window_at(content: &str, offset: usize, length: usize) -> (String, ProjectionSpan) {
     // An ASCII match begins at a UTF-8 boundary even in multilingual content.
     let leading_context = (length / 3).min(160);
     let start = content[..offset]
@@ -409,11 +420,21 @@ fn evidence_window_at(content: &str, offset: usize, length: usize) -> String {
     if start > 0 {
         snippet.push('…');
     }
-    snippet.extend(characters.by_ref().take(length));
+    let mut end = start;
+    for character in characters.by_ref().take(length) {
+        snippet.push(character);
+        end += 1;
+    }
     if characters.next().is_some() {
         snippet.push('…');
     }
-    snippet
+    (
+        snippet,
+        ProjectionSpan {
+            start_char: start,
+            end_char: end,
+        },
+    )
 }
 
 #[cfg(test)]
