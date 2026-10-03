@@ -262,7 +262,31 @@ The staged server now explicitly sets `max_mutation_snapshot_mib = 4096`, retain
 one concurrent upload, and enables existing opt-in tracing. Xenia reported about
 42 GiB available memory before the change; the serialized-work budget is not an
 RSS limit. The preview restarted and passed authenticated capabilities again.
-A new explicit publication is running with captures `qdrant-publication-retry.json`
+A new explicit publication used captures `qdrant-publication-retry.json`
 and `.log`; no successful shared publication or live endpoint cutover is claimed.
 The first attempt's captures remain available as `qdrant-publication.json` and
 `.log`. Installed node configuration and live Redis remain unchanged.
+
+The retry uploaded the full body and tracing confirmed admission of 1,110 MiB
+of snapshot work. The client subsequently exited 9 at its 600-second HTTP
+deadline (679.035 seconds including local preparation), with shared state pending
+and `shared index HTTP request timed out`. Local silver remained complete at
+revision 627,495 with unchanged counts. This is a terminal client request, not
+proof that the server mutation stopped: `server::admission::run` retains admitted
+work and its capacity permit after the HTTP requester disconnects.
+
+The server proceeded through validation, 67.9 seconds of snapshot serialization,
+116.2 seconds of snapshot staging and 1.34 seconds of thread catalogue staging.
+Document staging remains active; a read-only Qdrant inspection found 90,496 staged
+message points, while authenticated application status still exposed zero rows.
+Do not restart the server or retry the upload until that admitted operation is
+terminal or its accepted revision is verified. Existing tracing is retained in
+`preview-server-retry.log`. An optimized release build is being prepared in
+`release-build.log`; it is not yet installed or used by this running operation.
+
+During publication, one native local exact `cbioportal` search returned a thread
+in 238.9 ms (190 ms core time), selecting only metadata and lexical artifacts.
+The preview status request returned in 22.5 ms with zero published rows. These
+single smoke checks show read availability during this operation; they are not
+latency percentiles, a concurrency load test or shared publication acceptance.
+The local capture is `during-publication-search.json` in the private Mac directory.
