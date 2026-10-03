@@ -2,6 +2,44 @@ use super::*;
 use crate::storage::tests::conversation_with_messages;
 use std::collections::BTreeMap;
 
+#[test]
+fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() {
+    use crate::gold::config::{Build, EmbeddingText};
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    for (id, title) in [("one", "Qdrant"), ("two", "Postgres")] {
+        let mut thread =
+            conversation_with_messages(&[(id, "same visible dialogue"), ("hidden", "secret")]);
+        thread.id = id.into();
+        thread.source = crate::silver::SourceIdentity::file(id);
+        thread.title = Some(title.into());
+        thread.messages.inline_mut()[1].id = format!("hidden-{id}");
+        thread.messages.inline_mut()[1].dialogue_text = Some(String::new());
+        storage.replace_conversation(&thread).unwrap();
+    }
+    let mut default = EmbeddingPlan::new(&storage).unwrap();
+    assert_eq!(default.total_vectors, 2);
+    assert_eq!(default.next_wave(10).unwrap().len(), 1);
+    let mut titled = EmbeddingPlan::with_build(
+        &storage,
+        &Build {
+            embedding_text: EmbeddingText::TitleAndDialogue,
+        },
+    )
+    .unwrap();
+    assert_eq!(titled.total_vectors, 2);
+    let texts = titled
+        .next_wave(10)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.content)
+        .collect::<Vec<_>>();
+    assert_eq!(texts.len(), 2);
+    assert!(texts.iter().all(|text| text.starts_with("Thread: ")
+        && text.ends_with("same visible dialogue")
+        && !text.contains("secret")));
+}
+
 #[cfg(unix)]
 #[test]
 fn embedding_plan_files_and_directory_are_private() {

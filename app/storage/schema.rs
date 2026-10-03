@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 36;
+pub(super) const SCHEMA_VERSION: i64 = 37;
 mod cline;
 
 const SCHEMA: &str = include_str!("schema.sql");
@@ -24,7 +24,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if matches!(version, 32..=35) {
+    if matches!(version, 32..=36) {
         return migrate_current_projections(connection, version);
     }
 

@@ -185,21 +185,8 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
 #[tokio::test]
 #[ignore = "requires MASH_TEST_MODELS_DIR containing an explicit model installation"]
 async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked() {
-    use axum::extract::State;
-    use axum::{Json, Router};
+    use axum::Router;
     use tokio::sync::mpsc;
-
-    async fn capture(
-        State(sender): State<mpsc::Sender<protocol::Search>>,
-        Json(request): Json<protocol::Search>,
-    ) -> Json<protocol::Candidates> {
-        sender.send(request).await.unwrap();
-        Json(protocol::Candidates {
-            lexical: Vec::new(),
-            semantic: Vec::new(),
-            documents: Vec::new(),
-        })
-    }
 
     let models_dir = std::env::var_os("MASH_TEST_MODELS_DIR")
         .map(std::path::PathBuf::from)
@@ -214,9 +201,14 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     seed_ready(&path, &generation);
     // Readiness is checked before inference/HTTP; hold the lock only for the
     // subsequent candidate retrieval stage whose concurrency is under test.
-    let prepared = prepare_search(Some(&path), &models_dir, None, "hello")
-        .await
-        .unwrap();
+    let prepared = prepare_search(
+        Some((&path, &crate::gold::config::Build::default())),
+        &models_dir,
+        None,
+        "hello",
+    )
+    .await
+    .unwrap();
     let lock = rusqlite::Connection::open(&path).unwrap();
     lock.execute_batch("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE")
         .unwrap();
@@ -225,9 +217,14 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
-        axum::serve(listener, Router::new().fallback(capture).with_state(sender))
-            .await
-            .unwrap();
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(capture_search_request)
+                .with_state(sender),
+        )
+        .await
+        .unwrap();
     });
     let mut config = SharedConfig {
         group_id: "test".into(),
@@ -269,7 +266,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     config.token_env = "MASH_TEST_UNCONFIGURED_TOKEN_71B9".into();
     let (fallback, error) = search(
         &config,
-        Some(&path),
+        Some((&path, &crate::gold::config::Build::default())),
         &models_dir,
         None,
         "hello",
@@ -299,6 +296,18 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     server.abort();
 }
 
+async fn capture_search_request(
+    axum::extract::State(sender): axum::extract::State<tokio::sync::mpsc::Sender<protocol::Search>>,
+    axum::Json(request): axum::Json<protocol::Search>,
+) -> axum::Json<protocol::Candidates> {
+    sender.send(request).await.unwrap();
+    axum::Json(protocol::Candidates {
+        lexical: Vec::new(),
+        semantic: Vec::new(),
+        documents: Vec::new(),
+    })
+}
+
 fn seed_ready(path: &Path, generation: &str) {
     drop(seed(path));
     let mut storage = Storage::open_writer(path).unwrap();
@@ -314,6 +323,21 @@ fn seed_ready(path: &Path, generation: &str) {
         )
         .unwrap();
     storage.mark_semantic_index_ready(generation).unwrap();
+    storage
+        .begin_silver_scan(crate::provider::Provider::Codex)
+        .unwrap();
+    storage
+        .finish_silver_scan(crate::provider::Provider::Codex, true)
+        .unwrap();
+    storage.finish_silver_ingestion().unwrap();
+    storage.mark_semantic_index_ready(generation).unwrap();
+    storage
+        .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
+            crate::gold::config::Build::default(),
+            generation.to_owned(),
+            storage.silver_certificate().unwrap(),
+        ))
+        .unwrap();
     storage.commit_writer().unwrap();
 }
 

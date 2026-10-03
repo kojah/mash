@@ -20,6 +20,16 @@ impl Storage {
 
     /// Current metadata schema only: never initialize, migrate or require models.
     pub(crate) fn open_catalog(path: &Path) -> Result<Self, AppError> {
+        Self::open_readonly(path, SCHEMA_VERSION)
+    }
+
+    /// Read-only preflight accepts the existing certified silver schema before
+    /// the explicit gold command adds its manifest table under the writer lock.
+    pub(crate) fn open_certified_silver(path: &Path) -> Result<Self, AppError> {
+        Self::open_readonly(path, 36)
+    }
+
+    fn open_readonly(path: &Path, minimum_schema: i64) -> Result<Self, AppError> {
         if !path.is_file() {
             return Err(AppError::missing_database(path));
         }
@@ -33,7 +43,7 @@ impl Storage {
                 "index schema is newer than this version of mash",
             ));
         }
-        if version < SCHEMA_VERSION {
+        if version < minimum_schema {
             return Err(AppError::search_not_ready(
                 "index requires an explicit rebuild; run `mash index`",
             ));
@@ -69,6 +79,7 @@ impl Storage {
         }
         if version < SCHEMA_VERSION {
             return Ok(StatusSnapshot {
+                gold: None,
                 silver: None,
                 counts: Counts {
                     conversations: readonly_table_count(&connection, "conversations")?,
@@ -88,6 +99,7 @@ impl Storage {
             transaction_base_messages: 0,
         };
         Ok(StatusSnapshot {
+            gold: storage.gold_manifest()?,
             silver: Some(storage.silver_certificate()?),
             counts: storage.counts()?,
             current_embeddings: storage.embedding_count(generation)?,

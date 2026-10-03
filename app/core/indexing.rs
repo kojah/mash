@@ -48,6 +48,7 @@ pub(super) async fn run(
     let db = database.to_path_buf();
     let root = models.to_path_buf();
     let embeddings = configuration.embeddings.clone();
+    let build = configuration.gold.build.clone();
     let all_sources = options.clone();
     let mut result = crate::blocking(move || {
         history::validate_output_path(&db, &all_sources)?;
@@ -57,6 +58,7 @@ pub(super) async fn run(
             embeddings,
             full,
             LocalInput::ProviderFiles(local_options),
+            &build,
         )
     })
     .await?;
@@ -110,6 +112,7 @@ async fn rebuild_local(
     let db = database.to_path_buf();
     let root = models.to_path_buf();
     let embeddings = configuration.embeddings.clone();
+    let build = configuration.gold.build.clone();
     let result = crate::blocking(move || {
         index(
             &db,
@@ -117,6 +120,7 @@ async fn rebuild_local(
             embeddings,
             request.full,
             LocalInput::StoredSilver,
+            &build,
         )
     })
     .await?;
@@ -131,13 +135,14 @@ fn index(
     embeddings_config: Option<semantic::remote::Configuration>,
     full: bool,
     input: LocalInput,
+    build: &crate::gold::config::Build,
 ) -> Result<IndexResponse, AppError> {
     let total_started = Instant::now();
     let rebuild_local_gold = matches!(input, LocalInput::StoredSilver);
     if rebuild_local_gold {
         // Read-only preflight prevents schema migration or empty database
         // creation from becoming an implicit bronze-to-silver operation.
-        require_certified_silver(&Storage::open_catalog(database_path)?)?;
+        require_certified_silver(&Storage::open_certified_silver(database_path)?)?;
     }
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_indexer()?;
@@ -164,7 +169,7 @@ fn index(
             0,
         ),
     };
-    let gold = gold::build(&mut storage, &models, &summary)?;
+    let gold = gold::build(&mut storage, &models, &summary, build)?;
     let counts = gold.counts;
     let embeddings = gold.embeddings;
     storage.commit_writer()?;
@@ -175,6 +180,7 @@ fn index(
     }
     emit_index_phase(crate::progress::Phase::LocalComplete, &summary);
     Ok(IndexResponse {
+        gold: storage.gold_manifest()?,
         rebuild_local_gold,
         silver: certificate,
         indexed_conversations: counts.conversations,

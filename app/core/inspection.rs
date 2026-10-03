@@ -56,6 +56,7 @@ fn local_status(
         .is_installed();
     if !database_path.is_file() {
         return Ok(StatusResponse {
+            gold: None,
             silver: None,
             ready: false,
             database_path: Some(database_path.to_path_buf()),
@@ -82,15 +83,22 @@ fn local_status(
         });
     }
 
-    let snapshot = Storage::status_snapshot(
-        database_path,
-        &semantic::configured_generation(configuration.embeddings.as_ref()),
-    )?;
+    let model = semantic::configured_generation(configuration.embeddings.as_ref());
+    let snapshot =
+        Storage::status_snapshot(database_path, &configuration.gold.build.generation(&model))?;
     let counts = snapshot.counts;
     let current_embeddings = snapshot.current_embeddings;
-    let hybrid_ready =
-        models_installed && snapshot.derived_clean && snapshot.exact_semantic_coverage;
+    let manifest_matches = snapshot
+        .gold
+        .as_ref()
+        .zip(snapshot.silver.as_ref())
+        .is_some_and(|(m, s)| m.matches(&configuration.gold.build, &model, s));
+    let hybrid_ready = models_installed
+        && snapshot.derived_clean
+        && snapshot.exact_semantic_coverage
+        && manifest_matches;
     Ok(StatusResponse {
+        gold: snapshot.gold,
         silver: snapshot.silver,
         ready: hybrid_ready,
         database_path: Some(database_path.to_path_buf()),

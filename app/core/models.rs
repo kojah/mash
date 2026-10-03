@@ -75,6 +75,7 @@ pub(crate) enum Response {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct IndexResponse {
+    pub(super) gold: Option<crate::gold::manifest::Manifest>,
     pub(super) rebuild_local_gold: bool,
     pub(super) silver: crate::silver::certificate::Certificate,
     pub(super) indexed_conversations: u64,
@@ -152,6 +153,7 @@ pub(crate) struct ViewResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusResponse {
+    pub(super) gold: Option<crate::gold::manifest::Manifest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) silver: Option<crate::silver::certificate::Certificate>,
     pub(super) ready: bool,

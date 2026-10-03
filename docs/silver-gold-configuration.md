@@ -18,7 +18,7 @@ field. Missing metadata remains optional rather than being invented.
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
 | Thread metadata | Title, project, repository, creation/update times | Adapter-normalized metadata can be absent or derived. Source facts and inferred annotations do not yet have a uniform per-field origin/confidence model. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
-| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate | Local completeness and interpretation version are durable. Shared certificate propagation, per-field enrichment origins and gold build manifests remain pending. |
+| Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Shared certificate/manifest propagation and per-field enrichment origins remain pending. |
 
 The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 `app/message_context.rs`; persistence is documented in `history-pipeline.md`.
@@ -146,6 +146,41 @@ Changing these defaults or supplying query overrides performs no ingestion,
 model re-embedding, index mutation or readiness publication. Existing explicit
 query-limit semantics are preserved; the bounds above validate configuration
 defaults, not a new constraint on explicit requests.
+
+## Active local build recipe and manifest
+
+```toml
+[gold.build]
+embedding_text = "dialogue" # default; alternative: "title-and-dialogue"
+```
+
+The default preserves the existing visible-dialogue embedding input. The second
+recipe prefixes each visible message with `Thread: <title>` and a blank line.
+Titles are trimmed and bounded to 256 Unicode characters. Missing or blank titles
+leave the dialogue unchanged; hidden records never become searchable through a
+title. Deduplication runs after preparation, so equal messages in differently
+titled threads can have distinct representations. This is an opt-in contextual
+representation, not a demonstrated search-quality improvement.
+
+Each SQLite index stores one typed `gold_manifest` containing schema version,
+build settings, base model generation and the silver certificate used to build it.
+`index` and `status` expose this as `gold`. Query defaults are excluded. Direct,
+worker and combined local search check this identity before retrieval. Changing
+the recipe makes the previous projection incompatible until an explicit
+`index --rebuild-local-gold` succeeds. Replacement retains only the active vector
+generation. Title changes conservatively rebuild all title-prefixed embeddings.
+Safe forgetting maintains the remaining projection and advances its manifest only
+after checking complete surviving coverage.
+
+SQLite schema 37 adds the manifest without copying canonical content. A schema 36
+index needs an explicit gold rebuild to certify its manifest; it need not reread
+provider files when its stored silver certificate is complete. Build failure
+leaves readiness unavailable and recovery uses retained silver.
+
+This recipe configures local gold. Shared materialization retains the default
+dialogue representation; nondefault local recipes use the independently routed
+publication path rather than forwarding local vectors as shared default vectors.
+Configurable shared build recipes and shared manifests remain follow-up work.
 
 ## Remaining build and query configuration
 

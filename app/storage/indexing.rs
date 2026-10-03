@@ -743,7 +743,19 @@ impl Storage {
     }
 
     pub(crate) fn forget(&mut self, id: &str) -> Result<bool, AppError> {
-        let transaction = self.connection.transaction().map_err(AppError::database)?;
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        let silver = self.silver_certificate()?;
+        let mut manifest = self
+            .gold_manifest()?
+            .filter(|m| m.matches(&m.build, &m.model_generation, &silver));
+        if let Some(m) = &manifest
+            && !self.semantic_index_is_ready(&m.build.generation(&m.model_generation))?
+        {
+            manifest = None;
+        }
         let provider: Option<Provider> = transaction
             .query_row(
                 "SELECT provider FROM conversations WHERE id = ?1",
@@ -796,6 +808,28 @@ impl Storage {
             .map_err(AppError::database)?;
         for chunk_id in semantic_chunk_ids {
             rebuild_semantic_chunk(&transaction, chunk_id, semantic_generation.as_deref())?;
+        }
+        if let Some(mut manifest) = manifest {
+            // This was a certified, fully covered build. Deletion maintains
+            // FTS and packed vectors above and cannot introduce missing vectors.
+            // Advance its revision atomically with the deletion.
+            let revision: i64 = transaction
+                .query_row(
+                    "SELECT revision FROM silver_state WHERE singleton=1",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(AppError::database)?;
+            manifest.silver.revision = u64::try_from(revision)
+                .map_err(|_| AppError::database_data("invalid silver revision"))?;
+            let json = serde_json::to_string(&manifest)
+                .map_err(|_| AppError::internal("serialize gold build manifest"))?;
+            transaction
+                .execute(
+                    "UPDATE gold_manifest SET manifest=?1 WHERE singleton=1",
+                    [json],
+                )
+                .map_err(AppError::database)?;
         }
         transaction.commit().map_err(AppError::database)?;
         Ok(removed > 0)

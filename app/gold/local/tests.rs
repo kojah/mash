@@ -90,9 +90,14 @@ fn failed_gold_build_preserves_durable_silver_and_does_not_publish_readiness() {
     assert!(stored.derived_search_is_dirty().unwrap());
     assert!(stored.search("qdrant", 5, None, None).unwrap().is_empty());
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
-    let error = build(&mut storage, &models, &fixture.source.summary)
-        .err()
-        .unwrap();
+    let error = build(
+        &mut storage,
+        &models,
+        &fixture.source.summary,
+        &crate::gold::config::Build::default(),
+    )
+    .err()
+    .unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::Model);
     drop(storage);
     assert_eq!(canonical(&fixture.database), before);
@@ -117,6 +122,87 @@ enum Resume {
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
+    use crate::gold::config::{Build as Recipe, EmbeddingText};
+    let fixture = fixture(false);
+    let models = Models::new(PathBuf::from(
+        std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
+    ));
+    let before = canonical(&fixture.database);
+    let certificate = Storage::open_catalog(&fixture.database)
+        .unwrap()
+        .silver_certificate()
+        .unwrap();
+    let dialogue = Recipe::default();
+    let titled = Recipe {
+        embedding_text: EmbeddingText::TitleAndDialogue,
+    };
+    let mut previous_vector = None;
+    for recipe in [&dialogue, &titled, &dialogue] {
+        let mut storage = Storage::open_writer(&fixture.database).unwrap();
+        if previous_vector.is_some() {
+            assert!(
+                storage
+                    .require_gold_build(recipe, &models.generation())
+                    .is_err()
+            );
+        }
+        let result = build(&mut storage, &models, &fixture.source.summary, recipe).unwrap();
+        assert!(result.ready);
+        assert_eq!(result.embeddings.model_inferences, 1);
+        storage.commit_writer().unwrap();
+        storage
+            .require_gold_build(recipe, &models.generation())
+            .unwrap();
+        assert_eq!(storage.silver_certificate().unwrap(), certificate);
+        assert_eq!(storage.gold_manifest().unwrap().unwrap().build, *recipe);
+        let connection = rusqlite::Connection::open(&fixture.database).unwrap();
+        let generations: i64 = connection
+            .query_row(
+                "SELECT COUNT(DISTINCT generation) FROM message_embeddings",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(generations, 1);
+        let vector: Vec<u8> = connection
+            .query_row("SELECT vector FROM message_embeddings LIMIT 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        if let Some(previous) = previous_vector.replace(vector.clone()) {
+            assert_ne!(
+                previous, vector,
+                "title context must change the representation"
+            );
+        }
+        assert_eq!(canonical(&fixture.database), before);
+        assert!(!fixture.source_root.exists());
+        let generation = recipe.generation(&models.generation());
+        assert_eq!(
+            Storage::open_search(&fixture.database, &generation)
+                .unwrap()
+                .search("qdrant", 5, None, None)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+    let mut storage = Storage::open_existing(&fixture.database).unwrap();
+    let connection = rusqlite::Connection::open(&fixture.database).unwrap();
+    let thread: String = connection
+        .query_row("SELECT id FROM conversations LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+    assert!(storage.forget(&thread).unwrap());
+    storage
+        .require_gold_build(&dialogue, &models.generation())
+        .unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 0);
+    assert!(storage.silver_certificate().unwrap().revision > certificate.revision);
+}
+
+#[test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
 fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources() {
     let models = Models::new(PathBuf::from(
         std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
@@ -125,9 +211,14 @@ fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources
         let fixture = fixture(false);
         let mut storage = Storage::open_writer(&fixture.database).unwrap();
         assert!(
-            build(&mut storage, &models, &fixture.source.summary)
-                .unwrap()
-                .ready
+            build(
+                &mut storage,
+                &models,
+                &fixture.source.summary,
+                &crate::gold::config::Build::default()
+            )
+            .unwrap()
+            .ready
         );
         storage.commit_writer().unwrap();
         drop(storage);
@@ -156,7 +247,13 @@ fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources
             drop(storage);
             storage = Storage::open_writer(&fixture.database).unwrap();
         }
-        let result = build(&mut storage, &models, &source.summary).unwrap();
+        let result = build(
+            &mut storage,
+            &models,
+            &source.summary,
+            &crate::gold::config::Build::default(),
+        )
+        .unwrap();
         assert!(result.ready);
         assert_eq!(result.counts.messages, 3);
         assert_eq!(result.counts.embeddings, 2);
@@ -195,7 +292,13 @@ fn gold_rebuild_from_stored_history_survives_source_removal_and_is_idempotent() 
             storage.defer_search_updates().unwrap();
             storage.mark_derived_search_dirty().unwrap();
         }
-        let result = build(&mut storage, &models, &fixture.source.summary).unwrap();
+        let result = build(
+            &mut storage,
+            &models,
+            &fixture.source.summary,
+            &crate::gold::config::Build::default(),
+        )
+        .unwrap();
         assert!(result.ready);
         assert_eq!(result.counts.messages, 2);
         assert_eq!(result.counts.searchable_messages, 1);
@@ -231,7 +334,13 @@ fn rejected_source_keeps_gold_unready_even_with_complete_stored_vectors() {
         std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
     ));
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
-    let result = build(&mut storage, &models, &fixture.source.summary).unwrap();
+    let result = build(
+        &mut storage,
+        &models,
+        &fixture.source.summary,
+        &crate::gold::config::Build::default(),
+    )
+    .unwrap();
     assert_eq!(result.counts.embeddings, result.counts.searchable_messages);
     assert!(!result.ready);
     storage.commit_writer().unwrap();

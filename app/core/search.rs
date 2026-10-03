@@ -61,7 +61,7 @@ pub(super) async fn run(
     if use_shared || (!use_local && configuration.shared.is_some()) {
         let (results, shared_error) = shared::search(
             required_shared(configuration)?,
-            (!use_shared).then_some(database),
+            (!use_shared).then_some((database, &configuration.gold.build)),
             models,
             configuration.embeddings.as_ref(),
             &query,
@@ -81,6 +81,7 @@ pub(super) async fn run(
         let database = database.to_path_buf();
         let models = models.to_path_buf();
         let embeddings = configuration.embeddings.clone();
+        let build = configuration.gold.build.clone();
         crate::blocking(move || {
             local_search(
                 &database,
@@ -89,6 +90,7 @@ pub(super) async fn run(
                 query,
                 (limit, unit),
                 &filters,
+                &build,
             )
         })
         .await
@@ -103,15 +105,18 @@ fn local_search(
     query: String,
     options: (usize, crate::search_results::SearchUnit),
     filters: &crate::search_filter::Scope,
+    build: &crate::gold::config::Build,
 ) -> Result<SearchResponse, AppError> {
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_installed()?;
-    let storage = Storage::open_search(database_path, &models.generation())?;
+    let generation = build.generation(&models.generation());
+    let storage = Storage::open_search(database_path, &generation)?;
+    storage.require_gold_build(build, &models.generation())?;
     let mut backend = models.load()?.ok_or_else(|| {
         AppError::model("semantic models are not installed; run `mash models install`")
     })?;
     let results = semantic::hybrid_search_filtered(
-        &models.generation(),
+        &generation,
         &storage,
         &mut backend,
         &query,

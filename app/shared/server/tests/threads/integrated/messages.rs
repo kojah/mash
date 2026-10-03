@@ -57,6 +57,17 @@ async fn seed(paths: &Paths) {
         let mut pool = models.load_indexer()?.unwrap();
         semantic::rebuild_embeddings(&mut storage, &mut pool, &models.generation(), |_| {})?;
         storage.mark_semantic_index_ready(&models.generation())?;
+        for provider in [Provider::Hermes, Provider::Codex, Provider::ClaudeCode] {
+            storage.begin_silver_scan(provider)?;
+            storage.finish_silver_scan(provider, true)?;
+        }
+        storage.finish_silver_ingestion()?;
+        storage.mark_semantic_index_ready(&models.generation())?;
+        storage.publish_gold_manifest(&crate::gold::manifest::Manifest::new(
+            crate::gold::config::Build::default(),
+            models.generation(),
+            storage.silver_certificate()?,
+        ))?;
         storage.commit_writer()
     })
     .await

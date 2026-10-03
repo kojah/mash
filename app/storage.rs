@@ -14,6 +14,7 @@ use crate::AppError;
 // Gold views and materialized retrieval data.
 mod catalog;
 pub(crate) mod embedding_plan;
+mod gold_manifest;
 mod semantic;
 mod semantic_chunks;
 
@@ -68,6 +69,7 @@ pub(crate) struct Counts {
 }
 
 pub(crate) struct StatusSnapshot {
+    pub(crate) gold: Option<crate::gold::manifest::Manifest>,
     pub(crate) silver: Option<crate::silver::certificate::Certificate>,
     pub(crate) counts: Counts,
     pub(crate) current_embeddings: u64,

@@ -21,6 +21,13 @@ pub(crate) struct EmbeddingPlan {
 impl EmbeddingPlan {
     #[tracing::instrument(name = "plan_embeddings", skip_all, fields(pending_vectors = tracing::field::Empty))]
     pub(crate) fn new(storage: &Storage) -> Result<Self, AppError> {
+        Self::with_build(storage, &crate::gold::config::Build::default())
+    }
+
+    pub(crate) fn with_build(
+        storage: &Storage,
+        build: &crate::gold::config::Build,
+    ) -> Result<Self, AppError> {
         let directory = crate::scratch::directory("mash-embedding-plan-")?;
         let mut connection = crate::scratch::sqlite(&directory.path().join("plan.sqlite3"))?;
         connection
@@ -44,7 +51,7 @@ impl EmbeddingPlan {
              );",
             )
             .map_err(AppError::database)?;
-        let total_vectors = Self::populate(&mut connection, storage)?;
+        let total_vectors = Self::populate(&mut connection, storage, build)?;
         tracing::Span::current().record("pending_vectors", total_vectors);
         Ok(Self {
             connection,
@@ -54,18 +61,28 @@ impl EmbeddingPlan {
         })
     }
 
-    fn populate(connection: &mut Connection, storage: &Storage) -> Result<u64, AppError> {
+    fn populate(
+        connection: &mut Connection,
+        storage: &Storage,
+        build: &crate::gold::config::Build,
+    ) -> Result<u64, AppError> {
         let transaction = connection.transaction().map_err(AppError::database)?;
         let mut total = 0_u64;
         {
+            let sql = match build.embedding_text {
+                crate::gold::config::EmbeddingText::Dialogue =>
+                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), NULL
+                     FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
+                     ORDER BY pending_embeddings.message_id",
+                crate::gold::config::EmbeddingText::TitleAndDialogue =>
+                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content), conversations.title
+                     FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
+                     JOIN conversations ON conversations.id = messages.conversation_id
+                     ORDER BY pending_embeddings.message_id",
+            };
             let mut source = storage
                 .connection
-                .prepare(
-                    "SELECT messages.id, COALESCE(messages.search_projection, messages.content)
-                   FROM pending_embeddings
-                   JOIN messages ON messages.id = pending_embeddings.message_id
-                  ORDER BY pending_embeddings.message_id",
-                )
+                .prepare(sql)
                 .map_err(AppError::database)?;
             let mut rows = source.query([]).map_err(AppError::database)?;
             let mut insert = transaction
@@ -83,6 +100,8 @@ impl EmbeddingPlan {
             while let Some(row) = rows.next().map_err(AppError::database)? {
                 let id: String = row.get(0).map_err(AppError::database)?;
                 let content: String = row.get(1).map_err(AppError::database)?;
+                let title: Option<String> = row.get(2).map_err(AppError::database)?;
+                let content = build.prepare(content, title.as_deref());
                 let digest = blake3::hash(content.as_bytes());
                 let length = i64::try_from(content.len())
                     .map_err(|_| AppError::internal("embedding text is too large"))?;

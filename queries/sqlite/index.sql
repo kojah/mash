@@ -126,3 +126,6 @@ FROM silver_state s WHERE s.singleton=1;
 -- name: SilverRejections :many
 SELECT source_key,source_path,modified_ns FROM silver_rejections
 WHERE provider=sqlc.arg(provider) ORDER BY source_key;
+
+-- name: GoldManifest :one
+SELECT manifest FROM gold_manifest WHERE singleton=1;

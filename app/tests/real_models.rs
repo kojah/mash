@@ -147,6 +147,7 @@ fn assert_source_independent_gold_rebuild(
             assert!(unchanged, "gold changed silver table {table}");
         }
     }
+    assert_gold_recipe_switches(config, database, models);
     assert_gold_rebuild_recovers_without_sources(config, database, models);
     for table in silver_tables {
         let unchanged = connection.query_row(&format!(
@@ -155,6 +156,82 @@ fn assert_source_independent_gold_rebuild(
     }
     std::fs::write(config, original).unwrap();
     assert_scoped_message_search(config, database, models);
+}
+
+fn assert_gold_recipe_switches(config: &Path, database: &Path, models: &str) {
+    let build_config = std::fs::read_to_string(config).unwrap();
+    for recipe in ["title-and-dialogue", "dialogue"] {
+        std::fs::write(
+            config,
+            format!("{build_config}\n[gold.build]\nembedding_text = '{recipe}'\n"),
+        )
+        .unwrap();
+        let stale = Command::cargo_bin("mash")
+            .unwrap()
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                models,
+                "search",
+                "qdrant",
+                "--no-worker",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            !stale.status.success(),
+            "changed recipe must require explicit rebuild"
+        );
+        let rebuilt = Command::cargo_bin("mash")
+            .unwrap()
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                models,
+                "index",
+                "--rebuild-local-gold",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            rebuilt.status.success(),
+            "{}",
+            String::from_utf8_lossy(&rebuilt.stderr)
+        );
+        let indexed: Value = serde_json::from_slice(&rebuilt.stdout).unwrap();
+        assert_eq!(indexed["gold"]["build"]["embedding_text"], recipe);
+        assert_eq!(indexed["model_inferences"], 2);
+        assert_eq!(indexed["scanned_files"], 0);
+        assert!(indexed["shared"].is_null());
+        if recipe == "title-and-dialogue" {
+            assert_gold_rebuild_recovers_without_sources(config, database, models);
+        }
+    }
+    std::fs::write(config, &build_config).unwrap();
+    let connection = Connection::open(database).unwrap();
+    connection
+        .execute_batch("DROP TABLE gold_manifest; PRAGMA user_version=36;")
+        .unwrap();
+    let migrated = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models,
+        "index",
+        "--rebuild-local-gold",
+    ]);
+    assert_eq!(migrated["gold"]["schema_version"], 1);
+    assert_eq!(migrated["gold"]["build"]["embedding_text"], "dialogue");
+    assert_eq!(migrated["model_inferences"], 0);
+    assert_eq!(migrated["scanned_files"], 0);
 }
 
 fn assert_gold_rebuild_recovers_without_sources(config: &Path, database: &Path, models: &str) {

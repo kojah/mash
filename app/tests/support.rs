@@ -131,8 +131,17 @@ impl NodeFixture {
     }
 
     pub(super) fn complete_index(&self) {
-        Connection::open(&self.database)
-            .unwrap()
+        let connection = Connection::open(&self.database).unwrap();
+        // Synthetic rows inserted after empty-index setup need explicit silver
+        // evidence and a manifest revision as well as the vector-ready marker.
+        connection.execute_batch(
+            "INSERT INTO silver_scans(provider,interpretation_version,state) VALUES('codex',1,1)
+             ON CONFLICT(provider) DO UPDATE SET interpretation_version=1,state=1;
+             UPDATE gold_manifest SET manifest=json_set(manifest,
+                 '$.silver.revision',(SELECT revision FROM silver_state WHERE singleton=1),
+                 '$.silver.completeness','complete') WHERE singleton=1;"
+        ).unwrap();
+        connection
             .execute(
                 "UPDATE derived_state SET semantic_ready_generation = ?1 WHERE singleton = 1",
                 [current_embedding_generation()],

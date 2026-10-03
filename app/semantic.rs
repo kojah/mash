@@ -15,6 +15,7 @@ use std::time::Duration;
 
 pub(crate) use embeddings::{
     EmbeddingPool, EmbeddingProgress, EmbeddingSummary, embedding_generation, rebuild_embeddings,
+    rebuild_with_build,
 };
 pub(crate) use models::{Backend, InstallSummary, LoadedBackend, Models};
 pub(crate) use retrieval::{

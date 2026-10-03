@@ -11,7 +11,7 @@ pub(super) const CONTEXT_DEADLINE: Duration = Duration::from_secs(1);
 #[tracing::instrument(name = "combined_search", skip_all)]
 pub(crate) async fn search(
     config: &SharedConfig,
-    local_database: Option<&Path>,
+    local_database: Option<(&Path, &crate::gold::config::Build)>,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
@@ -21,7 +21,15 @@ pub(crate) async fn search(
     filters.filter.validate()?;
     crate::search_query::validate(query)?;
     let prepared = prepare_search(local_database, models_dir, embeddings, query).await?;
-    search_prepared(config, local_database, query, options, filters, prepared).await
+    search_prepared(
+        config,
+        local_database.map(|(path, _)| path),
+        query,
+        options,
+        filters,
+        prepared,
+    )
+    .await
 }
 
 pub(super) struct PreparedSearch {
@@ -33,7 +41,7 @@ pub(super) struct PreparedSearch {
 
 #[tracing::instrument(name = "prepare_search", skip_all)]
 pub(super) async fn prepare_search(
-    local_database: Option<&Path>,
+    local_database: Option<(&Path, &crate::gold::config::Build)>,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
@@ -41,7 +49,8 @@ pub(super) async fn prepare_search(
     let root = models_dir.to_path_buf();
     let text = query.to_owned();
     let embeddings = embeddings.cloned();
-    let readiness_database = local_database.map(Path::to_path_buf);
+    let readiness_database =
+        local_database.map(|(path, build)| (path.to_path_buf(), build.clone()));
     let generation = embeddings.as_ref().map_or_else(
         || semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
         |c| semantic::model_space(&c.model, c.dimensions),
@@ -49,8 +58,14 @@ pub(super) async fn prepare_search(
     crate::blocking(move || {
         let models = Models::new(root).with_remote(embeddings);
         models.require_installed()?;
-        if let Some(database) = readiness_database {
-            Storage::open_search(&database, &models.generation())?;
+        let local_build = readiness_database
+            .as_ref()
+            .map(|(_, build)| build)
+            .cloned()
+            .unwrap_or_default();
+        if let Some((database, build)) = readiness_database {
+            Storage::open_search(&database, &build.generation(&models.generation()))?
+                .require_gold_build(&build, &models.generation())?;
         }
         let mut backend = models
             .load()?
@@ -59,7 +74,7 @@ pub(super) async fn prepare_search(
         Ok(PreparedSearch {
             backend,
             vector,
-            local_generation: models.generation(),
+            local_generation: local_build.generation(&models.generation()),
             generation,
         })
     })

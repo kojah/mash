@@ -3019,3 +3019,62 @@ impl<'a> SilverRejectionsBuilder<'a, (&'a str,)> {
         SilverRejections { provider }
     }
 }
+pub struct GoldManifestRow {
+    pub manifest: Option<String>,
+}
+impl GoldManifestRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            manifest: row.get(0)?,
+        })
+    }
+}
+pub struct GoldManifest;
+impl GoldManifest {
+    pub const QUERY: &'static str = r"SELECT manifest FROM gold_manifest WHERE singleton=1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl GoldManifest {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<GoldManifestRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), GoldManifestRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<GoldManifestRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), GoldManifestRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl GoldManifest {
+    pub const fn builder() -> GoldManifestBuilder<'static, ()> {
+        GoldManifestBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct GoldManifestBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> GoldManifestBuilder<'a, ()> {
+    pub fn build(self) -> GoldManifest {
+        let () = self.fields;
+        GoldManifest {}
+    }
+}

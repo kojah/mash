@@ -162,7 +162,9 @@ fn publication_config(configuration: &ResolvedConfig) -> Option<&config::SharedC
 
 fn routed_both(configuration: &ResolvedConfig) -> bool {
     configuration.destination == config::IndexDestination::Both
-        && (configuration.local_filter.is_some() || configuration.shared_filter.is_some())
+        && (configuration.local_filter.is_some()
+            || configuration.shared_filter.is_some()
+            || configuration.gold.build != crate::gold::config::Build::default())
 }
 
 pub(crate) fn default_database_path() -> PathBuf {

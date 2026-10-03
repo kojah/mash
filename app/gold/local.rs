@@ -19,8 +19,21 @@ pub(crate) fn build(
     storage: &mut Storage,
     models: &Models,
     summary: &crate::silver::IndexSummary,
+    build: &crate::gold::config::Build,
 ) -> Result<Build, AppError> {
-    let source_complete = storage.silver_certificate()?.is_complete();
+    let silver = storage.silver_certificate()?;
+    let source_complete = silver.is_complete();
+    let model = models.generation();
+    let manifest = crate::gold::manifest::Manifest::new(build.clone(), model.clone(), silver);
+    if build != &crate::gold::config::Build::default()
+        && !storage
+            .gold_manifest()?
+            .is_some_and(|m| m.matches(build, &model, &manifest.silver))
+    {
+        // Title changes are canonical metadata changes, so rebuild all affected
+        // representations conservatively until a finer dependency map exists.
+        storage.mark_derived_search_dirty()?;
+    }
     let mut model_load_milliseconds = 0;
     let search_started = Instant::now();
     if storage.derived_search_is_dirty()? {
@@ -34,7 +47,7 @@ pub(crate) fn build(
     let search_refresh_milliseconds = elapsed_milliseconds(search_started);
     emit_index_phase(crate::progress::Phase::SemanticEmbeddings, summary);
     let embedding_started = Instant::now();
-    let generation = models.generation();
+    let generation = build.generation(&model);
     if !source_complete {
         storage.resume_unchanged_semantic_snapshot(&generation)?;
     }
@@ -54,9 +67,18 @@ pub(crate) fn build(
                 AppError::model("semantic models are not installed; run `mash models install`")
             })?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
-        semantic::rebuild_embeddings(storage, &mut embedding_pool, &generation, |event| {
-            crate::progress::emit(&crate::progress::Event::embedding(&event));
-        })?
+        let progress = |event| crate::progress::emit(&crate::progress::Event::embedding(&event));
+        if build == &crate::gold::config::Build::default() {
+            semantic::rebuild_embeddings(storage, &mut embedding_pool, &generation, progress)?
+        } else {
+            semantic::rebuild_with_build(
+                storage,
+                &mut embedding_pool,
+                &generation,
+                build,
+                progress,
+            )?
+        }
     } else {
         semantic::EmbeddingSummary::default()
     };
@@ -66,6 +88,9 @@ pub(crate) fn build(
         crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
             storage.mark_semantic_index_ready(&generation)
         })?;
+    }
+    if source_complete {
+        storage.publish_gold_manifest(&manifest)?;
     }
     Ok(Build {
         counts,

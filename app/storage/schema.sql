@@ -1,4 +1,10 @@
 -- Silver publication ownership and durable reconciliation state.
+-- Gold build identity: exactly one active projection, without copied history.
+CREATE TABLE IF NOT EXISTS gold_manifest (
+    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+    manifest TEXT
+);
+INSERT OR IGNORE INTO gold_manifest(singleton) VALUES (1);
 CREATE TABLE IF NOT EXISTS silver_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
