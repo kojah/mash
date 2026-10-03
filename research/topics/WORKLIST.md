@@ -64,6 +64,17 @@ streaming, complete native ingestion, search isolation, semantic quality or
 production lifecycle gates. Snapshots still recompute lexical corpus statistics,
 and the reference has a 2048-source/8MiB capacity. No new algorithm was selected.
 
+The frozen [longer captured-source churn control](../../benchmarks/2026-10-03-topic-publication-churn.md)
+adds6000 delete/reinsert events over60 seconds after initial admission. First/repeat
+publish30/31 snapshots, drain to exact revision7850/final baseline, and retain
+one job/one pending marker. Six-window p95 ledger advancement lag spans
+6.172--7.144/5.926--6.436s; peak revision backlog754/674. Approximately half
+the rapid mutations are superseded before visibility; the control distinguishes
+latest captured source versions from mere revision advancement. This strengthens
+finite scheduler/lifecycle evidence within the same bounded cohort, not semantic
+quality, indefinite stability, native ingestion/search isolation or production
+persistence. No algorithm/threshold changed; full gates remain open.
+
 ## Finite execution rule
 
 The method comparison is finished. There are no automatically queued new

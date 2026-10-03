@@ -9023,6 +9023,83 @@ persistence and selected Rust parity remain open.
 Protocol and capture details: \path{research/topics/PUBLICATION_PROTOCOL.md}
 and \path{benchmarks/2026-10-03-topic-publication.md}.
 
+\section{Longer publication under captured-source churn}
+To extend the preceding short arrival burst, we froze a single scheduler and
+lifecycle control before execution (protocol commit \texttt{36b6850}). Keep the
+same exposed 128-thread/1850-source cohort, source-aware phrase method and
+class-based lexical representation~\cite{bertopic}, without new models,
+annotations or algorithm tuning. Admit the original sources at 100 events/s,
+then 6000 alternating delete/reinsert events at the same rate for 60s. Mutation
+$k$ addresses original source $\lfloor k/2\rfloor\bmod1850$, deletes it for
+even $k$ and restores its unchanged identity/provider/thread/text for odd $k$.
+This is a synthetic lifecycle schedule over original content, not measured
+native edits/deletions. Final revision is 7850, with all original sources.
+
+One spawned snapshot worker and one pending latest revision retain the same
+coalescing policy. Every published revision and complete source-version map
+must agree with its captured checkpoint. Final discovery semantics match the
+unchanged baseline; counters are audited separately. A 5ms poll and draining
+worker shutdown count in completion. Bounded diagnostic expected-version metadata
+can temporarily include the newly submitted and just-completed job; finite
+event histories are measured instrumentation, not production queues.
+
+Define \emph{ledger advancement lag} as the time until a publication first
+reaches or passes an event's revision. This need not expose its intermediate
+state. At that publication, classify events as captured latest-for-source or
+superseded: a latest upsert must have its exact version present, and a latest
+deletion must be absent. Deleted/reinserted sources may never publish the
+transient absence. Counting all advanced revisions as independently visible
+updates would overstate the lifecycle evidence. Report six fixed 1000-event
+churn windows, with nearest-rank p95/max advancement lag and revision backlog.
+
+Both controls use the pinned CPython3.11.15 science environment, single numerical
+worker and Xenia. External parent-only RSS/PSS sampling at 20ms includes raw
+JSON loading; internal 50ms sampling scopes parent and worker separately, with
+worker samples beginning after its first result supplies a PID. Peaks are
+sampled lower bounds, monitoring perturbs runtime, and rusage may retain a
+launcher high-water mark. Do not add noncontemporaneous process peaks or subtract
+unpaired counters. Early first-run admission overlapped research unit tests;
+host load and power state were uncontrolled, so timings are descriptive.
+
+First/repeat cold admission takes 18.490/18.490s and churn 60.013/60.005s.
+Final drain 4.983/6.173s yields complete controls 85.381/86.723s, including
+load/validation 1.461/1.633s, startup, sampling, shutdown and rechecks before
+serialization. Parent CPU 22.994/21.934s and exited-child CPU 81.880/83.679s
+exclude the external observer. Publish 30/31 snapshots; final checkpoint and
+all non-runtime fields match exactly, with 442 topics and unchanged memberships.
+First revision 1 exposes two unreviewed phrases after 1.137/1.192s while 114/120
+sources have arrived. No semantic usefulness follows from early visibility.
+
+The six churn-window p95 advancement lags are
+6.172,6.280,6.739,6.979,6.849,7.144s in the first control, versus
+6.122,6.009,6.328,5.926,6.290,6.436s in the repeat. Maximum lag 7.525/6.724s;
+peak revision backlog 754/674, despite maximum one job/one pending marker.
+First-run later-window peaks rise, while repeat peaks vary: neither establishes
+an asymptotic freshness bound. All 1850 initial additions are represented at
+their first advancement; churn has 3011/3013 captured-latest and 2989/2987
+superseded events. The approximately half superseded events chiefly reflect
+transient deletions, not lost final data. Every captured source-version map passes;
+a separate scalar audit, importing no producer, reconstructs every final source
+version and compares all 1850 original id/provider/thread/text projections.
+
+Streaming parent RSS maxima 196616/196908KiB and worker 165136/165584KiB have
+separate scopes. External parent sampling captures earlier JSON-load
+RSS 400292/403156KiB and PSS 376331/395581KiB across 3158/3373 samples. Worker
+rusage 404296/404924KiB matches the parent launcher counter despite its own
+VmHWM 165136/165584KiB, consistent with retained pre-exec high-water marks.
+No simultaneous combined peak or production ingestion memory bound is inferred.
+
+Four diagnostic fixtures verify deterministic source-preserving pairs,
+superseded/latest version accounting and full publication scope/version rejection.
+All 693 local research tests pass in 10.734s. These tests provide no human topic
+gold. The fixed 78.5s replay remains within the 2048-source/8MiB reference cap;
+snapshots recompute corpus lexical statistics. It cannot establish indefinite
+stability, corpus scaling, semantic utility, native complete-ingestion cost,
+application search isolation, MacBook throughput, durable shared publication or
+selected Rust parity. The broader acceptance gates remain open.
+Protocol: \path{research/topics/PUBLICATION_CHURN_PROTOCOL.md}; results:
+\path{benchmarks/2026-10-03-topic-publication-churn.md}.
+
 \bibliographystyle{plain}
 \bibliography{references}
 \appendix
