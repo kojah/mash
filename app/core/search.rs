@@ -9,8 +9,8 @@ use std::path::Path;
 
 pub(super) struct Input {
     pub(super) query: String,
-    pub(super) limit: usize,
-    pub(super) unit: crate::search_results::SearchUnit,
+    pub(super) limit: Option<usize>,
+    pub(super) unit: Option<crate::search_results::SearchUnit>,
     pub(super) filters: crate::search_filter::Selection,
     pub(super) shared: bool,
     pub(super) local: bool,
@@ -47,6 +47,7 @@ pub(super) async fn run(
         shared: use_shared,
         local: use_local,
     } = input;
+    let (limit, unit) = configuration.gold.query.resolve(limit, unit);
     let filters = resolve(
         &query,
         filters,

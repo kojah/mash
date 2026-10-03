@@ -490,8 +490,8 @@ async fn core_retrieves_native_cline_threads_with_real_models() {
                     paths: paths.clone(),
                     operation: Operation::Search {
                         query: query.into(),
-                        limit: 5,
-                        unit,
+                        limit: Some(5),
+                        unit: Some(unit),
                         filters: Box::new(crate::search_filter::Selection {
                             provider: vec![Provider::Cline],
                             project: vec!["/work/cbioportal".into()],

@@ -14,7 +14,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
     std::fs::write(
         &config,
         format!(
-            "version = 1\n[providers.claude-code]\nroots = ['{}']\n",
+            "version = 1\n[providers.claude-code]\nroots = ['{}']\n[gold.query]\nunit = 'messages'\nlimit = 1\n",
             root.display()
         ),
     )
@@ -56,6 +56,38 @@ async fn real_models_thread_discovery_and_scoped_messages() {
         .iter()
         .find(|thread| thread["conversation_id"] == "selected")
         .unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let before = std::fs::read(&database).unwrap();
+    // Search must use existing gold even when bronze no longer exists.
+    std::fs::remove_dir_all(&root).unwrap();
+    let defaults = client
+        .call_tool(
+            CallToolRequestParams::new("search").with_arguments(
+                json!({"query":"authentication", "local":true})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_ne!(defaults.is_error, Some(true), "{defaults:?}");
+    let defaults = defaults.structured_content.unwrap();
+    assert_eq!(defaults["unit"], "messages");
+    assert_eq!(defaults["results"].as_array().unwrap().len(), 1);
+    let overridden = client
+        .call_tool(
+            CallToolRequestParams::new("search").with_arguments(
+                json!({"query":"authentication", "local":true,"unit":"threads", "limit":2})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_ne!(overridden.is_error, Some(true), "{overridden:?}");
+    assert_eq!(overridden.structured_content.unwrap()["unit"], "threads");
     let found = client.call_tool(CallToolRequestParams::new("search").with_arguments(json!({"query":"authentication", "local":true,"unit":"messages","provider":[selected["provider"]],"conversation":[selected["conversation_id"]]}).as_object().unwrap().clone())).await.unwrap();
     assert_ne!(found.is_error, Some(true), "{found:?}");
     let found = found.structured_content.unwrap();
@@ -66,6 +98,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
             .iter()
             .all(|message| message["conversation_id"] == "selected")
     );
+    assert_eq!(std::fs::read(&database).unwrap(), before);
     client.cancel().await.unwrap();
     server.cancel().await.unwrap();
 }

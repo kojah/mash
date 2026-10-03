@@ -89,8 +89,8 @@ async fn failed_core_request_does_not_record_query_filters_paths_or_error_text()
         },
         operation: crate::core::Operation::Search {
             query: "query-canary".into(),
-            limit: 5,
-            unit: crate::search_results::SearchUnit::Threads,
+            limit: Some(5),
+            unit: Some(crate::search_results::SearchUnit::Threads),
             filters: Box::default(),
             local: true,
             shared: true,

@@ -39,8 +39,8 @@ pub(crate) enum Operation {
     },
     Search {
         query: String,
-        limit: usize,
-        unit: crate::search_results::SearchUnit,
+        limit: Option<usize>,
+        unit: Option<crate::search_results::SearchUnit>,
         filters: Box<crate::search_filter::Selection>,
         shared: bool,
         local: bool,

@@ -1,5 +1,9 @@
 # Canonical history and retrieval views
 
+See [silver enrichment and gold configuration](silver-gold-configuration.md)
+for the current enrichment audit, implemented query defaults and remaining
+build-configuration contracts.
+
 ## Layer ownership
 
 | Area | Layer | Responsibility |

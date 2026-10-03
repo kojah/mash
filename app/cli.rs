@@ -70,11 +70,12 @@ enum Command {
     /// Search indexed threads or messages.
     Search {
         query: String,
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
-        /// Result granularity; limit counts threads or messages.
-        #[arg(long, value_enum, default_value = "threads")]
-        unit: crate::search_results::SearchUnit,
+        /// Maximum results; defaults to gold.query.limit (20).
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Result granularity; defaults to gold.query.unit (threads).
+        #[arg(long, value_enum)]
+        unit: Option<crate::search_results::SearchUnit>,
         #[command(flatten)]
         filters: Box<SearchArguments>,
         /// Query only the shared index (including this node).
@@ -449,6 +450,25 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_preserves_omitted_defaults_and_explicit_overrides_for_the_core() {
+        for (args, expected) in [
+            (vec!["mash", "search", "database"], (None, None)),
+            (
+                vec![
+                    "mash", "search", "database", "--unit", "messages", "--limit", "3",
+                ],
+                (Some(3), Some(crate::search_results::SearchUnit::Messages)),
+            ),
+        ] {
+            let request = Cli::try_parse_from(args).unwrap().into_request().unwrap();
+            let Operation::Search { limit, unit, .. } = request.operation else {
+                panic!("search request")
+            };
+            assert_eq!((limit, unit), expected);
+        }
+    }
 
     #[test]
     fn cli_translates_dates_and_boolean_filters_into_typed_core_requests() {

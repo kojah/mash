@@ -12,6 +12,54 @@ const VALID: &str = r#""version" = 1
 "#;
 
 #[test]
+fn gold_query_defaults_are_typed_bounded_and_reported_in_status() {
+    use crate::search_results::SearchUnit;
+    let defaults = parse_document(VALID.as_bytes()).unwrap().gold;
+    assert_eq!(
+        defaults.query.resolve(None, None),
+        (20, SearchUnit::Threads)
+    );
+    let directory = TempDir::new().unwrap();
+    let path = write_config(
+        &directory,
+        &format!("{VALID}\n[gold.query]\nunit = 'messages'\nlimit = 7\n"),
+    );
+    let resolved = load(Some(&path)).unwrap();
+    assert_eq!(
+        resolved.gold.query.resolve(None, None),
+        (7, SearchUnit::Messages)
+    );
+    assert_eq!(
+        resolved
+            .gold
+            .query
+            .resolve(Some(3), Some(SearchUnit::Threads)),
+        (3, SearchUnit::Threads)
+    );
+    assert_eq!(
+        resolved.gold.query.resolve(None, Some(SearchUnit::Threads)),
+        (7, SearchUnit::Threads)
+    );
+    let status = serde_json::to_value(resolved.status()).unwrap();
+    assert_eq!(status["gold"]["query"]["unit"], "messages");
+    assert_eq!(status["gold"]["query"]["limit"], 7);
+    for invalid in [
+        "[gold.query]\nlimit = 0",
+        "[gold.query]\nlimit = 201",
+        "[gold.query]\nlimit = -1",
+        "[gold.query]\nlimit = '7'",
+        "[gold.query]\nunit = 'chunks'",
+        "[gold.query]\nunknown = true",
+        "[gold]\nprofiles = []",
+        "[gold.query]\nlimit = 1\n[gold.query]\nlimit = 2",
+    ] {
+        assert_configuration_error(
+            &parse_document(format!("{VALID}\n{invalid}").as_bytes()).unwrap_err(),
+        );
+    }
+}
+
+#[test]
 fn toml_tables_comments_and_remote_models_are_supported_without_json_fallback() {
     let document = r"
 version = 1 # node configuration

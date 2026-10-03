@@ -22,6 +22,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) loaded: bool,
     pub(crate) shared: Option<SharedConfig>,
     pub(crate) embeddings: Option<crate::semantic::remote::Configuration>,
+    pub(crate) gold: crate::gold::config::Configuration,
     pub(crate) providers: ProviderRoots,
     pub(crate) since_days: Option<u32>,
     pub(crate) destination: IndexDestination,
@@ -65,6 +66,7 @@ pub(crate) struct SharedConfig {
 pub(crate) struct ConfigurationStatus {
     path: PathBuf,
     loaded: bool,
+    gold: crate::gold::config::Configuration,
     shared: Option<SharedConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     embeddings: Option<Box<crate::semantic::remote::Configuration>>,
@@ -92,6 +94,7 @@ impl ResolvedConfig {
         ConfigurationStatus {
             path: self.path.clone(),
             loaded: self.loaded,
+            gold: self.gold.clone(),
             shared: self.shared.clone(),
             embeddings: self.embeddings.clone().map(Box::new),
             providers: self

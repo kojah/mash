@@ -68,8 +68,8 @@ async fn assert_scoped(paths: &Paths, ids: &[String], expected: &[&str]) {
         paths: paths.clone(),
         operation: Operation::Search {
             query: "authentication".into(),
-            limit: 10,
-            unit: SearchUnit::Messages,
+            limit: None,
+            unit: None,
             filters: Box::new(Selection {
                 provider: vec![Provider::Codex, Provider::ClaudeCode],
                 conversation: ids.to_vec(),
@@ -87,6 +87,7 @@ async fn assert_scoped(paths: &Paths, ids: &[String], expected: &[&str]) {
         panic!("search response")
     };
     assert!(response.shared, "{:?}", response.shared_error);
+    assert_eq!(response.unit, SearchUnit::Messages);
     let Results::Messages(messages) = response.results else {
         panic!("messages")
     };
@@ -113,6 +114,13 @@ async fn assert_scoped(paths: &Paths, ids: &[String], expected: &[&str]) {
 async fn contract(service: Service) {
     let directory = tempfile::tempdir().unwrap();
     let mut paths = configuration(directory.path(), &service);
+    let config_path = paths.config.as_ref().unwrap();
+    let configuration = std::fs::read_to_string(config_path).unwrap();
+    std::fs::write(
+        config_path,
+        format!("{configuration}\n[gold.query]\nunit = 'messages'\nlimit = 10\n"),
+    )
+    .unwrap();
     paths.models_dir = Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into());
     seed(&paths).await;
     let config = crate::config::load(paths.config.as_deref())

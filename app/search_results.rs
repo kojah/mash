@@ -6,7 +6,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(
-    Debug, Clone, Copy, Default, Deserialize, Serialize, clap::ValueEnum, rmcp::schemars::JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    clap::ValueEnum,
+    rmcp::schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SearchUnit {

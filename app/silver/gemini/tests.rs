@@ -562,8 +562,8 @@ async fn core_retrieves_native_gemini_threads_with_real_models() {
             paths: paths.clone(),
             operation: Operation::Search {
                 query: query.into(),
-                limit: 5,
-                unit: crate::search_results::SearchUnit::Threads,
+                limit: Some(5),
+                unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: Box::new(crate::search_filter::Selection {
                     provider: vec![Provider::GeminiCli],
                     ..Default::default()

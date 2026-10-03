@@ -79,6 +79,49 @@ fn real_models_index_and_run_hybrid_search() {
     assert_thread_search_and_view(&config, &database, model_arg);
     #[cfg(unix)]
     assert_worker_stage_diagnostics(&config, &database, model_arg);
+    assert_gold_query_defaults(&config, &database, model_arg);
+}
+
+fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
+    let canonical_config = std::fs::read_to_string(config).unwrap();
+    let before = std::fs::read(database).unwrap();
+    for (unit, limit) in [("messages", 1), ("threads", 3)] {
+        std::fs::write(
+            config,
+            format!("{canonical_config}\n[gold.query]\nunit = '{unit}'\nlimit = {limit}\n"),
+        )
+        .unwrap();
+        for direct in [true, false] {
+            let mut command = Command::cargo_bin("mash").unwrap();
+            command.args([
+                "--config",
+                config.to_str().unwrap(),
+                "--db",
+                database.to_str().unwrap(),
+                "--models-dir",
+                models,
+                "search",
+                "--local",
+                "authentication",
+            ]);
+            if direct {
+                command.arg("--no-worker");
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let found: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(found["unit"], unit);
+            let results = found["results"].as_array().unwrap();
+            assert_ne!(results.as_slice(), &[] as &[Value]);
+            assert!(results.len() <= limit);
+        }
+    }
+    assert_eq!(std::fs::read(database).unwrap(), before);
+    std::fs::write(config, canonical_config).unwrap();
 }
 
 #[cfg(unix)]

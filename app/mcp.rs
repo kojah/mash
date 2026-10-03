@@ -23,11 +23,10 @@ struct Mash {
 #[serde(deny_unknown_fields)]
 struct Search {
     query: String,
-    /// Maximum number of results in the selected unit.
+    /// Maximum results; omitted uses gold.query.limit (20 by default).
     limit: Option<usize>,
-    /// Return threads (default) or individual messages. Thread matches reference view anchors.
-    #[serde(default)]
-    unit: crate::search_results::SearchUnit,
+    /// Threads or messages; omitted uses gold.query.unit (threads by default).
+    unit: Option<crate::search_results::SearchUnit>,
     #[serde(flatten)]
     filters: crate::search_filter::Selection,
     #[serde(default)]
@@ -236,12 +235,12 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search conversation threads by default; set unit=messages for individual messages. Thread matches are relevance-ordered excerpts with message_id anchors for view; timestamps are Unix milliseconds. Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."
+        description = "Search using configured gold.query defaults (threads and 20 results unless configured otherwise); set unit and limit to override. Thread matches are relevance-ordered excerpts with message_id anchors for view; timestamps are Unix milliseconds. Search local SQLite plus other nodes in the configured shared index, fusing candidates and reranking together. Requires explicitly installed models and a completed index. Never runs ingestion or indexing: call index explicitly first. Falls back to local results with shared_error if the shared API fails. Set local or shared for a single index."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute(Operation::Search {
             query: request.query,
-            limit: request.limit.unwrap_or(20),
+            limit: request.limit,
             unit: request.unit,
             filters: Box::new(request.filters),
             shared: request.shared,

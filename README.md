@@ -609,6 +609,12 @@ roots must be absolute. `index.since_days` defaults to 90. Set
 `index.all_history = true` instead for all history; these settings cannot be
 combined. CLI indexing flags override these settings.
 
+Optional `[gold.query]` settings select the default `unit` (`"threads"` or
+`"messages"`) and `limit` (1–200). Omitting them preserves threads and 20 results.
+CLI/MCP search parameters override either setting without rebuilding the index.
+See [silver enrichment and gold configuration](docs/silver-gold-configuration.md)
+for the layer contract and current configuration scope.
+
 ```toml
 version = 1
 

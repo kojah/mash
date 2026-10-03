@@ -18,7 +18,7 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
     assert_eq!(request.filters.before, Some(3));
     assert!(matches!(
         request.unit,
-        crate::search_results::SearchUnit::Messages
+        Some(crate::search_results::SearchUnit::Messages)
     ));
     for invalid in [
         json!({"query":"database", "provider":"codex"}),
@@ -28,6 +28,8 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
         assert!(serde_json::from_value::<Search>(invalid).is_err());
     }
     let empty: Search = serde_json::from_value(json!({"query":"database"})).unwrap();
+    assert!(empty.limit.is_none());
+    assert!(empty.unit.is_none());
     assert_eq!(empty.filters.provider, [] as [Provider; 0]);
     assert_eq!(empty.filters.conversation, [] as [String; 0]);
 }

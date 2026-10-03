@@ -29,7 +29,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             .search(Parameters(Search {
                 query: "--models-dir=untrusted".into(),
                 limit: None,
-                unit: crate::search_results::SearchUnit::Threads,
+                unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: crate::search_filter::Selection {
                     provider: vec![Provider::Codex],
                     filter,
@@ -46,7 +46,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
         .search(Parameters(Search {
             query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
             limit: None,
-            unit: crate::search_results::SearchUnit::Threads,
+            unit: Some(crate::search_results::SearchUnit::Threads),
             filters: crate::search_filter::Selection::default(),
             local: true,
             shared: false,
@@ -210,8 +210,16 @@ fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     ] {
         assert_eq!(search.input_schema["properties"][field]["type"], "array");
     }
+    // Defaults come from the current node configuration, not a frozen SDK value.
     let unit = &search.input_schema["properties"]["unit"];
-    assert_eq!(unit["default"], "threads");
+    assert!(unit.get("default").is_none());
+    assert!(
+        !search.input_schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field == "unit" || field == "limit")
+    );
     let schema = serde_json::to_string(&search.input_schema).unwrap();
     assert!(schema.contains("\"threads\"") && schema.contains("\"messages\""));
 }

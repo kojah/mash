@@ -296,8 +296,8 @@ async fn core_indexes_and_searches_native_database_sessions_with_real_models() {
         paths: paths.clone(),
         operation: Operation::Search {
             query: "cbioportal importer".into(),
-            limit: 5,
-            unit: crate::search_results::SearchUnit::Threads,
+            limit: Some(5),
+            unit: Some(crate::search_results::SearchUnit::Threads),
             filters: Box::new(crate::search_filter::Selection {
                 provider: vec![Provider::Hermes],
                 ..Default::default()

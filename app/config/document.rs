@@ -14,6 +14,7 @@ pub(super) struct ParsedDocument {
     pub(super) since_days: Option<u32>,
     pub(super) shared: Option<SharedConfig>,
     pub(super) embeddings: Option<crate::semantic::remote::Configuration>,
+    pub(super) gold: crate::gold::config::Configuration,
     pub(super) destination: IndexDestination,
     pub(super) local_filter: Option<IndexFilter>,
     pub(super) shared_filter: Option<IndexFilter>,
@@ -28,6 +29,8 @@ struct RawDocument {
     index: RawIndex,
     shared: Option<SharedConfig>,
     embeddings: Option<crate::semantic::remote::Configuration>,
+    #[serde(default)]
+    gold: crate::gold::config::Configuration,
 }
 
 type RawProviders = BTreeMap<Provider, RawProvider>;
@@ -64,6 +67,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     if let Some(embeddings) = &raw.embeddings {
         embeddings.validate()?;
     }
+    raw.gold.validate()?;
     if raw.index.all_history && raw.index.since_days.is_some() {
         return Err(AppError::configuration(
             "index all_history and since_days cannot both be specified",
@@ -138,6 +142,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         since_days,
         shared: raw.shared,
         embeddings: raw.embeddings,
+        gold: raw.gold,
         destination,
         local_filter: raw.index.local,
         shared_filter: raw.index.shared,
