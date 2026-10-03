@@ -82,6 +82,7 @@ pub(crate) async fn materialize(
         file,
         &Event::Batch(Batch::Conversations {
             records: vec![ConversationRecord {
+                enrichment: Some(crate::silver::enrichment::Evidence::capture(conversation)?),
                 id: conversation.id.clone(),
                 provider: conversation.provider,
                 title: conversation.title.clone(),

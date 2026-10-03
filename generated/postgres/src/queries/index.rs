@@ -80,6 +80,7 @@ pub struct ThreadCatalog {
     pub repository: Option<String>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+    pub enrichment: Option<String>,
 }
 pub struct ThreadCatalogBorrowed<'a> {
     pub node_id: &'a str,
@@ -90,6 +91,7 @@ pub struct ThreadCatalogBorrowed<'a> {
     pub repository: Option<&'a str>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+    pub enrichment: Option<&'a str>,
 }
 impl<'a> From<ThreadCatalogBorrowed<'a>> for ThreadCatalog {
     fn from(
@@ -102,6 +104,7 @@ impl<'a> From<ThreadCatalogBorrowed<'a>> for ThreadCatalog {
             repository,
             created_at,
             updated_at,
+            enrichment,
         }: ThreadCatalogBorrowed<'a>,
     ) -> Self {
         Self {
@@ -113,6 +116,7 @@ impl<'a> From<ThreadCatalogBorrowed<'a>> for ThreadCatalog {
             repository: repository.map(|v| v.into()),
             created_at,
             updated_at,
+            enrichment: enrichment.map(|v| v.into()),
         }
     }
 }
@@ -299,6 +303,7 @@ pub struct Search {
     pub repository: Option<String>,
     pub conversation_created_at: Option<i64>,
     pub conversation_updated_at: Option<i64>,
+    pub enrichment: Option<String>,
 }
 pub struct SearchBorrowed<'a> {
     pub node_id: &'a str,
@@ -314,6 +319,7 @@ pub struct SearchBorrowed<'a> {
     pub repository: Option<&'a str>,
     pub conversation_created_at: Option<i64>,
     pub conversation_updated_at: Option<i64>,
+    pub enrichment: Option<&'a str>,
 }
 impl<'a> From<SearchBorrowed<'a>> for Search {
     fn from(
@@ -331,6 +337,7 @@ impl<'a> From<SearchBorrowed<'a>> for Search {
             repository,
             conversation_created_at,
             conversation_updated_at,
+            enrichment,
         }: SearchBorrowed<'a>,
     ) -> Self {
         Self {
@@ -347,6 +354,7 @@ impl<'a> From<SearchBorrowed<'a>> for Search {
             repository: repository.map(|v| v.into()),
             conversation_created_at,
             conversation_updated_at,
+            enrichment: enrichment.map(|v| v.into()),
         }
     }
 }
@@ -1100,7 +1108,7 @@ impl NodeStmt {
 pub struct ThreadCatalogStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn thread_catalog() -> ThreadCatalogStmt {
     ThreadCatalogStmt(
-        "SELECT node_id,id,provider,title,project,repository,created_at,updated_at FROM conversations",
+        "SELECT node_id,id,provider,title,project,repository,created_at,updated_at,enrichment FROM conversations",
         None,
     )
 }
@@ -1132,6 +1140,7 @@ impl ThreadCatalogStmt {
                         repository: row.try_get(5)?,
                         created_at: row.try_get(6)?,
                         updated_at: row.try_get(7)?,
+                        enrichment: row.try_get(8)?,
                     })
                 },
             mapper: |it| ThreadCatalog::from(it),
@@ -1541,7 +1550,7 @@ impl BrokenContextStmt {
 pub struct SearchStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn search() -> SearchStmt {
     SearchStmt(
-        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, ts_rank_cd(document,websearch_to_tsquery('simple',$1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE document @@ websearch_to_tsquery('simple',$1) AND projection<>'' AND generation=$2 AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at>=$4) AND ($5::text IS NULL OR m.node_id<>$5) ORDER BY score DESC,m.node_id,m.id LIMIT $6",
+        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, ts_rank_cd(document,websearch_to_tsquery('simple',$1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,c.enrichment FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE document @@ websearch_to_tsquery('simple',$1) AND projection<>'' AND generation=$2 AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at>=$4) AND ($5::text IS NULL OR m.node_id<>$5) ORDER BY score DESC,m.node_id,m.id LIMIT $6",
         None,
     )
 }
@@ -1593,6 +1602,7 @@ impl SearchStmt {
                         repository: row.try_get(10)?,
                         conversation_created_at: row.try_get(11)?,
                         conversation_updated_at: row.try_get(12)?,
+                        enrichment: row.try_get(13)?,
                     })
                 },
             mapper: |it| Search::from(it),
@@ -1637,7 +1647,7 @@ impl<
 pub struct SemanticStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn semantic() -> SemanticStmt {
     SemanticStmt(
-        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, 1.0-(g.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE generation=$2 AND vector_dims(vector)=$3 AND projection<>'' AND ($4::text IS NULL OR c.provider=$4) AND ($5::bigint IS NULL OR m.created_at>=$5) AND ($6::text IS NULL OR m.node_id<>$6) ORDER BY score DESC,m.node_id,m.id LIMIT $7",
+        "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection, 1.0-(g.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,c.enrichment FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id WHERE generation=$2 AND vector_dims(vector)=$3 AND projection<>'' AND ($4::text IS NULL OR c.provider=$4) AND ($5::bigint IS NULL OR m.created_at>=$5) AND ($6::text IS NULL OR m.node_id<>$6) ORDER BY score DESC,m.node_id,m.id LIMIT $7",
         None,
     )
 }
@@ -1698,6 +1708,7 @@ impl SemanticStmt {
                         repository: row.try_get(10)?,
                         conversation_created_at: row.try_get(11)?,
                         conversation_updated_at: row.try_get(12)?,
+                        enrichment: row.try_get(13)?,
                     })
                 },
             mapper: |it| Search::from(it),

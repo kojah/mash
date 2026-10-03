@@ -23,6 +23,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     let conversations = providers
         .iter()
         .map(|provider| ConversationRecord {
+            enrichment: None,
             id: provider.as_str().into(),
             provider: *provider,
             title: Some(format!("Current thread {revision}")),

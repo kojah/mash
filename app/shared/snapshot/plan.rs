@@ -232,6 +232,7 @@ pub(in crate::shared) fn plan(
                     }
                     Batch::Conversations { records } => {
                         for c in records {
+                            c.validate_enrichment()?;
                             valid_id(&c.id)?;
                             if !input.snapshot {
                                 data.remove(&c.id);

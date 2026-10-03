@@ -86,6 +86,7 @@ async fn shared_catalog_deadline_covers_all_pages_and_discards_partial_remote_re
                             provider: Provider::Codex,
                             node_id: "peer".into(),
                             metadata: ThreadMetadata {
+                                enrichment: None,
                                 updated_at: Some(number),
                                 ..Default::default()
                             },

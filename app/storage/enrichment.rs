@@ -2,7 +2,7 @@
 use super::{Storage, generated};
 use crate::{AppError, provider::Provider, silver::enrichment::Evidence};
 
-fn decode(json: &str) -> Result<Evidence, AppError> {
+pub(super) fn decode(json: &str) -> Result<Evidence, AppError> {
     serde_json::from_str(json)
         .map_err(|_| AppError::database_data("invalid silver enrichment evidence"))
 }

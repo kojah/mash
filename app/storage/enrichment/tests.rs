@@ -94,7 +94,25 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     storage.commit_writer().unwrap();
     drop(storage);
     let stored = Storage::open_catalog(&path).unwrap();
-    assert_eq!(stored.conversation_enrichment(&id).unwrap(), Some(evidence));
+    assert_eq!(
+        stored.conversation_enrichment(&id).unwrap(),
+        Some(evidence.clone())
+    );
+    let threads = stored
+        .thread_candidates(&crate::thread_catalog::Request::default(), "local")
+        .unwrap();
+    assert_eq!(threads[0].metadata.enrichment, Some(evidence.clone()));
+    stored
+        .with_publication_snapshot(|snapshot| {
+            snapshot.visit(crate::shared::protocol::BatchKind::Conversations, |batch| {
+                let crate::shared::protocol::Batch::Conversations { records } = batch else {
+                    panic!("conversation batch")
+                };
+                assert_eq!(records[0].enrichment, Some(evidence.clone()));
+                Ok(())
+            })
+        })
+        .unwrap();
 }
 
 #[test]

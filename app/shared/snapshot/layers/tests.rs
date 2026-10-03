@@ -22,6 +22,7 @@ fn fixture() -> Data {
     data.conversations.insert(
         "thread".into(),
         ConversationRecord {
+            enrichment: None,
             id: "thread".into(),
             provider: crate::provider::Provider::Codex,
             title: Some("Thread".into()),

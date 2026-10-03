@@ -82,6 +82,8 @@ impl Batch {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ConversationRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enrichment: Option<crate::silver::enrichment::Evidence>,
     pub id: String,
     pub provider: Provider,
     pub title: Option<String>,
@@ -89,6 +91,28 @@ pub(crate) struct ConversationRecord {
     pub repository: Option<String>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+}
+
+impl ConversationRecord {
+    pub(crate) fn validate_enrichment(&self) -> Result<(), crate::AppError> {
+        if let Some(evidence) = &self.enrichment {
+            if !evidence.is_current() {
+                return Err(crate::AppError::usage(
+                    "unsupported silver enrichment evidence version",
+                ));
+            }
+            for origin in [&evidence.title, &evidence.project, &evidence.repository] {
+                if let Some(crate::silver::enrichment::Origin::FirstVisibleUserMessage {
+                    message_id,
+                    ..
+                }) = origin
+                {
+                    super::backend::valid_id(message_id)?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

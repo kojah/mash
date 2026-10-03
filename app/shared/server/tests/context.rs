@@ -133,6 +133,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
         }),
         Event::Batch(Batch::Conversations {
             records: vec![ConversationRecord {
+                enrichment: None,
                 id: "branch".into(),
                 provider: crate::provider::Provider::Pi,
                 title: None,

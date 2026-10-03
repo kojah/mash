@@ -92,6 +92,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
         copies: Vec::new(),
         created_at: Some(123),
         metadata: ThreadMetadata {
+            enrichment: None,
             title: Some(thread.into()),
             ..Default::default()
         },

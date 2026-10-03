@@ -9,6 +9,7 @@ mod antigravity;
 mod context;
 mod correlation;
 mod cursor;
+mod enrichment;
 mod native;
 mod relevance;
 mod restart;
@@ -28,6 +29,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
     let conversations = Provider::ALL
         .iter()
         .map(|provider| ConversationRecord {
+            enrichment: None,
             id: provider.as_str().into(),
             provider: *provider,
             title: None,

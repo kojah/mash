@@ -88,6 +88,7 @@ pub struct ListThreadsRow {
     pub repository: Option<String>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
+    pub enrichment: Option<String>,
 }
 impl ListThreadsRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -99,6 +100,7 @@ impl ListThreadsRow {
             repository: row.get(4)?,
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
+            enrichment: row.get(7)?,
         })
     }
 }
@@ -122,8 +124,8 @@ impl<'a> ListThreads<'a> {
     CAST(?7 AS INTEGER) AS before_ms,
     CAST(?8 AS TEXT) AS sort_key,
     CAST(?9 AS INTEGER) AS descending)
-SELECT c.id,c.provider,c.title,c.project,c.repository,c.created_at,c.updated_at
-FROM conversations c CROSS JOIN scope s
+SELECT c.id,c.provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
+FROM conversations c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
 WHERE (s.all_providers = 1 OR c.provider IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
@@ -2324,6 +2326,7 @@ pub struct SearchHitRow {
     pub repository: Option<String>,
     pub conversation_created_at: Option<i64>,
     pub conversation_updated_at: Option<i64>,
+    pub enrichment: Option<String>,
 }
 impl SearchHitRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -2339,6 +2342,7 @@ impl SearchHitRow {
             repository: row.get(8)?,
             conversation_created_at: row.get(9)?,
             conversation_updated_at: row.get(10)?,
+            enrichment: row.get(11)?,
         })
     }
 }
@@ -2347,8 +2351,9 @@ pub struct SearchHit {
 }
 impl SearchHit {
     pub const QUERY: &'static str = r"SELECT m.id,m.conversation_id,c.provider,m.role,COALESCE(m.search_projection,m.content) AS content,
-m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
-FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE m.storage_id=?1";
+m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment
+FROM messages m JOIN conversations c ON c.id=m.conversation_id
+LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id WHERE m.storage_id=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }

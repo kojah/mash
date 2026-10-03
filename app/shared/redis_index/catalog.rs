@@ -53,6 +53,7 @@ impl Store {
                         if id != row.id { return Err(AppError::shared("inconsistent Redis thread catalog identity")); }
                         collector.push(Thread { conversation_id: row.id, provider: row.provider, node_id: node.clone(),
                             metadata: crate::search_results::ThreadMetadata {
+                                enrichment: row.enrichment,
                                 title: row.title, project: row.project, repository: row.repository,
                                 created_at: row.created_at, updated_at: row.updated_at,
                             } });

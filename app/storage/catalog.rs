@@ -44,6 +44,10 @@ impl Storage {
                     provider: row.provider.parse()?,
                     node_id: node.into(),
                     metadata: ThreadMetadata {
+                        enrichment: row
+                            .enrichment
+                            .map(|json| super::enrichment::decode(&json))
+                            .transpose()?,
                         title: row.title,
                         project: row.project,
                         repository: row.repository,

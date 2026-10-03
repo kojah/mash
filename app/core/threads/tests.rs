@@ -45,6 +45,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
                     provider: Provider::Codex,
                     node_id: "peer".into(),
                     metadata: ThreadMetadata {
+                        enrichment: None,
                         updated_at: Some(number),
                         ..Default::default()
                     },

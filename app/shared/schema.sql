@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS version (
     singleton BOOLEAN PRIMARY KEY CHECK (singleton), version INTEGER NOT NULL
 );
-INSERT INTO version VALUES (TRUE, 17) ON CONFLICT DO NOTHING;
+INSERT INTO version VALUES (TRUE, 18) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS nodes (
     node_id TEXT PRIMARY KEY, instance TEXT NOT NULL, revision BIGINT NOT NULL
 );
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN
         ('claude-code','codex','aider','hermes','opencode','openclaw','pi',
          'copilot','gemini-cli','cline','cursor','windsurf','antigravity')),
-    title TEXT, created_at BIGINT, updated_at BIGINT, project TEXT, repository TEXT,
+    title TEXT, created_at BIGINT, updated_at BIGINT, project TEXT, repository TEXT, enrichment TEXT,
     PRIMARY KEY(node_id, id)
 );
 CREATE TABLE IF NOT EXISTS messages (

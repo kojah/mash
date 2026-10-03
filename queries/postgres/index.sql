@@ -1,8 +1,8 @@
 --! node
 SELECT instance, revision FROM nodes WHERE node_id=:node FOR UPDATE;
 
---! thread_catalog : (title?, project?, repository?, created_at?, updated_at?)
-SELECT node_id,id,provider,title,project,repository,created_at,updated_at
+--! thread_catalog : (title?, project?, repository?, created_at?, updated_at?, enrichment?)
+SELECT node_id,id,provider,title,project,repository,created_at,updated_at,enrichment
 FROM conversations;
 
 --! node_state
@@ -63,20 +63,20 @@ SELECT provider,conversation_id FROM tombstones WHERE node_id=:node;
 SELECT EXISTS(SELECT 1 FROM messages m WHERE m.node_id=:node AND m.context_parent>=0
 AND NOT EXISTS(SELECT 1 FROM messages p WHERE p.node_id=m.node_id AND p.conversation_id=m.conversation_id AND p.ordinal=m.context_parent)) AS broken;
 
---! search (provider?, cutoff?, exclude_node?) : (created_at?, title?, project?, repository?, conversation_created_at?, conversation_updated_at?)
+--! search (provider?, cutoff?, exclude_node?) : (created_at?, title?, project?, repository?, conversation_created_at?, conversation_updated_at?, enrichment?)
 SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection,
 ts_rank_cd(document,websearch_to_tsquery('simple',:query))::double precision AS score,
-m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
+m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,c.enrichment
 FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
 WHERE document @@ websearch_to_tsquery('simple',:query) AND projection<>'' AND generation=:generation
 AND (:provider::text IS NULL OR c.provider=:provider) AND (:cutoff::bigint IS NULL OR m.created_at>=:cutoff)
 AND (:exclude_node::text IS NULL OR m.node_id<>:exclude_node)
 ORDER BY score DESC,m.node_id,m.id LIMIT :limit;
 
---! semantic (provider?, cutoff?, exclude_node?) : Search(created_at?, title?, project?, repository?, conversation_created_at?, conversation_updated_at?)
+--! semantic (provider?, cutoff?, exclude_node?) : Search(created_at?, title?, project?, repository?, conversation_created_at?, conversation_updated_at?, enrichment?)
 SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.projection,
 1.0-(g.vector <=> :vector::text::public.vector) AS score,
-m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
+m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,c.enrichment
 FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
 WHERE generation=:generation AND vector_dims(vector)=:dimensions AND projection<>''
 AND (:provider::text IS NULL OR c.provider=:provider) AND (:cutoff::bigint IS NULL OR m.created_at>=:cutoff)

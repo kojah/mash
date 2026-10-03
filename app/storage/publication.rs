@@ -40,7 +40,8 @@ impl Snapshot<'_> {
     ) -> Result<(), AppError> {
         let sql = match kind {
             BatchKind::Conversations => {
-                "SELECT id, provider, title, created_at, updated_at, project, repository FROM conversations ORDER BY id"
+                "SELECT c.id,c.provider,c.title,c.created_at,c.updated_at,c.project,c.repository,e.evidence
+                 FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id ORDER BY c.id"
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
@@ -69,6 +70,11 @@ impl Snapshot<'_> {
             let size = match &mut batch {
                 Batch::Conversations { records } => {
                     let record = ConversationRecord {
+                        enrichment: row
+                            .get::<_, Option<String>>(7)
+                            .map_err(AppError::database)?
+                            .map(|json| super::enrichment::decode(&json))
+                            .transpose()?,
                         id: row.get::<_, String>(0).map_err(AppError::database)?,
                         provider: row.get::<_, Provider>(1).map_err(AppError::database)?,
                         title: row

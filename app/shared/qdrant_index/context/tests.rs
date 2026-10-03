@@ -62,6 +62,7 @@ fn record(m: protocol::MessageRecord) -> api::Record<Document> {
             created_at: m.created_at,
             tokens: vec![],
             conversation: protocol::ConversationRecord {
+                enrichment: None,
                 id: "thread".into(),
                 provider: crate::provider::Provider::Pi,
                 title: None,

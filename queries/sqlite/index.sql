@@ -15,8 +15,8 @@ WITH scope AS (SELECT
     CAST(sqlc.narg(before_ms) AS INTEGER) AS before_ms,
     CAST(sqlc.arg(sort_key) AS TEXT) AS sort_key,
     CAST(sqlc.arg(descending) AS INTEGER) AS descending)
-SELECT c.id,c.provider,c.title,c.project,c.repository,c.created_at,c.updated_at
-FROM conversations c CROSS JOIN scope s
+SELECT c.id,c.provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
+FROM conversations c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
 WHERE (s.all_providers = 1 OR c.provider IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
@@ -90,8 +90,9 @@ WHERE conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
 
 -- name: SearchHit :one
 SELECT m.id,m.conversation_id,c.provider,m.role,COALESCE(m.search_projection,m.content) AS content,
-m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
-FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE m.storage_id=?1;
+m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment
+FROM messages m JOIN conversations c ON c.id=m.conversation_id
+LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id WHERE m.storage_id=?1;
 
 -- name: SearchDocument :one
 SELECT COALESCE(search_projection,content) AS content FROM messages WHERE id=?1;

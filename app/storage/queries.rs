@@ -165,6 +165,7 @@ impl Storage {
                    FROM message_fts
                    JOIN messages m ON m.id = message_fts.message_id
                    JOIN conversations c ON c.id = m.conversation_id
+                   LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
                   WHERE message_fts MATCH ?1
                     AND (?2 IS NULL OR c.provider = ?2)
                     AND (?3 IS NULL OR m.created_at >= ?3)
@@ -339,6 +340,10 @@ fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> {
         copies: Vec::new(),
         created_at: row.created_at,
         metadata: crate::search_results::ThreadMetadata {
+            enrichment: row
+                .enrichment
+                .map(|json| super::enrichment::decode(&json))
+                .transpose()?,
             title: row.title,
             project: row.project,
             repository: row.repository,

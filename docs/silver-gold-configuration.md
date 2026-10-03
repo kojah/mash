@@ -16,7 +16,7 @@ field. Missing metadata remains optional rather than being invented.
 | Identity and provenance | Provider, canonical thread/message IDs, source path/key/session, fingerprints and checkpoints | Provider identity is normalized; local path is provenance, not a portable repository identity. Exact native record offsets and per-field provenance are not generally retained. |
 | Dialogue | Canonical content, typed role, optional interpreted visible dialogue | Native tool/hidden/injected records are interpreted before gold. Context-only records remain available for viewing. Structured attachments/tool fields are not a general reusable silver model. |
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
-| Thread metadata | Title, project, repository, creation/update times; versioned local metadata evidence | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage, timestamps and shared propagation remain pending. |
+| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to all shared backends | Codex/Claude title and project origins are recorded. Other origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
 | Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate | Local completeness and interpretation version are durable. Local gold has a typed build manifest. Shared certificate/manifest propagation and per-field enrichment origins remain pending. |
 
@@ -64,10 +64,21 @@ typed database error. Clean replay fills or repairs evidence even if canonical
 message text is unchanged. Date cutoffs still apply. Source-free gold rebuilding
 does not replay providers or invent missing evidence.
 
-This is a local persisted foundation. Shared storage/API propagation, exposing
-origins through thread metadata, remaining adapter fields, timestamp derivation
-and precise native offsets remain tracked follow-ups. The interpretation
-certificate continues to certify history ingestion, not complete provenance
+The same optional typed evidence is published through both snapshot and routed
+uploads. PostgreSQL schema 18 stores it with canonical thread metadata;
+migration from schema 17 preserves history and vectors and leaves origins absent.
+Redis and Qdrant retain it in their typed conversation records. All backends
+return it in thread listings and search metadata. Local listings and search do
+the same, through generated SQLite reads. CLI and MCP share these core models.
+
+Absent evidence is omitted from output rather than fabricated. Replacing a
+thread with a record that has no evidence clears its previous annotations.
+Uploads reject unsupported evidence/rule versions and invalid message identities
+before acknowledgment. These are node-supplied provenance claims; structural
+validation does not independently prove the provider's source facts.
+
+Remaining adapter fields, timestamp derivation and precise native offsets remain
+tracked follow-ups. The interpretation certificate continues to certify history ingestion, not complete provenance
 coverage for every metadata field.
 
 SQLite schema 36 stores a canonical `silver_state.revision`, interpretation-rule

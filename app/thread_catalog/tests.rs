@@ -25,6 +25,7 @@ fn row(id: &str, time: Option<i64>) -> Thread {
         provider: Provider::Codex,
         node_id: "node".into(),
         metadata: ThreadMetadata {
+            enrichment: None,
             updated_at: time,
             ..Default::default()
         },

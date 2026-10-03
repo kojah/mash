@@ -49,6 +49,7 @@ impl Fixture {
             }),
             Event::Batch(Batch::Conversations {
                 records: vec![ConversationRecord {
+                    enrichment: None,
                     id: "thread".into(),
                     provider: Provider::Codex,
                     title: Some(title.into()),

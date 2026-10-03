@@ -10,6 +10,7 @@ pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Val
         .map(|m| m.id.clone())
         .collect();
     let record = ConversationRecord {
+        enrichment: None,
         id: conversation.id.clone(),
         provider: conversation.provider,
         title: conversation.title,

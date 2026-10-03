@@ -198,3 +198,11 @@ DO $$ BEGIN
         UPDATE version SET version=17 WHERE singleton;
     END IF;
 END $$;
+
+-- Preserve canonical history; old field origins remain absent.
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 17 THEN
+        ALTER TABLE conversations ADD COLUMN IF NOT EXISTS enrichment TEXT;
+        UPDATE version SET version=18 WHERE singleton;
+    END IF;
+END $$;

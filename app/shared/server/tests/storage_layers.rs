@@ -1,6 +1,52 @@
 use super::*;
 
 #[tokio::test]
+#[ignore = "requires disposable PostgreSQL with pgvector"]
+async fn postgres_previous_schema_enrichment_migration_preserves_history_and_vectors() {
+    let service = Service::new(true).await;
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    let client = service.pool.get().await.unwrap();
+    let schema = backend::group_schema(&service.group);
+    client
+        .batch_execute(&format!(
+            "SET search_path={schema},public;
+        CREATE TEMP TABLE expected_threads AS SELECT * FROM conversations;
+        CREATE TEMP TABLE expected_messages AS SELECT * FROM messages;
+        CREATE TEMP TABLE expected_gold AS SELECT * FROM message_search;
+        ALTER TABLE conversations DROP COLUMN enrichment;
+        UPDATE version SET version=17;"
+        ))
+        .await
+        .unwrap();
+    backend::initialize(&service.pool, std::slice::from_ref(&service.group))
+        .await
+        .unwrap();
+    let unchanged = client
+        .query_one(
+            "SELECT NOT EXISTS(SELECT * FROM conversations EXCEPT SELECT * FROM expected_threads)
+        AND NOT EXISTS(SELECT * FROM expected_threads EXCEPT SELECT * FROM conversations)
+        AND NOT EXISTS(SELECT * FROM messages EXCEPT SELECT * FROM expected_messages)
+        AND NOT EXISTS(SELECT * FROM expected_messages EXCEPT SELECT * FROM messages)
+        AND NOT EXISTS(SELECT * FROM message_search EXCEPT SELECT * FROM expected_gold)
+        AND NOT EXISTS(SELECT * FROM expected_gold EXCEPT SELECT * FROM message_search)",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert!(unchanged.get::<_, bool>(0));
+    let rows = client
+        .query_one("SELECT enrichment FROM conversations LIMIT 1", &[])
+        .await
+        .unwrap();
+    assert!(rows.get::<_, Option<String>>(0).is_none());
+    service.cleanup().await;
+}
+
+#[tokio::test]
 #[ignore = "requires disposable MASH_TEST_PG_URL with pgvector"]
 async fn postgres_silver_survives_gold_replacement_and_legacy_migration() {
     let service = Service::new(true).await;

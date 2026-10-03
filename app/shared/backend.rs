@@ -188,6 +188,7 @@ async fn upload_batch(
         Batch::Conversations { records } => {
             let mut ids = Vec::new();
             for r in records {
+                r.validate_enrichment()?;
                 valid_id(&r.id)?;
                 ids.push(&r.id);
             }
@@ -199,7 +200,7 @@ async fn upload_batch(
                 .await
                 .map_err(pg_error)?;
             }
-            "INSERT INTO conversations(node_id,id,provider,title,created_at,updated_at,project,repository) SELECT $1,r.id,r.provider,title,created_at,updated_at,project,repository FROM jsonb_to_recordset($2::text::jsonb) r(id text,provider text,title text,created_at bigint,updated_at bigint,project text,repository text) WHERE NOT EXISTS(SELECT 1 FROM tombstones t WHERE t.node_id=$1 AND t.provider=r.provider AND t.conversation_id=r.id)"
+            "INSERT INTO conversations(node_id,id,provider,title,created_at,updated_at,project,repository,enrichment) SELECT $1,r.id,r.provider,title,created_at,updated_at,project,repository,enrichment::text FROM jsonb_to_recordset($2::text::jsonb) r(id text,provider text,title text,created_at bigint,updated_at bigint,project text,repository text,enrichment jsonb) WHERE NOT EXISTS(SELECT 1 FROM tombstones t WHERE t.node_id=$1 AND t.provider=r.provider AND t.conversation_id=r.id)"
         }
         Batch::Messages { records } => {
             for r in records {
@@ -425,6 +426,7 @@ pub(super) async fn list_threads(
             provider,
             node_id: row.node_id,
             metadata: crate::search_results::ThreadMetadata {
+                enrichment: decode_enrichment(row.enrichment)?,
                 title: row.title,
                 project: row.project,
                 repository: row.repository,
@@ -437,6 +439,16 @@ pub(super) async fn list_threads(
 }
 pub(super) fn group_schema(group: &str) -> String {
     format!("mash_g_{}", &blake3::hash(group.as_bytes()).to_hex()[..32])
+}
+
+fn decode_enrichment(
+    json: Option<String>,
+) -> Result<Option<crate::silver::enrichment::Evidence>, AppError> {
+    json.map(|value| {
+        serde_json::from_str(&value)
+            .map_err(|_| AppError::shared("invalid stored silver enrichment evidence"))
+    })
+    .transpose()
 }
 async fn transaction<'a>(
     client: &'a mut deadpool_postgres::Object,
@@ -484,7 +496,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 17 {
+        if version != 18 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
@@ -579,6 +591,7 @@ fn hit(row: pg::Search, lexical: bool) -> Result<SearchHit, AppError> {
         copies: Vec::new(),
         created_at: row.created_at,
         metadata: crate::search_results::ThreadMetadata {
+            enrichment: decode_enrichment(row.enrichment)?,
             title: row.title,
             project: row.project,
             repository: row.repository,
@@ -602,6 +615,7 @@ struct Candidates {
 // generated search model, with named decoding for this dynamic-query boundary.
 fn filtered_search_row(row: &Row) -> Result<pg::Search, AppError> {
     Ok(pg::Search {
+        enrichment: row.try_get("enrichment").map_err(pg_error)?,
         node_id: row.try_get("node_id").map_err(pg_error)?,
         id: row.try_get("id").map_err(pg_error)?,
         conversation_id: row.try_get("conversation_id").map_err(pg_error)?,
@@ -637,7 +651,7 @@ async fn filtered_candidates(
         .query(
             &format!(
                 "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
+                ts_rank_cd(document, websearch_to_tsquery('simple', $1))::double precision AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,c.enrichment
          FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE document @@ websearch_to_tsquery('simple', $1) AND projection <> '' AND generation=$2
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)
@@ -653,7 +667,7 @@ async fn filtered_candidates(
         .query(
             &format!(
                 "SELECT m.node_id,m.id,m.conversation_id,c.provider,m.role,m.content,m.projection,
-                1.0 - (g.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at
+                1.0 - (g.vector <=> $1::text::public.vector) AS score, m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,c.enrichment
          FROM messages m JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id JOIN conversations c ON c.node_id=m.node_id AND c.id=m.conversation_id
          WHERE generation=$2 AND vector_dims(vector)=$5 AND projection <> ''
            AND ($3::text IS NULL OR c.provider=$3) AND ($4::bigint IS NULL OR m.created_at >= $4)

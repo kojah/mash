@@ -69,6 +69,7 @@ fn decodes_scores_projection_canonical_view_and_optional_metadata() {
     assert_eq!(semantic[0].semantic_score, Some(0.75));
     let mut fields = candidate_fields();
     let conversation = ConversationRecord {
+        enrichment: None,
         id: "chat".into(),
         provider: Provider::Codex,
         title: Some("title".into()),
@@ -262,6 +263,7 @@ fn rejects_stored_schema_drift_and_inconsistent_identity_without_leaking_history
     }
     for provider in [Provider::ClaudeCode, Provider::Codex] {
         let conversation = ConversationRecord {
+            enrichment: None,
             id: if provider == Provider::Codex {
                 "other"
             } else {

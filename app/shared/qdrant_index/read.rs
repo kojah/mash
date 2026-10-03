@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 fn metadata(c: &protocol::ConversationRecord) -> crate::search_results::ThreadMetadata {
     crate::search_results::ThreadMetadata {
+        enrichment: c.enrichment.clone(),
         title: c.title.clone(),
         project: c.project.clone(),
         repository: c.repository.clone(),

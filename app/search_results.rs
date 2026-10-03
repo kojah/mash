@@ -41,6 +41,8 @@ impl SearchUnit {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub(crate) struct ThreadMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
     pub(crate) title: Option<String>,
     pub(crate) project: Option<String>,
     pub(crate) repository: Option<String>,
@@ -239,6 +241,7 @@ pub(crate) fn collect(
                 provider: hit.provider,
                 node_id: hit.node_id.clone(),
                 metadata: ThreadMetadata {
+                    enrichment: None,
                     title: hit
                         .metadata
                         .title

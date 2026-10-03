@@ -153,6 +153,7 @@ pub(super) fn candidates(value: &Value, ranking: Ranking) -> Result<Vec<SearchHi
                         return Err(invalid());
                     }
                     Ok(ThreadMetadata {
+                        enrichment: conversation.enrichment,
                         title: conversation.title,
                         project: conversation.project,
                         repository: conversation.repository,
