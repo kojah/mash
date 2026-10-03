@@ -20,6 +20,7 @@ struct TraceSpan {
     status: Option<u16>,
     outcome: Option<String>,
     bytes: Option<usize>,
+    mode: Option<String>,
     queue_ms: Option<u64>,
     endpoint: Option<String>,
     admission: Option<String>,
@@ -120,6 +121,11 @@ fn assert_correlated_spans(output: &str, wire: &str) {
         })
         .collect();
     assert_eq!(decoded.len(), 2);
+    assert!(
+        decoded
+            .iter()
+            .all(|event| event.span.as_ref().unwrap().mode.as_deref() == Some("buffered"))
+    );
     assert!(decoded.iter().all(|event| {
         event
             .span

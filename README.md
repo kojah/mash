@@ -290,22 +290,30 @@ The server replaces missing, malformed or duplicate IDs with a fresh local ID;
 client tracing disabled sends no correlation header or worker diagnostics request.
 Successful shared response bodies are decoded into typed models on blocking
 workers so large JSON responses do not occupy an async runtime worker. The
-`shared_http_decode` child span records byte count and success/error, with the
+`shared_http_decode` child span records byte count, `mode` and success/error, with the
 same request ancestry and no response contents. HTTP request timing includes
-admission, network I/O, blocking-worker queueing and decoding; the child measures
-decoding. The request span records `queue_ms`, the fixed `endpoint` name and
+admission, network I/O, blocking-worker queueing and decoding. In `buffered` mode
+the child measures parsing; in `streamed` mode it also includes waiting for body
+frames. Streamed byte counts include reader read-ahead. The request span records `queue_ms`, the fixed `endpoint` name and
 `admission` class. Each process admits up to eight interactive requests and one
 bulk state/publication request. They use separate capacity, acquired before
 sending HTTP. The existing 2-second interactive or 600-second bulk deadline
 includes queueing and waiting for decoding. A canceled decoder retains its
 capacity until the blocking work finishes; cancellation does not interrupt
 already-running JSON parsing. This bounds concurrent response work, not response
-bytes or the number of pending callers. Large-history paging and body budgets
+bytes or the number of pending callers. Node state streams immediately; other
+responses use the fast buffered parser up to a 1 MiB preview, then stream through
+a 64 KiB reader. This removes whole-wire retention for large responses without
+truncating histories. Canceling a streamed request wakes blocked body I/O; it
+does not preempt CPU parsing. Owned typed results and upstream frame buffers still
+consume memory. Large-history paging and owned-data budgets
 remain tracked in `mash-c0d.21.4`.
 See the [response decoding checks](benchmarks/2026-10-03-shared-response-decoding.md)
 for concurrency and relevance verification.
 The [response admission checks](benchmarks/2026-10-03-shared-response-admission.md)
 cover queue expiry, cancellation, separate capacity and remaining memory limits.
+The [streaming control](benchmarks/2026-10-03-shared-response-streaming.md)
+documents the large-state memory/parsing tradeoff and body cancellation checks.
 Live worker stage streaming and fleet overhead measurements remain planned.
 
 Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`

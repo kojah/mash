@@ -4,6 +4,7 @@ use crate::{AppError, config::SharedConfig, storage::Message};
 use serde::Serialize;
 use std::{sync::LazyLock, time::Duration};
 use tokio::sync::{Semaphore, SemaphorePermit};
+mod body;
 
 struct Admission {
     interactive: Semaphore,
@@ -165,7 +166,7 @@ async fn response_admitted<T: serde::de::DeserializeOwned + Send + 'static>(
                 .map_err(|_| AppError::shared("shared index HTTP admission is unavailable"))?;
             admitted = true;
             tracing::Span::current().record("queue_ms", crate::progress::milliseconds(started));
-            response_inner(request, permit).await
+            response_inner(request, endpoint, permit).await
         })
         .await
         .unwrap_or_else(|_| Err(AppError::shared("shared index HTTP request timed out")));
@@ -183,6 +184,7 @@ async fn response_admitted<T: serde::de::DeserializeOwned + Send + 'static>(
 
 async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
     request: reqwest::RequestBuilder,
+    endpoint: Endpoint,
     permit: SemaphorePermit<'static>,
 ) -> Result<T, AppError> {
     let response = request.send().await.map_err(|error| {
@@ -209,30 +211,7 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
         error.error.retryable = !matches!(status.as_u16(), 400 | 401 | 403 | 413 | 422);
         return Err(error);
     }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|_| AppError::shared("invalid shared index HTTP response"))?;
-    // Node state and candidate/context responses can be large. Network I/O
-    // stays async; typed decoding must not occupy a runtime worker alongside
-    // unrelated MCP reads, watch refreshes and publication heartbeats.
-    crate::blocking(move || {
-        // A canceled caller cannot cancel serde work already running. Keep its
-        // slot occupied until that work actually ends, rather than admitting
-        // more bodies and decoders behind abandoned blocking tasks.
-        let _permit = permit;
-        let span = tracing::info_span!(
-            "shared_http_decode",
-            bytes = bytes.len(),
-            outcome = tracing::field::Empty,
-        );
-        let _guard = span.enter();
-        let result = serde_json::from_slice(&bytes)
-            .map_err(|_| AppError::shared("invalid shared index HTTP response"));
-        span.record("outcome", if result.is_ok() { "success" } else { "error" });
-        result
-    })
-    .await
+    body::read(response, endpoint, permit).await
 }
 pub(super) async fn get<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,

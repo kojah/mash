@@ -110,7 +110,7 @@ pub(crate) struct MessageRecord {
     pub vector: Option<Vec<f64>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Checkpoint {
     pub provider: Provider,
@@ -124,14 +124,14 @@ pub(super) struct Checkpoint {
     pub ready: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Tombstone {
     pub provider: Provider,
     pub conversation_id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct NodeState {
     pub instance: Option<String>,
     pub revision: i64,
