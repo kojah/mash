@@ -382,3 +382,64 @@ These are functional samples with variable cache state, not a speedup comparison
 or percentile evidence. Captures begin `deadline-shared-` and
 `deadline-combined-`. Installed configurations, the live Redis endpoint and the
 staged Qdrant server remain unchanged; fleet migration is still incomplete.
+
+### Full shared source-free rebuild and preview update
+
+The dev Mac's source-free shared gold rebuild completed successfully using the
+native `4e1b15b` debug/Cranelift binary pinned above, with provider roots deliberately
+unavailable and installed local inference only. It rebuilt all 68,731 vectors
+for 3,018 threads and 434,486 messages, with 68,731 model inferences. The local
+ten-table silver digest remained
+`fedd96c45751eb4d98fe4a8c68522766420cae82089c5e0341dc48507611ea33`;
+shared silver revision/fingerprint remained unchanged, and source publication
+revision stayed 506,236. Both shared lexical and dense manifests are current.
+
+| Observed native phase | Time |
+| --- | ---: |
+| Retained-silver download | 102.349 s |
+| Model loading | 3.411 s |
+| Embedding work | 5,223.276 s |
+| Gold upload/publication | 558.119 s |
+| Core total | 6,043.954 s |
+| Externally observed process wall | 6,045.087 s |
+
+Phases are not an exhaustive partition of total time: materialization and other
+work are also included. The upload contained 144,211,634 bytes. Externally sampled
+process RSS reached 2,747,792 KiB (about 2.62 GiB), sampled every two seconds;
+this is a lower bound, not an exact peak, and excludes API/Qdrant resources.
+This is one native debug-build run, not an optimized throughput, percentile,
+initial-ingestion or relevance result. Different inference counts, batch shapes,
+cache/power conditions and work boundaries prevent a causal comparison with the
+earlier local rebuild. Retained captures are `shared-gold-{before,after}.json`,
+`shared-gold-local-{before,after}.json`, `shared-gold-measurement.json` and
+`shared-gold-rebuild.{json,log}` in the Mac migration directory and the private
+Xenia `qdrant-live-transition-20261003/native-shared-gold/` artifact directory.
+
+After terminal success and the preservation checks, the preview API was updated
+from `8fbdda6` to the optimized `d77024b` release. Its frozen binary SHA-256 is
+`04402a069fc7be0a743dad1fb2b49cd7438f6aabb75db903a4ea9345da7eea6e`.
+The authenticated freshness response stayed identical except for the newly
+reported configured-but-unpublished nodes: `personal-macbook` and `xenia`.
+The API remains at `linux-node:8788`; its exact binary, PID and source pin are
+recorded in `active-api-release.json`, with trace in `preview-server-current.log`.
+No installed node configuration, local index or legacy Redis service was changed.
+
+A shared contextual `cbioportal` search completed with full context on both API
+versions against this rebuilt corpus: fresh-process wall times were 2.765 s and
+1.821 s respectively. These single observations have variable model/filesystem
+cache and Qdrant optimizer state and do not establish a speedup. The subsequent
+six-query shared/combined cost control stopped on
+`how was cbioportal configured`: its context stage exceeded the one-second
+deadline. Candidate retrieval still succeeded, with partial-context evidence
+reported explicitly. The larger topology pages therefore do not prove that the
+timeout is resolved. Failed captures remain in `ranking-shared-cost-20261003`;
+small-window context lookup needs further work before completing that cost gate.
+
+Fleet migration remains incomplete: the personal Mac is still unreachable and
+Xenia's new silver scan remains blocked by one malformed source. Legacy history
+is retained on port 8787 until those nodes can be republished and verified.
+Xenia's staged migration TOML now uses the actual tailnet preview address rather
+than the earlier loopback address. Its authenticated `status --shared` sees the
+dev publication and both unpublished members, while correctly reporting its own
+local index as not ready. This updates only staged configuration, not the installed
+node configuration or the incomplete silver certificate.
