@@ -110,7 +110,7 @@ impl Text {
     fn content(role: Role, content: &json::Content, timestamp: Option<i64>) -> Option<Self> {
         let (canonical, projection) = content.projected()?;
         let projection =
-            crate::search_text::project(&role, projection.as_deref().unwrap_or(&canonical))
+            crate::silver::dialogue::visible(&role, projection.as_deref().unwrap_or(&canonical))
                 .into_owned();
         Some(Self {
             role,
@@ -245,7 +245,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 }),
                 role: text.role,
                 content: text.canonical,
-                search_projection: Some(text.projection),
+                dialogue_text: Some(text.projection),
                 created_at: Some(text.timestamp.unwrap_or(entry_time)),
             });
             parent = Some(ordinal);
@@ -257,7 +257,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             .iter()
             .filter(|m| m.role == Role::User)
             .find_map(|m| {
-                crate::search_text::title(m.search_projection.as_deref().unwrap_or(&m.content))
+                crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or(&m.content))
             })
     });
     let updated_at = messages

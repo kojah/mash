@@ -32,10 +32,7 @@ pub(super) fn write_record(
         role: message.role.clone(),
         created_at: message.created_at,
         content_bytes: message.content.len() as u64,
-        projection_bytes: message
-            .search_projection
-            .as_ref()
-            .map(|text| text.len() as u64),
+        projection_bytes: message.dialogue_text.as_ref().map(|text| text.len() as u64),
     };
     let header = serde_json::to_vec(&header).map_err(scratch_error)?;
     writer
@@ -45,7 +42,7 @@ pub(super) fn write_record(
     writer
         .write_all(message.content.as_bytes())
         .map_err(AppError::io)?;
-    if let Some(projection) = &message.search_projection {
+    if let Some(projection) = &message.dialogue_text {
         writer
             .write_all(projection.as_bytes())
             .map_err(AppError::io)?;
@@ -53,7 +50,7 @@ pub(super) fn write_record(
     let mut digest = blake3::Hasher::new();
     digest.update(&header);
     digest.update(message.content.as_bytes());
-    if let Some(projection) = &message.search_projection {
+    if let Some(projection) = &message.dialogue_text {
         digest.update(projection.as_bytes());
     }
     writer
@@ -95,7 +92,7 @@ fn record(reader: &mut impl Read, length: u64) -> Result<NormalizedMessage, AppE
         return Err(invalid());
     }
     let content = String::from_utf8(bytes(reader, header.content_bytes)?).map_err(|_| invalid())?;
-    let search_projection = header
+    let dialogue_text = header
         .projection_bytes
         .map(|length| String::from_utf8(bytes(reader, length)?).map_err(|_| invalid()))
         .transpose()?;
@@ -106,7 +103,7 @@ fn record(reader: &mut impl Read, length: u64) -> Result<NormalizedMessage, AppE
     let mut digest = blake3::Hasher::new();
     digest.update(&encoded_header);
     digest.update(content.as_bytes());
-    if let Some(projection) = &search_projection {
+    if let Some(projection) = &dialogue_text {
         digest.update(projection.as_bytes());
     }
     if digest.finalize().as_bytes() != &expected_digest {
@@ -118,7 +115,7 @@ fn record(reader: &mut impl Read, length: u64) -> Result<NormalizedMessage, AppE
         context: header.context,
         role: header.role,
         content,
-        search_projection,
+        dialogue_text,
         created_at: header.created_at,
     })
 }
@@ -198,7 +195,7 @@ mod tests {
             role: Role::User,
             created_at: None,
             content: "hello".to_owned(),
-            search_projection: None,
+            dialogue_text: None,
         };
         let mut encoded = Vec::new();
         write_record(&mut encoded, &message).unwrap();

@@ -122,7 +122,7 @@ fn native_updates_keep_one_message_and_only_displayed_prose_is_searchable() {
         .messages
         .inline()
         .iter()
-        .map(|m| m.search_projection.as_deref().unwrap())
+        .map(|m| m.dialogue_text.as_deref().unwrap())
         .collect::<Vec<_>>()
         .join("\n");
     assert!(!canonical.contains("Incomplete response"));
@@ -199,7 +199,7 @@ fn checkpoints_and_inclusive_rewinds_follow_the_upstream_loaded_history() {
         "Second saved answer"
     );
     assert_eq!(
-        checkpoint.messages.inline()[0].search_projection.as_deref(),
+        checkpoint.messages.inline()[0].dialogue_text.as_deref(),
         Some("Second saved answer")
     );
     let h = message(
@@ -210,7 +210,7 @@ fn checkpoints_and_inclusive_rewinds_follow_the_upstream_loaded_history() {
     write(file.path(), &[header(), json!({"$set":{"messages":[h]}})]);
     let compact = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(
-        compact.messages.inline()[0].search_projection.as_deref(),
+        compact.messages.inline()[0].dialogue_text.as_deref(),
         Some("")
     );
     write(
@@ -260,15 +260,15 @@ fn model_only_checkpoint_turns_do_not_become_human_requests_or_retrievable_answe
     let state = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(state.messages.len(), 3);
     assert_eq!(
-        state.messages.inline()[0].search_projection.as_deref(),
+        state.messages.inline()[0].dialogue_text.as_deref(),
         Some("")
     );
     assert_eq!(
-        state.messages.inline()[1].search_projection.as_deref(),
+        state.messages.inline()[1].dialogue_text.as_deref(),
         Some("")
     );
     assert_eq!(
-        state.messages.inline()[2].search_projection.as_deref(),
+        state.messages.inline()[2].dialogue_text.as_deref(),
         Some("Actual cBioPortal importer request")
     );
     // A subsequent direct message is recorded evidence, even with a reused ID.
@@ -293,7 +293,7 @@ fn model_only_checkpoint_turns_do_not_become_human_requests_or_retrievable_answe
             .unwrap()
             .messages
             .inline()[0]
-            .search_projection
+            .dialogue_text
             .as_deref(),
         Some("New directly recorded user request")
     );
@@ -307,7 +307,7 @@ fn model_only_checkpoint_turns_do_not_become_human_requests_or_retrievable_answe
             .unwrap()
             .messages
             .inline()[0]
-            .search_projection
+            .dialogue_text
             .as_deref(),
         Some("Plain synthetic summary with no reliable XML tags."),
         "complete native snapshots have no event provenance to infer"
@@ -417,7 +417,7 @@ fn subagents_commands_and_unknown_message_roles_remain_context_only() {
             .messages
             .inline()
             .iter()
-            .all(|m| m.search_projection.as_deref() == Some(""))
+            .all(|m| m.dialogue_text.as_deref() == Some(""))
     );
     write(
         file.path(),
@@ -429,7 +429,7 @@ fn subagents_commands_and_unknown_message_roles_remain_context_only() {
     let parsed = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(parsed.messages.inline()[0].role, crate::role::Role::System);
     assert_eq!(
-        parsed.messages.inline()[0].search_projection.as_deref(),
+        parsed.messages.inline()[0].dialogue_text.as_deref(),
         Some("")
     );
 }

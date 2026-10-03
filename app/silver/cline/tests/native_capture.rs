@@ -21,7 +21,7 @@ impl Capture {
                 .messages
                 .inline()
                 .iter()
-                .map(|message| message.search_projection.as_deref().unwrap())
+                .map(|message| message.dialogue_text.as_deref().unwrap())
                 .collect::<Vec<_>>(),
             self.expected_contents
                 .iter()

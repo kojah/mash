@@ -105,7 +105,7 @@ impl Messages {
             context: MessageContext::Linear,
             role: message.role,
             content: text.canonical,
-            search_projection: Some(text.projection),
+            dialogue_text: Some(text.projection),
             created_at: evidence.and_then(|e| e.timestamp),
         });
         Ok(())
@@ -209,7 +209,7 @@ fn parse_agent(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             .map(|r| r.path)
             .filter(|p| !p.trim().is_empty()),
     );
-    let title = crate::search_text::title(&metadata.name)
+    let title = crate::silver::dialogue::title(&metadata.name)
         .filter(|n| n != "New Agent")
         .or_else(|| {
             messages
@@ -217,7 +217,7 @@ fn parse_agent(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
                 .iter()
                 .filter(|m| m.role == Role::User)
                 .find_map(|m| {
-                    crate::search_text::title(m.search_projection.as_deref().unwrap_or_default())
+                    crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or_default())
                 })
         });
     Ok(ParsedFile {

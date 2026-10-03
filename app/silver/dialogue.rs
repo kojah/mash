@@ -1,4 +1,4 @@
-//! Searchable conversation text; raw provider records remain available through view.
+//! Silver interpretation of visible dialogue; canonical records retain all context.
 use crate::role::Role;
 use std::borrow::Cow;
 
@@ -16,7 +16,7 @@ const CONTEXT_TAGS: &[&str] = &[
 ];
 
 /// Remove known agent-injected context without matching ordinary mentions of it.
-pub(crate) fn project<'a>(role: &Role, text: &'a str) -> Cow<'a, str> {
+pub(crate) fn visible<'a>(role: &Role, text: &'a str) -> Cow<'a, str> {
     if !matches!(role, Role::User | Role::Assistant) {
         return Cow::Borrowed("");
     }
@@ -111,7 +111,7 @@ pub(crate) fn title(text: &str) -> Option<String> {
     if text.trim_start().starts_with("# AGENTS.md instructions") {
         return None;
     }
-    let clean = project(&Role::User, text);
+    let clean = visible(&Role::User, text);
     let clean = clean.trim();
     (!clean.is_empty()).then(|| clean.chars().take(120).collect())
 }
@@ -129,37 +129,37 @@ mod tests {
             "<in-app-browser-context>automatic state</in-app-browser-context>",
             "<codex_internal_context source=\"goal\">automatic continuation</codex_internal_context>",
         ] {
-            assert_eq!(project(&Role::User, text).trim(), "");
+            assert_eq!(visible(&Role::User, text).trim(), "");
         }
         let ordinary = "Can we remove automatic approval-review transcripts from search?";
-        assert_eq!(project(&Role::User, ordinary), ordinary);
+        assert_eq!(visible(&Role::User, ordinary), ordinary);
         let mixed = "<codex_internal_context source=\"goal\">automatic continuation</codex_internal_context>fix the importer";
-        assert_eq!(project(&Role::User, mixed), "fix the importer");
+        assert_eq!(visible(&Role::User, mixed), "fix the importer");
         let example =
             "Explain `<codex_internal_context source=\"goal\">example</codex_internal_context>`";
-        assert_eq!(project(&Role::User, example), example);
+        assert_eq!(visible(&Role::User, example), example);
     }
 
     #[test]
     fn removes_context_preserves_requests_and_ordinary_mentions() {
         let input = "# AGENTS.md instructions for /work\n<INSTRUCTIONS>cbioportal rules</INSTRUCTIONS><environment_context>cwd</environment_context>\nfix the importer";
-        assert_eq!(project(&Role::User, input), "fix the importer");
+        assert_eq!(visible(&Role::User, input), "fix the importer");
         assert_eq!(
-            project(
+            visible(
                 &Role::User,
                 "<system-reminder>cbioportal skill</system-reminder>review PR 180"
             ),
             "review PR 180"
         );
         assert_eq!(
-            project(
+            visible(
                 &Role::User,
                 "Base directory for this skill: /skills/cbioportal\nsecret instructions"
             ),
             ""
         );
         assert_eq!(
-            project(
+            visible(
                 &Role::User,
                 "How do I edit AGENTS.md or write a system-reminder?"
             ),
@@ -170,25 +170,25 @@ mod tests {
     #[test]
     fn handles_repeated_and_incomplete_blocks_without_overmatching_tags() {
         assert_eq!(
-            project(
+            visible(
                 &Role::User,
                 "A<system-reminder>x</system-reminder>B<system-reminder>y</system-reminder>C"
             ),
             "ABC"
         );
         assert_eq!(
-            project(&Role::User, "ask\n<system-reminder>unfinished"),
+            visible(&Role::User, "ask\n<system-reminder>unfinished"),
             "ask"
         );
         assert_eq!(
-            project(
+            visible(
                 &Role::User,
                 "<permissions-extra>example</permissions-extra>"
             ),
             "<permissions-extra>example</permissions-extra>"
         );
         assert_eq!(
-            project(
+            visible(
                 &Role::User,
                 "<permissions-extra>x</permissions-extra><permissions instructions>noise</permissions instructions>"
             ),
@@ -205,7 +205,7 @@ mod tests {
             Role::Tool,
             Role::Other("toolResult".into()),
         ] {
-            assert_eq!(project(&role, "cbioportal"), "");
+            assert_eq!(visible(&role, "cbioportal"), "");
         }
         assert_eq!(
             title("<recommended_plugins>list</recommended_plugins>"),
@@ -225,7 +225,7 @@ mod tests {
             "what does <system-reminder> mean?",
             "<INSTRUCTIONS>user XML</INSTRUCTIONS>",
         ] {
-            assert_eq!(project(&Role::User, input), input);
+            assert_eq!(visible(&Role::User, input), input);
         }
     }
 }

@@ -35,7 +35,7 @@ fn absent_display_text_uses_ordered_text_and_keeps_scope_only_content_unsearchab
         super::super::history::normalize(&root, &metadata, 0, &step)
             .unwrap()
             .unwrap()
-            .search_projection
+            .dialogue_text
             .as_deref(),
         Some("Explain cBioPortal")
     );
@@ -64,7 +64,7 @@ fn absent_display_text_uses_ordered_text_and_keeps_scope_only_content_unsearchab
         super::super::history::normalize(&root, &metadata, 0, &step)
             .unwrap()
             .unwrap()
-            .search_projection
+            .dialogue_text
             .as_deref(),
         Some("")
     );
@@ -85,7 +85,7 @@ fn absent_display_text_uses_ordered_text_and_keeps_scope_only_content_unsearchab
         .unwrap()
         .unwrap();
     assert_eq!(message.content, "internal analysis");
-    assert_eq!(message.search_projection.as_deref(), Some(""));
+    assert_eq!(message.dialogue_text.as_deref(), Some(""));
 }
 
 #[test]
@@ -103,11 +103,11 @@ fn native_dialogue_keeps_identities_and_separates_scope_and_reasoning() {
         parsed.messages.inline()[1].id
     );
     assert!(
-        parsed.messages.inline().iter().all(|m| !m
-            .search_projection
-            .as_deref()
-            .unwrap()
-            .is_empty())
+        parsed
+            .messages
+            .inline()
+            .iter()
+            .all(|m| !m.dialogue_text.as_deref().unwrap().is_empty())
     );
     for message in parsed
         .messages
@@ -118,7 +118,7 @@ fn native_dialogue_keeps_identities_and_separates_scope_and_reasoning() {
         assert!(message.content.contains("Synthetic reasoning"));
         assert!(
             !message
-                .search_projection
+                .dialogue_text
                 .as_deref()
                 .unwrap()
                 .contains("Synthetic reasoning")
@@ -129,13 +129,13 @@ fn native_dialogue_keeps_identities_and_separates_scope_and_reasoning() {
     assert!(scoped.content.contains("synthetic_scope_only_marker"));
     assert!(
         !scoped
-            .search_projection
+            .dialogue_text
             .as_deref()
             .unwrap()
             .contains("synthetic_scope_only_marker")
     );
     assert_eq!(
-        scoped.search_projection.as_deref(),
+        scoped.dialogue_text.as_deref(),
         Some("Explain cBioPortal @[Attached context] mutation filtering.")
     );
     assert!(parsed.created_at.is_some());
@@ -152,7 +152,7 @@ fn native_fork_copies_remain_canonical_but_not_searchable() {
             .messages
             .inline()
             .iter()
-            .all(|m| m.search_projection.as_deref() == Some(""))
+            .all(|m| m.dialogue_text.as_deref() == Some(""))
     );
 }
 #[test]
@@ -172,7 +172,7 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
         replace_step(&path, 0, &step);
         assert_eq!(
             conversation(&path).messages.inline()[0]
-                .search_projection
+                .dialogue_text
                 .as_deref(),
             Some("")
         );
@@ -183,7 +183,7 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
         replace_step(&path, 0, &step);
         assert_eq!(
             conversation(&path).messages.inline()[0]
-                .search_projection
+                .dialogue_text
                 .as_deref(),
             Some("")
         );
@@ -214,7 +214,7 @@ fn unknown_origins_subagents_and_invalid_statuses_never_enter_search() {
             .messages
             .inline()
             .iter()
-            .all(|m| m.search_projection.as_deref() == Some(""))
+            .all(|m| m.dialogue_text.as_deref() == Some(""))
     );
 }
 #[test]

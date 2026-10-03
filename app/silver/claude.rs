@@ -29,7 +29,7 @@ pub(crate) fn reconcile(
                 .ok_or_else(|| AppError::internal("Claude reconciliation lost a payload"))?;
             if previous.role != message.role
                 || previous.content != message.content
-                || previous.search_projection != message.search_projection
+                || previous.dialogue_text != message.dialogue_text
                 || previous.created_at != message.created_at
                 || node.parent != parent
             {

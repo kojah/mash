@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS messages (
     ordinal INTEGER NOT NULL,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    -- Silver's interpreted visible dialogue; the Rust model calls this dialogue_text.
+    -- The existing column name is retained without copying bodies or changing schema.
     search_projection TEXT,
     context_parent INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal)),
     created_at INTEGER,

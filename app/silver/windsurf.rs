@@ -1,7 +1,7 @@
 //! Native encrypted Cascade snapshots; no hook exports or provider process needed.
 use super::native::{location, timestamp};
 use super::{Conversation, ParsedFile, SourceIdentity, parsers};
-use crate::{AppError, provider::Provider, role::Role, search_text};
+use crate::{AppError, provider::Provider, role::Role, silver::dialogue};
 use std::path::Path;
 
 mod history;
@@ -31,18 +31,12 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         )?);
     }
     let messages = history::messages(&root, session)?;
-    let title = root
-        .title
-        .as_deref()
-        .and_then(search_text::title)
-        .or_else(|| {
-            messages
-                .iter()
-                .filter(|m| m.role == Role::User)
-                .find_map(|m| {
-                    search_text::title(m.search_projection.as_deref().unwrap_or_default())
-                })
-        });
+    let title = root.title.as_deref().and_then(dialogue::title).or_else(|| {
+        messages
+            .iter()
+            .filter(|m| m.role == Role::User)
+            .find_map(|m| dialogue::title(m.dialogue_text.as_deref().unwrap_or_default()))
+    });
     let workspaces = root
         .metadata
         .as_ref()

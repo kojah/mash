@@ -1,5 +1,5 @@
 use super::models::{Content, Message, Part};
-use crate::{role::Role, search_text};
+use crate::{role::Role, silver::dialogue};
 
 const CONTEXT: &[&str] = &[
     "user_info",
@@ -49,9 +49,9 @@ impl Text {
 }
 
 pub(super) fn projection(role: &Role, text: &str) -> String {
-    let clean = search_text::without_context_blocks(text, CONTEXT);
-    let clean = search_text::without_context_blocks(&clean, &["think", "thinking"]);
-    search_text::project(role, &clean).trim().to_owned()
+    let clean = dialogue::without_context_blocks(text, CONTEXT);
+    let clean = dialogue::without_context_blocks(&clean, &["think", "thinking"]);
+    dialogue::visible(role, &clean).trim().to_owned()
 }
 
 pub(super) fn normalized(message: &Message) -> Text {

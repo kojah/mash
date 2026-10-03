@@ -38,13 +38,10 @@ fn streamed_contributions_preserve_copies_branches_and_selected_sources() {
     assert_eq!(all.created_at, Some(10));
     assert_eq!(all.updated_at, Some(30));
     assert_eq!(
-        all.messages.inline()[1].search_projection.as_deref(),
+        all.messages.inline()[1].dialogue_text.as_deref(),
         Some("left projection")
     );
-    assert_eq!(
-        all.messages.inline()[2].search_projection.as_deref(),
-        Some("")
-    );
+    assert_eq!(all.messages.inline()[2].dialogue_text.as_deref(), Some(""));
     let selected = BTreeSet::from(["b".to_owned()]);
     let selected = claude_thread(&connection, "thread", Some(&selected))
         .unwrap()
@@ -124,7 +121,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
                 context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
                 content: format!("{id} text"),
-                search_projection: None,
+                dialogue_text: None,
                 created_at: Some(10 + i64::try_from(ordinal).unwrap() * 10),
             })
             .collect(),

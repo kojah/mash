@@ -5,10 +5,10 @@
 | Area | Layer | Responsibility |
 | --- | --- | --- |
 | Provider-owned session files/databases | Bronze | Original source records |
-| Native adapters | Silver | Interpret formats, branches, tool records and visibility |
+| Native adapters | Silver | Interpret formats, branches, tool records and visible dialogue |
 | Canonical threads/messages | Silver | Stable identities, text, roles, timestamps, relationships and project metadata |
 | Reconciliation | Silver | Deduplication, provenance, edits/deletions, checkpoints and ingestion completeness |
-| Search text | Gold | Rebuildable cleaning and query-oriented projections of silver |
+| Search views | Gold | Query-oriented projections of interpreted silver dialogue |
 | Retrieval | Gold | FTS, embeddings, vector indexes, ranking and retrieval caches |
 | Thread search | Gold | Searchable thread views and ranked excerpts |
 | Topics | Gold | Derived memberships, labels and topic-filtering views |
@@ -30,6 +30,14 @@ Mash's local application core separates successful indexing into two stages:
 Canonical models, provider adapters, discovery and reconciliation live in
 `app/silver.rs` and `app/silver/`; callers import `crate::silver`. The application
 orchestrator invokes the local silver and gold stages in `app/core/indexing/`.
+Visible dialogue interpretation lives in `app/silver/dialogue.rs`, and canonical
+messages expose it through `NormalizedMessage::dialogue()`. A message retains
+its complete `content` for context/viewing and an optional `dialogue_text`
+override for native visible prose. An empty override is context-only; no override
+means its canonical text is dialogue. Native hidden turns, injected instructions,
+reasoning blocks and tool records are interpreted by silver, not by a query's
+ranking or embedding policy.
+
 Model execution and retrieval remain in `app/semantic/`, while `app/shared/`
 owns transport and server backends. Their remaining layer separation is described
 below.
@@ -67,11 +75,19 @@ response fields remain available.
 
 ## Remaining boundaries
 
-Some provider adapters still prepare the stored `search_projection` alongside
-canonical records. Gold rebuilds retrieval structures from that stored
-projection; it cannot yet reinterpret every projection policy solely from raw
-canonical text. Moving those policies requires durable provider interpretation
-metadata (tracked in `mash-c0d.3.9`).
+The SQLite column historically named `search_projection` stores silver's
+interpreted `dialogue_text`. Its name remains unchanged to preserve the existing
+schema and stored data. Gold's FTS, embeddings and vector caches are separate
+derived structures. The shared wire field `projection` carries the same visible
+dialogue alongside canonical content. These physical names do not make native
+visibility a retrieval policy.
+
+Gold rebuilds from canonical records plus their stored interpretation. It does
+not infer hidden/native visibility from arbitrary raw text. Changing native
+interpretation rules requires silver replay; changing retrieval or embedding
+policies must use stored silver without provider replay. Extracting further
+query-oriented text policies and organizing gold modules remains tracked in
+`mash-c0d.3.9`.
 
 The ingestion outcome used for readiness is run metadata, not a new persisted
 completion certificate. An independently exposed gold operation would need a

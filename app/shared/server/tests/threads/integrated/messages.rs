@@ -31,7 +31,7 @@ fn conversation(id: &str, provider: Provider) -> Conversation {
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
             content: "repair authentication credentials".into(),
-            search_projection: None,
+            dialogue_text: None,
             created_at: Some(2000),
         }]
         .into(),

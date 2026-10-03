@@ -143,7 +143,7 @@ fn native_log_separates_prose_from_internal_context_and_agent_lanes() {
         .messages
         .inline()
         .iter()
-        .map(|m| m.search_projection.as_deref().unwrap())
+        .map(|m| m.dialogue_text.as_deref().unwrap())
         .collect::<Vec<_>>()
         .join("\n");
     assert!(!canonical.contains("deltaduplicatemarker"));
@@ -374,7 +374,7 @@ fn clear_starts_a_new_context_chain_and_bad_native_envelopes_fail_closed() {
         MessageContext::Root
     );
     assert_eq!(
-        parsed.messages.inline()[0].search_projection.as_deref(),
+        parsed.messages.inline()[0].dialogue_text.as_deref(),
         Some("Fix the cBioPortal importer")
     );
     write(file.path(), &[header("empty-session")]);

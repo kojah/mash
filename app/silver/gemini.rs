@@ -96,7 +96,7 @@ impl Replay {
             context: MessageContext::Linear,
             role,
             content: text.canonical,
-            search_projection: Some(text.projection),
+            dialogue_text: Some(text.projection),
             created_at: Some(created_at),
         };
         let previous_bytes = self
@@ -209,12 +209,7 @@ fn retained_bytes(message: &NormalizedMessage) -> usize {
         .capacity()
         .saturating_mul(2)
         .saturating_add(message.content.capacity())
-        .saturating_add(
-            message
-                .search_projection
-                .as_ref()
-                .map_or(0, String::capacity),
-        )
+        .saturating_add(message.dialogue_text.as_ref().map_or(0, String::capacity))
         .saturating_add(2 * std::mem::size_of::<NormalizedMessage>() + 128)
 }
 
@@ -311,8 +306,8 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 .get(&message.id)
                 .is_some_and(|p| matches!(p.origin, Origin::ModelContext))
         {
-            message.search_projection = Some(String::new());
-        } else if let Some(projection) = &mut message.search_projection {
+            message.dialogue_text = Some(String::new());
+        } else if let Some(projection) = &mut message.dialogue_text {
             *projection = models::projection(&message.role, projection);
         }
         message.ordinal =
@@ -333,13 +328,13 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let title = state
         .summary
         .as_deref()
-        .and_then(crate::search_text::title)
+        .and_then(crate::silver::dialogue::title)
         .or_else(|| {
             messages
                 .iter()
                 .filter(|m| m.role == crate::role::Role::User)
                 .find_map(|m| {
-                    crate::search_text::title(m.search_projection.as_deref().unwrap_or_default())
+                    crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or_default())
                 })
         });
     Ok(ParsedFile {

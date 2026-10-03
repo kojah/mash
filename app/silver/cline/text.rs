@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::collections::HashSet;
 
 fn strip_envelope(text: &str) -> String {
-    let text = crate::search_text::without_context_blocks(
+    let text = crate::silver::dialogue::without_context_blocks(
         text,
         &["mode_notice", "file_content", "environment_details"],
     );
@@ -145,5 +145,5 @@ pub(crate) fn visible_projection(role: &Role, text: &str) -> String {
             projection.clear();
         }
     }
-    crate::search_text::project(role, &projection).into_owned()
+    crate::silver::dialogue::visible(role, &projection).into_owned()
 }

@@ -5,7 +5,7 @@ use crate::{
     message_context::MessageContext,
     provider::Provider,
     role::Role,
-    search_text,
+    silver::dialogue,
     silver::{NormalizedMessage, parsers},
 };
 use proto::{StepKind, StepSource, TrajectoryKind, TrajectorySource};
@@ -27,12 +27,7 @@ pub(super) fn messages(
         if let Some(mut message) = normalize(step, main, session, position)? {
             retained = retained
                 .saturating_add(message.content.capacity())
-                .saturating_add(
-                    message
-                        .search_projection
-                        .as_ref()
-                        .map_or(0, String::capacity),
-                )
+                .saturating_add(message.dialogue_text.as_ref().map_or(0, String::capacity))
                 .saturating_add(512);
             if retained > 32 * 1024 * 1024 {
                 return Err(invalid("native history exceeds retained replay limit"));
@@ -100,7 +95,7 @@ fn normalize(
             ),
         };
     let projection = if visible {
-        search_text::project(&role, prose).trim().to_owned()
+        dialogue::visible(&role, prose).trim().to_owned()
     } else {
         String::new()
     };
@@ -113,7 +108,7 @@ fn normalize(
         context: MessageContext::Linear,
         role,
         content,
-        search_projection: Some(projection),
+        dialogue_text: Some(projection),
         created_at: timestamp(step.metadata.as_ref().and_then(|m| m.created_at.as_ref()))?,
     }))
 }

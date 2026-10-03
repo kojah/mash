@@ -61,12 +61,12 @@ fn native_tool_history_checkpoints_preserve_prose_and_follow_native_id_regenerat
                 .messages
                 .inline()
                 .iter()
-                .filter_map(|m| m.search_projection.as_deref().filter(|p| !p.is_empty()))
+                .filter_map(|m| m.dialogue_text.as_deref().filter(|p| !p.is_empty()))
                 .collect::<Vec<_>>(),
             PROSE
         );
         assert_eq!(
-            parsed.messages.inline()[2].search_projection.as_deref(),
+            parsed.messages.inline()[2].dialogue_text.as_deref(),
             Some("")
         );
         assert!(

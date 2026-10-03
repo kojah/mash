@@ -90,7 +90,7 @@ fn native_ui_snapshot_preserves_visible_roles_and_replaces_stale_copies() {
     assert!(
         conversation.messages.inline()[4..7]
             .iter()
-            .all(|m| m.search_projection.as_deref() == Some(""))
+            .all(|m| m.dialogue_text.as_deref() == Some(""))
     );
     assert_eq!(
         conversation.title.as_deref(),
@@ -121,15 +121,11 @@ fn sdk_projection_retains_real_repeated_turns_and_excludes_injected_content() {
     write(&path, &sdk_fixture());
     let conversation = parsed(&path);
     assert_eq!(
-        conversation.messages.inline()[0]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[0].dialogue_text.as_deref(),
         Some("Fix the cBioPortal importer")
     );
     assert_eq!(
-        conversation.messages.inline()[1]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[1].dialogue_text.as_deref(),
         Some("Validate mutation metadata.")
     );
     assert!(
@@ -143,9 +139,7 @@ fn sdk_projection_retains_real_repeated_turns_and_excludes_injected_content() {
             .contains("privateargumentmarker")
     );
     assert_eq!(
-        conversation.messages.inline()[2]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[2].dialogue_text.as_deref(),
         Some("Also check structural variants.")
     );
     assert!(
@@ -168,13 +162,13 @@ fn sdk_projection_retains_real_repeated_turns_and_excludes_injected_content() {
         conversation.messages.inline()[4].id
     );
     assert_eq!(
-        conversation.messages.inline()[3].search_projection,
-        conversation.messages.inline()[4].search_projection
+        conversation.messages.inline()[3].dialogue_text,
+        conversation.messages.inline()[4].dialogue_text
     );
     assert!(
         conversation.messages.inline()[5..]
             .iter()
-            .all(|m| m.search_projection.as_deref() == Some(""))
+            .all(|m| m.dialogue_text.as_deref() == Some(""))
     );
     let ids = conversation
         .messages
@@ -210,7 +204,7 @@ fn sdk_projection_retains_real_repeated_turns_and_excludes_injected_content() {
                 .messages
                 .inline()
                 .iter()
-                .all(|m| m.search_projection.as_deref() == Some(""))
+                .all(|m| m.dialogue_text.as_deref() == Some(""))
         );
     }
 }
@@ -272,40 +266,30 @@ fn sdk_native_question_replies_and_completion_summaries_are_visible_prose() {
     write(&path, &fixture);
     let conversation = parsed(&path);
     assert_eq!(
-        conversation.messages.inline()[0]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[0].dialogue_text.as_deref(),
         Some("Should structural variants be imported?")
     );
     assert_eq!(
-        conversation.messages.inline()[1]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[1].dialogue_text.as_deref(),
         Some("Yes, include structural variants.")
     );
     assert_eq!(
-        conversation.messages.inline()[2]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[2].dialogue_text.as_deref(),
         Some("The cBioPortal importer now validates mutation metadata.")
     );
     assert_eq!(
-        conversation.messages.inline()[3]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[3].dialogue_text.as_deref(),
         Some("The import is complete.")
     );
     assert!(
         conversation.messages.inline()[4..]
             .iter()
-            .all(|m| m.search_projection.as_deref() == Some(""))
+            .all(|m| m.dialogue_text.as_deref() == Some(""))
     );
     fixture["messages"][1]["content"][0]["is_error"] = json!(true);
     write(&path, &fixture);
     assert_eq!(
-        parsed(&path).messages.inline()[1]
-            .search_projection
-            .as_deref(),
+        parsed(&path).messages.inline()[1].dialogue_text.as_deref(),
         Some("")
     );
 }

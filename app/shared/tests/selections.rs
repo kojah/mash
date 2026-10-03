@@ -25,7 +25,7 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
                     context: crate::message_context::MessageContext::Linear,
                     role: crate::role::Role::User,
                     content: "providerneedle canonical history".into(),
-                    search_projection: None,
+                    dialogue_text: None,
                     created_at: Some(2000),
                 }]
                 .into(),

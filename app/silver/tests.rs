@@ -41,7 +41,7 @@ fn test_conversation(
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
             content: content.to_owned(),
-            search_projection: None,
+            dialogue_text: None,
             created_at: None,
         }]
         .into(),

@@ -147,7 +147,7 @@ fn read_messages(
         let tools: Option<String> = row.get("tool_calls").map_err(AppError::database)?;
         // Tool arguments remain canonical context and never become searchable prose.
         let searchable =
-            crate::search_text::project(&role, projection.as_deref().unwrap_or(&content))
+            crate::silver::dialogue::visible(&role, projection.as_deref().unwrap_or(&content))
                 .into_owned();
         if let Some(tools) = tools.filter(|s| !s.is_empty() && s != "[]" && s != "null") {
             serde_json::from_str::<serde_json::Value>(&tools)
@@ -175,7 +175,7 @@ fn read_messages(
             context: crate::message_context::MessageContext::Linear,
             role,
             content,
-            search_projection: Some(searchable),
+            dialogue_text: Some(searchable),
             created_at: epoch(row.get("timestamp").map_err(AppError::database)?)?,
         });
     }
@@ -195,7 +195,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
             .iter()
             .filter(|m| m.role == Role::User)
             .find_map(|m| {
-                crate::search_text::title(m.search_projection.as_deref().unwrap_or(&m.content))
+                crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or(&m.content))
             })
     });
     let updated_at = messages

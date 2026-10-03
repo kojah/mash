@@ -111,7 +111,7 @@ fn catalog_snapshot_projects_prose_and_keeps_cli_identity_distinct() {
         let rows = conversation.messages.inline();
         assert_eq!(rows.len(), 2);
         assert_eq!(
-            rows[1].search_projection.as_deref(),
+            rows[1].dialogue_text.as_deref(),
             Some("Validate mutation metadata before importing.")
         );
         assert!(rows[1].content.contains("privatefirstthought"));
@@ -166,7 +166,7 @@ fn logs_replay_edits_appends_truncation_and_typed_deletions() {
     );
     assert_eq!(rows[0].content, "Fix cBioPortal structural variants");
     assert_eq!(
-        rows[1].search_projection.as_deref(),
+        rows[1].dialogue_text.as_deref(),
         Some("Updated structural variant answer\nAdditional answer")
     );
     assert_eq!(rows[2].content, "surviving question");
@@ -354,13 +354,13 @@ fn old_snapshots_and_hidden_or_non_copilot_requests_preserve_context_only() {
     assert!(
         rows[2..4]
             .iter()
-            .all(|r| r.search_projection.as_deref() == Some(""))
+            .all(|r| r.dialogue_text.as_deref() == Some(""))
     );
-    assert_eq!(rows[4].search_projection.as_deref(), Some(""));
+    assert_eq!(rows[4].dialogue_text.as_deref(), Some(""));
     assert!(
         rows[6..]
             .iter()
-            .all(|r| r.search_projection.as_deref() == Some(""))
+            .all(|r| r.dialogue_text.as_deref() == Some(""))
     );
     assert!(
         !rows

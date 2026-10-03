@@ -127,7 +127,7 @@ pub(super) fn read(
             context: MessageContext::Linear,
             role,
             content: text.canonical,
-            search_projection: Some(text.projection),
+            dialogue_text: Some(text.projection),
             created_at,
         });
     }

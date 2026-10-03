@@ -8,7 +8,7 @@ fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_p
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     let mut value = conversation("canonical context and visible sentinel");
-    value.messages.inline_mut()[0].search_projection = Some("visible sentinel".into());
+    value.messages.inline_mut()[0].dialogue_text = Some("visible sentinel".into());
     storage.replace_conversation(&value).unwrap();
     storage
         .replace_embeddings(
@@ -29,14 +29,14 @@ fn prior_text_fingerprints_preserve_vectors_for_context_changes_and_invalidate_p
         storage.view("message-1", 0).unwrap()[0].content,
         "changed canonical context"
     );
-    value.messages.inline_mut()[0].search_projection = Some("different visible evidence".into());
+    value.messages.inline_mut()[0].dialogue_text = Some("different visible evidence".into());
     storage.replace_conversation(&value).unwrap();
     assert_eq!(storage.embedding_count("fixture").unwrap(), 0);
     assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
-    value.messages.inline_mut()[0].search_projection = Some(String::new());
+    value.messages.inline_mut()[0].dialogue_text = Some(String::new());
     storage.replace_conversation(&value).unwrap();
     assert!(storage.messages_needing_embeddings().unwrap().is_empty());
-    value.messages.inline_mut()[0].search_projection = None;
+    value.messages.inline_mut()[0].dialogue_text = None;
     storage.replace_conversation(&value).unwrap();
     assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
 }
@@ -474,8 +474,8 @@ fn search_projection_controls_fts_embeddings_and_rerank_text_not_view() {
         ("mixed", "visible request\nprivate mixed payload"),
         ("ordinary", "ordinary searchable text"),
     ]);
-    corpus.messages.inline_mut()[0].search_projection = Some(String::new());
-    corpus.messages.inline_mut()[1].search_projection = Some("visible request".to_owned());
+    corpus.messages.inline_mut()[0].dialogue_text = Some(String::new());
+    corpus.messages.inline_mut()[1].dialogue_text = Some("visible request".to_owned());
 
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
@@ -640,7 +640,7 @@ fn benchmark_fts_refresh_crossover() {
                 context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
                 content: format!("representative searchable text number {index}"),
-                search_projection: None,
+                dialogue_text: None,
                 created_at: Some(1),
             })
             .collect();
@@ -851,7 +851,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
                 content: "original reply".into(),
                 role: crate::role::Role::Assistant,
                 context: crate::message_context::MessageContext::Parent { ordinal: shift },
-                search_projection: None,
+                dialogue_text: None,
                 created_at: None,
             });
         if insert {
@@ -863,7 +863,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
                     content: "recovered dialogue".into(),
                     role: crate::role::Role::User,
                     context: crate::message_context::MessageContext::Root,
-                    search_projection: None,
+                    dialogue_text: None,
                     created_at: None,
                 },
             );

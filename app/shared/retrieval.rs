@@ -185,7 +185,8 @@ fn projected_documents(documents: Vec<protocol::Document>) -> HashMap<(String, S
         .map(|d| {
             (
                 (d.node_id, d.id),
-                crate::search_text::project(&crate::role::Role::User, &d.projection).into_owned(),
+                crate::silver::dialogue::visible(&crate::role::Role::User, &d.projection)
+                    .into_owned(),
             )
         })
         .collect()

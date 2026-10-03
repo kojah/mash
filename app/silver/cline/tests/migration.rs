@@ -157,9 +157,7 @@ fn absent_or_hidden_resume_markers_use_sdk_history_without_a_guessed_union() {
     let conversation = load(&scan(dir.path()));
     assert_eq!(conversation.messages.len(), 7);
     assert_eq!(
-        conversation.messages.inline()[0]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[0].dialogue_text.as_deref(),
         Some("")
     );
 }

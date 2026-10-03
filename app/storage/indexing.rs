@@ -469,7 +469,7 @@ impl Storage {
                     message.ordinal,
                     message.role,
                     message.content,
-                    message.search_projection,
+                    message.dialogue_text,
                     message.created_at,
                     fingerprint,
                     message.context.parent(),
@@ -925,7 +925,7 @@ fn message_fingerprint(message: &crate::silver::NormalizedMessage) -> String {
     }
     update_hash(&mut hasher, message.role.as_str());
     update_hash(&mut hasher, &message.content);
-    match &message.search_projection {
+    match &message.dialogue_text {
         None => update_hash(&mut hasher, "canonical"),
         Some(projection) => {
             update_hash(&mut hasher, "projected");
@@ -940,10 +940,7 @@ fn message_fingerprint(message: &crate::silver::NormalizedMessage) -> String {
 }
 
 fn message_search_text(message: &crate::silver::NormalizedMessage) -> &str {
-    message
-        .search_projection
-        .as_deref()
-        .unwrap_or(&message.content)
+    message.dialogue()
 }
 
 fn update_hash(hasher: &mut blake3::Hasher, value: &str) {

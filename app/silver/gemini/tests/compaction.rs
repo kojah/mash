@@ -28,7 +28,7 @@ fn projections(path: &Path) -> Vec<String> {
         .inline()
         .to_vec()
         .into_iter()
-        .filter_map(|m| m.search_projection.filter(|p| !p.is_empty()))
+        .filter_map(|m| m.dialogue_text.filter(|p| !p.is_empty()))
         .collect()
 }
 

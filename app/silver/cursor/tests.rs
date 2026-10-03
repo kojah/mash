@@ -101,7 +101,7 @@ fn searchable(conversation: &Conversation) -> Vec<&NormalizedMessage> {
         .messages
         .inline()
         .iter()
-        .filter(|m| !m.search_projection.as_deref().unwrap_or("").is_empty())
+        .filter(|m| !m.dialogue_text.as_deref().unwrap_or("").is_empty())
         .collect()
 }
 
@@ -120,13 +120,13 @@ fn first_party_native_fixture_hydrates_archives_and_only_visible_prose() {
     );
     assert_eq!(searchable[2].content, "Fix the cBioPortal importer.");
     assert_eq!(
-        searchable[3].search_projection.as_deref(),
+        searchable[3].dialogue_text.as_deref(),
         Some("Validate structural variants and mutation metadata.")
     );
     assert!(
         searchable
             .iter()
-            .all(|m| !m.search_projection.as_deref().unwrap().contains("private-"))
+            .all(|m| !m.dialogue_text.as_deref().unwrap().contains("private-"))
     );
     assert!(
         conversation.messages.inline()[5]
@@ -267,9 +267,7 @@ fn simulated_users_and_subagent_sessions_stay_context_only() {
     checkpoint(&connection, &root);
     let conversation = parsed(&path);
     assert_eq!(
-        conversation.messages.inline()[4]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[4].dialogue_text.as_deref(),
         Some("")
     );
     let mut meta = metadata(&connection);

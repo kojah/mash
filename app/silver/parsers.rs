@@ -15,7 +15,7 @@ struct ExtractedMessage {
     source_id: Option<String>,
     role: crate::role::Role,
     content: String,
-    search_projection: Option<String>,
+    dialogue_text: Option<String>,
     created_at: Option<i64>,
     session_id: Option<String>,
 }
@@ -30,7 +30,7 @@ pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
             return None;
         }
         let message = raw.message.as_ref()?;
-        let (content, search_projection) = message.content.as_ref()?.projected()?;
+        let (content, dialogue_text) = message.content.as_ref()?.projected()?;
         Some(ExtractedMessage {
             source_id: raw.uuid.clone(),
             role: message
@@ -38,7 +38,7 @@ pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
                 .clone()
                 .unwrap_or_else(|| raw.kind.as_str().into()),
             content,
-            search_projection,
+            dialogue_text,
             created_at: parse_timestamp(raw.timestamp.as_deref()),
             session_id: raw.session_id.clone(),
         })
@@ -116,7 +116,7 @@ fn parse_jsonl(
             context: crate::message_context::MessageContext::Linear,
             role: extracted.role,
             content: extracted.content,
-            search_projection: extracted.search_projection,
+            dialogue_text: extracted.dialogue_text,
             created_at: extracted.created_at,
         })?;
     }
@@ -188,13 +188,10 @@ impl RejectedRecords {
 }
 
 fn clean_projection(message: &mut ExtractedMessage) {
-    let projection = message
-        .search_projection
-        .as_deref()
-        .unwrap_or(&message.content);
-    let clean = crate::search_text::project(&message.role, projection);
+    let projection = message.dialogue_text.as_deref().unwrap_or(&message.content);
+    let clean = crate::silver::dialogue::visible(&message.role, projection);
     if clean.as_ref() != projection {
-        message.search_projection = Some(clean.into_owned());
+        message.dialogue_text = Some(clean.into_owned());
     }
 }
 

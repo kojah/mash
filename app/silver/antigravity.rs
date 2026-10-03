@@ -1,7 +1,7 @@
 //! Native per-conversation SQLite snapshots; provider processes are never needed.
 use super::native::{location, timestamp};
 use super::{Conversation, HistorySource, ParsedFile, SourceIdentity, parsers};
-use crate::{AppError, provider::Provider, role::Role, search_text};
+use crate::{AppError, provider::Provider, role::Role, silver::dialogue};
 use std::path::Path;
 
 mod history;
@@ -53,12 +53,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
         if let Some(mut message) = history::normalize(&root, &metadata, index, &step)? {
             retained = retained
                 .saturating_add(message.content.capacity())
-                .saturating_add(
-                    message
-                        .search_projection
-                        .as_ref()
-                        .map_or(0, String::capacity),
-                )
+                .saturating_add(message.dialogue_text.as_ref().map_or(0, String::capacity))
                 .saturating_add(512);
             if retained > 32 * 1024 * 1024 {
                 return Err(invalid("history exceeds retained replay limit"));
@@ -72,7 +67,7 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
     let title = messages
         .iter()
         .filter(|m| m.role == Role::User)
-        .find_map(|m| search_text::title(m.search_projection.as_deref().unwrap_or_default()));
+        .find_map(|m| dialogue::title(m.dialogue_text.as_deref().unwrap_or_default()));
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id: parsers::stable_id("session", &[Provider::Antigravity.as_str(), &root.cascade]),

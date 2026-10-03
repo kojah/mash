@@ -302,9 +302,9 @@ pub(super) fn projection(role: &Role, text: &str) -> String {
     if *role == Role::User && text.trim_start().starts_with(['/', '?']) {
         return String::new();
     }
-    let clean = crate::search_text::without_context_blocks(
+    let clean = crate::silver::dialogue::without_context_blocks(
         text,
         &["session_context", "hook_context", "state_snapshot"],
     );
-    crate::search_text::project(role, &clean).into_owned()
+    crate::silver::dialogue::visible(role, &clean).into_owned()
 }

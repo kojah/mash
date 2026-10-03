@@ -29,8 +29,8 @@ impl Turn {
         }
         let ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("too many Aider messages"))?;
-        let clean = crate::search_text::project(&role, &content);
-        let search_projection = (clean.as_ref() != content).then(|| clean.into_owned());
+        let clean = crate::silver::dialogue::visible(&role, &content);
+        let dialogue_text = (clean.as_ref() != content).then(|| clean.into_owned());
         messages.push(NormalizedMessage {
             id: super::parsers::stable_id(
                 "message",
@@ -44,7 +44,7 @@ impl Turn {
             context: crate::message_context::MessageContext::Linear,
             role,
             content,
-            search_projection,
+            dialogue_text,
             created_at: None,
         });
         Ok(())
@@ -150,7 +150,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
     let title = messages
         .iter()
         .filter(|m| m.role == Role::User)
-        .find_map(|m| crate::search_text::title(&m.content));
+        .find_map(|m| crate::silver::dialogue::title(&m.content));
     Ok(ParsedFile {
         conversation: Some(Conversation {
             id: super::parsers::stable_id(
@@ -356,7 +356,7 @@ mod tests {
                 .inline()
                 .iter()
                 .filter(|m| matches!(m.role, Role::Tool | Role::System))
-                .all(|m| m.search_projection.as_deref() == Some(""))
+                .all(|m| m.dialogue_text.as_deref() == Some(""))
         );
         assert!(conversation.created_at.is_none());
         let repeated = parse(file.path()).unwrap().conversation.unwrap();

@@ -251,8 +251,8 @@ fn normalize(
         ordinal: i64::try_from(messages.len())
             .map_err(|_| AppError::internal("too many OpenCode messages"))?,
         context: crate::message_context::MessageContext::Linear,
-        search_projection: Some(
-            crate::search_text::project(&role, &content.prose.join("\n")).into_owned(),
+        dialogue_text: Some(
+            crate::silver::dialogue::visible(&role, &content.prose.join("\n")).into_owned(),
         ),
         role,
         content: canonical,
@@ -262,7 +262,7 @@ fn normalize(
         std::mem::size_of::<NormalizedMessage>()
             + message.id.len()
             + message.content.len()
-            + message.search_projection.as_ref().map_or(0, String::len),
+            + message.dialogue_text.as_ref().map_or(0, String::len),
     )?;
     messages.push(message);
     Ok(())

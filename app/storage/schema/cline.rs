@@ -34,7 +34,7 @@ pub(super) fn migrate(connection: &Connection) -> Result<(), AppError> {
         .map_err(AppError::database)?
     {
         cursor = rowid;
-        let after = crate::silver::cline_search_projection(&Role::User, &before);
+        let after = crate::silver::cline_dialogue_text(&Role::User, &before);
         if before == after {
             continue;
         }

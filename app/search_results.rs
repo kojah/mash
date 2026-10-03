@@ -105,7 +105,7 @@ pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
 pub(crate) fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
     hits.into_iter()
         .filter_map(|mut hit| {
-            let clean = crate::search_text::project(&hit.role, &hit.content);
+            let clean = crate::silver::dialogue::visible(&hit.role, &hit.content);
             if clean.trim().is_empty() {
                 return None;
             }
@@ -116,7 +116,7 @@ pub(crate) fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
                 .metadata
                 .title
                 .as_deref()
-                .and_then(crate::search_text::title);
+                .and_then(crate::silver::dialogue::title);
             Some(hit)
         })
         .collect()
@@ -234,7 +234,7 @@ pub(crate) fn collect(
                         .metadata
                         .title
                         .clone()
-                        .or_else(|| crate::search_text::title(&hit.content)),
+                        .or_else(|| crate::silver::dialogue::title(&hit.content)),
                     ..hit.metadata.clone()
                 },
                 score: 0.0,
@@ -320,7 +320,7 @@ pub(crate) fn contextual_document(
             (
                 index.abs_diff(anchor),
                 message,
-                crate::search_text::project(&message.role, &message.content),
+                crate::silver::dialogue::visible(&message.role, &message.content),
             )
         })
         .filter(|(_, _, text)| !text.trim().is_empty())

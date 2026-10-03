@@ -27,7 +27,7 @@ fn digest(messages: &crate::silver::messages::Messages, lineage: &claude::Lineag
             message.context,
             &message.role,
             &message.content,
-            &message.search_projection,
+            &message.dialogue_text,
             message.created_at,
             lineage.get(&message.id).unwrap(),
         ))
@@ -67,7 +67,7 @@ fn benchmark_claude_contribution_memory() {
                         context: crate::message_context::MessageContext::Root,
                         role: row.role.into(),
                         content: row.content,
-                        search_projection: row.projection,
+                        dialogue_text: row.projection,
                         created_at: row.created_at,
                     },
                     row.parent_id,

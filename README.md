@@ -1482,6 +1482,8 @@ modules are grouped by responsibility:
 - `app/silver/`: canonical models, typed provider records, history discovery,
   normalization and source reconciliation; `app/silver.rs` coordinates ingestion
   and checkpoints. Provider-owned history files are bronze inputs.
+  `app/silver/dialogue.rs` interprets visible dialogue independently of retrieval;
+  canonical messages retain full context alongside an optional `dialogue_text`.
 - `app/core/indexing/silver.rs` and `app/core/indexing/gold.rs`: local stage
   boundaries for durable canonical ingestion and rebuildable retrieval state.
 - `app/semantic/`: model installation/cache, embedding batches, Core ML, remote

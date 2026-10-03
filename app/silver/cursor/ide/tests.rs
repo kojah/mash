@@ -83,12 +83,7 @@ fn searchable(conversation: &Conversation) -> Vec<&NormalizedMessage> {
         .messages
         .inline()
         .iter()
-        .filter(|m| {
-            !m.search_projection
-                .as_deref()
-                .unwrap_or_default()
-                .is_empty()
-        })
+        .filter(|m| !m.dialogue_text.as_deref().unwrap_or_default().is_empty())
         .collect()
 }
 
@@ -138,7 +133,7 @@ fn native_root_owns_order_metadata_and_distinct_repeated_requests() {
     );
     assert!(
         searchable(&conversation).iter().all(|m| !m
-            .search_projection
+            .dialogue_text
             .as_deref()
             .unwrap()
             .contains("private-"))
@@ -250,9 +245,7 @@ fn synthetic_operational_and_unknown_bubbles_remain_context_only() {
         let conversation = parsed(&path);
         assert_eq!(searchable(&conversation).len(), 3);
         assert_eq!(
-            conversation.messages.inline()[0]
-                .search_projection
-                .as_deref(),
+            conversation.messages.inline()[0].dialogue_text.as_deref(),
             Some("")
         );
     }

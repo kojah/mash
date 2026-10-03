@@ -70,7 +70,7 @@ impl Extractor {
         // Tool/context records do not take the place of a dialogue counterpart.
         if message.content.trim().is_empty()
             || !matches!(message.role, Role::User | Role::Assistant)
-            || message.search_projection.as_deref() == Some("")
+            || message.dialogue_text.as_deref() == Some("")
         {
             return Some(message);
         }
@@ -140,7 +140,7 @@ fn completed(raw: &Record) -> Option<ExtractedMessage> {
         source_id: Some(format!("completed:{turn}:{id}")),
         role,
         content: parts.join("\n"),
-        search_projection: None,
+        dialogue_text: None,
         created_at: parse_timestamp(raw.timestamp.as_deref()),
         session_id: payload.thread_id.clone(),
     })
@@ -148,7 +148,7 @@ fn completed(raw: &Record) -> Option<ExtractedMessage> {
 
 fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
     let payload = raw.payload.as_ref()?;
-    let (role, content, search_projection) = match payload.kind {
+    let (role, content, dialogue_text) = match payload.kind {
         Kind::Message => {
             let (content, projection) = payload.content.as_ref()?.projected()?;
             (
@@ -189,7 +189,7 @@ fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
         }),
         role,
         content,
-        search_projection,
+        dialogue_text,
         created_at: parse_timestamp(raw.timestamp.as_deref()),
         session_id: None,
     })

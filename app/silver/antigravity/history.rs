@@ -5,7 +5,7 @@ use crate::{
     message_context::MessageContext,
     provider::Provider,
     role::Role,
-    search_text,
+    silver::dialogue,
     silver::{NormalizedMessage, parsers},
 };
 
@@ -92,7 +92,7 @@ pub(super) fn normalize(
                 .is_some_and(|m| proto::Source::try_from(m.source) == Ok(proto::Source::Model)),
         };
     let projection = if visible {
-        search_text::project(&role, &prose).trim().to_owned()
+        dialogue::visible(&role, &prose).trim().to_owned()
     } else {
         String::new()
     };
@@ -110,7 +110,7 @@ pub(super) fn normalize(
         context: MessageContext::Linear,
         role,
         content,
-        search_projection: Some(projection),
+        dialogue_text: Some(projection),
         created_at: timestamp(origin.and_then(|m| m.created_at.as_ref()))?,
     }))
 }

@@ -97,12 +97,12 @@ fn both_parsers_keep_canonical_context_but_search_only_real_requests() {
         .unwrap();
         assert_eq!(parsed.messages.inline()[0].content, context);
         assert_eq!(
-            parsed.messages.inline()[0].search_projection.as_deref(),
+            parsed.messages.inline()[0].dialogue_text.as_deref(),
             Some("")
         );
         assert_eq!(parsed.messages.inline()[1].content, mixed);
         assert_eq!(
-            parsed.messages.inline()[1].search_projection.as_deref(),
+            parsed.messages.inline()[1].dialogue_text.as_deref(),
             Some("fix cBioPortal importer")
         );
         assert_eq!(parsed.title.as_deref(), Some("fix cBioPortal importer"));
@@ -222,11 +222,11 @@ fn claude_parser_separates_tool_results_from_searchable_text() {
         "keep this request\nprivate tool payload"
     );
     assert_eq!(
-        messages.inline()[0].search_projection.as_deref(),
+        messages.inline()[0].dialogue_text.as_deref(),
         Some("keep this request")
     );
     assert_eq!(messages.inline()[1].content, "only tool payload");
-    assert_eq!(messages.inline()[1].search_projection.as_deref(), Some(""));
+    assert_eq!(messages.inline()[1].dialogue_text.as_deref(), Some(""));
 
     let mut object_file = tempfile::NamedTempFile::new().expect("temporary JSONL");
     writeln!(object_file, r#"{{"type":"user","sessionId":"s2","uuid":"object","message":{{"role":"user","content":{{"type":"tool_result","content":"object tool payload"}}}}}}"#).expect("object tool-result line");
@@ -238,7 +238,7 @@ fn claude_parser_separates_tool_results_from_searchable_text() {
         .inline_mut()
         .remove(0);
     assert_eq!(object.content, "object tool payload");
-    assert_eq!(object.search_projection.as_deref(), Some(""));
+    assert_eq!(object.dialogue_text.as_deref(), Some(""));
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn claude_keeps_reasoning_and_tool_arguments_only_in_canonical_context() {
             .contains("privatecommandmarker")
     );
     assert_eq!(
-        parsed.messages.inline()[0].search_projection.as_deref(),
+        parsed.messages.inline()[0].dialogue_text.as_deref(),
         Some("I fixed the importer")
     );
     assert!(
@@ -272,7 +272,7 @@ fn claude_keeps_reasoning_and_tool_arguments_only_in_canonical_context() {
             .contains("privatecommandmarker")
     );
     assert_eq!(
-        parsed.messages.inline()[1].search_projection.as_deref(),
+        parsed.messages.inline()[1].dialogue_text.as_deref(),
         Some("")
     );
 }
@@ -294,9 +294,7 @@ fn codex_parser_keeps_messages_and_tool_calls() {
             .contains("Tool search")
     );
     assert_eq!(
-        conversation.messages.inline()[1]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[1].dialogue_text.as_deref(),
         Some("")
     );
 }
@@ -563,9 +561,7 @@ fn codex_parser_keeps_custom_tool_calls() {
         crate::role::Role::Tool
     );
     assert_eq!(
-        conversation.messages.inline()[0]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[0].dialogue_text.as_deref(),
         Some("")
     );
     assert_eq!(
@@ -573,9 +569,7 @@ fn codex_parser_keeps_custom_tool_calls() {
         "created diagram.png"
     );
     assert_eq!(
-        conversation.messages.inline()[1]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[1].dialogue_text.as_deref(),
         Some("")
     );
 }

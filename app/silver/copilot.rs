@@ -205,7 +205,7 @@ impl Text {
 
     fn prose(role: Role, canonical: String, searchable: bool) -> Self {
         let projection = if searchable {
-            crate::search_text::project(&role, &canonical).into_owned()
+            crate::silver::dialogue::visible(&role, &canonical).into_owned()
         } else {
             String::new()
         };
@@ -409,7 +409,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
                 }),
             role: text.role,
             content: text.canonical,
-            search_projection: Some(text.projection),
+            dialogue_text: Some(text.projection),
             created_at: Some(time),
         })?;
         heads.insert(lane, ordinal);

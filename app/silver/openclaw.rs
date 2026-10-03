@@ -252,8 +252,8 @@ fn messages(
         if timestamp < 0 {
             return Err(AppError::configuration("invalid OpenClaw event timestamp"));
         }
-        let search_projection = Some(
-            crate::search_text::project(&role, projection.as_deref().unwrap_or(&content))
+        let dialogue_text = Some(
+            crate::silver::dialogue::visible(&role, projection.as_deref().unwrap_or(&content))
                 .into_owned(),
         );
         messages.push(NormalizedMessage {
@@ -266,7 +266,7 @@ fn messages(
             context: crate::message_context::MessageContext::Linear,
             role,
             content,
-            search_projection,
+            dialogue_text,
             created_at: Some(timestamp),
         });
     }

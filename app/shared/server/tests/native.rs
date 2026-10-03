@@ -26,7 +26,7 @@ pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Val
         .to_vec()
         .into_iter()
         .map(|m| {
-            let projection = m.search_projection.unwrap();
+            let projection = m.dialogue_text.unwrap();
             let visible = !projection.is_empty();
             MessageRecord {
                 id: m.id,

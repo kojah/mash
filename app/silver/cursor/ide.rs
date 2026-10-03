@@ -134,13 +134,13 @@ pub(super) fn parse(source: &SourceIdentity) -> Result<ParsedFile, AppError> {
     let title = root
         .name
         .as_deref()
-        .and_then(crate::search_text::title)
+        .and_then(crate::silver::dialogue::title)
         .or_else(|| {
             messages
                 .iter()
                 .filter(|m| m.role == Role::User)
                 .find_map(|m| {
-                    crate::search_text::title(m.search_projection.as_deref().unwrap_or_default())
+                    crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or_default())
                 })
         });
     Ok(ParsedFile {

@@ -163,7 +163,7 @@ fn native_tree_keeps_unique_branches_and_context_without_model_only_edits() {
         .messages
         .inline()
         .iter()
-        .map(|m| m.search_projection.as_deref().unwrap())
+        .map(|m| m.dialogue_text.as_deref().unwrap())
         .collect::<Vec<_>>()
         .join("\n");
     for marker in [

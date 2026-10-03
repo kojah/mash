@@ -35,7 +35,7 @@ fn native_compression_pipeline_preserves_original_dialogue_without_synthetic_cop
         .messages
         .inline()
         .iter()
-        .filter_map(|m| m.search_projection.as_deref().filter(|p| !p.is_empty()))
+        .filter_map(|m| m.dialogue_text.as_deref().filter(|p| !p.is_empty()))
         .collect::<Vec<_>>();
     assert_eq!(
         searchable,

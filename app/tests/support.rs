@@ -28,7 +28,7 @@ pub(super) fn error_kind(output: &std::process::Output) -> Value {
         .clone()
 }
 
-pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&str>) {
+pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) {
     // Initialize through the real command so fixtures cannot drift from the
     // production schema or pretend an older schema is search-ready.
     let setup = tempfile::tempdir().expect("readiness setup");
@@ -56,7 +56,7 @@ pub(super) fn seed_readiness_database(path: &Path, search_projection: Option<&st
             "INSERT INTO messages(
                 id, conversation_id, ordinal, role, content, search_projection
              ) VALUES ('message', 'session', 0, 'tool', 'canonical tool output', ?1)",
-            [search_projection],
+            [dialogue_text],
         )
         .expect("readiness message");
 }

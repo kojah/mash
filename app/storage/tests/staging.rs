@@ -24,7 +24,7 @@ fn staged_refresh_preserves_vectors_and_reconciles_removed_and_moved_messages() 
         ("a", "changed canonical context"),
         ("d", "delta"),
     ]);
-    refreshed.messages.inline_mut()[1].search_projection = Some("alpha".to_owned());
+    refreshed.messages.inline_mut()[1].dialogue_text = Some("alpha".to_owned());
     refreshed.messages = Messages::stage_fixture(refreshed.messages.inline().to_vec()).unwrap();
     let changed = storage.replace_conversation(&refreshed).unwrap();
     assert_eq!(changed.changed_message_ids.len(), 3);

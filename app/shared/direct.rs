@@ -335,7 +335,7 @@ async fn replace_conversation(
         }
         let texts = batch
             .iter()
-            .map(|m| m.search_projection.as_deref().unwrap_or(&m.content))
+            .map(|m| m.dialogue())
             .filter(|t| !t.is_empty())
             .collect::<Vec<_>>();
         let mut vectors = embed_texts(models_dir, embeddings, pool, &texts, result)
@@ -346,10 +346,7 @@ async fn replace_conversation(
         let mut records = Vec::new();
         for message in batch {
             let message = message.into_owned();
-            let projection = message
-                .search_projection
-                .as_deref()
-                .unwrap_or(&message.content);
+            let projection = message.dialogue_text.as_deref().unwrap_or(&message.content);
             let vector = if projection.is_empty() {
                 None
             } else {
@@ -367,7 +364,7 @@ async fn replace_conversation(
             });
             let has_vector = vector.is_some();
             let projection = message
-                .search_projection
+                .dialogue_text
                 .unwrap_or_else(|| message.content.clone());
             records.push(MessageRecord {
                 id: message.id,

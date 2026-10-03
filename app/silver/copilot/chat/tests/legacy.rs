@@ -14,7 +14,7 @@ fn old_empty_window_location_and_plain_response_shapes_survive_migration() {
     std::fs::write(previous.join("chat-session.json"), snapshot.to_string()).unwrap();
     let original = f.parse().unwrap();
     assert_eq!(
-        original.messages.inline()[1].search_projection.as_deref(),
+        original.messages.inline()[1].dialogue_text.as_deref(),
         Some("Older plain answer")
     );
     assert!(crate::silver::watch_roots(&f.options()).contains(&previous));
@@ -38,7 +38,7 @@ fn old_empty_window_location_and_plain_response_shapes_survive_migration() {
         migrated.messages.inline()[1].id
     );
     assert_eq!(
-        migrated.messages.inline()[1].search_projection.as_deref(),
+        migrated.messages.inline()[1].dialogue_text.as_deref(),
         Some("First answer\nSecond answer\nAppended answer")
     );
 }

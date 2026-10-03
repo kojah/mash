@@ -70,15 +70,11 @@ fn native_hot_and_compressed_events_preserve_prose_and_canonical_context() {
             .contains("toolargumentmarker")
     );
     assert_eq!(
-        conversation.messages.inline()[1]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[1].dialogue_text.as_deref(),
         Some("Repair mutation parsing")
     );
     assert_eq!(
-        conversation.messages.inline()[2]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[2].dialogue_text.as_deref(),
         Some("")
     );
     stamp.verify(source).unwrap();
@@ -145,9 +141,7 @@ fn branches_side_appends_and_reset_windows_select_visible_history() {
             .all(|m| !m.content.contains("Fix the cBioPortal"))
     );
     assert_eq!(
-        conversation.messages.inline()[2]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[2].dialogue_text.as_deref(),
         Some("")
     );
     assert_eq!(conversation.messages.inline()[3].content, "new request");

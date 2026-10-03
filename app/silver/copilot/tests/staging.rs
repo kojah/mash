@@ -86,7 +86,7 @@ fn large_native_log_spills_payloads_without_changing_titles_or_context_lanes() {
         }
         if (1..=600).contains(&ordinal) {
             assert_eq!(row.content, body);
-            assert_eq!(row.search_projection.as_deref(), Some(""));
+            assert_eq!(row.dialogue_text.as_deref(), Some(""));
             assert_eq!(
                 row.id,
                 stable_id(

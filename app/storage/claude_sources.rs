@@ -72,7 +72,7 @@ pub(super) fn claude_thread(
                     context: crate::message_context::MessageContext::Root,
                     role: row.role.into(),
                     content: row.content,
-                    search_projection: row.projection,
+                    dialogue_text: row.projection,
                     created_at: row.created_at,
                 },
                 row.parent_id,
@@ -168,7 +168,7 @@ impl Storage {
                     .parent_id(parent.as_deref())
                     .role(message.role.as_str())
                     .content(&message.content)
-                    .projection(message.search_projection.as_deref())
+                    .projection(message.dialogue_text.as_deref())
                     .created_at(message.created_at)
                     .build();
                 statement

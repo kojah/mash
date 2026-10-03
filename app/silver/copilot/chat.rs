@@ -128,7 +128,7 @@ fn normalize(
             Role::User,
             user.clone(),
             if visible && !request.prompt_hidden && !request.is_system_initiated {
-                crate::search_text::project(&Role::User, &user).into_owned()
+                crate::silver::dialogue::visible(&Role::User, &user).into_owned()
             } else {
                 String::new()
             },
@@ -151,7 +151,7 @@ fn normalize(
         rows.push((
             Role::Assistant,
             canonical.join("\n"),
-            crate::search_text::project(&Role::Assistant, &prose.join("\n")).into_owned(),
+            crate::silver::dialogue::visible(&Role::Assistant, &prose.join("\n")).into_owned(),
             request.response_timestamp.or(request.timestamp),
         ));
         for (role, content, projection, created_at) in rows {
@@ -167,7 +167,7 @@ fn normalize(
                 context: MessageContext::Linear,
                 role,
                 content,
-                search_projection: Some(projection),
+                dialogue_text: Some(projection),
                 created_at,
             })?;
             ordinal = ordinal

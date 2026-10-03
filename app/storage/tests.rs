@@ -20,7 +20,7 @@ fn conversation(content: &str) -> Conversation {
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
             content: content.to_owned(),
-            search_projection: None,
+            dialogue_text: None,
             created_at: Some(i64::MAX / 2),
         }]
         .into(),
@@ -39,7 +39,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
                 context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
                 content: (*content).to_owned(),
-                search_projection: None,
+                dialogue_text: None,
                 created_at: Some(i64::MAX / 2),
             },
         )

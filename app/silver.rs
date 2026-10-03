@@ -13,10 +13,11 @@ mod antigravity;
 mod benchmarks;
 pub(crate) mod claude;
 mod cline;
-pub(crate) use cline::visible_projection as cline_search_projection;
+pub(crate) use cline::visible_projection as cline_dialogue_text;
 mod copilot;
 mod cursor;
 pub(crate) mod diagnostics;
+pub(crate) mod dialogue;
 mod discovery;
 mod gemini;
 mod hermes;
@@ -120,10 +121,17 @@ pub(crate) struct NormalizedMessage {
     pub(crate) context: crate::message_context::MessageContext,
     pub(crate) role: crate::role::Role,
     pub(crate) content: String,
-    /// `None` searches canonical content, an empty string makes the message
-    /// context-only, and a nonempty value searches that filtered projection.
-    pub(crate) search_projection: Option<String>,
+    /// Silver's interpreted visible dialogue. `None` uses canonical text;
+    /// an empty override is context-only. Native hidden turns, tool blocks and
+    /// injected context are interpreted here, independently of retrieval policy.
+    pub(crate) dialogue_text: Option<String>,
     pub(crate) created_at: Option<i64>,
+}
+
+impl NormalizedMessage {
+    pub(crate) fn dialogue(&self) -> &str {
+        self.dialogue_text.as_deref().unwrap_or(&self.content)
+    }
 }
 
 pub(crate) struct ParsedFile {

@@ -14,7 +14,7 @@ fn fixture(path: &Path) {
     cline.id = "cline-session".into();
     cline.provider = Provider::Cline;
     let mut messages = cline.messages.inline().to_vec();
-    messages[3].search_projection = Some(String::new());
+    messages[3].dialogue_text = Some(String::new());
     cline.messages = messages.into();
     storage.replace_conversation(&cline).unwrap();
     storage

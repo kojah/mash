@@ -634,7 +634,7 @@ fn purge_requires_a_complete_provider_scan() {
                 context: crate::message_context::MessageContext::Linear,
                 role: crate::role::Role::User,
                 content: "preserve until complete".to_owned(),
-                search_projection: None,
+                dialogue_text: None,
                 created_at: None,
             }]
             .into(),

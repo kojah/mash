@@ -56,11 +56,11 @@ fn native_display_history_is_read_only_and_excludes_compaction_copies_and_hidden
             .contains("toolargumentmarker")
     );
     assert_eq!(
-        parsed.messages.inline()[2].search_projection.as_deref(),
+        parsed.messages.inline()[2].dialogue_text.as_deref(),
         Some("")
     );
     assert_eq!(
-        parsed.messages.inline()[3].search_projection.as_deref(),
+        parsed.messages.inline()[3].dialogue_text.as_deref(),
         Some("")
     );
     assert!(

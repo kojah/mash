@@ -163,7 +163,7 @@ fn sdk(
             context: MessageContext::Linear,
             role: message.role,
             content: canonical,
-            search_projection: Some(projection),
+            dialogue_text: Some(projection),
             created_at: message.ts,
         });
     }
@@ -215,7 +215,7 @@ fn ui(path: &Path) -> Result<(Session, Vec<NormalizedMessage>), AppError> {
             context: MessageContext::Linear,
             role,
             content,
-            search_projection: Some(projection),
+            dialogue_text: Some(projection),
             created_at: Some(ts),
         });
     }
@@ -274,13 +274,13 @@ fn parse_native(source: &SourceIdentity, legacy_ui: Option<&Path>) -> Result<Par
     let title = session
         .title
         .as_deref()
-        .and_then(crate::search_text::title)
+        .and_then(crate::silver::dialogue::title)
         .or_else(|| {
             messages
                 .iter()
                 .filter(|m| m.role == Role::User)
                 .find_map(|m| {
-                    crate::search_text::title(m.search_projection.as_deref().unwrap_or_default())
+                    crate::silver::dialogue::title(m.dialogue_text.as_deref().unwrap_or_default())
                 })
         });
     Ok(ParsedFile {

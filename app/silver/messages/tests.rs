@@ -14,7 +14,7 @@ fn fixtures() -> Vec<NormalizedMessage> {
             },
             role: crate::role::Role::Other("custom-channel".to_owned()),
             content: format!("text {index} with control \0 and newline\n and escaped \\\""),
-            search_projection: projection.map(str::to_owned),
+            dialogue_text: projection.map(str::to_owned),
             created_at: Some(i64::MAX - i64::try_from(index).unwrap()),
         })
         .collect()

@@ -68,7 +68,7 @@ fn native_go_written_fixture_keeps_repeated_requests_and_separates_thinking() {
             .messages
             .inline()
             .iter()
-            .filter(|m| !m.search_projection.as_deref().unwrap().is_empty())
+            .filter(|m| !m.dialogue_text.as_deref().unwrap().is_empty())
             .count(),
         5
     );
@@ -87,7 +87,7 @@ fn native_go_written_fixture_keeps_repeated_requests_and_separates_thinking() {
     );
     assert!(
         !parsed.messages.inline()[1]
-            .search_projection
+            .dialogue_text
             .as_deref()
             .unwrap()
             .contains("Internal reasoning")
@@ -98,13 +98,13 @@ fn native_go_written_fixture_keeps_repeated_requests_and_separates_thinking() {
             .contains("Reasoning without")
     );
     assert_eq!(
-        parsed.messages.inline()[5].search_projection.as_deref(),
+        parsed.messages.inline()[5].dialogue_text.as_deref(),
         Some("")
     );
     // The pinned native transcript includes this cleared step too.
     assert_ne!(
         parsed.messages.inline()[4]
-            .search_projection
+            .dialogue_text
             .as_deref()
             .unwrap(),
         ""
@@ -133,7 +133,7 @@ fn native_snapshot_rewind_removes_suffix_without_changing_prefix_identities() {
         after.messages.inline()[1].id
     );
     assert_eq!(
-        after.messages.inline()[0].search_projection.as_deref(),
+        after.messages.inline()[0].dialogue_text.as_deref(),
         Some("Edited request")
     );
 }
@@ -153,7 +153,7 @@ fn system_model_copied_unknown_and_background_prompts_are_context_only() {
         save(&path, &root);
         assert_eq!(
             conversation(&path).messages.inline()[0]
-                .search_projection
+                .dialogue_text
                 .as_deref(),
             Some("")
         );
@@ -163,7 +163,7 @@ fn system_model_copied_unknown_and_background_prompts_are_context_only() {
     save(&path, &root);
     assert_eq!(
         conversation(&path).messages.inline()[0]
-            .search_projection
+            .dialogue_text
             .as_deref(),
         Some("")
     );
@@ -177,7 +177,7 @@ fn system_model_copied_unknown_and_background_prompts_are_context_only() {
                 .messages
                 .inline()
                 .iter()
-                .all(|m| m.search_projection.as_deref() == Some(""))
+                .all(|m| m.dialogue_text.as_deref() == Some(""))
         );
     }
 }

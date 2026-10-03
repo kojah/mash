@@ -65,7 +65,7 @@ fn conversation() -> Conversation {
                     },
                     role: Role::User,
                     content: format!("canonical {ordinal}"),
-                    search_projection: Some(if ordinal % 4 == 0 {
+                    dialogue_text: Some(if ordinal % 4 == 0 {
                         String::new()
                     } else {
                         format!("projection {ordinal}")

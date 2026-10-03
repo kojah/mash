@@ -97,9 +97,7 @@ fn late_session_kind_updates_apply_to_already_normalized_records() {
             ""
         };
         assert_eq!(
-            conversation.messages.inline()[0]
-                .search_projection
-                .as_deref(),
+            conversation.messages.inline()[0].dialogue_text.as_deref(),
             Some(expected)
         );
         assert_eq!(
@@ -124,9 +122,7 @@ fn nested_native_parts_keep_prose_without_repeated_untagged_tree_copies() {
     let conversation = parse(file.path()).unwrap().conversation.unwrap();
     assert_eq!(conversation.messages.inline()[0].content, text);
     assert_eq!(
-        conversation.messages.inline()[0]
-            .search_projection
-            .as_deref(),
+        conversation.messages.inline()[0].dialogue_text.as_deref(),
         Some(text.as_str())
     );
 }

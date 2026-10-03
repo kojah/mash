@@ -20,13 +20,10 @@ impl Summary {
                     .map_or(timestamp, |previous| previous.max(timestamp)),
             );
         }
-        let projection = message
-            .search_projection
-            .as_deref()
-            .unwrap_or(&message.content);
+        let projection = message.dialogue_text.as_deref().unwrap_or(&message.content);
         self.searchable += u64::from(!projection.is_empty());
         if self.title.is_none() && message.role == crate::role::Role::User {
-            self.title = crate::search_text::title(projection);
+            self.title = crate::silver::dialogue::title(projection);
         }
     }
 }
