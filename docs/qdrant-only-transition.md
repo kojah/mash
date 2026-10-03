@@ -79,6 +79,34 @@ local offline access before changing the live endpoint. Keep Redis data until
 that verification passes. Private baseline and authentication-check captures are
 under `/home/james/scratch/mash-artifacts/qdrant-live-transition-20261003/`.
 
+### Provider replay and native build preparation
+
+The installed Xenia SQLite index is schema 16 (568 threads, 169,425 messages,
+101,808 vectors); the dev MacBook index is schema 15 (2,252 threads, 301,838
+messages). Consistent SQLite backup snapshots of both were saved in their private
+migration directories. Neither installed index was migrated in place.
+
+An explicit Xenia replay into a separate schema-39 database used the configured
+Claude Code/Codex roots and 90-day source horizon, with local-only lexical gold.
+It discovered 818 files totaling about 4.08 GB. The run reported one malformed
+record, then exhausted source-change retries on this actively appended Codex
+conversation and exited with code 9. The migration database has zero committed
+threads/messages. No data was published or certified by this attempt.
+
+Bead `mash-847.1` tracks the active-source ingestion blocker. Per-parse and
+post-queue stamp checks already have bounded retries; increasing retry counts
+does not establish a safe snapshot. Investigate a verified committed-record
+prefix while retaining rejection of unsafe edits, truncations and replacement,
+correct checkpoints, and explicit reporting of malformed records.
+
+The dev MacBook built archived source `faf7faf` using its nightly toolchain and
+`cargo build-clif --locked -j 2` in a private migration directory. The native dev
+build completed in 1m 46s. A read-only `status` smoke check exited successfully,
+recognized installed models, reported the deliberately missing database unready,
+and did not create it. Its SHA-256 is
+`819b84cfa4cedb73c7dc4a8f5572ab567c0868e5b193330da9f2bb81b1fb8a16`.
+The installed binary remains unchanged. The personal MacBook still timed out.
+
 The application now supports server-owned silver revisions/completeness,
 independent lexical/dense manifests, one active gold configuration and explicit
 source-free shared rebuilds. See [the current layer contract](silver-gold-configuration.md).
