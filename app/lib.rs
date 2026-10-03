@@ -4,6 +4,7 @@
 mod cli;
 mod config;
 mod core;
+mod gold;
 mod mcp;
 mod message_context;
 mod observability;

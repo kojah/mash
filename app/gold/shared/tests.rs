@@ -78,19 +78,22 @@ fn conversation() -> Conversation {
     }
 }
 
-fn result() -> IndexResult {
-    IndexResult {
-        counts: Counts::default(),
-        summary: IndexSummary::default(),
-        embeddings: EmbeddingSummary::default(),
-        model_load_milliseconds: 0,
-        ingestion_milliseconds: 0,
-        embedding_milliseconds: 0,
-    }
+fn result() -> Build {
+    Build::default()
+}
+
+fn canonical_rows(conversation: &Conversation) -> Vec<u8> {
+    let rows = conversation
+        .messages
+        .rows()
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    serde_json::to_vec(&rows).unwrap()
 }
 
 #[tokio::test]
-async fn staged_publication_keeps_message_batches_projections_and_embedding_groups() {
+async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_groups() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let config = semantic::remote::Configuration {
         url: format!("http://{}/embeddings", listener.local_addr().unwrap()),
@@ -109,9 +112,14 @@ async fn staged_publication_keeps_message_batches_projections_and_embedding_grou
     });
     let mut file = tempfile::NamedTempFile::new().unwrap();
     let mut result = result();
-    replace_conversation(
+    let directory = tempfile::tempdir().unwrap();
+    let mut silver = conversation();
+    silver.source = SourceIdentity::file(directory.path().join("missing-provider.jsonl"));
+    assert!(!silver.source.path.exists());
+    let canonical_before = canonical_rows(&silver);
+    materialize(
         file.as_file_mut(),
-        &conversation(),
+        &silver,
         Path::new("unused"),
         Some(&config),
         &mut None,
@@ -119,6 +127,9 @@ async fn staged_publication_keeps_message_batches_projections_and_embedding_grou
     )
     .await
     .unwrap();
+    assert_eq!(canonical_rows(&silver), canonical_before);
+    assert!(!silver.source.path.exists());
+    assert_eq!(result.messages, 37);
     let events = serde_json::Deserializer::from_reader(std::fs::File::open(file.path()).unwrap())
         .into_iter::<Event>()
         .collect::<Result<Vec<_>, _>>()
@@ -173,7 +184,7 @@ async fn corrupt_staging_cannot_finish_a_shared_publication_plan() {
     std::fs::write(conversation.messages.staging_path().unwrap(), b"{broken").unwrap();
     let mut file = tempfile::NamedTempFile::new().unwrap();
     let mut result = result();
-    let error = replace_conversation(
+    let error = materialize(
         file.as_file_mut(),
         &conversation,
         Path::new("unused"),
@@ -186,5 +197,5 @@ async fn corrupt_staging_cannot_finish_a_shared_publication_plan() {
     .unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::Io);
     assert_eq!(file.as_file().metadata().unwrap().len(), 0);
-    assert_eq!(result.summary.changed_messages, 0);
+    assert_eq!(result.messages, 0);
 }

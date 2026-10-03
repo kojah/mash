@@ -18,7 +18,7 @@ pub(super) fn target(config: &SharedConfig) -> String {
     .to_hex()
     .to_string()
 }
-pub(super) fn write_event(file: &mut impl Write, event: &Event) -> Result<(), AppError> {
+pub(crate) fn write_event(file: &mut impl Write, event: &Event) -> Result<(), AppError> {
     serde_json::to_writer(&mut *file, event)
         .map_err(|_| AppError::internal("serialize index upload"))?;
     file.write_all(b"\n")
@@ -162,7 +162,7 @@ pub(crate) async fn publish_routed(
             configuration.embeddings.as_ref(),
             options,
             full,
-            Some(&owner),
+            &owner,
         )
         .await?;
         let db = path.to_path_buf();

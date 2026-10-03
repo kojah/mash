@@ -11,7 +11,7 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 - Use SQLite FTS5 for local lexical search.
 - Use an authenticated Axum HTTP API backed by PostgreSQL/pgvector (tokio-postgres)
   or Redis Search or Qdrant (the default) for one shared index per configured
-  node group. Support local-only, shared-only without SQLite, and both indexing,
+  node group. Require a local SQLite index; support local-only or both indexing,
   with independent provider allowlists. Keep local operations offline-capable.
   Only the HTTP service accesses PostgreSQL, Redis, or Qdrant. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.

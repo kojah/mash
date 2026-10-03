@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use super::{
-    Checkpoint, DirectOwner, DirectScan, EmbeddingPool, Event, IndexResult, NodeState,
-    replace_conversation, write_event,
+    Checkpoint, DirectOwner, DirectScan, EmbeddingPool, Event, IndexResult, NodeState, write_event,
 };
 use crate::AppError;
 use crate::provider::Provider;
@@ -162,7 +161,15 @@ pub(super) async fn ingest(
             if forgotten {
                 result.summary.tombstoned_sources += 1;
             } else {
-                replace_conversation(file, &conversation, models, embeddings, pool, result).await?;
+                crate::gold::shared::materialize(
+                    file,
+                    &conversation,
+                    models,
+                    embeddings,
+                    pool,
+                    &mut result.gold,
+                )
+                .await?;
             }
         } else {
             write_event(file, &Event::Remove { id: id.clone() })?;

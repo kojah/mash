@@ -1486,6 +1486,9 @@ modules are grouped by responsibility:
   canonical messages retain full context alongside an optional `dialogue_text`.
 - `app/core/indexing/silver.rs` and `app/core/indexing/gold.rs`: local stage
   boundaries for durable canonical ingestion and rebuildable retrieval state.
+- `app/gold/shared.rs`: node-side embedding and publication-payload materialization
+  from interpreted silver conversations; source scanning stays in the shared
+  publication coordinator.
 - `app/semantic/`: model installation/cache, embedding batches, Core ML, remote
   embeddings, and hybrid retrieval.
 - `app/shared/snapshot/`: backend-independent canonical upload validation.

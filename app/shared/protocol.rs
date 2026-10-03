@@ -5,7 +5,7 @@ use crate::storage::{Counts, SearchHit};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Start {
+pub(crate) struct Start {
     pub instance: String,
     pub revision: Option<i64>,
     pub base_revision: Option<i64>,
@@ -15,7 +15,7 @@ pub(super) struct Start {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub(super) enum Event {
+pub(crate) enum Event {
     Start(Start),
     Batch(Batch),
     Source(Checkpoint),
@@ -112,7 +112,7 @@ pub(crate) struct MessageRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Checkpoint {
+pub(crate) struct Checkpoint {
     pub provider: Provider,
     pub path_hash: String,
     pub size_bytes: i64,

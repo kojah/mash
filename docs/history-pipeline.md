@@ -94,6 +94,32 @@ completion certificate. An independently exposed gold operation would need a
 durable, versioned completion contract before it could safely publish readiness
 after arbitrary restarts.
 
-Shared-only ingestion and independently routed shared publication still use
-their existing paths. Applying this boundary to those paths, without requiring
-local SQLite, is tracked separately in `mash-c0d.3.10`.
+Local SQLite is required. Configuration supports local-only or local plus shared
+indexing, with per-index provider allowlists. Every provider forwarded to the
+shared index must also be included locally. Shared publication is optional;
+local search remains available while disconnected from the shared service.
+
+Routed shared publication discovers and reconciles sources on the node. Its gold
+materializer lives in `app/gold/shared.rs` and receives interpreted silver
+conversations plus model configuration, without provider roots or checkpoints.
+It emits bounded message batches with embeddings into the private upload spool.
+The shared server persists canonical records and vectors together and maintains
+the backend's retrieval indexes. Further organizing the coordinator and server
+boundaries is tracked in `mash-c0d.3.10`.
+
+## Storage boundary
+
+Both layers may share a database/service, but silver must be independently
+readable and gold independently replaceable from silver plus model configuration.
+Atomic publication must prevent readers from combining different revisions.
+
+| Backend | Current silver storage | Current gold storage | Remaining separation |
+| --- | --- | --- | --- |
+| SQLite | `conversations`, `messages`, provenance and checkpoints | `message_embeddings`, `message_fts`, `semantic_chunks` and retrieval caches | Further module organization; table split already exists |
+| Postgres | `conversations`, `messages`, `direct_sources`, tombstones and node metadata | Vectors, generation and generated full-text data on `messages` | Move derived fields out of canonical messages, preserving existing rows |
+| Redis | Immutable node snapshots, state and catalog keys | Search documents and their vectors | Canonical snapshots still include vectors |
+| Qdrant | State chunks, node heads and catalog records | Searchable message points with dense/sparse vectors | Canonical state chunks still include vectors |
+
+Shared storage separation is not complete. Its migration and lifecycle checks
+are tracked in `mash-c0d.3.12`; extracting the node-side gold materializer does not
+by itself establish that storage boundary.
