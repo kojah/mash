@@ -85,6 +85,15 @@ enum Command {
         /// Result granularity; defaults to gold.query.unit (threads).
         #[arg(long, value_enum)]
         unit: Option<crate::search_results::SearchUnit>,
+        /// Override the hybrid fusion rank constant (1–1000).
+        #[arg(long)]
+        fusion_rank_constant: Option<u16>,
+        /// Override the lexical candidate weight (1–100).
+        #[arg(long)]
+        lexical_weight: Option<u16>,
+        /// Override the semantic candidate weight (1–100).
+        #[arg(long)]
+        semantic_weight: Option<u16>,
         #[command(flatten)]
         filters: Box<SearchArguments>,
         /// Query only the shared index (including this node).
@@ -262,6 +271,9 @@ impl Cli {
                 intent,
                 limit,
                 unit,
+                fusion_rank_constant,
+                lexical_weight,
+                semantic_weight,
                 filters,
                 shared,
                 local,
@@ -271,6 +283,11 @@ impl Cli {
                 intent,
                 limit,
                 unit,
+                fusion: crate::gold::config::FusionOverrides {
+                    rank_constant: fusion_rank_constant,
+                    lexical_weight,
+                    semantic_weight,
+                },
                 filters: Box::new(filters.into_selection()?),
                 shared,
                 local,
@@ -495,11 +512,40 @@ mod tests {
             ),
         ] {
             let request = Cli::try_parse_from(args).unwrap().into_request().unwrap();
-            let Operation::Search { limit, unit, .. } = request.operation else {
+            let Operation::Search {
+                limit,
+                unit,
+                fusion,
+                ..
+            } = request.operation
+            else {
                 panic!("search request")
             };
             assert_eq!((limit, unit), expected);
+            assert!(fusion.is_empty());
         }
+    }
+
+    #[test]
+    fn cli_preserves_partial_fusion_overrides_for_the_core() {
+        let request = Cli::try_parse_from([
+            "mash",
+            "search",
+            "database",
+            "--lexical-weight",
+            "4",
+            "--fusion-rank-constant",
+            "10",
+        ])
+        .unwrap()
+        .into_request()
+        .unwrap();
+        let Operation::Search { fusion, .. } = request.operation else {
+            panic!("search request")
+        };
+        assert_eq!(fusion.rank_constant, Some(10));
+        assert_eq!(fusion.lexical_weight, Some(4));
+        assert_eq!(fusion.semantic_weight, None);
     }
 
     #[test]

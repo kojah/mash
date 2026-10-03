@@ -489,6 +489,7 @@ async fn core_retrieves_native_cline_threads_with_real_models() {
                 let Response::Search(response) = crate::core::execute(Request {
                     paths: paths.clone(),
                     operation: Operation::Search {
+                        fusion: crate::gold::config::FusionOverrides::default(),
                         query: query.into(),
                         intent: None,
                         limit: Some(5),

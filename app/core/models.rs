@@ -67,6 +67,8 @@ pub(crate) enum Operation {
         intent: Option<crate::gold::exact::Intent>,
         limit: Option<usize>,
         unit: Option<crate::search_results::SearchUnit>,
+        #[serde(default)]
+        fusion: crate::gold::config::FusionOverrides,
         filters: Box<crate::search_filter::Selection>,
         shared: bool,
         local: bool,

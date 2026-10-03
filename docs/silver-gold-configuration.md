@@ -386,9 +386,17 @@ because the reranker still scores selected evidence. Exact-mention retrieval
 does not consult this policy. Defaults preserve the previous unweighted RRF.
 Fusion is query-only: it changes no silver, vectors, build generation or manifest
 and needs no indexing. Changing TOML also reaches the next idle-worker request.
-Per-request fusion overrides and further ranking controls remain follow-up work.
+CLI hybrid searches accept `--fusion-rank-constant`, `--lexical-weight` and
+`--semantic-weight`. MCP accepts, for example, `"fusion":{"semantic_weight":4}`.
+Each omitted field inherits the current TOML default, rather than an SDK or
+worker-startup value. These request-only overrides do not persist or change the
+active build. Later searches without overrides return to current defaults.
+Invalid values fail before model work, SQLite or HTTP access. Explicit fusion
+overrides with exact-mention are rejected because that operation does not use
+hybrid fusion. Empty MCP fusion objects behave like omitted overrides. Further
+ranking controls remain follow-up work.
 
-Validation on 2026-10-03 passed 642 standard tests and 55 real-model/Qdrant
+Validation before request overrides on 2026-10-03 passed 642 standard tests and 55 real-model/Qdrant
 contracts. Weighted lexical/semantic preferences changed candidate ordering on
 deterministic fixtures. Real-model direct and cached CLI searches reflected
 fourfold uniform weights while the database remained byte-for-byte unchanged.
@@ -398,6 +406,20 @@ shared failure. Default-policy relevance and Qdrant contracts passed. Logs are
 `gold-fusion-models-qdrant-20261003.log` in the external artifacts directory.
 This validates policy wiring and default preservation; it does not establish
 that nondefault weights improve held-out relevance or representative latency.
+
+Request-override validation on 2026-10-03 passed 645 standard tests, 56
+real-model/Qdrant contracts, strict all-target Clippy, formatting and doctest
+compilation. Real MCP SDK calls inherited partial defaults after TOML reload,
+returned to defaults on later requests, and left the database byte-identical
+with provider files removed. Direct and cached CLI calls exercised the same
+override/reset behavior; invalid requests failed with model capacity unavailable
+without creating storage or model paths. MCP schemas advertise the numeric
+bounds, and CI includes the real-model MCP contract. Captures are
+`gold-fusion-overrides-standard-20261003.log`,
+`gold-fusion-overrides-models-qdrant-final-20261003.log` and
+`gold-fusion-overrides-doc-20261003.log` in the external artifacts directory.
+This verifies query-only execution, not a quality or performance advantage for
+particular nondefault weights.
 
 CLI `search --unit/--limit` and MCP `search` unit/limit parameters override these
 defaults independently. Omitted parameters remain omitted through the wrappers;

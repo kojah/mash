@@ -269,6 +269,7 @@ mod tests {
         let Response::Search(response) = crate::core::execute(Request {
             paths: paths.clone(),
             operation: Operation::Search {
+                fusion: crate::gold::config::FusionOverrides::default(),
                 query: "cbioportal importer".into(),
                 intent: None,
                 limit: Some(5),

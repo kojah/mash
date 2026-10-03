@@ -88,6 +88,7 @@ async fn failed_core_request_does_not_record_query_filters_paths_or_error_text()
             models_dir: None,
         },
         operation: crate::core::Operation::Search {
+            fusion: crate::gold::config::FusionOverrides::default(),
             query: "query-canary".into(),
             intent: None,
             limit: Some(5),

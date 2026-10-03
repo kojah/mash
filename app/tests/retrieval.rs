@@ -62,6 +62,23 @@ fn cached_and_direct_cli_validation_match_with_installed_models_and_no_index() {
         models.to_str().unwrap(),
     ];
     for arguments in [
+        vec!["search", "cbioportal", "--lexical-weight", "0", "--local"],
+        vec![
+            "search",
+            "cbioportal",
+            "--fusion-rank-constant",
+            "1001",
+            "--local",
+        ],
+        vec![
+            "search",
+            "cbioportal",
+            "--semantic-weight",
+            "4",
+            "--intent",
+            "exact-mention",
+            "--local",
+        ],
         vec!["search", "the and of", "--local"],
         vec![
             "search",

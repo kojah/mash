@@ -611,6 +611,11 @@ builds: `rank_constant` defaults to 60 (1–1000), and `lexical_weight` and
 stream before contextual reranking. These query-only settings apply to local,
 combined and fallback searches, take effect on the next request, and require no
 index rebuild. Exact-mention search is independent of fusion settings.
+For one hybrid request, CLI `search` accepts `--fusion-rank-constant`,
+`--lexical-weight` and `--semantic-weight`; MCP `search` accepts a partial
+`fusion` object with the corresponding underscore-named fields. Omitted fields
+inherit current TOML defaults. Overrides are validated before model work,
+apply to local/shared/fallback ranking, and are rejected for exact-mention.
 See [silver enrichment and gold configuration](docs/silver-gold-configuration.md)
 for the layer contract and current configuration scope.
 

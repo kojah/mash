@@ -82,6 +82,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
             models_dir: Some(root.path().join("missing-models")),
         },
         operation: Operation::Search {
+            fusion: crate::gold::config::FusionOverrides::default(),
             query: "voyage-code-4".into(),
             intent: None,
             unit: Some(SearchUnit::Messages),

@@ -12,9 +12,23 @@ pub(super) struct Input {
     pub(super) intent: Option<crate::gold::exact::Intent>,
     pub(super) limit: Option<usize>,
     pub(super) unit: Option<crate::search_results::SearchUnit>,
+    pub(super) fusion: crate::gold::config::FusionOverrides,
     pub(super) filters: crate::search_filter::Selection,
     pub(super) shared: bool,
     pub(super) local: bool,
+}
+
+pub(super) fn resolve_fusion(
+    overrides: crate::gold::config::FusionOverrides,
+    intent: crate::gold::exact::Intent,
+    defaults: crate::gold::config::Fusion,
+) -> Result<crate::gold::config::Fusion, AppError> {
+    if intent == crate::gold::exact::Intent::ExactMention && !overrides.is_empty() {
+        return Err(AppError::usage(
+            "fusion overrides require related-discussion intent",
+        ));
+    }
+    overrides.resolve(defaults)
 }
 
 pub(super) fn resolve(
@@ -51,14 +65,15 @@ pub(super) async fn run(
         intent,
         limit,
         unit,
+        fusion,
         filters,
         shared: use_shared,
         local: use_local,
     } = input;
     let (limit, unit) = configuration.gold.query.resolve(limit, unit);
     let mut options = crate::gold::config::Options::new(limit, unit);
-    options.fusion = configuration.gold.query.fusion;
     let intent = intent.unwrap_or(configuration.gold.query.intent);
+    options.fusion = resolve_fusion(fusion, intent, configuration.gold.query.fusion)?;
     let filters = resolve(
         &query,
         intent,

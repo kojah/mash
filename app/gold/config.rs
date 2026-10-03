@@ -1,5 +1,6 @@
 //! Active build recipe and independent query policy.
 use crate::{AppError, search_results::SearchUnit};
+use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -89,6 +90,41 @@ impl Fusion {
     }
 }
 
+/// Partial request policy; omitted fields retain the current index defaults.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema,
+)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct FusionOverrides {
+    /// Rank constant, from 1 through 1000.
+    #[schemars(range(min = 1, max = 1000))]
+    pub(crate) rank_constant: Option<u16>,
+    /// Lexical candidate weight, from 1 through 100.
+    #[schemars(range(min = 1, max = 100))]
+    pub(crate) lexical_weight: Option<u16>,
+    /// Semantic candidate weight, from 1 through 100.
+    #[schemars(range(min = 1, max = 100))]
+    pub(crate) semantic_weight: Option<u16>,
+}
+
+impl FusionOverrides {
+    pub(crate) fn is_empty(self) -> bool {
+        self == Self::default()
+    }
+
+    pub(crate) fn resolve(self, defaults: Fusion) -> Result<Fusion, AppError> {
+        let resolved = Fusion {
+            rank_constant: self.rank_constant.unwrap_or(defaults.rank_constant),
+            lexical_weight: self.lexical_weight.unwrap_or(defaults.lexical_weight),
+            semantic_weight: self.semantic_weight.unwrap_or(defaults.semantic_weight),
+        };
+        resolved.validate().map_err(|_| {
+            AppError::usage("search fusion rank_constant must be 1..1000 and weights 1..100")
+        })?;
+        Ok(resolved)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Options {
     pub(crate) limit: usize,
@@ -168,6 +204,55 @@ mod tests {
         );
         for input in ["[build]\nembedding_text='invalid'", "[build]\nunknown=true"] {
             assert!(toml::from_str::<Configuration>(input).is_err());
+        }
+    }
+
+    #[test]
+    fn partial_fusion_overrides_inherit_defaults_and_reject_invalid_requests() {
+        let schema = serde_json::to_value(schemars::schema_for!(FusionOverrides)).unwrap();
+        for (field, maximum) in [
+            ("rank_constant", 1000),
+            ("lexical_weight", 100),
+            ("semantic_weight", 100),
+        ] {
+            assert_eq!(schema["properties"][field]["minimum"], 1);
+            assert_eq!(schema["properties"][field]["maximum"], maximum);
+        }
+        let defaults = Fusion {
+            rank_constant: 10,
+            lexical_weight: 4,
+            semantic_weight: 2,
+        };
+        let input: FusionOverrides = serde_json::from_str(r#"{"semantic_weight":7}"#).unwrap();
+        assert_eq!(
+            input.resolve(defaults).unwrap(),
+            Fusion {
+                semantic_weight: 7,
+                ..defaults
+            }
+        );
+        assert_eq!(
+            FusionOverrides::default().resolve(defaults).unwrap(),
+            defaults
+        );
+        for json in [
+            r#"{"rank_constant":0}"#,
+            r#"{"rank_constant":1001}"#,
+            r#"{"lexical_weight":0}"#,
+            r#"{"semantic_weight":101}"#,
+        ] {
+            let input: FusionOverrides = serde_json::from_str(json).unwrap();
+            assert!(matches!(
+                input.resolve(defaults).unwrap_err().error.kind,
+                crate::ErrorKind::Usage
+            ));
+        }
+        for json in [
+            r#"{"unknown":1}"#,
+            r#"{"lexical_weight":-1}"#,
+            r#"{"semantic_weight":1.5}"#,
+        ] {
+            assert!(serde_json::from_str::<FusionOverrides>(json).is_err());
         }
     }
 }

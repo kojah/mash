@@ -192,6 +192,7 @@ async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
             let Response::Search(response) = crate::core::execute(Request {
                 paths: paths.clone(),
                 operation: Operation::Search {
+                    fusion: crate::gold::config::FusionOverrides::default(),
                     query: "cbioportal conversations".into(),
                     intent: None,
                     limit: Some(5),

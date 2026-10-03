@@ -344,6 +344,7 @@ async fn verify_core(service: &Service) {
                 models_dir: Some(directory.path().join("missing-models")),
             },
             operation: core::Operation::Search {
+                fusion: crate::gold::config::FusionOverrides::default(),
                 query: "voyage-code-4".into(),
                 intent: Some(Intent::ExactMention),
                 limit: Some(10),

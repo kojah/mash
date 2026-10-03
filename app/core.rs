@@ -72,6 +72,13 @@ async fn execute_inner(
     let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
     let database = request.paths.db.unwrap_or_else(default_database_path);
     let models = request.paths.models_dir.unwrap_or_else(default_models_path);
+    if let Operation::Search { intent, fusion, .. } = &request.operation {
+        search::resolve_fusion(
+            *fusion,
+            intent.unwrap_or(configuration.gold.query.intent),
+            configuration.gold.query.fusion,
+        )?;
+    }
     let uses_models = match &request.operation {
         Operation::Search { intent, .. } => {
             intent.unwrap_or(configuration.gold.query.intent)
@@ -103,6 +110,7 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
     let Operation::Search {
         query,
         intent,
+        fusion,
         filters,
         shared,
         local,
@@ -113,6 +121,11 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
     };
     // The node affects the resolved scope, but not syntax validation. Actual
     // execution resolves again with the current configuration and time cutoff.
+    search::resolve_fusion(
+        *fusion,
+        intent.unwrap_or_default(),
+        crate::gold::config::Fusion::default(),
+    )?;
     search::resolve(
         query,
         intent.unwrap_or_default(),
@@ -160,6 +173,7 @@ async fn dispatch(
             intent,
             limit,
             unit,
+            fusion,
             filters,
             shared,
             local,
@@ -172,6 +186,7 @@ async fn dispatch(
                 intent,
                 limit,
                 unit,
+                fusion,
                 filters: *filters,
                 shared,
                 local,

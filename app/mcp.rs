@@ -29,6 +29,8 @@ struct Search {
     limit: Option<usize>,
     /// Threads or messages; omitted uses gold.query.unit (threads by default).
     unit: Option<crate::search_results::SearchUnit>,
+    /// Partial hybrid fusion overrides; omitted fields use current TOML defaults.
+    fusion: Option<crate::gold::config::FusionOverrides>,
     #[serde(flatten)]
     filters: crate::search_filter::Selection,
     #[serde(default)]
@@ -237,7 +239,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search using gold.query defaults; override intent, unit or limit. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference, locally and through the shared service. Narrow broad exact queries with metadata filters if the shared candidate or time budget is reached. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require completed current retrieval artifacts and never run ingestion. Combined shared failures fall back to local results with shared_error; shared-only failures return an error."
+        description = "Search using current gold.query defaults; override intent, unit, limit or partial fusion settings. Fusion overrides apply only to related-discussion and inherit omitted fields from TOML. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference, locally and through the shared service. Narrow broad exact queries with metadata filters if the shared candidate or time budget is reached. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require completed current retrieval artifacts and never run ingestion. Combined shared failures fall back to local results with shared_error; shared-only failures return an error."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute(Operation::Search {
@@ -245,6 +247,7 @@ impl Mash {
             intent: request.intent,
             limit: request.limit,
             unit: request.unit,
+            fusion: request.fusion.unwrap_or_default(),
             filters: Box::new(request.filters),
             shared: request.shared,
             local: request.local,

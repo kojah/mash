@@ -3,6 +3,7 @@ use crate::test_support::create_valid_model_marker as install_test_marker;
 use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
+mod fusion;
 mod incomplete;
 mod rebuild;
 mod selections;
@@ -46,6 +47,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
             query: "for".into(),
             intent: None,
             limit: Some(1),
+            fusion: None,
             unit: Some(crate::search_results::SearchUnit::Messages),
             filters: crate::search_filter::Selection::default(),
             shared: false,
@@ -91,6 +93,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
                 query: "--models-dir=untrusted".into(),
                 intent: None,
                 limit: None,
+                fusion: None,
                 unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: crate::search_filter::Selection {
                     provider: vec![Provider::Codex],
@@ -109,6 +112,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
             intent: None,
             limit: None,
+            fusion: None,
             unit: Some(crate::search_results::SearchUnit::Threads),
             filters: crate::search_filter::Selection::default(),
             local: true,
@@ -281,10 +285,15 @@ fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
             .as_array()
             .unwrap()
             .iter()
-            .any(|field| field == "unit" || field == "limit")
+            .any(|field| field == "unit" || field == "limit" || field == "fusion")
     );
     let schema = serde_json::to_string(&search.input_schema).unwrap();
     assert!(schema.contains("\"threads\"") && schema.contains("\"messages\""));
+    assert!(
+        schema.contains("rank_constant")
+            && schema.contains("lexical_weight")
+            && schema.contains("semantic_weight")
+    );
 }
 
 #[tokio::test]

@@ -337,11 +337,13 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
     let canonical_config = std::fs::read_to_string(config).unwrap();
     let before = std::fs::read(database).unwrap();
     let mut fusion_scores = std::collections::HashMap::new();
-    for (unit, limit, weight) in [
-        ("messages", 1, 1),
-        ("messages", 1, 4),
-        ("threads", 3, 1),
-        ("threads", 3, 4),
+    for (unit, limit, weight, override_weight) in [
+        ("messages", 1, 1, None),
+        ("messages", 1, 4, None),
+        ("messages", 1, 4, Some(2)),
+        ("messages", 1, 4, None),
+        ("threads", 3, 1, None),
+        ("threads", 3, 4, Some(2)),
     ] {
         std::fs::write(
             config,
@@ -361,6 +363,10 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
                 "--local",
                 "authentication",
             ]);
+            if let Some(weight) = override_weight {
+                let weight = weight.to_string();
+                command.args(["--lexical-weight", &weight, "--semantic-weight", &weight]);
+            }
             if direct {
                 command.arg("--no-worker");
             }
@@ -380,7 +386,8 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
                 if weight == 1 {
                     fusion_scores.insert(direct, score);
                 } else {
-                    assert!((score - fusion_scores[&direct] * 4.0).abs() < 1e-6);
+                    let expected = f64::from(override_weight.unwrap_or(weight));
+                    assert!((score - fusion_scores[&direct] * expected).abs() < 1e-6);
                 }
             }
         }
