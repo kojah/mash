@@ -17,6 +17,8 @@ pub(super) enum Event {
         publication_revision: i64,
         silver: super::silver_revision::State,
         generation: String,
+        #[serde(default)]
+        build: crate::gold::config::Build,
     },
     Embeddings {
         records: Vec<Embedding>,
@@ -60,6 +62,7 @@ pub(super) fn plan(
     mut loaded: Loaded,
     generation: &str,
     dimensions: usize,
+    build: &crate::gold::config::Build,
 ) -> Result<Plan, AppError> {
     let mut lines = std::io::BufReader::new(file.reopen().map_err(AppError::io)?).lines();
     let first = lines
@@ -70,6 +73,7 @@ pub(super) fn plan(
         publication_revision,
         silver,
         generation: requested,
+        build: requested_build,
     } = serde_json::from_str(&first).map_err(|_| AppError::usage("invalid gold start"))?
     else {
         return Err(AppError::usage("gold stream must start with metadata"));
@@ -91,6 +95,9 @@ pub(super) fn plan(
             "gold model does not match shared embedding space",
         ));
     }
+    if &requested_build != build {
+        return Err(conflict("shared gold recipe changed; restart gold rebuild"));
+    }
     if !certified(&loaded) {
         return Err(conflict(
             "gold rebuild requires complete, current shared silver",
@@ -100,6 +107,15 @@ pub(super) fn plan(
     // the next local SQLite snapshot revision and discard new canonical data.
     // Qdrant's immutable version and head CAS serialize gold publication instead.
     let revision = head.revision;
+    loaded
+        .head
+        .as_mut()
+        .ok_or_else(|| conflict("missing shared head"))?
+        .gold_manifest = Some(super::gold_manifest::Manifest::new(
+        requested_build,
+        generation.to_owned(),
+        silver,
+    ));
     let mut seen = HashSet::new();
     let mut finished = false;
     for line in lines {

@@ -51,6 +51,7 @@ impl VectorIndex {
 
 #[derive(Clone)]
 pub(super) struct Store {
+    build: crate::gold::config::Build,
     api: api::Client,
     max_node_bytes: usize,
     vector_index: VectorIndex,
@@ -173,6 +174,7 @@ impl Store {
     #[cfg(test)]
     pub(in crate::shared) fn unavailable() -> Self {
         Self {
+            build: crate::gold::config::Build::default(),
             api: api::Client::new("http://127.0.0.1:9", None, 64 * 1024 * 1024).unwrap(),
             max_node_bytes: 64 * 1024 * 1024,
             vector_index: VectorIndex::default(),
@@ -184,6 +186,10 @@ impl Store {
         budget: super::snapshot_budget::Budget,
     ) -> Self {
         self.snapshot_budget = budget;
+        self
+    }
+    pub(in crate::shared) fn with_build(mut self, build: crate::gold::config::Build) -> Self {
+        self.build = build;
         self
     }
     pub(super) fn max_node_bytes(&self) -> u64 {
@@ -208,6 +214,7 @@ impl Store {
                 .await?;
         }
         Ok(Self {
+            build: crate::gold::config::Build::default(),
             api,
             max_node_bytes,
             vector_index,

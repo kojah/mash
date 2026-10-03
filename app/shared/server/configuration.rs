@@ -20,6 +20,8 @@ struct AuthorizedNode {
 pub(super) struct Configuration {
     version: u32,
     #[serde(default)]
+    pub(super) gold: Gold,
+    #[serde(default)]
     pub(super) embeddings: EmbeddingSpace,
     #[serde(default = "default_listen")]
     pub(super) listen: SocketAddr,
@@ -36,6 +38,11 @@ pub(super) struct Configuration {
     #[serde(default = "default_snapshot_budget")]
     pub(super) max_mutation_snapshot_mib: usize,
     nodes: Vec<AuthorizedNode>,
+}
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct Gold {
+    pub(super) build: crate::gold::config::Build,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

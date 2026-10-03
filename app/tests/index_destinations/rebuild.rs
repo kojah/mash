@@ -36,6 +36,7 @@ fn qdrant_shared_gold_cli_rebuild_uses_retained_silver_without_local_or_provider
     assert_eq!(fixture.remote_node("split"), shared);
     assert_local_unchanged(&connection);
     assert!(!fixture.codex.exists());
+    assert_shared_recipe_switch(&mut fixture, &connection, &shared);
     let phases: Vec<Value> = output
         .stderr
         .split(|&b| b == b'\n')
@@ -83,6 +84,138 @@ fn qdrant_shared_gold_cli_rebuild_uses_retained_silver_without_local_or_provider
         .unwrap();
     assert_eq!(tables, 0, "shared rebuild initialized local storage");
     fixture.database = original_database;
+}
+
+fn assert_shared_recipe_switch(fixture: &mut Fixture, connection: &Connection, original: &Value) {
+    let baseline_score = remote_score(fixture);
+    let canonical = remote_silver(fixture);
+    for recipe in ["title-and-dialogue", "dialogue"] {
+        drop(fixture.server.take());
+        fixture.server = Some(shared_server::Server::with_recipe(
+            fixture.directory.path(),
+            &fixture.group,
+            &["remote", "split", "first-delivery", "local"],
+            recipe,
+        ));
+        fixture.configure("both", "split");
+        assert_eq!(fixture.remote_node("split")["gold_current"], false);
+        let stale = remote_search(fixture);
+        assert!(!stale.status().is_success());
+        let rebuilt = fixture.json(&["index", "--rebuild-shared-gold"], true);
+        eprintln!("shared recipe {recipe} fixture rebuild: {rebuilt}");
+        assert_eq!(rebuilt["build"]["embedding_text"], recipe);
+        let current = fixture.remote_node("split");
+        assert_eq!(current["gold_current"], true);
+        assert_eq!(current["gold_manifest"]["build"]["embedding_text"], recipe);
+        for field in [
+            "silver_revision",
+            "revision",
+            "last_updated_at",
+            "last_synced_at",
+            "silver_coverage",
+            "messages",
+            "conversations",
+        ] {
+            assert_eq!(
+                current[field], original[field],
+                "changed canonical evidence: {field}"
+            );
+        }
+        assert_eq!(remote_silver(fixture), canonical);
+        assert_local_unchanged(connection);
+        let models = fixture.models.clone();
+        fixture.models = fixture.directory.path().join("missing-models");
+        assert!(
+            !fixture
+                .run(&["index", "--rebuild-shared-gold"], true)
+                .status
+                .success()
+        );
+        fixture.models = models;
+        assert_eq!(fixture.remote_node("split"), current);
+        assert_local_unchanged(connection);
+        let score = remote_score(fixture);
+        eprintln!(
+            "shared recipe {recipe} vector score={score}; retained history bytes={}",
+            serde_json::to_vec(&canonical).unwrap().len()
+        );
+        if recipe == "title-and-dialogue" {
+            assert!(
+                (score - baseline_score).abs() > 0.000_001,
+                "recipe did not change real embeddings"
+            );
+        } else {
+            assert!(
+                (score - baseline_score).abs() < 0.000_001,
+                "default rebuild did not restore embeddings"
+            );
+        }
+        // Query overrides execute existing gold, despite absent provider files.
+        fixture.json(
+            &[
+                "search",
+                "retain canonical",
+                "--no-worker",
+                "--unit",
+                "messages",
+                "--limit",
+                "1",
+            ],
+            true,
+        );
+        assert_eq!(fixture.remote_node("split"), current);
+        assert_local_unchanged(connection);
+    }
+    assert_eq!(fixture.remote_node("split"), *original);
+}
+
+fn remote_search(fixture: &Fixture) -> reqwest::Response {
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(send_search(fixture))
+}
+
+async fn send_search(fixture: &Fixture) -> reqwest::Response {
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
+    reqwest::Client::new().post(format!("{}/v1/search", fixture.server.as_ref().unwrap().url))
+            .bearer_auth(shared_server::token("split"))
+            .json(&serde_json::json!({"query":"canonical", "vector":vector, "provider":null, "days":null}))
+            .send().await.unwrap()
+}
+
+fn remote_score(fixture: &Fixture) -> f64 {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        send_search(fixture)
+            .await
+            .error_for_status()
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()["semantic"][0]["semantic_score"]
+            .as_f64()
+            .unwrap()
+    })
+}
+
+fn remote_silver(fixture: &Fixture) -> Value {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let retained: Value = reqwest::Client::new()
+            .get(format!(
+                "{}/v1/silver",
+                fixture.server.as_ref().unwrap().url
+            ))
+            .bearer_auth(shared_server::token("split"))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        retained["history"].clone()
+    })
 }
 
 const TABLES: &[&str] = &[

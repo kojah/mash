@@ -212,6 +212,7 @@ async fn rebuild_gold(api: &Api) {
         .collect();
     let events = [
         Gold::Start {
+            build: crate::gold::config::Build::default(),
             publication_revision: before.revision,
             silver: before.silver_revision.clone().unwrap(),
             generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
@@ -303,6 +304,12 @@ async fn verify(api: &Api, revision: i64) -> String {
     assert_eq!(freshness.nodes.len(), 2);
     assert_eq!(freshness.nodes[0].revision, revision);
     assert_eq!(freshness.nodes[1].revision, 1);
+    for node in &freshness.nodes {
+        assert!(node.gold_current);
+        let manifest = node.gold_manifest.as_ref().unwrap();
+        assert_eq!(manifest.build, crate::gold::config::Build::default());
+        assert_eq!(Some(&manifest.silver), node.silver_revision.as_ref());
+    }
     assert_eq!(
         freshness.nodes[0]
             .silver_revision

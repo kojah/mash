@@ -4,6 +4,7 @@ use super::{
     AppError, Chunk, Document, Head, Identity, Manifest, NodeHead, PointKind, Store, api,
     collection, failure, point_id, sparse, tokens,
 };
+use crate::shared::gold_manifest;
 use crate::shared::snapshot::Encoded;
 use crate::shared::{
     protocol::{Forget, Forgotten, Indexed},
@@ -26,6 +27,13 @@ fn outcome(value: PublicationOutcome) {
     tracing::Span::current().record("outcome", tracing::field::debug(value));
 }
 
+fn staging_version() -> Result<String, AppError> {
+    let mut random = [0u8; 32];
+    getrandom::fill(&mut random)
+        .map_err(|_| AppError::internal("create Qdrant staging identity"))?;
+    Ok(blake3::hash(&random).to_hex().to_string())
+}
+
 impl Store {
     pub(in crate::shared) async fn rebuild_gold(
         &self,
@@ -44,9 +52,16 @@ impl Store {
             .reserve(pending.encoded_bytes(), incoming)?;
         let generation = identity.generation.clone();
         let dimensions = identity.dimensions;
+        let build = self.build.clone();
         let (plan, _reservation) = crate::blocking(move || {
-            super::super::gold_rebuild::plan(&file, pending.decode()?, &generation, dimensions)
-                .map(|plan| (plan, reservation))
+            super::super::gold_rebuild::plan(
+                &file,
+                pending.decode()?,
+                &generation,
+                dimensions,
+                &build,
+            )
+            .map(|plan| (plan, reservation))
         })
         .await?;
         let instance = plan
@@ -324,14 +339,14 @@ impl Store {
         })
         .await?;
         let counts = plan.loaded.data.counts(identity);
-        let mut random = [0u8; 32];
-        getrandom::fill(&mut random)
-            .map_err(|_| AppError::internal("create Qdrant staging identity"))?;
-        let version = blake3::hash(&random).to_hex().to_string();
+        let version = staging_version()?;
         let previous = plan.loaded.head.as_ref();
+        let gold_manifest =
+            gold_manifest::publication(checked, previous, identity, &silver_revision);
         let now = chrono::DateTime::from(std::time::SystemTime::now())
             .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
         let head = Head {
+            gold_manifest,
             silver_coverage: previous.map_or_else(Vec::new, |h| h.silver_coverage.clone()),
             silver_revision: Some(silver_revision),
             silver_scans: previous.map_or_else(Vec::new, |h| h.silver_scans.clone()),

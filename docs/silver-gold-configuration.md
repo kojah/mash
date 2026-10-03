@@ -4,7 +4,7 @@ Silver is reusable interpreted history. Gold is a replaceable retrieval
 representation of that history. Each index has one active gold configuration;
 switching configurations replaces that index's projection. Optional saved
 presets must not cause parallel projections to be maintained. Local and shared
-indexes may eventually use different build configurations.
+indexes may use different build configurations.
 
 ## Current silver contract and enrichment audit
 
@@ -413,10 +413,80 @@ index needs an explicit gold rebuild to certify its manifest; it need not reread
 provider files when its stored silver certificate is complete. Build failure
 leaves readiness unavailable and recovery uses retained silver.
 
-This recipe configures local gold. Shared materialization retains the default
-dialogue representation; nondefault local recipes use the independently routed
-publication path rather than forwarding local vectors as shared default vectors.
-Configurable shared build recipes and shared manifests remain follow-up work.
+Local recipes remain independent of shared recipes; nondefault local recipes
+use the independently routed publication path rather than forwarding local
+vectors as shared default vectors.
+
+## Shared build recipes and manifests
+
+The server TOML selects the shared recipe independently of node configuration:
+
+```toml
+[gold.build]
+embedding_text = "title-and-dialogue" # default: "dialogue"
+```
+
+Only these two values are accepted. Backend connection, memory/index strategy
+and embedding model settings remain in their existing operational sections.
+Query policies are not part of this server build setting.
+
+`mash index --rebuild-shared-gold` and MCP `index` with
+`rebuild_shared_gold = true` read the selected recipe alongside retained silver.
+They prepare bounded title prefixes without changing canonical message content,
+visibility or stored dialogue. Uploads declare the recipe and fail if it changed
+before publication. Node-local provider files and SQLite rows are not touched.
+Each published node head retains one gold manifest with schema/rule versions, build
+settings, model generation and the server-owned silver revision/fingerprint.
+Replacing gold atomically replaces that node head; the previous immutable stage
+is removed by the existing cleanup path.
+
+Shared status exposes `gold_manifest` and `gold_current` per publishing node.
+Semantic search rejects an absent, unknown-version, stale or mismatched manifest.
+Recipe compatibility is checked across the group, including excluded nodes;
+excluding a node cannot hide mixed recipes. Model/vector readiness still checks
+the searched nodes. Existing unmanifested deployments require explicit gold
+rebuilding to certify their vectors.
+If their retained silver also lacks current completeness evidence, explicit
+source ingestion is required before a source-free rebuild can be admitted.
+
+After changing server recipes, rebuild every publishing node. During this
+transition search fails until the group has matching manifests. This is **not a
+group-wide atomic activation transaction**: availability during coordinated
+switches and a durable group configuration pointer remain follow-up work.
+Ordinary source uploads currently produce dialogue vectors. After publishing a
+nondefault recipe, an ingestion delta can leave mixed representations and clears
+the build evidence until a complete shared gold rebuild succeeds. Automatic
+recipe-aware ingestion remains follow-up work; mixed vectors never become
+certified merely because their dimensions match.
+
+Real-model integration coverage switches dialogue → title-plus-dialogue →
+dialogue after removing provider directories. It compares retained history and
+all local canonical/derived tables, verifies different/restored vector scores,
+and executes query-only unit/limit overrides without changing either index.
+This establishes representation behavior, not improved search relevance.
+
+On the one-message Xenia test fixture, cold source-free rebuilds took 1.75–2.00 s;
+model loading accounted for 1.50–1.69 s, inference for 10–32 ms, retained-silver
+download for 23–26 ms and publication for 72–133 ms. The unchanged serialized
+history was 1,043 bytes. These are debug-build correctness-fixture measurements
+under concurrent host load, **not full-corpus throughput, storage or search
+benchmarks**. The lifecycle acceptance bead still requires those measurements.
+
+## Multiple artifacts under one configuration
+
+One active configuration can enable several complementary gold artifacts:
+metadata/lexical projections, dense retrieval units, contextual episodes,
+multi-label topics and extractive representative passages. These are derived
+from the same silver and are not simultaneously maintained alternative profiles.
+Building an artifact does not require every search to use it. A typed query
+intent and bounded retrieval policy will choose supported artifacts; callers
+should specify their goal and filters rather than internal names or weights.
+
+This remains implementation work in `mash-q3e.6` and `mash-q3e.4.1`–`.4.5`:
+artifact identities/dependencies/readiness, intent API, selection/fallback,
+topic/evidence presentation, routing diagnostics and held-out quality/cost
+gates. The two embedding-text recipes above establish build identity and
+replacement; they do not implement or validate intent-aware routing.
 
 ## Remaining build and query configuration
 

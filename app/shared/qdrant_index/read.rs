@@ -77,6 +77,26 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         api::matches(field.0, field.1)
     }
 }
+fn check_recipe(
+    heads: &BTreeMap<String, NodeHead>,
+    identity: &Identity,
+    build: &crate::gold::config::Build,
+) -> Result<(), AppError> {
+    // A node filter must not hide a mixed group recipe during replacement.
+    if heads.values().any(|node| {
+        node.head.as_ref().is_none_or(|h| {
+            h.gold_manifest
+                .as_ref()
+                .is_none_or(|m| !m.matches(build, &identity.generation, h.silver_revision.as_ref()))
+        })
+    }) {
+        return Err(AppError::shared(
+            "shared gold recipe is stale or unverified; run mash index --rebuild-shared-gold on publishing nodes",
+        ));
+    }
+    Ok(())
+}
+
 fn search_filter(
     input: &protocol::Search,
     active: &BTreeMap<&String, &NodeHead>,
@@ -179,6 +199,14 @@ impl Store {
                 revision.validate()?;
             }
             nodes.push(NodeFreshness {
+                gold_manifest: h.gold_manifest.clone(),
+                gold_current: h.gold_manifest.as_ref().is_some_and(|m| {
+                    m.matches(
+                        &self.build,
+                        &identity.generation,
+                        h.silver_revision.as_ref(),
+                    )
+                }) && h.counts.embeddings == h.counts.searchable_messages,
                 silver_coverage: h.silver_coverage.clone(),
                 silver_revision: h.silver_revision.clone(),
                 node_id: node_id.clone(),
@@ -293,6 +321,7 @@ impl Store {
             .iter()
             .filter(|(n, _)| !input.exclude_self || **n != identity.node_id)
             .collect();
+        check_recipe(&heads, identity, &self.build)?;
         if active.values().any(|node| {
             node.head.as_ref().is_none_or(|h| {
                 h.generation != identity.generation
@@ -300,7 +329,7 @@ impl Store {
             })
         }) {
             return Err(AppError::shared(
-                "shared embeddings are incomplete or incompatible; run mash index on publishing nodes",
+                "shared gold is stale, incomplete or incompatible; run mash index --rebuild-shared-gold on publishing nodes",
             ));
         }
         if active.is_empty() {

@@ -15,6 +15,7 @@ impl Store {
         let pending = self.pending_snapshot(identity).await?;
         let reservation = self.snapshot_budget.reserve(pending.encoded_bytes(), 0)?;
         let generation = identity.generation.clone();
+        let build = self.build.clone();
         let dimensions = identity.dimensions;
         crate::blocking(move || {
             let _reservation = reservation;
@@ -37,6 +38,7 @@ impl Store {
             serde_json::to_writer(
                 &mut output,
                 &silver_read::Snapshot {
+                    build: &build,
                     publication_revision: head.revision,
                     silver,
                     generation: &generation,

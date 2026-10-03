@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 mod client;
+mod gold_manifest;
 mod gold_rebuild;
 pub(crate) mod protocol;
 mod publication;
@@ -65,6 +66,10 @@ pub(crate) struct Freshness {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct NodeFreshness {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gold_manifest: Option<gold_manifest::Manifest>,
+    #[serde(default)]
+    gold_current: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     silver_coverage: Vec<silver_coverage::Coverage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

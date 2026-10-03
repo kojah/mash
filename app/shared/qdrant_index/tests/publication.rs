@@ -211,6 +211,7 @@ async fn exercise(outcome: Outcome) {
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let store = Store {
+        build: crate::gold::config::Build::default(),
         api: api::Client::new(&url, None, 1024 * 1024).unwrap(),
         max_node_bytes: 1024 * 1024,
         vector_index: VectorIndex::default(),

@@ -12,6 +12,9 @@ pub struct Server {
 }
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
+        Self::with_recipe(root, group, nodes, "dialogue")
+    }
+    pub fn with_recipe(root: &Path, group: &str, nodes: &[&str], recipe: &str) -> Self {
         let path = root.join("server.toml");
         let credentials: Vec<_> = nodes
             .iter()
@@ -24,12 +27,16 @@ impl Server {
                 }
             })
             .collect();
-        let config = toml::toml! {
+        let mut config = toml::toml! {
             version = 1
             listen = "127.0.0.1:0"
             qdrant_url_env = "MASH_TEST_QDRANT_URL"
             nodes = (credentials)
         };
+        config.insert(
+            "gold".into(),
+            toml::toml! {build = {embedding_text = (recipe)}}.into(),
+        );
         std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
         let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
         command
@@ -100,6 +107,14 @@ fn assert_startup_rejected(config: &[u8], tokens: &[(&str, &str)], message: &str
 
 const STARTUP_NODE: &str = "\n[[nodes]]\ngroup_id = 'test-group'\nnode_id = 'test-node'\ntoken_env = 'MASH_STARTUP_TOKEN_A'\n";
 const STARTUP_TOKEN: &str = "startup-test-credential-with-32-bytes";
+
+#[test]
+fn server_rejects_unknown_gold_recipe_and_fields_before_backend_access() {
+    for recipe in ["embedding_text='typo'", "unknown=true"] {
+        let config = format!("version=1\n{STARTUP_NODE}\n[gold.build]\n{recipe}\n");
+        assert_startup_rejected(config.as_bytes(), &[], "invalid server configuration");
+    }
+}
 
 #[test]
 fn server_rejects_invalid_mutation_snapshot_budget_before_backend_access() {

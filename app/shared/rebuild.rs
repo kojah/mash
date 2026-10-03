@@ -16,6 +16,7 @@ use std::{io::Write, path::Path, time::Instant};
 
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct Rebuilt {
+    build: crate::gold::config::Build,
     rebuild_shared_gold: bool,
     counts: crate::storage::Counts,
     silver: silver_revision::State,
@@ -55,6 +56,7 @@ async fn materialize(
             publication_revision: retained.publication_revision,
             silver: retained.silver,
             generation: retained.generation,
+            build: retained.build.clone(),
         },
     )
     .await?;
@@ -87,10 +89,20 @@ async fn materialize(
         }) {
             return Err(AppError::shared("invalid retained silver message identity"));
         }
-        let texts = batch
+        let prepared = batch
             .iter()
-            .map(|(_, m)| m.projection.as_str())
+            .map(|(_, m)| {
+                retained.build.prepare(
+                    m.projection.clone(),
+                    retained
+                        .history
+                        .conversations
+                        .get(&m.conversation_id)
+                        .and_then(|c| c.title.as_deref()),
+                )
+            })
             .collect::<Vec<_>>();
+        let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
         let vectors = gold::embed_texts(models, embeddings, &mut pool, &texts, &mut result).await?;
         if vectors.len() != batch.len() {
             return Err(AppError::model("missing shared message embedding"));
@@ -153,11 +165,13 @@ pub(crate) async fn rebuild_gold(
         ));
     }
     let silver = retained.silver.clone();
+    let recipe = retained.build.clone();
     let publication_revision = retained.publication_revision;
     let (file, built) = materialize(retained, models, embeddings).await?;
     let publish_started = Instant::now();
     let indexed = publication::upload_to(config, &file, Endpoint::Gold).await?;
     let result = Rebuilt {
+        build: recipe,
         rebuild_shared_gold: true,
         counts: indexed.counts,
         silver,

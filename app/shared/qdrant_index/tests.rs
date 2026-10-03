@@ -561,6 +561,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     node_id: "node".into(),
                     version: version.clone(),
                     head: Some(Head {
+                        gold_manifest: None,
                         silver_coverage: Vec::new(),
                         silver_revision: None,
                         silver_scans: Vec::new(),
@@ -610,6 +611,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
         .unwrap();
     });
     let store = Store {
+        build: crate::gold::config::Build::default(),
         api: api::Client::new(&url, None, 1024).unwrap(),
         max_node_bytes: 1024,
         vector_index: VectorIndex::default(),

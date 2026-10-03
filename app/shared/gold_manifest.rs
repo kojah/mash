@@ -1,0 +1,88 @@
+//! Durable build evidence attached to the single published node revision.
+use super::silver_revision::State;
+use crate::gold::config::Build;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Manifest {
+    pub(super) schema_version: u32,
+    pub(super) interpretation_version: u32,
+    pub(super) build: Build,
+    pub(super) model_generation: String,
+    pub(super) silver: State,
+}
+
+pub(super) fn publication(
+    checked: bool,
+    previous: Option<&super::snapshot::Head>,
+    identity: &super::server::Identity,
+    silver: &State,
+) -> Option<Manifest> {
+    // Source uploads contain dialogue vectors. Deltas after another recipe
+    // can mix representations; only a full gold replacement certifies them.
+    let build = if checked {
+        previous
+            .filter(|h| {
+                h.revision == 0
+                    || h.gold_manifest
+                        .as_ref()
+                        .is_some_and(|m| m.build == Build::default())
+            })
+            .map(|_| Build::default())
+    } else {
+        previous.and_then(|h| h.gold_manifest.as_ref().map(|m| m.build.clone()))
+    };
+    build.map(|build| Manifest::new(build, identity.generation.clone(), silver.clone()))
+}
+
+impl Manifest {
+    pub(super) fn new(build: Build, model_generation: String, silver: State) -> Self {
+        Self {
+            schema_version: 1,
+            interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
+            build,
+            model_generation,
+            silver,
+        }
+    }
+
+    pub(super) fn matches(&self, build: &Build, model: &str, silver: Option<&State>) -> bool {
+        self.schema_version == 1
+            && self.interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION
+            && self.silver.validate().is_ok()
+            && &self.build == build
+            && self.model_generation == model
+            && silver == Some(&self.silver)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_identity_rejects_stale_silver_model_recipe_and_schema() {
+        let silver = State::next(None, "a".repeat(64)).unwrap();
+        let build = Build::default();
+        let manifest = Manifest::new(build.clone(), "model".into(), silver.clone());
+        assert!(manifest.matches(&build, "model", Some(&silver)));
+        let changed = State::next(Some(&silver), "b".repeat(64)).unwrap();
+        assert!(!manifest.matches(&build, "model", Some(&changed)));
+        assert!(!manifest.matches(&build, "other", Some(&silver)));
+        assert!(!manifest.matches(&build, "model", None));
+        let title = Build {
+            embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+        };
+        assert!(!manifest.matches(&title, "model", Some(&silver)));
+        let mut unknown = manifest.clone();
+        unknown.schema_version = 99;
+        assert!(!unknown.matches(&build, "model", Some(&silver)));
+        unknown = manifest.clone();
+        unknown.interpretation_version = 99;
+        assert!(!unknown.matches(&build, "model", Some(&silver)));
+        let roundtrip: Manifest =
+            serde_json::from_str(&serde_json::to_string(&manifest).unwrap()).unwrap();
+        assert_eq!(manifest, roundtrip);
+    }
+}

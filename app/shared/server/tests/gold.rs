@@ -28,6 +28,7 @@ fn replacement(state: &NodeState) -> Vec<Value> {
     opposite[0] = 127.0;
     vec![
         serde_json::to_value(Event::Start {
+            build: crate::gold::config::Build::default(),
             publication_revision: state.revision,
             silver: state.silver_revision.clone().unwrap(),
             generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
@@ -117,7 +118,7 @@ async fn qdrant_gold_only_rebuild_preserves_silver_and_rejects_invalid_replaceme
 }
 
 async fn assert_rejected_replacements(service: &Service, events: &[Value], before: &NodeState) {
-    for defect in 0..13 {
+    for defect in 0..15 {
         let mut invalid = events.to_vec();
         match defect {
             0 => {
@@ -138,6 +139,8 @@ async fn assert_rejected_replacements(service: &Service, events: &[Value], befor
             9 => invalid[0]["publication_revision"] = json!(999),
             10 => invalid[1]["records"][0]["vector"] = json!(vec![0; 384]),
             11 => invalid.push(json!({"type":"finish"})),
+            13 => invalid[0]["build"]["embedding_text"] = json!("title-and-dialogue"),
+            14 => invalid[0]["build"]["embedding_text"] = json!("unknown"),
             _ => invalid[1]["records"][0]["content"] = json!("canonical mutation forbidden"),
         }
         assert!(

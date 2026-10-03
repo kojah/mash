@@ -43,5 +43,6 @@ pub(super) async fn initialize(
         config.qdrant_memory,
     )
     .await?
-    .with_snapshot_budget(budget))
+    .with_snapshot_budget(budget)
+    .with_build(config.gold.build.clone()))
 }
