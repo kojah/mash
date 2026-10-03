@@ -149,18 +149,17 @@ pub(super) fn plan(
             Event::Start { .. } => return Err(AppError::usage("duplicate gold start")),
         }
     }
-    if !finished
-        || seen.len()
-            != loaded
-                .data
-                .messages
-                .values()
-                .filter(|m| !m.projection.is_empty())
-                .count()
-    {
+    let searchable = loaded
+        .data
+        .messages
+        .values()
+        .filter(|m| !m.projection.is_empty())
+        .count();
+    if !finished || seen.len() != searchable {
         return Err(AppError::usage("incomplete gold replacement"));
     }
     Ok(Plan {
+        source_build: None,
         loaded,
         revision,
         changed: false,

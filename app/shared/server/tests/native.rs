@@ -45,6 +45,7 @@ pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Val
         .collect();
     let events = [
         Event::Start(Start {
+            gold_build: None,
             source_silver: None,
             instance: format!("native-{}", conversation.provider),
             revision: Some(1),

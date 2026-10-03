@@ -7,6 +7,8 @@ use crate::storage::{Counts, SearchHit};
 #[serde(deny_unknown_fields)]
 pub(crate) struct Start {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gold_build: Option<crate::gold::config::Build>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_silver: Option<crate::silver::certificate::Certificate>,
     pub instance: String,
     pub revision: Option<i64>,
@@ -229,6 +231,8 @@ pub(crate) struct Tombstone {
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct NodeState {
+    #[serde(default)]
+    pub gold_build: crate::gold::config::Build,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub silver_coverage: Vec<super::silver_coverage::Coverage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

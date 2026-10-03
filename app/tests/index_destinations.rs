@@ -1,5 +1,6 @@
 use super::*;
 mod rebuild;
+mod recipe;
 
 struct Fixture {
     directory: tempfile::TempDir,

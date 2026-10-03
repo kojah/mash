@@ -14,22 +14,14 @@ pub(super) struct Manifest {
 }
 
 pub(super) fn publication(
+    source_build: Option<&Build>,
     checked: bool,
     previous: Option<&super::snapshot::Head>,
     identity: &super::server::Identity,
     silver: &State,
 ) -> Option<Manifest> {
-    // Source uploads contain dialogue vectors. Deltas after another recipe
-    // can mix representations; only a full gold replacement certifies them.
     let build = if checked {
-        previous
-            .filter(|h| {
-                h.revision == 0
-                    || h.gold_manifest
-                        .as_ref()
-                        .is_some_and(|m| m.build == Build::default())
-            })
-            .map(|_| Build::default())
+        source_build.cloned()
     } else {
         previous.and_then(|h| h.gold_manifest.as_ref().map(|m| m.build.clone()))
     };

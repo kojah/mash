@@ -93,6 +93,9 @@ impl PendingSnapshot {
     }
 }
 pub(super) struct Plan {
+    // Recipe validated for source-supplied and retained vectors. Gold-only or
+    // forget publication instead carries forward its explicit prior manifest.
+    pub(super) source_build: Option<crate::gold::config::Build>,
     pub(super) loaded: Loaded,
     pub(super) revision: i64,
     pub(super) changed: bool,

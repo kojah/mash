@@ -2,9 +2,10 @@
 use super::{
     client::{self, Endpoint},
     gold_rebuild::{Embedding, Event},
-    publication,
+    protocol, publication,
     silver_read::Retained,
     silver_revision,
+    snapshot::layers::Message,
 };
 use crate::{
     AppError,
@@ -13,6 +14,47 @@ use crate::{
     semantic,
 };
 use std::{io::Write, path::Path, time::Instant};
+
+#[cfg(test)]
+mod tests;
+
+fn ordered_rows(
+    messages: std::collections::BTreeMap<String, Message>,
+    conversations: &std::collections::BTreeMap<String, protocol::ConversationRecord>,
+) -> Result<Vec<Message>, AppError> {
+    let mut rows = messages
+        .into_iter()
+        .map(|(key, message)| {
+            if key != message.id || !conversations.contains_key(&message.conversation_id) {
+                return Err(AppError::shared("invalid retained silver message identity"));
+            }
+            Ok(message)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.sort_by(|a, b| {
+        a.conversation_id
+            .cmp(&b.conversation_id)
+            .then_with(|| a.ordinal.cmp(&b.ordinal))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    Ok(rows)
+}
+
+fn next_batch(messages: &mut std::iter::Peekable<std::vec::IntoIter<Message>>) -> Vec<Message> {
+    let mut batch: Vec<Message> = Vec::new();
+    while batch.len() < gold::BATCH_ROWS
+        && messages.peek().is_some_and(|message| {
+            batch
+                .first()
+                .is_none_or(|first| first.conversation_id == message.conversation_id)
+        })
+    {
+        if let Some(message) = messages.next() {
+            batch.push(message);
+        }
+    }
+    batch
+}
 
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct Rebuilt {
@@ -66,32 +108,24 @@ async fn materialize(
         .values()
         .filter(|m| !m.projection.is_empty())
         .count() as u64;
-    let mut messages = retained
-        .history
-        .messages
+    // Match node-side inference batches, including hidden rows in the 32-row
+    // boundary. Quantized inference can depend on batch composition.
+    let mut messages = ordered_rows(retained.history.messages, &retained.history.conversations)?
         .into_iter()
-        .filter(|(_, m)| !m.projection.is_empty());
+        .peekable();
     let mut result = Build::default();
     let mut pool = None;
     let started = Instant::now();
     let mut estimate = crate::progress::Estimate::new();
     loop {
-        let batch = messages.by_ref().take(32).collect::<Vec<_>>();
+        let batch = next_batch(&mut messages);
         if batch.is_empty() {
             break;
         }
-        if batch.iter().any(|(key, m)| {
-            key != &m.id
-                || !retained
-                    .history
-                    .conversations
-                    .contains_key(&m.conversation_id)
-        }) {
-            return Err(AppError::shared("invalid retained silver message identity"));
-        }
         let prepared = batch
             .iter()
-            .map(|(_, m)| {
+            .filter(|m| !m.projection.is_empty())
+            .map(|m| {
                 retained.build.prepare(
                     m.projection.clone(),
                     retained
@@ -104,16 +138,17 @@ async fn materialize(
             .collect::<Vec<_>>();
         let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
         let vectors = gold::embed_texts(models, embeddings, &mut pool, &texts, &mut result).await?;
-        if vectors.len() != batch.len() {
+        if vectors.len() != prepared.len() {
             return Err(AppError::model("missing shared message embedding"));
         }
         drop(texts);
-        result.embeddings.model_inferences += batch.len() as u64;
-        result.embeddings.stored_vectors += batch.len() as u64;
+        result.embeddings.model_inferences += vectors.len() as u64;
+        result.embeddings.stored_vectors += vectors.len() as u64;
         let records = batch
             .into_iter()
+            .filter(|m| !m.projection.is_empty())
             .zip(vectors)
-            .map(|((_, m), vector)| Embedding {
+            .map(|(m, vector)| Embedding {
                 message_id: m.id,
                 vector,
             })

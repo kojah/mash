@@ -54,6 +54,7 @@ pub(crate) async fn index(
     write_event(
         file.as_file_mut(),
         &Event::Start(Start {
+            gold_build: Some(state.gold_build.clone()),
             source_silver: None,
             instance: instance.to_owned(),
             revision: Some(owner.revision),
@@ -68,6 +69,7 @@ pub(crate) async fn index(
         gold: crate::gold::shared::Build::default(),
         ingestion_milliseconds: 0,
     };
+    result.gold.recipe.clone_from(&state.gold_build);
     let ingestion_started = Instant::now();
     crate::progress::phase(crate::progress::Phase::SharedIngestion, 0);
     let mut pool = None;

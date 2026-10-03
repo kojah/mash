@@ -94,6 +94,18 @@ fn canonical_rows(conversation: &Conversation) -> Vec<u8> {
 
 #[tokio::test]
 async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_groups() {
+    for recipe in [
+        crate::gold::config::EmbeddingText::Dialogue,
+        crate::gold::config::EmbeddingText::TitleAndDialogue,
+    ] {
+        verify_materialization(crate::gold::config::Build {
+            embedding_text: recipe,
+        })
+        .await;
+    }
+}
+
+async fn verify_materialization(recipe: crate::gold::config::Build) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let config = semantic::remote::Configuration {
         url: format!("http://{}/embeddings", listener.local_addr().unwrap()),
@@ -112,6 +124,7 @@ async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_gr
     });
     let mut file = tempfile::NamedTempFile::new().unwrap();
     let mut result = result();
+    result.recipe = recipe.clone();
     let directory = tempfile::tempdir().unwrap();
     let mut silver = conversation();
     silver.source = SourceIdentity::file(directory.path().join("missing-provider.jsonl"));
@@ -165,7 +178,7 @@ async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_gr
     }
     let expected = (0..37)
         .filter(|ordinal| ordinal % 4 != 0)
-        .map(|ordinal| format!("projection {ordinal}"))
+        .map(|ordinal| recipe.prepare(format!("projection {ordinal}"), Some("title")))
         .collect::<Vec<_>>();
     let requests = requests.lock().unwrap();
     assert_eq!(requests.iter().map(Vec::len).collect::<Vec<_>>(), [24, 3]);

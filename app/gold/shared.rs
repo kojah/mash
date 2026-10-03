@@ -8,8 +8,11 @@ use crate::silver::Conversation;
 use std::path::Path;
 use std::time::Instant;
 
+pub(crate) const BATCH_ROWS: usize = 32;
+
 #[derive(Default)]
 pub(crate) struct Build {
+    pub(crate) recipe: crate::gold::config::Build,
     pub(crate) messages: u64,
     pub(crate) embeddings: EmbeddingSummary,
     pub(crate) model_load_milliseconds: u64,
@@ -97,16 +100,22 @@ pub(crate) async fn materialize(
     loop {
         let batch = messages
             .by_ref()
-            .take(32)
+            .take(BATCH_ROWS)
             .collect::<Result<Vec<_>, AppError>>()?;
         if batch.is_empty() {
             break;
         }
-        let texts = batch
+        let prepared = batch
             .iter()
             .map(|m| m.dialogue())
             .filter(|t| !t.is_empty())
+            .map(|text| {
+                result
+                    .recipe
+                    .prepare(text.to_owned(), conversation.title.as_deref())
+            })
             .collect::<Vec<_>>();
+        let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
         let mut vectors = embed_texts(models_dir, embeddings, pool, &texts, result)
             .await?
             .into_iter();

@@ -243,6 +243,7 @@ async fn publish_result(path: &Path, config: &SharedConfig) -> Result<(), AppErr
                 write_event(
                     &mut writer,
                     &Event::Start(Start {
+                        gold_build: None,
                         source_silver: Some(snapshot.source_silver.clone()),
                         instance: snapshot.instance.clone(),
                         revision: Some(snapshot.revision),

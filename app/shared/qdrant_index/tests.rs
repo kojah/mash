@@ -4,6 +4,7 @@ use std::io::Write;
 mod exact;
 mod memory;
 mod publication;
+mod recipe;
 
 struct Fixture {
     store: Store,
@@ -54,6 +55,7 @@ impl Fixture {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         let events = vec![
             Event::Start(Start {
+                gold_build: None,
                 source_silver: None,
                 instance: "instance".into(),
                 revision: Some(revision),
@@ -205,7 +207,8 @@ async fn qdrant_spooled_snapshot_round_trips_unicode_chunks_and_rejects_over_bud
     let mut plan = crate::shared::snapshot::plan(
         &fixture.file(1, "large"),
         fixture.store.load(&fixture.identity).await.unwrap(),
-        4,
+        &fixture.identity,
+        &crate::gold::config::Build::default(),
     )
     .unwrap();
     let content = format!("{}🦀é漢字", "a".repeat(4 * 1024 * 1024));
@@ -228,8 +231,13 @@ async fn qdrant_spooled_snapshot_round_trips_unicode_chunks_and_rejects_over_bud
         loaded.data.messages["message-1"].content,
         "needle canonical large"
     );
-    let mut plan =
-        crate::shared::snapshot::plan(&fixture.file(2, "replacement"), loaded, 4).unwrap();
+    let mut plan = crate::shared::snapshot::plan(
+        &fixture.file(2, "replacement"),
+        loaded,
+        &fixture.identity,
+        &crate::gold::config::Build::default(),
+    )
+    .unwrap();
     plan.loaded
         .data
         .messages
@@ -269,13 +277,15 @@ async fn qdrant_conditional_publication_handles_competing_first_and_replacement_
         let a = crate::shared::snapshot::plan(
             &fixture.file(revision, "alpha"),
             fixture.store.load(&fixture.identity).await.unwrap(),
-            4,
+            &fixture.identity,
+            &crate::gold::config::Build::default(),
         )
         .unwrap();
         let b = crate::shared::snapshot::plan(
             &fixture.file(revision, "beta"),
             fixture.store.load(&fixture.identity).await.unwrap(),
-            4,
+            &fixture.identity,
+            &crate::gold::config::Build::default(),
         )
         .unwrap();
         let (a, b) = tokio::join!(
@@ -316,7 +326,8 @@ async fn qdrant_conditional_publication_handles_competing_first_and_replacement_
     let plan = crate::shared::snapshot::plan(
         &fixture.file(3, "hidden"),
         fixture.store.load(&fixture.identity).await.unwrap(),
-        4,
+        &fixture.identity,
+        &crate::gold::config::Build::default(),
     )
     .unwrap();
     fixture

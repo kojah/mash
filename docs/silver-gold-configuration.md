@@ -550,11 +550,51 @@ After changing server recipes, rebuild every publishing node. During this
 transition search fails until the group has matching manifests. This is **not a
 group-wide atomic activation transaction**: availability during coordinated
 switches and a durable group configuration pointer remain follow-up work.
-Ordinary source uploads currently produce dialogue vectors. After publishing a
-nondefault recipe, an ingestion delta can leave mixed representations and clears
-the build evidence until a complete shared gold rebuild succeeds. Automatic
-recipe-aware ingestion remains follow-up work; mixed vectors never become
-certified merely because their dimensions match.
+Routed ingestion negotiates the server's typed `gold_build` through `/v1/state`
+and pins it in the upload start. Native and Claude materialization apply that
+recipe to embedding inputs, while retaining canonical content and interpreted
+dialogue unchanged. Changed source conversations are embedded in bounded batches;
+compatible source checkpoints can skip unchanged history. A server configured
+with a different recipe rejects the pinned upload before staging.
+
+The server certifies a source upload when its retained vectors already have a
+matching recipe/model manifest, or every remaining searchable conversation was
+replaced by the upload. A partial recipe transition leaves dense gold unverified;
+equal dimensions cannot prove representation compatibility. Complete replacement
+or explicit retained-silver rebuilding recovers it. Empty bootstrap, idempotent
+snapshots, compatible no-op refreshes and deletion of the last thread retain a
+current recipe manifest. Local and shared recipes remain independent.
+
+The unfiltered default snapshot-publication path still exports local dialogue
+vectors without recipe negotiation. A nondefault shared recipe on that path
+therefore requires explicit shared rebuilding; adapting it without redundant
+full-corpus inference remains pending on `mash-q3e.3.4`. Server configuration is
+still process-local, so durable group activation remains pending on `.3.5`.
+
+Retained-silver rebuilding now matches the routed inference schedule: threads
+are separate, rows follow ordinal order, and hidden rows count toward each
+32-row boundary before visible embedding inputs are selected. The two-provider
+integration test initially exposed different scores when rebuilding batched
+across threads; matching the schedule restored exact score equality for the
+fixture. This matters for batch-sensitive quantized inference. Sorting moves
+retained records into a vector without cloning canonical bodies; it adds a
+sorting step and can reduce cross-thread batch utilization. Full-corpus rebuild
+throughput remains a measurement gate.
+
+The Xenia debug CLI fixture used one searchable Codex message and one Claude
+message, independent local dialogue/shared title-and-dialogue recipes, unchanged
+refresh, edits to both providers, retained-silver rebuild comparisons and
+deletion of both threads. Initial indexing took 2,919 ms; an unchanged refresh
+102 ms; the Codex edit 3,093 ms; deletion 149 ms. These are small-fixture,
+process-inclusive correctness diagnostics with cold model loading, not corpus
+percentiles or quality evidence. Logs are under the external artifact directory
+in `shared-recipe-batch-parity-20261003.log`.
+
+Final validation passed 634 standard tests and 43 disposable-Qdrant contracts,
+including the two-provider lifecycle, both recipe guards, source-free rebuilding,
+exact/hybrid queries, concurrent publication and graceful/SIGKILL restart. The
+final Qdrant run is captured in `shared-recipe-ingestion-qdrant-final-20261003.log`.
+These checks preserve the broader pending acceptance gates described above.
 
 Real-model integration coverage switches dialogue → title-plus-dialogue →
 dialogue after removing provider directories. It compares retained history and

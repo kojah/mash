@@ -35,6 +35,7 @@ fn chunked(bytes: Bytes) -> Body {
 
 fn state(records: usize) -> NodeState {
     NodeState {
+        gold_build: crate::gold::config::Build::default(),
         silver_coverage: Vec::new(),
         silver_revision: None,
         silver_scans: Vec::new(),

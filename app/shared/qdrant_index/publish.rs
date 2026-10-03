@@ -32,6 +32,27 @@ fn publication_timestamp() -> String {
         .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
 }
 
+fn publication_manifests(
+    plan: &Plan,
+    identity: &Identity,
+    silver: &crate::shared::silver_revision::State,
+    checked: bool,
+) -> (
+    Option<gold_manifest::Manifest>,
+    crate::shared::lexical_manifest::Manifest,
+) {
+    (
+        gold_manifest::publication(
+            plan.source_build.as_ref(),
+            checked,
+            plan.loaded.head.as_ref(),
+            identity,
+            silver,
+        ),
+        crate::shared::lexical_manifest::Manifest::new(silver.clone()),
+    )
+}
+
 fn staging_version() -> Result<String, AppError> {
     let mut random = [0u8; 32];
     getrandom::fill(&mut random)
@@ -99,9 +120,11 @@ impl Store {
         let reservation = self
             .snapshot_budget
             .reserve(pending.encoded_bytes(), incoming)?;
-        let dimensions = identity.dimensions;
+        let identity_for_plan = identity.clone();
+        let build = self.build.clone();
         let (plan, _reservation) = crate::blocking(move || {
-            snapshot::plan(&file, pending.decode()?, dimensions).map(|plan| (plan, reservation))
+            snapshot::plan(&file, pending.decode()?, &identity_for_plan, &build)
+                .map(|plan| (plan, reservation))
         })
         .await?;
         let instance = plan
@@ -142,6 +165,7 @@ impl Store {
                     .ok_or_else(|| conflict("node revision exhausted"))?,
             );
             let mut plan = Plan {
+                source_build: None,
                 loaded,
                 revision,
                 changed: false,
@@ -346,10 +370,8 @@ impl Store {
         let counts = plan.loaded.data.counts(identity);
         let version = staging_version()?;
         let previous = plan.loaded.head.as_ref();
-        let gold_manifest =
-            gold_manifest::publication(checked, previous, identity, &silver_revision);
-        let lexical_manifest =
-            crate::shared::lexical_manifest::Manifest::new(silver_revision.clone());
+        let (gold_manifest, lexical_manifest) =
+            publication_manifests(&plan, identity, &silver_revision, checked);
         let now = publication_timestamp();
         let head = Head {
             lexical_manifest: Some(lexical_manifest),

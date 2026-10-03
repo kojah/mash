@@ -54,6 +54,7 @@ impl Data {
             })
             .collect();
         NodeState {
+            gold_build: crate::gold::config::Build::default(),
             silver_coverage: Vec::new(),
             silver_revision: None,
             silver_scans: Vec::new(),
@@ -163,7 +164,8 @@ pub(in crate::shared) fn start(
 pub(in crate::shared) fn plan(
     file: &tempfile::NamedTempFile,
     mut loaded: Loaded,
-    dimensions: usize,
+    identity: &Identity,
+    build: &crate::gold::config::Build,
 ) -> Result<Plan, AppError> {
     use std::io::BufRead;
     let mut lines = std::io::BufReader::new(
@@ -181,7 +183,28 @@ pub(in crate::shared) fn plan(
         return Err(AppError::usage("index stream must start with metadata"));
     };
     let (revision, duplicate) = start(&mut loaded, &input)?;
+    if input
+        .gold_build
+        .as_ref()
+        .is_some_and(|requested| requested != build)
+    {
+        return Err(conflict("shared gold recipe changed; retry indexing"));
+    }
+    let requested = input.gold_build.clone().unwrap_or_default();
+    let previous_build = loaded.head.as_ref().and_then(|head| {
+        head.gold_manifest
+            .as_ref()
+            .filter(|manifest| {
+                manifest.matches(
+                    &manifest.build,
+                    &identity.generation,
+                    head.silver_revision.as_ref(),
+                )
+            })
+            .map(|manifest| manifest.build.clone())
+    });
     let mut plan = Plan {
+        source_build: None,
         loaded,
         revision,
         changed: false,
@@ -210,6 +233,7 @@ pub(in crate::shared) fn plan(
     let mut reconciled = HashMap::new();
     let mut scans = std::collections::BTreeMap::new();
     let mut finished = false;
+    let mut supplied = HashSet::new();
     for line in lines {
         if finished {
             return Err(AppError::usage("data after index finish"));
@@ -267,6 +291,7 @@ pub(in crate::shared) fn plan(
                                 .tombstones
                                 .contains_key(&identity_key(c.provider, &c.id))
                             {
+                                supplied.insert(c.id.clone());
                                 data.conversations.insert(c.id.clone(), c);
                                 plan.changed = true;
                             }
@@ -278,9 +303,9 @@ pub(in crate::shared) fn plan(
                             valid_id(&m.conversation_id)?;
                             if m.ordinal < 0
                                 || !m.context.valid(m.ordinal)
-                                || m.vector
-                                    .as_ref()
-                                    .is_some_and(|v| !protocol::valid_vector(v, dimensions))
+                                || m.vector.as_ref().is_some_and(|v| {
+                                    !protocol::valid_vector(v, identity.dimensions)
+                                })
                                 || (m.projection.is_empty()
                                     && (m.vector.is_some() || m.generation.is_some()))
                             {
@@ -392,5 +417,20 @@ pub(in crate::shared) fn plan(
         );
         head.silver_scans = scans.into_values().collect();
     }
+    plan.source_build = if duplicate {
+        previous_build
+    } else if previous_build.as_ref() == Some(&requested)
+        || plan
+            .loaded
+            .data
+            .messages
+            .values()
+            .filter(|message| !message.projection.is_empty())
+            .all(|message| supplied.contains(&message.conversation_id))
+    {
+        Some(requested)
+    } else {
+        None
+    };
     Ok(plan)
 }

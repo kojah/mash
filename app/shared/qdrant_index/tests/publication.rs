@@ -237,7 +237,8 @@ async fn exercise(outcome: Outcome) {
         }
         .decode()
         .unwrap(),
-        4,
+        &fixture.identity,
+        &crate::gold::config::Build::default(),
     )
     .unwrap();
     let result = diagnostics::commit(&fixture.store, &fixture.identity, plan, outcome).await;
