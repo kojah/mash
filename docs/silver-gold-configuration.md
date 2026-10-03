@@ -647,6 +647,13 @@ to current defaults. Explicit ranking overrides with exact-mention fail before
 model admission, SQLite or HTTP access because literal retrieval does not use
 hybrid ranking. Unknown ranking names fail at the typed CLI/JSON boundary.
 
+The [bounded local ranking control](local-ranking-cost-2026-10-03.md) measures
+fresh CLI and resident-worker costs on the same certified sample. Fusion runs
+no reranker; resident median CLI wall time was 30 ms versus 539 ms for contextual
+reranking. This is a cost observation, not a quality comparison or a reason to
+change the default. Shared/combined costs remain unverified after the broader
+control encountered incomplete shared context.
+
 A single Linux x86_64 CI-profile run on 2026-10-03 measured backend acquisition
 (inventory validation, lease selection, cache lookup and model initialization)
 with the installed MiniLM/Jina assets:
