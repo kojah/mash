@@ -837,6 +837,16 @@ two-second total deadline; combined discovery returns local metadata with
 `shared_error` on failure, while shared-only discovery fails. `shared` in the
 response indicates a successful shared read.
 
+Use `list-threads --diagnostics` or MCP `list_threads` with `diagnostics=true`
+to include metadata-only artifact selection, requested/completed sources,
+shared fallback and listing/merge counts and timings. Diagnostics make no extra
+HTTP calls and require no models. `local-metadata` and `shared-metadata` measure
+the complete source listing (including pagination); `metadata-merge` measures
+deduplication, ordering and final paging. Candidate counts reflect the filtered
+source windows, not the entire corpus. Concurrent timings overlap and must not
+be summed as wall time. Listing elapsed time excludes startup/configuration
+loading. Ordinary responses omit this optional report.
+
 SQLite metadata reads require an existing current schema and never create or
 migrate the database. They require no installed models or completed embedding
 generation, so metadata already recorded during indexing can be inspected.

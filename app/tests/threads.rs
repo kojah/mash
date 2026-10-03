@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::json;
 
 #[test]
 fn cli_lists_metadata_with_typed_filters_without_installed_models() {
@@ -19,6 +20,7 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
         models.to_str().unwrap(),
         "list-threads",
         "--local",
+        "--diagnostics",
         "--provider",
         "codex",
         "--title-contains",
@@ -39,6 +41,13 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
     assert_eq!(result["threads"][0]["provider"], "codex");
     assert_eq!(result["threads"][0]["updated_at"], 3000);
     assert_eq!(result["next_offset"], Value::Null);
+    assert_eq!(
+        result["diagnostics"]["selected_artifacts"],
+        json!(["metadata"])
+    );
+    assert_eq!(result["diagnostics"]["requested_scope"], "local");
+    assert_eq!(result["diagnostics"]["completed_sources"], json!(["local"]));
+    assert_eq!(result["diagnostics"]["returned_results"], 1);
     assert!(!models.exists());
     let output = Command::cargo_bin("mash")
         .unwrap()

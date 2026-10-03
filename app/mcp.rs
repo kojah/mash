@@ -65,6 +65,9 @@ struct ListThreads {
     local: bool,
     #[serde(default)]
     shared: bool,
+    /// Include metadata source outcomes and listing/merge timings.
+    #[serde(default)]
+    diagnostics: bool,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -241,6 +244,7 @@ impl Mash {
             input: Box::new(input.input),
             local: input.local,
             shared: input.shared,
+            diagnostics: input.diagnostics,
         })
         .await
     }

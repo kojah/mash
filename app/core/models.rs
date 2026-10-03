@@ -60,6 +60,8 @@ pub(crate) enum Operation {
         input: Box<crate::thread_catalog::Request>,
         local: bool,
         shared: bool,
+        #[serde(default)]
+        diagnostics: bool,
     },
     Search {
         #[serde(default)]

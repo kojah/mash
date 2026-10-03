@@ -34,6 +34,30 @@ fn database(directory: &Path) -> std::path::PathBuf {
     path
 }
 
+fn assert_combined_metadata_diagnostics(result: &Response) {
+    let diagnostics = result.diagnostics.as_ref().unwrap();
+    assert_eq!(diagnostics.selected_artifacts, [Artifact::Metadata]);
+    assert_eq!(diagnostics.requested_scope, Scope::Combined);
+    assert_eq!(
+        diagnostics.completed_sources,
+        [Source::Local, Source::Shared]
+    );
+    assert_eq!(diagnostics.returned_results, 5);
+    assert!(!diagnostics.shared_fallback);
+    assert_eq!(
+        diagnostics
+            .stages
+            .iter()
+            .map(|m| m.stage)
+            .collect::<Vec<_>>(),
+        [
+            Stage::LocalMetadata,
+            Stage::SharedMetadata,
+            Stage::MetadataMerge
+        ]
+    );
+}
+
 #[tokio::test]
 async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
     let app = Router::new().route(
@@ -67,7 +91,10 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
         limit: 5,
         ..Default::default()
     };
-    let result = run(&config, &database, input, false, false).await.unwrap();
+    let result = run(&config, &database, input, false, false, true)
+        .await
+        .unwrap();
+    assert_combined_metadata_diagnostics(&result);
     assert!(result.shared);
     assert_eq!(result.page.next_offset, Some(105));
     assert_eq!(
@@ -85,7 +112,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             "thread-005"
         ]
     );
-    let result = run(&config, &database, Request::default(), false, false)
+    let result = run(&config, &database, Request::default(), false, false, true)
         .await
         .unwrap();
     assert_eq!(
@@ -108,14 +135,24 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
         "laptop"
     );
     server.abort();
-    let result = run(&config, &database, Request::default(), false, false)
+    let result = run(&config, &database, Request::default(), false, false, true)
         .await
         .unwrap();
     assert!(!result.shared);
     assert!(result.shared_error.is_some());
+    let diagnostics = result.diagnostics.as_ref().unwrap();
+    assert!(diagnostics.shared_fallback);
+    assert_eq!(diagnostics.completed_sources, [Source::Local]);
+    let failed = diagnostics
+        .stages
+        .iter()
+        .find(|m| m.stage == Stage::SharedMetadata)
+        .unwrap();
+    assert_eq!(failed.calls, 1);
+    assert_eq!(failed.completed_calls, 0);
     assert_eq!(result.page.threads.len(), 1);
     assert!(
-        run(&config, &database, Request::default(), false, true)
+        run(&config, &database, Request::default(), false, true, false)
             .await
             .is_err()
     );
@@ -137,16 +174,17 @@ async fn invalid_catalog_inputs_and_local_scope_never_contact_remote_or_create_d
         ),
         (Request::default(), true, true),
     ] {
-        let error = run(&config, &missing, input, local, shared)
+        let error = run(&config, &missing, input, local, shared, false)
             .await
             .unwrap_err();
         assert!(matches!(error.error.kind, crate::ErrorKind::Usage));
     }
     assert!(!missing.exists());
     let path = database(directory.path());
-    let result = run(&config, &path, Request::default(), true, false)
+    let result = run(&config, &path, Request::default(), true, false, false)
         .await
         .unwrap();
+    assert!(result.diagnostics.is_none());
     assert_eq!(result.page.threads.len(), 1);
     assert!(!result.shared);
     assert!(result.shared_error.is_none());

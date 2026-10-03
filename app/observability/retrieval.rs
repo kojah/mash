@@ -19,8 +19,11 @@ pub(crate) enum Stage {
     Embed,
     Rerank,
     Fusion,
+    LocalMetadata,
+    SharedMetadata,
+    MetadataMerge,
 }
-const COUNT: usize = 8;
+const COUNT: usize = 11;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Measurement {

@@ -17,7 +17,7 @@ async fn malformed_catalog_json_falls_back_without_forwarding_response_contents(
     let directory = tempfile::tempdir().unwrap();
     let config = config(directory.path(), &url);
     let database = database(directory.path());
-    let response = run(&config, &database, Request::default(), false, false)
+    let response = run(&config, &database, Request::default(), false, false, false)
         .await
         .unwrap();
     assert_eq!(response.page.threads.len(), 1);
@@ -25,7 +25,7 @@ async fn malformed_catalog_json_falls_back_without_forwarding_response_contents(
     assert!(error.contains("invalid shared index HTTP response"));
     assert!(!error.contains("private-response-canary"));
     assert!(
-        run(&config, &database, Request::default(), false, true)
+        run(&config, &database, Request::default(), false, true, false)
             .await
             .is_err()
     );
@@ -55,7 +55,7 @@ async fn malformed_catalog_pages_fail_once_and_preserve_local_metadata() {
     let directory = tempfile::tempdir().unwrap();
     let config = config(directory.path(), &url);
     let database = database(directory.path());
-    let response = run(&config, &database, Request::default(), false, false)
+    let response = run(&config, &database, Request::default(), false, false, false)
         .await
         .unwrap();
     assert_eq!(response.page.threads.len(), 1);
@@ -111,6 +111,7 @@ async fn shared_catalog_deadline_covers_all_pages_and_discards_partial_remote_re
             limit: 100,
             ..Default::default()
         },
+        false,
         false,
         false,
     )

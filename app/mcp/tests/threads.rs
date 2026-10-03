@@ -151,7 +151,8 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
             CallToolRequestParams::new("list_threads").with_arguments(
                 json!({
                     "provider":["codex"], "title_contains":"CBIOportal", "after":2,
-                    "sort":"title", "direction":"asc", "limit":1, "local":true
+                    "sort":"title", "direction":"asc", "limit":1, "local":true,
+                    "diagnostics":true
                 })
                 .as_object()
                 .unwrap()
@@ -169,6 +170,13 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     assert_eq!(body["threads"][0]["updated_at"], 3000);
     assert_eq!(body["threads"][0]["node_id"], "local");
     assert_eq!(body["next_offset"], json!(null));
+    assert_eq!(
+        body["diagnostics"]["selected_artifacts"],
+        json!(["metadata"])
+    );
+    assert_eq!(body["diagnostics"]["completed_sources"], json!(["local"]));
+    assert_eq!(body["diagnostics"]["stages"][0]["stage"], "local-metadata");
+    assert_eq!(body["diagnostics"]["stages"][1]["stage"], "metadata-merge");
     assert!(!models.exists());
     drop(model);
     drop(mutation);

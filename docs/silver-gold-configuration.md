@@ -834,7 +834,18 @@ Counts cover successful calls that report counts, not necessarily unique
 messages. A successful empty retrieval reports zero; an incomplete call leaves
 its output count unreported. Aggregate counts cover reported calls only.
 Incomplete calls can reflect errors or cancellation.
-Stages never entered are absent. At most eight stage records are retained.
+Stages never entered are absent. Search reports retain at most eight stage
+records. Metadata listing uses three additional named stages in the same
+bounded collector: `local-metadata`, `shared-metadata` and `metadata-merge`.
+Its optional report selects only the metadata artifact, identifies successful
+sources and shared fallback, and records filtered source-window and final-page
+counts. CLI `list-threads --diagnostics` and MCP `list_threads` with
+`diagnostics=true` call the same core; no model, extra HTTP request or HTTP
+protocol field is introduced. Failed source attempts have zero completed calls
+and no reported output count. Ordinary metadata responses omit diagnostics.
+Listing elapsed time excludes startup/configuration loading. This does not
+claim complete node coverage or topic-artifact readiness; those remain separate
+status/evaluation work.
 
 | Stage | Input count | Output count |
 | --- | --- | --- |

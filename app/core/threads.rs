@@ -2,6 +2,8 @@
 use super::required_shared;
 use crate::AppError;
 use crate::config::ResolvedConfig;
+use crate::gold::diagnostics::{Artifact, Scope, Source};
+use crate::observability::retrieval::{Capture, Guard, Measurement, Stage};
 use crate::shared;
 use crate::storage::Storage;
 use crate::thread_catalog::{Collector, Page, Request, Thread};
@@ -19,10 +21,68 @@ pub(crate) struct Response {
     pub(crate) shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) shared_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) diagnostics: Option<Diagnostics>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct Diagnostics {
+    policy_version: u16,
+    selected_artifacts: Vec<Artifact>,
+    requested_scope: Scope,
+    completed_sources: Vec<Source>,
+    shared_fallback: bool,
+    returned_results: usize,
+    /// Listing core time; excludes CLI/MCP startup and configuration loading.
+    elapsed_ms: u64,
+    stages: Vec<Measurement>,
 }
 
 #[tracing::instrument(name = "list_threads", skip_all)]
 pub(super) async fn run(
+    config: &ResolvedConfig,
+    database: &Path,
+    input: Request,
+    local_only: bool,
+    shared_only: bool,
+    diagnostics: bool,
+) -> Result<Response, AppError> {
+    let started = std::time::Instant::now();
+    let capture = diagnostics.then(Capture::default);
+    let work = run_inner(config, database, input, local_only, shared_only);
+    let mut response = match &capture {
+        Some(capture) => capture.scope(work).await?,
+        None => work.await?,
+    };
+    if let Some(capture) = capture {
+        let use_shared = shared_only || (!local_only && config.shared.is_some());
+        response.diagnostics = Some(Diagnostics {
+            policy_version: 1,
+            selected_artifacts: vec![Artifact::Metadata],
+            requested_scope: if shared_only {
+                Scope::Shared
+            } else if use_shared {
+                Scope::Combined
+            } else {
+                Scope::Local
+            },
+            completed_sources: if shared_only {
+                vec![Source::Shared]
+            } else if response.shared {
+                vec![Source::Local, Source::Shared]
+            } else {
+                vec![Source::Local]
+            },
+            shared_fallback: response.shared_error.is_some(),
+            returned_results: response.page.threads.len(),
+            elapsed_ms: crate::progress::milliseconds(started),
+            stages: capture.finish(),
+        });
+    }
+    Ok(response)
+}
+
+async fn run_inner(
     config: &ResolvedConfig,
     database: &Path,
     input: Request,
@@ -42,26 +102,33 @@ pub(super) async fn run(
         .map_or("local", |config| config.node_id.as_str());
     let local = async {
         if shared_only {
-            return Ok(Vec::new());
+            return Ok::<Vec<Thread>, AppError>(Vec::new());
         }
+        let mut stage = Guard::begin(Stage::LocalMetadata);
         let input = input.clone();
         let path = database.to_path_buf();
         let node = node.to_owned();
-        crate::blocking(move || Storage::open_catalog(&path)?.thread_candidates(&input, &node))
-            .await
+        let rows =
+            crate::blocking(move || Storage::open_catalog(&path)?.thread_candidates(&input, &node))
+                .await?;
+        stage.complete(None, Some(rows.len()));
+        Ok(rows)
     };
     let remote = async {
         if !use_shared {
-            return Ok(Vec::new());
+            return Ok::<Vec<Thread>, AppError>(Vec::new());
         }
+        let mut stage = Guard::begin(Stage::SharedMetadata);
         let mut request = input.clone();
         request.exclude_self |= !shared_only;
-        tokio::time::timeout(
+        let rows = tokio::time::timeout(
             Duration::from_secs(2),
             shared_window(required_shared(config)?, request),
         )
         .await
-        .map_err(|_| AppError::shared("shared thread discovery deadline exceeded"))?
+        .map_err(|_| AppError::shared("shared thread discovery deadline exceeded"))??;
+        stage.complete(None, Some(rows.len()));
+        Ok(rows)
     };
     let (local, remote) = tokio::join!(local, remote);
     let local = local?;
@@ -71,13 +138,18 @@ pub(super) async fn run(
         Err(error) => return Err(error),
     };
     let mut collector = Collector::new(input)?;
+    let mut stage = Guard::begin(Stage::MetadataMerge);
+    let candidates = local.len() + remote.len();
     for thread in local.into_iter().chain(remote) {
         collector.push(thread);
     }
+    let page = collector.finish();
+    stage.complete(Some(candidates), Some(page.threads.len()));
     Ok(Response {
-        page: collector.finish(),
+        page,
         shared: use_shared && shared_error.is_none(),
         shared_error,
+        diagnostics: None,
     })
 }
 

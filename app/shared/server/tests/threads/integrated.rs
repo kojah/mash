@@ -54,6 +54,7 @@ async fn discover(paths: &Paths, input: Request, shared: bool) -> Page {
             input: Box::new(input),
             local: false,
             shared,
+            diagnostics: false,
         },
     })
     .await
@@ -129,6 +130,7 @@ async fn verify_client_authorization(paths: &Paths) {
         input: Box::default(),
         local: false,
         shared,
+        diagnostics: false,
     };
     let fallback = core::execute(core::Request {
         paths: paths.clone(),

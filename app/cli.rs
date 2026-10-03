@@ -45,6 +45,9 @@ enum Command {
         local: bool,
         #[arg(long)]
         shared: bool,
+        /// Include metadata source outcomes and listing/merge timings.
+        #[arg(long)]
+        diagnostics: bool,
     },
     /// Discover and index supported local histories.
     Index {
@@ -258,10 +261,12 @@ impl Cli {
                 input,
                 local,
                 shared,
+                diagnostics,
             } => Operation::ListThreads {
                 input,
                 local,
                 shared,
+                diagnostics,
             },
             Command::Index {
                 rebuild_local_gold,

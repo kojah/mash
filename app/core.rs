@@ -179,7 +179,8 @@ async fn dispatch(
             input,
             local,
             shared,
-        } => threads::run(configuration, database, *input, local, shared)
+            diagnostics,
+        } => threads::run(configuration, database, *input, local, shared, diagnostics)
             .await
             .map(Response::ListThreads),
         Operation::Index(request) if request.mode == IndexMode::SharedGold => {
