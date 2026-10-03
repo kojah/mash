@@ -46,6 +46,7 @@ async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_bat
     let mut target = Target {
         schema_version: 1,
         build: crate::gold::config::Build {
+            max_embedding_chars: None,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         },
         generation: "unavailable-model".into(),

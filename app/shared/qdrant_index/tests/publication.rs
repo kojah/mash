@@ -365,6 +365,7 @@ async fn exercise(outcome: Outcome) {
     if matches!(outcome, Outcome::ActivatedDuringPublication) {
         assert!(fixture.store.state(&fixture.identity).await.is_err());
         fixture.store = fixture.store.with_build(crate::gold::config::Build {
+            max_embedding_chars: None,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         });
     }

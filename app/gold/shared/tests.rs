@@ -68,7 +68,7 @@ fn conversation() -> Conversation {
                     dialogue_text: Some(if ordinal % 4 == 0 {
                         String::new()
                     } else {
-                        format!("projection {ordinal}")
+                        projection(ordinal)
                     }),
                     created_at: Some(ordinal),
                 })
@@ -80,6 +80,10 @@ fn conversation() -> Conversation {
 
 fn result() -> Build {
     Build::default()
+}
+
+fn projection(ordinal: i64) -> String {
+    format!("projection {ordinal} {} trailingevidence", "é".repeat(300))
 }
 
 fn canonical_rows(conversation: &Conversation) -> Vec<u8> {
@@ -98,10 +102,13 @@ async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_gr
         crate::gold::config::EmbeddingText::Dialogue,
         crate::gold::config::EmbeddingText::TitleAndDialogue,
     ] {
-        verify_materialization(crate::gold::config::Build {
-            embedding_text: recipe,
-        })
-        .await;
+        for budget in [None, Some(256_u32.try_into().unwrap())] {
+            verify_materialization(crate::gold::config::Build {
+                max_embedding_chars: budget,
+                embedding_text: recipe,
+            })
+            .await;
+        }
     }
 }
 
@@ -147,6 +154,31 @@ async fn verify_materialization(recipe: crate::gold::config::Build) {
         .into_iter::<Event>()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
+    assert_published_silver(events);
+    let expected = (0..37)
+        .filter(|ordinal| ordinal % 4 != 0)
+        .map(|ordinal| recipe.prepare(projection(ordinal), Some("title")))
+        .collect::<Vec<_>>();
+    let requests = requests.lock().unwrap();
+    if recipe.max_embedding_chars.is_some() {
+        assert!(
+            requests
+                .iter()
+                .flatten()
+                .all(|text| text.chars().count() == 256 && !text.contains("trailingevidence"))
+        );
+    }
+    assert_eq!(requests.iter().map(Vec::len).collect::<Vec<_>>(), [24, 3]);
+    assert_eq!(
+        requests.iter().flatten().cloned().collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(result.embeddings.stored_vectors, 27);
+    assert_eq!(result.embeddings.model_inferences, 27);
+    server.abort();
+}
+
+fn assert_published_silver(events: Vec<Event>) {
     let mut sizes = Vec::new();
     let mut messages = Vec::new();
     for event in events {
@@ -166,6 +198,14 @@ async fn verify_materialization(recipe: crate::gold::config::Build) {
     for (ordinal, message) in messages.iter().enumerate() {
         assert_eq!(message.ordinal, i64::try_from(ordinal).unwrap());
         assert_eq!(message.content, format!("canonical {ordinal}"));
+        assert_eq!(
+            message.projection,
+            if ordinal % 4 == 0 {
+                String::new()
+            } else {
+                projection(i64::try_from(ordinal).unwrap())
+            }
+        );
         assert_eq!(message.vector.is_none(), ordinal % 4 == 0);
         assert_eq!(
             message.context,
@@ -176,19 +216,6 @@ async fn verify_materialization(recipe: crate::gold::config::Build) {
             }
         );
     }
-    let expected = (0..37)
-        .filter(|ordinal| ordinal % 4 != 0)
-        .map(|ordinal| recipe.prepare(format!("projection {ordinal}"), Some("title")))
-        .collect::<Vec<_>>();
-    let requests = requests.lock().unwrap();
-    assert_eq!(requests.iter().map(Vec::len).collect::<Vec<_>>(), [24, 3]);
-    assert_eq!(
-        requests.iter().flatten().cloned().collect::<Vec<_>>(),
-        expected
-    );
-    assert_eq!(result.embeddings.stored_vectors, 27);
-    assert_eq!(result.embeddings.model_inferences, 27);
-    server.abort();
 }
 
 #[tokio::test]

@@ -6,6 +6,7 @@ fn title_store(fixture: &Fixture) -> Store {
         .store
         .clone()
         .with_build(crate::gold::config::Build {
+            max_embedding_chars: None,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         })
 }

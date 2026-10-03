@@ -265,7 +265,10 @@ async fn index(
     let max_bytes = app.store.max_node_bytes();
     let file = spool(request.into_body(), max_bytes).await?;
     Ok(Json(
-        admission::run(permit, async move { app.store.index(&id, file).await }).await?,
+        Box::pin(admission::run(permit, async move {
+            app.store.index(&id, file).await
+        }))
+        .await?,
     ))
 }
 pub(crate) async fn run(path: &Path, activate_gold: bool) -> Result<(), AppError> {
@@ -308,10 +311,9 @@ async fn rebuild_gold(
     }
     let file = spool(request.into_body(), app.store.max_node_bytes()).await?;
     Ok(Json(
-        admission::run(
-            permit,
-            async move { app.store.rebuild_gold(&id, file).await },
-        )
+        Box::pin(admission::run(permit, async move {
+            app.store.rebuild_gold(&id, file).await
+        }))
         .await?,
     ))
 }

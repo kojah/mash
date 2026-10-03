@@ -51,6 +51,7 @@ mod tests {
         assert!(!manifest.matches(&Build::default(), "another-model", &silver));
         assert!(!manifest.matches(
             &Build {
+                max_embedding_chars: None,
                 embedding_text: super::super::config::EmbeddingText::TitleAndDialogue
             },
             "model",

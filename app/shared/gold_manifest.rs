@@ -64,6 +64,7 @@ mod tests {
         assert!(!manifest.matches(&build, "other", Some(&silver)));
         assert!(!manifest.matches(&build, "model", None));
         let title = Build {
+            max_embedding_chars: None,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         };
         assert!(!manifest.matches(&title, "model", Some(&silver)));

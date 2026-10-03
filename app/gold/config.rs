@@ -14,6 +14,29 @@ pub(crate) struct Configuration {
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Build {
     pub(crate) embedding_text: EmbeddingText,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_embedding_chars: Option<EmbeddingTextBudget>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(try_from = "u32", into = "u32")]
+pub(crate) struct EmbeddingTextBudget(u32);
+
+impl TryFrom<u32> for EmbeddingTextBudget {
+    type Error = &'static str;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if (256..=65_536).contains(&value) {
+            Ok(Self(value))
+        } else {
+            Err("max_embedding_chars must be between 256 and 65536")
+        }
+    }
+}
+
+impl From<EmbeddingTextBudget> for u32 {
+    fn from(value: EmbeddingTextBudget) -> Self {
+        value.0
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -26,7 +49,13 @@ pub(crate) enum EmbeddingText {
 
 impl Build {
     pub(crate) fn generation(&self, model: &str) -> String {
-        if self == &Self::default() {
+        if let Some(budget) = self.max_embedding_chars {
+            let recipe = match self.embedding_text {
+                EmbeddingText::Dialogue => "dialogue",
+                EmbeddingText::TitleAndDialogue => "title-and-dialogue",
+            };
+            format!("gold-text-budget-v1:{recipe}:{}:{model}", budget.0)
+        } else if self == &Self::default() {
             model.to_owned()
         } else {
             format!("gold-title-v1:{model}")
@@ -34,16 +63,23 @@ impl Build {
     }
 
     pub(crate) fn prepare(&self, dialogue: String, title: Option<&str>) -> String {
-        match (
+        let prepared = match (
             self.embedding_text,
             title.map(str::trim).filter(|t| !t.is_empty()),
         ) {
             (EmbeddingText::TitleAndDialogue, Some(title)) if !dialogue.is_empty() => {
                 // Keep metadata bounded so it cannot crowd out dialogue entirely.
-                let title: String = title.chars().take(256).collect();
+                let title_limit = self
+                    .max_embedding_chars
+                    .map_or(256, |limit| (limit.0 as usize / 4).min(256));
+                let title: String = title.chars().take(title_limit).collect();
                 format!("Thread: {title}\n\n{dialogue}")
             }
             _ => dialogue,
+        };
+        match self.max_embedding_chars {
+            Some(limit) => prepared.trim().chars().take(limit.0 as usize).collect(),
+            None => prepared,
         }
     }
 }
@@ -177,6 +213,42 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedding_text_budgets_are_strict_unicode_safe_and_versioned() {
+        let default = Build::default();
+        assert_eq!(default.generation("model"), "model");
+        assert_eq!(
+            serde_json::to_string(&default).unwrap(),
+            r#"{"embedding_text":"dialogue"}"#
+        );
+        let mut limited: Build = toml::from_str("max_embedding_chars=256").unwrap();
+        let source = format!("  {} trailing evidence", "é".repeat(300));
+        assert_eq!(limited.prepare(source.clone(), None), "é".repeat(256));
+        assert_ne!(limited.generation("model"), default.generation("model"));
+        let identity = limited.generation("model");
+        limited.embedding_text = EmbeddingText::TitleAndDialogue;
+        assert_ne!(limited.generation("model"), identity);
+        let prepared = limited.prepare(source, Some(&"title".repeat(100)));
+        assert_eq!(prepared.chars().count(), 256);
+        assert!(prepared.contains('é'));
+        assert!(prepared.starts_with("Thread: "));
+        assert_eq!(limited.prepare(String::new(), Some("secret")), "");
+        limited.max_embedding_chars = Some(512_u32.try_into().unwrap());
+        assert_ne!(limited.generation("model"), identity);
+        assert_eq!(
+            serde_json::from_str::<Build>(&serde_json::to_string(&limited).unwrap()).unwrap(),
+            limited
+        );
+        for value in ["0", "255", "65537", "-1", "1.5", "true", "\"256\""] {
+            assert!(toml::from_str::<Build>(&format!("max_embedding_chars={value}")).is_err());
+            assert!(
+                serde_json::from_str::<Build>(&format!("{{\"max_embedding_chars\":{value}}}"))
+                    .is_err()
+            );
+        }
+        assert!(toml::from_str::<Build>("max_embedding_chars=65536").is_ok());
+    }
 
     #[test]
     fn recipes_are_strict_and_preparation_preserves_visibility_and_unicode() {

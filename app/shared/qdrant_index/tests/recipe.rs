@@ -157,6 +157,7 @@ fn reuse_upload(
 async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let build = crate::gold::config::Build {
+        max_embedding_chars: None,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(build.clone());
@@ -222,6 +223,7 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
         .unwrap();
     let before = fixture.store.state(&fixture.identity).await.unwrap();
     let build = crate::gold::config::Build {
+        max_embedding_chars: Some(256_u32.try_into().unwrap()),
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(build.clone());
@@ -253,6 +255,7 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
     let after = store.state(&fixture.identity).await.unwrap();
     assert_eq!(after.revision, before.revision);
     assert_eq!(after.silver_revision, before.silver_revision);
+    assert_eq!(after.gold_build, build);
     store
         .search(&fixture.identity, fixture.query())
         .await
@@ -273,6 +276,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
         .await
         .unwrap();
     let title = crate::gold::config::Build {
+        max_embedding_chars: None,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(title.clone());
@@ -422,6 +426,7 @@ async fn qdrant_publication_version_pins_bootstrap_and_fresh_source_retries() {
 async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let title = crate::gold::config::Build {
+        max_embedding_chars: None,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let store = fixture.store.clone().with_build(title.clone());

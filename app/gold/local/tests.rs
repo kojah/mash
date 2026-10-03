@@ -135,10 +135,15 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
         .unwrap();
     let dialogue = Recipe::default();
     let titled = Recipe {
+        max_embedding_chars: None,
         embedding_text: EmbeddingText::TitleAndDialogue,
     };
+    let budgeted = Recipe {
+        max_embedding_chars: Some(256_u32.try_into().unwrap()),
+        ..titled.clone()
+    };
     let mut previous_vector = None;
-    for recipe in [&dialogue, &titled, &dialogue] {
+    for recipe in [&dialogue, &titled, &budgeted, &dialogue] {
         let mut storage = Storage::open_writer(&fixture.database).unwrap();
         if previous_vector.is_some() {
             assert!(
@@ -171,10 +176,12 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
             })
             .unwrap();
         if let Some(previous) = previous_vector.replace(vector.clone()) {
-            assert_ne!(
-                previous, vector,
-                "title context must change the representation"
-            );
+            if recipe.max_embedding_chars.is_some() {
+                // This short fixture fits both recipes; identity still changes.
+                assert_eq!(previous, vector);
+            } else {
+                assert_ne!(previous, vector, "title context changes representation");
+            }
         }
         assert_eq!(canonical(&fixture.database), before);
         assert!(!fixture.source_root.exists());

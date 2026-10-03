@@ -537,6 +537,8 @@ costs and held-out relevance remain separate gates.
 ```toml
 [gold.build]
 embedding_text = "dialogue" # default; alternative: "title-and-dialogue"
+# Optional dense input budget; omitted means no additional truncation:
+# max_embedding_chars = 4096 # integer, 256..65536 Unicode scalar values
 ```
 
 The default preserves the existing visible-dialogue embedding input. The second
@@ -546,6 +548,20 @@ leave the dialogue unchanged; hidden records never become searchable through a
 title. Deduplication runs after preparation, so equal messages in differently
 titled threads can have distinct representations. This is an opt-in contextual
 representation, not a demonstrated search-quality improvement.
+
+`max_embedding_chars` limits only the prepared dense embedding input, including
+any title prefix. It trims surrounding whitespace and keeps the first N Unicode
+scalar values, without splitting UTF-8 characters. It is not a token or byte
+budget. When enabled, the title contributes at most one quarter of the budget
+(and never more than 256 characters), leaving room for dialogue. Canonical silver,
+lexical matching and message views retain their full text. Hidden records remain
+hidden. Local and shared builds can use different budgets.
+
+A budget change has a distinct derived generation and requires an explicit gold
+rebuild from stored silver. Omission retains the existing input, serialized build
+identity and default behavior. Smaller inputs may reduce work but can lose dense
+evidence near the end of a message; no representative quality or speed gain is
+claimed. The active budget is included in local and shared build manifests.
 
 Each SQLite index stores one typed `gold_manifest` containing schema version,
 build settings, base model generation and the silver certificate used to build it.

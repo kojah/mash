@@ -3,6 +3,35 @@ use crate::storage::tests::conversation_with_messages;
 use std::collections::BTreeMap;
 
 #[test]
+fn budgeted_dense_plan_preserves_full_silver_and_lexical_evidence() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let content = format!("{} trailingevidence", "é".repeat(300));
+    storage
+        .replace_conversation(&conversation_with_messages(&[("one", &content)]))
+        .unwrap();
+    let before = storage.messages_needing_embeddings().unwrap();
+    let recipe = crate::gold::config::Build {
+        max_embedding_chars: Some(256_u32.try_into().unwrap()),
+        ..Default::default()
+    };
+    let mut plan = EmbeddingPlan::with_build(&storage, &recipe).unwrap();
+    assert_eq!(plan.total_vectors, 1);
+    assert_eq!(plan.next_wave(8).unwrap()[0].content, "é".repeat(256));
+    let after = storage.messages_needing_embeddings().unwrap();
+    assert_eq!(after[0].id, before[0].id);
+    assert_eq!(after[0].content, content);
+    storage.refresh_derived_search_state().unwrap();
+    assert_eq!(
+        storage
+            .search("trailingevidence", 10, None, None)
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() {
     use crate::gold::config::{Build, EmbeddingText};
     let directory = tempfile::tempdir().unwrap();
@@ -23,6 +52,7 @@ fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() 
     let mut titled = EmbeddingPlan::with_build(
         &storage,
         &Build {
+            max_embedding_chars: None,
             embedding_text: EmbeddingText::TitleAndDialogue,
         },
     )

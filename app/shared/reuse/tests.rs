@@ -8,6 +8,7 @@ fn fixture() -> (Loaded, Identity, Build) {
         dimensions: 2,
     };
     let build = Build {
+        max_embedding_chars: None,
         embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
     };
     let silver = crate::shared::silver_revision::State::next(None, "a".repeat(64)).unwrap();

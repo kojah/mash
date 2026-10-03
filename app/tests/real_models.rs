@@ -214,10 +214,15 @@ fn assert_source_independent_gold_rebuild(
 
 fn assert_gold_recipe_switches(config: &Path, database: &Path, models: &str) {
     let build_config = std::fs::read_to_string(config).unwrap();
-    for recipe in ["title-and-dialogue", "dialogue"] {
+    for (recipe, budget) in [
+        ("title-and-dialogue", ""),
+        ("title-and-dialogue", "max_embedding_chars=256\n"),
+        ("dialogue", "max_embedding_chars=512\n"),
+        ("dialogue", ""),
+    ] {
         std::fs::write(
             config,
-            format!("{build_config}\n[gold.build]\nembedding_text = '{recipe}'\n"),
+            format!("{build_config}\n[gold.build]\nembedding_text = '{recipe}'\n{budget}"),
         )
         .unwrap();
         let stale = Command::cargo_bin("mash")
@@ -260,6 +265,14 @@ fn assert_gold_recipe_switches(config: &Path, database: &Path, models: &str) {
         );
         let indexed: Value = serde_json::from_slice(&rebuilt.stdout).unwrap();
         assert_eq!(indexed["gold"]["build"]["embedding_text"], recipe);
+        assert_eq!(
+            indexed["gold"]["build"]["max_embedding_chars"],
+            match budget {
+                "max_embedding_chars=256\n" => serde_json::json!(256),
+                "max_embedding_chars=512\n" => serde_json::json!(512),
+                _ => Value::Null,
+            }
+        );
         assert_eq!(indexed["model_inferences"], 2);
         assert_eq!(indexed["scanned_files"], 0);
         assert!(indexed["shared"].is_null());

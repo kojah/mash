@@ -18,6 +18,7 @@ async fn assert_recipe_independent_lexical(fixture: &Fixture) {
         .store
         .clone()
         .with_build(crate::gold::config::Build {
+            max_embedding_chars: None,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         });
     other_recipe
