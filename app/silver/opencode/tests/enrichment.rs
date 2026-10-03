@@ -4,6 +4,16 @@ use crate::silver::enrichment::{Evidence, Origin, SourceField};
 fn expected() -> Evidence {
     Evidence {
         version: crate::silver::enrichment::VERSION,
+        timestamps: Some(crate::silver::enrichment::Timestamps {
+            created_at: Some(crate::silver::enrichment::TimestampOrigin::SourceMetadata {
+                field: crate::silver::enrichment::TimestampField::SessionTimeCreated,
+                rule_version: crate::silver::enrichment::VERSION,
+            }),
+            updated_at: Some(crate::silver::enrichment::TimestampOrigin::SourceMetadata {
+                field: crate::silver::enrichment::TimestampField::SessionTimeUpdated,
+                rule_version: crate::silver::enrichment::VERSION,
+            }),
+        }),
         title: Some(Origin::SourceMetadata {
             field: SourceField::SessionTitle,
         }),
@@ -74,6 +84,7 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
             .all(|thread| thread.metadata.enrichment == Some(expected()))
     );
     let mut old = expected();
+    old.timestamps = None;
     old.title = Some(Origin::Unknown);
     old.project = Some(Origin::Unknown);
     old.repository = Some(Origin::Unknown);
@@ -119,6 +130,76 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
     );
     storage.commit_writer().unwrap();
     assert_publication(&storage, &expected());
+}
+
+#[test]
+fn missing_timestamp_evidence_alone_requires_replay_without_changing_history() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("opencode.db");
+    let _upstream = fixture(&path);
+    let discovered = discover(&path).unwrap().remove(0);
+    let source = discovered.identity;
+    let parsed = parse(&source).unwrap().conversation.unwrap();
+    let local = directory.path().join("silver.sqlite3");
+    let mut storage = Storage::open_writer(&local).unwrap();
+    index(&mut storage, &options(&path)).unwrap();
+    let history =
+        serde_json::to_vec(&storage.view(&parsed.messages.inline()[0].id, 10).unwrap()).unwrap();
+    let mut legacy = expected();
+    legacy.timestamps = None;
+    storage.commit_writer().unwrap();
+    let connection = Connection::open(&local).unwrap();
+    connection
+        .execute(
+            "UPDATE conversation_enrichment SET evidence=?1 WHERE conversation_id=?2",
+            rusqlite::params![serde_json::to_string(&legacy).unwrap(), parsed.id],
+        )
+        .unwrap();
+    drop(connection);
+    let mut stamp = source_stamp_for(&source).unwrap();
+    stamp.activity_ns = discovered.activity_ns;
+    assert!(
+        !storage
+            .source_checkpoint_matches(Provider::Opencode, &source, &stamp)
+            .unwrap()
+    );
+    storage
+        .with_publication_snapshot(|snapshot| {
+            snapshot.visit(crate::shared::protocol::BatchKind::Conversations, |batch| {
+                let crate::shared::protocol::Batch::Conversations { records } = batch else {
+                    panic!("conversation batch")
+                };
+                assert_eq!(
+                    records
+                        .iter()
+                        .find(|record| record.id == parsed.id)
+                        .unwrap()
+                        .enrichment
+                        .as_ref(),
+                    Some(&legacy)
+                );
+                Ok(())
+            })
+        })
+        .unwrap();
+    drop(storage);
+    let mut storage = Storage::open_writer(&local).unwrap();
+    let replay = index(&mut storage, &options(&path)).unwrap();
+    assert_eq!(replay.changed_messages, 0);
+    assert_eq!(replay.checkpoint_skipped_sources, 1);
+    assert_eq!(
+        storage.conversation_enrichment(&parsed.id).unwrap(),
+        Some(expected())
+    );
+    assert_eq!(
+        serde_json::to_vec(&storage.view(&parsed.messages.inline()[0].id, 10).unwrap()).unwrap(),
+        history
+    );
+    assert!(
+        storage
+            .source_checkpoint_matches(Provider::Opencode, &source, &stamp)
+            .unwrap()
+    );
 }
 
 fn assert_publication(storage: &Storage, expected: &Evidence) {

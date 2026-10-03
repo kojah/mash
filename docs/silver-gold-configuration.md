@@ -16,7 +16,7 @@ field. Missing metadata remains optional rather than being invented.
 | Identity and provenance | Provider, canonical thread/message IDs, source path/key/session, fingerprints and checkpoints | Provider identity is normalized; local path is provenance, not a portable repository identity. Exact native record offsets and per-field provenance are not generally retained. |
 | Dialogue | Canonical content, typed role, optional interpreted visible dialogue | Native tool/hidden/injected records are interpreted before gold. Context-only records remain available for viewing. Structured attachments/tool fields are not a general reusable silver model. |
 | Relationships | Thread membership, ordinal, typed linear/root/parent context | Native branches are preserved where adapters support them. Cross-provider duplicate reconciliation is not a general canonical equivalence graph. |
-| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude summary-title and cwd origins, OpenCode native title/directory/worktree, Hermes title/cwd/repository root and Pi title/cwd are recorded. Unaudited origins remain explicitly unknown; full adapter coverage and timestamp provenance remain pending. |
+| Thread metadata | Title, project, repository, creation/update times; versioned metadata evidence retained locally and published to Qdrant | Codex/Claude summary-title, cwd and message-boundary times; OpenCode native title/directory/worktree/session times; Hermes title/cwd/repository root and Pi title/cwd are recorded. Unaudited origins remain explicitly unknown; full adapter and individual-message timestamp coverage remain pending. |
 | Node ownership | Shared publication node, revision and group boundary | A local message does not carry a persisted distributed node identity independently of publication. |
 | Lifecycle | Tombstones, versioned source checkpoints, rejected-source ledger, per-provider scan state and local silver certificate; shared canonical revision/fingerprint, scoped provider coverage and full-snapshot source certificates | Local completeness and interpretation version are durable. Local and shared gold have typed build manifests and independent lexical publication contracts. Shared provider coverage verifies retained checkpoints independently of vectors. Group configuration has durable authority; atomic all-node replacement and broader enrichment origins remain pending. |
 
@@ -39,9 +39,33 @@ that requirement must be audited before a chunk schema is finalized.
 
 SQLite schema 38 adds `conversation_enrichment`, keyed by canonical thread ID
 with cascading deletion. Its strict typed JSON contains an evidence `version`
-and optional `title`, `project` and `repository` origins. An absent field value
+and optional `title`, `project`, `repository` and `timestamps` origins. An absent field value
 has no origin. A present value without audited provenance has `kind = "unknown"`;
 no confidence score or source fact is invented.
+
+Thread timestamp evidence audits Codex/Claude Code's minimum and maximum over
+all retained normalized message timestamps, including hidden context. Each
+`message-boundary` origin retains a canonical message ID, `minimum` or `maximum`
+selection, and rule version 1. Equal timestamps choose the lexicographically
+smallest message ID, independently of inline/spooled storage. OpenCode retains
+`source-metadata` origins for `session.time_created` and `session.time_updated`;
+rule version 1 selects the existing native millisecond integers unchanged.
+Missing selected times have no origin. Other adapters remain explicitly unknown.
+
+The optional timestamp container is additive to evidence version 1. Older records
+without it remain readable and publishable, without manufacturing provenance
+during source-free gold rebuilds. Explicit ingestion of these three audited
+providers requires source replay before a checkpoint can certify current evidence.
+Replay repairs annotations and advances silver's revision without changing
+canonical message history. Shared publication validates rule versions and bounded
+message references; it does not independently authenticate source claims or prove
+that a referenced message belongs to the thread. This does not yet audit individual
+message timestamp normalization or the other adapters' fallback selections.
+The existing summary pass retains two additional IDs; it adds no inference,
+content copies, or additional pass over staged messages.
+Strict wire decoding requires the HTTP service and querying clients to understand
+the timestamp vocabulary before updated nodes publish it. Coordinate executable
+upgrades for a node group; older stored records remain readable by the new code.
 
 For Codex and Claude Code, titles selected by the native interpretation pipeline
 record `kind = "first-visible-user-message"`, the canonical `message_id` and

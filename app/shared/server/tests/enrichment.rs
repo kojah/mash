@@ -33,6 +33,7 @@ async fn qdrant_native_field_origins_round_trip_in_catalog_search_and_replacemen
     ] {
         let expected = Evidence {
             version: VERSION,
+            timestamps: None,
             title: Some(title.map_or(Origin::Unknown, |field| Origin::SourceMetadata { field })),
             project: Some(Origin::SourceMetadata { field: project }),
             repository: repository.map(|field| Origin::SourceMetadata { field }),
@@ -44,6 +45,7 @@ async fn qdrant_native_field_origins_round_trip_in_catalog_search_and_replacemen
 fn evidence() -> Evidence {
     Evidence {
         version: VERSION,
+        timestamps: None,
         title: Some(Origin::FirstVisibleUserMessage {
             message_id: "searchable".into(),
             rule_version: VERSION,
@@ -91,6 +93,43 @@ async fn qdrant_selected_title_origins_round_trip_and_reject_invalid_record_refe
     ] {
         let mut expected = evidence();
         expected.title = Some(origin);
+        contract(Service::qdrant(384).await, provider, expected).await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_timestamp_evidence_round_trips_and_rejects_invalid_rules_and_ids() {
+    use crate::silver::enrichment::{Boundary, TimestampField, TimestampOrigin, Timestamps};
+    for provider in [
+        crate::provider::Provider::Codex,
+        crate::provider::Provider::ClaudeCode,
+        crate::provider::Provider::Opencode,
+    ] {
+        let mut expected = evidence();
+        let origins = if provider == crate::provider::Provider::Opencode {
+            [
+                TimestampField::SessionTimeCreated,
+                TimestampField::SessionTimeUpdated,
+            ]
+            .map(|field| TimestampOrigin::SourceMetadata {
+                field,
+                rule_version: VERSION,
+            })
+        } else {
+            [Boundary::Minimum, Boundary::Maximum].map(|selection| {
+                TimestampOrigin::MessageBoundary {
+                    message_id: "searchable".into(),
+                    selection,
+                    rule_version: VERSION,
+                }
+            })
+        };
+        let [created, updated] = origins;
+        expected.timestamps = Some(Timestamps {
+            created_at: Some(created),
+            updated_at: Some(updated),
+        });
         contract(Service::qdrant(384).await, provider, expected).await;
     }
 }
@@ -192,6 +231,32 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
 }
 
 async fn reject_invalid_record_references(service: &Service, events: &[Value]) {
+    use crate::silver::enrichment::{Boundary, TimestampOrigin, Timestamps};
+    for (message_id, rule_version) in [
+        (String::new(), VERSION),
+        ("x".repeat(4097), VERSION),
+        ("searchable".into(), VERSION + 1),
+    ] {
+        let mut rejected = events.to_vec();
+        rejected[0]["revision"] = json!(2);
+        let mut batch: protocol::Event = serde_json::from_value(rejected[1].clone()).unwrap();
+        let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
+            panic!("conversation fixture")
+        };
+        records[0].enrichment.as_mut().unwrap().timestamps = Some(Timestamps {
+            created_at: Some(TimestampOrigin::MessageBoundary {
+                message_id,
+                selection: Boundary::Minimum,
+                rule_version,
+            }),
+            updated_at: None,
+        });
+        rejected[1] = serde_json::to_value(batch).unwrap();
+        assert_eq!(
+            service.upload(FIRST, &rejected).await.status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
     for (record_id, rule_version) in [
         ("bad-key", VERSION),
         ("0123456789abcdef01234567", VERSION + 1),

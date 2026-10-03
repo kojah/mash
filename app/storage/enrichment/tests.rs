@@ -1,5 +1,8 @@
 use super::*;
-use crate::silver::{IndexOptions, SourceIdentity, SourceStamp, enrichment::Origin};
+use crate::silver::{
+    IndexOptions, SourceIdentity, SourceStamp,
+    enrichment::{Boundary, Origin, TimestampOrigin, VERSION},
+};
 
 #[test]
 fn previous_schema_migration_preserves_history_and_explicit_replay_restores_evidence() {
@@ -62,8 +65,8 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     std::fs::create_dir(&source).unwrap();
     std::fs::write(source.join("session.jsonl"), concat!(
         "{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\",\"cwd\":\"/work/project\"}}\n",
-        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"id\":\"hidden\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"<environment_context>hidden</environment_context>\"}]}}\n",
-        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"id\":\"visible\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"qdrant filtering\"}]}}\n",
+        "{\"type\":\"response_item\",\"timestamp\":\"2026-10-01T00:00:00Z\",\"payload\":{\"type\":\"message\",\"id\":\"hidden\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"<environment_context>hidden</environment_context>\"}]}}\n",
+        "{\"type\":\"response_item\",\"timestamp\":\"2026-10-02T00:00:00Z\",\"payload\":{\"type\":\"message\",\"id\":\"visible\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"qdrant filtering\"}]}}\n",
     )).unwrap();
     let path = directory.path().join("silver.sqlite3");
     let options = IndexOptions {
@@ -78,7 +81,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     assert_eq!(
         evidence.title,
         Some(Origin::FirstVisibleUserMessage {
-            message_id: message,
+            message_id: message.clone(),
             rule_version: crate::silver::enrichment::VERSION
         })
     );
@@ -89,6 +92,31 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
         })
     );
     assert!(evidence.repository.is_none());
+    let hidden: String = storage
+        .connection
+        .query_row(
+            "SELECT id FROM messages WHERE conversation_id=?1 AND ordinal=0",
+            [&id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let times = evidence.timestamps.as_ref().unwrap();
+    assert_eq!(
+        times.created_at,
+        Some(TimestampOrigin::MessageBoundary {
+            message_id: hidden,
+            selection: Boundary::Minimum,
+            rule_version: VERSION,
+        })
+    );
+    assert_eq!(
+        times.updated_at,
+        Some(TimestampOrigin::MessageBoundary {
+            message_id: message,
+            selection: Boundary::Maximum,
+            rule_version: VERSION,
+        })
+    );
     assert_eq!(storage.counts().unwrap().messages, 2);
     assert_eq!(storage.counts().unwrap().embeddings, 0);
     storage.commit_writer().unwrap();

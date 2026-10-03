@@ -263,7 +263,7 @@ pub(crate) enum OwnedRows {
     Staged {
         records: Records,
         remaining: Option<usize>,
-        _spool: Spool,
+        _spool: Box<Spool>,
     },
 }
 
@@ -330,7 +330,7 @@ impl Messages {
             Self::Staged(spool) => Ok(OwnedRows::Staged {
                 records: records(&spool.path, spool.offsets.clone(), spool.length)?,
                 remaining: Some(spool.offsets.len()),
-                _spool: spool,
+                _spool: Box::new(spool),
             }),
         }
     }

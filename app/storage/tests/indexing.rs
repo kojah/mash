@@ -61,6 +61,10 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
             session: Some(session.into()),
         };
         let mut value = conversation(&format!("{session} searchable evidence"));
+        // Codex thread times are selected from retained messages, not arbitrary
+        // independent fixture dates.
+        value.created_at = value.messages.inline()[0].created_at;
+        value.updated_at = value.created_at;
         value.id = session.into();
         value.messages.inline_mut()[0].id = format!("{session}-message");
         value.source = source.clone();
@@ -190,7 +194,10 @@ fn writer_checkpoint_survives_a_later_rollback() {
     let path = directory.path().join("mash.sqlite3");
     let mut writer = Storage::open_writer(&path).expect("writer");
     writer
-        .replace_conversation(&conversation("durable needle"))
+        .replace_conversation(&conversation_with_messages(&[(
+            "message-1",
+            "durable needle",
+        )]))
         .expect("durable mutation");
     writer
         .record_source_checkpoint(

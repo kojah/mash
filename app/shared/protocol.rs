@@ -170,6 +170,17 @@ impl ConversationRecord {
                     super::validation::valid_id(message_id)?;
                 }
             }
+            if let Some(times) = &evidence.timestamps {
+                for origin in [&times.created_at, &times.updated_at] {
+                    if let Some(crate::silver::enrichment::TimestampOrigin::MessageBoundary {
+                        message_id,
+                        ..
+                    }) = origin
+                    {
+                        super::validation::valid_id(message_id)?;
+                    }
+                }
+            }
         }
         Ok(())
     }

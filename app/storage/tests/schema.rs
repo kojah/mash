@@ -320,6 +320,10 @@ fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
             "existing",
             &crate::silver::enrichment::Evidence {
                 version: crate::silver::enrichment::VERSION,
+                timestamps: Some(crate::silver::enrichment::Timestamps {
+                    created_at: None,
+                    updated_at: None,
+                }),
                 title: None,
                 project: Some(crate::silver::enrichment::Origin::SourceMetadata {
                     field: crate::silver::enrichment::SourceField::Cwd,

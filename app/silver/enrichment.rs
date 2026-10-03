@@ -12,6 +12,81 @@ pub(crate) struct Evidence {
     pub(crate) title: Option<Origin>,
     pub(crate) project: Option<Origin>,
     pub(crate) repository: Option<Origin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) timestamps: Option<Timestamps>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Timestamps {
+    pub(crate) created_at: Option<TimestampOrigin>,
+    pub(crate) updated_at: Option<TimestampOrigin>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) enum TimestampOrigin {
+    Unknown,
+    SourceMetadata {
+        field: TimestampField,
+        rule_version: u32,
+    },
+    MessageBoundary {
+        message_id: String,
+        selection: Boundary,
+        rule_version: u32,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Boundary {
+    Minimum,
+    Maximum,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum TimestampField {
+    #[serde(rename = "session.time_created")]
+    SessionTimeCreated,
+    #[serde(rename = "session.time_updated")]
+    SessionTimeUpdated,
+}
+
+impl Timestamps {
+    fn is_current(&self) -> bool {
+        [&self.created_at, &self.updated_at]
+            .into_iter()
+            .all(|origin| match origin {
+                Some(TimestampOrigin::SourceMetadata { rule_version, .. }) => {
+                    *rule_version == VERSION
+                }
+                Some(TimestampOrigin::MessageBoundary {
+                    message_id,
+                    rule_version,
+                    ..
+                }) => *rule_version == VERSION && !message_id.is_empty(),
+                _ => true,
+            })
+    }
+
+    fn is_current_for(&self, provider: Provider) -> bool {
+        [&self.created_at, &self.updated_at]
+            .into_iter()
+            .zip([
+                (Boundary::Minimum, TimestampField::SessionTimeCreated),
+                (Boundary::Maximum, TimestampField::SessionTimeUpdated),
+            ])
+            .all(|(origin, (boundary, expected))| {
+                origin.as_ref().is_none_or(|origin| match provider {
+                    Provider::Codex | Provider::ClaudeCode => matches!(origin,
+                    TimestampOrigin::MessageBoundary { selection, .. } if *selection == boundary),
+                    Provider::Opencode => matches!(origin,
+                    TimestampOrigin::SourceMetadata { field, .. } if *field == expected),
+                    _ => true,
+                })
+            })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +144,7 @@ fn native_fields(provider: Provider) -> [Option<SourceField>; 3] {
 impl Evidence {
     pub(crate) fn is_current(&self) -> bool {
         self.version == VERSION
+            && self.timestamps.as_ref().is_none_or(Timestamps::is_current)
             && [&self.title, &self.project, &self.repository]
                 .into_iter()
                 .all(|origin| match origin {
@@ -95,6 +171,13 @@ impl Evidence {
     /// unknown evidence stays readable for source-free gold builds and viewing.
     pub(crate) fn is_current_for(&self, provider: Provider) -> bool {
         self.is_current()
+            && match self.timestamps.as_ref() {
+                Some(times) => times.is_current_for(provider),
+                None => !matches!(
+                    provider,
+                    Provider::Codex | Provider::ClaudeCode | Provider::Opencode
+                ),
+            }
             && self.title.as_ref().is_none_or(|origin| match provider {
                 Provider::Hermes => matches!(
                     origin,
@@ -129,6 +212,10 @@ impl Evidence {
             title: conversation.title.as_ref().map(|_| Origin::Unknown),
             project: conversation.project.as_ref().map(|_| Origin::Unknown),
             repository: conversation.repository.as_ref().map(|_| Origin::Unknown),
+            timestamps: Some(Timestamps {
+                created_at: conversation.created_at.map(|_| TimestampOrigin::Unknown),
+                updated_at: conversation.updated_at.map(|_| TimestampOrigin::Unknown),
+            }),
         };
         // These adapters always select the summary title and native cwd. Do not
         // apply value-equality heuristics to adapters with native-title fallbacks.
@@ -137,6 +224,36 @@ impl Evidence {
             Provider::Codex | Provider::ClaudeCode
         ) {
             let summary = conversation.messages.summary()?;
+            let times = evidence
+                .timestamps
+                .as_mut()
+                .ok_or_else(|| AppError::internal("missing captured timestamps"))?;
+            for (origin, selected, boundary_time, message_id, selection) in [
+                (
+                    &mut times.created_at,
+                    conversation.created_at,
+                    summary.created_at,
+                    summary.created_message_id,
+                    Boundary::Minimum,
+                ),
+                (
+                    &mut times.updated_at,
+                    conversation.updated_at,
+                    summary.updated_at,
+                    summary.updated_message_id,
+                    Boundary::Maximum,
+                ),
+            ] {
+                if selected == boundary_time
+                    && let Some(message_id) = message_id
+                {
+                    *origin = Some(TimestampOrigin::MessageBoundary {
+                        message_id,
+                        selection,
+                        rule_version: VERSION,
+                    });
+                }
+            }
             if conversation.title == summary.title
                 && let Some(message_id) = summary.title_message_id
             {
@@ -144,6 +261,21 @@ impl Evidence {
                     message_id,
                     rule_version: VERSION,
                 });
+            }
+        }
+        if conversation.provider == Provider::Opencode
+            && let Some(times) = evidence.timestamps.as_mut()
+        {
+            for (origin, field) in [
+                (&mut times.created_at, TimestampField::SessionTimeCreated),
+                (&mut times.updated_at, TimestampField::SessionTimeUpdated),
+            ] {
+                if origin.is_some() {
+                    *origin = Some(TimestampOrigin::SourceMetadata {
+                        field,
+                        rule_version: VERSION,
+                    });
+                }
             }
         }
         for (origin, field) in [
@@ -198,6 +330,10 @@ impl SelectedTitle {
             .unzip()
     }
 }
+
+#[cfg(test)]
+#[path = "enrichment_timestamps_tests.rs"]
+mod timestamp_tests;
 
 #[cfg(test)]
 mod tests {
