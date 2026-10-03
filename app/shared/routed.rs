@@ -165,6 +165,7 @@ async fn ingest_scan(
         if !full
             && checkpoint.is_some_and(|c| {
                 c.size_bytes == size
+                    && c.interpretation_version == silver::certificate::INTERPRETATION_VERSION
                     && c.modified_ns == modified
                     && c.fingerprint == stamp.fingerprint
                     && c.ready
@@ -226,6 +227,7 @@ async fn ingest_scan(
                 size_bytes: size,
                 modified_ns: modified,
                 fingerprint: stamp.fingerprint,
+                interpretation_version: silver::certificate::INTERPRETATION_VERSION,
                 conversation_id,
                 ready: true,
             }),

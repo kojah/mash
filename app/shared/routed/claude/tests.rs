@@ -75,6 +75,28 @@ impl Fixture {
 }
 
 #[test]
+fn changed_interpretation_version_replays_unchanged_claude_sources() {
+    let fixture = Fixture::new();
+    let revision = fixture.refresh();
+    let scan = fixture.scan(None);
+    let baseline = plan(&fixture.database, revision, &scan, &[], false).unwrap();
+    let mut previous = baseline.checkpoints;
+    for source in &mut previous {
+        source.interpretation_version = 0;
+    }
+    let replay = plan(&fixture.database, revision, &scan, &previous, false).unwrap();
+    assert_eq!(replay.skipped, 0);
+    assert_eq!(replay.dirty, ["thread".to_owned()].into());
+    assert!(replay.checkpoints.iter().all(|source| {
+        source.interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION
+    }));
+    assert_eq!(
+        fixture.messages(&replay),
+        ["common sentinel", "tail sentinel"]
+    );
+}
+
+#[test]
 fn routed_claude_plan_reconciles_changed_deleted_and_checkpointed_copies() {
     let fixture = Fixture::new();
     let revision = fixture.refresh();

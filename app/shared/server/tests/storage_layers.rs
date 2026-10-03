@@ -16,7 +16,9 @@ async fn postgres_silver_survives_gold_replacement_and_legacy_migration() {
         ALTER TABLE messages ADD COLUMN generation TEXT, ADD COLUMN vector public.vector,
             ADD COLUMN document TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple',projection)) STORED;
         UPDATE messages m SET generation=g.generation,vector=g.vector FROM message_search g WHERE g.node_id=m.node_id AND g.id=m.id;
-        DROP TABLE message_search; UPDATE version SET version=15;")).await.unwrap();
+        DROP TABLE message_search;
+        ALTER TABLE direct_sources DROP COLUMN interpretation_version;
+        UPDATE version SET version=15;")).await.unwrap();
     backend::initialize(&service.pool, std::slice::from_ref(&service.group))
         .await
         .unwrap();
@@ -80,6 +82,55 @@ async fn postgres_silver_survives_gold_replacement_and_legacy_migration() {
         .await
         .unwrap();
     assert_eq!(gold.get::<_, i64>(0), 0);
+    drop(client);
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_PG_URL with pgvector"]
+async fn postgres_legacy_source_versions_require_replay_without_changing_history() {
+    let service = Service::new(true).await;
+    service
+        .upload(FIRST, &snapshot(1))
+        .await
+        .error_for_status()
+        .unwrap();
+    let client = service.pool.get().await.unwrap();
+    let schema = backend::group_schema(&service.group);
+    client.batch_execute(&format!("SET search_path={schema},public;
+        CREATE TEMP TABLE expected_silver AS SELECT * FROM messages;
+        CREATE TEMP TABLE expected_gold AS SELECT * FROM message_search;
+        INSERT INTO direct_sources(node_id,provider,path_hash,size_bytes,modified_ns,fingerprint,interpretation_version)
+            VALUES('first','codex','source',10,20,'stamp',1);
+        ALTER TABLE direct_sources DROP COLUMN interpretation_version;
+        UPDATE version SET version=16;")).await.unwrap();
+    for _ in 0..2 {
+        backend::initialize(&service.pool, std::slice::from_ref(&service.group))
+            .await
+            .unwrap();
+    }
+    let state: crate::shared::protocol::NodeState =
+        serde_json::from_value(service.get("state", FIRST).await).unwrap();
+    assert_eq!(state.sources.len(), 1);
+    assert_eq!(state.sources[0].interpretation_version, 0);
+    assert_eq!(state.sources[0].fingerprint, "stamp");
+    assert!(!state.sources[0].ready);
+    for (table, expected) in [
+        ("messages", "expected_silver"),
+        ("message_search", "expected_gold"),
+    ] {
+        let unchanged = client
+            .query_one(
+                &format!(
+                    "SELECT NOT EXISTS(SELECT * FROM {table} EXCEPT SELECT * FROM {expected})
+               AND NOT EXISTS(SELECT * FROM {expected} EXCEPT SELECT * FROM {table})"
+                ),
+                &[],
+            )
+            .await
+            .unwrap();
+        assert!(unchanged.get::<_, bool>(0));
+    }
     drop(client);
     service.cleanup().await;
 }

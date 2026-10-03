@@ -51,7 +51,7 @@ to_char(s.last_updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS
 FROM nodes n LEFT JOIN node_sync s USING(node_id) ORDER BY n.node_id;
 
 --! sources : (conversation_id?)
-SELECT provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint,
+SELECT provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint,interpretation_version,
 NOT EXISTS(SELECT 1 FROM messages m LEFT JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>''
 AND (generation IS DISTINCT FROM :generation OR vector IS NULL OR vector_dims(vector)<>:dimensions)) AS ready
 FROM direct_sources s WHERE node_id=:node;

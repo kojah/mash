@@ -189,3 +189,12 @@ DO $$ BEGIN
         UPDATE version SET version=16 WHERE singleton;
     END IF;
 END $$;
+
+-- Retain existing checkpoints as unverified rather than inventing provenance.
+DO $$ BEGIN
+    IF (SELECT version FROM version WHERE singleton) = 16 THEN
+        ALTER TABLE direct_sources ADD COLUMN interpretation_version BIGINT NOT NULL
+            DEFAULT 0 CHECK (interpretation_version BETWEEN 0 AND 4294967295);
+        UPDATE version SET version=17 WHERE singleton;
+    END IF;
+END $$;

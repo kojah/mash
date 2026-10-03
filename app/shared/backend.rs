@@ -310,7 +310,7 @@ pub(super) async fn index(
                 if s.size_bytes < 0 || reconciled.contains(&s.provider) {
                     return Err(AppError::usage("invalid source checkpoint"));
                 }
-                tx.execute("INSERT INTO direct_sources(node_id,provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(node_id,provider,path_hash) DO UPDATE SET size_bytes=$4,modified_ns=$5,conversation_id=$6,fingerprint=$7", &[&node,&s.provider.as_str(),&s.path_hash,&s.size_bytes,&s.modified_ns,&s.conversation_id,&s.fingerprint]).await.map_err(pg_error)?;
+                tx.execute("INSERT INTO direct_sources(node_id,provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint,interpretation_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(node_id,provider,path_hash) DO UPDATE SET size_bytes=$4,modified_ns=$5,conversation_id=$6,fingerprint=$7,interpretation_version=$8", &[&node,&s.provider.as_str(),&s.path_hash,&s.size_bytes,&s.modified_ns,&s.conversation_id,&s.fingerprint,&i64::from(s.interpretation_version)]).await.map_err(pg_error)?;
             }
             Event::Seen { provider, hashes } if !start.snapshot => {
                 if hashes.len() > 128 || reconciled.contains(&provider) {
@@ -484,7 +484,7 @@ pub(super) async fn initialize(pool: &Pool, groups: &[String]) -> Result<(), App
             .await
             .map_err(pg_error)?;
         let version = pg::version().bind(&tx).one().await.map_err(pg_error)?;
-        if version != 16 {
+        if version != 17 {
             return Err(AppError::shared("unsupported shared index schema version"));
         }
     }
@@ -902,14 +902,18 @@ pub(super) async fn state(pool: &Pool, identity: &Identity) -> Result<NodeState,
         .await
         .map_err(pg_error)?
     {
+        let interpretation_version = u32::try_from(r.interpretation_version)
+            .map_err(|_| AppError::shared("invalid stored interpretation version"))?;
         sources.push(Checkpoint {
             provider: r.provider.parse()?,
             path_hash: r.path_hash,
             size_bytes: r.size_bytes,
             modified_ns: r.modified_ns,
             fingerprint: r.fingerprint,
+            interpretation_version,
             conversation_id: r.conversation_id,
-            ready: r.ready,
+            ready: r.ready
+                && interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION,
         });
     }
     let mut tombstones = Vec::new();

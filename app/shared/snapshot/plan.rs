@@ -45,10 +45,11 @@ impl Data {
             .values()
             .map(|s| {
                 let mut s = s.clone();
-                s.ready = s
-                    .conversation_id
-                    .as_deref()
-                    .is_none_or(|id| !incompatible.contains(id));
+                s.ready = s.interpretation_version
+                    == crate::silver::certificate::INTERPRETATION_VERSION
+                    && s.conversation_id
+                        .as_deref()
+                        .is_none_or(|id| !incompatible.contains(id));
                 s
             })
             .collect();

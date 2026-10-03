@@ -77,6 +77,7 @@ fn plan(
             let fingerprint = format!("{FINGERPRINT_VERSION}{}", stamp.fingerprint);
             let old = previous.get(hash);
             let unchanged = !full && old.is_some_and(|checkpoint| checkpoint.ready
+                && checkpoint.interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION
                 && checkpoint.size_bytes == stamp.size_bytes && checkpoint.modified_ns == stamp.modified_ns
                 && checkpoint.fingerprint == fingerprint && checkpoint.conversation_id == conversation_id);
             if unchanged { plan.skipped += 1; } else {
@@ -85,7 +86,7 @@ fn plan(
             }
             plan.checkpoints.push(Checkpoint { provider: Provider::ClaudeCode, path_hash: hash.clone(),
                 size_bytes: stamp.size_bytes, modified_ns: stamp.modified_ns, fingerprint,
-                conversation_id, ready: true });
+                conversation_id, interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION, ready: true });
         }
         if scan.complete {
             for (hash, checkpoint) in &previous {

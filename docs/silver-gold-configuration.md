@@ -79,9 +79,19 @@ example with `--all-history`) before rebuilding from that silver. Merely reopeni
 the database does not certify it. Changing interpretation rules requires bronze
 replay; changing gold policy must operate on the already interpreted silver.
 
-This is the local foundation. The shared wire/storage contract and uniform
-per-field source-versus-inferred metadata evidence are still separate work; this
-certificate does not claim that either has shipped.
+Shared routed source checkpoints also persist the interpretation version. Native
+and Claude publication replay admitted sources when their version differs,
+even when file stamps and embedding generation match. PostgreSQL schema 17
+migrates retained checkpoints to version 0; Redis/Qdrant snapshot decoding treats
+an absent version the same way. The server reports those checkpoints as unready
+until an applicable explicit indexing run replays them. A date cutoff can leave
+older checkpoints unverified; it does not retroactively certify their contents.
+Existing canonical history and gold vectors survive this migration.
+
+This remains the local certificate foundation. The shared pure-silver revision
+and completeness certificate and uniform per-field source-versus-inferred
+metadata evidence are still separate work; versioned shared checkpoints alone
+do not prove either has shipped.
 
 ## Implemented query configuration
 

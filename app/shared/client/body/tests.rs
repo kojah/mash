@@ -44,6 +44,7 @@ fn state(records: usize) -> NodeState {
                 size_bytes: i64::try_from(ordinal).unwrap(),
                 modified_ns: i64::MAX - i64::try_from(ordinal).unwrap(),
                 fingerprint: format!("{ordinal:064x}"),
+                interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
                 conversation_id: Some(format!("thread-🧪-{ordinal}-{}", "payload ".repeat(64))),
                 ready: ordinal % 2 == 0,
             })

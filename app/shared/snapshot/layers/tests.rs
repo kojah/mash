@@ -39,6 +39,7 @@ fn fixture() -> Data {
             size_bytes: 4,
             modified_ns: 5,
             fingerprint: "digest".into(),
+            interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
             conversation_id: Some("thread".into()),
             ready: true,
         },
@@ -51,6 +52,27 @@ fn fixture() -> Data {
         },
     );
     data
+}
+
+#[test]
+fn missing_checkpoint_versions_remain_unverified_after_snapshot_decode() {
+    let mut value = serde_json::to_value(fixture().layers()).unwrap();
+    value["silver"]["sources"]["source"]
+        .as_object_mut()
+        .unwrap()
+        .remove("interpretation_version");
+    let data = serde_json::from_value::<Snapshot>(value)
+        .unwrap()
+        .into_data()
+        .unwrap();
+    assert_eq!(data.sources["source"].interpretation_version, 0);
+    let identity = crate::shared::server::Identity {
+        group_id: "group".into(),
+        node_id: "node".into(),
+        generation: "model".into(),
+        dimensions: 3,
+    };
+    assert!(!data.state(&identity).sources[0].ready);
 }
 
 #[test]

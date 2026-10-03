@@ -119,6 +119,9 @@ pub(crate) struct Checkpoint {
     pub modified_ns: i64,
     #[serde(default)]
     pub fingerprint: String,
+    /// Missing versions are unverified; old checkpoints must be replayed.
+    #[serde(default)]
+    pub interpretation_version: u32,
     pub conversation_id: Option<String>,
     #[serde(default)]
     pub ready: bool,

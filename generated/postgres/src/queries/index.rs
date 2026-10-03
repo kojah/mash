@@ -224,6 +224,7 @@ pub struct Sources {
     pub modified_ns: i64,
     pub conversation_id: Option<String>,
     pub fingerprint: String,
+    pub interpretation_version: i64,
     pub ready: bool,
 }
 pub struct SourcesBorrowed<'a> {
@@ -233,6 +234,7 @@ pub struct SourcesBorrowed<'a> {
     pub modified_ns: i64,
     pub conversation_id: Option<&'a str>,
     pub fingerprint: &'a str,
+    pub interpretation_version: i64,
     pub ready: bool,
 }
 impl<'a> From<SourcesBorrowed<'a>> for Sources {
@@ -244,6 +246,7 @@ impl<'a> From<SourcesBorrowed<'a>> for Sources {
             modified_ns,
             conversation_id,
             fingerprint,
+            interpretation_version,
             ready,
         }: SourcesBorrowed<'a>,
     ) -> Self {
@@ -254,6 +257,7 @@ impl<'a> From<SourcesBorrowed<'a>> for Sources {
             modified_ns,
             conversation_id: conversation_id.map(|v| v.into()),
             fingerprint: fingerprint.into(),
+            interpretation_version,
             ready,
         }
     }
@@ -1409,7 +1413,7 @@ impl FreshnessStmt {
 pub struct SourcesStmt(&'static str, Option<tokio_postgres::Statement>);
 pub fn sources() -> SourcesStmt {
     SourcesStmt(
-        "SELECT provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint, NOT EXISTS(SELECT 1 FROM messages m LEFT JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2)) AS ready FROM direct_sources s WHERE node_id=$3",
+        "SELECT provider,path_hash,size_bytes,modified_ns,conversation_id,fingerprint,interpretation_version, NOT EXISTS(SELECT 1 FROM messages m LEFT JOIN message_search g ON g.node_id=m.node_id AND g.id=m.id WHERE m.node_id=s.node_id AND m.conversation_id=s.conversation_id AND projection<>'' AND (generation IS DISTINCT FROM $1 OR vector IS NULL OR vector_dims(vector)<>$2)) AS ready FROM direct_sources s WHERE node_id=$3",
         None,
     )
 }
@@ -1442,7 +1446,8 @@ impl SourcesStmt {
                         modified_ns: row.try_get(3)?,
                         conversation_id: row.try_get(4)?,
                         fingerprint: row.try_get(5)?,
-                        ready: row.try_get(6)?,
+                        interpretation_version: row.try_get(6)?,
+                        ready: row.try_get(7)?,
                     })
                 },
             mapper: |it| Sources::from(it),

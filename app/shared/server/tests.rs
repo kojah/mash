@@ -191,6 +191,7 @@ async fn wal_checkpoint_contract(service: Service) {
         size_bytes: 8192,
         modified_ns: 200,
         fingerprint: fingerprint.clone(),
+        interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
         conversation_id: None,
         ready: true,
     };
@@ -219,6 +220,38 @@ async fn wal_checkpoint_contract(service: Service) {
     assert_eq!(state.sources[0].path_hash, hash);
     assert_eq!(state.sources[0].fingerprint, fingerprint);
     assert_eq!(state.sources[0].modified_ns, 200);
+    assert!(state.sources[0].ready);
+    let current = crate::silver::certificate::INTERPRETATION_VERSION;
+    for version in [0, current + 1, current] {
+        let state: NodeState = serde_json::from_value(service.get("state", FIRST).await).unwrap();
+        let mut source = state.sources[0].clone();
+        source.interpretation_version = version;
+        // Client readiness is not authoritative: the server checks the version.
+        source.ready = true;
+        let events = [
+            Event::Start(Start {
+                instance: "native-session-test".into(),
+                revision: None,
+                base_revision: Some(state.revision),
+                snapshot: false,
+                forgets: Vec::new(),
+            }),
+            Event::Source(source),
+            Event::Finish,
+        ]
+        .into_iter()
+        .map(|event| serde_json::to_value(event).unwrap())
+        .collect::<Vec<_>>();
+        service
+            .upload(FIRST, &events)
+            .await
+            .error_for_status()
+            .unwrap();
+        let state: NodeState = serde_json::from_value(service.get("state", FIRST).await).unwrap();
+        assert_eq!(state.sources[0].interpretation_version, version);
+        assert_eq!(state.sources[0].ready, version == current);
+        assert_eq!(state.sources[0].fingerprint, fingerprint);
+    }
     service.cleanup().await;
 }
 

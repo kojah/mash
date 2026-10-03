@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS version (
     singleton BOOLEAN PRIMARY KEY CHECK (singleton), version INTEGER NOT NULL
 );
-INSERT INTO version VALUES (TRUE, 16) ON CONFLICT DO NOTHING;
+INSERT INTO version VALUES (TRUE, 17) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS nodes (
     node_id TEXT PRIMARY KEY, instance TEXT NOT NULL, revision BIGINT NOT NULL
 );
@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS direct_sources (
     provider TEXT NOT NULL, path_hash TEXT NOT NULL,
     size_bytes BIGINT NOT NULL, modified_ns BIGINT NOT NULL,
     conversation_id TEXT, fingerprint TEXT NOT NULL DEFAULT '',
+    interpretation_version BIGINT NOT NULL DEFAULT 0 CHECK (interpretation_version BETWEEN 0 AND 4294967295),
     PRIMARY KEY(node_id,provider,path_hash)
 );
 
