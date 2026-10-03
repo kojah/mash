@@ -1491,7 +1491,8 @@ modules are grouped by responsibility:
   publication coordinator.
 - `app/semantic/`: model installation/cache, embedding batches, Core ML, remote
   embeddings, and hybrid retrieval.
-- `app/shared/snapshot/`: backend-independent canonical upload validation.
+- `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
+  defines persisted silver history and gold embeddings within one atomic revision.
 - `app/shared/qdrant_index/`: typed REST, conditional publication, and dense/sparse retrieval.
 - `app/shared/redis_index/`: atomic publication,
   and read queries; the parent module handles connections and schema setup.

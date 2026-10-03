@@ -280,7 +280,7 @@ impl Store {
         }
         let max_bytes = self.max_node_bytes;
         let (plan, encoded) = crate::blocking(move || {
-            let encoded = Encoded::new(&plan.loaded.data, max_bytes)?;
+            let encoded = Encoded::new(&plan.loaded.data.layers(), max_bytes)?;
             Ok((plan, encoded))
         })
         .await?;
@@ -293,6 +293,7 @@ impl Store {
         let now = chrono::DateTime::from(std::time::SystemTime::now())
             .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
         let head = Head {
+            snapshot_schema: crate::shared::snapshot::layers::Schema::Layered,
             instance,
             generation: identity.generation.clone(),
             revision: plan.revision,

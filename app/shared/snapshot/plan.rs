@@ -130,6 +130,7 @@ pub(in crate::shared) fn start(
     };
     if loaded.head.is_none() {
         loaded.head = Some(Head {
+            snapshot_schema: super::layers::Schema::Layered,
             instance: input.instance.clone(),
             generation: semantic::SHARED_EMBEDDING_GENERATION.to_owned(),
             revision: 0,

@@ -139,6 +139,71 @@ impl Fixture {
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
+async fn mixed_snapshot_migrates_on_idempotent_publication_without_losing_embeddings() {
+    let fixture = Fixture::new().await;
+    fixture.upload(1, "retained title").await.unwrap();
+    let data = fixture.store.load(&fixture.identity).await.unwrap().data;
+    let expected = serde_json::to_value(&data).unwrap();
+    let bytes = serde_json::to_vec(&data).unwrap();
+    let (mut old, _) = fixture.catalog().await;
+    old.snapshot_schema = crate::shared::snapshot::layers::Schema::Mixed;
+    let key = data_key(&fixture.identity.group_id, &old.version);
+    let manifest = CanonicalManifest {
+        bytes: bytes.len(),
+        chunks: 1,
+        digest: blake3::hash(&bytes).to_hex().to_string(),
+    };
+    redis::pipe()
+        .cmd("SET")
+        .arg(&key)
+        .arg(encode(&manifest).unwrap())
+        .ignore()
+        .cmd("SET")
+        .arg(format!("{key}:chunk:0"))
+        .arg(bytes)
+        .ignore()
+        .cmd("HSET")
+        .arg(format!("{}nodes", prefix(&fixture.identity.group_id)))
+        .arg(&fixture.identity.node_id)
+        .arg(encode(&old).unwrap())
+        .ignore()
+        .query_async::<()>(&mut fixture.store.connection.clone())
+        .await
+        .unwrap();
+    fixture.upload(1, "retained title").await.unwrap();
+    let (current, _) = fixture.catalog().await;
+    assert_ne!(current.version, old.version);
+    assert_eq!(current.revision, old.revision);
+    assert!(matches!(
+        current.snapshot_schema,
+        crate::shared::snapshot::layers::Schema::Layered
+    ));
+    let loaded = fixture.store.load(&fixture.identity).await.unwrap();
+    assert_eq!(serde_json::to_value(loaded.data).unwrap(), expected);
+    let stored: serde_json::Value = fixture
+        .store
+        .read_payload(&data_key(&fixture.identity.group_id, &current.version))
+        .await
+        .unwrap()
+        .decode()
+        .unwrap();
+    assert!(
+        stored["silver"]["messages"]["message"]
+            .get("vector")
+            .is_none()
+    );
+    assert_eq!(
+        stored["gold"]["embeddings"]["message"]["vector"]
+            .as_array()
+            .unwrap()
+            .len(),
+        384
+    );
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_REDIS_URL with Redis Search"]
 async fn catalogs_follow_publication_reuse_replacement_and_forgetting() {
     let fixture = Fixture::new().await;
     fixture.upload(1, "first title").await.unwrap();

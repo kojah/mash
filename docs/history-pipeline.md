@@ -117,8 +117,8 @@ Atomic publication must prevent readers from combining different revisions.
 | --- | --- | --- | --- |
 | SQLite | `conversations`, `messages`, provenance and checkpoints | `message_embeddings`, `message_fts`, `semantic_chunks` and retrieval caches | Further module organization; table split already exists |
 | Postgres | `conversations`, `messages`, `direct_sources`, tombstones and node metadata | `message_search`: vectors, model generation and full-text documents | Table split exists; shared pipeline/module organization continues |
-| Redis | Immutable node snapshots, state and catalog keys | Search documents and their vectors | Canonical snapshots still include vectors |
-| Qdrant | State chunks, node heads and catalog records | Searchable message points with dense/sparse vectors | Canonical state chunks still include vectors |
+| Redis | Immutable snapshot `silver` section, state and catalog keys | Snapshot `gold.embeddings` section and search documents | Further search-document model/module organization |
+| Qdrant | Snapshot `silver` section in state chunks, node heads and catalog records | Snapshot `gold.embeddings` section and searchable message vectors | Further search-document model/module organization |
 
 The current Postgres definitions in `app/shared/schema.sql` explicitly group
 silver and gold tables. Historical bootstrap/upgrades live in
@@ -130,6 +130,19 @@ search, while viewing continues to use silver alone. Deleting silver cascades
 to its gold rows; deleting gold leaves canonical history intact. This adds no
 second canonical body copy.
 
-Shared storage separation is not complete for Redis/Qdrant. Its migration and
-lifecycle checks are tracked in `mash-c0d.3.12`; extracting the node-side gold
-materializer does not by itself establish those storage boundaries.
+Redis and Qdrant use the typed persisted revision schema in
+`app/shared/snapshot/layers.rs`. Its `silver` section contains canonical threads,
+messages, source checkpoints and tombstones; canonical messages have no vector
+or model-generation fields. The separate `gold.embeddings` map owns those
+derived values by message ID. Both sections share one checksummed, chunked
+immutable payload and atomic head. This is a section-level schema split within
+one published revision, not separate silver/gold keys or collections.
+
+Publication heads name their snapshot schema. Heads from the historical mixed
+format are decoded through its typed schema and rewritten into the layered
+form on the next successful publication, including an idempotent retry. The
+in-memory joined planning model is not serializable in production, preventing
+new writes of that old representation. Serialization borrows canonical rows and
+vectors rather than cloning a complete node. Existing retrieval document views
+still include canonical excerpts/metadata; refining their model and module
+ownership remains tracked in `mash-c0d.3.12`.

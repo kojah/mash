@@ -116,6 +116,84 @@ impl Fixture {
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_mixed_snapshot_migrates_without_losing_embeddings_or_revision() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(1, "retained"))
+        .await
+        .unwrap();
+    let data = fixture.store.load(&fixture.identity).await.unwrap().data;
+    let expected = serde_json::to_value(&data).unwrap();
+    let mut old = fixture.store.node(&fixture.identity).await.unwrap();
+    let encoded = crate::shared::snapshot::Encoded::new(&data, 64 * 1024 * 1024).unwrap();
+    old.manifest = Some(
+        fixture
+            .store
+            .stage(&fixture.identity, &data, &encoded, &old.version)
+            .await
+            .unwrap(),
+    );
+    old.head.as_mut().unwrap().snapshot_schema = crate::shared::snapshot::layers::Schema::Mixed;
+    let old_version = old.version.clone();
+    fixture
+        .store
+        .api
+        .upsert(
+            &collection(&fixture.identity.group_id, true),
+            &api::Upsert {
+                points: vec![api::Point {
+                    id: point_id(&["head", &fixture.identity.node_id]),
+                    vector: api::Vectors::default(),
+                    payload: old,
+                }],
+                update_filter: None,
+                update_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(1, "retained"))
+        .await
+        .unwrap();
+    let current = fixture.store.node(&fixture.identity).await.unwrap();
+    assert_ne!(current.version, old_version);
+    let head = current.head.unwrap();
+    assert_eq!(head.revision, 1);
+    assert!(matches!(
+        head.snapshot_schema,
+        crate::shared::snapshot::layers::Schema::Layered
+    ));
+    let loaded = fixture.store.load(&fixture.identity).await.unwrap();
+    assert_eq!(serde_json::to_value(loaded.data).unwrap(), expected);
+    let stored: serde_json::Value = fixture
+        .store
+        .pending_snapshot(&fixture.identity)
+        .await
+        .unwrap()
+        .payload
+        .unwrap()
+        .decode()
+        .unwrap();
+    assert!(
+        stored["silver"]["messages"]["message-0"]
+            .get("vector")
+            .is_none()
+    );
+    assert_eq!(
+        stored["gold"]["embeddings"]["message-0"]["vector"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 async fn qdrant_spooled_snapshot_round_trips_unicode_chunks_and_rejects_over_budget() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let mut plan = crate::shared::snapshot::plan(
@@ -153,7 +231,8 @@ async fn qdrant_spooled_snapshot_round_trips_unicode_chunks_and_rejects_over_bud
         .unwrap()
         .content = content;
     let encoded =
-        crate::shared::snapshot::Encoded::new(&plan.loaded.data, 64 * 1024 * 1024).unwrap();
+        crate::shared::snapshot::Encoded::new(&plan.loaded.data.layers(), 64 * 1024 * 1024)
+            .unwrap();
     let mut limited = fixture.store.clone();
     limited.max_node_bytes = encoded.bytes - 1;
     let error = limited
@@ -239,7 +318,8 @@ async fn qdrant_conditional_publication_handles_competing_first_and_replacement_
         .stage(
             &fixture.identity,
             &plan.loaded.data,
-            &crate::shared::snapshot::Encoded::new(&plan.loaded.data, 64 * 1024 * 1024).unwrap(),
+            &crate::shared::snapshot::Encoded::new(&plan.loaded.data.layers(), 64 * 1024 * 1024)
+                .unwrap(),
             "unpublished-test-version",
         )
         .await
@@ -477,6 +557,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     node_id: "node".into(),
                     version: version.clone(),
                     head: Some(Head {
+                        snapshot_schema: crate::shared::snapshot::layers::Schema::Mixed,
                         instance: "instance".into(),
                         generation: "test".into(),
                         revision: i64::try_from(revision).unwrap(),

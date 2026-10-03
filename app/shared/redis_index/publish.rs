@@ -260,7 +260,7 @@ impl Store {
         }
         let max_bytes = self.max_node_bytes;
         let (plan, encoded, catalog) = crate::blocking(move || {
-            let encoded = Encoded::new(&plan.loaded.data, max_bytes)?;
+            let encoded = Encoded::new(&plan.loaded.data.layers(), max_bytes)?;
             let catalog = Encoded::new(&plan.loaded.data.conversations, max_bytes)?;
             Ok((plan, encoded, catalog))
         })
@@ -291,6 +291,7 @@ impl Store {
                 .await?
         };
         let head = Head {
+            snapshot_schema: crate::shared::snapshot::layers::Schema::Layered,
             instance,
             generation: identity.generation.clone(),
             revision: plan.revision,

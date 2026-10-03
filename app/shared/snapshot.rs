@@ -1,4 +1,4 @@
-//! Backend-independent canonical node snapshot validation and planning.
+//! Backend-independent publication planning and atomic silver/gold revisions.
 use super::backend::{conflict, valid_id};
 use super::protocol::{
     self, Batch, Checkpoint, ConversationRecord, Event, MessageRecord, NodeState, Start, Tombstone,
@@ -10,6 +10,7 @@ use crate::{AppError, semantic};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub(super) mod encoding;
+pub(super) mod layers;
 pub(super) mod payload;
 mod plan;
 pub(super) use encoding::Encoded;
@@ -19,6 +20,8 @@ fn identity_key(provider: Provider, id: &str) -> String {
 }
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct Head {
+    #[serde(default)]
+    pub(super) snapshot_schema: layers::Schema,
     pub(super) instance: String,
     pub(super) generation: String,
     pub(super) revision: i64,
@@ -31,7 +34,10 @@ pub(super) struct Head {
     #[serde(default)]
     pub(super) catalog_ready: bool,
 }
-#[derive(Default, Deserialize, Serialize)]
+/// Joined transport/planning rows; production persistence uses `layers()`.
+/// Only migration fixtures can serialize the historical mixed representation.
+#[derive(Default, Deserialize)]
+#[cfg_attr(test, derive(Serialize))]
 pub(super) struct Data {
     pub(super) conversations: BTreeMap<String, ConversationRecord>,
     pub(super) messages: BTreeMap<String, MessageRecord>,
@@ -58,9 +64,17 @@ impl PendingSnapshot {
     }
     pub(in crate::shared) fn decode(self) -> Result<Loaded, AppError> {
         let digest = self.payload.as_ref().map(|p| p.digest.clone());
-        let data = self
-            .payload
-            .map_or_else(|| Ok(Data::default()), payload::Received::decode)?;
+        let data = match self.payload {
+            None => Data::default(),
+            Some(payload) => match self
+                .head
+                .as_ref()
+                .map_or_else(layers::Schema::default, |h| h.snapshot_schema)
+            {
+                layers::Schema::Mixed => payload.decode::<Data>()?,
+                layers::Schema::Layered => payload.decode::<layers::Snapshot>()?.into_data()?,
+            },
+        };
         Ok(Loaded {
             digest,
             head: self.head,
