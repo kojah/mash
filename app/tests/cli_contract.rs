@@ -19,4 +19,5 @@ mod real_models;
 mod retrieval;
 mod shared_server;
 mod threads;
+mod vector_overrides;
 mod watch_flow;

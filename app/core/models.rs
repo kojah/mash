@@ -62,6 +62,8 @@ pub(crate) enum Operation {
         shared: bool,
     },
     Search {
+        #[serde(default)]
+        shared_vector_search: Option<crate::gold::vector::Search>,
         query: String,
         #[serde(default)]
         intent: Option<crate::gold::exact::Intent>,

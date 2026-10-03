@@ -19,3 +19,5 @@ pub(crate) fn create_valid_model_marker(root: &Path) {
     )
     .expect("model marker");
 }
+#[path = "test_support/vector.rs"]
+pub(crate) mod vector;

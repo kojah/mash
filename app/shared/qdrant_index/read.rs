@@ -8,6 +8,32 @@ use crate::shared::{Freshness, NodeFreshness, protocol, validation::valid_id};
 use crate::storage::{Counts, Message, SearchHit};
 use std::collections::{BTreeMap, BTreeSet};
 
+fn validate_search(input: &protocol::Search, identity: &Identity) -> Result<(), AppError> {
+    if let Some(policy) = input.vector_policy {
+        policy.validate_request()?;
+        if input.intent == crate::gold::exact::Intent::ExactMention {
+            return Err(AppError::usage(
+                "vector overrides require related-discussion intent",
+            ));
+        }
+    }
+    if input.intent == crate::gold::exact::Intent::ExactMention {
+        return Ok(()); // Literal syntax and filters are validated by search_exact.
+    }
+    crate::search_query::validate(&input.query)?;
+    if !crate::search_query::has_terms(&input.query)
+        || input.query.len() > 16384
+        || !protocol::valid_vector(&input.vector, identity.dimensions)
+        || input.generation != identity.generation
+    {
+        return Err(AppError::usage("invalid search query or vector"));
+    }
+    if let Some(filter) = &input.filter {
+        filter.validate()?;
+    }
+    Ok(())
+}
+
 fn metadata(c: &protocol::ConversationRecord) -> crate::search_results::ThreadMetadata {
     crate::search_results::ThreadMetadata {
         enrichment: c.enrichment.clone(),
@@ -310,22 +336,12 @@ impl Store {
         identity: &Identity,
         input: protocol::Search,
     ) -> Result<protocol::Candidates, AppError> {
+        validate_search(&input, identity)?;
         if input.intent == crate::gold::exact::Intent::ExactMention {
             return tokio::time::timeout(std::time::Duration::from_millis(1500), self.search_exact(identity, input))
                 .await.map_err(|_| AppError::usage("exact query exceeded the shared search budget; narrow the query or metadata filters"))?;
         }
         self.build.require_intent(input.intent)?;
-        crate::search_query::validate(&input.query)?;
-        if !crate::search_query::has_terms(&input.query)
-            || input.query.len() > 16384
-            || !protocol::valid_vector(&input.vector, identity.dimensions)
-            || input.generation != identity.generation
-        {
-            return Err(AppError::usage("invalid search query or vector"));
-        }
-        if let Some(filter) = &input.filter {
-            filter.validate()?;
-        }
         let heads = self.heads(identity).await?;
         let active: BTreeMap<_, _> = heads
             .iter()
@@ -354,7 +370,10 @@ impl Store {
         for word in tokens(&input.query) {
             lexical_filter.must.push(api::matches("tokens", vec![word]));
         }
-        let (exact, ef) = match self.active_configuration(identity).await?.vector_search {
+        let (exact, ef) = match input
+            .vector_policy
+            .unwrap_or(self.active_configuration(identity).await?.vector_search)
+        {
             VectorIndex::Exact {} => (true, 200),
             VectorIndex::Hnsw { ef_runtime } => (false, ef_runtime),
         };

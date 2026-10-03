@@ -278,6 +278,12 @@ pub(super) struct Indexed {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Search {
+    #[serde(
+        default,
+        rename = "vector_search",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub vector_policy: Option<crate::gold::vector::Search>,
     #[serde(default, skip_serializing_if = "related_discussion")]
     pub intent: crate::gold::exact::Intent,
     #[serde(default)]

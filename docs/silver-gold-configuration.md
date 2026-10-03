@@ -604,8 +604,37 @@ so delayed writers cannot restore an old policy. Later node publications and
 gold build activations preserve that policy. Selection is atomic per group;
 startup across multiple groups is not one transaction. The additional authority
 read and concurrent-request timing remain part of the shared cost gate.
-Per-request vector overrides and configurable physical index construction remain
-follow-ups under `mash-q3e.4.2.2` and `.3.7`.
+CLI and MCP now accept a typed `shared_vector_search` request override. It applies
+only to dense shared candidates; local dense retrieval and shared lexical
+candidates retain their current policies. Omission inherits the group's current
+persisted default, including after an earlier request supplied an override.
+An override changes neither group policy nor silver, vectors or gold build
+identity, and never triggers indexing. Configurable physical construction remains
+follow-up work under `mash-q3e.3.7`.
+
+```bash
+mash search 'database configuration' --shared --intent related-discussion \
+  --shared-vector-search hnsw --shared-hnsw-ef 80
+```
+
+For MCP, supply `"shared_vector_search":{"algorithm":"hnsw","ef_runtime":80}`
+or `{"algorithm":"exact"}`. The corresponding HTTP `POST /v1/search` field is
+`vector_search`. HNSW effort defaults to 200 and is bounded to 1..4096; exact
+does not accept an effort field. Unknown algorithms/fields fail validation.
+Overrides with exact-mention, local-only search or no configured shared index
+are rejected before model admission. Explicit overrides also check authenticated
+shared capabilities before admission, including for combined searches, so
+lexical-only shared gold cannot silently ignore a vector request. Such requests
+need the shared API to be available at preflight; ordinary combined requests
+without an override retain their existing local-fallback behavior. Stale or
+incompatible gold is still rejected by the backend.
+
+With diagnostics enabled, `shared_vector_override` reports the requested
+override when supplied. It does not claim remote retrieval completed and does
+not report an inherited default. Exact remains the unchanged default. Increasing
+HNSW effort can trade latency for recall; this feature does not establish quality
+equivalence to exact search or close the held-out shared cost/quality gates.
+
 Node query defaults (intent, result unit/limit and fusion) retain their separate
 schema; they are not accepted as server query fields.
 
@@ -614,8 +643,19 @@ Qdrant backend tests and two HTTP gold-rebuild tests, plus strict all-target
 Clippy, formatting and doctests. Tests compare complete retained snapshot bytes
 before/after query activation, preserve node references and build identity,
 read through independently opened handles, isolate groups, reject invalid
-policies and fence a delayed catalogue write. Per-request vector controls remain
-tracked in `mash-q3e.4.2.2.2`; neither the parent nor the shared cost gate is closed.
+policies and fence a delayed catalogue write. Per-request vector controls are
+tracked separately in `mash-q3e.4.2.2.2`; the shared cost gate remains open.
+
+The request-override milestone passed 677 standard tests and 26 disposable
+Qdrant/HTTP/installed-model contracts, plus strict all-target Clippy, formatting
+and doctests. Direct CLI and worker requests and the real MCP protocol forward
+typed policies and restore omission on subsequent requests without model assets
+or local database changes. HTTP checks preserve group defaults and retained
+state, reject invalid/unauthorized requests, and keep stale-gold guards intact.
+An installed-model combined search preserves local bytes, shared freshness,
+filters and thread-copy deduplication under both overrides. Transport fixtures
+use deterministic local embedding responses; they do not evaluate relevance.
+Shared cost and held-out ANN quality remain separate gates.
 
 Validation before request overrides on 2026-10-03 passed 642 standard tests and 55 real-model/Qdrant
 contracts. Weighted lexical/semantic preferences changed candidate ordering on

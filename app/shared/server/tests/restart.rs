@@ -152,6 +152,7 @@ async fn publish(api: &Api, token: &str, revision: i64, second: bool) {
 fn query(unit: crate::search_results::SearchUnit) -> protocol::Search {
     protocol::Search {
         intent: crate::gold::exact::Intent::RelatedDiscussion,
+        vector_policy: None,
         unit,
         query: "restartneedle".into(),
         generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),

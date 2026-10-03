@@ -1099,6 +1099,14 @@ Groups inherit the server default unless named in `gold.query.groups.GROUP`.
 Status exposes the selected policy in `group_gold.vector_search`. Node-side
 `gold.query` still controls intent, fusion and result shape independently.
 
+For a single hybrid search, use `--shared-vector-search exact`, or
+`--shared-vector-search hnsw --shared-hnsw-ef 80` (effort 1..4096, default 200).
+MCP accepts `shared_vector_search: {"algorithm":"hnsw","ef_runtime":80}`.
+Overrides affect only shared dense candidates and do not persist or rebuild
+gold. They require related-discussion intent and configured dense shared gold;
+local-only and exact-mention requests reject them. Omitting the override uses
+the current persisted group default.
+
 ```bash
 docker run --name mash-qdrant -p 127.0.0.1:6333:6333 \
   -v mash-qdrant-data:/qdrant/storage qdrant/qdrant:v1.19.1

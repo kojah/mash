@@ -146,6 +146,7 @@ async fn invalid_searches_return_usage_without_connecting_or_starting_a_worker()
                 models_dir: None,
             },
             operation: crate::core::Operation::Search {
+                shared_vector_search: None,
                 query: query.into(),
                 intent: None,
                 fusion: crate::gold::config::FusionOverrides::default(),

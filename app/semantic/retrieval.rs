@@ -30,6 +30,7 @@ pub(crate) fn hybrid_search_filtered(
         unit,
         fusion,
         ranking,
+        shared_vector_search: _,
     } = options;
     let candidate_limit = unit.candidate_limit();
     let lexical = measurements::measure_vec(Stage::LocalLexical, None, || {

@@ -8,6 +8,7 @@ use crate::storage::Storage;
 use std::path::Path;
 
 pub(super) struct Input {
+    pub(super) shared_vector_search: Option<crate::gold::vector::Search>,
     pub(super) query: String,
     pub(super) intent: Option<crate::gold::exact::Intent>,
     pub(super) limit: Option<usize>,
@@ -29,6 +30,7 @@ pub(super) async fn preflight(
         intent,
         fusion,
         ranking,
+        shared_vector_search,
         filters,
         shared,
         local,
@@ -54,8 +56,33 @@ pub(super) async fn preflight(
     }
     resolve_fusion(*fusion, intent, configuration.gold.query.fusion)?;
     resolve_ranking(*ranking, intent, configuration.gold.query.ranking)?;
-    if *shared && intent == crate::gold::exact::Intent::RelatedDiscussion {
+    validate_vector(
+        *shared_vector_search,
+        intent,
+        *local,
+        configuration.shared.is_some(),
+    )?;
+    if (*shared || shared_vector_search.is_some())
+        && intent == crate::gold::exact::Intent::RelatedDiscussion
+    {
         shared::require_dense(required_shared(configuration)?).await?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_vector(
+    policy: Option<crate::gold::vector::Search>,
+    intent: crate::gold::exact::Intent,
+    local: bool,
+    configured: bool,
+) -> Result<(), AppError> {
+    if let Some(policy) = policy {
+        policy.validate_request()?;
+        if intent == crate::gold::exact::Intent::ExactMention || local || !configured {
+            return Err(AppError::usage(
+                "shared vector overrides require related-discussion search against a configured shared index",
+            ));
+        }
     }
     Ok(())
 }
@@ -114,6 +141,7 @@ pub(super) async fn run(
     models: &Path,
     input: Input,
 ) -> Result<SearchResponse, AppError> {
+    let vector_override = input.shared_vector_search;
     let policy = if input.diagnostics {
         let (limit, _) = configuration.gold.query.resolve(input.limit, input.unit);
         let fusion = resolve_fusion(
@@ -142,6 +170,9 @@ pub(super) async fn run(
         response.diagnostics = Some(crate::gold::diagnostics::Diagnostics::new(
             &response, scope, limit, fusion, ranking,
         ));
+        if let Some(diagnostics) = &mut response.diagnostics {
+            diagnostics.shared_vector_override = vector_override;
+        }
     }
     Ok(response)
 }
@@ -154,6 +185,7 @@ async fn run_inner(
     input: Input,
 ) -> Result<SearchResponse, AppError> {
     let Input {
+        shared_vector_search,
         query,
         intent,
         limit,
@@ -168,6 +200,13 @@ async fn run_inner(
     let (limit, unit) = configuration.gold.query.resolve(limit, unit);
     let mut options = crate::gold::config::Options::new(limit, unit);
     let intent = intent.unwrap_or(configuration.gold.query.intent);
+    validate_vector(
+        shared_vector_search,
+        intent,
+        use_local,
+        configuration.shared.is_some(),
+    )?;
+    options.shared_vector_search = shared_vector_search;
     if !use_shared {
         configuration.gold.build.require_intent(intent)?;
     }

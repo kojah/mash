@@ -23,33 +23,7 @@ pub(super) enum MemoryTier {
     Cold,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(tag = "algorithm", rename_all = "lowercase", deny_unknown_fields)]
-pub(super) enum VectorIndex {
-    Exact {},
-    Hnsw {
-        #[serde(default = "default_ef")]
-        ef_runtime: usize,
-    },
-}
-impl Default for VectorIndex {
-    fn default() -> Self {
-        Self::Exact {}
-    }
-}
-const fn default_ef() -> usize {
-    200
-}
-impl VectorIndex {
-    pub(super) fn validate(self) -> Result<(), AppError> {
-        if matches!(self, Self::Hnsw { ef_runtime } if !(1..=4096).contains(&ef_runtime)) {
-            return Err(AppError::configuration(
-                "Qdrant ef_runtime must be between 1 and 4096",
-            ));
-        }
-        Ok(())
-    }
-}
+pub(super) use crate::gold::vector::Search as VectorIndex;
 
 #[derive(Clone)]
 pub(super) struct Store {

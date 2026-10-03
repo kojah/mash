@@ -37,6 +37,7 @@ async fn shared_lexical_capabilities_reject_hybrid_before_model_admission() {
             models_dir: Some(models.clone()),
         },
         operation: Operation::Search {
+            shared_vector_search: None,
             query: "needle".into(),
             intent: None,
             limit: None,
@@ -116,6 +117,7 @@ async fn fixture() -> Fixture {
             models_dir: Some(models_dir),
         },
         operation: Operation::Search {
+            shared_vector_search: None,
             query: "hello".into(),
             intent: None,
             limit: Some(10),

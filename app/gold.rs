@@ -6,3 +6,4 @@ pub(crate) mod lexical_manifest;
 pub(crate) mod local;
 pub(crate) mod manifest;
 pub(crate) mod shared;
+pub(crate) mod vector;

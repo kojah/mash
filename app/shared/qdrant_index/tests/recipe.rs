@@ -445,12 +445,11 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
             .gold_manifest
             .is_none()
     );
-    assert!(
-        store
-            .search(&fixture.identity, fixture.query())
-            .await
-            .is_err()
-    );
+    for policy in [None, Some(VectorIndex::Hnsw { ef_runtime: 80 })] {
+        let mut query = fixture.query();
+        query.vector_policy = policy;
+        assert!(store.search(&fixture.identity, query).await.is_err());
+    }
     // A complete replacement recovers readiness; a later no-op preserves it.
     store
         .index(

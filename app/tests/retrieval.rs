@@ -62,6 +62,37 @@ fn cached_and_direct_cli_validation_match_with_installed_models_and_no_index() {
         models.to_str().unwrap(),
     ];
     for arguments in [
+        vec![
+            "search",
+            "cbioportal",
+            "--shared-vector-search",
+            "exact",
+            "--local",
+        ],
+        vec![
+            "search",
+            "cbioportal",
+            "--shared-vector-search",
+            "hnsw",
+            "--shared-hnsw-ef",
+            "0",
+        ],
+        vec![
+            "search",
+            "cbioportal",
+            "--shared-vector-search",
+            "exact",
+            "--shared-hnsw-ef",
+            "80",
+        ],
+        vec![
+            "search",
+            "cbioportal",
+            "--shared-vector-search",
+            "hnsw",
+            "--intent",
+            "exact-mention",
+        ],
         vec!["search", "cbioportal", "--lexical-weight", "0", "--local"],
         vec![
             "search",

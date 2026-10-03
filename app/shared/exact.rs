@@ -56,6 +56,7 @@ pub(crate) async fn search(
             Endpoint::Search,
             &protocol::Search {
                 intent: exact::Intent::ExactMention,
+                vector_policy: None,
                 query: query.to_owned(),
                 unit,
                 vector: vec![],

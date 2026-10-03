@@ -75,6 +75,12 @@ enum Command {
     },
     /// Search indexed threads or messages.
     Search {
+        /// Override dense shared retrieval; omitted inherits the active group default.
+        #[arg(long, value_enum)]
+        shared_vector_search: Option<crate::gold::vector::Algorithm>,
+        /// HNSW search effort for this shared override (1–4096, default 200).
+        #[arg(long, requires = "shared_vector_search")]
+        shared_hnsw_ef: Option<usize>,
         query: String,
         /// Retrieval intent; defaults to gold.query.intent (related-discussion).
         #[arg(long, value_enum)]
@@ -276,6 +282,8 @@ impl Cli {
                 all_history,
             }),
             Command::Search {
+                shared_vector_search,
+                shared_hnsw_ef,
                 query,
                 intent,
                 limit,
@@ -290,6 +298,9 @@ impl Cli {
                 local,
                 ..
             } => Operation::Search {
+                shared_vector_search: shared_vector_search
+                    .map(|algorithm| algorithm.request(shared_hnsw_ef))
+                    .transpose()?,
                 ranking,
                 query,
                 intent,

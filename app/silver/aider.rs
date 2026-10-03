@@ -270,6 +270,7 @@ mod tests {
         let Response::Search(response) = crate::core::execute(Request {
             paths: paths.clone(),
             operation: Operation::Search {
+                shared_vector_search: None,
                 fusion: crate::gold::config::FusionOverrides::default(),
                 ranking: None,
                 diagnostics: false,

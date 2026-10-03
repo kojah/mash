@@ -45,6 +45,9 @@ pub(crate) struct Diagnostics {
     pub(crate) fusion: Option<Fusion>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) ranking: Option<Ranking>,
+    /// Requested shared override, not a claim that remote retrieval completed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) shared_vector_override: Option<super::vector::Search>,
     pub(crate) returned_results: usize,
     /// Core time includes configuration and model admission, excludes CLI startup.
     pub(crate) elapsed_ms: u64,
@@ -83,6 +86,7 @@ impl Diagnostics {
             shared_fallback: fallback,
             fusion: hybrid.then_some(fusion),
             ranking: hybrid.then_some(ranking),
+            shared_vector_override: None,
             returned_results: match &response.results {
                 Results::Threads(hits) => hits.len(),
                 Results::Messages(hits) => hits.len(),

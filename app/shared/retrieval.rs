@@ -5,6 +5,7 @@ use crate::gold::config::{Fusion, Options};
 use crate::semantic::{self, Models};
 use crate::storage::{Message, SearchHit, Storage};
 use crate::{AppError, config::SharedConfig};
+use futures_util::FutureExt;
 use std::{collections::HashMap, path::Path, time::Duration};
 
 pub(super) const CONTEXT_DEADLINE: Duration = Duration::from_secs(1);
@@ -135,6 +136,7 @@ pub(super) async fn search_prepared(
         unit,
         fusion,
         ranking,
+        shared_vector_search,
     } = options;
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);
@@ -154,27 +156,21 @@ pub(super) async fn search_prepared(
             fusion,
         )
     });
-    let remote = async {
-        // Keep transport errors as values until local retrieval finishes.
-        // A local error cancels HTTP; merged searches may fall back locally.
-        Ok::<_, AppError>(
-            request_candidates(
-                config,
-                &protocol::Search {
-                    intent: crate::gold::exact::Intent::RelatedDiscussion,
-                    query: query.to_owned(),
-                    unit,
-                    vector,
-                    generation,
-                    provider: None,
-                    days: None,
-                    filter: Some(filters.filter.clone()),
-                    exclude_self,
-                },
-            )
-            .await,
-        )
+    let request = protocol::Search {
+        vector_policy: shared_vector_search,
+        intent: crate::gold::exact::Intent::RelatedDiscussion,
+        query: query.to_owned(),
+        unit,
+        vector,
+        generation,
+        provider: None,
+        days: None,
+        filter: Some(filters.filter.clone()),
+        exclude_self,
     };
+    // Keep HTTP errors as values until local retrieval finishes; a local error
+    // still cancels HTTP, while merged searches may fall back locally.
+    let remote = request_candidates(config, &request).map(Ok::<_, AppError>);
     let ((local_hits, local_documents), candidates) = tokio::try_join!(local, remote)?;
     let (candidates, retrieval) = received_candidates(candidates, exclude_self)?;
     let protocol::Candidates {

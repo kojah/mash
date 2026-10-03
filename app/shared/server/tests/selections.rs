@@ -20,6 +20,7 @@ pub(super) async fn verify_thread_provider_scopes(service: &Service, vector: &[f
         .unwrap();
         let mut input = Search {
             intent: crate::gold::exact::Intent::RelatedDiscussion,
+            vector_policy: None,
             unit: crate::search_results::SearchUnit::Messages,
             query: "providerneedle".into(),
             generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),

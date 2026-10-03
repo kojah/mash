@@ -95,6 +95,7 @@ async fn provider_contract(service: Service) {
         for direct in [true, false] {
             let input = Search {
                 intent: crate::gold::exact::Intent::RelatedDiscussion,
+                vector_policy: None,
                 unit: crate::search_results::SearchUnit::Messages,
                 query: "providerneedle".into(),
                 generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),

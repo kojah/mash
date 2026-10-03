@@ -78,10 +78,12 @@ async fn assert_scoped(
     ids: &[String],
     expected: &[&str],
     ranking: Option<crate::gold::config::Ranking>,
+    vector_policy: Option<crate::gold::vector::Search>,
 ) {
     let response = core::execute(core::Request {
         paths: paths.clone(),
         operation: Operation::Search {
+            shared_vector_search: vector_policy,
             fusion: crate::gold::config::FusionOverrides::default(),
             ranking,
             diagnostics: true,
@@ -115,6 +117,7 @@ async fn assert_scoped(
             .ranking,
     );
     let diagnostics = response.diagnostics.as_ref().unwrap();
+    assert_eq!(diagnostics.shared_vector_override, vector_policy);
     assert_eq!(diagnostics.ranking, Some(ranking));
     if ranking == crate::gold::config::Ranking::Fusion {
         assert!(diagnostics.stages.iter().all(|stage| !matches!(
@@ -221,10 +224,26 @@ async fn contract(service: Service) {
             ),
         )
         .unwrap();
-        assert_scoped(&paths, &ids, &["codex", "claude-code"], override_ranking).await;
+        assert_scoped(
+            &paths,
+            &ids,
+            &["codex", "claude-code"],
+            override_ranking,
+            None,
+        )
+        .await;
         assert_eq!(std::fs::read(paths.db.as_ref().unwrap()).unwrap(), before);
         assert_eq!(service.get("freshness", &token).await, shared_before);
     }
-    assert_scoped(&paths, &["unknown".into()], &[], None).await;
+    for vector_policy in [
+        Some(crate::gold::vector::Search::Hnsw { ef_runtime: 80 }),
+        Some(crate::gold::vector::Search::Exact {}),
+        None,
+    ] {
+        assert_scoped(&paths, &ids, &["codex", "claude-code"], None, vector_policy).await;
+        assert_eq!(std::fs::read(paths.db.as_ref().unwrap()).unwrap(), before);
+        assert_eq!(service.get("freshness", &token).await, shared_before);
+    }
+    assert_scoped(&paths, &["unknown".into()], &[], None, None).await;
     service.cleanup().await;
 }

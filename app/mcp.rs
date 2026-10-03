@@ -22,6 +22,9 @@ struct Mash {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Search {
+    /// Dense shared retrieval override; omitted inherits the group's active default.
+    #[serde(rename = "shared_vector_search")]
+    shared_vector: Option<crate::gold::vector::Search>,
     query: String,
     /// related-discussion (default) or model-free exact-mention.
     intent: Option<crate::gold::exact::Intent>,
@@ -248,6 +251,7 @@ impl Mash {
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute(Operation::Search {
+            shared_vector_search: request.shared_vector,
             query: request.query,
             intent: request.intent,
             limit: request.limit,

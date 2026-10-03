@@ -226,6 +226,7 @@ impl FusionOverrides {
 
 #[derive(Clone, Copy)]
 pub(crate) struct Options {
+    pub(crate) shared_vector_search: Option<super::vector::Search>,
     pub(crate) limit: usize,
     pub(crate) unit: SearchUnit,
     pub(crate) fusion: Fusion,
@@ -235,6 +236,7 @@ pub(crate) struct Options {
 impl Options {
     pub(crate) fn new(limit: usize, unit: SearchUnit) -> Self {
         Self {
+            shared_vector_search: None,
             limit,
             unit,
             fusion: Fusion::default(),

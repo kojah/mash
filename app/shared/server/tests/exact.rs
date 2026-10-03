@@ -121,6 +121,7 @@ fn events(revision: i64) -> Vec<Value> {
 fn query(text: &str, filter: Filter, exclude_self: bool) -> Search {
     Search {
         intent: Intent::ExactMention,
+        vector_policy: None,
         unit: SearchUnit::Messages,
         query: text.into(),
         generation: String::new(),
@@ -355,6 +356,7 @@ async fn verify_core(service: &Service) {
                 diagnostics: false,
                 query: "voyage-code-4".into(),
                 intent: Some(Intent::ExactMention),
+                shared_vector_search: None,
                 limit: Some(10),
                 unit: Some(unit),
                 filters: Box::new(Selection {

@@ -108,6 +108,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
             models_dir: Some(root.path().join("missing-models")),
         },
         operation: Operation::Search {
+            shared_vector_search: None,
             fusion: crate::gold::config::FusionOverrides::default(),
             ranking: None,
             diagnostics: true,

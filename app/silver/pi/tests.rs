@@ -449,6 +449,7 @@ async fn core_indexes_and_searches_all_native_pi_branches_with_real_models() {
         let Response::Search(search) = crate::core::execute(Request {
             paths: paths.clone(),
             operation: Operation::Search {
+                shared_vector_search: None,
                 fusion: crate::gold::config::FusionOverrides::default(),
                 ranking: None,
                 diagnostics: false,

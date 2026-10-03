@@ -117,6 +117,7 @@ async fn execute_inner(
 #[cfg(unix)]
 pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError> {
     let Operation::Search {
+        shared_vector_search,
         query,
         intent,
         fusion,
@@ -131,6 +132,12 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
     };
     // The node affects the resolved scope, but not syntax validation. Actual
     // execution resolves again with the current configuration and time cutoff.
+    search::validate_vector(
+        *shared_vector_search,
+        intent.unwrap_or_default(),
+        *local,
+        true,
+    )?;
     search::resolve_fusion(
         *fusion,
         intent.unwrap_or_default(),
@@ -185,6 +192,7 @@ async fn dispatch(
             .map(Response::Index),
         Operation::Search {
             query,
+            shared_vector_search,
             intent,
             limit,
             unit,
@@ -199,6 +207,7 @@ async fn dispatch(
             database,
             models,
             search::Input {
+                shared_vector_search,
                 query,
                 intent,
                 limit,

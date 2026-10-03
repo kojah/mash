@@ -71,6 +71,151 @@ async fn invalid_fusion_overrides_bypass_busy_model_work_and_leave_paths_untouch
     assert!(!models.exists());
 }
 
+#[tokio::test]
+async fn vector_overrides_reject_invalid_or_irrelevant_requests_before_model_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("node.toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    let server = Mash {
+        paths: Arc::new(Paths {
+            config: Some(config),
+            db: Some(root.path().join("absent.sqlite3")),
+            models_dir: Some(root.path().join("absent-models")),
+        }),
+        gate: Arc::new(tokio::sync::Mutex::new(())),
+        model_work: Arc::new(tokio::sync::Semaphore::new(0)),
+    };
+    for (intent, local, policy) in [
+        (
+            "related-discussion",
+            false,
+            json!({"algorithm":"hnsw","ef_runtime":0}),
+        ),
+        (
+            "related-discussion",
+            false,
+            json!({"algorithm":"hnsw","ef_runtime":4097}),
+        ),
+        ("related-discussion", true, json!({"algorithm":"hnsw"})),
+        ("exact-mention", false, json!({"algorithm":"exact"})),
+        ("related-discussion", false, json!({"algorithm":"exact"})),
+    ] {
+        let request = serde_json::from_value(json!({"query":"database", "intent":intent, "local":local, "shared_vector_search":policy})).unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            server.search(Parameters(request)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(result.structured_content.unwrap()["error"]["kind"], "usage");
+    }
+    for policy in [
+        json!({"algorithm":"unknown"}),
+        json!({"algorithm":"exact","ef_runtime":80}),
+    ] {
+        assert!(
+            serde_json::from_value::<Search>(
+                json!({"query":"database","shared_vector_search":policy})
+            )
+            .is_err()
+        );
+    }
+    assert!(!root.path().join("absent.sqlite3").exists());
+    assert!(!root.path().join("absent-models").exists());
+}
+
+#[tokio::test]
+async fn vector_override_checks_shared_capabilities_before_busy_model_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let transport = crate::test_support::vector::Service::with_dense(false).await;
+    let config = root.path().join("node.toml");
+    std::fs::write(&config, transport.configuration()).unwrap();
+    let server = Mash {
+        paths: Arc::new(Paths {
+            config: Some(config),
+            db: Some(root.path().join("absent.sqlite3")),
+            models_dir: Some(root.path().join("absent-models")),
+        }),
+        gate: Arc::new(tokio::sync::Mutex::new(())),
+        model_work: Arc::new(tokio::sync::Semaphore::new(0)),
+    };
+    let request = serde_json::from_value(json!({"query":"database","shared":true,"intent":"related-discussion","shared_vector_search":{"algorithm":"hnsw"}})).unwrap();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        server.search(Parameters(request)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.structured_content.unwrap()["error"]["kind"], "usage");
+    assert!(!root.path().join("absent.sqlite3").exists());
+    assert!(!root.path().join("absent-models").exists());
+}
+
+#[tokio::test]
+async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_models() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("node.toml");
+    let mut transport = crate::test_support::vector::Service::new().await;
+    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    let server = Mash {
+        paths: Arc::new(Paths {
+            config: Some(config.clone()),
+            db: Some(root.path().join("unused.sqlite3")),
+            models_dir: Some(root.path().join("uninstalled-models")),
+        }),
+        gate: Arc::new(tokio::sync::Mutex::new(())),
+        model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+    };
+    core::execute(Request {
+        paths: server.paths.as_ref().clone(),
+        operation: Operation::Index(IndexRequest::default()),
+    })
+    .await
+    .unwrap();
+    let before = std::fs::read(root.path().join("unused.sqlite3")).unwrap();
+    std::fs::write(&config, transport.configuration()).unwrap();
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    let task = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
+    let client = ().serve(client_io).await.unwrap();
+    let service = task.await.unwrap();
+    for policy in [
+        None,
+        Some(json!({"algorithm":"hnsw","ef_runtime":80})),
+        None,
+        Some(json!({"algorithm":"exact"})),
+        None,
+    ] {
+        let mut args = json!({"query":"database","shared":true,"intent":"related-discussion","ranking":"fusion","diagnostics":true});
+        if let Some(policy) = &policy {
+            args["shared_vector_search"] = policy.clone();
+        }
+        let response = client
+            .call_tool(
+                CallToolRequestParams::new("search")
+                    .with_arguments(args.as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap();
+        assert_ne!(response.is_error, Some(true), "{response:?}");
+        assert_eq!(
+            transport.received().await.get("vector_search"),
+            policy.as_ref()
+        );
+        assert_eq!(
+            response.structured_content.unwrap()["diagnostics"].get("shared_vector_override"),
+            policy.as_ref()
+        );
+    }
+    assert_eq!(
+        std::fs::read(root.path().join("unused.sqlite3")).unwrap(),
+        before
+    );
+    assert!(!root.path().join("uninstalled-models").exists());
+    client.cancel().await.unwrap();
+    service.cancel().await.unwrap();
+}
+
 fn configuration(root: &std::path::Path, constant: u16, lexical: u16) -> String {
     format!(
         "version=1\n[providers.codex]\nroots=[{:?}]\n[gold.query]\nunit='messages'\n[gold.query.fusion]\nrank_constant={constant}\nlexical_weight={lexical}\nsemantic_weight=2\n",

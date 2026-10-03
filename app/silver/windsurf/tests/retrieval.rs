@@ -26,6 +26,7 @@ async fn core_searches_native_windsurf_messages_and_threads_with_local_models() 
         let Response::Search(result) = crate::core::execute(Request {
             paths: paths.clone(),
             operation: Operation::Search {
+                shared_vector_search: None,
                 fusion: crate::gold::config::FusionOverrides::default(),
                 ranking: None,
                 diagnostics: false,

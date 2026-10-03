@@ -123,6 +123,7 @@ impl Fixture {
     fn query(&self) -> protocol::Search {
         protocol::Search {
             intent: crate::gold::exact::Intent::RelatedDiscussion,
+            vector_policy: None,
             unit: crate::search_results::SearchUnit::Messages,
             query: "needle".into(),
             generation: self.identity.generation.clone(),
