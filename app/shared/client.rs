@@ -82,6 +82,10 @@ impl Endpoint {
     pub(super) const fn timeout(self) -> Duration {
         if self.bulk() {
             super::BULK_TIMEOUT
+        } else if matches!(self, Self::Search) {
+            // Exact vector retrieval over a full node can take nearly two
+            // seconds before network transit and typed response decoding.
+            Duration::from_secs(5)
         } else {
             Duration::from_secs(2)
         }

@@ -351,4 +351,34 @@ after the check cannot be acknowledged by the old revision.
 This uses the existing typed API contracts and adds no endpoint or background
 job. It also covers a lost HTTP acknowledgement after successful server commit.
 The new client has not yet been deployed to the staged Mac; its pending local
-acknowledgement and the fleet migration remain open.
+acknowledgement and the fleet migration remain open at that source checkpoint.
+
+### Native recovery verified; candidate deadline corrected
+
+The staged dev Mac client built `aae6653` successfully (SHA-256
+`e775cc45663d9b0fec89682804075bc479b8cd29e0bf5e36870f9e20d1ae7b5c`).
+A normal refresh checked 3,021 source files with no malformed records or model
+inferences. Its source publication revision stayed 506,236 while the local
+acknowledgement advanced from 0 to 506,236. Shared preparation took 737 ms with
+zero upload bytes; complete process wall time was 5.161 seconds. Silver remained
+complete. This resolves the staged node's lost acknowledgement without another
+1.16 GB upload. Private captures are `recovery-before.json`, `recovery-after.json`,
+`recovery-index.json` and `recovery-status.json` in the Mac migration directory.
+
+Combined exact `cbioportal` search then returned two threads in 261.8 ms. A
+shared-only related-discussion request timed out, although release API request
+22 completed successfully in 1,939 ms. The two-second client deadline left
+insufficient margin for network transit and response handling. Candidate search
+now has a five-second request budget; metadata/context reads remain at two
+seconds, context aggregation at one second and bulk work at thirty minutes.
+There is no automatic retry or algorithm change.
+
+The corrected native build has SHA-256
+`62901efb52d1be3a896f58325befebf1f8b1c1a5ace3cdf6099e5e2046d6050c`.
+The shared semantic retry returned two threads without shared/context errors in
+4.227 seconds including fresh-process model work; candidate retrieval itself
+took 725 ms in that sample. Combined exact returned two threads in 259.8 ms.
+These are functional samples with variable cache state, not a speedup comparison
+or percentile evidence. Captures begin `deadline-shared-` and
+`deadline-combined-`. Installed configurations, the live Redis endpoint and the
+staged Qdrant server remain unchanged; fleet migration is still incomplete.

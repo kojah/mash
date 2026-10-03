@@ -313,7 +313,7 @@ the child measures parsing; in `streamed` mode it also includes waiting for body
 frames. Streamed byte counts include reader read-ahead. The request span records `queue_ms`, the fixed `endpoint` name and
 `admission` class. Each process admits up to eight interactive requests and one
 bulk state/publication request. They use separate capacity, acquired before
-sending HTTP. The 2-second interactive or 30-minute bulk deadline
+sending HTTP. The 5-second search, 2-second metadata/context or 30-minute bulk deadline
 includes queueing and waiting for decoding. A canceled decoder retains its
 capacity until the blocking work finishes; cancellation does not interrupt
 already-running JSON parsing. This bounds concurrent response work, not response
@@ -944,7 +944,8 @@ retrieval and the shared HTTP request run concurrently. Both sources use indepen
 lexical/semantic reciprocal-rank fusion, followed by bounded combined reranking.
 Local message hits have no `node_id`; shared hits include their
 publishing node for `view --shared NODE_ID`. Plain `view` always reads SQLite.
-Interactive shared reads have a two-second HTTP deadline. Fetching nearby shared
+Shared candidate searches have a five-second HTTP deadline; metadata and context
+reads retain a two-second deadline. Fetching nearby shared
 context has a one-second total budget, preserving completed responses and using
 available message evidence for the rest. Transport failures appear in shared
 search status; combined search retains local results. Bulk publication and
