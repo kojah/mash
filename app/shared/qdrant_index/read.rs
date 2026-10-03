@@ -230,6 +230,13 @@ impl Store {
         let loaded = self.load(identity).await?;
         let mut state = loaded.data.state(identity);
         if let Some(h) = loaded.head {
+            let recipe_ready = h.gold_manifest.as_ref().is_some_and(|manifest| {
+                manifest.matches(
+                    &self.build,
+                    &identity.generation,
+                    h.silver_revision.as_ref(),
+                )
+            });
             if let Some(revision) = &h.silver_revision {
                 revision.validate()?;
             }
@@ -239,7 +246,7 @@ impl Store {
             state.revision = h.revision;
             state.source_silver = h.source_silver;
             state.silver_scans = h.silver_scans;
-            if h.generation != identity.generation {
+            if h.generation != identity.generation || !recipe_ready {
                 for source in &mut state.sources {
                     source.ready = false;
                 }

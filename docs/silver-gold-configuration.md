@@ -159,9 +159,9 @@ advance it. Invalid stored versions/digests or counter overflow fail closed.
 Existing heads leave it absent until an acknowledged publication computes revision
 1 over their retained history. Reading old state never invents a revision.
 
-This identifies the history used by a future shared gold manifest; it does not
+This identifies the history recorded in shared gold manifests; it does not
 certify interpretation/completeness. Source-silver certificates and provider scan
-evidence remain separate inputs to that pending contract. Group-wide gold builds
+evidence remain separate completeness inputs. Group-wide gold builds
 must capture the set of node identities/revisions, rather than treating one node's
 counter as a shared global clock.
 
@@ -471,6 +471,31 @@ download for 23–26 ms and publication for 72–133 ms. The unchanged serialize
 history was 1,043 bytes. These are debug-build correctness-fixture measurements
 under concurrent host load, **not full-corpus throughput, storage or search
 benchmarks**. The lifecycle acceptance bead still requires those measurements.
+
+## Shared source facts and live gold readiness
+
+Stored shared silver source stamps contain only provider, source identity/hash,
+size, modification time, fingerprint, interpretation rule version and thread
+mapping. They do not contain model readiness. Snapshot and retained-silver
+serialization borrow these fields without copying whole histories. Reading an
+existing checkpoint's known `ready` field discards its claim; new snapshots omit
+it. Unknown model fields still fail strict decoding.
+
+`/v1/state` is a live transport view: its checkpoint `ready` value is derived
+from visible-message vector coverage, current model/rule versions and the
+selected recipe's published manifest. That flag can change when gold changes;
+the underlying source facts remain unchanged. Missing interpretation versions
+remain unverified and require explicit source replay. This separation does not
+change source reconciliation or provider completeness evidence.
+
+The existing 10,000-message synthetic serialization diagnostic now emits
+40,046,007 bytes, 13 fewer than its previous snapshot with one `ready = true`
+source stamp. Encoding took 3,745 ms and canonical hashing 654 ms in this debug
+Cranelift run. These timings are single samples under host load; they do not
+isolate a speedup or replace full-corpus storage/ingestion/search measurements.
+The capture is `silver-source-facts-serialization-cost-20261003.log` in the
+external artifacts directory. Borrowed source serialization adds no whole-node
+or body copies and performs no inference.
 
 ## Multiple artifacts under one configuration
 

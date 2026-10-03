@@ -5,6 +5,8 @@ use super::{Checkpoint, ConversationRecord, Data, MessageRecord, Tombstone};
 use crate::{AppError, message_context::MessageContext, role::Role};
 use serde::{Deserialize, Serialize, ser::SerializeMap};
 use std::collections::BTreeMap;
+mod sources;
+use sources::{Facts, SourcesRef};
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -25,7 +27,7 @@ pub(in crate::shared) struct Snapshot {
 pub(in crate::shared) struct Silver {
     pub(in crate::shared) conversations: BTreeMap<String, ConversationRecord>,
     pub(in crate::shared) messages: BTreeMap<String, Message>,
-    pub(in crate::shared) sources: BTreeMap<String, Checkpoint>,
+    pub(in crate::shared) sources: BTreeMap<String, Facts>,
     pub(in crate::shared) tombstones: BTreeMap<String, Tombstone>,
 }
 #[derive(Debug, Deserialize)]
@@ -88,7 +90,12 @@ impl Snapshot {
         Ok(Data {
             conversations: self.silver.conversations,
             messages,
-            sources: self.silver.sources,
+            sources: self
+                .silver
+                .sources
+                .into_iter()
+                .map(|(id, source)| (id, source.checkpoint()))
+                .collect(),
             tombstones: self.silver.tombstones,
         })
     }
@@ -103,7 +110,7 @@ pub(in crate::shared) struct SnapshotRef<'a> {
 pub(in crate::shared) struct SilverRef<'a> {
     conversations: &'a BTreeMap<String, ConversationRecord>,
     messages: MessagesRef<'a>,
-    sources: &'a BTreeMap<String, Checkpoint>,
+    sources: SourcesRef<'a>,
     tombstones: &'a BTreeMap<String, Tombstone>,
 }
 #[derive(Serialize)]
@@ -209,7 +216,7 @@ impl Data {
         SilverRef {
             conversations: &self.conversations,
             messages: MessagesRef(&self.messages),
-            sources: &self.sources,
+            sources: SourcesRef(&self.sources),
             tombstones: &self.tombstones,
         }
     }
@@ -219,7 +226,7 @@ impl Data {
             silver: SilverRef {
                 conversations: &self.conversations,
                 messages: MessagesRef(&self.messages),
-                sources: &self.sources,
+                sources: SourcesRef(&self.sources),
                 tombstones: &self.tombstones,
             },
             gold: GoldRef {

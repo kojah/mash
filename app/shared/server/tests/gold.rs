@@ -162,9 +162,75 @@ async fn retained(service: &Service) -> Value {
     for message in data["history"]["messages"].as_object().unwrap().values() {
         assert!(message.get("vector").is_none() && message.get("generation").is_none());
     }
+    for source in data["history"]["sources"].as_object().unwrap().values() {
+        assert!(source.get("ready").is_none());
+    }
     assert_eq!(
         decoded.history.messages["searchable"].content,
         "hello shared history"
     );
     data
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant"]
+async fn qdrant_source_facts_remain_unchanged_when_gold_readiness_changes() {
+    let service = Service::qdrant(384).await;
+    let mut events = snapshot(1);
+    events[0]["snapshot"] = json!(false);
+    events[0]["base_revision"] = json!(0);
+    events.pop();
+    events.extend([
+        json!({"type":"source","provider":"codex","path_hash":"source",
+            "size_bytes":10,"modified_ns":20,"fingerprint":"stamp",
+            "interpretation_version":INTERPRETATION_VERSION,
+            "conversation_id":"conversation","ready":false}),
+        json!({"type":"seen","provider":"codex","hashes":["source"]}),
+        json!({"type":"reconcile","provider":"codex","cutoff":null}),
+        json!({"type":"scan","provider":"codex","cutoff":null,
+            "interpretation_version":INTERPRETATION_VERSION,"authoritative":true}),
+        json!({"type":"finish"}),
+    ]);
+    service
+        .upload(FIRST, &events)
+        .await
+        .error_for_status()
+        .unwrap();
+    let before = retained(&service).await;
+    let sources = &before["history"]["sources"];
+    assert_eq!(sources.as_object().unwrap().len(), 1);
+    let first = state(&service).await;
+    assert!(
+        first.sources[0].ready,
+        "input readiness must not override gold"
+    );
+
+    events[0]["revision"] = json!(2);
+    events[0]["base_revision"] = json!(1);
+    events[3]["ready"] = json!(true);
+    for message in events[2]["records"].as_array_mut().unwrap() {
+        message["vector"] = Value::Null;
+        message["generation"] = Value::Null;
+    }
+    service
+        .upload(FIRST, &events)
+        .await
+        .error_for_status()
+        .unwrap();
+    let incomplete = state(&service).await;
+    assert!(!incomplete.sources[0].ready);
+    assert_eq!(retained(&service).await["history"], before["history"]);
+    assert_eq!(incomplete.silver_revision, first.silver_revision);
+
+    upload(&service, &replacement(&incomplete))
+        .await
+        .error_for_status()
+        .unwrap();
+    assert!(state(&service).await.sources[0].ready);
+    assert_eq!(retained(&service).await["history"], before["history"]);
+    assert_eq!(
+        state(&service).await.silver_revision,
+        incomplete.silver_revision
+    );
+    service.cleanup().await;
 }

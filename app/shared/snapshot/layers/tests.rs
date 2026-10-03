@@ -164,10 +164,15 @@ fn persisted_sections_separate_history_and_embeddings_without_losing_records() {
     let embedding = &layered["gold"]["embeddings"]["message"];
     assert!(embedding.get("content").is_none());
     assert_eq!(embedding["vector"], json!([-1.0, 0.0, 1.0]));
+    assert!(
+        layered["silver"]["sources"]["source"]
+            .get("ready")
+            .is_none()
+    );
     let decoded: Snapshot = serde_json::from_value(layered).unwrap();
     assert_eq!(
-        serde_json::to_value(decoded.into_data().unwrap()).unwrap(),
-        serde_json::to_value(data).unwrap()
+        serde_json::to_value(decoded.into_data().unwrap().layers()).unwrap(),
+        serde_json::to_value(data.layers()).unwrap()
     );
 }
 
@@ -233,12 +238,49 @@ async fn typed_legacy_migration_and_layered_reads_preserve_identical_planning_da
         .decode()
         .unwrap();
         assert_eq!(
-            serde_json::to_value(&loaded.data).unwrap(),
-            serde_json::to_value(&data).unwrap()
+            serde_json::to_value(loaded.data.layers()).unwrap(),
+            serde_json::to_value(data.layers()).unwrap()
         );
         assert_eq!(
             serde_json::to_value(loaded.data.layers()).unwrap()["silver"]["messages"]["message"]["content"],
             "canonical 🦀"
         );
     }
+}
+
+#[test]
+fn source_facts_are_independent_of_gold_and_input_readiness_claims() {
+    let mut data = fixture();
+    let identity = crate::shared::server::Identity {
+        group_id: "group".into(),
+        node_id: "node".into(),
+        generation: "model".into(),
+        dimensions: 3,
+    };
+    let silver = serde_json::to_value(data.silver()).unwrap();
+    assert!(silver["sources"]["source"].get("ready").is_none());
+    assert!(data.state(&identity).sources[0].ready);
+    data.sources.get_mut("source").unwrap().ready = false;
+    assert_eq!(serde_json::to_value(data.silver()).unwrap(), silver);
+    assert!(data.state(&identity).sources[0].ready);
+    data.messages.get_mut("message").unwrap().vector = None;
+    assert_eq!(serde_json::to_value(data.silver()).unwrap(), silver);
+    assert!(!data.state(&identity).sources[0].ready);
+
+    // Existing snapshots may carry this known transport field. It never
+    // supplies readiness when joining source facts with current gold.
+    for claimed in [true, false] {
+        let mut previous = serde_json::to_value(data.layers()).unwrap();
+        previous["silver"]["sources"]["source"]["ready"] = json!(claimed);
+        let decoded = serde_json::from_value::<Snapshot>(previous)
+            .unwrap()
+            .into_data()
+            .unwrap();
+        assert_eq!(serde_json::to_value(decoded.silver()).unwrap(), silver);
+        assert!(!decoded.sources["source"].ready);
+        assert!(!decoded.state(&identity).sources[0].ready);
+    }
+    let mut invalid = serde_json::to_value(data.layers()).unwrap();
+    invalid["silver"]["sources"]["source"]["generation"] = json!("model");
+    assert!(serde_json::from_value::<Snapshot>(invalid).is_err());
 }
