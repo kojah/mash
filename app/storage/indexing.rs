@@ -6,7 +6,7 @@ use rusqlite::{OptionalExtension, params};
 
 use super::generated as sql;
 use super::semantic_chunks::{SEMANTIC_CHUNK_ROWS, rebuild_semantic_chunk};
-use super::{ConversationChange, FtsRefreshStrategy, Storage};
+use super::{ConversationChange, FtsRefreshStrategy, SearchUpdates, Storage};
 use crate::AppError;
 use crate::ingestion::Conversation;
 
@@ -65,7 +65,7 @@ impl Storage {
         bulk_rebuild_threshold: u64,
     ) -> Result<FtsRefreshStrategy, AppError> {
         self.require_writer()?;
-        if self.defer_search_updates {
+        if self.search_updates != SearchUpdates::Immediate {
             return Ok(FtsRefreshStrategy::Deferred);
         }
         let changed: i64 = self
@@ -138,6 +138,9 @@ impl Storage {
     }
 
     pub(super) fn finalize_semantic_chunks(&self) -> Result<(), AppError> {
+        if self.search_updates != SearchUpdates::Immediate {
+            return Ok(());
+        }
         let mut statement = self
             .connection
             .prepare("SELECT chunk_id, generation FROM dirty_semantic_chunks ORDER BY chunk_id")
@@ -161,7 +164,39 @@ impl Storage {
 
     pub(crate) fn defer_search_updates(&mut self) -> Result<(), AppError> {
         self.require_writer()?;
-        self.defer_search_updates = true;
+        self.search_updates = SearchUpdates::FullRebuild;
+        Ok(())
+    }
+
+    /// Keep delta invalidation atomic with canonical writes, but build views
+    /// only in the gold stage. A persisted dirty marker makes lost temporary
+    /// delta queues recoverable through a full rebuild after failure/restart.
+    pub(crate) fn defer_derived_updates(&mut self) -> Result<(), AppError> {
+        self.require_writer()?;
+        if self.search_updates == SearchUpdates::Immediate {
+            self.search_updates = SearchUpdates::Deferred;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn refresh_derived_search_state(&mut self) -> Result<(), AppError> {
+        self.require_writer()?;
+        if self.search_updates == SearchUpdates::Deferred {
+            self.search_updates = SearchUpdates::Immediate;
+            let threshold = self.measured_fts_bulk_threshold()?;
+            self.finalize_pending_fts_updates(threshold)?;
+            self.finalize_semantic_chunks()?;
+            self.connection
+                .execute(
+                    "UPDATE derived_state SET search_dirty = 0 WHERE singleton = 1",
+                    [],
+                )
+                .map_err(AppError::database)?;
+        } else if self.derived_search_is_dirty()? {
+            self.rebuild_derived_search_state()?;
+        } else {
+            self.search_updates = SearchUpdates::Immediate;
+        }
         Ok(())
     }
 
@@ -236,7 +271,9 @@ impl Storage {
                 ..ConversationChange::default()
             });
         }
-        if existing_source_fingerprint.is_some() && !self.defer_search_updates {
+        if existing_source_fingerprint.is_some()
+            && self.search_updates != SearchUpdates::FullRebuild
+        {
             self.stage_semantic_conversation(&conversation.id)?;
             self.mark_semantic_index_incomplete()?;
         }
@@ -279,7 +316,9 @@ impl Storage {
         if !changed_message_ids.is_empty() {
             self.mark_semantic_index_incomplete()?;
         }
-        if self.defer_search_updates && (!changed_message_ids.is_empty() || removed_messages != 0) {
+        if self.search_updates != SearchUpdates::Immediate
+            && (!changed_message_ids.is_empty() || removed_messages != 0)
+        {
             self.mark_derived_search_dirty()?;
         }
         Ok(ConversationChange {
@@ -420,7 +459,7 @@ impl Storage {
             {
                 continue;
             }
-            if !self.defer_search_updates {
+            if self.search_updates != SearchUpdates::FullRebuild {
                 self.stage_semantic_message(&message.id, None)?;
             }
             upsert_message
@@ -436,7 +475,7 @@ impl Storage {
                     message.context.parent(),
                 ])
                 .map_err(AppError::database)?;
-            if !self.defer_search_updates {
+            if self.search_updates != SearchUpdates::FullRebuild {
                 stage_fts
                     .execute([&message.id])
                     .map_err(AppError::database)?;
@@ -485,7 +524,7 @@ impl Storage {
             .map_err(AppError::database)?;
         let mut removed = 0_u64;
         for id in existing.keys().filter(|id| !incoming.contains(id.as_str())) {
-            if !self.defer_search_updates {
+            if self.search_updates != SearchUpdates::FullRebuild {
                 stage.execute([id]).map_err(AppError::database)?;
                 self.stage_semantic_message(id, None)?;
             }
@@ -512,7 +551,7 @@ impl Storage {
                   WHERE singleton = 1;",
             )
             .map_err(AppError::database)?;
-        self.defer_search_updates = false;
+        self.search_updates = SearchUpdates::Immediate;
         Ok(())
     }
 
@@ -588,7 +627,7 @@ impl Storage {
             {
                 continue;
             }
-            if !self.defer_search_updates {
+            if self.search_updates != SearchUpdates::FullRebuild {
                 self.stage_conversation_fts(&id)?;
                 self.stage_semantic_conversation(&id)?;
                 self.mark_semantic_index_incomplete()?;
@@ -596,7 +635,7 @@ impl Storage {
             self.connection
                 .execute("DELETE FROM conversations WHERE id = ?1", [&id])
                 .map_err(AppError::database)?;
-            if self.defer_search_updates {
+            if self.search_updates != SearchUpdates::Immediate {
                 self.mark_derived_search_dirty()?;
             }
             removed += 1;
@@ -668,12 +707,12 @@ impl Storage {
     }
 
     pub(super) fn remove_canonical_conversation(&mut self, id: &str) -> Result<bool, AppError> {
-        if !self.defer_search_updates {
+        if self.search_updates != SearchUpdates::FullRebuild {
             self.stage_conversation_fts(id)?;
             self.stage_semantic_conversation(id)?;
             self.mark_semantic_index_incomplete()?;
         }
-        if self.defer_search_updates {
+        if self.search_updates != SearchUpdates::Immediate {
             self.mark_derived_search_dirty()?;
         }
         self.connection

@@ -84,6 +84,11 @@ index, or migrate its schema. A missing or incomplete local index returns a type
 error recommending `mash index`, before loading inference models or contacting
 the shared search service. An explicitly completed empty index is valid.
 
+Local indexing separates durable canonical ingestion (silver) from rebuilding
+retrieval views (gold), reusing the existing stored history. See the
+[history pipeline](docs/history-pipeline.md) for recovery behavior and remaining
+shared/provider boundaries.
+
 `mash index` reports live progress on stderr, including file/vector counts,
 elapsed time, and an estimated remaining time for the current phase. Estimates
 use recent throughput and adjust as the workload changes; they are approximate,

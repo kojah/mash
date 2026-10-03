@@ -31,8 +31,15 @@ use semantic_chunks::validate_quantized_vector;
 pub(crate) struct Storage {
     connection: Connection,
     writer_active: bool,
-    defer_search_updates: bool,
+    search_updates: SearchUpdates,
     transaction_base_messages: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchUpdates {
+    Immediate,
+    Deferred,
+    FullRebuild,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -161,7 +168,7 @@ impl Storage {
         Ok(Self {
             connection,
             writer_active: false,
-            defer_search_updates: false,
+            search_updates: SearchUpdates::Immediate,
             transaction_base_messages: 0,
         })
     }

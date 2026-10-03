@@ -4,7 +4,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use super::generated as sql;
 use super::schema::SCHEMA_VERSION;
-use super::{Counts, Message, SearchHit, StatusSnapshot, Storage, cutoff_timestamp};
+use super::{Counts, Message, SearchHit, SearchUpdates, StatusSnapshot, Storage, cutoff_timestamp};
 use crate::AppError;
 
 impl Storage {
@@ -41,7 +41,7 @@ impl Storage {
         Ok(Self {
             connection,
             writer_active: false,
-            defer_search_updates: false,
+            search_updates: SearchUpdates::Immediate,
             transaction_base_messages: 0,
         })
     }
@@ -83,7 +83,7 @@ impl Storage {
         let storage = Self {
             connection,
             writer_active: false,
-            defer_search_updates: false,
+            search_updates: SearchUpdates::Immediate,
             transaction_base_messages: 0,
         };
         Ok(StatusSnapshot {

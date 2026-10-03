@@ -15,6 +15,9 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+mod gold;
+mod silver;
+
 #[tracing::instrument(name = "index", skip_all)]
 pub(super) async fn run(
     configuration: &ResolvedConfig,
@@ -86,7 +89,6 @@ fn index(
     let total_started = Instant::now();
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_indexer()?;
-    let mut model_load_milliseconds = 0;
     let storage_started = Instant::now();
     let mut storage = Storage::open_writer(database_path)?;
     if full || storage.derived_search_is_dirty()? {
@@ -96,53 +98,11 @@ fn index(
         storage.mark_derived_search_dirty()?;
     }
     let storage_setup_milliseconds = elapsed_milliseconds(storage_started);
-    let ingestion_started = Instant::now();
-    let summary = ingestion::index(&mut storage, options)?;
-    let ingestion_milliseconds = elapsed_milliseconds(ingestion_started);
-    let search_started = Instant::now();
-    if storage.derived_search_is_dirty()? {
-        emit_index_phase(crate::progress::Phase::SearchRebuild, &summary);
-        crate::progress::during(crate::progress::Phase::SearchRebuild, || {
-            storage.rebuild_derived_search_state()
-        })?;
-    }
-    let search_refresh_milliseconds = elapsed_milliseconds(search_started);
-    emit_index_phase(crate::progress::Phase::SemanticEmbeddings, &summary);
-    let embedding_started = Instant::now();
-    let generation = models.generation();
-    let already_published = storage.semantic_generation_is_published(&generation)?
-        && !storage.has_pending_embeddings()?;
-    if !already_published {
-        storage.invalidate_embedding_generation(&generation)?;
-    }
-    let embeddings = if !already_published && storage.has_pending_embeddings()? {
-        storage.commit_and_continue_writer()?;
-        let model_started = Instant::now();
-        let mut embedding_pool =
-            crate::progress::during(crate::progress::Phase::ModelLoading, || {
-                models.load_indexer()
-            })?
-            .ok_or_else(|| {
-                AppError::model("semantic models are not installed; run `mash models install`")
-            })?;
-        model_load_milliseconds = elapsed_milliseconds(model_started);
-        semantic::rebuild_embeddings(
-            &mut storage,
-            &mut embedding_pool,
-            &generation,
-            emit_embedding_progress,
-        )?
-    } else {
-        semantic::EmbeddingSummary::default()
-    };
-    let embedding_milliseconds = elapsed_milliseconds(embedding_started);
-    let counts = storage.counts()?;
-    if !already_published && summary.malformed_records == 0 {
-        crate::progress::during(crate::progress::Phase::SemanticFinalize, || {
-            storage.mark_semantic_index_ready(&generation)
-        })?;
-    }
-    let ready = storage.semantic_index_is_ready(&generation)?;
+    let source = silver::ingest(&mut storage, options)?;
+    let gold = gold::build(&mut storage, &models, &source)?;
+    let summary = source.summary;
+    let counts = gold.counts;
+    let embeddings = gold.embeddings;
     storage.commit_writer()?;
     if full {
         crate::progress::during(crate::progress::Phase::DatabaseCheckpoint, || {
@@ -170,16 +130,16 @@ fn index(
         embeddings: embeddings.stored_vectors,
         model_inferences: embeddings.model_inferences,
         reused_embeddings: embeddings.reused_vectors,
-        realized_mode: if ready {
+        realized_mode: if gold.ready {
             SearchMode::Hybrid
         } else {
             SearchMode::Unavailable
         },
-        model_load_milliseconds,
+        model_load_milliseconds: gold.model_load_milliseconds,
         storage_setup_milliseconds,
-        ingestion_milliseconds,
-        search_refresh_milliseconds,
-        embedding_milliseconds,
+        ingestion_milliseconds: source.milliseconds,
+        search_refresh_milliseconds: gold.search_refresh_milliseconds,
+        embedding_milliseconds: gold.embedding_milliseconds,
         total_milliseconds: elapsed_milliseconds(total_started),
         shared: None,
     })
