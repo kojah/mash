@@ -18,6 +18,19 @@ fn assert_diagnostics(response: &core::SearchResponse, scope: Scope, fallback: b
     assert_eq!(diagnostics.completed_sources, completed);
     assert_eq!(diagnostics.returned_results, count);
     assert_eq!(diagnostics.shared_fallback, fallback);
+    let shared = diagnostics
+        .stages
+        .iter()
+        .find(|s| s.stage == crate::observability::retrieval::Stage::SharedCandidates)
+        .unwrap();
+    assert_eq!(shared.calls, 1);
+    assert_eq!(shared.completed_calls, u64::from(!fallback));
+    assert!(!diagnostics.stages.iter().any(|s| matches!(
+        s.stage,
+        crate::observability::retrieval::Stage::Embed
+            | crate::observability::retrieval::Stage::Rerank
+            | crate::observability::retrieval::Stage::LocalDense
+    )));
     assert!(diagnostics.fusion.is_none());
     assert_eq!(
         diagnostics.selected_artifacts,

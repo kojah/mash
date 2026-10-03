@@ -4,6 +4,7 @@ use super::models::Backend;
 use super::remote;
 use crate::AppError;
 use crate::gold::config::{Fusion, Options};
+use crate::observability::retrieval::{self as measurements, Guard, Stage};
 use crate::search_results::{HitKey, hit_key};
 use crate::storage::{SearchHit, SemanticChunks, Storage};
 use std::collections::HashMap;
@@ -30,18 +31,23 @@ pub(crate) fn hybrid_search_filtered(
         fusion,
     } = options;
     let candidate_limit = unit.candidate_limit();
-    let lexical = tracing::info_span!("lexical_candidates")
-        .in_scope(|| storage.search_filtered(query, candidate_limit, provider, days, filters))?;
+    let lexical = measurements::measure_vec(Stage::LocalLexical, None, || {
+        tracing::info_span!("lexical_candidates")
+            .in_scope(|| storage.search_filtered(query, candidate_limit, provider, days, filters))
+    })?;
     let query_vector = backend
         .embed(&[query])?
         .pop()
         .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
     let query_vector = quantize_vector(&query_vector);
+    let mut dense_stage = Guard::begin(Stage::LocalDense);
     let semantic = tracing::info_span!("load_vectors")
         .in_scope(|| storage.semantic_chunks_filtered(generation, provider, days, filters))?;
     let ranked = tracing::info_span!("score_vectors")
         .in_scope(|| rank_quantized(&query_vector, &semantic, candidate_limit));
     if ranked.is_empty() {
+        dense_stage.complete(Some(semantic.chunks.len()), Some(0));
+        drop(dense_stage);
         return Ok(crate::search_results::diversify(lexical, unit));
     }
     let message_rowids = ranked
@@ -52,6 +58,8 @@ pub(crate) fn hybrid_search_filtered(
     for (hit, (_, score)) in semantic_hits.iter_mut().zip(&ranked) {
         hit.semantic_score = Some(*score);
     }
+    dense_stage.complete(Some(semantic.chunks.len()), Some(semantic_hits.len()));
+    drop(dense_stage);
     let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
     let selection = crate::search_ranking::select(backend, query, fused, unit, limit)?;
     let documents = selection.hits[..selection.count]
@@ -122,8 +130,11 @@ pub(crate) fn local_candidates(
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
     let (provider, days, unit) = selection;
     let candidate_limit = unit.candidate_limit();
-    let lexical = storage.search_filtered(query, candidate_limit, provider, days, filters)?;
+    let lexical = measurements::measure_vec(Stage::LocalLexical, None, || {
+        storage.search_filtered(query, candidate_limit, provider, days, filters)
+    })?;
     let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
+    let mut dense_stage = Guard::begin(Stage::LocalDense);
     let chunks = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
     let ranked = rank_quantized(&quantize_vector(&vector), &chunks, candidate_limit);
     let rowids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
@@ -131,6 +142,8 @@ pub(crate) fn local_candidates(
     for (hit, (_, score)) in semantic.iter_mut().zip(ranked) {
         hit.semantic_score = Some(score);
     }
+    dense_stage.complete(Some(chunks.chunks.len()), Some(semantic.len()));
+    drop(dense_stage);
     let fused = fuse(lexical, semantic, unit, fusion);
     let ids = fused.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>();
     let documents = storage.search_documents(&ids)?;
@@ -143,6 +156,8 @@ pub(crate) fn fuse(
     unit: crate::search_results::SearchUnit,
     fusion: Fusion,
 ) -> Vec<SearchHit> {
+    let mut measured = Guard::begin(Stage::Fusion);
+    let inputs = lexical.len().saturating_add(semantic.len());
     let mut hits = HashMap::new();
     let mut scores = HashMap::<HitKey, f32>::new();
     for (rank, hit) in crate::search_results::deduplicate(lexical, unit)
@@ -183,6 +198,7 @@ pub(crate) fn fuse(
             .total_cmp(&left.fusion_score)
             .then_with(|| left.id.cmp(&right.id))
     });
+    measured.complete(Some(inputs), Some(fused.len()));
     fused
 }
 

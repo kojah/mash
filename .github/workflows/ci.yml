@@ -103,7 +103,7 @@ jobs:
       - name: Verify real embedding, reranking, hybrid search and parallel retrieval
         run: >-
           cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2
-          -E 'test(real_models_index_and_run_hybrid_search) or test(real_models_mcp_fusion_overrides) or test(real_models_thread_discovery_and_scoped_messages) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked) or test(labeled_synthetic_relevance_matrix)'
+          -E 'test(real_models_index_and_run_hybrid_search) or test(real_models_mcp_fusion_overrides) or test(real_models_shared_context_failure) or test(real_models_thread_discovery_and_scoped_messages) or test(real_model_length_aware_batches_preserve_quantized_vectors) or test(query_focused_reranking_preserves_paraphrases_and_reveals_late_evidence) or test(small_rerank_batches_preserve_scores_and_document_indices) or test(cached_local_models_preserve_results_and_validate_changed_assets) or test(merged_search_requests_shared_candidates_while_local_sqlite_is_blocked) or test(labeled_synthetic_relevance_matrix)'
       - run: cargo test --doc
       - name: Verify shared Qdrant publication and retrieval
         run: cargo nextest run --profile ci --run-ignored only --no-tests fail -j 2 -E 'test(qdrant)'

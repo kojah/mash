@@ -43,6 +43,10 @@ pub(crate) struct Diagnostics {
     pub(crate) returned_results: usize,
     /// Core time includes configuration and model admission, excludes CLI startup.
     pub(crate) elapsed_ms: u64,
+    #[serde(default)]
+    pub(crate) stages: Vec<crate::observability::retrieval::Measurement>,
+    #[serde(default)]
+    pub(crate) shared_context_incomplete: bool,
 }
 
 impl Diagnostics {
@@ -77,6 +81,33 @@ impl Diagnostics {
                 Results::Messages(hits) => hits.len(),
             },
             elapsed_ms: 0,
+            stages: Vec::new(),
+            shared_context_incomplete: false,
         }
+    }
+
+    pub(crate) fn record(&mut self, stages: Vec<crate::observability::retrieval::Measurement>) {
+        use crate::observability::retrieval::Stage;
+        let local = stages.iter().any(|s| {
+            matches!(
+                s.stage,
+                Stage::LocalExact | Stage::LocalLexical | Stage::LocalDense
+            ) && s.completed_calls > 0
+        });
+        let shared = stages
+            .iter()
+            .any(|s| s.stage == Stage::SharedCandidates && s.completed_calls > 0);
+        self.completed_sources = [
+            local.then_some(Source::Local),
+            shared.then_some(Source::Shared),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        self.shared_fallback = self.requested_scope == Scope::Combined && !shared;
+        self.shared_context_incomplete = stages
+            .iter()
+            .any(|s| s.stage == Stage::Context && s.completed_calls < s.calls);
+        self.stages = stages;
     }
 }

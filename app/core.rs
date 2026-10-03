@@ -45,11 +45,17 @@ async fn execute_admitted(
     };
     async {
         let started = std::time::Instant::now();
-        let mut result = execute_inner(request, capacity).await;
+        let capture = matches!(&request.operation, Operation::Search { diagnostics: true, .. })
+            .then(crate::observability::retrieval::Capture::default);
+        let mut result = match &capture {
+            Some(capture) => capture.scope(execute_inner(request, capacity)).await,
+            None => execute_inner(request, capacity).await,
+        };
         if let Ok(Response::Search(response)) = &mut result
             && let Some(diagnostics) = &mut response.diagnostics
         {
             diagnostics.elapsed_ms = crate::progress::milliseconds(started);
+            if let Some(capture) = capture { diagnostics.record(capture.finish()); }
         }
         tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
         match &result {

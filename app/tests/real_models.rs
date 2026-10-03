@@ -399,6 +399,13 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
                     serde_json::json!(["metadata", "lexical", "dense"])
                 );
                 assert!(diagnostics["elapsed_ms"].is_u64());
+                let stages = diagnostics["stages"].as_array().unwrap();
+                assert!(stages.len() <= 8);
+                for name in ["local-lexical", "local-dense", "embed", "rerank", "fusion"] {
+                    let stage = stages.iter().find(|s| s["stage"] == name).unwrap();
+                    assert_eq!(stage["calls"], stage["completed_calls"]);
+                    assert!(stage["items_out"].is_u64());
+                }
             } else {
                 assert!(found.get("diagnostics").is_none());
             }

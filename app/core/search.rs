@@ -196,8 +196,11 @@ fn local_exact(
     (limit, unit): (usize, crate::search_results::SearchUnit),
     filters: &crate::search_filter::Scope,
 ) -> Result<SearchResponse, AppError> {
-    let storage = Storage::open_lexical(database)?;
-    let hits = storage.search_exact(literal, unit.candidate_limit(), filters)?;
+    let hits = crate::observability::retrieval::measure_vec(
+        crate::observability::retrieval::Stage::LocalExact,
+        None,
+        || Storage::open_lexical(database)?.search_exact(literal, unit.candidate_limit(), filters),
+    )?;
     let hits = crate::gold::exact::rank(hits, unit);
     Ok(SearchResponse {
         diagnostics: None,

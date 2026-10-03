@@ -450,7 +450,7 @@ Zero-result successful retrieval still counts as a completed source. A combined
 shared failure reports local completion and fallback; failed shared-only calls
 remain errors. Reports contain no source text, credentials, paths or model URLs.
 Diagnostics do not change ranking, run indexing or persist query policy. They
-are omitted by default. Per-stage counts/timings, artifact readiness/coverage,
+are omitted by default. Artifact readiness/coverage, filter-stage counts,
 metadata/topic diagnostics and held-out attribution remain `mash-q3e.4.4` work.
 
 Validation on 2026-10-03 passed 645 standard tests, both real-model CLI/MCP
@@ -465,6 +465,57 @@ ordinary calls omitted diagnostics. Captures are
 `gold-search-diagnostics-doc-20261003.log` in the external artifacts directory.
 These checks establish policy/outcome reporting, not held-out relevance or
 representative end-to-end performance.
+
+The report also measures bounded request-local `stages`, independently of
+`MASH_TRACE`. Each stage contains `calls`, `completed_calls`, inclusive
+`total_us`, longest-call `max_us`, and optional aggregate `items_in/items_out`.
+Timing overlaps across concurrent local/shared work; sums are not wall time.
+Counts cover successful calls that report counts, not necessarily unique
+messages. A successful empty retrieval reports zero; an incomplete call leaves
+its output count unreported. Aggregate counts cover reported calls only.
+Incomplete calls can reflect errors or cancellation.
+Stages never entered are absent. At most eight stage records are retained.
+
+| Stage | Input count | Output count |
+| --- | --- | --- |
+| `local-exact`, `local-lexical` | Not reported | Filtered message candidates before result grouping |
+| `local-dense` | Eligible stored chunk vectors scanned | Hydrated message candidates |
+| `shared-candidates` | Not reported | Lexical plus semantic candidate entries; duplicates may occur across streams |
+| `context` | Selected evidence anchors | Completed contextual documents; local and shared work included |
+| `embed` | Texts submitted | Embeddings returned |
+| `rerank` | Query/document pairs submitted | Model scores returned; includes thread and passage passes |
+| `fusion` | Candidate entries supplied | Deduplicated entries before later diversification/combined ranking |
+
+Stage timing omits configuration, model admission/loading, storage setup and
+result serialization/grouping; core elapsed time retains the in-core work.
+The collector propagates into blocking workers and remains isolated across
+concurrent calls, without installing or replacing tracing subscribers.
+Model-free exact search reports no embedding, dense or reranking stage.
+It can report `fusion`: literal ranking reuses lexical deduplication and fixed
+reciprocal ranks, while remaining independent of configurable hybrid weights.
+
+`completed_sources` now uses successfully measured retrieval, including empty
+retrieval. `shared_fallback` specifically denotes candidate retrieval falling
+back locally. `shared_context_incomplete` distinguishes later context degradation:
+successful shared candidates remain a completed source even when remote context
+fails. Ordinary `shared/shared_error/realized_mode` still conflate those cases;
+the typed outcome correction is tracked in `mash-q3e.4.4.3`. Artifact readiness,
+coverage, filter-stage counts and metadata/topic diagnostics remain parent work.
+
+Stage validation on 2026-10-03 passed 647 standard tests and four real-model
+contracts, strict all-target Clippy, formatting and doctest compilation.
+Concurrent task/blocking measurements remained isolated and retained fixed
+storage after 1,000 calls. Direct/cached CLI and SDK MCP reported actual local
+candidate and inference counts with unchanged index bytes. Shared-context
+failure retained peer evidence and completed shared retrieval; transport
+failure and blocked SQLite preserved existing fallback/concurrency behavior.
+CI includes the context-degradation regression. Captures are
+`gold-search-stage-standard-final-20261003.log`,
+`gold-search-stage-models-complete-20261003.log`,
+`gold-search-stage-clippy-complete-20261003.log` and
+`gold-search-stage-doc-20261003.log` in the external artifacts directory.
+These tests verify instrumentation and default preservation; representative
+costs and held-out relevance remain separate gates.
 
 ## Active local build recipe and manifest
 

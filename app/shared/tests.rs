@@ -13,6 +13,7 @@ use std::time::Duration;
 
 mod correlation;
 mod decoding;
+mod diagnostics;
 mod selections;
 
 #[tokio::test]

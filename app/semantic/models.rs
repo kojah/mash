@@ -252,20 +252,28 @@ impl Backend {
         &mut self,
         texts: &[S],
     ) -> Result<Vec<Vec<f32>>, AppError> {
-        if let Some(client) = &self.remote {
-            return client.embed_on_worker(
-                &texts
-                    .iter()
-                    .map(|t| t.as_ref().to_owned())
-                    .collect::<Vec<_>>(),
-                true,
-            );
-        }
-        self.embedding
-            .as_mut()
-            .ok_or_else(|| AppError::internal("missing local embedding model"))?
-            .embed(texts, None)
-            .map_err(|error| AppError::model(format!("embedding inference failed: {error}")))
+        crate::observability::retrieval::measure_vec(
+            crate::observability::retrieval::Stage::Embed,
+            Some(texts.len()),
+            || {
+                if let Some(client) = &self.remote {
+                    return client.embed_on_worker(
+                        &texts
+                            .iter()
+                            .map(|t| t.as_ref().to_owned())
+                            .collect::<Vec<_>>(),
+                        true,
+                    );
+                }
+                self.embedding
+                    .as_mut()
+                    .ok_or_else(|| AppError::internal("missing local embedding model"))?
+                    .embed(texts, None)
+                    .map_err(|error| {
+                        AppError::model(format!("embedding inference failed: {error}"))
+                    })
+            },
+        )
     }
 
     #[tracing::instrument(name = "rerank_inference", skip_all)]
@@ -274,7 +282,11 @@ impl Backend {
         query: S,
         documents: &[S],
     ) -> Result<Vec<fastembed::RerankResult>, AppError> {
-        self.rerank_batched(query, documents, 4)
+        crate::observability::retrieval::measure_vec(
+            crate::observability::retrieval::Stage::Rerank,
+            Some(documents.len()),
+            || self.rerank_batched(query, documents, 4),
+        )
     }
 
     fn rerank_batched<S: AsRef<str> + Send + Sync>(

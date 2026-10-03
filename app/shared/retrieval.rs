@@ -121,13 +121,11 @@ pub(super) async fn search_prepared(
         )
     });
     let remote = async {
-        // Keep transport errors as values until local retrieval finishes so
-        // merged searches can still fall back to local results. A local error
-        // cancels the HTTP request rather than waiting for its timeout.
+        // Keep transport errors as values until local retrieval finishes.
+        // A local error cancels HTTP; merged searches may fall back locally.
         Ok::<_, AppError>(
-            post::<protocol::Candidates>(
+            request_candidates(
                 config,
-                Endpoint::Search,
                 &protocol::Search {
                     intent: crate::gold::exact::Intent::RelatedDiscussion,
                     query: query.to_owned(),
@@ -174,6 +172,9 @@ pub(super) async fn search_prepared(
         Ok((backend, selection))
     })
     .await?;
+    let mut context_stage = crate::observability::retrieval::Guard::begin(
+        crate::observability::retrieval::Stage::Context,
+    );
     let (context, context_error) = context_documents(
         config,
         context_database,
@@ -182,12 +183,36 @@ pub(super) async fn search_prepared(
         &selection.hits[..selection.count],
     )
     .await?;
+    if context_error.is_none() {
+        context_stage.complete(Some(selection.count), Some(context.len()));
+    }
+    drop(context_stage);
     documents.extend(context);
     crate::blocking(move || {
         let fused = rerank_combined(&mut backend, &query, selection, &documents, (limit, unit))?;
         Ok((fused, shared_error.or(context_error)))
     })
     .await
+}
+
+async fn request_candidates(
+    config: &SharedConfig,
+    input: &protocol::Search,
+) -> Result<protocol::Candidates, AppError> {
+    let mut measured = crate::observability::retrieval::Guard::begin(
+        crate::observability::retrieval::Stage::SharedCandidates,
+    );
+    let candidates = post::<protocol::Candidates>(config, Endpoint::Search, input).await?;
+    measured.complete(
+        None,
+        Some(
+            candidates
+                .lexical
+                .len()
+                .saturating_add(candidates.semantic.len()),
+        ),
+    );
+    Ok(candidates)
 }
 
 fn received_candidates(

@@ -131,6 +131,14 @@ async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_inde
                 json!(["metadata", "lexical", "dense"])
             );
             assert!(diagnostics["elapsed_ms"].is_u64());
+            let stages = diagnostics["stages"].as_array().unwrap();
+            for name in ["local-lexical", "local-dense", "embed", "rerank", "fusion"] {
+                let stage = stages.iter().find(|s| s["stage"] == name).unwrap();
+                assert_eq!(stage["calls"], 1);
+                assert_eq!(stage["completed_calls"], 1);
+                assert_eq!(stage["items_out"], 1);
+                assert!(stage["total_us"].as_u64().unwrap() >= stage["max_us"].as_u64().unwrap());
+            }
         } else {
             assert!(results.get("diagnostics").is_none());
         }

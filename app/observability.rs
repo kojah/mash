@@ -4,6 +4,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 pub(crate) mod http;
+pub(crate) mod retrieval;
 #[cfg(unix)]
 pub(crate) mod stages;
 
@@ -45,6 +46,7 @@ pub(crate) fn request_id() -> u64 {
 pub(crate) struct ThreadContext {
     dispatcher: tracing::Dispatch,
     parent: tracing::Span,
+    retrieval: Option<retrieval::Capture>,
 }
 
 impl ThreadContext {
@@ -52,11 +54,14 @@ impl ThreadContext {
         Self {
             dispatcher: tracing::dispatcher::get_default(Clone::clone),
             parent: tracing::Span::current(),
+            retrieval: retrieval::current(),
         }
     }
 
     pub(crate) fn run<T>(&self, work: impl FnOnce() -> T) -> T {
-        tracing::dispatcher::with_default(&self.dispatcher, || self.parent.in_scope(work))
+        retrieval::on_blocking_thread(self.retrieval.clone(), || {
+            tracing::dispatcher::with_default(&self.dispatcher, || self.parent.in_scope(work))
+        })
     }
 }
 

@@ -33,15 +33,24 @@ pub(crate) async fn search(
         database.map_or_else(
             || Ok(vec![]),
             |path| {
-                Storage::open_lexical(&path)?.search_exact(
-                    &local_literal,
-                    unit.candidate_limit(),
-                    &local_filters,
+                crate::observability::retrieval::measure_vec(
+                    crate::observability::retrieval::Stage::LocalExact,
+                    None,
+                    || {
+                        Storage::open_lexical(&path)?.search_exact(
+                            &local_literal,
+                            unit.candidate_limit(),
+                            &local_filters,
+                        )
+                    },
                 )
             },
         )
     });
     let remote = async {
+        let mut measured = crate::observability::retrieval::Guard::begin(
+            crate::observability::retrieval::Stage::SharedCandidates,
+        );
         let candidates = post::<protocol::Candidates>(
             config,
             Endpoint::Search,
@@ -78,6 +87,7 @@ pub(crate) async fn search(
                 "shared exact-mention response contains a nonliteral match",
             ));
         }
+        measured.complete(None, Some(hits.len()));
         Ok(hits)
     };
     let (mut local, remote) = tokio::try_join!(local, async { Ok::<_, AppError>(remote.await) })?;
