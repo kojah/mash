@@ -1447,19 +1447,32 @@ or body copies and performs no inference.
 
 ## Multiple artifacts under one configuration
 
-One active configuration can enable several complementary gold artifacts:
-metadata/lexical projections, dense retrieval units, contextual episodes,
-multi-label topics and extractive representative passages. These are derived
-from the same silver and are not simultaneously maintained alternative profiles.
-Building an artifact does not require every search to use it. A typed query
-intent and bounded retrieval policy will choose supported artifacts; callers
-should specify their goal and filters rather than internal names or weights.
+One active configuration maintains metadata and lexical retrieval, and can
+enable dense retrieval with `gold.build.representations = "lexical-and-dense"`.
+`lexical-only` omits dense construction. These artifacts derive from the same
+silver; they are not simultaneously maintained alternative profiles.
 
-This remains implementation work in `mash-q3e.6` and `mash-q3e.4.1`–`.4.5`:
-artifact identities/dependencies/readiness, intent API, selection/fallback,
-topic/evidence presentation, routing diagnostics and held-out quality/cost
-gates. The two embedding-text recipes above establish build identity and
-replacement; they do not implement or validate intent-aware routing.
+The shared CLI/MCP core already routes typed query intents:
+
+| Intent | Selected artifacts | Model requirement |
+| --- | --- | --- |
+| `exact-mention` | Metadata and lexical | No embedding or reranker admission |
+| `related-discussion` | Metadata, lexical and dense | Requires a compatible dense build |
+
+Query intent, filters, result unit, ranking and limits do not change build
+identity. Optional diagnostics report the selected policy and completed sources;
+selection alone does not prove that every retrieval stage completed. Combined
+search can fall back to local results when the shared request fails. Searches
+never build missing artifacts automatically. See the intent and diagnostics
+sections above for the implemented contracts and limitations.
+
+Topic memberships/labels, contextual episodes and representative extractive
+passages remain candidate additions, not available artifacts or configuration
+options. Their utility and cost must be demonstrated before integration.
+`mash-q3e.4.3` and `.4.5` retain topic/evidence presentation and held-out evaluation
+work; `.6` retains broader artifact contracts. The existing two-intent routing
+does not establish topic quality or guided-search gains. Keep this concrete
+selection rather than adding a registry or arbitrary projection framework.
 
 ## Remaining build and query configuration
 

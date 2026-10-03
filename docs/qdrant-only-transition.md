@@ -223,3 +223,46 @@ Read-only local status reports ready. A direct local `cbioportal` search using
 the staged configuration exited successfully with two thread results. Private
 captures are `offline-status.json` and `offline-search.json`; this verifies the
 local lexical path, not dense retrieval quality or shared coverage.
+
+### Native dense gold from retained silver
+
+The staged Mac configuration now enables lexical and dense representations with
+related-discussion intent. An explicit `index --rebuild-local-gold` completed
+without scanning provider files: 68,731 stored embeddings, 48,287 model inferences
+and hybrid readiness in 434.467 seconds. This is one native corpus run, not a
+controlled benchmark or evidence of topic/search quality.
+
+The existing ten-table silver digest helper in `tools/benchmark-gold.py` produced
+the same SHA-256 before and after the rebuild:
+`b20bc8074a0cdc80fa6e0a46624a8aa74608d1e3e5cc6e34229dab1d8d535490`.
+Silver remains complete at revision 627,495. Local status reports hybrid ready;
+both related-discussion and exact-mention `cbioportal` searches exited successfully
+with two thread results. The exact request reports lexical mode, while the related
+request reports hybrid mode. Captures are `gold-before.json`, `gold-after.json`,
+`dense-rebuild.json`, `dense-related-search.json` and `dense-exact-search.json` in
+the private Mac migration directory. This proves the local source-free layer
+switch on this corpus, not the broader shared lifecycle acceptance gates.
+
+The authenticated Qdrant preview API now listens on the tailnet at
+`linux-node:8788`, separate from live Redis on 8787. All three configured node
+credentials passed capabilities checks; unauthenticated status returned 401.
+The Mac authenticated from its own existing credential. Its staged configuration
+now targets that preview with destination `both`.
+
+The first explicit refresh completed locally with unchanged silver revision and
+all 3,021 sources checkpoint-skipped. It uploaded 1,163,587,427 bytes, then exited
+9 with shared state `pending` and an invalid/oversized-data rejection. The preview
+allowed a 4,096 MiB node snapshot but retained the default 1,024 MiB mutation
+snapshot budget. `Store::index` reserves incoming plus retained serialized bytes
+before validating the upload, so this incoming body necessarily exceeded that
+budget. The HTTP client exposes only the generic rejection, not the server's
+specific error text.
+
+The staged server now explicitly sets `max_mutation_snapshot_mib = 4096`, retains
+one concurrent upload, and enables existing opt-in tracing. Xenia reported about
+42 GiB available memory before the change; the serialized-work budget is not an
+RSS limit. The preview restarted and passed authenticated capabilities again.
+A new explicit publication is running with captures `qdrant-publication-retry.json`
+and `.log`; no successful shared publication or live endpoint cutover is claimed.
+The first attempt's captures remain available as `qdrant-publication.json` and
+`.log`. Installed node configuration and live Redis remain unchanged.
