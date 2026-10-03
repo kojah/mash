@@ -470,8 +470,14 @@ the next request, including an idle worker. CLI and MCP resolve it through the
 same core. Exact-mention ignores hybrid ranking. Diagnostics include the resolved
 hybrid `ranking`, with no rerank/context stages in fusion mode. Models remain
 required for dense query embeddings; the current model loader still loads its
-reranker assets even when inference is skipped. Per-request ranking overrides
-and independently loading only the required model assets remain follow-ups.
+reranker assets even when inference is skipped. Independently loading only the
+required model assets remains a follow-up. CLI `search --ranking fusion` or
+MCP `search` with `"ranking":"fusion"` overrides ranking for one request;
+`"contextual-rerank"` is also accepted. Omission inherits current TOML, including
+worker and MCP sessions. Overrides do not persist and a later request returns
+to current defaults. Explicit ranking overrides with exact-mention fail before
+model admission, SQLite or HTTP access because literal retrieval does not use
+hybrid ranking. Unknown ranking names fail at the typed CLI/JSON boundary.
 
 The HTTP server separately accepts a strict shared-candidate query policy:
 

@@ -95,7 +95,18 @@ pub(crate) struct Query {
 }
 
 /// Query-only ranking over the active lexical and dense candidate artifacts.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    clap::ValueEnum,
+    schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Ranking {
     #[default]

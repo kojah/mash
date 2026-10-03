@@ -94,6 +94,9 @@ enum Command {
         /// Override the semantic candidate weight (1–100).
         #[arg(long)]
         semantic_weight: Option<u16>,
+        /// Override hybrid ranking for this request; defaults to gold.query.ranking.
+        #[arg(long, value_enum)]
+        ranking: Option<crate::gold::config::Ranking>,
         /// Include resolved retrieval policy, source outcomes and core timing.
         #[arg(long)]
         diagnostics: bool,
@@ -277,12 +280,14 @@ impl Cli {
                 fusion_rank_constant,
                 lexical_weight,
                 semantic_weight,
+                ranking,
                 diagnostics,
                 filters,
                 shared,
                 local,
                 ..
             } => Operation::Search {
+                ranking,
                 query,
                 intent,
                 limit,
@@ -504,6 +509,35 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_preserves_typed_request_ranking_without_inventing_defaults() {
+        for (flag, expected) in [
+            (None, None),
+            (Some("fusion"), Some(crate::gold::config::Ranking::Fusion)),
+            (
+                Some("contextual-rerank"),
+                Some(crate::gold::config::Ranking::ContextualRerank),
+            ),
+        ] {
+            let mut args = vec!["mash", "search", "database"];
+            if let Some(flag) = flag {
+                args.extend(["--ranking", flag]);
+            }
+            let Operation::Search { ranking, .. } = Cli::try_parse_from(args)
+                .unwrap()
+                .into_request()
+                .unwrap()
+                .operation
+            else {
+                panic!("search request")
+            };
+            assert_eq!(ranking, expected);
+        }
+        assert!(
+            Cli::try_parse_from(["mash", "search", "database", "--ranking", "unknown"]).is_err()
+        );
+    }
 
     #[test]
     fn search_preserves_omitted_defaults_and_explicit_overrides_for_the_core() {

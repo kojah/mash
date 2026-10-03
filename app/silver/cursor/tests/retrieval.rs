@@ -41,6 +41,7 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
                     paths: paths.clone(),
                     operation: Operation::Search {
                         fusion: crate::gold::config::FusionOverrides::default(),
+                        ranking: None,
                         diagnostics: false,
                         query: query.into(),
                         intent: None,

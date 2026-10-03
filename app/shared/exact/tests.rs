@@ -115,6 +115,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
         },
         operation: Operation::Search {
             fusion: crate::gold::config::FusionOverrides::default(),
+            ranking: None,
             diagnostics: true,
             query: "voyage-code-4".into(),
             intent: None,

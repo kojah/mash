@@ -31,6 +31,8 @@ struct Search {
     unit: Option<crate::search_results::SearchUnit>,
     /// Partial hybrid fusion overrides; omitted fields use current TOML defaults.
     fusion: Option<crate::gold::config::FusionOverrides>,
+    /// Hybrid ranking for this request; omitted inherits gold.query.ranking.
+    ranking: Option<crate::gold::config::Ranking>,
     /// Include resolved retrieval policy, source outcomes and core timing.
     #[serde(default)]
     diagnostics: bool,
@@ -242,7 +244,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search using current gold.query defaults; override intent, unit, limit or partial fusion settings. Fusion overrides apply only to related-discussion and inherit omitted fields from TOML. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference, locally and through the shared service. Narrow broad exact queries with metadata filters if the shared candidate or time budget is reached. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require completed current retrieval artifacts and never run ingestion. Combined shared candidate failures fall back locally with shared_error; shared-only candidate failures return an error. Later context failures retain shared evidence and mode with shared_context_error. Optional diagnostics include resolved policy and measured stages."
+        description = "Search using current gold.query defaults; override intent, unit, limit, ranking or partial fusion settings. Ranking overrides select fusion or contextual-rerank for one request. Ranking and fusion overrides apply only to related-discussion and inherit omitted fields from TOML. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference, locally and through the shared service. Narrow broad exact queries with metadata filters if the shared candidate or time budget is reached. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require completed current retrieval artifacts and never run ingestion. Combined shared candidate failures fall back locally with shared_error; shared-only candidate failures return an error. Later context failures retain shared evidence and mode with shared_context_error. Optional diagnostics include resolved policy and measured stages."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute(Operation::Search {
@@ -251,6 +253,7 @@ impl Mash {
             limit: request.limit,
             unit: request.unit,
             fusion: request.fusion.unwrap_or_default(),
+            ranking: request.ranking,
             diagnostics: request.diagnostics,
             filters: Box::new(request.filters),
             shared: request.shared,

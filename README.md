@@ -618,6 +618,10 @@ combined searches through the same CLI/MCP core, including worker requests.
 It changes no stored vectors or silver. Dense query embeddings still require
 installed models; currently their reranker assets are loaded even when unused.
 Use diagnostics to compare execution and results before choosing a default.
+For one search, use `--ranking fusion` or MCP `"ranking":"fusion"`; the other
+choice is `contextual-rerank`. Omission inherits current TOML. Explicit ranking
+overrides require related-discussion intent, do not persist, and never rebuild
+the index.
 For one hybrid request, CLI `search` accepts `--fusion-rank-constant`,
 `--lexical-weight` and `--semantic-weight`; MCP `search` accepts a partial
 `fusion` object with the corresponding underscore-named fields. Omitted fields

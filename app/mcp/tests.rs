@@ -48,6 +48,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
             intent: None,
             limit: Some(1),
             fusion: None,
+            ranking: None,
             diagnostics: true,
             unit: Some(crate::search_results::SearchUnit::Messages),
             filters: crate::search_filter::Selection::default(),
@@ -107,6 +108,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
                 intent: None,
                 limit: None,
                 fusion: None,
+                ranking: None,
                 diagnostics: false,
                 unit: Some(crate::search_results::SearchUnit::Threads),
                 filters: crate::search_filter::Selection {
@@ -127,6 +129,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             intent: None,
             limit: None,
             fusion: None,
+            ranking: None,
             diagnostics: false,
             unit: Some(crate::search_results::SearchUnit::Threads),
             filters: crate::search_filter::Selection::default(),

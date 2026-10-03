@@ -441,7 +441,13 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
 fn assert_gold_ranking_defaults(config: &Path, database: &Path, models: &str) {
     let original = std::fs::read_to_string(config).unwrap();
     let before = std::fs::read(database).unwrap();
-    for ranking in ["contextual-rerank", "fusion", "contextual-rerank"] {
+    for (ranking, override_ranking, expected) in [
+        ("contextual-rerank", None, "contextual-rerank"),
+        ("contextual-rerank", Some("fusion"), "fusion"),
+        ("contextual-rerank", None, "contextual-rerank"),
+        ("fusion", Some("contextual-rerank"), "contextual-rerank"),
+        ("fusion", None, "fusion"),
+    ] {
         std::fs::write(
             config,
             format!("{original}\n[gold.query]\nranking='{ranking}'\n"),
@@ -467,6 +473,9 @@ fn assert_gold_ranking_defaults(config: &Path, database: &Path, models: &str) {
                 if direct {
                     command.arg("--no-worker");
                 }
+                if let Some(override_ranking) = override_ranking {
+                    command.args(["--ranking", override_ranking]);
+                }
                 let output = command.output().unwrap();
                 assert!(
                     output.status.success(),
@@ -476,12 +485,12 @@ fn assert_gold_ranking_defaults(config: &Path, database: &Path, models: &str) {
                 let response: Value = serde_json::from_slice(&output.stdout).unwrap();
                 let results = response["results"].as_array().unwrap();
                 assert_ne!(results.as_slice(), &[] as &[Value]);
-                assert_eq!(response["diagnostics"]["ranking"], ranking);
+                assert_eq!(response["diagnostics"]["ranking"], expected);
                 let stages = response["diagnostics"]["stages"].as_array().unwrap();
                 assert!(stages.iter().any(|s| s["stage"] == "embed"));
                 assert_eq!(
                     stages.iter().any(|s| s["stage"] == "rerank"),
-                    ranking == "contextual-rerank"
+                    expected == "contextual-rerank"
                 );
                 assert_eq!(
                     std::fs::read(database).unwrap(),

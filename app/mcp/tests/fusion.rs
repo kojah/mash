@@ -35,6 +35,38 @@ async fn invalid_fusion_overrides_bypass_busy_model_work_and_leave_paths_untouch
         assert_eq!(result.is_error, Some(true));
         assert_eq!(result.structured_content.unwrap()["error"]["kind"], "usage");
     }
+    for ranking in ["fusion", "contextual-rerank"] {
+        let request: Search = serde_json::from_value(
+            json!({"query":"database", "intent":"exact-mention", "ranking":ranking}),
+        )
+        .unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            server.search(Parameters(request)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(result.structured_content.unwrap()["error"]["kind"], "usage");
+    }
+    assert!(
+        serde_json::from_value::<Search>(json!({"query":"database", "ranking":"unknown"})).is_err()
+    );
+    std::fs::write(
+        root.path().join("node.toml"),
+        "version=1\nproviders={}\n[gold.query]\nintent='exact-mention'\n",
+    )
+    .unwrap();
+    let request: Search =
+        serde_json::from_value(json!({"query":"database", "ranking":"fusion"})).unwrap();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        server.search(Parameters(request)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.is_error, Some(true));
+    assert_eq!(result.structured_content.unwrap()["error"]["kind"], "usage");
     assert!(!database.exists());
     assert!(!models.exists());
 }
@@ -92,31 +124,37 @@ async fn real_models_mcp_ranking_defaults_reload_without_indexing() {
     let task = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
     let client = ().serve(client_io).await.unwrap();
     let service = task.await.unwrap();
-    for ranking in ["contextual-rerank", "fusion", "contextual-rerank"] {
+    for (ranking, override_ranking, expected) in [
+        ("contextual-rerank", None, "contextual-rerank"),
+        ("contextual-rerank", Some("fusion"), "fusion"),
+        ("contextual-rerank", None, "contextual-rerank"),
+        ("fusion", Some("contextual-rerank"), "contextual-rerank"),
+        ("fusion", None, "fusion"),
+    ] {
         let config = configuration(root.path(), 10, 4).replace(
             "unit='messages'",
             &format!("unit='messages'\nranking='{ranking}'"),
         );
         std::fs::write(root.path().join("node.toml"), config).unwrap();
+        let mut args = json!({"query":"cache model", "local":true, "diagnostics":true});
+        if let Some(override_ranking) = override_ranking {
+            args["ranking"] = json!(override_ranking);
+        }
         let response = client
             .call_tool(
-                CallToolRequestParams::new("search").with_arguments(
-                    json!({"query":"cache model", "local":true, "diagnostics":true})
-                        .as_object()
-                        .unwrap()
-                        .clone(),
-                ),
+                CallToolRequestParams::new("search")
+                    .with_arguments(args.as_object().unwrap().clone()),
             )
             .await
             .unwrap();
         assert_ne!(response.is_error, Some(true), "{response:?}");
         let result = response.structured_content.unwrap();
         assert_eq!(result["results"].as_array().unwrap().len(), 1);
-        assert_eq!(result["diagnostics"]["ranking"], ranking);
+        assert_eq!(result["diagnostics"]["ranking"], expected);
         let stages = result["diagnostics"]["stages"].as_array().unwrap();
         assert_eq!(
             stages.iter().any(|s| s["stage"] == "rerank"),
-            ranking == "contextual-rerank"
+            expected == "contextual-rerank"
         );
         assert_eq!(std::fs::read(&database).unwrap(), before);
     }

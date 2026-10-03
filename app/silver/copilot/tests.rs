@@ -476,6 +476,7 @@ async fn core_retrieves_native_copilot_prose_with_real_models() {
             paths: paths.clone(),
             operation: Operation::Search {
                 fusion: crate::gold::config::FusionOverrides::default(),
+                ranking: None,
                 diagnostics: false,
                 query: query.into(),
                 intent: None,

@@ -70,6 +70,8 @@ pub(crate) enum Operation {
         #[serde(default)]
         fusion: crate::gold::config::FusionOverrides,
         #[serde(default)]
+        ranking: Option<crate::gold::config::Ranking>,
+        #[serde(default)]
         diagnostics: bool,
         filters: Box<crate::search_filter::Selection>,
         shared: bool,

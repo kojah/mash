@@ -64,6 +64,7 @@ async fn fixture() -> Fixture {
             limit: Some(10),
             unit: Some(SearchUnit::Messages),
             fusion: crate::gold::config::FusionOverrides::default(),
+            ranking: None,
             diagnostics: true,
             filters: Box::default(),
             shared: false,

@@ -149,6 +149,7 @@ async fn invalid_searches_return_usage_without_connecting_or_starting_a_worker()
                 query: query.into(),
                 intent: None,
                 fusion: crate::gold::config::FusionOverrides::default(),
+                ranking: None,
                 diagnostics: false,
                 limit: Some(5),
                 unit: Some(crate::search_results::SearchUnit::Threads),

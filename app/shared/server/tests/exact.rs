@@ -288,11 +288,8 @@ async fn verify_scopes(service: &Service, token: &str) {
     assert_eq!(result.lexical.len(), 3, "groups must remain isolated");
 }
 
-async fn verify_core(service: &Service) {
-    use crate::{core, storage::Storage};
-    let directory = tempfile::tempdir().unwrap();
-    let database = directory.path().join("local.sqlite3");
-    let mut writer = Storage::open_writer(&database).unwrap();
+fn seed_core(database: &std::path::Path) {
+    let mut writer = crate::storage::Storage::open_writer(database).unwrap();
     let messages = records()
         .into_iter()
         .filter(|m| ["old", "recent", "undated"].contains(&m.id.as_str()))
@@ -334,6 +331,13 @@ async fn verify_core(service: &Service) {
         .unwrap();
     writer.commit_writer().unwrap();
     drop(writer);
+}
+
+async fn verify_core(service: &Service) {
+    use crate::core;
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("local.sqlite3");
+    seed_core(&database);
     let before = std::fs::read(&database).unwrap();
     let config = directory.path().join("node.toml");
     std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id={:?}\nnode_id='first'\napi_url={:?}\ntoken_env='HOME'\n", service.group, service.url)).unwrap();
@@ -346,6 +350,7 @@ async fn verify_core(service: &Service) {
             },
             operation: core::Operation::Search {
                 fusion: crate::gold::config::FusionOverrides::default(),
+                ranking: None,
                 diagnostics: false,
                 query: "voyage-code-4".into(),
                 intent: Some(Intent::ExactMention),

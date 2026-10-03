@@ -13,6 +13,7 @@ pub(super) struct Input {
     pub(super) limit: Option<usize>,
     pub(super) unit: Option<crate::search_results::SearchUnit>,
     pub(super) fusion: crate::gold::config::FusionOverrides,
+    pub(super) ranking: Option<crate::gold::config::Ranking>,
     pub(super) diagnostics: bool,
     pub(super) filters: crate::search_filter::Selection,
     pub(super) shared: bool,
@@ -30,6 +31,19 @@ pub(super) fn resolve_fusion(
         ));
     }
     overrides.resolve(defaults)
+}
+
+pub(super) fn resolve_ranking(
+    ranking: Option<crate::gold::config::Ranking>,
+    intent: crate::gold::exact::Intent,
+    default: crate::gold::config::Ranking,
+) -> Result<crate::gold::config::Ranking, AppError> {
+    if intent == crate::gold::exact::Intent::ExactMention && ranking.is_some() {
+        return Err(AppError::usage(
+            "ranking overrides require related-discussion intent",
+        ));
+    }
+    Ok(ranking.unwrap_or(default))
 }
 
 pub(super) fn resolve(
@@ -74,7 +88,12 @@ pub(super) async fn run(
         } else {
             crate::gold::diagnostics::Scope::Combined
         };
-        Some((limit, fusion, scope, configuration.gold.query.ranking))
+        let ranking = resolve_ranking(
+            input.ranking,
+            input.intent.unwrap_or(configuration.gold.query.intent),
+            configuration.gold.query.ranking,
+        )?;
+        Some((limit, fusion, scope, ranking))
     } else {
         None
     };
@@ -100,6 +119,7 @@ async fn run_inner(
         limit,
         unit,
         fusion,
+        ranking,
         diagnostics: _,
         filters,
         shared: use_shared,
@@ -109,7 +129,7 @@ async fn run_inner(
     let mut options = crate::gold::config::Options::new(limit, unit);
     let intent = intent.unwrap_or(configuration.gold.query.intent);
     options.fusion = resolve_fusion(fusion, intent, configuration.gold.query.fusion)?;
-    options.ranking = configuration.gold.query.ranking;
+    options.ranking = resolve_ranking(ranking, intent, configuration.gold.query.ranking)?;
     let filters = resolve(
         &query,
         intent,

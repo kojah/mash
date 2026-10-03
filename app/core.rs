@@ -83,11 +83,22 @@ async fn execute_inner(
     let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
     let database = request.paths.db.unwrap_or_else(default_database_path);
     let models = request.paths.models_dir.unwrap_or_else(default_models_path);
-    if let Operation::Search { intent, fusion, .. } = &request.operation {
+    if let Operation::Search {
+        intent,
+        fusion,
+        ranking,
+        ..
+    } = &request.operation
+    {
         search::resolve_fusion(
             *fusion,
             intent.unwrap_or(configuration.gold.query.intent),
             configuration.gold.query.fusion,
+        )?;
+        search::resolve_ranking(
+            *ranking,
+            intent.unwrap_or(configuration.gold.query.intent),
+            configuration.gold.query.ranking,
         )?;
     }
     let uses_models = match &request.operation {
@@ -122,6 +133,7 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
         query,
         intent,
         fusion,
+        ranking,
         filters,
         shared,
         local,
@@ -136,6 +148,11 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
         *fusion,
         intent.unwrap_or_default(),
         crate::gold::config::Fusion::default(),
+    )?;
+    search::resolve_ranking(
+        *ranking,
+        intent.unwrap_or_default(),
+        crate::gold::config::Ranking::default(),
     )?;
     search::resolve(
         query,
@@ -185,6 +202,7 @@ async fn dispatch(
             limit,
             unit,
             fusion,
+            ranking,
             diagnostics,
             filters,
             shared,
@@ -199,6 +217,7 @@ async fn dispatch(
                 limit,
                 unit,
                 fusion,
+                ranking,
                 diagnostics,
                 filters: *filters,
                 shared,

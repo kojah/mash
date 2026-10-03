@@ -156,6 +156,7 @@ pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
                 paths: paths.clone(),
                 operation: Operation::Search {
                     fusion: crate::gold::config::FusionOverrides::default(),
+                    ranking: None,
                     diagnostics: false,
                     query: query.text.clone(),
                     intent: None,
