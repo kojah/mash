@@ -55,6 +55,7 @@ impl Fixture {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         let events = vec![
             Event::Start(Start {
+                expected_version: None,
                 gold_build: None,
                 source_silver: None,
                 instance: "instance".into(),

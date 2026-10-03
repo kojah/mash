@@ -54,6 +54,7 @@ impl Data {
             })
             .collect();
         NodeState {
+            publication_version: String::new(),
             gold_build: crate::gold::config::Build::default(),
             silver_coverage: Vec::new(),
             silver_revision: None,
@@ -100,10 +101,25 @@ pub(in crate::shared) fn start(
     valid_id(&input.instance)?;
     if input.revision.is_some_and(|r| r < 1)
         || input.base_revision.is_some_and(|r| r < 0)
+        || input
+            .expected_version
+            .as_ref()
+            .is_some_and(|v| v.len() > 4096)
         || input.forgets.len() > 10000
         || (input.snapshot && (input.base_revision.is_some() || !input.forgets.is_empty()))
     {
         return Err(AppError::usage("invalid index metadata"));
+    }
+    // Source counters do not advance for gold-only rebuilds. Validate the observed
+    // head before the duplicate shortcut as well as before accepting new source data.
+    if input
+        .expected_version
+        .as_ref()
+        .is_some_and(|version| version != &loaded.expected)
+    {
+        return Err(conflict(
+            "shared publication changed while preparing upload; retry indexing",
+        ));
     }
     if loaded
         .head
@@ -433,4 +449,64 @@ pub(in crate::shared) fn plan(
         None
     };
     Ok(plan)
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    fn input() -> Start {
+        serde_json::from_str(
+            r#"{"instance":"node","revision":1,"base_revision":null,"snapshot":true,"forgets":[]}"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn absent_head_pin_cannot_overwrite_a_concurrent_bootstrap() {
+        let mut loaded = Loaded {
+            head: None,
+            expected: String::new(),
+            data: Data::default(),
+        };
+        let mut upload = input();
+        upload.expected_version = Some(String::new());
+        assert_eq!(start(&mut loaded, &upload).unwrap(), (1, false));
+        loaded.expected = "published-by-another-request".into();
+        let error = start(&mut loaded, &upload).unwrap_err();
+        assert_eq!(error.error.kind, crate::ErrorKind::Conflict);
+    }
+
+    #[test]
+    fn head_pin_detects_gold_changes_for_snapshots_duplicates_and_deltas() {
+        let mut loaded = Loaded {
+            head: None,
+            expected: String::new(),
+            data: Data::default(),
+        };
+        start(&mut loaded, &input()).unwrap();
+        loaded.head.as_mut().unwrap().revision = 1;
+        loaded.expected = "rebuilt-gold".into();
+        for (snapshot, revision) in [(true, 1), (true, 2), (false, 2)] {
+            let mut upload = input();
+            upload.snapshot = snapshot;
+            upload.revision = Some(revision);
+            upload.base_revision = (!snapshot).then_some(1);
+            upload.expected_version = Some("old-gold".into());
+            let error = start(&mut loaded, &upload).unwrap_err();
+            assert_eq!(error.error.kind, crate::ErrorKind::Conflict);
+            assert_eq!(loaded.head.as_ref().unwrap().revision, 1);
+            upload.expected_version = Some(loaded.expected.clone());
+            assert_eq!(
+                start(&mut loaded, &upload).unwrap(),
+                (revision, snapshot && revision == 1)
+            );
+        }
+        let mut upload = input();
+        upload.expected_version = Some("x".repeat(4097));
+        assert_eq!(
+            start(&mut loaded, &upload).unwrap_err().error.kind,
+            crate::ErrorKind::Usage
+        );
+    }
 }

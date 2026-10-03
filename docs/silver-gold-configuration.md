@@ -557,6 +557,25 @@ dialogue unchanged. Changed source conversations are embedded in bounded batches
 compatible source checkpoints can skip unchanged history. A server configured
 with a different recipe rejects the pinned upload before staging.
 
+`/v1/state` also returns `publication_version`, the immutable node-head identity
+(empty before bootstrap). Routed ingestion copies it to the typed start field
+`expected_version`. The source publication counter alone cannot protect prepared
+work against a gold-only replacement: that operation leaves the counter and
+silver revision unchanged. The server compares the observed identity before
+accepting source data, including duplicate snapshots; a mismatch returns a
+retryable conflict without staging or acknowledging the upload. An explicit
+empty pin only admits a still-absent head. The existing commit-time conditional
+head update protects changes occurring after this preparation check.
+
+The version already exists in the persisted head. Exposing and pinning it adds
+small JSON fields to the existing state response and upload, with no extra
+request, inference or canonical-content copy. With the current 64-character head
+identity, compact JSON adds 89 bytes to node state and 86 bytes to the start
+record. Full-snapshot callers can use the
+same typed guard, but automatic recipe-aware snapshot preparation/vector reuse
+remains unfinished below. This protects a node publication, not a durable
+group-wide configuration activation.
+
 The server certifies a source upload when its retained vectors already have a
 matching recipe/model manifest, or every remaining searchable conversation was
 replaced by the upload. A partial recipe transition leaves dense gold unverified;

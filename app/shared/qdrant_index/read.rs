@@ -239,6 +239,7 @@ impl Store {
         let loaded = self.load(identity).await?;
         let mut state = loaded.data.state(identity);
         state.gold_build.clone_from(&self.build);
+        state.publication_version = loaded.expected;
         if let Some(h) = loaded.head {
             let recipe_ready = h.gold_manifest.as_ref().is_some_and(|manifest| {
                 manifest.matches(

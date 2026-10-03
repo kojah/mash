@@ -154,6 +154,62 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_publication_version_pins_bootstrap_and_fresh_source_retries() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let initial = fixture.store.state(&fixture.identity).await.unwrap();
+    assert_eq!(initial.publication_version, "");
+    let pinned = |revision: i64, version: &str| {
+        let source = fixture.file(revision, "pin");
+        let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
+            .into_iter::<Event>()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let Event::Start(start) = &mut events[0] else {
+            panic!("start")
+        };
+        start.expected_version = Some(version.into());
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        for event in events {
+            crate::shared::write_event(file.as_file_mut(), &event).unwrap();
+        }
+        file
+    };
+    fixture
+        .store
+        .index(&fixture.identity, pinned(1, ""))
+        .await
+        .unwrap();
+    let accepted = fixture.store.state(&fixture.identity).await.unwrap();
+    assert_ne!(accepted.publication_version, "");
+    assert_eq!(
+        fixture.store.node(&fixture.identity).await.unwrap().version,
+        accepted.publication_version
+    );
+    let error = fixture
+        .store
+        .index(&fixture.identity, pinned(2, ""))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.error.kind, crate::ErrorKind::Conflict);
+    assert_eq!(
+        fixture.store.state(&fixture.identity).await.unwrap(),
+        accepted
+    );
+    fixture
+        .store
+        .index(&fixture.identity, pinned(2, &accepted.publication_version))
+        .await
+        .unwrap();
+    let retried = fixture.store.state(&fixture.identity).await.unwrap();
+    assert_eq!(retried.revision, 2);
+    assert_ne!(retried.publication_version, accepted.publication_version);
+    assert_eq!(retried.silver_revision, accepted.silver_revision);
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let title = crate::gold::config::Build {

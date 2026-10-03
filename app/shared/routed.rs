@@ -54,6 +54,7 @@ pub(crate) async fn index(
     write_event(
         file.as_file_mut(),
         &Event::Start(Start {
+            expected_version: Some(state.publication_version.clone()),
             gold_build: Some(state.gold_build.clone()),
             source_silver: None,
             instance: instance.to_owned(),

@@ -83,6 +83,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     }
     let mut events = vec![
         Event::Start(Start {
+            expected_version: None,
             gold_build: None,
             source_silver: Some(source_certificate(revision)),
             instance: "restart-instance".into(),

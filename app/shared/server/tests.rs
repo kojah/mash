@@ -58,6 +58,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
         .collect();
     [
         Event::Start(Start {
+            expected_version: None,
             gold_build: None,
             source_silver: None,
             instance: "provider-contract".into(),
@@ -192,6 +193,7 @@ async fn wal_checkpoint_contract(service: Service) {
     };
     let events = [
         Event::Start(Start {
+            expected_version: None,
             gold_build: None,
             source_silver: None,
             instance: "native-session-test".into(),
@@ -227,6 +229,7 @@ async fn wal_checkpoint_contract(service: Service) {
         source.ready = true;
         let events = [
             Event::Start(Start {
+                expected_version: None,
                 gold_build: None,
                 source_silver: None,
                 instance: "native-session-test".into(),

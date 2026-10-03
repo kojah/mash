@@ -6,6 +6,10 @@ use crate::storage::{Counts, SearchHit};
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Start {
+    /// Immutable head observed while preparing this upload, including gold-only changes.
+    /// An empty value pins bootstrap to an absent head; omission does not add this guard.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gold_build: Option<crate::gold::config::Build>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -231,6 +235,10 @@ pub(crate) struct Tombstone {
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct NodeState {
+    /// Changes on every committed publication, independently of the source counter.
+    /// Empty before the first publication.
+    #[serde(default)]
+    pub publication_version: String,
     #[serde(default)]
     pub gold_build: crate::gold::config::Build,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
