@@ -84,6 +84,14 @@ readers before replaying Gemini sources that publish them.
 
 Other adapters remain explicitly unknown.
 
+Independent gold rebuilding requires certified current silver, retained provider
+coverage and source facts separated from gold readiness. It does not require
+every optional metadata origin to have been audited. The remaining adapter and
+per-message timestamp audit (`mash-q3e.2.7`) stays open; rebuilding preserves its
+unknown origins rather than inferring or certifying new provenance. Gold's
+tracking prerequisites are the completed `.2.1`, `.2.2` and `.2.3` contracts,
+not completion of the entire enrichment backlog.
+
 The optional timestamp container is additive to evidence version 1. Older records
 without it remain readable and publishable, without manufacturing provenance
 during source-free gold rebuilds. Explicit ingestion of these three audited
