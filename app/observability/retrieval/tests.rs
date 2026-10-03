@@ -27,6 +27,7 @@ async fn request_measurements_propagate_to_blocking_work_and_remain_isolated() {
             assert_eq!(measured.completed_calls, 1);
             assert_eq!(measured.items_out, Some(expected));
             assert!(measured.total_us >= measured.max_us);
+            assert!(measured.filters_before_limit);
         }
     }
     assert!(current().is_none());
@@ -57,7 +58,19 @@ async fn unknown_failed_and_zero_counts_are_distinct_and_bounded() {
     let failed = &measurements[1];
     assert_eq!(failed.calls, 1);
     assert_eq!(failed.completed_calls, 0);
+    assert!(failed.filters_before_limit);
     assert!(failed.items_out.is_none());
     let unmeasured = Guard::begin(Stage::Embed);
     assert!(unmeasured.0.is_none());
+}
+
+#[tokio::test]
+async fn non_retrieval_stages_do_not_claim_filter_placement() {
+    let capture = Capture::default();
+    capture
+        .scope(async {
+            measure_vec(Stage::Rerank, Some(1), || Ok(vec![1])).unwrap();
+        })
+        .await;
+    assert!(!capture.finish()[0].filters_before_limit);
 }

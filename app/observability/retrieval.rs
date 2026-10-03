@@ -28,6 +28,9 @@ const COUNT: usize = 11;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Measurement {
     pub(crate) stage: Stage,
+    /// Placement of metadata/scope predicates, independent of call completion.
+    #[serde(default)]
+    pub(crate) filters_before_limit: bool,
     pub(crate) calls: u64,
     pub(crate) completed_calls: u64,
     pub(crate) total_us: u64,
@@ -120,6 +123,15 @@ impl Drop for Guard {
         if let Ok(mut items) = active.capture.0.lock() {
             let item = items[active.stage as usize].get_or_insert(Measurement {
                 stage: active.stage,
+                filters_before_limit: matches!(
+                    active.stage,
+                    Stage::LocalExact
+                        | Stage::LocalLexical
+                        | Stage::LocalDense
+                        | Stage::SharedCandidates
+                        | Stage::LocalMetadata
+                        | Stage::SharedMetadata
+                ),
                 calls: 0,
                 completed_calls: 0,
                 total_us: 0,

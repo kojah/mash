@@ -38,6 +38,9 @@ pub(crate) struct Diagnostics {
     pub(crate) limit: usize,
     /// Selection is policy, not a claim about candidate counts or inference calls.
     pub(crate) selected_artifacts: Vec<Artifact>,
+    /// Requested predicate names, not values, Boolean structure or removal counts.
+    #[serde(default)]
+    pub(crate) filter_fields: Vec<crate::search_filter::Field>,
     pub(crate) requested_scope: Scope,
     pub(crate) completed_sources: Vec<Source>,
     pub(crate) shared_fallback: bool,
@@ -77,6 +80,7 @@ impl Diagnostics {
             } else {
                 vec![Artifact::Metadata, Artifact::Lexical]
             },
+            filter_fields: Vec::new(),
             requested_scope: scope,
             completed_sources: match (scope, fallback) {
                 (Scope::Combined, false) => vec![Source::Local, Source::Shared],

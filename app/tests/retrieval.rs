@@ -54,6 +54,37 @@ fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
         );
         assert_eq!(viewed["messages"][0]["content"], content);
     }
+    let diagnosed = run_json(
+        &[
+            base.as_slice(),
+            &[
+                "search",
+                "if",
+                "--local",
+                "--diagnostics",
+                "--provider",
+                "claude-code",
+                "--role",
+                "user",
+                "--filter",
+                r#"{"not":{"project":["private-filter-canary"]}}"#,
+            ],
+        ]
+        .concat(),
+    );
+    assert_eq!(
+        diagnosed["diagnostics"]["filter_fields"],
+        serde_json::json!(["provider", "role", "project"])
+    );
+    let stage = &diagnosed["diagnostics"]["stages"][0];
+    assert_eq!(stage["stage"], "local-exact");
+    assert_eq!(stage["filters_before_limit"], true);
+    assert_eq!(stage["completed_calls"], 1);
+    assert!(
+        !serde_json::to_string(&diagnosed["diagnostics"])
+            .unwrap()
+            .contains("private-filter-canary")
+    );
     assert_eq!(std::fs::read(database).unwrap(), before);
     assert!(!models.exists());
 }

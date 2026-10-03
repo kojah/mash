@@ -33,7 +33,43 @@ pub(crate) struct Scope {
     pub(crate) node: String,
 }
 
+/// Predicate names only; diagnostics never echo filter values or the query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Field {
+    Provider,
+    Node,
+    Role,
+    Conversation,
+    Project,
+    Repository,
+    After,
+    Before,
+}
+
 impl Selection {
+    pub(crate) fn fields(&self) -> Vec<Field> {
+        let mut fields = std::collections::BTreeSet::new();
+        for (present, field) in [
+            (!self.provider.is_empty(), Field::Provider),
+            (!self.node.is_empty(), Field::Node),
+            (!self.role.is_empty(), Field::Role),
+            (!self.conversation.is_empty(), Field::Conversation),
+            (!self.project.is_empty(), Field::Project),
+            (!self.repository.is_empty(), Field::Repository),
+            (self.after.is_some() || self.days.is_some(), Field::After),
+            (self.before.is_some(), Field::Before),
+        ] {
+            if present {
+                fields.insert(field);
+            }
+        }
+        if let Some(filter) = &self.filter {
+            filter.fields(&mut fields);
+        }
+        fields.into_iter().collect()
+    }
+
     pub(crate) fn resolve(self, node: &str) -> Result<Scope, AppError> {
         let mut all = Vec::new();
         if !self.provider.is_empty() {
@@ -100,6 +136,27 @@ pub(crate) enum Filter {
 }
 
 impl Filter {
+    fn fields(&self, fields: &mut std::collections::BTreeSet<Field>) {
+        let field = match self {
+            Self::All(children) | Self::Any(children) => {
+                for child in children {
+                    child.fields(fields);
+                }
+                return;
+            }
+            Self::Not(child) => return child.fields(fields),
+            Self::Node(_) => Field::Node,
+            Self::Provider(_) => Field::Provider,
+            Self::Role(_) => Field::Role,
+            Self::Conversation(_) => Field::Conversation,
+            Self::Project(_) => Field::Project,
+            Self::Repository(_) => Field::Repository,
+            Self::After(_) => Field::After,
+            Self::Before(_) => Field::Before,
+        };
+        fields.insert(field);
+    }
+
     pub(crate) fn validate(&self) -> Result<(), AppError> {
         self.validate_at(0, &mut 0)
     }
@@ -225,6 +282,28 @@ pub(crate) fn timestamp(value: &str) -> Result<i64, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostic_fields_are_deduplicated_across_boolean_and_shorthand_filters() {
+        let selection: Selection = serde_json::from_str(
+            r#"{
+            "provider":["codex"], "days":0,
+            "filter":{"all":[{"provider":[]},{"any":[{"role":["user"]},
+                {"not":{"project":["private-filter-canary"]}}]},{"after":1}]}
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            selection.fields(),
+            [Field::Provider, Field::Role, Field::Project, Field::After]
+        );
+        assert!(
+            !serde_json::to_string(&selection.fields())
+                .unwrap()
+                .contains("private-filter-canary")
+        );
+        assert_eq!(Selection::default().fields(), [] as [Field; 0]);
+    }
 
     #[test]
     fn expressions_validate_and_compile_without_interpolating_query_syntax() {

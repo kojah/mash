@@ -909,6 +909,24 @@ candidate failure with local fallback; shared-only candidate failure remains
 an error. Both optional error fields are omitted when absent. Artifact readiness,
 coverage, filter-stage counts and metadata/topic diagnostics remain parent work.
 
+Opt-in search diagnostics now include `filter_fields`: a deterministic,
+deduplicated list of requested predicate names (`provider`, `node`, `role`,
+`conversation`, `project`, `repository`, `after`, `before`). Boolean expressions
+are traversed, and `days` contributes `after`. Values, query text and Boolean
+structure are not echoed; this list is not a normalized query plan or a claim
+about how many rows a predicate removed.
+
+Each measured stage reports `filters_before_limit`. It is true for local
+exact/lexical/dense retrieval, shared candidate retrieval and local/shared
+metadata listing: those paths apply metadata/scope predicates before their
+candidate or listing limits. Context, embedding, reranking, fusion and metadata
+merge report false. The flag describes placement independently of completion;
+check `completed_calls` before treating an attempted stage as successful.
+An empty `filter_fields` does not remove internal visibility, node or publication
+guards. No unfiltered baseline query or per-predicate rejection count is added.
+The same typed core response passes through CLI, worker and MCP, and ordinary
+responses continue to omit diagnostics.
+
 The ordinary outcome correction passed 647 standard tests, four real-model
 contracts, strict all-target Clippy, formatting and doctest compilation on
 2026-10-03. The context-failure matrix verified combined/shared-only modes

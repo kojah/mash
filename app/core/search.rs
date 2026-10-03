@@ -161,17 +161,18 @@ pub(super) async fn run(
             input.intent.unwrap_or(configuration.gold.query.intent),
             configuration.gold.query.ranking,
         )?;
-        Some((limit, fusion, scope, ranking))
+        Some((limit, fusion, scope, ranking, input.filters.fields()))
     } else {
         None
     };
     let mut response = run_inner(configuration, database, models, input).await?;
-    if let Some((limit, fusion, scope, ranking)) = policy {
+    if let Some((limit, fusion, scope, ranking, filter_fields)) = policy {
         response.diagnostics = Some(crate::gold::diagnostics::Diagnostics::new(
             &response, scope, limit, fusion, ranking,
         ));
         if let Some(diagnostics) = &mut response.diagnostics {
             diagnostics.shared_vector_override = vector_override;
+            diagnostics.filter_fields = filter_fields;
         }
     }
     Ok(response)

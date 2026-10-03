@@ -46,7 +46,14 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
             shared_vector: None,
             diagnostics: true,
             unit: Some(crate::search_results::SearchUnit::Messages),
-            filters: crate::search_filter::Selection::default(),
+            filters: crate::search_filter::Selection {
+                provider: vec![crate::provider::Provider::Codex],
+                role: vec![crate::role::Role::User],
+                filter: Some(crate::search_filter::Filter::Not(Box::new(
+                    crate::search_filter::Filter::Project(vec!["private-filter-canary".into()]),
+                ))),
+                ..Default::default()
+            },
             shared: false,
             local: true,
         })),
@@ -64,12 +71,23 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
         json!(["metadata", "lexical"])
     );
     assert!(data["diagnostics"].get("fusion").is_none());
+    assert_eq!(
+        data["diagnostics"]["filter_fields"],
+        json!(["provider", "role", "project"])
+    );
+    assert!(
+        !serde_json::to_string(&data["diagnostics"])
+            .unwrap()
+            .contains("private-filter-canary")
+    );
     let stages = data["diagnostics"]["stages"].as_array().unwrap();
     assert_eq!(stages.len(), 2);
     assert_eq!(stages[0]["stage"], "local-exact");
     assert_eq!(stages[0]["items_out"], 0);
+    assert_eq!(stages[0]["filters_before_limit"], true);
     assert_eq!(stages[1]["stage"], "fusion");
     assert_eq!(stages[1]["items_out"], 0);
+    assert_eq!(stages[1]["filters_before_limit"], false);
     assert_eq!(
         crate::storage::Storage::open_catalog(&database)
             .unwrap()

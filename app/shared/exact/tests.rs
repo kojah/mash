@@ -25,6 +25,15 @@ fn assert_diagnostics(response: &core::SearchResponse, scope: Scope, fallback: b
         .unwrap();
     assert_eq!(shared.calls, 1);
     assert_eq!(shared.completed_calls, u64::from(!fallback));
+    assert!(shared.filters_before_limit);
+    assert_eq!(
+        diagnostics.filter_fields,
+        [
+            crate::search_filter::Field::Provider,
+            crate::search_filter::Field::Role,
+            crate::search_filter::Field::After
+        ]
+    );
     assert!(!diagnostics.stages.iter().any(|s| matches!(
         s.stage,
         crate::observability::retrieval::Stage::Embed
@@ -116,7 +125,12 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
             intent: None,
             unit: Some(SearchUnit::Messages),
             limit: Some(2),
-            filters: Box::default(),
+            filters: Box::new(crate::search_filter::Selection {
+                provider: vec![crate::provider::Provider::Codex],
+                role: vec![crate::role::Role::User],
+                after: Some(1),
+                ..Default::default()
+            }),
             local: false,
             shared: false,
         },

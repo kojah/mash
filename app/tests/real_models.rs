@@ -509,6 +509,21 @@ fn assert_gold_ranking_defaults(config: &Path, database: &Path, models: &str) {
 }
 
 #[cfg(unix)]
+fn assert_worker_filter_diagnostics(found: &Value) {
+    assert_eq!(
+        found["diagnostics"]["filter_fields"],
+        serde_json::json!(["role"])
+    );
+    for stage in found["diagnostics"]["stages"].as_array().unwrap() {
+        let filtered = matches!(
+            stage["stage"].as_str().unwrap(),
+            "local-lexical" | "local-dense"
+        );
+        assert_eq!(stage["filters_before_limit"], filtered);
+    }
+}
+
+#[cfg(unix)]
 fn assert_worker_stage_diagnostics(config: &Path, database: &Path, models: &str) {
     let mut previous = None;
     let mut worker = None;
@@ -529,6 +544,9 @@ fn assert_worker_stage_diagnostics(config: &Path, database: &Path, models: &str)
                 models,
                 "search",
                 "--local",
+                "--diagnostics",
+                "--role",
+                "user",
                 "--unit",
                 "messages",
                 "authentication",
@@ -541,10 +559,13 @@ fn assert_worker_stage_diagnostics(config: &Path, database: &Path, models: &str)
             String::from_utf8_lossy(&output.stderr)
         );
         let found: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_worker_filter_diagnostics(&found);
+        let mut stable = found;
+        stable.as_object_mut().unwrap().remove("diagnostics");
         if let Some(previous) = &previous {
-            assert_eq!(&found, previous);
+            assert_eq!(&stable, previous);
         }
-        previous = Some(found);
+        previous = Some(stable);
         let stderr = String::from_utf8(output.stderr).unwrap();
         if !traced {
             assert_eq!(stderr, "");
