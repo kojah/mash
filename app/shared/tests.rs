@@ -272,8 +272,10 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     );
     let request = request.unwrap();
     assert!(request.exclude_self);
-    let (hits, error) = result.unwrap();
-    assert!(error.is_none());
+    let result = result.unwrap();
+    assert!(result.retrieval.into_error().is_none());
+    assert!(result.context_error.is_none());
+    let hits = result.hits;
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, "searchable");
     assert!(hits[0].fusion_score >= 4.0 / 61.0);
@@ -282,7 +284,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     // Failure remains a local fallback for merged searches, and an error for
     // explicitly shared searches.
     config.token_env = "MASH_TEST_UNCONFIGURED_TOKEN_71B9".into();
-    let (fallback, error) = search(
+    let fallback = search(
         &config,
         Some((&path, &crate::gold::config::Build::default())),
         &models_dir,
@@ -293,9 +295,9 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     )
     .await
     .unwrap();
-    assert!(error.is_some());
+    assert!(fallback.retrieval.into_error().is_some());
     assert_eq!(
-        serde_json::to_value(fallback).unwrap(),
+        serde_json::to_value(fallback.hits).unwrap(),
         serde_json::to_value(hits).unwrap()
     );
     assert!(

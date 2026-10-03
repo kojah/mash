@@ -498,9 +498,24 @@ reciprocal ranks, while remaining independent of configurable hybrid weights.
 retrieval. `shared_fallback` specifically denotes candidate retrieval falling
 back locally. `shared_context_incomplete` distinguishes later context degradation:
 successful shared candidates remain a completed source even when remote context
-fails. Ordinary `shared/shared_error/realized_mode` still conflate those cases;
-the typed outcome correction is tracked in `mash-q3e.4.4.3`. Artifact readiness,
+fails. Ordinary `shared/shared_error/realized_mode` now use a typed candidate
+outcome independently of diagnostics. Successful shared retrieval reports
+`shared = true` and the merged/shared mode even if context is incomplete;
+`shared_context_error` carries that later degradation. `shared_error` remains
+candidate failure with local fallback; shared-only candidate failure remains
+an error. Both optional error fields are omitted when absent. Artifact readiness,
 coverage, filter-stage counts and metadata/topic diagnostics remain parent work.
+
+The ordinary outcome correction passed 647 standard tests, four real-model
+contracts, strict all-target Clippy, formatting and doctest compilation on
+2026-10-03. The context-failure matrix verified combined/shared-only modes
+with diagnostics enabled and disabled, retaining identical hits and unchanged
+index bytes. Existing direct/cached CLI, SDK MCP and transport-fallback/concurrent
+retrieval contracts passed. Captures are `gold-shared-outcome-standard-20261003.log`,
+`gold-shared-outcome-models-20261003.log`,
+`gold-shared-outcome-clippy-complete-20261003.log` and
+`gold-shared-outcome-doc-20261003.log` in the external artifacts directory.
+This corrects source status; it does not change retrieval, build identity or silver.
 
 Stage validation on 2026-10-03 passed 647 standard tests and four real-model
 contracts, strict all-target Clippy, formatting and doctest compilation.

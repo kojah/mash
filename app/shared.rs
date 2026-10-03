@@ -29,7 +29,7 @@ pub(crate) use publication::Inference;
 pub(crate) use publication::write_event;
 pub(crate) use publication::{forget_routed, publish, publish_routed, routed_status, status};
 pub(crate) use rebuild::{Rebuilt, rebuild_gold};
-pub(crate) use retrieval::search;
+pub(crate) use retrieval::{SearchOutcome, search};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]

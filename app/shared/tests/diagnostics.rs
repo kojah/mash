@@ -78,15 +78,14 @@ async fn fixture() -> Fixture {
     }
 }
 
-#[tokio::test]
-#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
-async fn real_models_shared_context_failure_preserves_measured_retrieval_sources() {
-    let fixture = fixture().await;
-    let before = std::fs::read(&fixture.database).unwrap();
-    let Response::Search(response) = core::execute(fixture.request).await.unwrap() else {
-        panic!("search")
-    };
-    assert!(response.shared_error.is_some());
+fn assert_context_outcome(response: &core::SearchResponse, shared_only: bool) {
+    assert!(response.shared_error.is_none());
+    assert!(response.shared_context_error.is_some());
+    assert!(response.shared);
+    assert!(matches!(
+        (&response.realized_mode, shared_only),
+        (core::SearchMode::MergedHybrid, false) | (core::SearchMode::Hybrid, true)
+    ));
     let crate::search_results::Results::Messages(hits) = &response.results else {
         panic!("messages")
     };
@@ -94,14 +93,16 @@ async fn real_models_shared_context_failure_preserves_measured_retrieval_sources
         hits.iter()
             .any(|hit| hit.node_id.as_deref() == Some("peer"))
     );
-    let diagnostics = response.diagnostics.unwrap();
-    assert_eq!(
-        diagnostics.completed_sources,
-        vec![
-            crate::gold::diagnostics::Source::Local,
-            crate::gold::diagnostics::Source::Shared
-        ]
-    );
+}
+
+fn assert_measured_sources(diagnostics: &crate::gold::diagnostics::Diagnostics, shared_only: bool) {
+    use crate::gold::diagnostics::Source;
+    let expected = if shared_only {
+        vec![Source::Shared]
+    } else {
+        vec![Source::Local, Source::Shared]
+    };
+    assert_eq!(diagnostics.completed_sources, expected);
     assert!(!diagnostics.shared_fallback);
     assert!(diagnostics.shared_context_incomplete);
     let context = diagnostics
@@ -109,8 +110,7 @@ async fn real_models_shared_context_failure_preserves_measured_retrieval_sources
         .iter()
         .find(|s| s.stage == crate::observability::retrieval::Stage::Context)
         .unwrap();
-    assert_eq!(context.calls, 1);
-    assert_eq!(context.completed_calls, 0);
+    assert_eq!((context.calls, context.completed_calls), (1, 0));
     let remote = diagnostics
         .stages
         .iter()
@@ -118,6 +118,44 @@ async fn real_models_shared_context_failure_preserves_measured_retrieval_sources
         .unwrap();
     assert_eq!(remote.completed_calls, 1);
     assert_eq!(remote.items_out, Some(1));
-    assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
+}
+
+#[tokio::test]
+#[ignore = "requires explicitly installed MASH_TEST_MODELS_DIR"]
+async fn real_models_shared_context_failure_preserves_measured_retrieval_sources() {
+    let fixture = fixture().await;
+    let before = std::fs::read(&fixture.database).unwrap();
+    for shared_only in [false, true] {
+        let mut baseline = None;
+        for diagnostics in [false, true] {
+            let mut request = fixture.request.clone();
+            let Operation::Search {
+                shared,
+                diagnostics: enabled,
+                ..
+            } = &mut request.operation
+            else {
+                panic!("search")
+            };
+            *shared = shared_only;
+            *enabled = diagnostics;
+            let Response::Search(response) = core::execute(request).await.unwrap() else {
+                panic!("search")
+            };
+            assert_context_outcome(&response, shared_only);
+            if diagnostics {
+                assert_measured_sources(response.diagnostics.as_ref().unwrap(), shared_only);
+            } else {
+                assert!(response.diagnostics.is_none());
+            }
+            let hits = serde_json::to_value(response.results).unwrap();
+            if let Some(baseline) = &baseline {
+                assert_eq!(&hits, baseline);
+            } else {
+                baseline = Some(hits);
+            }
+            assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
+        }
+    }
     fixture.server.abort();
 }

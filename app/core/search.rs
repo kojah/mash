@@ -145,6 +145,7 @@ async fn run_inner(
                 query,
                 shared: shared_error.is_none(),
                 shared_error,
+                shared_context_error: None,
             });
         }
         let literal = crate::gold::exact::Literal::new(&query)?;
@@ -155,26 +156,16 @@ async fn run_inner(
         .await;
     }
     if use_shared || (!use_local && configuration.shared.is_some()) {
-        let (results, shared_error) = shared::search(
-            required_shared(configuration)?,
-            (!use_shared).then_some((database, &configuration.gold.build)),
+        shared_hybrid(
+            configuration,
+            (!use_shared).then_some(database),
             models,
-            configuration.embeddings.as_ref(),
-            &query,
+            query,
             options,
             &filters,
+            use_shared,
         )
-        .await?;
-        Ok(SearchResponse {
-            diagnostics: None,
-            intent,
-            realized_mode: search_mode(shared_error.is_some(), use_shared),
-            unit,
-            results: crate::search_results::collect(results, unit, limit, &query),
-            query,
-            shared: shared_error.is_none(),
-            shared_error,
-        })
+        .await
     } else {
         let database = database.to_path_buf();
         let models = models.to_path_buf();
@@ -187,6 +178,44 @@ async fn run_inner(
         })
         .await
     }
+}
+
+async fn shared_hybrid(
+    configuration: &ResolvedConfig,
+    database: Option<&Path>,
+    models: &Path,
+    query: String,
+    options: crate::gold::config::Options,
+    filters: &crate::search_filter::Scope,
+    shared_only: bool,
+) -> Result<SearchResponse, AppError> {
+    let crate::gold::config::Options { limit, unit, .. } = options;
+    let shared::SearchOutcome {
+        hits: results,
+        retrieval,
+        context_error,
+    } = shared::search(
+        required_shared(configuration)?,
+        database.map(|database| (database, &configuration.gold.build)),
+        models,
+        configuration.embeddings.as_ref(),
+        &query,
+        options,
+        filters,
+    )
+    .await?;
+    let shared_error = retrieval.into_error();
+    Ok(SearchResponse {
+        diagnostics: None,
+        intent: crate::gold::exact::Intent::RelatedDiscussion,
+        realized_mode: search_mode(shared_error.is_some(), shared_only),
+        unit,
+        results: crate::search_results::collect(results, unit, limit, &query),
+        query,
+        shared: shared_error.is_none(),
+        shared_error,
+        shared_context_error: context_error,
+    })
 }
 
 fn local_exact(
@@ -211,6 +240,7 @@ fn local_exact(
         query,
         shared: false,
         shared_error: None,
+        shared_context_error: None,
     })
 }
 
@@ -250,6 +280,7 @@ fn local_search(
         query,
         shared: false,
         shared_error: None,
+        shared_context_error: None,
     })
 }
 

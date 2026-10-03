@@ -987,9 +987,12 @@ its source checkpoints once. Search never performs that refresh itself.
 
 Use `search --local` to avoid the shared API, or `search --shared` for the complete
 shared index, including this node. MCP search exposes equivalent `local` and
-`shared` booleans. An API failure during default search returns local results
+`shared` booleans. A candidate API failure during default search returns local results
 with `realized_mode = "local-hybrid"` and `shared_error`; explicit shared search
-returns an error. Incomplete local embeddings still require `mash index`.
+returns an error. Later context failures retain the retrieved shared evidence,
+`shared = true`, and the merged/shared mode, and report `shared_context_error`
+separately. These source flags work independently of opt-in diagnostics.
+Incomplete local embeddings still require `mash index`.
 Models remain local and are installed only by `models install`.
 Installation metadata is checked before loading models: the marker is limited to
 1 MiB and 4,096 asset entries, revisions to 128 bytes, and each tokenizer/config

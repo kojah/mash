@@ -9,6 +9,26 @@ use std::{collections::HashMap, path::Path, time::Duration};
 
 pub(super) const CONTEXT_DEADLINE: Duration = Duration::from_secs(1);
 
+pub(crate) enum SharedRetrieval {
+    Available,
+    LocalFallback { error: String },
+}
+
+impl SharedRetrieval {
+    pub(crate) fn into_error(self) -> Option<String> {
+        match self {
+            Self::Available => None,
+            Self::LocalFallback { error } => Some(error),
+        }
+    }
+}
+
+pub(crate) struct SearchOutcome {
+    pub(crate) hits: Vec<SearchHit>,
+    pub(crate) retrieval: SharedRetrieval,
+    pub(crate) context_error: Option<String>,
+}
+
 #[tracing::instrument(name = "combined_search", skip_all)]
 pub(crate) async fn search(
     config: &SharedConfig,
@@ -18,7 +38,7 @@ pub(crate) async fn search(
     query: &str,
     options: Options,
     filters: &crate::search_filter::Scope,
-) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
+) -> Result<SearchOutcome, AppError> {
     filters.filter.validate()?;
     crate::search_query::validate(query)?;
     let prepared = prepare_search(local_database, models_dir, embeddings, query).await?;
@@ -90,7 +110,7 @@ pub(super) async fn search_prepared(
     options: Options,
     filters: &crate::search_filter::Scope,
     prepared: PreparedSearch,
-) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
+) -> Result<SearchOutcome, AppError> {
     let PreparedSearch {
         mut backend,
         vector,
@@ -142,7 +162,7 @@ pub(super) async fn search_prepared(
         )
     };
     let ((local_hits, local_documents), candidates) = tokio::try_join!(local, remote)?;
-    let (candidates, shared_error) = received_candidates(candidates, exclude_self)?;
+    let (candidates, retrieval) = received_candidates(candidates, exclude_self)?;
     let protocol::Candidates {
         mut lexical,
         mut semantic,
@@ -172,10 +192,7 @@ pub(super) async fn search_prepared(
         Ok((backend, selection))
     })
     .await?;
-    let mut context_stage = crate::observability::retrieval::Guard::begin(
-        crate::observability::retrieval::Stage::Context,
-    );
-    let (context, context_error) = context_documents(
+    let (context, context_error) = measured_context_documents(
         config,
         context_database,
         context_generation,
@@ -183,16 +200,33 @@ pub(super) async fn search_prepared(
         &selection.hits[..selection.count],
     )
     .await?;
-    if context_error.is_none() {
-        context_stage.complete(Some(selection.count), Some(context.len()));
-    }
-    drop(context_stage);
     documents.extend(context);
     crate::blocking(move || {
         let fused = rerank_combined(&mut backend, &query, selection, &documents, (limit, unit))?;
-        Ok((fused, shared_error.or(context_error)))
+        Ok(SearchOutcome {
+            hits: fused,
+            retrieval,
+            context_error,
+        })
     })
     .await
+}
+
+async fn measured_context_documents(
+    config: &SharedConfig,
+    database: Option<std::path::PathBuf>,
+    generation: String,
+    query: &str,
+    hits: &[SearchHit],
+) -> Result<(HashMap<(String, String), String>, Option<String>), AppError> {
+    let mut stage = crate::observability::retrieval::Guard::begin(
+        crate::observability::retrieval::Stage::Context,
+    );
+    let result = context_documents(config, database, generation, query, hits).await?;
+    if result.1.is_none() {
+        stage.complete(Some(hits.len()), Some(result.0.len()));
+    }
+    Ok(result)
 }
 
 async fn request_candidates(
@@ -218,16 +252,18 @@ async fn request_candidates(
 fn received_candidates(
     candidates: Result<protocol::Candidates, AppError>,
     merged: bool,
-) -> Result<(protocol::Candidates, Option<String>), AppError> {
+) -> Result<(protocol::Candidates, SharedRetrieval), AppError> {
     match candidates {
-        Ok(candidates) => Ok((candidates, None)),
+        Ok(candidates) => Ok((candidates, SharedRetrieval::Available)),
         Err(error) if merged => Ok((
             protocol::Candidates {
                 lexical: Vec::new(),
                 semantic: Vec::new(),
                 documents: Vec::new(),
             },
-            Some(error.error.message),
+            SharedRetrieval::LocalFallback {
+                error: error.error.message,
+            },
         )),
         Err(error) => Err(error),
     }
