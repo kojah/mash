@@ -87,12 +87,23 @@ pub(super) struct Filter {
 #[serde(untagged)]
 pub(super) enum Condition {
     Match { key: String, r#match: Match },
+    IntegerMatch { key: String, r#match: IntegerMatch },
     Range { key: String, range: Range },
     Nested(Filter),
 }
 #[derive(Clone, Serialize)]
 pub(super) struct Match {
     pub any: Vec<String>,
+}
+#[derive(Clone, Serialize)]
+pub(super) struct IntegerMatch {
+    pub any: Vec<i64>,
+}
+pub(super) fn integers(key: &str, any: Vec<i64>) -> Condition {
+    Condition::IntegerMatch {
+        key: key.into(),
+        r#match: IntegerMatch { any },
+    }
 }
 #[derive(Clone, Default, Serialize)]
 pub(super) struct Range {
@@ -322,6 +333,8 @@ fn schema_fields(
             ("repository", "keyword"),
             ("tokens", "keyword"),
             ("created_at", "integer"),
+            ("message.ordinal", "integer"),
+            ("message.context.ordinal", "integer"),
         ]
     } else {
         &[("kind", "keyword"), ("version", "keyword")]

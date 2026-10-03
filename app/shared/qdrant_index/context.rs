@@ -17,7 +17,7 @@ pub(super) const FIELDS: &[&str] = &[
     "message.ordinal",
     "message.context",
 ];
-#[derive(Deserialize)]
+#[derive(Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Outline {
     version: String,
@@ -25,7 +25,7 @@ pub(super) struct Outline {
     conversation_id: String,
     message: Entry,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Entry {
     id: String,
@@ -70,6 +70,98 @@ pub(super) fn anchor(
 
 pub(super) struct Selection {
     entries: BTreeMap<i64, Entry>,
+}
+
+// Search asks for radius two. Read its native neighborhood rather than every
+// outline in a long thread. Large explicit views retain the full topology path.
+// Publication validates the complete thread; reads validate the fetched scope.
+pub(super) async fn neighborhood(
+    client: &api::Client,
+    name: &str,
+    filter: api::Filter,
+    anchor: &protocol::MessageRecord,
+    radius: u32,
+) -> Result<Vec<api::Record<Outline>>, AppError> {
+    async fn fetch(
+        client: &api::Client,
+        name: &str,
+        mut filter: api::Filter,
+        key: &str,
+        ordinals: Vec<i64>,
+    ) -> Result<Vec<api::Record<Outline>>, AppError> {
+        filter.must.push(api::integers(key, ordinals));
+        client.scroll_fields(name, filter, FIELDS).await
+    }
+    if radius > 2 {
+        return client.scroll_fields(name, filter, FIELDS).await;
+    }
+    if anchor.context.is_linear() {
+        return fetch(
+            client,
+            name,
+            filter,
+            "message.ordinal",
+            (anchor.ordinal.saturating_sub(i64::from(radius))
+                ..=anchor.ordinal.saturating_add(i64::from(radius)))
+                .collect(),
+        )
+        .await;
+    }
+    let mut records = fetch(
+        client,
+        name,
+        filter.clone(),
+        "message.ordinal",
+        vec![anchor.ordinal],
+    )
+    .await?;
+    let mut context = anchor.context;
+    // The existing selector also checks the last selected ancestor's parent.
+    for _ in 0..=radius {
+        let Some(parent) = context.parent().filter(|p| *p >= 0) else {
+            break;
+        };
+        let parents = fetch(
+            client,
+            name,
+            filter.clone(),
+            "message.ordinal",
+            vec![parent],
+        )
+        .await?;
+        context = parents
+            .first()
+            .map_or(MessageContext::Root, |p| p.payload.message.context);
+        records.extend(parents);
+    }
+    let mut ordinal = anchor.ordinal;
+    for _ in 0..radius {
+        let children = fetch(
+            client,
+            name,
+            filter.clone(),
+            "message.context.ordinal",
+            vec![ordinal],
+        )
+        .await?;
+        let child = children.iter().map(|p| p.payload.message.ordinal).min();
+        records.extend(children);
+        let Some(child) = child else { break };
+        ordinal = child;
+    }
+    // Ancestor and child reads can overlap. Do not hide inconsistent payloads.
+    let mut unique = BTreeMap::new();
+    for point in records {
+        if let Some(previous) = unique.insert(point.id.clone(), point.payload)
+            && unique.get(&point.id) != Some(&previous)
+        {
+            return Err(failure());
+        }
+    }
+    Ok(unique
+        .into_iter()
+        .map(|(id, payload)| api::Record { id, payload })
+        .collect())
 }
 
 #[tracing::instrument(name = "select_shared_context", skip_all, fields(thread_messages = records.len(), selected_messages = tracing::field::Empty))]

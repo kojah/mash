@@ -9,6 +9,61 @@ async fn qdrant_context_preserves_branches_and_rejects_broken_publications() {
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_small_tree_context_matches_large_view_with_unrelated_roots() {
+    let service = Service::qdrant(384).await;
+    let mut events = snapshot(1);
+    let base: MessageRecord = serde_json::from_value(events[2]["records"][0].clone()).unwrap();
+    events.splice(
+        3..3,
+        (100..1400)
+            .collect::<Vec<_>>()
+            .chunks(100)
+            .map(|batch| {
+                serde_json::to_value(Event::Batch(Batch::Messages {
+                    records: batch
+                        .iter()
+                        .map(|&ordinal| MessageRecord {
+                            id: format!("message-{ordinal}"),
+                            ordinal,
+                            context: MessageContext::Root,
+                            ..base.clone()
+                        })
+                        .collect(),
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>(),
+    );
+    let response = service.upload(FIRST, &events).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "{}",
+        response.text().await.unwrap()
+    );
+    for content in [MessageContent::Canonical, MessageContent::SearchProjection] {
+        let small = view(&service, 5, 2, content).await;
+        let large = view(&service, 5, 100, content).await;
+        assert_eq!(
+            small
+                .iter()
+                .map(|m| (&m.id, m.ordinal, &m.content))
+                .collect::<Vec<_>>(),
+            large
+                .iter()
+                .map(|m| (&m.id, m.ordinal, &m.content))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            small.iter().map(|m| m.ordinal).collect::<Vec<_>>(),
+            [0, 5, 6, 8]
+        );
+    }
+    service.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 async fn qdrant_context_projects_multiple_topology_pages_and_fetches_selected_batches() {
     let service = Service::qdrant(384).await;
     let mut events = snapshot(1);

@@ -443,3 +443,27 @@ than the earlier loopback address. Its authenticated `status --shared` sees the
 dev publication and both unpublished members, while correctly reporting its own
 local index as not ready. This updates only staged configuration, not the installed
 node configuration or the incomplete silver certificate.
+
+### Small native context reads
+
+Radius-zero through radius-two views now query indexed integer ordinals instead
+of downloading the entire thread outline. Linear views query the saturating
+ordinal window, preserving gaps; tree views follow ancestors and fetch children
+of the selected path, choosing the smallest ordinal as before. Branch fan-out
+still determines the size of each child read. Larger explicit views retain the
+full-thread topology path. Ordinal filters serialize integers without conversion
+to floating point. The service creates the two payload indexes through its
+existing collection initialization; no silver payload or embedding changes.
+
+Complete-thread ordinal uniqueness and parent existence remain publication
+checks. Small reads validate the fetched neighborhood and selected bodies,
+including identity, scope, edge validity, duplicate ordinals and unchanged
+publication. They no longer inspect unrelated thread rows for backend corruption
+on every request. This is a narrower read-validation boundary, not a relaxation
+of publication validation. The branch/publication and 1,256-row linear contracts
+passed serially against disposable Qdrant 1.19.1. A tree fixture with 1,300
+unrelated roots also passed on a fresh disposable instance, comparing small and
+large views in both content representations. Earlier concurrent/setup attempts
+timed out; the fresh fixture passed in 47.507 seconds including initialization,
+upload and cleanup. This is functional evidence, not search latency. The real
+failing query still needs to be retried before claiming the timeout is resolved.

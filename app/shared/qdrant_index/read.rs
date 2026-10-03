@@ -456,21 +456,21 @@ impl Store {
             self.unchanged(&other, &head.version).await?;
             return Ok(vec![]);
         };
-        let records = self
-            .api
-            .scroll_fields::<super::context::Outline>(
-                &name,
-                api::Filter {
-                    must: vec![
-                        api::matches("version", vec![head.version.clone()]),
-                        api::matches("node_id", vec![input.node_id.clone()]),
-                        api::matches("conversation_id", vec![anchor.conversation_id.clone()]),
-                    ],
-                    ..api::Filter::default()
-                },
-                super::context::FIELDS,
-            )
-            .await?;
+        let records = super::context::neighborhood(
+            &self.api,
+            &name,
+            api::Filter {
+                must: vec![
+                    api::matches("version", vec![head.version.clone()]),
+                    api::matches("node_id", vec![input.node_id.clone()]),
+                    api::matches("conversation_id", vec![anchor.conversation_id.clone()]),
+                ],
+                ..api::Filter::default()
+            },
+            &anchor,
+            input.context,
+        )
+        .await?;
         let (selection, head, input) = crate::blocking(move || {
             super::context::select(&anchor, records, &head, &input)
                 .map(|selection| (selection, head, input))

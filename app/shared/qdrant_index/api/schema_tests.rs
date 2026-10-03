@@ -1,5 +1,16 @@
 use super::*;
 
+#[test]
+fn ordinal_matches_preserve_integers_above_float_precision() {
+    let condition = integers("message.ordinal", vec![9_007_199_254_740_993, i64::MAX]);
+    let value = serde_json::to_value(condition).unwrap();
+    assert_eq!(
+        value["match"]["any"][0].as_i64(),
+        Some(9_007_199_254_740_993)
+    );
+    assert_eq!(value["match"]["any"][1].as_i64(), Some(i64::MAX));
+}
+
 fn legacy() -> serde_json::Value {
     serde_json::json!({
         "config": {
