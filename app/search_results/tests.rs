@@ -44,6 +44,7 @@ fn message_replicas_fuse_once_even_when_rankers_choose_different_nodes() {
         vec![hit("thread", "a"), lexical_copy, hit("thread", "b")],
         vec![semantic_copy, hit("thread", "b")],
         SearchUnit::Messages,
+        crate::gold::config::Fusion::default(),
     );
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].id, "a");

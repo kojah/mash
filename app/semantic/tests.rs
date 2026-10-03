@@ -311,6 +311,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
         vec![hit("a"), hit("b")],
         vec![hit("c"), semantic_b],
         crate::search_results::SearchUnit::Messages,
+        crate::gold::config::Fusion::default(),
     );
     let ids: Vec<&str> = fused
         .iter()
@@ -333,6 +334,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
         vec![hit("a"), copy, hit("b")],
         vec![semantic_copy, hit("b")],
         crate::search_results::SearchUnit::Threads,
+        crate::gold::config::Fusion::default(),
     );
     assert_eq!(fused.len(), 2);
     assert_eq!(fused[0].id, "a");
@@ -340,4 +342,19 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
     assert_eq!(fused[0].semantic_score, Some(0.9));
     assert!((fused[0].fusion_score - 2.0 / 61.0).abs() < 1e-6);
     assert!((fused[1].fusion_score - 2.0 / 62.0).abs() < 1e-6);
+    for (lexical_weight, semantic_weight, expected) in [(4, 1, "lex"), (1, 4, "sem")] {
+        let fusion = crate::gold::config::Fusion {
+            rank_constant: 10,
+            lexical_weight,
+            semantic_weight,
+        };
+        let ranked = fuse(
+            vec![hit("lex")],
+            vec![hit("sem")],
+            crate::search_results::SearchUnit::Messages,
+            fusion,
+        );
+        assert_eq!(ranked[0].id, expected);
+        assert!((ranked[0].fusion_score - 4.0 / 11.0).abs() < 1e-6);
+    }
 }

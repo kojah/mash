@@ -12,6 +12,42 @@ const VALID: &str = r#""version" = 1
 "#;
 
 #[test]
+fn gold_fusion_policy_is_query_only_and_strictly_bounded() {
+    let defaults = parse_document(VALID.as_bytes()).unwrap().gold;
+    let changed = parse_document(
+        format!(
+            "{VALID}\n[gold.query.fusion]\nrank_constant=10\nlexical_weight=4\nsemantic_weight=2\n"
+        )
+        .as_bytes(),
+    )
+    .unwrap()
+    .gold;
+    assert_eq!(changed.build, defaults.build);
+    assert_eq!(
+        changed.build.generation("model"),
+        defaults.build.generation("model")
+    );
+    assert_eq!(changed.query.fusion.rank_constant, 10);
+    assert_eq!(changed.query.fusion.lexical_weight, 4);
+    assert_eq!(changed.query.fusion.semantic_weight, 2);
+    for invalid in [
+        "rank_constant=0",
+        "rank_constant=1001",
+        "lexical_weight=0",
+        "semantic_weight=101",
+        "lexical_weight=-1",
+        "lexical_weight=1.5",
+        "unknown=1",
+    ] {
+        assert!(
+            parse_document(format!("{VALID}\n[gold.query.fusion]\n{invalid}\n").as_bytes())
+                .is_err(),
+            "{invalid}"
+        );
+    }
+}
+
+#[test]
 fn gold_query_defaults_are_typed_bounded_and_reported_in_status() {
     use crate::search_results::SearchUnit;
     let defaults = parse_document(VALID.as_bytes()).unwrap().gold;

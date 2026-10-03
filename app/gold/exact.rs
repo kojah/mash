@@ -84,7 +84,7 @@ pub(crate) fn rank(
     unit: crate::search_results::SearchUnit,
 ) -> Vec<crate::storage::SearchHit> {
     order(&mut hits);
-    crate::semantic::fuse(hits, vec![], unit)
+    crate::semantic::fuse(hits, vec![], unit, super::config::Fusion::default())
 }
 
 #[cfg(test)]

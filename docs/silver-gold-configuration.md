@@ -365,11 +365,39 @@ Node configuration accepts a single strict typed TOML table:
 [gold.query]
 unit = "threads" # "threads" or "messages"
 limit = 20       # 1 through 200
+
+[gold.query.fusion]
+rank_constant = 60  # 1 through 1000
+lexical_weight = 1  # 1 through 100
+semantic_weight = 1 # 1 through 100
 ```
 
 Either field may be omitted. Omitting the table preserves the existing defaults
 of threads and 20 results. Unknown fields, unsupported units and invalid default
 limits are configuration errors. `mash status` reports the effective defaults.
+
+Related-discussion candidate fusion uses weighted reciprocal ranks:
+`lexical_weight / (rank_constant + lexical_rank)` plus
+`semantic_weight / (rank_constant + semantic_rank)`, with ranks starting at one.
+Replicated evidence is deduplicated before ranking. These settings apply to both
+local and shared candidates, including local fallback. They change candidate
+preference before contextual reranking; they do not guarantee final ordering
+because the reranker still scores selected evidence. Exact-mention retrieval
+does not consult this policy. Defaults preserve the previous unweighted RRF.
+Fusion is query-only: it changes no silver, vectors, build generation or manifest
+and needs no indexing. Changing TOML also reaches the next idle-worker request.
+Per-request fusion overrides and further ranking controls remain follow-up work.
+
+Validation on 2026-10-03 passed 642 standard tests and 55 real-model/Qdrant
+contracts. Weighted lexical/semantic preferences changed candidate ordering on
+deterministic fixtures. Real-model direct and cached CLI searches reflected
+fourfold uniform weights while the database remained byte-for-byte unchanged.
+Combined retrieval retained concurrency and equal weighted local results on
+shared failure. Default-policy relevance and Qdrant contracts passed. Logs are
+`gold-fusion-standard-current-20261003.log` and
+`gold-fusion-models-qdrant-20261003.log` in the external artifacts directory.
+This validates policy wiring and default preservation; it does not establish
+that nondefault weights improve held-out relevance or representative latency.
 
 CLI `search --unit/--limit` and MCP `search` unit/limit parameters override these
 defaults independently. Omitted parameters remain omitted through the wrappers;

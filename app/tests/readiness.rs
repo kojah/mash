@@ -66,7 +66,10 @@ fn status_reports_the_exact_resolved_local_configuration() {
             "path": std::fs::canonicalize(&config).expect("canonical config"),
             "loaded": true,
             "shared": null,
-            "gold": {"build": {"embedding_text": "dialogue"}, "query": {"intent": "related-discussion", "unit": "threads", "limit": 20}},
+            "gold": {"build": {"embedding_text": "dialogue"}, "query": {
+                "intent": "related-discussion", "unit": "threads", "limit": 20,
+                "fusion": {"rank_constant": 60, "lexical_weight": 1, "semantic_weight": 1}
+            }},
             "providers": {
                 "claude-code": {"roots": [claude]},
                 "codex": {"roots": [codex]}

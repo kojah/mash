@@ -56,6 +56,8 @@ pub(super) async fn run(
         local: use_local,
     } = input;
     let (limit, unit) = configuration.gold.query.resolve(limit, unit);
+    let mut options = crate::gold::config::Options::new(limit, unit);
+    options.fusion = configuration.gold.query.fusion;
     let intent = intent.unwrap_or(configuration.gold.query.intent);
     let filters = resolve(
         &query,
@@ -108,7 +110,7 @@ pub(super) async fn run(
             models,
             configuration.embeddings.as_ref(),
             &query,
-            (limit, unit),
+            options,
             &filters,
         )
         .await?;
@@ -128,13 +130,7 @@ pub(super) async fn run(
         let build = configuration.gold.build.clone();
         crate::blocking(move || {
             local_search(
-                &database,
-                &models,
-                embeddings,
-                query,
-                (limit, unit),
-                &filters,
-                &build,
+                &database, &models, embeddings, query, options, &filters, &build,
             )
         })
         .await
@@ -168,7 +164,7 @@ fn local_search(
     models_dir: &Path,
     embeddings_config: Option<semantic::remote::Configuration>,
     query: String,
-    options: (usize, crate::search_results::SearchUnit),
+    options: crate::gold::config::Options,
     filters: &crate::search_filter::Scope,
     build: &crate::gold::config::Build,
 ) -> Result<SearchResponse, AppError> {
@@ -192,8 +188,8 @@ fn local_search(
     Ok(SearchResponse {
         intent: crate::gold::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,
-        unit: options.1,
-        results: crate::search_results::collect(results, options.1, options.0, &query),
+        unit: options.unit,
+        results: crate::search_results::collect(results, options.unit, options.limit, &query),
         query,
         shared: false,
         shared_error: None,

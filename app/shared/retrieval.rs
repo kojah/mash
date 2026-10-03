@@ -1,6 +1,7 @@
 //! Concurrent local/shared candidate retrieval, fusion and contextual ranking.
 use super::client::{Endpoint, post};
 use super::protocol;
+use crate::gold::config::{Fusion, Options};
 use crate::semantic::{self, Models};
 use crate::storage::{Message, SearchHit, Storage};
 use crate::{AppError, config::SharedConfig};
@@ -15,7 +16,7 @@ pub(crate) async fn search(
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
-    options: (usize, crate::search_results::SearchUnit),
+    options: Options,
     filters: &crate::search_filter::Scope,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
     filters.filter.validate()?;
@@ -86,7 +87,7 @@ pub(super) async fn search_prepared(
     config: &SharedConfig,
     local_database: Option<&Path>,
     query: &str,
-    options: (usize, crate::search_results::SearchUnit),
+    options: Options,
     filters: &crate::search_filter::Scope,
     prepared: PreparedSearch,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
@@ -96,7 +97,11 @@ pub(super) async fn search_prepared(
         local_generation,
         generation,
     } = prepared;
-    let (limit, unit) = options;
+    let Options {
+        limit,
+        unit,
+        fusion,
+    } = options;
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);
     let context_database = local_database.clone();
@@ -112,6 +117,7 @@ pub(super) async fn search_prepared(
             &local_vector,
             &local_filters,
             unit,
+            fusion,
         )
     });
     let remote = async {
@@ -138,18 +144,7 @@ pub(super) async fn search_prepared(
         )
     };
     let ((local_hits, local_documents), candidates) = tokio::try_join!(local, remote)?;
-    let (candidates, shared_error) = match candidates {
-        Ok(candidates) => (candidates, None),
-        Err(error) if exclude_self => (
-            protocol::Candidates {
-                lexical: Vec::new(),
-                semantic: Vec::new(),
-                documents: Vec::new(),
-            },
-            Some(error.error.message),
-        ),
-        Err(error) => return Err(error),
-    };
+    let (candidates, shared_error) = received_candidates(candidates, exclude_self)?;
     let protocol::Candidates {
         mut lexical,
         mut semantic,
@@ -165,7 +160,7 @@ pub(super) async fn search_prepared(
     let query = query.to_owned();
     let ranking_query = query.clone();
     let (mut backend, selection) = crate::blocking(move || {
-        let mut fused = semantic::fuse(lexical, semantic, unit);
+        let mut fused = semantic::fuse(lexical, semantic, unit, fusion);
         fused.extend(local_hits);
         fused.sort_by(|a, b| {
             b.fusion_score
@@ -193,6 +188,24 @@ pub(super) async fn search_prepared(
         Ok((fused, shared_error.or(context_error)))
     })
     .await
+}
+
+fn received_candidates(
+    candidates: Result<protocol::Candidates, AppError>,
+    merged: bool,
+) -> Result<(protocol::Candidates, Option<String>), AppError> {
+    match candidates {
+        Ok(candidates) => Ok((candidates, None)),
+        Err(error) if merged => Ok((
+            protocol::Candidates {
+                lexical: Vec::new(),
+                semantic: Vec::new(),
+                documents: Vec::new(),
+            },
+            Some(error.error.message),
+        )),
+        Err(error) => Err(error),
+    }
 }
 
 fn projected_documents(documents: Vec<protocol::Document>) -> HashMap<(String, String), String> {
@@ -326,6 +339,7 @@ fn retrieve_local_candidates(
     vector: &[f64],
     filters: &crate::search_filter::Scope,
     unit: crate::search_results::SearchUnit,
+    fusion: Fusion,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
     let Some(database) = database else {
         return Ok((Vec::new(), Vec::new()));
@@ -338,6 +352,7 @@ fn retrieve_local_candidates(
         vector,
         (None, None, unit),
         Some(filters),
+        fusion,
     )
 }
 

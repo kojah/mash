@@ -1,9 +1,9 @@
 //! Hybrid candidates, reciprocal rank fusion, reranking, and exact vector scoring.
-use super::RRF_K;
 use super::embeddings::embedding_generation;
 use super::models::Backend;
 use super::remote;
 use crate::AppError;
+use crate::gold::config::{Fusion, Options};
 use crate::search_results::{HitKey, hit_key};
 use crate::storage::{SearchHit, SemanticChunks, Storage};
 use std::collections::HashMap;
@@ -19,12 +19,16 @@ pub(crate) fn hybrid_search_filtered(
     storage: &Storage,
     backend: &mut Backend,
     query: &str,
-    options: (usize, crate::search_results::SearchUnit),
+    options: Options,
     legacy: (Option<crate::provider::Provider>, Option<u32>),
     filters: Option<&crate::search_filter::Scope>,
 ) -> Result<Vec<SearchHit>, AppError> {
     let (provider, days) = legacy;
-    let (limit, unit) = options;
+    let Options {
+        limit,
+        unit,
+        fusion,
+    } = options;
     let candidate_limit = unit.candidate_limit();
     let lexical = tracing::info_span!("lexical_candidates")
         .in_scope(|| storage.search_filtered(query, candidate_limit, provider, days, filters))?;
@@ -48,7 +52,7 @@ pub(crate) fn hybrid_search_filtered(
     for (hit, (_, score)) in semantic_hits.iter_mut().zip(&ranked) {
         hit.semantic_score = Some(*score);
     }
-    let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit), unit);
+    let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
     let selection = crate::search_ranking::select(backend, query, fused, unit, limit)?;
     let documents = selection.hits[..selection.count]
         .iter()
@@ -114,6 +118,7 @@ pub(crate) fn local_candidates(
         crate::search_results::SearchUnit,
     ),
     filters: Option<&crate::search_filter::Scope>,
+    fusion: Fusion,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
     let (provider, days, unit) = selection;
     let candidate_limit = unit.candidate_limit();
@@ -126,7 +131,7 @@ pub(crate) fn local_candidates(
     for (hit, (_, score)) in semantic.iter_mut().zip(ranked) {
         hit.semantic_score = Some(score);
     }
-    let fused = fuse(lexical, semantic, unit);
+    let fused = fuse(lexical, semantic, unit, fusion);
     let ids = fused.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>();
     let documents = storage.search_documents(&ids)?;
     Ok((fused, documents))
@@ -136,6 +141,7 @@ pub(crate) fn fuse(
     lexical: Vec<SearchHit>,
     semantic: Vec<SearchHit>,
     unit: crate::search_results::SearchUnit,
+    fusion: Fusion,
 ) -> Vec<SearchHit> {
     let mut hits = HashMap::new();
     let mut scores = HashMap::<HitKey, f32>::new();
@@ -144,7 +150,10 @@ pub(crate) fn fuse(
         .enumerate()
     {
         let id = hit_key(&hit, unit);
-        scores.insert(id.clone(), reciprocal_rank(rank));
+        scores.insert(
+            id.clone(),
+            reciprocal_rank(rank, fusion.rank_constant) * f32::from(fusion.lexical_weight),
+        );
         hits.insert(id, hit);
     }
     for (rank, hit) in crate::search_results::deduplicate(semantic, unit)
@@ -152,7 +161,8 @@ pub(crate) fn fuse(
         .enumerate()
     {
         let id = hit_key(&hit, unit);
-        *scores.entry(id.clone()).or_default() += reciprocal_rank(rank);
+        *scores.entry(id.clone()).or_default() +=
+            reciprocal_rank(rank, fusion.rank_constant) * f32::from(fusion.semantic_weight);
         if let Some(existing) = hits.get_mut(&id) {
             existing.semantic_score = hit.semantic_score;
             crate::search_results::merge_copies(existing, hit);
@@ -176,9 +186,9 @@ pub(crate) fn fuse(
     fused
 }
 
-fn reciprocal_rank(zero_based_rank: usize) -> f32 {
+fn reciprocal_rank(zero_based_rank: usize, constant: u16) -> f32 {
     let rank = u16::try_from(zero_based_rank).unwrap_or(u16::MAX);
-    1.0 / (RRF_K + f32::from(rank) + 1.0)
+    1.0 / (f32::from(constant) + f32::from(rank) + 1.0)
 }
 
 pub(super) fn quantize_vector(vector: &[f32]) -> QuantizedVector {

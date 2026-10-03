@@ -53,6 +53,57 @@ pub(crate) struct Query {
     pub(crate) intent: super::exact::Intent,
     pub(crate) unit: SearchUnit,
     pub(crate) limit: usize,
+    pub(crate) fusion: Fusion,
+}
+
+/// Query-only candidate fusion; independent of embedding/build identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct Fusion {
+    pub(crate) rank_constant: u16,
+    pub(crate) lexical_weight: u16,
+    pub(crate) semantic_weight: u16,
+}
+
+impl Default for Fusion {
+    fn default() -> Self {
+        Self {
+            rank_constant: 60,
+            lexical_weight: 1,
+            semantic_weight: 1,
+        }
+    }
+}
+
+impl Fusion {
+    pub(crate) fn validate(self) -> Result<(), AppError> {
+        if !(1..=1000).contains(&self.rank_constant)
+            || !(1..=100).contains(&self.lexical_weight)
+            || !(1..=100).contains(&self.semantic_weight)
+        {
+            return Err(AppError::configuration(
+                "gold fusion rank_constant must be 1..1000 and weights 1..100",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Options {
+    pub(crate) limit: usize,
+    pub(crate) unit: SearchUnit,
+    pub(crate) fusion: Fusion,
+}
+
+impl Options {
+    pub(crate) fn new(limit: usize, unit: SearchUnit) -> Self {
+        Self {
+            limit,
+            unit,
+            fusion: Fusion::default(),
+        }
+    }
 }
 
 impl Default for Query {
@@ -61,6 +112,7 @@ impl Default for Query {
             intent: super::exact::Intent::default(),
             unit: SearchUnit::Threads,
             limit: 20,
+            fusion: Fusion::default(),
         }
     }
 }
@@ -72,7 +124,7 @@ impl Configuration {
                 "gold query limit must be between 1 and 200",
             ));
         }
-        Ok(())
+        self.query.fusion.validate()
     }
 }
 

@@ -40,4 +40,3 @@ const COREML_MODEL_FILE: &str = "onnx/model.onnx";
 const COREML_CACHE_DIRECTORY: &str = "coreml-cache";
 const EMBEDDING_CHECKPOINT_ROWS: u64 = 4_096;
 const EMBEDDING_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
-const RRF_K: f32 = 60.0;

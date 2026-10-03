@@ -336,10 +336,16 @@ fn assert_gold_rebuild_recovers_without_sources(config: &Path, database: &Path, 
 fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
     let canonical_config = std::fs::read_to_string(config).unwrap();
     let before = std::fs::read(database).unwrap();
-    for (unit, limit) in [("messages", 1), ("threads", 3)] {
+    let mut fusion_scores = std::collections::HashMap::new();
+    for (unit, limit, weight) in [
+        ("messages", 1, 1),
+        ("messages", 1, 4),
+        ("threads", 3, 1),
+        ("threads", 3, 4),
+    ] {
         std::fs::write(
             config,
-            format!("{canonical_config}\n[gold.query]\nunit = '{unit}'\nlimit = {limit}\n"),
+            format!("{canonical_config}\n[gold.query]\nunit = '{unit}'\nlimit = {limit}\n[gold.query.fusion]\nlexical_weight={weight}\nsemantic_weight={weight}\n"),
         )
         .unwrap();
         for direct in [true, false] {
@@ -369,6 +375,14 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
             let results = found["results"].as_array().unwrap();
             assert_ne!(results.as_slice(), &[] as &[Value]);
             assert!(results.len() <= limit);
+            if unit == "messages" {
+                let score = results[0]["fusion_score"].as_f64().unwrap();
+                if weight == 1 {
+                    fusion_scores.insert(direct, score);
+                } else {
+                    assert!((score - fusion_scores[&direct] * 4.0).abs() < 1e-6);
+                }
+            }
         }
     }
     assert_eq!(std::fs::read(database).unwrap(), before);

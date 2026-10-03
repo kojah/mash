@@ -37,7 +37,10 @@ fn legacy_provider_root_environment_variables_are_ignored() {
             "path": config_home.join("mash/config.toml"),
             "loaded": false,
             "shared": null,
-            "gold": {"build": {"embedding_text": "dialogue"}, "query": {"intent": "related-discussion", "unit": "threads", "limit": 20}},
+            "gold": {"build": {"embedding_text": "dialogue"}, "query": {
+                "intent": "related-discussion", "unit": "threads", "limit": 20,
+                "fusion": {"rank_constant": 60, "lexical_weight": 1, "semantic_weight": 1}
+            }},
             "providers": {
                 "claude-code": {"roots": [
                     home.join(".claude/projects"),

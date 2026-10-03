@@ -605,6 +605,12 @@ combined. CLI indexing flags override these settings.
 Optional `[gold.query]` settings select the default `unit` (`"threads"` or
 `"messages"`) and `limit` (1–200). Omitting them preserves threads and 20 results.
 CLI/MCP search parameters override either setting without rebuilding the index.
+`[gold.query.fusion]` controls hybrid candidate fusion independently of gold
+builds: `rank_constant` defaults to 60 (1–1000), and `lexical_weight` and
+`semantic_weight` each default to 1 (1–100). Higher weights favor that candidate
+stream before contextual reranking. These query-only settings apply to local,
+combined and fallback searches, take effect on the next request, and require no
+index rebuild. Exact-mention search is independent of fusion settings.
 See [silver enrichment and gold configuration](docs/silver-gold-configuration.md)
 for the layer contract and current configuration scope.
 

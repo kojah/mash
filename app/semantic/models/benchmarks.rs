@@ -90,7 +90,7 @@ fn benchmark_real_search_thread_budget() {
             &storage,
             &mut backend,
             QUERIES[0],
-            (5, SearchUnit::Threads),
+            crate::gold::config::Options::new(5, SearchUnit::Threads),
             (None, None),
             Some(&filters),
         )
@@ -104,7 +104,7 @@ fn benchmark_real_search_thread_budget() {
                     &storage,
                     &mut backend,
                     query,
-                    (5, unit),
+                    crate::gold::config::Options::new(5, unit),
                     (None, None),
                     Some(&filters),
                 )
@@ -162,6 +162,7 @@ fn benchmark_real_search_rerank_batches() {
             &vector,
             (None, None, SearchUnit::Threads),
             Some(&filters),
+            crate::gold::config::Fusion::default(),
         )
         .unwrap();
         let hits = crate::search_results::diversify(hits, SearchUnit::Threads);

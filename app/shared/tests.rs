@@ -262,15 +262,11 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         lock.execute_batch("ROLLBACK").unwrap();
         request.expect("shared request must start before SQLite is unlocked")
     };
+    let mut options = crate::gold::config::Options::new(10, SearchUnit::Messages);
+    options.fusion.lexical_weight = 4;
+    options.fusion.semantic_weight = 4;
     let (result, request) = tokio::join!(
-        search_prepared(
-            &config,
-            Some(&path),
-            "hello",
-            (10, SearchUnit::Messages),
-            &filters,
-            prepared,
-        ),
+        search_prepared(&config, Some(&path), "hello", options, &filters, prepared,),
         unlock,
     );
     let request = request.unwrap();
@@ -279,6 +275,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     assert!(error.is_none());
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, "searchable");
+    assert!(hits[0].fusion_score >= 4.0 / 61.0);
     assert!(hits[0].rerank_score.is_some());
 
     // Failure remains a local fallback for merged searches, and an error for
@@ -290,7 +287,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         &models_dir,
         None,
         "hello",
-        (10, SearchUnit::Messages),
+        options,
         &filters,
     )
     .await
@@ -301,17 +298,9 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         serde_json::to_value(hits).unwrap()
     );
     assert!(
-        search(
-            &config,
-            None,
-            &models_dir,
-            None,
-            "hello",
-            (10, SearchUnit::Messages),
-            &filters
-        )
-        .await
-        .is_err()
+        search(&config, None, &models_dir, None, "hello", options, &filters)
+            .await
+            .is_err()
     );
     server.abort();
 }
@@ -525,6 +514,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
         &[127.0, 0.0],
         (None, None, SearchUnit::Messages),
         None,
+        crate::gold::config::Fusion::default(),
     )
     .unwrap();
     assert_eq!(hits.len(), 1);
@@ -543,7 +533,8 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
                 None,
                 SearchUnit::Messages
             ),
-            None
+            None,
+            crate::gold::config::Fusion::default(),
         )
         .unwrap()
         .0
@@ -614,6 +605,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         &[127.0, 0.0],
         (None, None, SearchUnit::Messages),
         Some(&scope),
+        crate::gold::config::Fusion::default(),
     )
     .unwrap();
     assert_eq!(hits.len(), 1);
