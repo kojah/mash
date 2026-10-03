@@ -352,7 +352,7 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
             provider: Provider::ClaudeCode,
             roots: std::slice::from_ref(&root),
             cutoff_modified_ns: None,
-            parse: parse_then_append,
+            parse: Parser::Custom(parse_then_append),
             authoritative: true,
         },
         discovery,
@@ -399,15 +399,87 @@ fn changing_history_rolls_back_content_and_checkpoints_then_retries() {
 }
 
 #[test]
+fn queued_jsonl_prefix_applies_once_and_later_appends_remain_pending() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("session.jsonl");
+    write_claude_session(&path, "session", "original sentinel");
+    let history = HistorySource::file(&path);
+    let mut stamp = history.stamp().unwrap();
+    let parsed = parse_stable_source(&history, &mut stamp, Provider::ClaudeCode.parser()).unwrap();
+    let original_id = parsed.conversation.as_ref().unwrap().messages.inline()[0]
+        .id
+        .clone();
+    std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(b"{\"type\":\"user\",\"sessionId\":\"session\",\"uuid\":\"second\",\"message\":{\"role\":\"user\",\"content\":\"later sentinel\"}}\n").unwrap();
+    let mut writer = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    assert!(
+        apply_parsed_source(
+            &mut writer,
+            Provider::ClaudeCode,
+            ParsedSource {
+                source: SourceFile {
+                    history: history.clone(),
+                    stamp: stamp.clone(),
+                    estimated_bytes: u64::try_from(stamp.size_bytes).unwrap()
+                },
+                parsed: Ok(parsed),
+                _reservation: None,
+            },
+            &mut empty_summary()
+        )
+        .unwrap()
+    );
+    writer.commit_writer().unwrap();
+    assert_eq!(writer.counts().unwrap().messages, 1);
+    assert_eq!(
+        writer.search("original", 10, None, None).unwrap()[0].id,
+        original_id
+    );
+    assert!(writer.search("later", 10, None, None).unwrap().is_empty());
+    assert!(
+        !writer
+            .source_checkpoint_matches(
+                Provider::ClaudeCode,
+                &history.identity,
+                &history.stamp().unwrap()
+            )
+            .unwrap()
+    );
+    let options = IndexOptions {
+        providers: [(Provider::ClaudeCode, vec![directory.path().to_path_buf()])].into(),
+        roots_are_authoritative: true,
+        since_days: None,
+    };
+    drop(writer);
+    let mut writer = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    index(&mut writer, &options).unwrap();
+    writer.commit_writer().unwrap();
+    assert_eq!(writer.counts().unwrap().messages, 2);
+    assert_eq!(
+        writer.search("original", 10, None, None).unwrap()[0].id,
+        original_id
+    );
+    assert_eq!(writer.search("later", 10, None, None).unwrap().len(), 1);
+    assert!(
+        writer
+            .source_checkpoint_matches(
+                Provider::ClaudeCode,
+                &history.identity,
+                &history.stamp().unwrap()
+            )
+            .unwrap()
+    );
+}
+
+#[test]
 fn queued_results_refresh_changed_sources_and_reject_removed_sources_before_writing() {
     for remove in [false, true] {
         let directory = tempfile::tempdir().unwrap();
         let source = directory.path().join("session.jsonl");
         write_claude_session(&source, "session", "queued sentinel");
-        let stamp = source_stamp(&source).unwrap();
+        let mut stamp = source_stamp(&source).unwrap();
         let parsed = parse_stable_source(
             &HistorySource::file(&source),
-            &stamp,
+            &mut stamp,
             Provider::ClaudeCode.parser(),
         )
         .unwrap();
@@ -481,11 +553,15 @@ fn a_changed_discovered_stamp_is_rejected_before_parsing() {
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("session.jsonl");
     write_claude_session(&source, "session", "initial");
-    let stamp = source_stamp(&source).unwrap();
+    let mut stamp = source_stamp(&source).unwrap();
     write_claude_session(&source, "session", "changed after discovery");
-    let error = parse_stable_source(&HistorySource::file(&source), &stamp, must_not_parse)
-        .err()
-        .expect("discovery stamp is stale");
+    let error = parse_stable_source(
+        &HistorySource::file(&source),
+        &mut stamp,
+        Parser::Custom(must_not_parse),
+    )
+    .err()
+    .expect("discovery stamp is stale");
     assert!(error.error.message.contains("history changed"));
 }
 
@@ -505,7 +581,8 @@ fn stable_retry_refreshes_discovery_and_recovers_a_single_append() {
     let mut stamp = source_stamp(&path).unwrap();
     write_claude_session(&path, "session", "current content after discovery");
     let source = HistorySource::file(&path);
-    let parsed = parse_source_with_retries(&source, &mut stamp, append_once).unwrap();
+    let parsed =
+        parse_source_with_retries(&source, &mut stamp, Parser::Custom(append_once)).unwrap();
     assert_eq!(
         parsed.conversation.unwrap().messages.inline()[0].content,
         "current content after discovery"
@@ -522,7 +599,7 @@ fn unstable_source_retries_are_bounded_and_actionable() {
     let initial_size = fs::metadata(&path).unwrap().len();
     let source = HistorySource::file(&path);
     let mut stamp = source.stamp().unwrap();
-    let error = parse_source_with_retries(&source, &mut stamp, parse_then_append)
+    let error = parse_source_with_retries(&source, &mut stamp, Parser::Custom(parse_then_append))
         .err()
         .unwrap();
     assert_eq!(fs::metadata(&path).unwrap().len(), initial_size + 3);
@@ -553,7 +630,8 @@ fn stable_retry_reads_atomic_replacement_instead_of_retired_content() {
     write_claude_session(&path, "session", "retired content");
     let source = HistorySource::file(&path);
     let mut stamp = source.stamp().unwrap();
-    let parsed = parse_source_with_retries(&source, &mut stamp, replace_once).unwrap();
+    let parsed =
+        parse_source_with_retries(&source, &mut stamp, Parser::Custom(replace_once)).unwrap();
     assert_eq!(
         parsed.conversation.unwrap().messages.inline()[0].content,
         "replacement dialogue"
@@ -572,7 +650,7 @@ fn missing_source_exhausts_retries_without_parsing_or_claiming_success() {
     let source = HistorySource::file(&path);
     let mut stamp = source.stamp().unwrap();
     fs::remove_file(path).unwrap();
-    let error = parse_source_with_retries(&source, &mut stamp, must_not_parse)
+    let error = parse_source_with_retries(&source, &mut stamp, Parser::Custom(must_not_parse))
         .err()
         .unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::SourceChanged);
@@ -605,8 +683,8 @@ fn retries_distinguish_mutation_during_parse_errors_from_stable_bad_input() {
     write_claude_session(&path, "session", "content");
     let source = HistorySource::file(&path);
     let mut stamp = source.stamp().unwrap();
-    parse_source_with_retries(&source, &mut stamp, interrupted_once).unwrap();
-    let error = parse_source_with_retries(&source, &mut stamp, invalid)
+    parse_source_with_retries(&source, &mut stamp, Parser::Custom(interrupted_once)).unwrap();
+    let error = parse_source_with_retries(&source, &mut stamp, Parser::Custom(invalid))
         .err()
         .unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
@@ -909,7 +987,7 @@ fn late_configured_source_failure_rolls_back_provider_changes() {
             provider: Provider::ClaudeCode,
             roots: std::slice::from_ref(&root),
             cutoff_modified_ns: None,
-            parse: parse_with_late_failure,
+            parse: Parser::Custom(parse_with_late_failure),
             authoritative: true,
         },
         discovery,

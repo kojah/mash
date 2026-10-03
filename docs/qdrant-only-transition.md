@@ -112,3 +112,27 @@ independent lexical/dense manifests, one active gold configuration and explicit
 source-free shared rebuilds. See [the current layer contract](silver-gold-configuration.md).
 These application capabilities do not prove live fleet migration or complete the
 remaining topic-quality and retrieval evaluation work in `mash-q3e`.
+
+### Active JSONL replay fix
+
+Claude Code and Codex JSONL readers now parse a private, length-bounded file
+capture while preserving original source and message identities. File identity
+and a hash of the captured prefix are checked after parsing and before applying
+queued results. Later appends remain pending through the original checkpoint;
+edits, truncation and replacement invalidate the capture. Other provider readers
+retain their existing stability checks. Captures add temporary disk usage and
+file I/O, without retaining whole source files in memory.
+
+The separate Xenia migration replay subsequently scanned 818 files totaling
+4,087,707,520 bytes and retained 812 threads and 315,979 messages, including
+38,660 searchable messages. It completed in 141.402 seconds with no model
+inference and no source-change rollback. This is a functional replay under host
+load, not a controlled performance comparison; the corpus grew between runs.
+
+The replay still exited with code 9 because one Claude source was rejected.
+Its diagnostic points to line 8712, column 184; independent JSON decoding
+confirmed an invalid complete line rather than two concatenated valid objects.
+Silver remains incomplete and gold unavailable. The fix does not ignore
+malformed records, change provider files, publish to Qdrant, or switch the live
+Redis service. Private captures are `xenia-silver-prefix.json` and
+`xenia-silver-prefix.log` in the migration artifact directory above.

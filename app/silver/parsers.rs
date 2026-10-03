@@ -22,6 +22,10 @@ struct ExtractedMessage {
 
 pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
     let file = File::open(path).map_err(AppError::io)?;
+    parse_claude_file(path, file)
+}
+
+fn parse_claude_file(path: &Path, file: File) -> Result<ParsedFile, AppError> {
     let lines = super::records::Lines::new(BufReader::new(file))
         .enumerate()
         .map(|(index, line)| line.map(|text| (index + 1, text)));
@@ -47,9 +51,25 @@ pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
 
 pub(super) fn parse_codex(path: &Path) -> Result<ParsedFile, AppError> {
     let file = File::open(path).map_err(AppError::io)?;
+    parse_codex_file(path, file)
+}
+
+fn parse_codex_file(path: &Path, file: File) -> Result<ParsedFile, AppError> {
     let lines = super::records::codex::Lines::new(BufReader::new(file)).numbered();
     let mut extractor = codex::Extractor::default();
     parse_jsonl(path, Provider::Codex, lines, |raw| extractor.next(raw))
+}
+
+pub(super) fn parse_captured(
+    path: &Path,
+    provider: Provider,
+    file: File,
+) -> Result<ParsedFile, AppError> {
+    match provider {
+        Provider::ClaudeCode => parse_claude_file(path, file),
+        Provider::Codex => parse_codex_file(path, file),
+        _ => Err(AppError::internal("invalid captured JSONL provider")),
+    }
 }
 
 fn parse_jsonl(

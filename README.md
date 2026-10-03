@@ -172,6 +172,18 @@ peak reservations and wait time for diagnosing parser backpressure. This is an
 estimate rather than a process-memory ceiling; a single large history may need
 more memory.
 
+Claude Code and Codex JSONL parsing uses a private, length-bounded file capture.
+The parser keeps the original source path and message identities. Before accepting
+it, mash verifies that the original file still contains the captured prefix,
+using file identity and a content hash. Later appends can remain pending for the
+next refresh; checkpoints describe the captured size and modification time.
+Edits, truncations or replacement invalidate the old capture and require a fresh
+read. Malformed captured records still reject that source; incomplete writes are
+not silently dropped or certified. Other providers retain their stable-read
+checks. Allow scratch disk space for concurrent input captures as well as
+normalized staging: JSONL capture and verification add file I/O, without loading
+the whole input into memory.
+
 Normalized message payloads spill to private temporary files above a 16 MiB
 inline budget. JSONL parsing, native Copilot CLI parsing and Claude reconciliation
 feed this staging incrementally; local storage and shared uploads read it in

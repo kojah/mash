@@ -204,7 +204,7 @@ fn claude_failed_provider_scan_rolls_back_all_contributions_and_checkpoints() {
                 provider: Provider::ClaudeCode,
                 roots: std::slice::from_ref(&root),
                 cutoff_modified_ns: None,
-                parse: parse_with_late_failure,
+                parse: Parser::Custom(parse_with_late_failure),
                 authoritative: true,
             },
             discovery,

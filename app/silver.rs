@@ -32,6 +32,7 @@ mod openclaw;
 mod opencode;
 mod parsers;
 mod pi;
+mod prefix;
 mod records;
 mod source;
 mod sqlite_source;
@@ -60,21 +61,39 @@ const CHECKPOINT_FILES: u64 = 32;
 const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 
 impl Provider {
-    fn parser(self) -> fn(&HistorySource) -> Result<ParsedFile, AppError> {
-        match self {
-            Self::ClaudeCode => |source| parsers::parse_claude(&source.identity.path),
-            Self::Codex => |source| parsers::parse_codex(&source.identity.path),
-            Self::Aider => |source| aider::parse(&source.identity.path),
-            Self::Hermes => |source| hermes::parse(&source.identity),
-            Self::Opencode => |source| opencode::parse(&source.identity),
-            Self::Openclaw => |source| openclaw::parse(&source.identity),
-            Self::Pi => |source| pi::parse(&source.identity.path),
-            Self::Copilot => copilot::parse_source,
-            Self::GeminiCli => |source| gemini::parse(&source.identity.path),
-            Self::Cline => cline::parse_source,
-            Self::Cursor => |source| cursor::parse(&source.identity),
-            Self::Windsurf => |source| windsurf::parse(&source.identity.path),
-            Self::Antigravity => |source| antigravity::parse(&source.identity),
+    fn parser(self) -> Parser {
+        Parser::Native(self)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Parser {
+    Native(Provider),
+    #[cfg(test)]
+    Custom(fn(&HistorySource) -> Result<ParsedFile, AppError>),
+}
+
+impl Parser {
+    fn parse(self, source: &HistorySource) -> Result<ParsedFile, AppError> {
+        let provider = match self {
+            Self::Native(provider) => provider,
+            #[cfg(test)]
+            Self::Custom(parse) => return parse(source),
+        };
+        match provider {
+            Provider::ClaudeCode => parsers::parse_claude(&source.identity.path),
+            Provider::Codex => parsers::parse_codex(&source.identity.path),
+            Provider::Aider => aider::parse(&source.identity.path),
+            Provider::Hermes => hermes::parse(&source.identity),
+            Provider::Opencode => opencode::parse(&source.identity),
+            Provider::Openclaw => openclaw::parse(&source.identity),
+            Provider::Pi => pi::parse(&source.identity.path),
+            Provider::Copilot => copilot::parse_source(source),
+            Provider::GeminiCli => gemini::parse(&source.identity.path),
+            Provider::Cline => cline::parse_source(source),
+            Provider::Cursor => cursor::parse(&source.identity),
+            Provider::Windsurf => windsurf::parse(&source.identity.path),
+            Provider::Antigravity => antigravity::parse(&source.identity),
         }
     }
 }
@@ -152,7 +171,7 @@ struct ProviderScan<'a> {
     provider: Provider,
     roots: &'a [PathBuf],
     cutoff_modified_ns: Option<i64>,
-    parse: fn(&HistorySource) -> Result<ParsedFile, AppError>,
+    parse: Parser,
     authoritative: bool,
 }
 
@@ -552,11 +571,11 @@ fn configured_source_error(path: &Path, error: &AppError) -> AppError {
 fn parse_source_with_retries(
     source: &HistorySource,
     stamp: &mut SourceStamp,
-    parse: fn(&HistorySource) -> Result<ParsedFile, AppError>,
+    parse: Parser,
 ) -> Result<ParsedFile, AppError> {
     // Discovery can precede a source's turn in the bounded parser queue by
-    // minutes. Capture a fresh stamp for each attempt, then require the whole
-    // parse to be stable. Never retry malformed input or other parser errors.
+    // minutes. Capture a fresh stamp for each attempt and verify the consumed
+    // snapshot. Never retry malformed input or other parser errors.
     for attempt in 0..3 {
         tracing::Span::current().record("attempts", attempt + 1);
         if attempt > 0 {
@@ -577,11 +596,20 @@ fn parse_source_with_retries(
 
 fn parse_stable_source(
     source: &HistorySource,
-    stamp: &SourceStamp,
-    parse: fn(&HistorySource) -> Result<ParsedFile, AppError>,
+    stamp: &mut SourceStamp,
+    parse: Parser,
 ) -> Result<ParsedFile, AppError> {
     stamp.verify(&source.identity)?;
-    let parsed = parse(source);
+    let parsed = if let Parser::Native(provider @ (Provider::ClaudeCode | Provider::Codex)) = parse
+        && source.identity.session.is_none()
+        && source.dependencies.is_empty()
+    {
+        let (file, proof) = prefix::capture(&source.identity.path, stamp)?;
+        stamp.prefix = Some(proof);
+        parsers::parse_captured(&source.identity.path, provider, file)
+    } else {
+        parse.parse(source)
+    };
     stamp.verify(&source.identity)?;
     parsed
 }

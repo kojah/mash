@@ -83,6 +83,7 @@ pub(crate) struct SourceStamp {
     pub(crate) fingerprint: String,
     pub(crate) activity_ns: Option<i64>,
     dependencies: Vec<Dependency>,
+    pub(super) prefix: Option<super::prefix::Prefix>,
 }
 
 impl SourceStamp {
@@ -93,10 +94,14 @@ impl SourceStamp {
             fingerprint: String::new(),
             activity_ns: None,
             dependencies: Vec::new(),
+            prefix: None,
         }
     }
 
     pub(crate) fn verify(&self, source: &SourceIdentity) -> Result<(), AppError> {
+        if let Some(prefix) = &self.prefix {
+            return prefix.verify(&source.path);
+        }
         let mut current = source_stamp_for(source)?;
         current.include_dependencies(&self.dependencies)?;
         if current.size_bytes != self.size_bytes
@@ -192,6 +197,7 @@ pub(crate) fn source_stamp_for(source: &SourceIdentity) -> Result<SourceStamp, A
         fingerprint: hash.finalize().to_hex().to_string(),
         activity_ns: None,
         dependencies: Vec::new(),
+        prefix: None,
     })
 }
 
@@ -492,7 +498,7 @@ impl DirectScan {
         source: &HistorySource,
         stamp: &SourceStamp,
     ) -> Result<ParsedFile, AppError> {
-        super::parse_stable_source(source, stamp, provider.parser())
+        super::parse_stable_source(source, &mut stamp.clone(), provider.parser())
     }
 
     pub(crate) fn verify(&self) -> Result<(), AppError> {

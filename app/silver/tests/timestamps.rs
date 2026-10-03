@@ -57,15 +57,17 @@ pub(in crate::silver) fn assert_replay(
     let initial = index(&mut storage, options).unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
-    let parsed = provider.parser()(&HistorySource {
-        identity: source.clone(),
-        activity_ns: None,
-        estimated_bytes: None,
-        dependencies: vec![],
-    })
-    .unwrap()
-    .conversation
-    .unwrap();
+    let parsed = provider
+        .parser()
+        .parse(&HistorySource {
+            identity: source.clone(),
+            activity_ns: None,
+            estimated_bytes: None,
+            dependencies: vec![],
+        })
+        .unwrap()
+        .conversation
+        .unwrap();
     let expected = Evidence::capture(&parsed).unwrap();
     let stamp = source_stamp_for(source).unwrap();
     let before = fs::read(&source.path).unwrap();

@@ -61,6 +61,7 @@ ring = "0.17"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["raw_value"] }
 walkdir = "2.5.0"
+same-file = "1.0.6"
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["coreml"] }
