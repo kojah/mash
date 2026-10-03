@@ -241,6 +241,7 @@ impl Store {
         self.unchanged_gold(identity, &group_gold.version).await?;
         Ok(Freshness {
             group_id: identity.group_id.clone(),
+            unpublished_nodes: None,
             group_gold: Some(Box::new(group_gold)),
             nodes,
         })

@@ -60,6 +60,7 @@ fn configuration(address: std::net::SocketAddr) -> SharedConfig {
 fn current_freshness(target: &reuse::Target, node: NodeFreshness) -> Freshness {
     Freshness {
         group_id: "test".into(),
+        unpublished_nodes: None,
         group_gold: Some(Box::new(GroupGold {
             version: "group".into(),
             build: target.build.clone(),

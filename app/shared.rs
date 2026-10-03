@@ -74,6 +74,10 @@ impl Publication {
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Freshness {
     group_id: String,
+    /// Configured group members with no retained publication. None means the
+    /// responding service did not supply its configured membership scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unpublished_nodes: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     group_gold: Option<Box<GroupGold>>,
     nodes: Vec<NodeFreshness>,

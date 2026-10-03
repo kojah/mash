@@ -9,6 +9,7 @@ mod correlation;
 mod cursor;
 mod enrichment;
 mod exact;
+mod freshness;
 mod gold;
 mod native;
 mod relevance;

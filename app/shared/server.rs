@@ -167,7 +167,30 @@ async fn freshness(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
 ) -> Result<Json<super::Freshness>, ApiError> {
-    Ok(Json(app.store.freshness(&id).await?))
+    let mut freshness = app.store.freshness(&id).await?;
+    freshness.unpublished_nodes =
+        Some(unpublished_nodes(&app.identities, &id.group_id, &freshness));
+    Ok(Json(freshness))
+}
+
+fn unpublished_nodes(
+    identities: &HashMap<blake3::Hash, Identity>,
+    group: &str,
+    freshness: &super::Freshness,
+) -> Vec<String> {
+    identities
+        .values()
+        .filter(|id| {
+            id.group_id == group
+                && !freshness
+                    .nodes
+                    .iter()
+                    .any(|node| node.node_id == id.node_id)
+        })
+        .map(|id| id.node_id.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 async fn status(
     State(app): State<App>,

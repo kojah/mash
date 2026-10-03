@@ -1299,6 +1299,15 @@ this version. Use `mash status --shared` to include shared-index freshness;
 ordinary status remains usable offline. Freshness inspection is
 read-only.
 
+`shared_index.unpublished_nodes` lists configured members of the authenticated
+group that have no retained publication, in sorted order. An empty array means
+every member configured on this API has published; an omitted field means that
+membership scope was not supplied. Published nodes still require separate
+lexical/dense readiness and provider-coverage checks. This reflects the API's
+current credential configuration, not network discovery, liveness or proof of
+complete source coverage; historical publications remain in `nodes` even if
+their credentials are later removed.
+
 ## MCP
 
 CLI and MCP are wrappers around the same typed application core in `app/core.rs`.
