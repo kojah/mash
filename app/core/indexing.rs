@@ -178,7 +178,9 @@ fn index(
         require_certified_silver(&Storage::open_certified_silver(database_path)?)?;
     }
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
-    models.require_indexer()?;
+    if build.dense_enabled() {
+        models.require_indexer()?;
+    }
     let storage_started = Instant::now();
     let mut storage = Storage::open_writer(database_path)?;
     if rebuild_local_gold {
@@ -236,7 +238,11 @@ fn index(
         model_inferences: embeddings.model_inferences,
         reused_embeddings: embeddings.reused_vectors,
         realized_mode: if gold.ready {
-            SearchMode::Hybrid
+            if build.dense_enabled() {
+                SearchMode::Hybrid
+            } else {
+                SearchMode::Lexical
+            }
         } else {
             SearchMode::Unavailable
         },

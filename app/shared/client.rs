@@ -30,6 +30,7 @@ pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppErr
 
 #[derive(Clone, Copy)]
 pub(super) enum Endpoint {
+    Capabilities,
     Freshness,
     State,
     Silver,
@@ -64,6 +65,7 @@ impl Endpoint {
     }
     const fn route(self) -> &'static str {
         match self {
+            Self::Capabilities => "capabilities",
             Self::Freshness => "freshness",
             Self::State => "state",
             Self::Silver => "silver",

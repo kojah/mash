@@ -13,9 +13,27 @@ pub(crate) struct Configuration {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Build {
+    #[serde(skip_serializing_if = "Representations::is_default")]
+    pub(crate) representations: Representations,
     pub(crate) embedding_text: EmbeddingText,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_embedding_chars: Option<EmbeddingTextBudget>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Representations {
+    #[default]
+    LexicalAndDense,
+    LexicalOnly,
+}
+
+impl Representations {
+    // serde's skip_serializing_if hook receives a reference to the field.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_default(&self) -> bool {
+        *self == Self::LexicalAndDense
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -48,7 +66,31 @@ pub(crate) enum EmbeddingText {
 }
 
 impl Build {
+    pub(crate) fn dense_enabled(&self) -> bool {
+        self.representations == Representations::LexicalAndDense
+    }
+
+    pub(crate) fn expected_embeddings(&self, searchable_messages: u64) -> u64 {
+        if self.dense_enabled() {
+            searchable_messages
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn require_intent(&self, intent: super::exact::Intent) -> Result<(), AppError> {
+        if intent == super::exact::Intent::RelatedDiscussion && !self.dense_enabled() {
+            return Err(AppError::usage(
+                "related-discussion requires dense gold; use exact-mention or explicitly rebuild lexical-and-dense gold",
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn generation(&self, model: &str) -> String {
+        if !self.dense_enabled() {
+            return "gold-lexical-v1".into();
+        }
         if let Some(budget) = self.max_embedding_chars {
             let recipe = match self.embedding_text {
                 EmbeddingText::Dialogue => "dialogue",
@@ -215,6 +257,13 @@ impl Default for Query {
 
 impl Configuration {
     pub(crate) fn validate(&self) -> Result<(), AppError> {
+        if !self.build.dense_enabled()
+            && self.query.intent == super::exact::Intent::RelatedDiscussion
+        {
+            return Err(AppError::configuration(
+                "lexical-only gold requires exact-mention as the default query intent",
+            ));
+        }
         if !(1..=200).contains(&self.query.limit) {
             return Err(AppError::configuration(
                 "gold query limit must be between 1 and 200",
@@ -237,6 +286,32 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn representation_selection_is_strict_and_query_capabilities_are_explicit() {
+        let mut config: Configuration = toml::from_str(
+            "[build]\nrepresentations='lexical-only'\n[query]\nintent='exact-mention'",
+        )
+        .unwrap();
+        config.validate().unwrap();
+        assert!(!config.build.dense_enabled());
+        assert_eq!(config.build.expected_embeddings(100), 0);
+        assert_eq!(config.build.generation("unused-model"), "gold-lexical-v1");
+        assert!(
+            config
+                .build
+                .require_intent(super::super::exact::Intent::RelatedDiscussion)
+                .is_err()
+        );
+        config.query.intent = super::super::exact::Intent::RelatedDiscussion;
+        assert!(config.validate().is_err());
+        assert!(toml::from_str::<Configuration>("[build]\nrepresentations='dense-ish'").is_err());
+        assert!(
+            !serde_json::to_string(&Build::default())
+                .unwrap()
+                .contains("representations")
+        );
+    }
 
     #[test]
     fn ranking_is_strict_query_only_policy() {

@@ -1,5 +1,5 @@
 //! Concurrent local/shared candidate retrieval, fusion and contextual ranking.
-use super::client::{Endpoint, post};
+use super::client::{Endpoint, get, post};
 use super::protocol;
 use crate::gold::config::{Fusion, Options};
 use crate::semantic::{self, Models};
@@ -27,6 +27,11 @@ pub(crate) struct SearchOutcome {
     pub(crate) hits: Vec<SearchHit>,
     pub(crate) retrieval: SharedRetrieval,
     pub(crate) context_error: Option<String>,
+}
+
+pub(crate) async fn require_dense(config: &SharedConfig) -> Result<(), AppError> {
+    let build: crate::gold::config::Build = get(config, Endpoint::Capabilities).await?;
+    build.require_intent(crate::gold::exact::Intent::RelatedDiscussion)
 }
 
 #[tracing::instrument(name = "combined_search", skip_all)]

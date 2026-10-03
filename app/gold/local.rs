@@ -25,10 +25,13 @@ pub(crate) fn build(
     let source_complete = silver.is_complete();
     let model = models.generation();
     let manifest = crate::gold::manifest::Manifest::new(build.clone(), model.clone(), silver);
-    if build != &crate::gold::config::Build::default()
-        && !storage
-            .gold_manifest()?
-            .is_some_and(|m| m.matches(build, &model, &manifest.silver))
+    let previous = storage.gold_manifest()?;
+    let representations_changed = previous
+        .as_ref()
+        .is_some_and(|m| m.build.representations != build.representations);
+    if representations_changed
+        || (build != &crate::gold::config::Build::default()
+            && !previous.is_some_and(|m| m.matches(build, &model, &manifest.silver)))
     {
         // Title changes are canonical metadata changes, so rebuild all affected
         // representations conservatively until a finer dependency map exists.
@@ -47,6 +50,18 @@ pub(crate) fn build(
     let search_refresh_milliseconds = elapsed_milliseconds(search_started);
     if source_complete {
         storage.publish_lexical_manifest()?;
+    }
+    if !build.dense_enabled() {
+        storage.clear_dense_gold()?;
+        storage.publish_gold_manifest(&manifest)?;
+        return Ok(Build {
+            counts: storage.counts()?,
+            ready: source_complete,
+            embeddings: semantic::EmbeddingSummary::default(),
+            model_load_milliseconds: 0,
+            search_refresh_milliseconds,
+            embedding_milliseconds: 0,
+        });
     }
     emit_index_phase(crate::progress::Phase::SemanticEmbeddings, summary);
     let embedding_started = Instant::now();

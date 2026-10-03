@@ -32,15 +32,18 @@ pub(crate) async fn index(
     full: bool,
     owner: &RoutedOwner,
 ) -> Result<IndexResult, AppError> {
+    let state: NodeState = get(config, Endpoint::State).await?;
+    let dense = state.gold_build.dense_enabled();
     let root = models_dir.to_path_buf();
     let remote = embeddings.cloned();
     let input = options.clone();
     let scans = crate::blocking(move || {
-        Models::new(root).with_remote(remote).require_indexer()?;
+        if dense {
+            Models::new(root).with_remote(remote).require_indexer()?;
+        }
         silver::direct_scans(&input)
     })
     .await?;
-    let state: NodeState = get(config, Endpoint::State).await?;
     let instance = owner.instance.as_str();
     if state.instance.as_deref().is_some_and(|i| i != instance) {
         return Err(AppError::shared(

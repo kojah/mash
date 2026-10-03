@@ -53,6 +53,7 @@ fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() 
         &storage,
         &Build {
             max_embedding_chars: None,
+            representations: crate::gold::config::Representations::LexicalAndDense,
             embedding_text: EmbeddingText::TitleAndDialogue,
         },
     )

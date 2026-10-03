@@ -20,6 +20,46 @@ pub(super) struct Input {
     pub(super) local: bool,
 }
 
+pub(super) async fn preflight(
+    configuration: &ResolvedConfig,
+    operation: &super::Operation,
+) -> Result<(), AppError> {
+    let super::Operation::Search {
+        query,
+        intent,
+        fusion,
+        ranking,
+        filters,
+        shared,
+        local,
+        ..
+    } = operation
+    else {
+        return Ok(());
+    };
+    let intent = intent.unwrap_or(configuration.gold.query.intent);
+    resolve(
+        query,
+        intent,
+        (**filters).clone(),
+        *shared,
+        *local,
+        configuration
+            .shared
+            .as_ref()
+            .map_or("local", |c| c.node_id.as_str()),
+    )?;
+    if !shared {
+        configuration.gold.build.require_intent(intent)?;
+    }
+    resolve_fusion(*fusion, intent, configuration.gold.query.fusion)?;
+    resolve_ranking(*ranking, intent, configuration.gold.query.ranking)?;
+    if *shared && intent == crate::gold::exact::Intent::RelatedDiscussion {
+        shared::require_dense(required_shared(configuration)?).await?;
+    }
+    Ok(())
+}
+
 pub(super) fn resolve_fusion(
     overrides: crate::gold::config::FusionOverrides,
     intent: crate::gold::exact::Intent,
@@ -128,6 +168,9 @@ async fn run_inner(
     let (limit, unit) = configuration.gold.query.resolve(limit, unit);
     let mut options = crate::gold::config::Options::new(limit, unit);
     let intent = intent.unwrap_or(configuration.gold.query.intent);
+    if !use_shared {
+        configuration.gold.build.require_intent(intent)?;
+    }
     options.fusion = resolve_fusion(fusion, intent, configuration.gold.query.fusion)?;
     options.ranking = resolve_ranking(ranking, intent, configuration.gold.query.ranking)?;
     let filters = resolve(

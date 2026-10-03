@@ -9,6 +9,59 @@ struct Fixture {
     server: tokio::task::JoinHandle<()>,
 }
 
+#[tokio::test]
+async fn shared_lexical_capabilities_reject_hybrid_before_model_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router = Router::new().route(
+        "/v1/capabilities",
+        axum::routing::get(|| async {
+            Json(crate::gold::config::Build {
+                representations: crate::gold::config::Representations::LexicalOnly,
+                ..Default::default()
+            })
+        }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let config = root.path().join("node.toml");
+    let database = root.path().join("absent.sqlite3");
+    let models = root.path().join("absent-models");
+    std::fs::write(&config, format!("version=1\nproviders={{}}\n[shared]\ngroup_id='group'\nnode_id='node'\napi_url='http://{address}'\ntoken_env='HOME'\n")).unwrap();
+    let request = Request {
+        paths: Paths {
+            config: Some(config),
+            db: Some(database.clone()),
+            models_dir: Some(models.clone()),
+        },
+        operation: Operation::Search {
+            query: "needle".into(),
+            intent: None,
+            limit: None,
+            unit: None,
+            fusion: crate::gold::config::FusionOverrides::default(),
+            ranking: None,
+            diagnostics: false,
+            filters: Box::default(),
+            shared: true,
+            local: false,
+        },
+    };
+    let capacity = tokio::sync::Semaphore::new(0);
+    let error = tokio::time::timeout(
+        Duration::from_secs(1),
+        core::execute_with_model_limit(request, &capacity),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+    assert!(!database.exists() && !models.exists());
+    server.abort();
+}
+
 async fn fixture() -> Fixture {
     let models_dir = std::path::PathBuf::from(
         std::env::var_os("MASH_TEST_MODELS_DIR").expect("installed models"),
@@ -36,6 +89,10 @@ async fn fixture() -> Fixture {
         documents: vec![document],
     });
     let router = Router::new()
+        .route(
+            "/v1/capabilities",
+            axum::routing::get(|| async { Json(crate::gold::config::Build::default()) }),
+        )
         .route(
             "/v1/search",
             post(move || {

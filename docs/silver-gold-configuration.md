@@ -498,7 +498,43 @@ when no dense record exists. It does not revive stale or dirty lexical data.
 Upgrades from schema 38 or earlier create an empty lexical publication slot;
 run explicit indexing (or source-free `index --rebuild-local-gold` with certified
 silver) to publish it. Reads never migrate or build it. This establishes an
-independent artifact contract; configurable artifact enablement remains pending.
+independent artifact contract. Further artifact types retain separate acceptance gates.
+Local and shared builds now select `representations`: `lexical-and-dense` (the
+unchanged default) or `lexical-only`. Omitted default values retain the existing
+serialized recipe and dense generation identity. For a local lexical-only index:
+
+```toml
+[gold.build]
+representations = "lexical-only"
+
+[gold.query]
+intent = "exact-mention"
+```
+
+Lexical-only builds require no embedding assets or inference API. They retain
+metadata and lexical gold, remove dense vectors and packed local chunks, and
+publish one active build record. Related-discussion defaults are invalid with
+this recipe; explicit hybrid overrides fail instead of changing gold or silently
+substituting lexical results. Status reports `semantic_support = false`. Switching
+back to lexical-and-dense explicitly queues and rebuilds dense data from silver.
+Changing representations is a build change, not a per-query option.
+
+The server accepts the same `[gold.build]` setting independently of the node's
+local recipe. Nodes use the authenticated shared publication plan to prepare
+the requested representation, uploading no vectors for lexical-only. Source-free
+shared gold replacement clears old vectors while retaining canonical silver;
+hybrid queries against lexical-only shared gold are rejected. Shared-only hybrid
+requests first fetch the small authenticated `/v1/capabilities` build record,
+before model admission. This adds one HTTP round trip for that mode; combined
+search retains its existing local/shared retrieval and fallback path. The server
+checks active group authority again when querying, so stale API processes fail
+closed. Per-node freshness treats zero vectors as complete only when the active
+recipe declares lexical-only. Artifact switches do not publish a second profile.
+
+Tests cover local CLI/MCP model-free indexing, fixed-vector shared replacement,
+real local inference when returning to dense gold, and silver invariance. These
+are correctness fixtures; representative corpus storage, indexing and search
+costs, including the capabilities round trip, remain an acceptance gate.
 
 Query resource selection does not change
 build identity or vectors. CLI `search --ranking fusion` or

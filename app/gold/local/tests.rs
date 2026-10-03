@@ -131,6 +131,66 @@ enum Resume {
 }
 
 #[test]
+fn lexical_only_build_is_model_free_and_replaces_dense_storage() {
+    let fixture = fixture(false);
+    let before = canonical(&fixture.database);
+    let models = Models::new(fixture.database.with_file_name("absent-models"));
+    let recipe = crate::gold::config::Build {
+        representations: crate::gold::config::Representations::LexicalOnly,
+        ..Default::default()
+    };
+    let mut storage = Storage::open_writer(&fixture.database).unwrap();
+    let silver = storage.silver_certificate().unwrap();
+    let result = build(&mut storage, &models, &fixture.source.summary, &recipe).unwrap();
+    assert!(result.ready);
+    assert_eq!(result.model_load_milliseconds, 0);
+    assert_eq!(result.embeddings.model_inferences, 0);
+    assert_eq!(result.counts.embeddings, 0);
+    storage.commit_writer().unwrap();
+    assert_eq!(storage.gold_manifest().unwrap().unwrap().build, recipe);
+    drop(storage);
+    let reader = Storage::open_lexical(&fixture.database).unwrap();
+    assert_eq!(reader.silver_certificate().unwrap(), silver);
+    assert_eq!(canonical(&fixture.database), before);
+    assert!(!fixture.source_root.exists());
+}
+
+#[test]
+#[ignore = "requires installed MASH_TEST_MODELS_DIR"]
+fn artifact_switch_replaces_dense_gold_over_unchanged_silver() {
+    let fixture = fixture(false);
+    let before = canonical(&fixture.database);
+    let models = Models::new(PathBuf::from(
+        std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
+    ));
+    for representations in [
+        crate::gold::config::Representations::LexicalAndDense,
+        crate::gold::config::Representations::LexicalOnly,
+        crate::gold::config::Representations::LexicalAndDense,
+    ] {
+        let recipe = crate::gold::config::Build {
+            representations,
+            ..Default::default()
+        };
+        let mut storage = Storage::open_writer(&fixture.database).unwrap();
+        let silver = storage.silver_certificate().unwrap();
+        let result = build(&mut storage, &models, &fixture.source.summary, &recipe).unwrap();
+        assert!(result.ready);
+        assert_eq!(result.counts.embeddings, recipe.expected_embeddings(1));
+        assert_eq!(
+            result.embeddings.model_inferences,
+            recipe.expected_embeddings(1)
+        );
+        storage.commit_writer().unwrap();
+        assert_eq!(storage.gold_manifest().unwrap().unwrap().build, recipe);
+        assert_eq!(storage.silver_certificate().unwrap(), silver);
+        assert_eq!(canonical(&fixture.database), before);
+        assert!(Storage::open_lexical(&fixture.database).is_ok());
+        assert!(!fixture.source_root.exists());
+    }
+}
+
+#[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
 fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
     use crate::gold::config::{Build as Recipe, EmbeddingText};
@@ -146,6 +206,7 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
     let dialogue = Recipe::default();
     let titled = Recipe {
         max_embedding_chars: None,
+        representations: crate::gold::config::Representations::LexicalAndDense,
         embedding_text: EmbeddingText::TitleAndDialogue,
     };
     let budgeted = Recipe {

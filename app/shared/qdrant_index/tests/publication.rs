@@ -366,6 +366,7 @@ async fn exercise(outcome: Outcome) {
         assert!(fixture.store.state(&fixture.identity).await.is_err());
         fixture.store = fixture.store.with_build(crate::gold::config::Build {
             max_embedding_chars: None,
+            representations: crate::gold::config::Representations::LexicalAndDense,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         });
     }

@@ -270,6 +270,7 @@ pub(super) async fn prepare(
     let mut pool = None;
     let mut reused_embeddings = 0;
     let mut estimate = crate::progress::Estimate::new();
+    let total_vectors = target.build.expected_embeddings(source.visible);
     loop {
         let (next, mut batch) = crate::blocking(move || reader.next()).await?;
         reader = next;
@@ -280,7 +281,7 @@ pub(super) async fn prepare(
         let visible = batch.iter().filter(|m| !m.projection.is_empty()).count();
         if reusable_thread {
             reused_embeddings += visible as u64;
-        } else if visible > 0 {
+        } else if visible > 0 && target.build.dense_enabled() {
             let title = source
                 .conversations
                 .get(&batch[0].conversation_id)
@@ -307,11 +308,11 @@ pub(super) async fn prepare(
         let elapsed = crate::progress::milliseconds(started);
         crate::progress::emit(&crate::progress::Event {
             stored_vectors: Some(processed),
-            total_vectors: Some(source.visible),
+            total_vectors: Some(total_vectors),
             ..crate::progress::Event::new(
                 crate::progress::Phase::SharedEmbeddings,
                 elapsed,
-                estimate.observe(processed, source.visible, elapsed),
+                estimate.observe(processed, total_vectors, elapsed),
             )
         });
     }

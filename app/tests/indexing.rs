@@ -4,6 +4,54 @@ mod incomplete;
 mod rebuild;
 
 #[test]
+fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("node.toml");
+    let database = root.path().join("index.sqlite3");
+    let models = root.path().join("absent-models");
+    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    let indexed = run_json(&[base.as_slice(), &["index"]].concat());
+    assert_eq!(indexed["realized_mode"], "lexical");
+    assert_eq!(indexed["model_inferences"], 0);
+    assert_eq!(indexed["gold"]["build"]["representations"], "lexical-only");
+    let before = std::fs::read(&database).unwrap();
+    let status = run_json(&[base.as_slice(), &["status"]].concat());
+    assert_eq!(status["ready"], true);
+    let result = run_json(
+        &[
+            base.as_slice(),
+            &["search", "needle", "--local", "--no-worker"],
+        ]
+        .concat(),
+    );
+    assert_eq!(result["realized_mode"], "lexical");
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args(base)
+        .args([
+            "search",
+            "needle",
+            "--local",
+            "--no-worker",
+            "--intent",
+            "related-discussion",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(error_kind(&output), "usage");
+    assert_eq!(std::fs::read(&database).unwrap(), before);
+    assert!(!models.exists());
+}
+
+#[test]
 fn index_without_models_fails_before_creating_the_database() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let database = directory.path().join("mash.sqlite3");

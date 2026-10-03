@@ -83,6 +83,54 @@ fn result() -> Build {
     Build::default()
 }
 
+#[tokio::test]
+async fn lexical_only_materialization_preserves_rows_without_model_assets_or_http() {
+    let conversation = conversation();
+    let before = canonical_rows(&conversation);
+    let root = tempfile::tempdir().unwrap();
+    let absent = root.path().join("absent-models");
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    let mut pool = None;
+    let mut result = Build {
+        recipe: crate::gold::config::Build {
+            representations: crate::gold::config::Representations::LexicalOnly,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    materialize(
+        file.as_file_mut(),
+        &conversation,
+        &absent,
+        None,
+        &mut pool,
+        &mut result,
+    )
+    .await
+    .unwrap();
+    assert!(pool.is_none());
+    assert_eq!(result.embeddings.model_inferences, 0);
+    let events = serde_json::Deserializer::from_reader(file.reopen().unwrap())
+        .into_iter::<Event>()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let rows = events
+        .into_iter()
+        .filter_map(|e| match e {
+            Event::Batch(Batch::Messages { records }) => Some(records),
+            _ => None,
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), 37);
+    assert!(
+        rows.iter()
+            .all(|m| m.vector.is_none() && m.generation.is_none())
+    );
+    assert_eq!(canonical_rows(&conversation), before);
+    assert!(!absent.exists());
+}
+
 fn projection(ordinal: i64) -> String {
     format!("projection {ordinal} {} trailingevidence", "é".repeat(300))
 }
@@ -106,6 +154,7 @@ async fn stored_silver_without_sources_preserves_canonical_rows_and_embedding_gr
         for budget in [None, Some(256_u32.try_into().unwrap())] {
             verify_materialization(crate::gold::config::Build {
                 max_embedding_chars: budget,
+                representations: crate::gold::config::Representations::LexicalAndDense,
                 embedding_text: recipe,
             })
             .await;

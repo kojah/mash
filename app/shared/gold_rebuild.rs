@@ -117,6 +117,7 @@ pub(super) fn plan(
         silver,
     ));
     let mut seen = HashSet::new();
+    clear_disabled_vectors(&mut loaded, build);
     let mut finished = false;
     for line in lines {
         if finished {
@@ -135,7 +136,8 @@ pub(super) fn plan(
                         .messages
                         .get_mut(&record.message_id)
                         .ok_or_else(|| AppError::usage("gold embedding has no silver message"))?;
-                    if message.projection.is_empty()
+                    if !build.dense_enabled()
+                        || message.projection.is_empty()
                         || !protocol::valid_vector(&record.vector, dimensions)
                         || !seen.insert(record.message_id)
                     {
@@ -149,13 +151,7 @@ pub(super) fn plan(
             Event::Start { .. } => return Err(AppError::usage("duplicate gold start")),
         }
     }
-    let searchable = loaded
-        .data
-        .messages
-        .values()
-        .filter(|m| !m.projection.is_empty())
-        .count();
-    if !finished || seen.len() != searchable {
+    if !finished || !embedding_coverage(&loaded, seen.len(), build) {
         return Err(AppError::usage("incomplete gold replacement"));
     }
     Ok(Plan {
@@ -166,4 +162,23 @@ pub(super) fn plan(
         removed: 0,
         purged: 0,
     })
+}
+
+fn clear_disabled_vectors(loaded: &mut Loaded, build: &crate::gold::config::Build) {
+    if !build.dense_enabled() {
+        for message in loaded.data.messages.values_mut() {
+            message.vector = None;
+            message.generation = None;
+        }
+    }
+}
+
+fn embedding_coverage(loaded: &Loaded, seen: usize, build: &crate::gold::config::Build) -> bool {
+    let searchable = loaded
+        .data
+        .messages
+        .values()
+        .filter(|m| !m.projection.is_empty())
+        .count() as u64;
+    seen as u64 == build.expected_embeddings(searchable)
 }

@@ -765,6 +765,7 @@ impl Storage {
             .gold_manifest()?
             .filter(|m| m.matches(&m.build, &m.model_generation, &silver));
         if let Some(m) = &manifest
+            && m.build.dense_enabled()
             && !self.semantic_index_is_ready(&m.build.generation(&m.model_generation))?
         {
             manifest = None;

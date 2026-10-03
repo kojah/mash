@@ -71,7 +71,7 @@ fn local_status(
             stored_embeddings: 0,
             models_installed,
             query_models,
-            semantic_support: true,
+            semantic_support: configuration.gold.build.dense_enabled(),
             realized_mode: SearchMode::Unavailable,
             recommended_action: Some(if query_models_available {
                 crate::Action::Index
@@ -122,7 +122,7 @@ fn local_status(
         stored_embeddings: counts.embeddings,
         models_installed,
         query_models,
-        semantic_support: true,
+        semantic_support: configuration.gold.build.dense_enabled(),
         realized_mode: if ready && exact {
             SearchMode::Lexical
         } else if ready {

@@ -137,6 +137,12 @@ pub(super) fn search_filter(
 }
 
 impl Store {
+    pub(in crate::shared) async fn capabilities(
+        &self,
+        identity: &Identity,
+    ) -> Result<crate::gold::config::Build, AppError> {
+        Ok(self.active_configuration(identity).await?.build)
+    }
     pub(super) async fn heads(
         &self,
         identity: &Identity,
@@ -193,7 +199,8 @@ impl Store {
                         &identity.generation,
                         h.silver_revision.as_ref(),
                     )
-                }) && h.counts.embeddings == h.counts.searchable_messages,
+                }) && h.counts.embeddings
+                    == self.build.expected_embeddings(h.counts.searchable_messages),
                 silver_coverage: h.silver_coverage.clone(),
                 silver_revision: h.silver_revision.clone(),
                 node_id: node_id.clone(),
@@ -307,6 +314,7 @@ impl Store {
             return tokio::time::timeout(std::time::Duration::from_millis(1500), self.search_exact(identity, input))
                 .await.map_err(|_| AppError::usage("exact query exceeded the shared search budget; narrow the query or metadata filters"))?;
         }
+        self.build.require_intent(input.intent)?;
         crate::search_query::validate(&input.query)?;
         if !crate::search_query::has_terms(&input.query)
             || input.query.len() > 16384

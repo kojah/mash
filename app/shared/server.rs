@@ -132,6 +132,7 @@ fn router(app: App) -> Router {
         .route("/v1/freshness", get(freshness))
         .route("/v1/status", get(status))
         .route("/v1/state", get(state))
+        .route("/v1/capabilities", get(capabilities))
         .route("/v1/silver", get(retained_silver))
         .route("/v1/publication-plan", get(publication_plan))
         .route("/v1/search", post(search))
@@ -170,6 +171,13 @@ async fn state(
     Extension(id): Extension<Identity>,
 ) -> Result<Json<protocol::NodeState>, ApiError> {
     Ok(Json(app.store.state(&id).await?))
+}
+
+async fn capabilities(
+    State(app): State<App>,
+    Extension(id): Extension<Identity>,
+) -> Result<Json<crate::gold::config::Build>, ApiError> {
+    Ok(Json(app.store.capabilities(&id).await?))
 }
 
 async fn retained_silver(

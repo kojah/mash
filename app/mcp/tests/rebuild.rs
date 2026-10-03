@@ -1,11 +1,10 @@
 use super::*;
 
 #[tokio::test]
-async fn local_gold_rebuild_streams_mcp_progress_without_sources_or_shared_service() {
+async fn lexical_gold_rebuild_streams_mcp_progress_without_models_sources_or_shared_service() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("index.sqlite3");
     let models = directory.path().join("models");
-    install_test_marker(&models);
     let mut storage = crate::storage::Storage::open_writer(&database).unwrap();
     crate::silver::local::ingest(
         &mut storage,
@@ -21,7 +20,7 @@ async fn local_gold_rebuild_streams_mcp_progress_without_sources_or_shared_servi
     drop(storage);
     let config = directory.path().join("config.toml");
     let missing = directory.path().join("missing-sources");
-    std::fs::write(&config, format!("version=1\nproviders={{codex={{roots=[{:?}]}}}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='node'\napi_url='http://127.0.0.1:9'\ntoken_env='MASH_GOLD_REBUILD_NO_TOKEN'\n", missing.to_str().unwrap())).unwrap();
+    std::fs::write(&config, format!("version=1\nproviders={{codex={{roots=[{:?}]}}}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='node'\napi_url='http://127.0.0.1:9'\ntoken_env='MASH_GOLD_REBUILD_NO_TOKEN'\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n", missing.to_str().unwrap())).unwrap();
     let server = Mash {
         paths: Arc::new(Paths {
             config: Some(config),
@@ -29,7 +28,7 @@ async fn local_gold_rebuild_streams_mcp_progress_without_sources_or_shared_servi
             models_dir: Some(models),
         }),
         gate: Arc::new(tokio::sync::Mutex::new(())),
-        model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+        model_work: Arc::new(tokio::sync::Semaphore::new(0)),
     };
     let (server_io, client_io) = tokio::io::duplex(64 * 1024);
     let serving = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
@@ -53,6 +52,7 @@ async fn local_gold_rebuild_streams_mcp_progress_without_sources_or_shared_servi
             assert_ne!(message["result"]["isError"], true, "{message}");
             let result = &message["result"]["structuredContent"];
             assert_eq!(result["rebuild_local_gold"], true);
+            assert_eq!(result["realized_mode"], "lexical");
             assert_eq!(result["scanned_files"], 0);
             assert!(result["shared"].is_null());
             assert_eq!(

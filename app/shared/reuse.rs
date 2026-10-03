@@ -43,7 +43,11 @@ impl Target {
         identity: &Identity,
         build: Build,
     ) -> Result<Self, AppError> {
-        let threads = eligible(loaded, identity, &build)?;
+        let threads = if build.dense_enabled() {
+            eligible(loaded, identity, &build)?
+        } else {
+            BTreeMap::new()
+        };
         let mut target = Self::metadata(loaded.head.as_ref(), &loaded.expected, identity, build);
         target.threads = threads;
         Ok(target)

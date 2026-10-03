@@ -106,7 +106,7 @@ async fn materialize(
         .history
         .messages
         .values()
-        .filter(|m| !m.projection.is_empty())
+        .filter(|m| retained.build.dense_enabled() && !m.projection.is_empty())
         .count() as u64;
     // Match node-side inference batches, including hidden rows in the 32-row
     // boundary. Quantized inference can depend on batch composition.
@@ -124,7 +124,7 @@ async fn materialize(
         }
         let prepared = batch
             .iter()
-            .filter(|m| !m.projection.is_empty())
+            .filter(|m| retained.build.dense_enabled() && !m.projection.is_empty())
             .map(|m| {
                 retained.build.prepare(
                     m.projection.clone(),
@@ -194,7 +194,9 @@ pub(crate) async fn rebuild_gold(
         || (semantic::SHARED_EMBEDDING_GENERATION.to_owned(), 384),
         |c| (semantic::model_space(&c.model, c.dimensions), c.dimensions),
     );
-    if retained.generation != generation || retained.dimensions != dimensions {
+    if retained.build.dense_enabled()
+        && (retained.generation != generation || retained.dimensions != dimensions)
+    {
         return Err(AppError::configuration(
             "node embeddings do not match the shared model space",
         ));

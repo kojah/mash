@@ -77,7 +77,8 @@ pub(crate) async fn materialize(
     pool: &mut Option<EmbeddingPool>,
     result: &mut Build,
 ) -> Result<(), AppError> {
-    let total_vectors = conversation.messages.summary()?.searchable;
+    let searchable = conversation.messages.summary()?.searchable;
+    let total_vectors = result.recipe.expected_embeddings(searchable);
     let started = Instant::now();
     let initial_vectors = result.embeddings.stored_vectors;
     let mut estimate = crate::progress::Estimate::new();
@@ -108,7 +109,7 @@ pub(crate) async fn materialize(
         let prepared = batch
             .iter()
             .map(|m| m.dialogue())
-            .filter(|t| !t.is_empty())
+            .filter(|t| result.recipe.dense_enabled() && !t.is_empty())
             .map(|text| {
                 result
                     .recipe
@@ -125,7 +126,7 @@ pub(crate) async fn materialize(
         for message in batch {
             let message = message.into_owned();
             let projection = message.dialogue_text.as_deref().unwrap_or(&message.content);
-            let vector = if projection.is_empty() {
+            let vector = if projection.is_empty() || !result.recipe.dense_enabled() {
                 None
             } else {
                 Some(

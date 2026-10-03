@@ -226,7 +226,7 @@ pub(in crate::shared) fn plan(
         && input.gold_build.is_some()
         && (previous_build.as_ref() != Some(&requested) || {
             let counts = loaded.data.counts(identity);
-            counts.embeddings != counts.searchable_messages
+            counts.embeddings != requested.expected_embeddings(counts.searchable_messages)
         });
     let previous_canonical = gold_refresh
         .then(|| loaded.data.canonical_fingerprint())
@@ -340,6 +340,8 @@ pub(in crate::shared) fn plan(
                             valid_id(&m.id)?;
                             valid_id(&m.conversation_id)?;
                             if m.ordinal < 0
+                                || (!build.dense_enabled()
+                                    && (m.vector.is_some() || m.generation.is_some()))
                                 || !m.context.valid(m.ordinal)
                                 || m.vector.as_ref().is_some_and(|v| {
                                     !protocol::valid_vector(v, identity.dimensions)
