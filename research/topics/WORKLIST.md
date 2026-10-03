@@ -16,6 +16,14 @@ from the active tree. Their source is retained in Git at `8304e2d` and their
 remains available. Current flat-topic references and quality/parity checks are
 unchanged; historical experiment reports are evidence, not the execution queue.
 
+The unselected Rust topic prototypes formerly under `app/topics` have also been
+removed from the application test build. Their BIRCH/GRINCH, hierarchy, labels
+and corpus evaluations are historical experiments, not production capabilities.
+Their source and test entry points remain available in Git at `cd661a1`; reproduce
+them from that revision with its matching application and dependencies. Current
+Python candidate, review, lifecycle and port-contract checks are unchanged.
+Only a selected method passing the gates below should acquire a Rust implementation.
+
 Explicit follow-up requested by the user: `mash-c0d.19.2.40` tracks a bounded
 online ensemble evaluation (unchanged phrase baseline versus one frozen
 phrase/dense hybrid, plus exact repeat). This is a separate authorized comparison,

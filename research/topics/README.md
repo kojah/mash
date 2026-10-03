@@ -1,5 +1,10 @@
 # Topic methodology lab
 
+Current topic development lives in this Python lab. The unselected Rust
+prototypes formerly under `app/topics` were retired from the application build;
+their historical source and tests are available in Git at `cd661a1`. Follow the
+[current worklist](WORKLIST.md) for selection and future Rust porting gates.
+
 The [scientific environment](SCIENCE_ENVIRONMENT.md) now has explicit exact
 version pins, distribution archive hashes and a fresh-directory initializer.
 A fresh CPython3.11.15 environment verifies all 43 original package versions

@@ -32,8 +32,10 @@ profiles to flush.
 
 Generated bindings, separate test files, standalone test helpers, manual
 benchmark modules, the test-only relevance evaluator and offline topic prototypes
-are excluded. `app/lib.rs` compiles the entire topic module only under `cfg(test)`;
-its tests remain in the run, but its source cannot pad application coverage.
+were excluded in this historical run. At that revision, `app/lib.rs` compiled the
+entire topic module only under `cfg(test)`; its tests remained in the run, but its
+source could not pad application coverage. Those unselected Rust topic prototypes
+were subsequently retired; their source remains available in Git at `cd661a1`.
 The first export also exposed two missed test-only helpers:
 `semantic/evaluation/cleanup.rs` and `semantic/embeddings/cpu/sensitivity.rs`.
 Their enclosing modules are test-only. The final filter removes both, re-exporting

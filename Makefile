@@ -28,4 +28,4 @@ coverage:
 	cargo llvm-cov clean --workspace
 	cargo llvm-cov nextest --no-report --run-ignored all -j 2 -E 'not test(benchmark)' $(CARGO_ARGS)
 	python3 tools/wait-coverage-workers.py
-	cargo llvm-cov report --json --ignore-filename-regex '/generated/|/(tests|benchmarks)(/|\.rs$$)|/topics(/|\.rs$$)|/test_support\.rs$$|/semantic/evaluation(/|\.rs$$)|/semantic/embeddings/cpu/sensitivity\.rs$$|/storage/indexing/memory\.rs$$' --output-path "$(COVERAGE_OUTPUT)"
+	cargo llvm-cov report --json --ignore-filename-regex '/generated/|/(tests|benchmarks)(/|\.rs$$)|/test_support\.rs$$|/semantic/evaluation(/|\.rs$$)|/semantic/embeddings/cpu/sensitivity\.rs$$|/storage/indexing/memory\.rs$$' --output-path "$(COVERAGE_OUTPUT)"
