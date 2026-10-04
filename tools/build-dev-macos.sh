@@ -14,7 +14,10 @@ ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
     "tar -xf $root/source-$revision.tar -C $root/source-$revision && cd $root/source-$revision && PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin TMPDIR=$root/build-tmp CARGO_TARGET_DIR=$root/target CARGO_INCREMENTAL=0 cargo build --release --locked --bin mash"
 scp -o BatchMode=yes -o ConnectTimeout=10 "$host:$root/target/release/mash" "$output.incoming"
 chmod 755 "$output.incoming"
-file "$output.incoming" | grep -q arm64
+# Validate the 64-bit little-endian Mach-O magic and ARM64 CPU type without
+# requiring the optional `file` utility on the deployment coordinator.
+header=$(od -An -tx1 -N8 "$output.incoming" | tr -d ' \n')
+[[ "$header" == cffaedfe0c000001 ]]
 mv "$output.incoming" "$output"
 printf '%s\n' "$revision" > "$output.revision"
 sha256sum "$output" > "$output.sha256"
