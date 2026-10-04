@@ -51,8 +51,12 @@ pub(crate) struct Request {
     pub(crate) sort: Sort,
     #[arg(long, value_enum, default_value = "desc")]
     pub(crate) direction: Direction,
+    /// Results per page, from 1 to 100; use `next_offset` to fetch another page.
+    #[schemars(range(min = 1, max = 100))]
     #[arg(long, default_value_t = 50)]
     pub(crate) limit: usize,
+    /// Page offset, from 0 to 10000.
+    #[schemars(range(min = 0, max = 10000))]
     #[arg(long, default_value_t = 0)]
     pub(crate) offset: usize,
     /// Exclude the caller's published copy, for combined local/shared discovery.

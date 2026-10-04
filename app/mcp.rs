@@ -75,7 +75,8 @@ struct ListThreads {
 struct View {
     id: String,
     context: Option<u32>,
-    /// Publishing node ID when reading the shared index.
+    /// Publishing node ID only for evidence retrieved from the shared index.
+    /// Omit for local evidence, even when it includes this machine's `node_id`.
     shared: Option<String>,
 }
 
@@ -272,7 +273,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read a message and adjacent context. Supply shared with its publishing node ID to read shared history."
+        description = "Read a message and adjacent context. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
     )]
     async fn view(&self, Parameters(request): Parameters<View>) -> CallToolResult {
         self.execute(Operation::View {

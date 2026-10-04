@@ -138,8 +138,9 @@ The manifests/catalogues follow the official
 
 ## Models and indexing
 
-Search is semantic by default and has no production lexical-only mode. Install
-models explicitly, then build the local index:
+Search is semantic by default. A `lexical-only` gold build supports
+`exact-mention`; semantic `related-discussion` requires `lexical-and-dense`.
+Install models explicitly, then build the local index:
 
 ```bash
 mash models install

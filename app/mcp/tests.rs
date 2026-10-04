@@ -364,6 +364,14 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     let server = server.await.expect("server task");
     let tools = client.list_all_tools().await.expect("tools/list");
     assert_filter_schema(&tools);
+    let threads = tools
+        .iter()
+        .find(|tool| tool.name == "list_threads")
+        .unwrap();
+    let properties = &threads.input_schema["properties"];
+    assert_eq!(properties["limit"]["minimum"], 1);
+    assert_eq!(properties["limit"]["maximum"], 100);
+    assert_eq!(properties["offset"]["maximum"], 10_000);
     let mut names = tools
         .iter()
         .map(|tool| tool.name.as_ref())

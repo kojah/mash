@@ -18,6 +18,9 @@ error are not transport failures; changing transport does not repair the index.
   MCP sorting uses `sort: "updated_at"` and `direction: "desc"`. A thread's
   title may not mention its subject, so a title miss can warrant content search.
   `after`/`before` filters use Unix seconds; returned timestamps can be milliseconds.
+  Page limits are 1–100. Follow `next_offset` to continue with the same filters
+  and ordering; do not request larger pages or guess offsets. Check `isError`
+  and structured `error` before reading result arrays.
 - For substantive discussions or paraphrases, search with
   `intent: "related-discussion"` and `unit: "threads"`. Set the intent explicitly
   rather than relying on the node's configured default. Start with a small limit
@@ -29,8 +32,11 @@ error are not transport failures; changing transport does not repair the index.
   `conversation: ["RETURNED_THREAD_ID"]`. Retain applicable provider, node,
   project/repository and time filters. Use actual returned IDs.
 - Use `view` with the returned `message_id` and a bounded `context`, such as 2,
-  when a reply needs surrounding dialogue. For shared evidence, pass its
-  publishing node ID as `shared` to `view`; do not substitute `shared: true`.
+  when a reply needs surrounding dialogue. Omit `shared` for local evidence,
+  even when it contains a `node_id`. For evidence retrieved from the shared
+  index, pass its publishing node ID as `shared`; never substitute `shared: true`.
+  A node ID alone does not establish that the message was published. If origin
+  is ambiguous, use the known local node's local lookup first.
 
 Search example (MCP arguments):
 
@@ -40,9 +46,15 @@ Search example (MCP arguments):
 
 Combined local/shared search is normal when both are configured and ready.
 Use `local: true` for local-only/offline requests, or `shared: true` for the
-shared index including this node. If local indexing is incomplete, shared-only
-search can still be usable. Respect the requested scope; disclose any change
-or reported shared/context failure rather than implying complete coverage.
+shared index including this node's published data. If a default combined query
+fails because local lexical/dense artifacts are missing, stale or disabled,
+call `status` with `shared: true`. Inspect local and shared readiness separately.
+For a general history request, if the shared artifacts needed by the intent
+are ready, retry once with `shared: true`, preserving intent and every filter.
+Disclose omitted local/unpublished history. Never widen an explicit local-only
+or offline request. Metadata listing and local `view` may still work without
+search artifacts. Do not call semantic search globally unavailable based only
+on local status. Report remaining failures or coverage gaps explicitly.
 
 ## Answer from the history
 

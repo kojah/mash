@@ -35,6 +35,9 @@ pub(crate) fn build(
     {
         // Title changes are canonical metadata changes, so rebuild all affected
         // representations conservatively until a finer dependency map exists.
+        // A recipe change must replace a deferred ingestion delta with a full
+        // rebuild; otherwise unchanged messages never enter the dense queue.
+        storage.defer_search_updates()?;
         storage.mark_derived_search_dirty()?;
     }
     let mut model_load_milliseconds = 0;

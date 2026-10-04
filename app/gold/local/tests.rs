@@ -156,6 +156,33 @@ fn lexical_only_build_is_model_free_and_replaces_dense_storage() {
 }
 
 #[test]
+fn enabling_dense_after_deferred_refresh_queues_unchanged_history() {
+    let fixture = fixture(false);
+    let models = Models::new(fixture.database.with_file_name("absent-models"));
+    let lexical = crate::gold::config::Build {
+        representations: crate::gold::config::Representations::LexicalOnly,
+        ..Default::default()
+    };
+    let mut storage = Storage::open_writer(&fixture.database).unwrap();
+    build(&mut storage, &models, &fixture.source.summary, &lexical).unwrap();
+    storage.commit_writer().unwrap();
+    drop(storage);
+    let mut storage = Storage::open_writer(&fixture.database).unwrap();
+    storage.defer_derived_updates().unwrap();
+    let error = build(
+        &mut storage,
+        &models,
+        &fixture.source.summary,
+        &crate::gold::config::Build::default(),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(error.error.kind, crate::ErrorKind::Model);
+    assert_eq!(storage.messages_needing_embeddings().unwrap().len(), 1);
+    assert_eq!(storage.counts().unwrap().embeddings, 0);
+}
+
+#[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
 fn artifact_switch_replaces_dense_gold_over_unchanged_silver() {
     let fixture = fixture(false);
@@ -174,6 +201,8 @@ fn artifact_switch_replaces_dense_gold_over_unchanged_silver() {
         };
         let mut storage = Storage::open_writer(&fixture.database).unwrap();
         let silver = storage.silver_certificate().unwrap();
+        // Provider refreshes defer deltas even when no canonical text changed.
+        storage.defer_derived_updates().unwrap();
         let result = build(&mut storage, &models, &fixture.source.summary, &recipe).unwrap();
         assert!(result.ready);
         assert_eq!(result.counts.embeddings, recipe.expected_embeddings(1));
