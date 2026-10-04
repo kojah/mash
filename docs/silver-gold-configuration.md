@@ -6,6 +6,12 @@ switching configurations replaces that index's projection. Optional saved
 presets must not cause parallel projections to be maintained. Local and shared
 indexes may use different build configurations.
 
+Gold default selection follows the finite [search quality acceptance
+contract](search-quality-acceptance.md). Its offline scorer distinguishes
+incomplete judgments from irrelevant results. Independent real-session review,
+evidence quality and complete build/query costs remain required; synthetic
+protocol and regression tests do not settle retrieval quality.
+
 ## Current silver contract and enrichment audit
 
 These are existing capabilities, not a claim that every provider supplies every
