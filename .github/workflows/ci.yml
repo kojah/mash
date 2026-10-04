@@ -119,6 +119,11 @@ jobs:
           MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
             cargo nextest run --profile ci --run-ignored only --no-tests fail -j 1 \
               -E 'test(shared_backend_persisted_restart_contract) or test(shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guards)'
+      - name: Verify development MCP refresh and deployment separation
+        run: |
+          MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
+            cargo nextest run -p mash-dev --profile ci --run-ignored only --no-tests fail \
+              -E 'test(real_mash_refresh_progress_rebuild_and_deploy_without_ingestion)'
       - name: Clean owned restart fixtures after test failure or timeout
         if: always()
         env:

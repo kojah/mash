@@ -1,0 +1,27 @@
+# Trusted operator configuration; tool callers can select names, never commands.
+# Replace these paths with the paths on the development host.
+repository = "/path/to/mash"
+logs = "/path/to/mash-artifacts/dev-jobs"
+timeout_seconds = 7200
+
+# Commands sharing this key run once per deployment job. Validation is explicit.
+[builds]
+linux = [
+  { argv = ["cargo", "fmt", "--check"] },
+  { argv = ["cargo", "test-clif", "--locked"] },
+  { argv = ["cargo", "build-clif", "--locked", "--bin", "mash"] },
+]
+
+[nodes.xenia]
+build = "linux"
+install = [
+  { argv = ["bash", "tools/install-dev-binary.sh", "/path/to/target/debug/mash", "/home/james/.local/bin/mash"] },
+]
+# Existing wrapper loads node.env and supplies the node's config/database/models.
+mcp = { argv = ["/home/james/.local/bin/mash-dev", "mcp"] }
+shared = true
+
+# For remote nodes, configure their platform's build/install workflow and use:
+# mcp = { argv = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+#                  "dev-macbook", "/Users/jko/.local/bin/mash-dev mcp"] }
+# SSH is only the development transport, never Mash search federation.

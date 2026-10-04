@@ -6,3 +6,8 @@ tool_timeout_sec = 120
 
 [plugins."mash@mash-local"]
 enabled = true
+
+[mcp_servers.mash_dev]
+command = "mash-dev-mcp"
+startup_timeout_sec = 60
+tool_timeout_sec = 120

@@ -1,11 +1,17 @@
 # Crate and application boundaries
 
-The handwritten Cargo workspace contains `mash` and `mash-query`. Both are
+The handwritten Cargo workspace contains `mash`, `mash-query` and `mash-dev`. All are
 default members, so the ordinary formatting, Clippy, nextest and doctest
 commands cover the query crate as well as the application. The root package
 is an implicit member. Cargo's [workspace documentation](https://doc.rust-lang.org/cargo/reference/workspaces.html)
 describes package selection and default members. Current workspace membership
 was also checked with `cargo metadata`, rather than inferred from the manifest.
+
+`mash-dev` is the independent project development MCP. It owns configured
+deployment jobs and connects to installed Mash MCPs for indexing and readiness,
+without depending on the application or its inference libraries. See
+[mash-dev.md](mash-dev.md) for tools and lifecycle. It is separate from the
+history plugin and does not change the product CLI command surface.
 
 `mash-query` owns the shared pure query contract: input/language validation,
 stopword classification, literal SQLite FTS construction, and exact reference
@@ -27,7 +33,7 @@ env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query
 ```
 
 Use the persistent target/temp directories from `AGENTS.md` on Xenia. The
-Cranelift aliases configure both handwritten packages. Integrated application,
+Cranelift aliases configure all three handwritten packages. Integrated application,
 real-model and backend validation remains necessary when changing query behavior.
 The [extraction control](../benchmarks/2026-10-03-query-crate.md) records source
 equivalence, isolated test iteration and integrated verification.

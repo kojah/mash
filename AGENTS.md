@@ -131,7 +131,7 @@ iteration. Retain Clippy, formatting, and doctest validation. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
-The workspace defaults include `mash` and `mash-query`. Query-only iteration can use
+The workspace defaults include `mash`, `mash-query` and `mash-dev`. Query-only iteration can use
 `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
 See `docs/crate-boundaries.md`; integrated search validation remains required
 when changing query behavior.
@@ -159,6 +159,14 @@ need repair; do not skip required provider/privacy/schema migrations. A query-mo
 availability failure needs explicit model setup, rather than repeated indexing.
 Keep background synchronization or explicit ingestion separate from redeployment.
 See `docs/redeployment.md` for readiness checks, measured costs and pending delta work.
+
+The separate project development MCP is `mash-dev-mcp` (`mash-dev` crate).
+It runs only trusted, configured deployment commands and calls installed Mash
+MCPs for refresh/status; it must not duplicate indexing or schema logic. Keep
+deploy and refresh separate, target selections explicit, and raw command logs
+private. It stays independent of the history plugin and inference implementation.
+See `docs/mash-dev.md`; do not restart it or replace its configuration during
+an active development job.
 
 ## Agent work tracking
 

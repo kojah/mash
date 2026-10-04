@@ -13,8 +13,8 @@ autobenches = false
 build = false
 
 [workspace]
-members = ["crates/mash-query"]
-default-members = [".", "crates/mash-query"]
+members = ["crates/mash-query", "crates/mash-dev"]
+default-members = [".", "crates/mash-query", "crates/mash-dev"]
 resolver = "3"
 
 [lib]
