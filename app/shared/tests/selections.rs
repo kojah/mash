@@ -6,7 +6,7 @@ use crate::search_filter::Selection;
 fn local_message_candidates_intersect_thread_provider_and_time_selections() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
-    for provider in [Provider::Codex, Provider::ClaudeCode, Provider::Hermes] {
+    for provider in [Provider::Codex, Provider::ClaudeCode, Provider::Opencode] {
         let id = provider.as_str();
         storage
             .replace_conversation(&Conversation {

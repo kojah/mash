@@ -79,9 +79,9 @@ fn selected_message_boundaries_are_traceable_and_legacy_evidence_is_not_invented
 #[test]
 fn timestamp_rules_and_references_are_validated_without_reinterpreting_values() {
     for (provider, field) in [
-        (Provider::Hermes, TimestampField::SessionTimestamp),
-        (Provider::Pi, TimestampField::SessionsStartedAt),
-        (Provider::GeminiCli, TimestampField::SessionTimestamp),
+        (Provider::Opencode, TimestampField::SessionTimeCreated),
+        (Provider::Codex, TimestampField::SessionTimeCreated),
+        (Provider::ClaudeCode, TimestampField::SessionTimeCreated),
     ] {
         for origin in [
             TimestampOrigin::Unknown,

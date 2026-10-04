@@ -18,25 +18,6 @@ pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for (&provider, paths) in &options.providers {
         for path in paths {
-            if provider == Provider::Cline {
-                if let Some(metadata) = super::cline::metadata_path(path) {
-                    roots.push(metadata);
-                }
-                // Discovery failures are reported by indexing; the configured
-                // root remains watched so repaired stores can be retried.
-                if let Ok(discovery) =
-                    discover_history_files(provider, std::slice::from_ref(path), false)
-                {
-                    for source in discovery.sources {
-                        roots.extend(
-                            source
-                                .dependencies
-                                .into_iter()
-                                .map(|d| d.path().to_path_buf()),
-                        );
-                    }
-                }
-            }
             if provider == Provider::Copilot
                 && path.file_name().is_some_and(|name| name == "state.vscdb")
                 && let Some(parent) = path.parent()
@@ -54,20 +35,6 @@ pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
                     && let Some(user) = global.parent()
                 {
                     roots.push(user.join("workspaceStorage/no-workspace/chatSessions"));
-                }
-            }
-            if provider == Provider::GeminiCli
-                && let Some(marker) = super::gemini::project_marker(path)
-            {
-                roots.push(marker);
-            }
-            if provider == Provider::Openclaw {
-                if path.extension().is_some_and(|ext| ext == "sqlite") {
-                    roots.push(super::openclaw::cold_directory(path));
-                } else if path.file_name().is_some_and(|name| name == "agent") {
-                    roots.push(super::openclaw::cold_directory(
-                        &path.join("openclaw-agent.sqlite"),
-                    ));
                 }
             }
             roots.push(path.clone());
@@ -231,51 +198,17 @@ pub(super) fn discover_history_files(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     let mut discovery = discover_physical_sources(provider, roots, authoritative)?;
-    if provider == Provider::Cline {
-        discovery.sources = super::cline::sources(discovery.sources)?;
-        return Ok(discovery);
-    }
     if provider == Provider::Copilot {
         discovery.sources = super::copilot::sources(discovery.sources)?;
         return Ok(discovery);
     }
-    if provider == Provider::GeminiCli {
-        let paths: BTreeSet<_> = discovery
-            .sources
-            .iter()
-            .map(|s| s.identity.path.clone())
-            .collect();
-        // Gemini keeps its old JSON file when it resumes into a JSONL sibling.
-        discovery.sources.retain(|s| {
-            !s.identity
-                .path
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("json"))
-                || !paths.contains(&s.identity.path.with_extension("jsonl"))
-        });
-        for source in &mut discovery.sources {
-            if let Some(marker) = super::gemini::project_marker(&source.identity.path) {
-                source.dependencies.push(Dependency::Optional(marker));
-            }
-        }
-        return Ok(discovery);
-    }
     let sessions = match provider {
-        Provider::Hermes => super::hermes::discover,
         Provider::Opencode => super::opencode::discover,
-        Provider::Openclaw => super::openclaw::discover,
         Provider::Cursor => super::cursor::discover,
         Provider::Antigravity => super::antigravity::discover,
-        Provider::ClaudeCode
-        | Provider::Codex
-        | Provider::Aider
-        | Provider::Pi
-        | Provider::Copilot
-        | Provider::GeminiCli
-        | Provider::Windsurf => {
+        Provider::ClaudeCode | Provider::Codex | Provider::Copilot => {
             return Ok(discovery);
         }
-        Provider::Cline => unreachable!("Cline discovery handled above"),
     };
     discovery.sources = discovery
         .sources
@@ -317,64 +250,21 @@ fn discover_physical_sources(
     authoritative: bool,
 ) -> Result<Discovery, AppError> {
     discover_files(roots, authoritative, |path, explicit| match provider {
-        Provider::Windsurf => path.extension().is_some_and(|e| e == "pb"),
         Provider::Antigravity => path.extension().is_some_and(|e| e == "db"),
         Provider::Cursor => {
             path.file_name()
                 .is_some_and(|n| n == "store.db" || n == "state.vscdb")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))
         }
-        Provider::Cline => {
-            path.file_name().is_some_and(|n| {
-                n == "ui_messages.json"
-                    || n == "sessions.db"
-                    || n.to_str().is_some_and(|s| s.ends_with(".messages.json"))
-            }) || (explicit
-                && path
-                    .extension()
-                    .is_some_and(|e| e.eq_ignore_ascii_case("json")))
-        }
-        Provider::Aider => {
-            if explicit {
-                path.extension()
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
-            } else {
-                path.file_name()
-                    .is_some_and(|name| name == ".aider.chat.history.md")
-            }
-        }
-        Provider::ClaudeCode | Provider::Codex | Provider::Pi => is_jsonl(path),
+        Provider::ClaudeCode | Provider::Codex => is_jsonl(path),
         Provider::Copilot => {
             path.file_name().is_some_and(|name| name == "events.jsonl")
                 || path.file_name().is_some_and(|name| name == "state.vscdb")
                 || (explicit && is_jsonl(path))
         }
-        Provider::GeminiCli => {
-            let extension = path
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("jsonl"));
-            extension
-                && (explicit
-                    || path.file_name().is_some_and(|name| {
-                        name.to_str().is_some_and(|n| n.starts_with("session-"))
-                    })
-                    || path
-                        .ancestors()
-                        .skip(1)
-                        .any(|p| p.file_name().is_some_and(|n| n == "chats")))
-        }
-        Provider::Hermes => {
-            path.file_name().is_some_and(|name| name == "state.db")
-                || (explicit && path.extension().is_some_and(|e| e == "db"))
-        }
         Provider::Opencode => {
             path.file_name().is_some_and(|name| name == "opencode.db")
                 || (explicit && path.extension().is_some_and(|e| e == "db"))
-        }
-        Provider::Openclaw => {
-            path.file_name()
-                .is_some_and(|name| name == "openclaw-agent.sqlite")
-                || (explicit && path.extension().is_some_and(|e| e == "sqlite"))
         }
     })
 }

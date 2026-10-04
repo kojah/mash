@@ -15,7 +15,7 @@ fn catalog_snapshot(revision: i64) -> Vec<Value> {
         {"id":"a","provider":"codex","title":"Alpha","created_at":1000,"updated_at":3000},
         {"id":"b","provider":"claude-code","title":"Beta","created_at":2000,"updated_at":2000},
         {"id":"c","provider":"codex","title":"Alpha","created_at":1000,"updated_at":3000},
-        {"id":"d","provider":"hermes","title":"100%_literal","created_at":3000,"updated_at":1000},
+        {"id":"d","provider":"opencode","title":"100%_literal","created_at":3000,"updated_at":1000},
         {"id":"e","provider":"codex","title":null,"created_at":null,"updated_at":null}
     ]);
     events.remove(2); // Metadata-only conversations deliberately have no messages or vectors.

@@ -206,7 +206,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
             records: vec![ConversationRecord {
                 enrichment: None,
                 id: "branch".into(),
-                provider: crate::provider::Provider::Pi,
+                provider: crate::provider::Provider::Cursor,
                 title: None,
                 project: None,
                 repository: None,

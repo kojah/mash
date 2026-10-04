@@ -16,31 +16,25 @@ async fn qdrant_enrichment_catalog_search_replacement_and_validation() {
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_native_field_origins_round_trip_in_catalog_search_and_replacement() {
-    use crate::provider::Provider;
-    for (provider, title, project, repository) in [
-        (
-            Provider::Opencode,
-            Some(SourceField::SessionTitle),
-            SourceField::SessionDirectory,
-            Some(SourceField::ProjectWorktree),
-        ),
-        (
-            Provider::Hermes,
-            None,
-            SourceField::Cwd,
-            Some(SourceField::GitRepoRoot),
-        ),
-        (Provider::Pi, None, SourceField::Cwd, None),
-    ] {
-        let expected = Evidence {
-            version: VERSION,
-            timestamps: None,
-            title: Some(title.map_or(Origin::Unknown, |field| Origin::SourceMetadata { field })),
-            project: Some(Origin::SourceMetadata { field: project }),
-            repository: repository.map(|field| Origin::SourceMetadata { field }),
-        };
-        contract(Service::qdrant(384).await, provider, expected).await;
-    }
+    let expected = Evidence {
+        version: VERSION,
+        timestamps: None,
+        title: Some(Origin::SourceMetadata {
+            field: SourceField::SessionTitle,
+        }),
+        project: Some(Origin::SourceMetadata {
+            field: SourceField::SessionDirectory,
+        }),
+        repository: Some(Origin::SourceMetadata {
+            field: SourceField::ProjectWorktree,
+        }),
+    };
+    contract(
+        Service::qdrant(384).await,
+        crate::provider::Provider::Opencode,
+        expected,
+    )
+    .await;
 }
 
 fn evidence() -> Evidence {
@@ -60,32 +54,17 @@ fn evidence() -> Evidence {
 
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
-async fn qdrant_selected_title_origins_round_trip_and_reject_invalid_record_references() {
+async fn qdrant_selected_title_origins_round_trip_and_reject_invalid_message_references() {
     use crate::provider::Provider;
     for (provider, origin) in [
         (
-            Provider::Hermes,
+            Provider::Opencode,
             Origin::SourceMetadata {
-                field: SourceField::SessionsTitle,
+                field: SourceField::SessionTitle,
             },
         ),
         (
-            Provider::Hermes,
-            Origin::FirstVisibleUserMessage {
-                message_id: "searchable".into(),
-                rule_version: VERSION,
-            },
-        ),
-        (
-            Provider::Pi,
-            Origin::SourceRecord {
-                field: SourceField::SessionInfoName,
-                record_id: "0123456789abcdef01234567".into(),
-                rule_version: VERSION,
-            },
-        ),
-        (
-            Provider::Pi,
+            Provider::Codex,
             Origin::FirstVisibleUserMessage {
                 message_id: "searchable".into(),
                 rule_version: VERSION,
@@ -106,27 +85,12 @@ async fn qdrant_timestamp_evidence_round_trips_and_rejects_invalid_rules_and_ids
         crate::provider::Provider::Codex,
         crate::provider::Provider::ClaudeCode,
         crate::provider::Provider::Opencode,
-        crate::provider::Provider::Hermes,
-        crate::provider::Provider::Pi,
-        crate::provider::Provider::GeminiCli,
     ] {
         let mut expected = evidence();
         let native_fields = match provider {
             crate::provider::Provider::Opencode => Some([
                 TimestampField::SessionTimeCreated,
                 TimestampField::SessionTimeUpdated,
-            ]),
-            crate::provider::Provider::Hermes => Some([
-                TimestampField::SessionsStartedAt,
-                TimestampField::SessionsEndedAt,
-            ]),
-            crate::provider::Provider::Pi => Some([
-                TimestampField::SessionTimestamp,
-                TimestampField::SessionTimestamp,
-            ]),
-            crate::provider::Provider::GeminiCli => Some([
-                TimestampField::SessionStartTime,
-                TimestampField::SessionLastUpdated,
             ]),
             _ => None,
         };
@@ -222,7 +186,7 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
         metadata(&service).await.threads[0].metadata.enrichment,
         Some(expected.clone())
     );
-    reject_invalid_record_references(&service, &events).await;
+    reject_invalid_message_references(&service, &events).await;
     assert_eq!(
         metadata(&service).await.threads[0].metadata.enrichment,
         Some(expected)
@@ -249,7 +213,7 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
     service.cleanup().await;
 }
 
-async fn reject_invalid_record_references(service: &Service, events: &[Value]) {
+async fn reject_invalid_message_references(service: &Service, events: &[Value]) {
     use crate::silver::enrichment::{Boundary, TimestampOrigin, Timestamps};
     for (message_id, rule_version) in [
         (String::new(), VERSION),
@@ -269,27 +233,6 @@ async fn reject_invalid_record_references(service: &Service, events: &[Value]) {
                 rule_version,
             }),
             updated_at: Some(TimestampOrigin::Unknown),
-        });
-        rejected[1] = serde_json::to_value(batch).unwrap();
-        assert_eq!(
-            service.upload(FIRST, &rejected).await.status(),
-            StatusCode::BAD_REQUEST
-        );
-    }
-    for (record_id, rule_version) in [
-        ("bad-key", VERSION),
-        ("0123456789abcdef01234567", VERSION + 1),
-    ] {
-        let mut rejected = events.to_vec();
-        rejected[0]["revision"] = json!(2);
-        let mut batch: protocol::Event = serde_json::from_value(rejected[1].clone()).unwrap();
-        let protocol::Event::Batch(protocol::Batch::Conversations { records }) = &mut batch else {
-            panic!("conversation fixture")
-        };
-        records[0].enrichment.as_mut().unwrap().title = Some(Origin::SourceRecord {
-            field: SourceField::SessionInfoName,
-            record_id: record_id.into(),
-            rule_version,
         });
         rejected[1] = serde_json::to_value(batch).unwrap();
         assert_eq!(

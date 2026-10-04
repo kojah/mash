@@ -1,7 +1,102 @@
 use super::*;
 
 use rusqlite::params;
-mod cline;
+
+#[test]
+fn version_forty_removes_retired_provider_caches_and_preserves_supported_vectors() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("old.sqlite3");
+    let connection = Connection::open(&path).unwrap();
+    let supported = "'claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity'";
+    let legacy = format!(
+        "{supported}, 'gemini-cli', 'windsurf', 'cline', 'aider', 'hermes', 'openclaw', 'pi'"
+    );
+    connection
+        .execute_batch(&include_str!("../schema.sql").replace(supported, &legacy))
+        .unwrap();
+    for provider in [
+        "codex",
+        "gemini-cli",
+        "windsurf",
+        "cline",
+        "aider",
+        "hermes",
+        "openclaw",
+        "pi",
+    ] {
+        connection
+            .execute(
+                "INSERT INTO conversations(id,provider,source_path,source_key) VALUES(?1,?1,?1,?1)",
+                [provider],
+            )
+            .unwrap();
+        connection.execute(
+            "INSERT INTO messages(id,conversation_id,ordinal,role,content) VALUES(?1,?1,0,'user','searchable')",
+            [provider],
+        ).unwrap();
+        connection.execute("INSERT INTO message_fts(content,message_id,conversation_id) VALUES('searchable',?1,?1)", [provider]).unwrap();
+        connection
+            .execute(
+                "INSERT INTO message_embeddings VALUES(?1,'fixture',2,127.0,x'7f00')",
+                [provider],
+            )
+            .unwrap();
+        connection
+            .execute("INSERT INTO pending_embeddings VALUES(?1)", [provider])
+            .unwrap();
+        connection.execute("INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns) VALUES(?1,?1,?1,1,1)", [provider]).unwrap();
+        connection
+            .execute("INSERT INTO silver_scans VALUES(?1,2,1)", [provider])
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO silver_rejections VALUES(?1,?1,?1,1)",
+                [provider],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO tombstones VALUES(?1,'forgotten',1)",
+                [provider],
+            )
+            .unwrap();
+    }
+    connection.pragma_update(None, "user_version", 40).unwrap();
+    drop(connection);
+    let storage = Storage::open(&path).unwrap();
+    assert_eq!(storage.view("codex", 0).unwrap()[0].content, "searchable");
+    crate::storage::test_support::assert_quantized_embedding(&storage, "codex", &[127, 0], 127.0);
+    for table in [
+        "conversations",
+        "messages",
+        "message_fts",
+        "message_embeddings",
+        "pending_embeddings",
+        "source_checkpoints",
+        "silver_scans",
+        "silver_rejections",
+        "tombstones",
+    ] {
+        let count: i64 = storage
+            .connection
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 1, "{table} retains only supported records");
+    }
+    assert!(storage.derived_search_is_dirty().unwrap());
+    assert!(Storage::open_search(&path, "fixture").is_err());
+    drop(storage);
+    assert_eq!(
+        Storage::open(&path)
+            .unwrap()
+            .view("codex", 0)
+            .unwrap()
+            .len(),
+        1
+    );
+}
 
 #[test]
 fn identity_migration_preserves_vectors_and_checkpoints_but_requires_certification() {
@@ -194,7 +289,7 @@ fn provider_schema_migration(version: i64) {
     }
     connection.execute_batch(&schema).unwrap();
     connection.execute_batch(
-        "INSERT INTO conversations(id,provider,source_path,source_key) VALUES('session','pi','/tmp/pi.jsonl','file:/tmp/pi.jsonl');
+        "INSERT INTO conversations(id,provider,source_path,source_key) VALUES('session','opencode','/tmp/opencode.db','file:/tmp/opencode.db');
          INSERT INTO messages(storage_id,id,conversation_id,ordinal,role,content,search_projection,context_parent)
              VALUES(42,'root','session',0,'user','original request','original request',-1),
                    (43,'child','session',1,'assistant','branch reply','branch reply',0);
@@ -202,7 +297,7 @@ fn provider_schema_migration(version: i64) {
              VALUES(42,'original request','root','session'),(43,'branch reply','child','session');
          INSERT INTO message_embeddings VALUES('root','fixture',2,127.0,x'7f00'),('child','fixture',2,127.0,x'7f00');
          INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns)
-             VALUES('pi','/tmp/pi.jsonl','file:/tmp/pi.jsonl',100,200);
+             VALUES('opencode','/tmp/opencode.db','file:/tmp/opencode.db',100,200);
          UPDATE derived_state SET search_dirty=0,semantic_ready_generation='fixture';
          "
     ).unwrap();
@@ -243,8 +338,8 @@ fn provider_schema_migration(version: i64) {
     assert!(
         !storage
             .source_checkpoint_matches(
-                crate::provider::Provider::Pi,
-                &crate::silver::SourceIdentity::file("/tmp/pi.jsonl"),
+                crate::provider::Provider::Opencode,
+                &crate::silver::SourceIdentity::file("/tmp/opencode.db"),
                 &crate::silver::SourceStamp::file(100, 200)
             )
             .unwrap()

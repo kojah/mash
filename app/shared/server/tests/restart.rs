@@ -22,9 +22,9 @@ fn source_certificate(revision: i64) -> crate::silver::certificate::Certificate 
 }
 fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     let providers = if second {
-        vec![Provider::Hermes]
+        vec![Provider::Opencode]
     } else if revision == 1 {
-        vec![Provider::Codex, Provider::ClaudeCode, Provider::Pi]
+        vec![Provider::Codex, Provider::ClaudeCode, Provider::Cursor]
     } else {
         vec![Provider::Codex, Provider::ClaudeCode]
     };
@@ -47,7 +47,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
             attachments: Vec::new(),
             id: if *provider == Provider::ClaudeCode {
                 "claude"
-            } else if *provider == Provider::Pi {
+            } else if *provider == Provider::Cursor {
                 "retired"
             } else {
                 "anchor"
@@ -58,7 +58,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
             context: crate::message_context::MessageContext::Linear,
             role: crate::role::Role::User,
             content: format!("restartneedle canonical revision {revision}"),
-            projection: if *provider == Provider::Pi {
+            projection: if *provider == Provider::Cursor {
                 "retiredneedle".into()
             } else {
                 "restartneedle projection".into()
@@ -111,7 +111,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
         events.insert(
             events.len() - 1,
             Event::Reconcile {
-                provider: Provider::Hermes,
+                provider: Provider::Opencode,
                 cutoff: None,
             },
         );
@@ -122,7 +122,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
 
 fn scan_report() -> protocol::ScanReport {
     protocol::ScanReport {
-        provider: Provider::Hermes,
+        provider: Provider::Opencode,
         interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
         authoritative: true,
         cutoff: None,
@@ -187,7 +187,7 @@ async fn verify_search(api: &Api) {
         let result: protocol::Candidates = api.post_json("search", FIRST, &input).await;
         for hits in [result.lexical, result.semantic] {
             assert_eq!(hits.len(), 1);
-            assert_eq!(hits[0].provider, Provider::Hermes);
+            assert_eq!(hits[0].provider, Provider::Opencode);
             assert_eq!(hits[0].node_id.as_deref(), Some("second"));
         }
         input.exclude_self = false;

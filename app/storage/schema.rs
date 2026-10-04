@@ -3,8 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 40;
-mod cline;
+pub(super) const SCHEMA_VERSION: i64 = 41;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -24,7 +23,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if matches!(version, 32..=39) {
+    if matches!(version, 32..=40) {
         return migrate_current_projections(connection, version);
     }
 
@@ -88,7 +87,6 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         backfill_pending_embeddings(&transaction)?;
     }
     install_publication_triggers(&transaction)?;
-    cline::migrate(&transaction)?;
     // Every earlier schema may retain the old projection. Invalidate after
     // legacy backfills so no migration can accidentally restore readiness.
     transaction.execute_batch(
@@ -114,8 +112,13 @@ fn migrate_current_projections(connection: &Connection, version: i64) -> Result<
         .map_err(AppError::database)?;
     install_silver_contract(&transaction)?;
     prepare_message_columns(&transaction)?;
-    if version < 35 {
-        cline::migrate(&transaction)?;
+    let before = transaction.total_changes();
+    purge_unsupported_providers(&transaction)?;
+    if transaction.total_changes() != before {
+        rebuild_all_semantic_chunks(&transaction)?;
+        transaction.execute_batch(
+            "UPDATE derived_state SET search_dirty=1, semantic_ready_generation=NULL WHERE singleton=1;"
+        ).map_err(AppError::database)?;
     }
     if version < 34 {
         transaction
@@ -305,7 +308,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
             "CREATE TABLE conversations_next (
                 id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL CHECK (provider IN (
-                    'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity'
+                    'claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity'
                 )),
                 source_path TEXT NOT NULL,
                 title TEXT, created_at INTEGER, updated_at INTEGER,
@@ -414,36 +417,41 @@ fn add_column_if_missing(
 fn purge_unsupported_providers(connection: &Connection) -> Result<(), AppError> {
     connection
         .execute_batch(
-            "DELETE FROM message_fts
+            "DELETE FROM conversation_enrichment WHERE conversation_id IN (
+                  SELECT id FROM conversations WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity')
+              );
+             DELETE FROM silver_scans WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity');
+             DELETE FROM silver_rejections WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity');
+             DELETE FROM message_fts
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity')
               );
              DELETE FROM message_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity')
               );
              DELETE FROM pending_embeddings
               WHERE message_id IN (
                     SELECT messages.id
                       FROM messages
                       JOIN conversations ON conversations.id = messages.conversation_id
-                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
+                     WHERE conversations.provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity')
               );
              DELETE FROM messages
               WHERE conversation_id IN (
                     SELECT id FROM conversations
-                     WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity')
+                     WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity')
               );
              DELETE FROM conversations
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity');
+              WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity');
              DELETE FROM source_checkpoints
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity');
+              WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity');
              DELETE FROM tombstones
-              WHERE provider NOT IN ('claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity');",
+              WHERE provider NOT IN ('claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity');",
         )
         .map_err(AppError::database)
 }

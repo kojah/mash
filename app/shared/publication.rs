@@ -26,7 +26,7 @@ pub(crate) struct SnapshotWork {
 pub(super) fn target(config: &SharedConfig) -> String {
     blake3::hash(
         format!(
-            "attachments-v1-redaction-v2\0{}\0{}\0{}",
+            "providers-six-v1-attachments-v1-redaction-v2\0{}\0{}\0{}",
             config.group_id,
             config.node_id,
             config.api_url.trim_end_matches('/')

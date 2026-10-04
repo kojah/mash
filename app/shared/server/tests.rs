@@ -22,7 +22,6 @@ mod silver_scans;
 mod snapshot_budget;
 mod source_silver;
 mod threads;
-mod windsurf;
 
 const FIRST: &str = "test-api-token-first-32-bytes-long";
 const SECOND: &str = "test-api-token-second-32-bytes-long";
@@ -188,7 +187,7 @@ async fn wal_checkpoint_contract(service: Service) {
     let hash = blake3::hash(b"database-session-alpha").to_hex().to_string();
     let fingerprint = blake3::hash(b"database-and-wal-stamp").to_hex().to_string();
     let source = Checkpoint {
-        provider: crate::provider::Provider::Hermes,
+        provider: crate::provider::Provider::Opencode,
         path_hash: hash.clone(),
         size_bytes: 8192,
         modified_ns: 200,
@@ -222,7 +221,10 @@ async fn wal_checkpoint_contract(service: Service) {
         .unwrap();
     let state: NodeState = serde_json::from_value(service.get("state", FIRST).await).unwrap();
     assert_eq!(state.sources.len(), 1);
-    assert_eq!(state.sources[0].provider, crate::provider::Provider::Hermes);
+    assert_eq!(
+        state.sources[0].provider,
+        crate::provider::Provider::Opencode
+    );
     assert_eq!(state.sources[0].path_hash, hash);
     assert_eq!(state.sources[0].fingerprint, fingerprint);
     assert_eq!(state.sources[0].modified_ns, 200);

@@ -8,7 +8,13 @@ fn catalog() -> (tempfile::TempDir, Storage) {
         ("a", "codex", Some("Alpha"), Some(1000), Some(3000)),
         ("b", "claude-code", Some("Beta"), Some(2000), Some(2000)),
         ("c", "codex", Some("Alpha"), Some(1000), Some(3000)),
-        ("d", "hermes", Some("100%_literal"), Some(3000), Some(1000)),
+        (
+            "d",
+            "opencode",
+            Some("100%_literal"),
+            Some(3000),
+            Some(1000),
+        ),
         ("e", "codex", None, None, None),
     ] {
         storage.connection.execute(
@@ -115,7 +121,7 @@ fn generated_catalog_intersects_provider_title_and_activity_filters_before_pagin
 fn generated_catalog_title_matching_is_literal_and_provider_lists_are_exact() {
     let (_directory, storage) = catalog();
     for (providers, title, after, before, expected) in [
-        (r#"["hermes"]"#, "%_", None, None, vec!["d"]),
+        (r#"["opencode"]"#, "%_", None, None, vec!["d"]),
         (r#"["codex"]"#, "%_", None, None, vec![]),
         (r#"["cod"]"#, "Alpha", None, None, vec![]),
         (r#"["codex"]"#, "' OR TRUE --", None, None, vec![]),

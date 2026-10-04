@@ -6,7 +6,8 @@ Issue history lives on a separate Dolt Git remote in this GitHub repository;
 `bd dolt commit` and `bd dolt push` persist tracking updates. The entire `.beads/` directory, including configuration, stays local and is ignored
 by Git. `bd bootstrap` discovers the Dolt history from the Git origin.
 
-mash (Multi-Agent Search History) searches Claude Code, Codex, and Aider histories
+mash (Multi-Agent Search History) searches Claude Code, Codex, Copilot, Cursor,
+OpenCode, and Antigravity histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
 keep a local index and optionally publish to a shared service over HTTP, with independent provider allowlists.
 SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
@@ -37,7 +38,7 @@ CI checks regeneration against committed output. Dynamic predicates and FTS rank
 reuse the generated projection and decoder; migrations and writes remain explicit.
 
 ```text
-mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|aider|hermes|opencode|openclaw|pi|copilot|gemini-cli|cline]... [--since-days N|--all-history]
+mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-gold [--full]
 mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash list-threads [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
@@ -219,9 +220,8 @@ line, excluding LF/CRLF. Oversized Codex completed `FileChange` and
 streaming, then omitted; their canonical tool records remain indexed as context.
 These envelopes have a separate 64 MiB input limit, including line endings.
 Malformed envelopes, oversized canonical messages, and unsupported oversized
-event types fail indexing. Aider uses the same line limit and an 8 MiB limit per
-complete turn, including code fences and embedded newlines. Oversized input
-fails indexing with a source-specific error; it is never truncated or marked
+event types fail indexing. Oversized input fails indexing with a source-specific
+error; it is never truncated or marked
 complete. A failed configured provider scan retains its previous messages and
 checkpoints. These are record limits, not a total conversation memory limit.
 
@@ -417,29 +417,6 @@ The [streaming control](benchmarks/2026-10-03-shared-response-streaming.md)
 documents the large-state memory/parsing tradeoff and body cancellation checks.
 Live worker stage streaming and fleet overhead measurements remain planned.
 
-Aider is opt-in through `[providers.aider]` with `roots = ["/absolute/project"]`
-or an explicit Markdown history file. Directory roots discover only
-`.aider.chat.history.md`; custom `--chat-history-file` paths can be configured
-directly. Aider's native format prefixes user lines with `####` and operational
-output with `>`; code fences are preserved. It does not record a timezone,
-per-message timestamps, or reliable repository metadata, so those fields remain
-unknown. Its unlabelled Markdown can also make assistant blockquotes ambiguous;
-outside code fences these remain context-only, consistent with operational output.
-Each history file is one thread, including appended Aider runs. See the
-[upstream history writer](https://github.com/Aider-AI/aider/blob/main/aider/io.py).
-
-Hermes Agent is opt-in through `[providers.hermes]`, with
-`roots = ["/absolute/path/to/.hermes/state.db"]` or its containing directory.
-The adapter reads native SQLite sessions without running upstream migrations or
-repairs. Each session becomes a thread; compaction copies are deduplicated and
-model-only rows are excluded. User and assistant prose is searchable, while tool
-calls and results remain canonical context. Logged `cwd` and `git_repo_root`
-populate project/repository filters. WAL-only changes invalidate checkpoints and
-trigger watchers; the history horizon uses each session's activity time.
-The adapter requires the native display-history columns in the
-[upstream schema](https://github.com/NousResearch/hermes-agent/blob/main/hermes_state_common.py)
-and follows its [display projection](https://github.com/NousResearch/hermes-agent/blob/main/hermes_state_messages.py).
-
 OpenCode is opt-in through `[providers.opencode]`, with `roots` pointing to
 `opencode.db` (normally `~/.local/share/opencode/opencode.db`) or its containing
 directory. It reads sessions and project metadata from native SQLite snapshots,
@@ -458,34 +435,6 @@ These parser budgets do not measure process RSS across concurrent workers.
 The adapter follows the upstream
 [database schema](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/sql.ts)
 and [message schema](https://github.com/anomalyco/opencode/blob/dev/packages/schema/src/session-message.ts).
-
-OpenClaw is opt-in through `[providers.openclaw]`, with `roots` pointing to
-per-agent `openclaw-agent.sqlite` databases (normally
-`~/.openclaw/agents/<agentId>/agent/openclaw-agent.sqlite`) or a directory
-containing them. Each native session window becomes a thread. The adapter reads
-plain and Zstandard-compressed events and verifies cold archives stored in SQLite
-or the adjacent `sessions/cold` directory, without restoring or changing the
-upstream database. Current branch ancestry and the latest reset window control
-visible history; compaction retains earlier visible messages. Explicitly retained
-reset messages stay visible. Prose is searchable; tools, reasoning, summaries and
-visible extension messages remain context only. Hidden extension messages are
-omitted. Logged `cwd` supplies the project filter; repository metadata is absent.
-WAL and cold-file changes invalidate checkpoints and trigger watchers. Missing or
-invalid archives/navigation fail indexing instead of replacing history with an
-empty result. The native compression columns and cold-archive format follow the
-[upstream schema](https://github.com/openclaw/openclaw/blob/main/src/state/openclaw-agent-schema.sql)
-and [archive codec](https://github.com/openclaw/openclaw/blob/main/src/config/sessions/session-cold-storage-codec.ts).
-
-Pi is opt-in through `[providers.pi]`, with
-`roots = ["/absolute/path/to/.pi/agent/sessions"]` or explicit `.jsonl` session
-files. The adapter reads native v3 sessions and indexes every branch in one
-thread, storing each message once. Metadata entries preserve parent relationships
-without becoming searchable. Tools, reasoning, compaction/branch summaries and
-visible custom messages remain context only; hidden custom messages are omitted.
-Context edits affect Pi's model input and do not delete original searchable history.
-Logged `cwd` supplies project metadata; no repository metadata is inferred.
-Older session versions fail explicitly; open them in Pi to run its own migration.
-The format follows Pi's [session manager](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/session-manager.ts).
 
 GitHub Copilot CLI is opt-in through `[providers.copilot]`, with
 `roots = ["/absolute/path/to/.copilot/session-state"]` or explicit `.jsonl`
@@ -537,78 +486,6 @@ CLI and Chat session/message IDs have distinct namespaces. Both use the existing
 the [VS Code session store](https://github.com/microsoft/vscode/blob/f5f73df304d9c5eeab64d4d07eed57e007742a92/src/vs/workbench/contrib/chat/common/model/chatSessionStore.ts)
 and [typed mutation schema](https://github.com/microsoft/vscode/blob/f5f73df304d9c5eeab64d4d07eed57e007742a92/src/vs/workbench/contrib/chat/common/model/chatSessionOperationLog.ts).
 
-Gemini CLI is opt-in through `[providers.gemini-cli]`, with
-`roots = ["/absolute/path/to/.gemini/tmp"]` or explicit native `.jsonl`/`.json`
-session files. Configure its sandbox runtime directory instead when Gemini
-stores sessions there. The adapter replays native recording semantics: repeated
-message IDs replace previous versions in their original position, `$set.messages`
-replaces the saved history, and `$rewindTo` removes its target and everything
-after it. A checkpoint introducing the native `<state_snapshot>` summary and
-its exact acknowledgement preserves earlier directly recorded dialogue for
-search. Synthetic summaries and newly copied context stay outside search.
-Other replacement checkpoints remain authoritative, including cancelled turns.
-Removing the compaction anchor clears its archived dialogue. Unmarked summaries
-cannot be distinguished safely from arbitrary context replacements, so those
-still follow Gemini's resumed history. Broken rewind references and incomplete writes
-fail explicitly and preserve the previous indexed snapshot.
-
-Search uses `displayContent` when present and keeps thoughts, tools, commands,
-hook/session context, operational messages and subagent sessions out of search
-evidence. Newly introduced checkpoint turns are model context; previously recorded
-turns keep their provenance across checkpoint updates. Complete JSON snapshots
-have no event provenance, so filtering there uses the stored roles and known
-context markers. Tool and reasoning text remains available through `view`; binary
-attachment contents are omitted. The adjacent native `.project_root` ownership
-marker supplies project metadata only when its SHA-256 matches the logged
-`projectHash`; otherwise the logged hash identifies the project. Marker creation,
-changes and removal trigger a refresh without changing the history's age horizon.
-Repository metadata is not inferred. A JSONL sibling takes precedence over its
-old JSON file when both are discovered, avoiding duplicate migrated sessions.
-Reads are limited to 8 MiB per JSONL record or complete native JSON document,
-and 8 KiB per project marker. A structural check caps JSON records at 65,536
-nodes before typed decoding. Replay retains normalized text, including recovered
-compacted dialogue, with a 32 MiB
-accounting budget and at most 65,536 message IDs; replacements, checkpoints and
-rewinds release that budget. These are parser bounds rather than process RSS
-limits. Oversized input is reported without truncation and preserves the previous
-indexed revision.
-The format follows the official [recording schema](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingTypes.ts),
-[recording service](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/services/chatRecordingService.ts)
-and [project registry](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/config/projectRegistry.ts).
-
-Cline is opt-in through `[providers.cline]`. Configure the extension's native
-`tasks` directory, explicit `ui_messages.json` files, the SDK `sessions.db`, or
-directories containing native `*.messages.json` artifacts. The current SDK
-defaults to `~/.cline/data/db/sessions.db`; its configured directories and
-recorded artifact paths can differ. The adapter reads the catalog and its WAL
-without modifying them, follows recorded message paths, and suppresses duplicate
-artifact discovery when the catalog owns those files.
-
-UI snapshots preserve task requests, feedback, assistant prose and typed
-questions/plans. Partial responses, reasoning and operational rows remain
-context-only. SDK artifacts preserve repeated real turns despite IDs/timestamps
-being regenerated on resume. Visible completion summaries and replies to known
-question tools are searchable; ordinary tools, attachments, injected model
-context, hidden resume prompts and subagent histories are context-only.
-Compaction sidecars do not replace canonical message history. Logged native
-task metadata, SDK manifests or catalog workspace roots supply project filters;
-repositories are not inferred from files read by the model.
-
-Snapshots are limited to 8 MiB and each decoded message/block sequence to 16,384
-entries. Invalid or interrupted writes preserve the previous indexed revision.
-Metadata and external artifact changes invalidate source checkpoints and are
-included in watch targets. When both extension and SDK roots are configured,
-histories with the same task ID retain the legacy UI prefix and append SDK turns
-after Cline's native resume warning. Without that boundary, SDK history alone
-is authoritative. Ambiguous multiple histories of the same kind are rejected.
-See the source-linked [Cline contract](docs/cline-ingestion-contract.md) for
-verified schemas and remaining validation gates.
-
-UI and SDK user-input envelopes are retained in canonical viewing and removed
-from search projections. Schema 35 repairs older Cline projections; run explicit
-`mash index` to rebuild any changed vectors before searching. Unchanged vectors
-are preserved; search never performs the upgrade itself.
-
 Cursor Agent is opt-in through `[providers.cursor]`. Configure its native `chats`
 directory or an explicit `store.db`. Its config root is `CURSOR_CONFIG_DIR`, then
 `$XDG_CONFIG_HOME/cursor`, then `~/.cursor`; chat databases are below
@@ -634,26 +511,6 @@ Its [native storage contract](docs/cursor-ide-ingestion-contract.md) records the
 fixture provenance and remaining captured-session validation gates.
 The [Cursor ingestion contract](docs/cursor-ingestion-contract.md)
 records first-party fixture provenance and remaining real-session validation gates.
-
-Windsurf (including the current Devin Desktop Cascade format) is opt-in through
-`[providers.windsurf]`. Configure its native `~/.codeium/windsurf/cascade`
-directory or explicit `<trajectory-id>.pb` files. Mash reads the encrypted
-protobuf files directly; the editor and its language server need not be running.
-Archive markers and temporary files are not separate conversations. Saved step
-positions distinguish repeated requests and preserve prefix IDs across snapshot
-rewinds. User queries and assistant responses enter search; thinking, modified
-response context, copied steps and system/model-generated user prompts do not.
-Native workspace and Git-root file URIs supply project/repository filters.
-
-Each encrypted snapshot is limited to 8 MiB, decoded protobuf fields to 65,536,
-and normalized retained history to 32 MiB. Authentication failures, malformed
-payloads, mismatched identities and oversized input fail indexing and preserve
-the previous revision. Background trajectories and unknown provenance receive
-no search projection; nested subtrajectories and tool-step payloads are not
-currently reconstructed. The [native contract](docs/windsurf-ingestion-contract.md)
-records first-party reader/writer fixture evidence and remaining actual UI-session,
-subtrajectory and rewind validation gates. These are parser limits, not aggregate
-process RSS guarantees.
 
 Antigravity IDE 2.5.5 is opt-in through `[providers.antigravity]`. Configure
 `~/.gemini/antigravity-ide/conversations` or explicit `<cascade-id>.db` files.
@@ -681,7 +538,7 @@ adds sibling replies because their file ordinals happen to be nearby. Contextual
 reranking follows the same rule on SQLite and Qdrant. Linear histories
 keep their existing ordinal neighbourhoods. SQLite migrations preserve existing
 messages and vectors. Update the shared service before
-publishing Pi, Copilot, Gemini, Cline, Cursor, Windsurf or Antigravity histories from upgraded nodes.
+publishing Copilot, Cursor or Antigravity histories from upgraded nodes.
 
 Codex histories include raw response records and completed `UserMessage` /
 `AgentMessage` turn items. Nearby raw/completed counterparts are paired once;
@@ -692,6 +549,17 @@ and reconciliation limits. Existing nodes require an explicit `mash index`
 refresh for schema 32 / `search-text-v6`; search does not migrate or ingest.
 
 ## Configuration
+
+Supported providers are Claude Code, Codex, GitHub Copilot (Chat and CLI),
+Cursor (IDE and Agent), OpenCode, and Antigravity. Removed provider names are
+rejected in configuration, CLI arguments, MCP filters, and shared uploads.
+Remove obsolete provider sections and allowlist entries before upgrading.
+Explicit `mash index` upgrades local caches to schema 41, removing cached
+histories and derived state for unsupported providers while retaining supported
+histories and vectors. Original provider history files are never modified.
+Shared indexes containing retired providers require a fresh shared group and
+republication from upgraded nodes; legacy snapshots are not converted.
+
 
 The rename changes the default configuration and data directories to `mash`,
 and the database filename to `mash.sqlite3`. To reuse an existing achi installation,

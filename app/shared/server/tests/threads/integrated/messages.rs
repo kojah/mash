@@ -49,7 +49,7 @@ async fn seed(paths: &Paths) {
                 Provider::Codex,
             ))?;
         }
-        for provider in [Provider::Hermes, Provider::Codex, Provider::ClaudeCode] {
+        for provider in [Provider::Opencode, Provider::Codex, Provider::ClaudeCode] {
             storage.replace_conversation(&conversation(provider.as_str(), provider))?;
         }
         storage.rebuild_derived_search_state()?;
@@ -57,7 +57,7 @@ async fn seed(paths: &Paths) {
         let mut pool = models.load_indexer()?.unwrap();
         semantic::rebuild_embeddings(&mut storage, &mut pool, &models.generation(), |_| {})?;
         storage.mark_semantic_index_ready(&models.generation())?;
-        for provider in [Provider::Hermes, Provider::Codex, Provider::ClaudeCode] {
+        for provider in [Provider::Opencode, Provider::Codex, Provider::ClaudeCode] {
             storage.begin_silver_scan(provider)?;
             storage.finish_silver_scan(provider, true)?;
         }

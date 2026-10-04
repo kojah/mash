@@ -51,18 +51,6 @@ pub(crate) enum TimestampField {
     SessionTimeCreated,
     #[serde(rename = "session.time_updated")]
     SessionTimeUpdated,
-    #[serde(rename = "sessions.started_at")]
-    SessionsStartedAt,
-    #[serde(rename = "sessions.ended_at")]
-    SessionsEndedAt,
-    #[serde(rename = "sessions.last_activity_at")]
-    SessionsLastActivityAt,
-    #[serde(rename = "session.timestamp")]
-    SessionTimestamp,
-    #[serde(rename = "session.startTime")]
-    SessionStartTime,
-    #[serde(rename = "session.lastUpdated")]
-    SessionLastUpdated,
 }
 
 impl Timestamps {
@@ -80,43 +68,6 @@ impl Timestamps {
             ));
         }
         Ok(())
-    }
-
-    pub(super) fn maximum_message(
-        messages: &[super::NormalizedMessage],
-    ) -> Option<(i64, TimestampOrigin)> {
-        Self::message_boundary(messages, Boundary::Maximum)
-    }
-
-    pub(super) fn minimum_message(
-        messages: &[super::NormalizedMessage],
-    ) -> Option<(i64, TimestampOrigin)> {
-        Self::message_boundary(messages, Boundary::Minimum)
-    }
-
-    fn message_boundary(
-        messages: &[super::NormalizedMessage],
-        selection: Boundary,
-    ) -> Option<(i64, TimestampOrigin)> {
-        let message = messages
-            .iter()
-            .filter(|m| m.created_at.is_some())
-            .max_by(|a, b| {
-                let order = a.created_at.cmp(&b.created_at);
-                (match selection {
-                    Boundary::Minimum => order.reverse(),
-                    Boundary::Maximum => order,
-                })
-                .then_with(|| b.id.cmp(&a.id))
-            })?;
-        Some((
-            message.created_at?,
-            TimestampOrigin::MessageBoundary {
-                message_id: message.id.clone(),
-                selection,
-                rule_version: VERSION,
-            },
-        ))
     }
 
     fn is_current(&self) -> bool {
@@ -148,69 +99,6 @@ impl Timestamps {
                     TimestampOrigin::MessageBoundary { selection, .. } if *selection == boundary),
                     Provider::Opencode => matches!(origin,
                     TimestampOrigin::SourceMetadata { field, .. } if *field == expected),
-                    Provider::Hermes => match boundary {
-                        Boundary::Minimum => matches!(
-                            origin,
-                            TimestampOrigin::SourceMetadata {
-                                field: TimestampField::SessionsStartedAt,
-                                ..
-                            }
-                        ),
-                        Boundary::Maximum => matches!(
-                            origin,
-                            TimestampOrigin::SourceMetadata {
-                                field: TimestampField::SessionsStartedAt
-                                    | TimestampField::SessionsEndedAt
-                                    | TimestampField::SessionsLastActivityAt,
-                                ..
-                            } | TimestampOrigin::MessageBoundary {
-                                selection: Boundary::Maximum,
-                                ..
-                            }
-                        ),
-                    },
-                    Provider::Pi => match boundary {
-                        Boundary::Minimum => matches!(
-                            origin,
-                            TimestampOrigin::SourceMetadata {
-                                field: TimestampField::SessionTimestamp,
-                                ..
-                            }
-                        ),
-                        Boundary::Maximum => matches!(
-                            origin,
-                            TimestampOrigin::SourceMetadata {
-                                field: TimestampField::SessionTimestamp,
-                                ..
-                            } | TimestampOrigin::MessageBoundary {
-                                selection: Boundary::Maximum,
-                                ..
-                            }
-                        ),
-                    },
-                    Provider::GeminiCli => match boundary {
-                        Boundary::Minimum => matches!(
-                            origin,
-                            TimestampOrigin::SourceMetadata {
-                                field: TimestampField::SessionStartTime,
-                                ..
-                            } | TimestampOrigin::MessageBoundary {
-                                selection: Boundary::Minimum,
-                                ..
-                            }
-                        ),
-                        Boundary::Maximum => matches!(
-                            origin,
-                            TimestampOrigin::SourceMetadata {
-                                field: TimestampField::SessionStartTime
-                                    | TimestampField::SessionLastUpdated,
-                                ..
-                            } | TimestampOrigin::MessageBoundary {
-                                selection: Boundary::Maximum,
-                                ..
-                            }
-                        ),
-                    },
                     _ => true,
                 })
             })
@@ -224,11 +112,6 @@ pub(crate) enum Origin {
     SourceMetadata {
         field: SourceField,
     },
-    SourceRecord {
-        field: SourceField,
-        record_id: String,
-        rule_version: u32,
-    },
     FirstVisibleUserMessage {
         message_id: String,
         rule_version: u32,
@@ -239,14 +122,8 @@ pub(crate) enum Origin {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SourceField {
     Cwd,
-    #[serde(rename = "git_repo_root")]
-    GitRepoRoot,
     #[serde(rename = "session.title")]
     SessionTitle,
-    #[serde(rename = "sessions.title")]
-    SessionsTitle,
-    #[serde(rename = "session_info.name")]
-    SessionInfoName,
     #[serde(rename = "session.directory")]
     SessionDirectory,
     #[serde(rename = "project.worktree")]
@@ -256,10 +133,9 @@ pub(crate) enum SourceField {
 // Only unconditional native field selections belong here. Native-title versus
 // message-summary fallbacks require adapter-level evidence, not value equality.
 fn native_fields(provider: Provider) -> [Option<SourceField>; 3] {
-    use SourceField::{Cwd, GitRepoRoot, ProjectWorktree, SessionDirectory, SessionTitle};
+    use SourceField::{Cwd, ProjectWorktree, SessionDirectory, SessionTitle};
     match provider {
-        Provider::Codex | Provider::ClaudeCode | Provider::Pi => [None, Some(Cwd), None],
-        Provider::Hermes => [None, Some(Cwd), Some(GitRepoRoot)],
+        Provider::Codex | Provider::ClaudeCode => [None, Some(Cwd), None],
         Provider::Opencode => [
             Some(SessionTitle),
             Some(SessionDirectory),
@@ -314,17 +190,6 @@ impl Evidence {
                         message_id,
                         rule_version,
                     }) => !message_id.is_empty() && *rule_version == VERSION,
-                    Some(Origin::SourceRecord {
-                        record_id,
-                        rule_version,
-                        ..
-                    }) => {
-                        *rule_version == VERSION
-                            && record_id.len() == 24
-                            && record_id
-                                .bytes()
-                                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-                    }
                     _ => true,
                 })
     }
@@ -337,30 +202,9 @@ impl Evidence {
                 Some(times) => times.is_current_for(provider),
                 None => !matches!(
                     provider,
-                    Provider::Codex
-                        | Provider::ClaudeCode
-                        | Provider::Opencode
-                        | Provider::Hermes
-                        | Provider::Pi
-                        | Provider::GeminiCli
+                    Provider::Codex | Provider::ClaudeCode | Provider::Opencode
                 ),
             }
-            && self.title.as_ref().is_none_or(|origin| match provider {
-                Provider::Hermes => matches!(
-                    origin,
-                    Origin::SourceMetadata {
-                        field: SourceField::SessionsTitle
-                    } | Origin::FirstVisibleUserMessage { .. }
-                ),
-                Provider::Pi => matches!(
-                    origin,
-                    Origin::SourceRecord {
-                        field: SourceField::SessionInfoName,
-                        ..
-                    } | Origin::FirstVisibleUserMessage { .. }
-                ),
-                _ => true,
-            })
             && [&self.title, &self.project, &self.repository]
                 .into_iter()
                 .zip(native_fields(provider))
@@ -472,34 +316,6 @@ impl Evidence {
     }
 }
 
-pub(super) struct SelectedTitle {
-    pub(super) text: String,
-    pub(super) origin: Origin,
-}
-
-impl SelectedTitle {
-    pub(super) fn first_user(messages: &[super::NormalizedMessage]) -> Option<Self> {
-        messages
-            .iter()
-            .filter(|m| m.role == crate::role::Role::User)
-            .find_map(|message| {
-                super::dialogue::title(message.dialogue()).map(|text| Self {
-                    text,
-                    origin: Origin::FirstVisibleUserMessage {
-                        message_id: message.id.clone(),
-                        rule_version: VERSION,
-                    },
-                })
-            })
-    }
-
-    pub(super) fn split(title: Option<Self>) -> (Option<String>, Option<Origin>) {
-        title
-            .map(|selected| (selected.text, selected.origin))
-            .unzip()
-    }
-}
-
 #[cfg(test)]
 #[path = "enrichment_timestamps_tests.rs"]
 mod timestamp_tests;
@@ -553,7 +369,7 @@ mod tests {
             assert_eq!(evidence.repository, Some(Origin::Unknown));
         }
         // A native-title adapter can produce the same text by a different path.
-        thread.provider = Provider::Hermes;
+        thread.provider = Provider::Cursor;
         assert_eq!(
             Evidence::capture(&thread).unwrap().title,
             Some(Origin::Unknown)

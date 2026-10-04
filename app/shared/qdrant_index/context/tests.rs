@@ -55,7 +55,7 @@ fn record(m: protocol::MessageRecord) -> api::Record<Document> {
         payload: Document {
             version: "version".into(),
             node_id: "node".into(),
-            provider: crate::provider::Provider::Pi,
+            provider: crate::provider::Provider::Cursor,
             role: m.role.clone(),
             conversation_id: "thread".into(),
             project: None,
@@ -65,7 +65,7 @@ fn record(m: protocol::MessageRecord) -> api::Record<Document> {
             conversation: protocol::ConversationRecord {
                 enrichment: None,
                 id: "thread".into(),
-                provider: crate::provider::Provider::Pi,
+                provider: crate::provider::Provider::Cursor,
                 title: None,
                 project: None,
                 repository: None,

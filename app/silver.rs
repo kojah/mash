@@ -7,38 +7,30 @@ use std::sync::mpsc::{RecvTimeoutError, sync_channel};
 use std::time::{Duration, Instant, SystemTime};
 
 mod admission;
-mod aider;
 mod antigravity;
 #[cfg(test)]
 mod benchmarks;
 pub(crate) mod certificate;
 pub(crate) mod claude;
-mod cline;
-pub(crate) use cline::visible_projection as cline_dialogue_text;
 mod copilot;
 mod cursor;
 pub(crate) mod diagnostics;
 pub(crate) mod dialogue;
 mod discovery;
 pub(crate) mod enrichment;
-mod gemini;
-mod hermes;
 mod identities;
 mod json;
 pub(crate) mod local;
 pub(crate) mod messages;
 mod native;
-mod openclaw;
 mod opencode;
 mod parsers;
-mod pi;
 mod prefix;
 mod records;
 mod source;
 mod sqlite_source;
 #[cfg(test)]
 mod tests;
-mod windsurf;
 
 #[cfg(test)]
 pub(crate) use antigravity::tests::write as write_antigravity_fixture;
@@ -83,16 +75,9 @@ impl Parser {
         match provider {
             Provider::ClaudeCode => parsers::parse_claude(&source.identity.path),
             Provider::Codex => parsers::parse_codex(&source.identity.path),
-            Provider::Aider => aider::parse(&source.identity.path),
-            Provider::Hermes => hermes::parse(&source.identity),
             Provider::Opencode => opencode::parse(&source.identity),
-            Provider::Openclaw => openclaw::parse(&source.identity),
-            Provider::Pi => pi::parse(&source.identity.path),
             Provider::Copilot => copilot::parse_source(source),
-            Provider::GeminiCli => gemini::parse(&source.identity.path),
-            Provider::Cline => cline::parse_source(source),
             Provider::Cursor => cursor::parse(&source.identity),
-            Provider::Windsurf => windsurf::parse(&source.identity.path),
             Provider::Antigravity => antigravity::parse(&source.identity),
         }
     }

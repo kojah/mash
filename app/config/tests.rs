@@ -7,6 +7,27 @@ use super::document::parse_document;
 use super::loading::{MAX_CONFIG_BYTES, load_from_paths};
 use super::*;
 
+#[test]
+fn removed_providers_are_rejected_in_roots_and_index_allowlists() {
+    for provider in [
+        "gemini-cli",
+        "windsurf",
+        "cline",
+        "aider",
+        "hermes",
+        "openclaw",
+        "pi",
+    ] {
+        for config in [
+            format!("version = 1\n[providers.{provider}]\nroots = ['/history']\n"),
+            format!("version = 1\n[providers]\n[index.local]\nproviders = ['{provider}']\n"),
+            format!("version = 1\n[providers]\n[index.shared]\nproviders = ['{provider}']\n"),
+        ] {
+            assert!(super::document::parse_document(config.as_bytes()).is_err());
+        }
+    }
+}
+
 const VALID: &str = r#""version" = 1
 "providers" = {"codex" = {"roots" = ["/missing/codex"]}}
 "#;

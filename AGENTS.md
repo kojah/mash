@@ -31,8 +31,8 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 - Support opt-in debounced synchronization with `index --watch` and MCP startup
   `--watch`. Keep it within the running process; do not install a daemon.
 - Use concrete, enum-selected history adapters with typed input models. The
-  provider set includes Claude Code, Codex, Hermes Agent, OpenClaw, OpenCode,
-  Pi, GitHub Copilot, Cursor, Windsurf, Aider, Cline, Antigravity, and Gemini CLI.
+  provider set includes Claude Code, Codex, OpenCode, GitHub Copilot, Cursor,
+  and Antigravity.
   Read upstream application databases without writing to them; respect their
   WAL files and session identities. Keep provider settings in the enum-keyed
   collection shared by configuration, routing, watching, and ingestion. Do not

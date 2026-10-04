@@ -31,7 +31,7 @@ impl Targets {
                     || self.roots.iter().any(|root| {
                         root.starts_with(path)
                             || (root.extension().is_some_and(|extension| {
-                                matches!(extension.to_str(), Some("db" | "sqlite" | "vscdb"))
+                                matches!(extension.to_str(), Some("db" | "vscdb"))
                             }) && root.parent() == path.parent()
                                 && path.file_name().is_some_and(|name| {
                                     let mut wal_name =
@@ -40,42 +40,20 @@ impl Targets {
                                     name == wal_name
                                 }))
                             || (path.starts_with(root)
-                                && (path.extension().is_some_and(|ext| {
-                                    ext == "jsonl" || ext == "pb" || ext == "db"
-                                }) || path.file_name().is_some_and(|name| {
-                                    name == ".aider.chat.history.md"
-                                        || name.to_str().is_some_and(|n| n.ends_with(".db-wal"))
-                                        || name == ".project_root"
-                                        || name == "ui_messages.json"
-                                        || name == "taskHistory.json"
-                                        || name
-                                            .to_str()
-                                            .is_some_and(|n| n.ends_with(".messages.json"))
-                                        || name.to_str().is_some_and(|n| {
-                                            n.starts_with("session-")
-                                                && path
-                                                    .extension()
-                                                    .is_some_and(|e| e.eq_ignore_ascii_case("json"))
-                                        })
-                                        || name == "state.db"
-                                        || name == "state.db-wal"
-                                        || name == "store.db"
-                                        || name == "store.db-wal"
-                                        || name == "state.vscdb"
-                                        || name == "state.vscdb-wal"
-                                        || name == "opencode.db"
-                                        || name == "opencode.db-wal"
-                                        || name == "openclaw-agent.sqlite"
-                                        || name == "openclaw-agent.sqlite-wal"
-                                        || name
-                                            .to_str()
-                                            .is_some_and(|name| name.ends_with(".jsonl.zst"))
-                                }) || matches!(
-                                    event.kind,
-                                    EventKind::Create(notify::event::CreateKind::Folder)
-                                        | EventKind::Remove(notify::event::RemoveKind::Folder)
-                                        | EventKind::Modify(notify::event::ModifyKind::Name(_))
-                                )))
+                                && (path
+                                    .extension()
+                                    .is_some_and(|ext| ext == "jsonl" || ext == "db")
+                                    || path.file_name().is_some_and(|name| {
+                                        name.to_str().is_some_and(|n| n.ends_with(".db-wal"))
+                                            || name == "state.vscdb"
+                                            || name == "state.vscdb-wal"
+                                    })
+                                    || matches!(
+                                        event.kind,
+                                        EventKind::Create(notify::event::CreateKind::Folder)
+                                            | EventKind::Remove(notify::event::RemoveKind::Folder)
+                                            | EventKind::Modify(notify::event::ModifyKind::Name(_))
+                                    )))
                     })
             })
     }
@@ -243,7 +221,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_markdown_and_database_wal_events_trigger_refresh_for_file_or_directory_roots() {
+    fn native_history_and_database_wal_events_trigger_refresh_for_file_or_directory_roots() {
         use notify::event::{AccessKind, DataChange, ModifyKind};
         let root = PathBuf::from("/histories");
         let directory = Targets {
@@ -265,14 +243,10 @@ mod tests {
         let change = |path| {
             Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(path)
         };
-        assert!(directory.relevant(&change(root.join(".aider.chat.history.md"))));
-        assert!(directory.relevant(&change(root.join("session-native.json"))));
-        assert!(directory.relevant(&change(root.join(".project_root"))));
         assert!(directory.relevant(&change(root.join("state.db-wal"))));
         assert!(directory.relevant(&change(root.join("store.db"))));
         assert!(directory.relevant(&change(root.join("store.db-wal"))));
         assert!(directory.relevant(&change(root.join("state.vscdb"))));
-        assert!(directory.relevant(&change(root.join("cascade/session.pb"))));
         assert!(directory.relevant(&change(
             root.join("conversations/50000000-0000-4000-8000-000000000001.db")
         )));
@@ -282,14 +256,6 @@ mod tests {
         assert!(directory.relevant(&change(root.join("state.vscdb-wal"))));
         assert!(ide.relevant(&change(root.join("state.vscdb-wal"))));
         assert!(directory.relevant(&change(root.join("opencode.db-wal"))));
-        assert!(directory.relevant(&change(root.join("openclaw-agent.sqlite-wal"))));
-        assert!(directory.relevant(&change(root.join("cold/archive.jsonl.zst"))));
-        let openclaw = Targets {
-            roots: vec![root.join("openclaw-agent.sqlite")],
-            files: Vec::new(),
-        };
-        assert!(openclaw.relevant(&change(root.join("openclaw-agent.sqlite-wal"))));
-        assert!(!openclaw.relevant(&change(root.join("other.sqlite-wal"))));
         assert!(database.relevant(&change(root.join("state.db-wal"))));
         assert!(custom.relevant(&change(root.join("custom.db-wal"))));
         assert!(!custom.relevant(&change(root.join("other.db-wal"))));

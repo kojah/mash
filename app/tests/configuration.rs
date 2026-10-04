@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn cli_rejects_retired_provider_arguments_before_opening_an_index() {
+    for provider in [
+        "gemini-cli",
+        "windsurf",
+        "cline",
+        "aider",
+        "hermes",
+        "openclaw",
+        "pi",
+    ] {
+        Command::new(assert_cmd::cargo::cargo_bin!("mash"))
+            .args(["index", "--provider", provider])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("invalid value"));
+    }
+}
+
+#[test]
 fn legacy_provider_root_environment_variables_are_ignored() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let home = directory.path().join("home");

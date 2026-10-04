@@ -78,7 +78,7 @@ fn metadata_filters_compose_and_time_bounds_exclude_unknown_activity() {
         let mut thread = row(id, time);
         thread.metadata.title = Some("100%_literal".into());
         collector.push(thread.clone());
-        thread.provider = Provider::Hermes;
+        thread.provider = Provider::Opencode;
         collector.push(thread);
     }
     let page = collector.finish();

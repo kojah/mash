@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL CHECK (
         provider IN (
-            'claude-code', 'codex', 'aider', 'hermes', 'opencode', 'openclaw', 'pi', 'copilot', 'gemini-cli', 'cline', 'cursor', 'windsurf', 'antigravity'
+            'claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity'
         )
     ),
     source_path TEXT NOT NULL,

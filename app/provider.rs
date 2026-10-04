@@ -19,16 +19,9 @@ use serde::{Deserialize, Serialize};
 pub(crate) enum Provider {
     ClaudeCode,
     Codex,
-    Aider,
-    Hermes,
     Opencode,
-    Openclaw,
-    Pi,
     Copilot,
-    GeminiCli,
-    Cline,
     Cursor,
-    Windsurf,
     Antigravity,
 }
 
@@ -40,16 +33,9 @@ impl Provider {
     pub(crate) const ALL: &[Self] = &[
         Self::ClaudeCode,
         Self::Codex,
-        Self::Aider,
-        Self::Hermes,
         Self::Opencode,
-        Self::Openclaw,
-        Self::Pi,
         Self::Copilot,
-        Self::GeminiCli,
-        Self::Cline,
         Self::Cursor,
-        Self::Windsurf,
         Self::Antigravity,
     ];
 
@@ -57,16 +43,9 @@ impl Provider {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
-            Self::Aider => "aider",
-            Self::Hermes => "hermes",
             Self::Opencode => "opencode",
-            Self::Openclaw => "openclaw",
-            Self::Pi => "pi",
             Self::Copilot => "copilot",
-            Self::GeminiCli => "gemini-cli",
-            Self::Cline => "cline",
             Self::Cursor => "cursor",
-            Self::Windsurf => "windsurf",
             Self::Antigravity => "antigravity",
         }
     }
@@ -76,16 +55,9 @@ impl Provider {
         match self {
             Self::ClaudeCode => 1,
             Self::Codex => 2,
-            Self::Aider => 3,
-            Self::Hermes => 4,
             Self::Opencode => 5,
-            Self::Openclaw => 6,
-            Self::Pi => 7,
             Self::Copilot => 8,
-            Self::GeminiCli => 9,
-            Self::Cline => 10,
             Self::Cursor => 11,
-            Self::Windsurf => 12,
             Self::Antigravity => 13,
         }
     }
@@ -103,16 +75,9 @@ impl std::str::FromStr for Provider {
         match value {
             "claude-code" => Ok(Self::ClaudeCode),
             "codex" => Ok(Self::Codex),
-            "aider" => Ok(Self::Aider),
-            "hermes" => Ok(Self::Hermes),
             "opencode" => Ok(Self::Opencode),
-            "openclaw" => Ok(Self::Openclaw),
-            "pi" => Ok(Self::Pi),
             "copilot" => Ok(Self::Copilot),
-            "gemini-cli" => Ok(Self::GeminiCli),
-            "cline" => Ok(Self::Cline),
             "cursor" => Ok(Self::Cursor),
-            "windsurf" => Ok(Self::Windsurf),
             "antigravity" => Ok(Self::Antigravity),
             _ => Err(crate::AppError::usage("unsupported provider")),
         }
@@ -131,5 +96,55 @@ impl rusqlite::types::FromSql for Provider {
             .as_str()?
             .parse()
             .map_err(|_| rusqlite::types::FromSqlError::InvalidType)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supported_providers_keep_stable_storage_codes_and_round_trip() {
+        use clap::ValueEnum;
+        let expected = [
+            (Provider::ClaudeCode, "claude-code", 1),
+            (Provider::Codex, "codex", 2),
+            (Provider::Opencode, "opencode", 5),
+            (Provider::Copilot, "copilot", 8),
+            (Provider::Cursor, "cursor", 11),
+            (Provider::Antigravity, "antigravity", 13),
+        ];
+        assert_eq!(Provider::ALL, Provider::value_variants());
+        assert_eq!(Provider::ALL.len(), expected.len());
+        for (provider, name, code) in expected {
+            assert_eq!(provider.as_str(), name);
+            assert_eq!(provider.storage_code(), code);
+            assert_eq!(name.parse::<Provider>().unwrap(), provider);
+            let json = serde_json::to_string(&provider).unwrap();
+            assert_eq!(serde_json::from_str::<Provider>(&json).unwrap(), provider);
+        }
+    }
+
+    #[test]
+    fn retired_providers_are_rejected_at_typed_input_boundaries() {
+        for name in [
+            "gemini-cli",
+            "windsurf",
+            "cline",
+            "aider",
+            "hermes",
+            "openclaw",
+            "pi",
+        ] {
+            assert!(name.parse::<Provider>().is_err());
+            let json = serde_json::to_string(name).unwrap();
+            assert!(serde_json::from_str::<Provider>(&json).is_err());
+            assert!(
+                serde_json::from_str::<crate::search_filter::Filter>(&format!(
+                    r#"{{"provider":[{json}]}}"#
+                ))
+                .is_err()
+            );
+        }
     }
 }
