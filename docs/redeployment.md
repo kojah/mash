@@ -1,8 +1,11 @@
 # Redeployment and index refresh
 
 Build one Linux and one Apple Silicon artifact from the validated commit, then
-reuse them across the nodes. The existing deployment workflow installs nodes
-concurrently and atomically replaces each binary. It does not ingest history.
+reuse them across the nodes. The development MCP deploys selected targets in
+order, checks API prerequisites and atomically replaces each binary. It does
+not ingest history. Configure the shared API before dependent history nodes;
+the trusted restart helper preserves publication identities and starts the API
+in a separate session so it survives deployment-client disconnection.
 Existing MCP processes keep their running binary; reconnect clients to use the
 installed release. Restart the shared API separately using its existing server
 configuration and credentials, preserving Qdrant data.
