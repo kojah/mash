@@ -131,7 +131,7 @@ pub(super) fn search_filter(
     let mut filter = api::Filter {
         must: vec![api::matches(
             "version",
-            active.values().map(|h| h.version.clone()).collect(),
+            active.values().flat_map(|h| h.versions()).collect(),
         )],
         ..api::Filter::default()
     };
@@ -314,7 +314,7 @@ impl Store {
                     api::Filter {
                         must: vec![
                             api::matches("kind", vec!["catalog".into()]),
-                            api::matches("version", vec![head.version.clone()]),
+                            api::matches("version", head.versions()),
                         ],
                         ..api::Filter::default()
                     },
@@ -329,9 +329,9 @@ impl Store {
                 let payload = point.payload;
                 let row = &payload.conversation;
                 if payload.kind != PointKind::Catalog
-                    || payload.version != head.version
+                    || head.thread_version(&row.id) != Some(payload.version.as_str())
                     || payload.node_id != *node
-                    || point.id != point_id(&["catalog", &head.version, &row.id])
+                    || point.id != point_id(&["catalog", &payload.version, &row.id])
                 {
                     return Err(failure());
                 }
@@ -463,20 +463,39 @@ impl Store {
             return Ok(vec![]);
         }
         let name = collection(&identity.group_id, false);
-        let records = self
-            .api
-            .retrieve::<Document>(&name, &[point_id(&["message", &head.version, &input.id])])
-            .await?;
+        let records = if head.threads.is_some() {
+            self.api
+                .scroll::<Document>(
+                    &name,
+                    api::Filter {
+                        must: vec![
+                            api::matches("version", head.versions()),
+                            api::matches("message.id", vec![input.id.clone()]),
+                            api::matches("node_id", vec![input.node_id.clone()]),
+                        ],
+                        ..api::Filter::default()
+                    },
+                )
+                .await?
+        } else {
+            self.api
+                .retrieve::<Document>(&name, &[point_id(&["message", &head.version, &input.id])])
+                .await?
+        };
         let Some(anchor) = super::context::anchor(records, &head, &input)? else {
             self.unchanged(&other, &head.version).await?;
             return Ok(vec![]);
         };
+        let thread_version = head
+            .thread_version(&anchor.conversation_id)
+            .ok_or_else(failure)?
+            .to_owned();
         let records = super::context::neighborhood(
             &self.api,
             &name,
             api::Filter {
                 must: vec![
-                    api::matches("version", vec![head.version.clone()]),
+                    api::matches("version", vec![thread_version.clone()]),
                     api::matches("node_id", vec![input.node_id.clone()]),
                     api::matches("conversation_id", vec![anchor.conversation_id.clone()]),
                 ],
@@ -492,7 +511,7 @@ impl Store {
         })
         .await?;
         let mut records = Vec::new();
-        for ids in selection.ids(&head.version).chunks(100) {
+        for ids in selection.ids(&thread_version).chunks(100) {
             records.extend(self.api.retrieve::<Document>(&name, ids).await?);
         }
         self.unchanged(&other, &head.version).await?;
@@ -514,7 +533,7 @@ fn hits(
         if point.id != point_id(&["message", &d.version, &m.id])
             || active
                 .get(&d.node_id)
-                .is_none_or(|h| h.version != d.version)
+                .is_none_or(|h| h.thread_version(&m.conversation_id) != Some(d.version.as_str()))
             || d.conversation_id != m.conversation_id
             || d.conversation.id != m.conversation_id
             || d.provider != d.conversation.provider

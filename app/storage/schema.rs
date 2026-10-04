@@ -1,9 +1,10 @@
 use rusqlite::Connection;
+use std::fmt::Write;
 
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 41;
+pub(super) const SCHEMA_VERSION: i64 = 42;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -22,6 +23,9 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         .map_err(AppError::database)?;
     if version == SCHEMA_VERSION {
         return Ok(());
+    }
+    if version == 41 {
+        return migrate_publication_journal(connection);
     }
     if matches!(version, 32..=40) {
         return migrate_current_projections(connection, version);
@@ -102,6 +106,17 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         .map_err(AppError::database)
 }
 
+fn migrate_publication_journal(connection: &Connection) -> Result<(), AppError> {
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(AppError::database)?;
+    install_publication_triggers(&transaction)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(AppError::database)?;
+    transaction.commit().map_err(AppError::database)
+}
+
 fn migrate_current_projections(connection: &Connection, version: i64) -> Result<(), AppError> {
     // Claude provenance requires explicit replay, not rebuilding unrelated text.
     let transaction = connection
@@ -112,6 +127,7 @@ fn migrate_current_projections(connection: &Connection, version: i64) -> Result<
         .map_err(AppError::database)?;
     install_silver_contract(&transaction)?;
     prepare_message_columns(&transaction)?;
+    install_publication_triggers(&transaction)?;
     let before = transaction.total_changes();
     purge_unsupported_providers(&transaction)?;
     if transaction.total_changes() != before {
@@ -222,18 +238,44 @@ fn install_silver_contract(connection: &Connection) -> Result<(), AppError> {
 }
 
 fn install_publication_triggers(connection: &Connection) -> Result<(), AppError> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS shared_changes(conversation_id TEXT PRIMARY KEY, revision INTEGER NOT NULL) WITHOUT ROWID;
+         CREATE TABLE IF NOT EXISTS shared_change_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1), floor INTEGER NOT NULL);
+         INSERT OR IGNORE INTO shared_change_state SELECT singleton,revision FROM shared_publication;"
+    ).map_err(AppError::database)?;
     for table in [
         "conversations",
         "messages",
         "message_embeddings",
         "tombstones",
+        "conversation_enrichment",
     ] {
         for operation in ["INSERT", "UPDATE", "DELETE"] {
+            let mut changes = String::new();
+            for reference in match operation {
+                "INSERT" => vec!["NEW"],
+                "DELETE" => vec!["OLD"],
+                _ => vec!["OLD", "NEW"],
+            } {
+                let id = match table {
+                    "conversations" => format!("{reference}.id"),
+                    "message_embeddings" => format!(
+                        "(SELECT conversation_id FROM messages WHERE id={reference}.message_id)"
+                    ),
+                    _ => format!("{reference}.conversation_id"),
+                };
+                write!(changes,
+                    "INSERT INTO shared_changes SELECT {id},revision FROM shared_publication WHERE singleton=1 AND {id} IS NOT NULL
+                     ON CONFLICT(conversation_id) DO UPDATE SET revision=excluded.revision;"
+                ).map_err(|_|AppError::internal("format publication trigger"))?;
+            }
             connection
                 .execute_batch(&format!(
-                    "CREATE TRIGGER IF NOT EXISTS shared_{table}_{operation}
+                    "DROP TRIGGER IF EXISTS shared_{table}_{operation};
+                 CREATE TRIGGER shared_{table}_{operation}
                  AFTER {operation} ON {table} BEGIN
                  UPDATE shared_publication SET revision = revision + 1 WHERE singleton = 1;
+                 {changes}
                  END;"
                 ))
                 .map_err(AppError::database)?;

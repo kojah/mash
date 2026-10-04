@@ -761,6 +761,9 @@ async fn publication_state_survives_failed_delivery_and_forget() {
         })
         .expect("snapshot");
     storage
+        .prepare_publication_target("target")
+        .expect("prepare destination");
+    storage
         .acknowledge_publication("target", revision)
         .expect("ack");
     assert!(!Storage::publication_is_pending(&path, "target").expect("acked"));

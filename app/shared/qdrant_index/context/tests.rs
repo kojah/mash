@@ -8,6 +8,7 @@ fn head() -> NodeHead {
         version: "version".into(),
         head: None,
         manifest: None,
+        threads: None,
     }
 }
 fn request(context: u32, representation: MessageContent) -> protocol::View {

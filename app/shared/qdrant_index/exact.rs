@@ -61,7 +61,7 @@ fn hit(
     if point.id != point_id(&["message", &d.version, &m.id])
         || active
             .get(&d.node_id)
-            .is_none_or(|h| h.version != d.version)
+            .is_none_or(|h| h.thread_version(&m.conversation_id) != Some(d.version.as_str()))
         || d.conversation_id != m.conversation_id
         || d.conversation.id != m.conversation_id
         || d.provider != d.conversation.provider

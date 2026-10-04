@@ -3,6 +3,7 @@ use crate::shared::protocol::{self, Batch, ConversationRecord, Event, MessageRec
 use std::io::Write;
 mod configuration;
 mod exact;
+mod incremental;
 mod memory;
 mod physical;
 mod publication;
@@ -168,6 +169,7 @@ async fn qdrant_mixed_snapshot_migrates_without_losing_embeddings_or_revision() 
             .unwrap(),
     );
     old.head.as_mut().unwrap().snapshot_schema = crate::shared::snapshot::layers::Schema::Mixed;
+    old.threads = None;
     old.head.as_mut().unwrap().silver_revision = None;
     let old_version = old.version.clone();
     fixture.replace_node(old).await;
@@ -192,8 +194,12 @@ async fn qdrant_mixed_snapshot_migrates_without_losing_embeddings_or_revision() 
         .pending_snapshot(&fixture.identity)
         .await
         .unwrap()
-        .payload
+        .threads
         .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .1
         .decode()
         .unwrap();
     assert!(
@@ -235,7 +241,13 @@ async fn qdrant_spooled_snapshot_round_trips_unicode_chunks_and_rejects_over_bud
         .await
         .unwrap();
     let node = fixture.store.node(&fixture.identity).await.unwrap();
-    assert!(node.manifest.as_ref().unwrap().chunks >= 2);
+    assert!(
+        node.threads
+            .as_ref()
+            .unwrap()
+            .values()
+            .any(|thread| thread.manifest.chunks >= 2)
+    );
     let loaded = fixture.store.load(&fixture.identity).await.unwrap();
     assert_eq!(loaded.data.messages["message-0"].content, content);
     assert_eq!(
@@ -600,6 +612,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
                     nodes: Some(std::collections::BTreeMap::from([(
                         "node".into(),
                         NodeHead {
+                            threads: None,
                             kind: PointKind::Head,
                             node_id: "node".into(),
                             version: version.clone(),

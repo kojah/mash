@@ -314,7 +314,10 @@ async fn forget(
     let input = json(input)?;
     let permit = admission::reserve(&app.uploads)?;
     Ok(Json(
-        admission::run(permit, async move { app.store.forget(&id, input).await }).await?,
+        Box::pin(admission::run(permit, async move {
+            app.store.forget(&id, input).await
+        }))
+        .await?,
     ))
 }
 async fn index(

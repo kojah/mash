@@ -1,10 +1,13 @@
 //! Stage immutable data, then CAS the active node pointer. No partially visible uploads.
 use super::CatalogRecord;
 use super::{
-    AppError, Chunk, Document, Head, Identity, Manifest, NodeHead, PointKind, Store, api,
-    collection, failure, point_id, sparse, tokens,
+    AppError, Document, Head, Identity, NodeHead, PointKind, Store, api, collection, failure,
+    point_id, sparse, tokens,
 };
+#[cfg(test)]
+use super::{Chunk, Manifest};
 use crate::shared::gold_manifest;
+#[cfg(test)]
 use crate::shared::snapshot::Encoded;
 use crate::shared::{
     protocol::{Forget, Forgotten, Indexed},
@@ -58,18 +61,6 @@ pub(super) fn staging_version() -> Result<String, AppError> {
     getrandom::fill(&mut random)
         .map_err(|_| AppError::internal("create Qdrant staging identity"))?;
     Ok(blake3::hash(&random).to_hex().to_string())
-}
-
-fn encode_publication(
-    plan: Plan,
-    max_bytes: usize,
-) -> Result<(Plan, Encoded, crate::shared::silver_revision::State), AppError> {
-    if plan.revision < 1 {
-        return Err(AppError::usage("invalid Qdrant revision"));
-    }
-    let silver_revision = plan.silver_revision()?;
-    let encoded = Encoded::new(&plan.loaded.data.layers(), max_bytes)?;
-    Ok((plan, encoded, silver_revision))
 }
 
 impl Store {
@@ -200,6 +191,7 @@ impl Store {
         self.commit(identity, plan, instance, false).await?;
         Ok(Forgotten { forgotten })
     }
+    #[cfg(test)]
     pub(super) async fn stage(
         &self,
         identity: &Identity,
@@ -208,10 +200,11 @@ impl Store {
         version: &str,
     ) -> Result<Manifest, AppError> {
         let manifest = self.stage_snapshot(identity, encoded, version).await?;
-        self.stage_catalog(identity, data, version).await?;
-        self.stage_documents(identity, data, version).await?;
+        self.stage_catalog(identity, data, version, None).await?;
+        self.stage_documents(identity, data, version, None).await?;
         Ok(manifest)
     }
+    #[cfg(test)]
     #[tracing::instrument(name = "qdrant_stage_snapshot", skip_all)]
     async fn stage_snapshot(
         &self,
@@ -255,15 +248,24 @@ impl Store {
         })
     }
     #[tracing::instrument(name = "qdrant_stage_catalog", skip_all)]
-    async fn stage_catalog(
+    pub(super) async fn stage_catalog(
         &self,
         identity: &Identity,
         data: &Data,
         version: &str,
+        versions: Option<&std::collections::BTreeMap<String, super::ThreadSnapshot>>,
     ) -> Result<(), AppError> {
         let mut catalog = api::StagingBatch::default();
         let collection = collection(&identity.group_id, true);
         for conversation in data.conversations.values() {
+            let version = if let Some(versions) = versions {
+                let Some(thread) = versions.get(&conversation.id) else {
+                    continue;
+                };
+                thread.version.as_str()
+            } else {
+                version
+            };
             catalog
                 .push(
                     &self.api,
@@ -284,15 +286,24 @@ impl Store {
         catalog.flush(&self.api, &collection).await
     }
     #[tracing::instrument(name = "qdrant_stage_documents", skip_all)]
-    async fn stage_documents(
+    pub(super) async fn stage_documents(
         &self,
         identity: &Identity,
         data: &Data,
         version: &str,
+        versions: Option<&std::collections::BTreeMap<String, super::ThreadSnapshot>>,
     ) -> Result<(), AppError> {
         let mut points = api::StagingBatch::default();
         let collection = collection(&identity.group_id, false);
         for message in data.messages.values() {
+            let version = if let Some(versions) = versions {
+                let Some(thread) = versions.get(&message.conversation_id) else {
+                    continue;
+                };
+                thread.version.as_str()
+            } else {
+                version
+            };
             let conversation = data
                 .conversations
                 .get(&message.conversation_id)
@@ -331,6 +342,10 @@ impl Store {
         points.flush(&self.api, &collection).await
     }
     #[tracing::instrument(name = "qdrant_publish", skip_all, fields(revision = plan.revision, outcome = tracing::field::Empty))]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "keep staging, conditional publication, ambiguous-write recovery and safe reclamation in one lifecycle"
+    )]
     pub(super) async fn commit(
         &self,
         identity: &Identity,
@@ -340,21 +355,40 @@ impl Store {
     ) -> Result<Indexed, AppError> {
         let gold_version = self.gold_version(identity).await?;
         let max_bytes = self.max_node_bytes;
-        let (plan, encoded, silver_revision) =
-            crate::blocking(move || encode_publication(plan, max_bytes)).await?;
-        let counts = plan.loaded.data.counts(identity);
+        let prior_node = self.node(identity).await?;
+        let reuse = prior_node.head.as_ref().is_some_and(|head| {
+            head.gold_manifest.as_ref().is_some_and(|manifest| {
+                manifest.matches(
+                    &self.build,
+                    &identity.generation,
+                    head.silver_revision.as_ref(),
+                )
+            })
+        });
         let version = staging_version()?;
+        let incoming_version = version.clone();
+        let prior = prior_node.clone();
+        let (plan, mut prepared, silver_revision) = crate::blocking(move || {
+            super::incremental::prepare(plan, &prior, &incoming_version, max_bytes, reuse)
+        })
+        .await?;
+        let counts = plan.loaded.data.counts(identity);
+        let staged = prepared.staged_versions(&version);
         let previous = plan.loaded.head.as_ref();
         let (gold_manifest, lexical_manifest) =
             publication_manifests(&plan, identity, &silver_revision, checked);
-        let manifest = match self
-            .stage(identity, &plan.loaded.data, &encoded, &version)
-            .await
+        let manifest = match Box::pin(self.stage_incremental(
+            identity,
+            &plan.loaded.data,
+            &mut prepared,
+            &version,
+        ))
+        .await
         {
             Ok(manifest) => manifest,
             Err(error) => {
                 outcome(PublicationOutcome::StagingFailed);
-                self.cleanup(identity, &version).await;
+                self.cleanup_versions(identity, &staged).await;
                 return Err(error);
             }
         };
@@ -394,10 +428,12 @@ impl Store {
             version: version.clone(),
             head: Some(head),
             manifest: Some(manifest),
+            threads: Some(prepared.threads),
         };
+        let active_versions = node.versions();
         let expected = &plan.loaded.expected;
         if let Err(error) = self.unchanged_gold(identity, &gold_version).await {
-            self.cleanup(identity, &version).await;
+            self.cleanup_versions(identity, &staged).await;
             return Err(error);
         }
         // A failed request may still commit after this reread. Seeing another head
@@ -427,7 +463,7 @@ impl Store {
                 return Err(error);
             }
             outcome(PublicationOutcome::Conflict);
-            self.cleanup(identity, &version).await;
+            self.cleanup_versions(identity, &staged).await;
             return Err(conflict("concurrent Qdrant update; retry the operation"));
         }
         outcome(PublicationOutcome::Observed);
@@ -435,7 +471,15 @@ impl Store {
         // but do not acknowledge it. New-recipe reads reject its stale manifest.
         self.unchanged_gold(identity, &gold_version).await?;
         if !expected.is_empty() {
-            self.cleanup(identity, expected).await;
+            let mut obsolete = prior_node
+                .versions()
+                .into_iter()
+                .filter(|version| !active_versions.contains(version))
+                .collect::<Vec<_>>();
+            obsolete.push(expected.clone());
+            obsolete.sort();
+            obsolete.dedup();
+            self.cleanup_versions(identity, &obsolete).await;
         }
         Ok(Indexed {
             counts,
@@ -446,17 +490,21 @@ impl Store {
     }
 
     #[tracing::instrument(name = "qdrant_cleanup", skip_all, fields(retained = tracing::field::Empty))]
-    async fn cleanup(&self, identity: &Identity, version: &str) {
+    async fn cleanup_versions(&self, identity: &Identity, versions: &[String]) {
         let mut retained = false;
-        for metadata in [false, true] {
-            if self
-                .api
-                .delete_version(&collection(&identity.group_id, metadata), version)
-                .await
-                .is_err()
-            {
-                retained = true;
-                tracing::warn!("Qdrant obsolete staging cleanup failed; hidden version retained");
+        for versions in versions.chunks(128) {
+            for metadata in [false, true] {
+                if self
+                    .api
+                    .delete_versions(&collection(&identity.group_id, metadata), versions)
+                    .await
+                    .is_err()
+                {
+                    retained = true;
+                    tracing::warn!(
+                        "Qdrant obsolete staging cleanup failed; hidden version retained"
+                    );
+                }
             }
         }
         tracing::Span::current().record("retained", retained);

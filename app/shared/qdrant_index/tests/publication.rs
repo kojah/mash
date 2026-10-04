@@ -124,6 +124,10 @@ fn activate_title(backend: &mut Backend) {
     );
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "explicit fault outcomes model competing and ambiguous conditional writes"
+)]
 async fn upsert(
     State(shared): State<Shared>,
     Json(input): Json<Incoming>,
@@ -193,6 +197,26 @@ async fn upsert(
                     .unwrap()
                     .version
                     .clone_from(&winner.version);
+                for thread in winner.threads.as_mut().unwrap().values_mut() {
+                    let original = thread.version.clone();
+                    thread.version = blake3::hash(format!("winner-{original}").as_bytes())
+                        .to_hex()
+                        .to_string();
+                    for index in 0..thread.manifest.chunks {
+                        let stored =
+                            &backend.points[&point_id(&["chunk", &original, &index.to_string()])];
+                        let mut chunk: Chunk = serde_json::from_str(stored.payload.get()).unwrap();
+                        chunk.version.clone_from(&thread.version);
+                        let id = point_id(&["chunk", &thread.version, &index.to_string()]);
+                        backend.points.insert(
+                            id.clone(),
+                            MockPoint {
+                                id,
+                                payload: to_raw_value(&chunk).unwrap(),
+                            },
+                        );
+                    }
+                }
                 for index in 0..winner.manifest.as_ref().unwrap().chunks {
                     let stored =
                         &backend.points[&point_id(&["chunk", &version, &index.to_string()])];
@@ -323,6 +347,7 @@ async fn exercise(outcome: Outcome) {
     let plan = crate::shared::snapshot::plan(
         &fixture.file(1, "private-history-canary"),
         crate::shared::snapshot::PendingSnapshot {
+            threads: None,
             payload: None,
             head: None,
             expected: String::new(),

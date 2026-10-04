@@ -108,37 +108,54 @@ fleet throughput, or a new search-quality result. A 128-point variant was not
 profiled. Private captures and the adapted, pinned benchmark harness live in
 `/home/james/scratch/mash-artifacts/redeploy-speed-20261004`.
 
-## Incremental publication evaluation
+## Incremental publication
 
-The wire protocol already supports delta uploads with `snapshot=false` and a
-`base_revision`; routed ingestion uses them. Qdrant publication still reconstructs
-and encodes the complete node, stages all documents, conditionally publishes its
-head and reclaims the previous version. Local publication triggers advance a
-revision but do not retain a durable per-record change journal for this path.
-Consequently, a small ordinary edit can still pay full-node publication costs.
+SQLite records changed thread IDs and their publication revisions in the same
+transaction as conversation, message, enrichment, embedding or tombstone writes.
+Each upload captures a consistent read transaction and sends complete replacements
+for changed threads, plus explicit deletions. Acknowledgements prune only accepted
+revisions; concurrent newer edits remain pending. A durable journal floor forces
+a full capture when change history is unavailable or the destination changes.
+Recipe/model changes and stale shared artifacts also require full capture.
 
-The bounded-batch build also accepted delta additions of 1, 10 and 100 canonical
-assistant messages on the copied corpus: 556/4,879/68,973 uploaded bytes and
-2.78/3.17/2.99 s respectively. These context-only additions required no new
-embeddings and retained all prior messages. The sample included one preparation
-addition before this sequence. These are HTTP mutation times, excluding local
-ingestion/preparation; existing snapshot staging still rewrote the whole node.
-They are not measurements of arbitrary edits or deletion. The current protocol
-rejects replacing an existing message ID directly in a delta: ordinary edits
-use a thread replacement, another reason to define journal granularity explicitly.
+Qdrant stores immutable per-thread snapshots, catalogue rows and search documents.
+The conditional group catalogue atomically selects active thread versions. Unchanged
+threads retain their points; replacement/deletion excludes old versions before
+ranking. After verified publication, native Qdrant filtered deletion reclaims
+obsolete versions. Ambiguous writes retain staging for recovery. There is no
+custom database log or segment compactor. Old full-node snapshots remain readable
+and transition on their next publication. Install the new API before publishing
+from upgraded nodes; older API binaries cannot interpret partitioned publications.
 
-An immutable segment/delta design must solve both sides of this cost. It needs a
-durable change journal and a versioned server manifest, including explicit
-deletions. Conversation metadata is duplicated into message payloads: title,
-project or repository edits must invalidate dependent search documents too.
-Retrieval must suppress superseded/deleted records before ranking, respect
-filters and provide consistent thread/context lookup across active segments.
-Privacy/model/source interpretation changes still require a full rebuild.
+Schema 42 installs the journal without rebuilding schema-41 history or discarding
+vectors. Read-only commands require the current schema: perform the explicit
+index/schema upgrade once before validating an upgraded node. MCP `index` is also
+the explicit refresh tool; subsequent searches read refreshed data without
+restarting the MCP process. Rebuild flags distinguish retrieval rebuilding from
+provider ingestion, and `_meta.progressToken` enables streamed progress.
 
-Evaluate bounded segments and compaction before committing to that design.
-Compare initial publication, 1/10/100-message changes, deletion and restart
-recovery; include complete preparation/upload/commit times, memory, filter
-accuracy, concurrent reads and sustained watcher backlog. Preserve conditional
-publication and acknowledged-write recovery. A delta POST alone is insufficient
-evidence of an incremental storage improvement. This work is tracked in
-`mash-mgd`; deployment/batching work is `mash-hia`.
+October 4 comparison used identical copies of the 25-thread/6,137-message corpus,
+Qdrant 1.19.1 with disk-backed Docker storage over loopback, installed local models,
+and the previous bounded-batch release. Controlled context-only additions affected
+one thread and required no inference. Addition timings include the explicit CLI
+index operation; deletion timings cover the HTTP forget request. Write counts are
+Qdrant point-upsert requests, including the conditional catalogue update, excluding
+reads, filtered cleanup requests and asynchronous optimizer work.
+
+| Operation | Previous time | Incremental time | Previous upload | Incremental upload | Point writes, previous → incremental |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial publication | 3.39 s | 3.89 s | 13.38 MB | 13.38 MB | 19 → 23 |
+| Add 1 message | 4.08 s | 0.50 s | 13.38 MB | 6.49 KB | 19 → 4 |
+| Add 10 messages | 4.76 s | 0.50 s | 13.39 MB | 9.29 KB | 19 → 4 |
+| Add 100 messages | 3.82 s | 0.48 s | 13.42 MB | 37.70 KB | 19 → 4 |
+| Delete one thread | 2.71 s | 0.48 s | 110 B | 110 B | 19 → 2 |
+
+These are single sequential trials on a busy host, not fleet throughput or p95
+latency. Initial publication has more chunk-write overhead. Changed large threads
+still require whole-thread replacement. The server still reads/decodes retained
+history and computes complete canonical revisions and thread fingerprints, so
+server CPU/read work remains proportional to node size. The catalogue and active
+version filter also grow with thread count. Sustained backlog, peak memory and
+full-size node latency need separate measurements. Private captures and the
+executable harness are in
+`/home/james/scratch/mash-artifacts/incremental-publication-20261004`.

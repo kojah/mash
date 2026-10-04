@@ -31,7 +31,8 @@ fn no_reuse(value: &bool) -> bool {
 impl Start {
     pub(super) fn validate_source_silver(&self) -> Result<(), crate::AppError> {
         if let Some(certificate) = &self.source_silver
-            && (!self.snapshot
+            && ((!self.snapshot
+                && (self.base_revision.is_none() || self.expected_version.is_none()))
                 || certificate.interpretation_version
                     != crate::silver::certificate::INTERPRETATION_VERSION
                 || (certificate.is_complete() && certificate.rejected_sources != 0))
@@ -67,6 +68,9 @@ mod source_certificate_tests {
         start.validate_source_silver().unwrap();
         start.snapshot = false;
         assert!(start.validate_source_silver().is_err());
+        start.base_revision = Some(1);
+        start.expected_version = Some("pinned".to_owned());
+        start.validate_source_silver().unwrap();
         start.snapshot = true;
         start.source_silver.as_mut().unwrap().interpretation_version += 1;
         assert!(start.validate_source_silver().is_err());

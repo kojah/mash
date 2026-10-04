@@ -4,6 +4,7 @@ mod api;
 mod configuration;
 mod context;
 mod exact;
+mod incremental;
 mod publish;
 mod read;
 mod silver;
@@ -35,7 +36,7 @@ pub(super) struct Store {
     snapshot_budget: super::snapshot_budget::Budget,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Manifest {
     bytes: usize,
@@ -50,6 +51,37 @@ struct NodeHead {
     version: String,
     head: Option<Head>,
     manifest: Option<Manifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    threads: Option<std::collections::BTreeMap<String, ThreadSnapshot>>,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ThreadSnapshot {
+    version: String,
+    manifest: Manifest,
+}
+impl NodeHead {
+    fn thread_version(&self, id: &str) -> Option<&str> {
+        self.threads
+            .as_ref()
+            .map_or(Some(self.version.as_str()), |threads| {
+                threads.get(id).map(|thread| thread.version.as_str())
+            })
+    }
+    fn versions(&self) -> Vec<String> {
+        self.threads.as_ref().map_or_else(
+            || vec![self.version.clone()],
+            |threads| {
+                if threads.is_empty() {
+                    return vec!["!".to_owned()];
+                }
+                threads
+                    .values()
+                    .map(|thread| thread.version.clone())
+                    .collect()
+            },
+        )
+    }
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -218,6 +250,7 @@ impl Store {
             version: String::new(),
             head: None,
             manifest: None,
+            threads: None,
         });
         if node.kind != PointKind::Head
             || node.node_id != identity.node_id
@@ -240,6 +273,9 @@ impl Store {
         identity: &Identity,
     ) -> Result<super::snapshot::PendingSnapshot, AppError> {
         let node = self.node(identity).await?;
+        if node.threads.is_some() {
+            return self.pending_threads(identity, node).await;
+        }
         let payload = if let Some(manifest) = &node.manifest {
             if manifest.bytes > self.max_node_bytes
                 || manifest.chunks == 0
@@ -273,6 +309,7 @@ impl Store {
         };
         Ok(super::snapshot::PendingSnapshot {
             payload,
+            threads: None,
             head: node.head,
             expected: node.version,
         })

@@ -5,7 +5,7 @@ use std::io::{BufWriter, Write};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 pub(in crate::shared) struct Encoded {
-    file: tempfile::NamedTempFile,
+    file: tempfile::TempPath,
     pub(in crate::shared) bytes: usize,
     pub(in crate::shared) digest: String,
 }
@@ -61,15 +61,14 @@ impl Encoded {
         tracing::Span::current().record("bytes", bytes);
         drop(writer);
         Ok(Self {
-            file,
+            file: file.into_temp_path(),
             bytes,
             digest,
         })
     }
 
     pub(in crate::shared) fn reader(&self) -> Result<tokio::fs::File, AppError> {
-        self.file
-            .reopen()
+        std::fs::File::open(&self.file)
             .map(tokio::fs::File::from_std)
             .map_err(|_| AppError::internal("open canonical snapshot spool"))
     }

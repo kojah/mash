@@ -38,9 +38,15 @@ struct Source {
     conversations: BTreeMap<String, ConversationRecord>,
     hashes: BTreeMap<String, String>,
     visible: u64,
+    incremental: bool,
 }
 
-fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, AppError> {
+fn capture(
+    path: &Path,
+    target: &Target,
+    reuse_gold: bool,
+    allow_delta: bool,
+) -> Result<Source, AppError> {
     crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
         let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
         let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
@@ -48,26 +54,36 @@ fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, App
         let mut hashes = BTreeMap::new();
         let mut active: Option<(String, Fingerprint)> = None;
         let mut visible = 0;
+        let mut incremental = false;
         let revision = Storage::open_catalog(path)?.with_publication_snapshot(|snapshot| {
             validate_owner(snapshot, target)?;
+            let base = snapshot
+                .delta_base(target.instance.as_deref(), target.publication_revision)?
+                .filter(|_| allow_delta);
+            incremental = base.is_some();
             write_event(
                 &mut writer,
                 &Event::Start(Start {
-                    reuse_gold,
+                    reuse_gold: reuse_gold && !incremental,
                     expected_version: Some(target.publication_version.clone()),
                     gold_build: Some(target.build.clone()),
                     source_silver: Some(snapshot.source_silver.clone()),
                     instance: snapshot.instance.clone(),
                     revision: Some(snapshot.revision),
-                    base_revision: None,
-                    snapshot: true,
+                    base_revision: base,
+                    snapshot: !incremental,
                     forgets: Vec::new(),
                 }),
             )?;
-            snapshot.visit(BatchKind::Tombstones, |batch| {
+            if let Some(base) = base {
+                for id in snapshot.removed_threads(base)? {
+                    write_event(&mut writer, &Event::Remove { id })?;
+                }
+            }
+            snapshot.visit_selected(BatchKind::Tombstones, false, base, |batch| {
                 write_event(&mut writer, &Event::Batch(batch))
             })?;
-            snapshot.visit(BatchKind::Conversations, |mut batch| {
+            snapshot.visit_selected(BatchKind::Conversations, false, base, |mut batch| {
                 crate::redaction::batch(&mut batch);
                 if let Batch::Conversations { records } = &batch {
                     for conversation in records {
@@ -80,7 +96,7 @@ fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, App
                 }
                 write_event(&mut writer, &Event::Batch(batch))
             })?;
-            snapshot.visit_messages_by_thread(|mut batch| {
+            snapshot.visit_selected(BatchKind::Messages, true, base, |mut batch| {
                 crate::redaction::batch(&mut batch);
                 if let Batch::Messages { records } = &mut batch {
                     for message in records {
@@ -127,6 +143,7 @@ fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, App
             conversations,
             hashes,
             visible,
+            incremental,
         })
     })
 }
@@ -290,15 +307,17 @@ pub(super) async fn prepare(
     target: &Target,
     inference: Option<Inference<'_>>,
     started: Instant,
+    allow_delta: bool,
 ) -> Result<(tempfile::NamedTempFile, i64, SnapshotWork), AppError> {
     let path = path.to_path_buf();
     let metadata = capture_metadata(target);
     let reuse_gold = !target.threads.is_empty();
-    let source = crate::blocking(move || capture(&path, &metadata, reuse_gold)).await?;
+    let source =
+        crate::blocking(move || capture(&path, &metadata, reuse_gold, allow_delta)).await?;
     let reusable: BTreeMap<_, _> = source
         .hashes
         .into_iter()
-        .filter(|(id, hash)| target.threads.get(id) == Some(hash))
+        .filter(|(id, hash)| !source.incremental && target.threads.get(id) == Some(hash))
         .collect();
     let input = source.file.reopen().map_err(AppError::io)?;
     let mut reader = crate::blocking(move || Reader::new(input)).await?;

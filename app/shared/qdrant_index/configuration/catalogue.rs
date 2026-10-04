@@ -22,6 +22,33 @@ pub(super) fn validate_node(id: &str, node: &NodeHead) -> Result<(), AppError> {
     if let Some(silver) = &head.silver_revision {
         silver.validate()?;
     }
+    if let Some(threads) = &node.threads {
+        if !matches!(
+            head.snapshot_schema,
+            crate::shared::snapshot::layers::Schema::Layered
+        ) {
+            return Err(failure());
+        }
+        let mut versions = std::collections::BTreeSet::new();
+        if threads.len() as u64 != head.counts.conversations {
+            return Err(failure());
+        }
+        for (id, thread) in threads {
+            if id.is_empty()
+                || id.len() > 4096
+                || thread.version.len() != 64
+                || !thread.version.bytes().all(|byte| byte.is_ascii_hexdigit())
+                || !versions.insert(&thread.version)
+                || thread.version == node.version
+                || thread.manifest.bytes == 0
+                || thread.manifest.chunks == 0
+                || thread.manifest.chunks > thread.manifest.bytes
+                || thread.manifest.digest.len() != 64
+            {
+                return Err(failure());
+            }
+        }
+    }
     Ok(())
 }
 

@@ -20,6 +20,42 @@ pub(crate) struct RoutedOwner {
 }
 
 impl Snapshot<'_> {
+    pub(crate) fn delta_base(
+        &self,
+        instance: Option<&str>,
+        revision: i64,
+    ) -> Result<Option<i64>, AppError> {
+        let floor: i64 = self
+            .connection
+            .query_row(
+                "SELECT floor FROM shared_change_state WHERE singleton=1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(AppError::database)?;
+        Ok((instance == Some(self.instance.as_str())
+            && revision >= floor
+            && revision < self.revision)
+            .then_some(revision))
+    }
+
+    pub(crate) fn removed_threads(&self, after: i64) -> Result<Vec<String>, AppError> {
+        let mut statement = self.connection.prepare("SELECT j.conversation_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM conversations c WHERE c.id=j.conversation_id) ORDER BY j.conversation_id").map_err(AppError::database)?;
+        statement
+            .query_map([after], |row| row.get(0))
+            .map_err(AppError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::database)
+    }
+
+    pub(crate) fn visit_changed(
+        &self,
+        kind: BatchKind,
+        after: i64,
+        accept: impl FnMut(Batch) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        self.visit_selected(kind, false, Some(after), accept)
+    }
     pub(crate) fn claude_sources(
         &self,
     ) -> Result<Vec<super::claude_sources::ClaudeSourceRef>, AppError> {
@@ -42,17 +78,20 @@ impl Snapshot<'_> {
         self.visit_ordered(kind, false, accept)
     }
 
-    pub(crate) fn visit_messages_by_thread(
-        &self,
-        accept: impl FnMut(Batch) -> Result<(), AppError>,
-    ) -> Result<(), AppError> {
-        self.visit_ordered(BatchKind::Messages, true, accept)
-    }
-
     fn visit_ordered(
         &self,
         kind: BatchKind,
         by_thread: bool,
+        accept: impl FnMut(Batch) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        self.visit_selected(kind, by_thread, None, accept)
+    }
+
+    pub(crate) fn visit_selected(
+        &self,
+        kind: BatchKind,
+        by_thread: bool,
+        after: Option<i64>,
         mut accept: impl FnMut(Batch) -> Result<(), AppError>,
     ) -> Result<(), AppError> {
         let sql = match kind {
@@ -74,7 +113,8 @@ impl Snapshot<'_> {
                 "SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id"
             }
         };
-        let mut statement = self.connection.prepare(sql).map_err(AppError::database)?;
+        let sql = selected_query(sql, kind, after)?;
+        let mut statement = self.connection.prepare(&sql).map_err(AppError::database)?;
         let mut rows = statement.query([]).map_err(AppError::database)?;
         let mut batch = match kind {
             BatchKind::Conversations => Batch::Conversations {
@@ -150,6 +190,23 @@ impl Snapshot<'_> {
     }
 }
 
+fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<String, AppError> {
+    let Some(after) = after else {
+        return Ok(sql.to_owned());
+    };
+    let id = match kind {
+        BatchKind::Conversations => "c.id",
+        BatchKind::Messages => "m.conversation_id",
+        BatchKind::Tombstones => "conversation_id",
+    };
+    let (query, order) = sql
+        .split_once(" ORDER BY")
+        .ok_or_else(|| AppError::internal("missing publication ordering"))?;
+    Ok(format!(
+        "{query} WHERE {id} IN (SELECT conversation_id FROM shared_changes WHERE revision>{after}) ORDER BY{order}"
+    ))
+}
+
 fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
     let local_generation = row
         .get::<_, Option<String>>(7)
@@ -207,11 +264,16 @@ impl Storage {
     /// bronze is unchanged. Persist the target now so failed uploads retry the
     /// same revision; acknowledgement remains pending until the HTTP commit.
     pub(crate) fn prepare_publication_target(&self, target: &str) -> Result<(), AppError> {
-        self.connection.execute(
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        transaction.execute("UPDATE shared_change_state SET floor=(SELECT revision+CASE WHEN acknowledged>0 THEN 1 ELSE 0 END FROM shared_publication) WHERE singleton=1 AND EXISTS(SELECT 1 FROM shared_publication WHERE target<>?1)", [target]).map_err(AppError::database)?;
+        transaction.execute(
             "UPDATE shared_publication SET target=?1,revision=revision+CASE WHEN acknowledged>0 THEN 1 ELSE 0 END WHERE singleton=1 AND target<>?1",
             [target],
         ).map_err(AppError::database)?;
-        Ok(())
+        transaction.commit().map_err(AppError::database)
     }
 
     pub(crate) fn queue_shared_forget(&self, scope: &str, id: &str) -> Result<(), AppError> {
@@ -327,11 +389,17 @@ impl Storage {
         target: &str,
         revision: i64,
     ) -> Result<(), AppError> {
-        self.connection.execute(
-            "UPDATE shared_publication SET target = ?1, acknowledged = ?2 WHERE singleton = 1 AND revision = ?2",
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(AppError::database)?;
+        transaction.execute(
+            "UPDATE shared_publication SET acknowledged = MAX(acknowledged,?2) WHERE singleton = 1 AND target = ?1 AND revision >= ?2",
             (target, revision),
         ).map_err(AppError::database)?;
-        Ok(())
+        transaction.execute("DELETE FROM shared_changes WHERE revision<=?2 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,revision)).map_err(AppError::database)?;
+        transaction.execute("UPDATE shared_change_state SET floor=MAX(floor,?2) WHERE singleton=1 AND EXISTS(SELECT 1 FROM shared_publication WHERE target=?1 AND acknowledged>=?2)", (target,revision)).map_err(AppError::database)?;
+        transaction.commit().map_err(AppError::database)
     }
 
     pub(crate) fn publication_is_pending(

@@ -237,6 +237,7 @@ async fn typed_legacy_migration_and_layered_reads_preserve_identical_planning_da
         }
         let head: Head = serde_json::from_value(head).unwrap();
         let loaded = PendingSnapshot {
+            threads: None,
             payload: Some(payload),
             head: Some(head),
             expected: "version".into(),
@@ -252,6 +253,26 @@ async fn typed_legacy_migration_and_layered_reads_preserve_identical_planning_da
             "canonical 🦀"
         );
     }
+}
+
+#[tokio::test]
+async fn empty_thread_manifest_cannot_hide_history_in_its_metadata_snapshot() {
+    let bytes = serde_json::to_vec(&fixture().layers()).unwrap();
+    let mut receiver = Receiver::new(bytes.len()).await.unwrap();
+    receiver.append(&bytes).await.unwrap();
+    let payload = receiver
+        .finish(blake3::hash(&bytes).to_hex().as_str())
+        .await
+        .unwrap();
+    let head:Head=serde_json::from_value(json!({"snapshot_schema":"layered","instance":"instance","generation":"model","revision":1,"version":"version","counts":{"conversations":0,"messages":0,"searchable_messages":0,"embeddings":0},"last_synced_at":null,"last_updated_at":null})).unwrap();
+    let result = PendingSnapshot {
+        payload: Some(payload),
+        threads: Some(Vec::new()),
+        head: Some(head),
+        expected: "version".into(),
+    }
+    .decode();
+    assert!(result.is_err());
 }
 
 #[test]

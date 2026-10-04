@@ -2,6 +2,60 @@ use super::*;
 use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
 
 #[test]
+fn incremental_capture_includes_only_changed_complete_threads_and_explicit_removals() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = seed(directory.path());
+    let storage = Storage::open_existing(&database).unwrap();
+    storage.prepare_publication_target("journal").unwrap();
+    let mut instance = String::new();
+    let base = storage
+        .with_publication_snapshot(|snapshot| {
+            instance.clone_from(&snapshot.instance);
+            Ok(())
+        })
+        .unwrap();
+    storage.acknowledge_publication("journal", base).unwrap();
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    connection.execute_batch("PRAGMA foreign_keys=ON; UPDATE conversations SET title='changed' WHERE id='a'; DELETE FROM conversations WHERE id='b';").unwrap();
+    let target = Target {
+        schema_version: 1,
+        build: crate::gold::config::Build::default(),
+        generation: "unused".into(),
+        dimensions: 384,
+        publication_version: "pinned".into(),
+        instance: Some(instance),
+        publication_revision: base,
+        threads: BTreeMap::new(),
+    };
+    let source = capture(&database, &target, true, true).unwrap();
+    assert!(source.incremental);
+    assert_eq!(source.conversations.keys().collect::<Vec<_>>(), vec!["a"]);
+    let events: Vec<Event> = std::fs::read_to_string(source.file.path())
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let Event::Start(start) = &events[0] else {
+        panic!("expected start")
+    };
+    assert!(!start.snapshot && !start.reuse_gold);
+    assert_eq!(start.base_revision, Some(base));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event,Event::Remove{id} if id=="b"))
+    );
+    let mut messages = 0;
+    for event in events {
+        if let Event::Batch(Batch::Messages { records }) = event {
+            assert!(records.iter().all(|record| record.conversation_id == "a"));
+            messages += records.len();
+        }
+    }
+    assert_eq!(messages, 37);
+}
+
+#[test]
 fn redacted_snapshot_fingerprints_match_uploaded_dependencies() {
     let root = tempfile::tempdir().unwrap();
     let database = seed(root.path());
@@ -23,7 +77,7 @@ fn redacted_snapshot_fingerprints_match_uploaded_dependencies() {
         publication_revision: 0,
         threads: BTreeMap::new(),
     };
-    let source = capture(&database, &target, false).unwrap();
+    let source = capture(&database, &target, false, false).unwrap();
     let stream = std::fs::read_to_string(source.file.path()).unwrap();
     assert!(!stream.contains("hunter2") && !stream.contains("rosebud"));
     let mut fingerprints = BTreeMap::new();
@@ -115,7 +169,7 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
         publication_revision: 0,
         threads: BTreeMap::new(),
     };
-    let source = capture(&database, &target, false).unwrap();
+    let source = capture(&database, &target, false, false).unwrap();
     let mut reader = Reader::new(source.file.reopen().unwrap()).unwrap();
     let mut inputs = BTreeMap::new();
     let mut sizes = Vec::new();
@@ -184,8 +238,8 @@ async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_bat
         publication_revision: 0,
         threads: BTreeMap::new(),
     };
-    target.threads = capture(&database, &target, true).unwrap().hashes;
-    let (file, _, preparation) = prepare(&database, &target, None, Instant::now())
+    target.threads = capture(&database, &target, true, false).unwrap().hashes;
+    let (file, _, preparation) = prepare(&database, &target, None, Instant::now(), false)
         .await
         .unwrap();
     assert_eq!(preparation.model_inferences, 0);
@@ -231,7 +285,7 @@ async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_bat
     );
     target.threads.clear();
     assert!(
-        prepare(&database, &target, None, Instant::now())
+        prepare(&database, &target, None, Instant::now(), false)
             .await
             .err()
             .unwrap()
@@ -254,6 +308,7 @@ async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_bat
             embeddings: None,
         }),
         Instant::now(),
+        false,
     )
     .await
     .err()

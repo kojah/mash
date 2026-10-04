@@ -121,7 +121,8 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     let edited = fixture.json(&["index", "--all-history"], true);
     assert_eq!(edited["shared"]["state"], "published");
     assert_eq!(edited["shared"]["preparation"]["model_inferences"], 1);
-    assert_eq!(edited["shared"]["preparation"]["reused_threads"], 1);
+    // Unchanged threads are omitted from deltas, rather than uploaded as ReuseGold events.
+    assert_eq!(edited["shared"]["preparation"]["reused_threads"], 0);
     let scores = search_scores(&fixture);
     fixture.json(&["index", "--rebuild-shared-gold"], true);
     assert_eq!(search_scores(&fixture), scores);
@@ -139,7 +140,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     let forgotten = fixture.json(&["forget", &id], true);
     assert_eq!(forgotten["shared"]["state"], "published");
     assert_eq!(forgotten["shared"]["preparation"]["model_inferences"], 0);
-    assert_eq!(forgotten["shared"]["preparation"]["reused_threads"], 1);
+    assert_eq!(forgotten["shared"]["preparation"]["reused_threads"], 0);
     assert_current(&fixture, 1);
     eprintln!(
         "snapshot recipe diagnostic: default={}ms switch={}ms noop={}ms edit={}ms; preparation/default={} switch={} noop={} edit={}",

@@ -344,6 +344,7 @@ fn schema_fields(
             ("provider", "keyword"),
             ("role", "keyword"),
             ("conversation_id", "keyword"),
+            ("message.id", "keyword"),
             ("project", "keyword"),
             ("repository", "keyword"),
             ("tokens", "keyword"),
@@ -813,14 +814,22 @@ impl Client {
         }
         Ok(result.points)
     }
+    #[cfg(test)]
     pub(super) async fn delete_version(&self, name: &str, version: &str) -> Result<(), AppError> {
+        self.delete_versions(name, &[version.to_owned()]).await
+    }
+    pub(super) async fn delete_versions(
+        &self,
+        name: &str,
+        versions: &[String],
+    ) -> Result<(), AppError> {
         let op: Operation = self
             .call(
                 Method::POST,
                 &format!("collections/{name}/points/delete?wait=true&ordering=strong"),
                 Some(&Delete {
                     filter: Filter {
-                        must: vec![matches("version", vec![version.into()])],
+                        must: vec![matches("version", versions.to_vec())],
                         ..Filter::default()
                     },
                 }),

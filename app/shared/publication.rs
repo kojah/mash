@@ -273,6 +273,10 @@ pub(crate) async fn forget_routed(
     })
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "keep the consistent SQLite capture, bounded spool and acknowledgement together"
+)]
 async fn publish_result(
     path: &Path,
     config: &SharedConfig,
@@ -292,9 +296,16 @@ async fn publish_result(
             ..SnapshotWork::default()
         });
     }
+    // Changed recipes/models require complete replacement, even with a journal.
+    let allow_delta = if target.publication_revision > 0 {
+        let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
+        published_artifacts_current(&freshness, config, &target)
+    } else {
+        false
+    };
     if target.build != crate::gold::config::Build::default() {
         let (file, revision, preparation) =
-            snapshot::prepare(path, &target, inference, started).await?;
+            snapshot::prepare(path, &target, inference, started, allow_delta).await?;
         upload(config, &file).await?;
         acknowledge(path, config, revision).await?;
         return Ok(preparation);
@@ -310,6 +321,9 @@ async fn publish_result(
             let mut forwarded_embeddings = 0;
             let revision = Storage::open_catalog(&db)?.with_publication_snapshot(|snapshot| {
                 snapshot::validate_owner(snapshot, &target)?;
+                let base =
+                    snapshot.delta_base(target.instance.as_deref(), target.publication_revision)?;
+                let base = base.filter(|_| allow_delta);
                 write_event(
                     &mut writer,
                     &Event::Start(Start {
@@ -319,23 +333,33 @@ async fn publish_result(
                         source_silver: Some(snapshot.source_silver.clone()),
                         instance: snapshot.instance.clone(),
                         revision: Some(snapshot.revision),
-                        base_revision: None,
-                        snapshot: true,
+                        base_revision: base,
+                        snapshot: base.is_none(),
                         forgets: Vec::new(),
                     }),
                 )?;
+                if let Some(base) = base {
+                    for id in snapshot.removed_threads(base)? {
+                        write_event(&mut writer, &Event::Remove { id })?;
+                    }
+                }
                 for kind in [
                     protocol::BatchKind::Tombstones,
                     protocol::BatchKind::Conversations,
                     protocol::BatchKind::Messages,
                 ] {
-                    snapshot.visit(kind, |batch| {
+                    let accept = |batch| {
                         if let protocol::Batch::Messages { records } = &batch {
                             forwarded_embeddings +=
                                 records.iter().filter(|m| m.vector.is_some()).count() as u64;
                         }
                         write_event(&mut writer, &Event::Batch(batch))
-                    })?;
+                    };
+                    if let Some(base) = base {
+                        snapshot.visit_changed(kind, base, accept)?;
+                    } else {
+                        snapshot.visit(kind, accept)?;
+                    }
                 }
                 write_event(&mut writer, &Event::Finish)
             })?;

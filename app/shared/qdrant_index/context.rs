@@ -56,9 +56,12 @@ pub(super) fn anchor(
     };
     let d = point.payload;
     let m = d.message;
-    if point.id != point_id(&["message", &head.version, &input.id])
+    let version = head
+        .thread_version(&m.conversation_id)
+        .ok_or_else(failure)?;
+    if point.id != point_id(&["message", version, &input.id])
         || m.id != input.id
-        || d.version != head.version
+        || d.version != version
         || d.node_id != input.node_id
         || d.conversation_id != m.conversation_id
         || !m.context.valid(m.ordinal)
@@ -176,12 +179,15 @@ pub(super) fn select(
     for point in records {
         let d = point.payload;
         let m = d.message;
-        if d.version != head.version
+        let version = head
+            .thread_version(&m.conversation_id)
+            .ok_or_else(failure)?;
+        if d.version != version
             || d.node_id != input.node_id
             || d.conversation_id != anchor.conversation_id
             || m.conversation_id != anchor.conversation_id
             || !m.context.valid(m.ordinal)
-            || point.id != point_id(&["message", &head.version, &m.id])
+            || point.id != point_id(&["message", version, &m.id])
             || !ids.insert(point.id)
             || rows.insert(m.ordinal, m).is_some()
         {
@@ -255,10 +261,13 @@ impl Selection {
         for point in records {
             let d = point.payload;
             let m = d.message;
-            if d.version != head.version
+            let version = head
+                .thread_version(&m.conversation_id)
+                .ok_or_else(failure)?;
+            if d.version != version
                 || d.node_id != input.node_id
                 || d.conversation_id != m.conversation_id
-                || point.id != point_id(&["message", &head.version, &m.id])
+                || point.id != point_id(&["message", version, &m.id])
                 || self.entries.get(&m.ordinal).is_none_or(|e| !e.matches(&m))
                 || output.contains_key(&m.ordinal)
             {

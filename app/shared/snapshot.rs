@@ -64,17 +64,25 @@ pub(super) struct Loaded {
 /// Keep decoding and mutation planning on one worker to reuse freed allocations.
 pub(super) struct PendingSnapshot {
     pub(super) payload: Option<payload::Received>,
+    pub(super) threads: Option<Vec<(String, payload::Received)>>,
     pub(super) head: Option<Head>,
     pub(super) expected: String,
 }
 impl PendingSnapshot {
     pub(in crate::shared) fn encoded_bytes(&self) -> usize {
-        self.payload
-            .as_ref()
-            .map_or(0, payload::Received::encoded_bytes)
+        self.threads
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|(_, part)| part.encoded_bytes())
+            .sum::<usize>()
+            + self
+                .payload
+                .as_ref()
+                .map_or(0, payload::Received::encoded_bytes)
     }
     pub(in crate::shared) fn decode(self) -> Result<Loaded, AppError> {
-        let data = match self.payload {
+        let mut data = match self.payload {
             None => Data::default(),
             Some(payload) => match self
                 .head
@@ -85,6 +93,49 @@ impl PendingSnapshot {
                 layers::Schema::Layered => payload.decode::<layers::Snapshot>()?.into_data()?,
             },
         };
+        let partitioned = self.threads.is_some();
+        if partitioned && (!data.conversations.is_empty() || !data.messages.is_empty()) {
+            return Err(AppError::shared("thread metadata contains history records"));
+        }
+        for (id, payload) in self.threads.unwrap_or_default() {
+            let part = payload.decode::<layers::Snapshot>()?.into_data()?;
+            if part.conversations.len() != 1
+                || !part.conversations.contains_key(&id)
+                || !part.sources.is_empty()
+                || !part.tombstones.is_empty()
+                || part
+                    .messages
+                    .values()
+                    .any(|message| message.conversation_id != id)
+                || data
+                    .conversations
+                    .insert(
+                        id,
+                        part.conversations
+                            .into_values()
+                            .next()
+                            .ok_or_else(|| AppError::shared("missing thread snapshot"))?,
+                    )
+                    .is_some()
+            {
+                return Err(AppError::shared("invalid retained thread snapshot"));
+            }
+            for (key, message) in part.messages {
+                if data.messages.insert(key, message).is_some() {
+                    return Err(AppError::shared("duplicate retained message"));
+                }
+            }
+        }
+        if partitioned
+            && self.head.as_ref().is_none_or(|head| {
+                head.counts.conversations != data.conversations.len() as u64
+                    || head.counts.messages != data.messages.len() as u64
+            })
+        {
+            return Err(AppError::shared(
+                "thread snapshot counts disagree with publication",
+            ));
+        }
         Ok(Loaded {
             head: self.head,
             expected: self.expected,

@@ -407,7 +407,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads; or rebuild_shared_gold to rebuild this node's shared retrieval state from retained shared silver, requiring local SQLite and matching embedding settings. Both rebuild modes are incompatible with each other and provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
+        description = "Explicitly refresh/index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Subsequent searches read the refreshed index without restarting MCP. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads; or rebuild_shared_gold to rebuild this node's shared retrieval state from retained shared silver, requiring local SQLite and matching embedding settings. Both rebuild modes are incompatible with each other and provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
     async fn index(
         &self,

@@ -12,7 +12,7 @@ pub(in crate::shared) struct Receiver {
 }
 
 pub(in crate::shared) struct Received {
-    file: tempfile::NamedTempFile,
+    file: tempfile::TempPath,
     bytes: usize,
 }
 
@@ -59,7 +59,7 @@ impl Receiver {
             .map_err(|_| AppError::internal("flush received snapshot spool"))?;
         drop(self.output);
         Ok(Received {
-            file: self.file,
+            file: self.file.into_temp_path(),
             bytes: self.bytes,
         })
     }
@@ -72,9 +72,7 @@ impl Received {
     /// A complete, checksum-verified file; call on a blocking worker.
     #[tracing::instrument(name = "decode_shared_snapshot", skip_all, fields(bytes = self.bytes))]
     pub(in crate::shared) fn decode<T: DeserializeOwned>(self) -> Result<T, AppError> {
-        let file = self
-            .file
-            .reopen()
+        let file = std::fs::File::open(&self.file)
             .map_err(|_| AppError::internal("open received snapshot spool"))?;
         serde_json::from_reader(std::io::BufReader::with_capacity(64 * 1024, file))
             .map_err(|_| AppError::shared("invalid canonical snapshot JSON"))
