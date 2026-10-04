@@ -20,14 +20,52 @@ fn timeout() -> u64 {
 }
 
 #[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Node {
-    pub build: String,
-    pub install: Vec<Command>,
-    /// Starts the installed Mash MCP with its existing config/environment.
-    pub mcp: Command,
-    #[serde(default)]
-    pub shared: bool,
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum Node {
+    History {
+        build: String,
+        install: Vec<Command>,
+        mcp: Command,
+        #[serde(default)]
+        shared: bool,
+        #[serde(default)]
+        requires: Vec<String>,
+    },
+    Api {
+        build: String,
+        install: Vec<Command>,
+        /// Read-only checks, including authenticated readiness and release identity.
+        verify: Vec<Command>,
+    },
+}
+
+impl Node {
+    pub fn build(&self) -> &str {
+        match self {
+            Self::History { build, .. } | Self::Api { build, .. } => build,
+        }
+    }
+    pub fn install(&self) -> &[Command] {
+        match self {
+            Self::History { install, .. } | Self::Api { install, .. } => install,
+        }
+    }
+    pub fn requires(&self) -> &[String] {
+        match self {
+            Self::History { requires, .. } => requires,
+            Self::Api { .. } => &[],
+        }
+    }
+    fn commands(&self) -> Vec<&Command> {
+        match self {
+            Self::History { install, mcp, .. } => {
+                install.iter().chain(std::iter::once(mcp)).collect()
+            }
+            Self::Api {
+                install, verify, ..
+            } => install.iter().chain(verify).collect(),
+        }
+    }
 }
 
 #[derive(Clone, Deserialize)]
@@ -77,17 +115,28 @@ impl Config {
                     "node names must contain only letters, digits, hyphens or underscores".into(),
                 );
             }
-            if !self.builds.contains_key(&node.build) || node.install.is_empty() {
+            if !self.builds.contains_key(node.build()) || node.install().is_empty() {
                 return Err(
                     "each node needs a configured build and nonempty install workflow".into(),
                 );
             }
+            if let Node::Api { verify, .. } = node
+                && verify.is_empty()
+            {
+                return Err("API targets need nonempty read-only checks".into());
+            }
+            let mut unique = std::collections::BTreeSet::new();
+            if node.requires().iter().any(|name| {
+                !unique.insert(name) || !matches!(self.nodes.get(name), Some(Node::Api { .. }))
+            }) {
+                return Err("history prerequisites must be distinct configured API targets".into());
+            }
         }
-        let commands = self.builds.values().flatten().chain(
-            self.nodes
-                .values()
-                .flat_map(|n| n.install.iter().chain(std::iter::once(&n.mcp))),
-        );
+        let commands = self
+            .builds
+            .values()
+            .flatten()
+            .chain(self.nodes.values().flat_map(Node::commands));
         if self.builds.values().any(Vec::is_empty)
             || commands.into_iter().any(|c| {
                 c.argv.is_empty() || c.argv[0].is_empty() || c.argv.iter().any(|s| s.contains('\0'))

@@ -61,7 +61,7 @@ fn result(value: Result<jobs::Job, String>) -> CallToolResult {
 #[tool_router]
 impl Server {
     #[tool(
-        description = "Build/validate once per configured build key, install on explicit targets, then check readiness. Returns a job ID promptly; poll deployment_status. Runs only trusted commands configured at startup. Does not index, install models or restart this dev MCP. Existing Mash clients must reconnect after binary replacement.",
+        description = "Build/validate once per configured build key, install on explicit targets, then check readiness. Include required API targets before their history nodes; API failure blocks dependent installs. Returns a job ID promptly; poll deployment_status. Runs only trusted commands configured at startup. Does not index, install models or restart this dev MCP. Existing Mash clients must reconnect after binary replacement.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn deploy(&self, Parameters(input): Parameters<Targets>) -> CallToolResult {
@@ -148,7 +148,7 @@ mod tests {
     #[tokio::test]
     async fn official_sdk_exposes_only_dev_tools_and_rejects_unknown_targets() {
         let directory = tempfile::tempdir().unwrap();
-        let node = config::Node {
+        let node = config::Node::History {
             build: "test".into(),
             install: vec![config::Command {
                 argv: vec!["true".into()],
@@ -157,6 +157,7 @@ mod tests {
                 argv: vec!["missing-mcp".into()],
             },
             shared: false,
+            requires: vec![],
         };
         let config = config::Config {
             repository: directory.path().into(),

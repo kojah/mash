@@ -60,6 +60,8 @@ jobs:
         run: |
           python3 .github/scripts/test-deploy-gate.py
           python3 .github/scripts/test-deploy-credentials.py
+      - name: Verify development API deployment rollback
+        run: TMPDIR="$RUNNER_TEMP" bash tools/test-dev-api.sh
       - name: Verify offline search evaluation
         run: python3 -m unittest discover -s tools -p 'test_search_evaluation.py'
       - name: Verify topic parity comparator

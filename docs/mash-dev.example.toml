@@ -13,6 +13,7 @@ linux = [
 ]
 
 [nodes.xenia]
+kind = "history"
 build = "linux"
 install = [
   { argv = ["bash", "tools/install-dev-binary.sh", "/path/to/target/debug/mash", "/home/james/.local/bin/mash"] },
@@ -25,3 +26,12 @@ shared = true
 # mcp = { argv = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
 #                  "dev-macbook", "/Users/jko/.local/bin/mash-dev mcp"] }
 # SSH is only the development transport, never Mash search federation.
+
+# API targets use the same platform build key and fixed read-only verification:
+# [nodes.shared-api]
+# kind = "api"
+# build = "linux"
+# install = [{ argv = ["bash", "tools/restart-dev-api.sh", "ARTIFACT", "CONFIG", "ENV", "POINTER", "API_URL", "TOKEN_ENV", "LOG_ROOT"] }]
+# verify = [{ argv = ["bash", "tools/check-dev-api.sh", "ENV", "POINTER", "API_URL", "TOKEN_ENV", "LOG_ROOT"] }]
+# Shared history nodes should declare requires = ["shared-api"].
+# deploy(nodes=["shared-api", "xenia", ...]) then refresh_index(nodes=["xenia", ...]).

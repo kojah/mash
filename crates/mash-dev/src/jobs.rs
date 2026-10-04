@@ -132,6 +132,22 @@ impl Runner {
         {
             return Err("select 1..32 distinct configured nodes".into());
         }
+        for (position, name) in nodes.iter().enumerate() {
+            let node = &self.config.nodes[name];
+            if matches!(operation, Operation::Refresh(_)) && matches!(node, Node::Api { .. }) {
+                return Err("refresh_index accepts history nodes only".into());
+            }
+            if matches!(operation, Operation::Deploy)
+                && node
+                    .requires()
+                    .iter()
+                    .any(|required| !nodes[..position].contains(required))
+            {
+                return Err(
+                    "include each required API target before its history nodes in deploy".into(),
+                );
+            }
+        }
         let mut registry = self.registry.lock().await;
         // Serialize fleet mutations and checks so a deployment cannot replace a
         // binary under a dev-initiated refresh; product mutations retain core locks.
@@ -193,7 +209,19 @@ impl Runner {
         let mut builds: BTreeMap<String, Result<(), String>> = BTreeMap::new();
         for name in nodes {
             let node = &self.config.nodes[&name];
-            let outcome = self.node(id, &name, node, operation, &mut builds).await;
+            let dependency_failed = if matches!(operation, Operation::Deploy) {
+                let registry = self.registry.lock().await;
+                node.requires()
+                    .iter()
+                    .any(|required| registry.jobs[&id].nodes[required].state != State::Succeeded)
+            } else {
+                false
+            };
+            let outcome = if dependency_failed {
+                Err("required API deployment failed; history target was not installed".into())
+            } else {
+                self.node(id, &name, node, operation, &mut builds).await
+            };
             let mut registry = self.registry.lock().await;
             if let Some(result) = registry
                 .jobs
@@ -230,28 +258,45 @@ impl Runner {
     ) -> Result<(), String> {
         if matches!(operation, Operation::Deploy) {
             self.phase(id, name, Phase::Build).await;
-            if !builds.contains_key(&node.build) {
+            if !builds.contains_key(node.build()) {
                 let mut result = Ok(());
-                for (step, command) in self.config.builds[&node.build].iter().enumerate() {
+                for (step, command) in self.config.builds[node.build()].iter().enumerate() {
                     result = self.command(id, name, "build", step, command).await;
                     if result.is_err() {
                         break;
                     }
                 }
-                builds.insert(node.build.clone(), result);
+                builds.insert(node.build().to_owned(), result);
             }
-            builds[&node.build].clone()?;
+            builds[node.build()].clone()?;
             self.phase(id, name, Phase::Install).await;
-            for (step, command) in node.install.iter().enumerate() {
+            for (step, command) in node.install().iter().enumerate() {
                 self.command(id, name, "install", step, command).await?;
             }
         }
+        if let Node::Api { verify, .. } = node {
+            self.phase(id, name, Phase::Check).await;
+            for (step, command) in verify.iter().enumerate() {
+                self.command(id, name, "check", step, command).await?;
+            }
+            return Ok(());
+        }
+        for required in node.requires() {
+            if let Node::Api { verify, .. } = &self.config.nodes[required] {
+                for (step, command) in verify.iter().enumerate() {
+                    self.command(id, name, "api-check", step, command).await?;
+                }
+            }
+        }
+        let Node::History { mcp, shared, .. } = node else {
+            return Err("invalid history target".into());
+        };
         let client = Progress {
             runner: self.clone(),
             id,
             node: name.into(),
         };
-        let mut command = node.mcp.process(&self.config.repository);
+        let mut command = mcp.process(&self.config.repository);
         // Never expose credentials, build output or raw child stderr through MCP.
         command.stderr(std::process::Stdio::null());
         let transport =
@@ -294,12 +339,7 @@ impl Runner {
             }
             self.phase(id, name, Phase::Check).await;
             let result = service
-                .call_tool(request(
-                    "status",
-                    &StatusArguments {
-                        shared: node.shared,
-                    },
-                )?)
+                .call_tool(request("status", &StatusArguments { shared: *shared })?)
                 .await
                 .map_err(|_| "Mash readiness request failed")?;
             self.record(id, name, result).await

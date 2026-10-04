@@ -2,7 +2,7 @@ use super::*;
 use crate::config;
 
 fn fixture(directory: &std::path::Path, build: Vec<Command>, mcp: Command) -> Config {
-    let node = Node {
+    let node = Node::History {
         build: "platform".into(),
         install: vec![Command {
             argv: vec![
@@ -13,6 +13,7 @@ fn fixture(directory: &std::path::Path, build: Vec<Command>, mcp: Command) -> Co
         }],
         mcp,
         shared: false,
+        requires: vec![],
     };
     Config {
         repository: directory.into(),
@@ -100,6 +101,84 @@ async fn selection_validation_and_job_exclusion_happen_before_commands() {
     assert!(runner.get(u64::MAX).await.is_err());
 }
 
+#[tokio::test]
+async fn failed_api_blocks_dependent_install_and_refresh_before_mcp_starts() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut config = fixture(
+        directory.path(),
+        vec![Command {
+            argv: vec!["true".into()],
+        }],
+        Command {
+            argv: vec!["unreachable-mcp".into()],
+        },
+    );
+    config.nodes.insert(
+        "api".into(),
+        Node::Api {
+            build: "platform".into(),
+            install: vec![Command {
+                argv: vec!["true".into()],
+            }],
+            verify: vec![Command {
+                argv: vec!["false".into()],
+            }],
+        },
+    );
+    if let Node::History { requires, .. } = config.nodes.get_mut("one").unwrap() {
+        requires.push("api".into());
+    }
+    config.validate().unwrap();
+    let runner = Runner::new(config);
+    assert!(
+        runner
+            .start(vec!["one".into()], Operation::Deploy)
+            .await
+            .is_err()
+    );
+    assert!(
+        runner
+            .start(vec!["one".into(), "api".into()], Operation::Deploy)
+            .await
+            .is_err()
+    );
+    assert!(
+        runner
+            .start(vec!["api".into()], Operation::Refresh(RefreshMode::Sync))
+            .await
+            .is_err()
+    );
+    let id = runner
+        .start(vec!["api".into(), "one".into()], Operation::Deploy)
+        .await
+        .unwrap()
+        .id;
+    let job = finished(&runner, id).await;
+    assert!(job.state == State::Failed);
+    assert!(
+        job.nodes["one"]
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("required API")
+    );
+    assert!(!directory.path().join("installed").exists());
+    let id = runner
+        .start(vec!["one".into()], Operation::Refresh(RefreshMode::Sync))
+        .await
+        .unwrap()
+        .id;
+    let job = finished(&runner, id).await;
+    assert!(
+        job.nodes["one"]
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("api-check")
+    );
+    assert!(!directory.path().join("installed").exists());
+}
+
 #[test]
 fn strict_configuration_rejects_empty_commands_unknown_keys_and_unknown_builds() {
     let directory = tempfile::tempdir().unwrap();
@@ -113,7 +192,9 @@ fn strict_configuration_rejects_empty_commands_unknown_keys_and_unknown_builds()
     assert!(config.validate().is_err());
     config.builds.get_mut("platform").unwrap()[0].argv = vec!["true".into()];
     assert!(config.validate().is_ok());
-    config.nodes.get_mut("one").unwrap().build = "unknown".into();
+    if let Node::History { build, .. } = config.nodes.get_mut("one").unwrap() {
+        *build = "unknown".into();
+    }
     assert!(config.validate().is_err());
     let path = directory.path().join("config.toml");
     std::fs::write(&path, "unknown='value'\n").unwrap();

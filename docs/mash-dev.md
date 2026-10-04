@@ -30,6 +30,32 @@ private per-session/per-job logs rather than MCP responses. MCP results retain
 Mash's output redaction. Protect the configuration and log root like executable
 code. There is no implicit shell expansion.
 
+Targets explicitly declare `kind = "history"` or `kind = "api"`. History targets
+have an MCP command; API targets have read-only `verify` commands instead. A
+history target can declare `requires = ["shared-api"]`. Deployment requests must
+include that API target **before** the history target. Failed API deployment or
+verification prevents dependent installs. Refreshes check the required API first,
+without deploying it; API targets themselves cannot be indexed. Independent
+targets continue after failures. This is a fixed API prerequisite, not a generic
+dependency scheduler.
+
+`tools/build-dev-macos.sh` freezes `git archive HEAD`, builds once on the configured
+native Mac using its persistent target, and retrieves one Apple Silicon artifact.
+`tools/install-dev-remote.sh` verifies its checksum and atomically replaces the
+installed binary, retaining the previous binary. Both scripts restrict remote
+host/path syntax before constructing SSH commands. Their SSH access is deployment
+transport; product queries still use the HTTP API.
+
+On the Linux API host, `tools/restart-dev-api.sh` verifies the tracked process and
+binary hash, preserves a frozen release, gracefully replaces the existing process,
+checks authenticated freshness/capabilities and unauthenticated rejection, and
+requires publication identities to remain unchanged. It updates the release
+pointer atomically after checks. A failed candidate restarts the previous binary
+and updates its PID. It neither installs a system service nor changes Qdrant data
+or server configuration. Stop publications during this storage-layout rollout;
+rollback to an older API is unsafe once upgraded nodes publish a newer layout.
+`tools/check-dev-api.sh` supplies the corresponding read-only prerequisite.
+
 ## Schema changes
 
 `sync` uses the same core indexing path as the product MCP: it applies supported
