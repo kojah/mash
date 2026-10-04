@@ -16,7 +16,11 @@ pub(super) async fn view(
     node: Option<String>,
 ) -> Result<ViewResponse, AppError> {
     if let Some(node) = node {
-        let messages = shared::view(required_shared(configuration)?, &node, &id, context).await?;
+        let mut messages =
+            shared::view(required_shared(configuration)?, &node, &id, context).await?;
+        for message in &mut messages {
+            message.content = crate::redaction::text(&message.content);
+        }
         Ok(ViewResponse { id, messages })
     } else {
         let database = database.to_path_buf();
@@ -42,7 +46,10 @@ pub(super) async fn status(
 
 fn local_view(database_path: &Path, id: String, context: u32) -> Result<ViewResponse, AppError> {
     let storage = Storage::open_existing(database_path)?;
-    let messages = storage.view(&id, context)?;
+    let mut messages = storage.view(&id, context)?;
+    for message in &mut messages {
+        message.content = crate::redaction::text(&message.content);
+    }
     Ok(ViewResponse { id, messages })
 }
 

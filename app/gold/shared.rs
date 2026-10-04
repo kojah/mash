@@ -179,15 +179,19 @@ async fn prepare_units(
     ),
     AppError,
 > {
-    let batch = batch
+    let mut batch = batch
         .into_iter()
         .map(std::borrow::Cow::into_owned)
         .collect::<Vec<_>>();
     let thread = conversation.id.clone();
-    let title = conversation.title.clone();
+    let title = conversation.title.as_deref().map(crate::redaction::text);
     let recipe = recipe.clone();
     crate::blocking(move || {
         let mut prepared = Vec::new();
+        for message in &mut batch {
+            message.content = crate::redaction::text(&message.content);
+            message.dialogue_text = message.dialogue_text.as_deref().map(crate::redaction::text);
+        }
         for message in &batch {
             if let Some(text) = units.prepare(
                 &recipe,

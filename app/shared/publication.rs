@@ -26,7 +26,7 @@ pub(crate) struct SnapshotWork {
 pub(super) fn target(config: &SharedConfig) -> String {
     blake3::hash(
         format!(
-            "{}\0{}\0{}",
+            "redaction-v1\0{}\0{}\0{}",
             config.group_id,
             config.node_id,
             config.api_url.trim_end_matches('/')
@@ -37,6 +37,15 @@ pub(super) fn target(config: &SharedConfig) -> String {
     .to_string()
 }
 pub(crate) fn write_event(file: &mut impl Write, event: &Event) -> Result<(), AppError> {
+    let mut safe;
+    let event = if let Event::Batch(batch) = event {
+        let mut batch = batch.clone();
+        crate::redaction::batch(&mut batch);
+        safe = Event::Batch(batch);
+        &mut safe
+    } else {
+        event
+    };
     serde_json::to_writer(&mut *file, event)
         .map_err(|_| AppError::internal("serialize index upload"))?;
     file.write_all(b"\n")
@@ -187,16 +196,21 @@ pub(crate) async fn publish_routed(
         })?;
         let scope = routed_scope(config);
         let db = path.to_path_buf();
-        let owner =
-            crate::blocking(move || Storage::open_existing(&db)?.routed_owner(&scope)).await?;
         let target = routed_target(configuration)?;
+        let key = target.clone();
+        let (owner, policy_changed) = crate::blocking(move || {
+            let storage = Storage::open_existing(&db)?;
+            let changed = !storage.publication_target_matches(&key)?;
+            Ok((storage.routed_owner(&scope)?, changed))
+        })
+        .await?;
         routed::index(
             config,
             path,
             models_dir,
             configuration.embeddings.as_ref(),
             options,
-            full,
+            full || policy_changed,
             &owner,
         )
         .await?;
@@ -265,6 +279,9 @@ async fn publish_result(
     inference: Option<Inference<'_>>,
 ) -> Result<SnapshotWork, AppError> {
     let started = std::time::Instant::now();
+    let db = path.to_path_buf();
+    let key = target(config);
+    crate::blocking(move || Storage::open_existing(&db)?.prepare_publication_target(&key)).await?;
     let target: super::reuse::Target =
         super::client::get(config, Endpoint::PublicationPlan).await?;
     target.validate()?;

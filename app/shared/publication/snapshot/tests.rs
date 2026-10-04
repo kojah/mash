@@ -1,6 +1,62 @@
 use super::*;
 use crate::silver::{Conversation, NormalizedMessage, SourceIdentity};
 
+#[test]
+fn redacted_snapshot_fingerprints_match_uploaded_dependencies() {
+    let root = tempfile::tempdir().unwrap();
+    let database = seed(root.path());
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    connection.execute("UPDATE messages SET content='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE id='a-100'",[]).unwrap();
+    connection
+        .execute(
+            "UPDATE conversations SET title='password=\"rosebud\"' WHERE id='a'",
+            [],
+        )
+        .unwrap();
+    let target = Target {
+        schema_version: 1,
+        build: crate::gold::config::Build::default(),
+        generation: "unused".into(),
+        dimensions: 384,
+        publication_version: "pinned".into(),
+        instance: None,
+        publication_revision: 0,
+        threads: BTreeMap::new(),
+    };
+    let source = capture(&database, &target, false).unwrap();
+    let stream = std::fs::read_to_string(source.file.path()).unwrap();
+    assert!(!stream.contains("hunter2") && !stream.contains("rosebud"));
+    let mut fingerprints = BTreeMap::new();
+    for line in stream.lines() {
+        match serde_json::from_str::<Event>(line).unwrap() {
+            Event::Batch(Batch::Conversations { records }) => {
+                for c in records {
+                    fingerprints.insert(c.id.clone(), Fingerprint::new(&c).unwrap());
+                }
+            }
+            Event::Batch(Batch::Messages { records }) => {
+                for m in records {
+                    fingerprints
+                        .get_mut(&m.conversation_id)
+                        .unwrap()
+                        .push(&m)
+                        .unwrap();
+                }
+            }
+            _ => {}
+        }
+    }
+    for (id, fingerprint) in fingerprints {
+        assert_eq!(source.hashes[&id], fingerprint.finish());
+    }
+    let canonical: String = connection
+        .query_row("SELECT content FROM messages WHERE id='a-100'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert!(canonical.contains("hunter2"));
+}
+
 fn seed(directory: &Path) -> std::path::PathBuf {
     let database = directory.join("silver.sqlite3");
     let mut storage = Storage::open_writer(&database).unwrap();

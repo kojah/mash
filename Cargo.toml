@@ -32,6 +32,7 @@ path = "app/tests/cli_contract.rs"
 [dependencies]
 mash-query = { path = "crates/mash-query" }
 aho-corasick = "1.1.5"
+regex = "1.12"
 rmcp = { version = "3.4.0", default-features = false, features = ["server", "macros", "transport-io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "fs", "net", "io-util"] }
 axum = "0.8"

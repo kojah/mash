@@ -6,6 +6,7 @@ use serde_json::json;
 mod fusion;
 mod incomplete;
 mod rebuild;
+mod redaction;
 mod selections;
 mod threads;
 mod watching;

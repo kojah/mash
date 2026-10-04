@@ -255,7 +255,19 @@ async fn search(
     Extension(id): Extension<Identity>,
     input: Result<Json<protocol::Search>, JsonRejection>,
 ) -> Result<Json<protocol::Candidates>, ApiError> {
-    Ok(Json(app.store.search(&id, json(input)?).await?))
+    let mut candidates = app.store.search(&id, json(input)?).await?;
+    for hit in candidates
+        .lexical
+        .iter_mut()
+        .chain(&mut candidates.semantic)
+    {
+        hit.content = crate::redaction::projection(&hit.content);
+        crate::redaction::metadata(&mut hit.metadata);
+    }
+    for document in &mut candidates.documents {
+        document.projection = crate::redaction::projection(&document.projection);
+    }
+    Ok(Json(candidates))
 }
 async fn list_threads(
     State(app): State<App>,
@@ -264,7 +276,11 @@ async fn list_threads(
 ) -> Result<Json<crate::thread_catalog::Page>, ApiError> {
     let input = json(input)?;
     input.validate()?;
-    Ok(Json(app.store.list_threads(&id, input).await?))
+    let mut page = app.store.list_threads(&id, input).await?;
+    for thread in &mut page.threads {
+        crate::redaction::metadata(&mut thread.metadata);
+    }
+    Ok(Json(page))
 }
 async fn view(
     State(app): State<App>,
@@ -275,7 +291,11 @@ async fn view(
     if input.context > 1000 || input.id.is_empty() || input.id.len() > 4096 {
         return Err(AppError::usage("invalid view request").into());
     }
-    Ok(Json(app.store.view(&id, input).await?))
+    let mut messages = app.store.view(&id, input).await?;
+    for message in &mut messages {
+        message.content = crate::redaction::text(&message.content);
+    }
+    Ok(Json(messages))
 }
 async fn forget(
     State(app): State<App>,

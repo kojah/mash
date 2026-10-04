@@ -1483,6 +1483,7 @@ dependencies = [
  "predicates",
  "prost",
  "pulldown-cmark",
+ "regex",
  "reqwest",
  "ring",
  "rmcp",

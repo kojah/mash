@@ -54,6 +54,9 @@ pub(super) async fn run(
         Some(capture) => capture.scope(work).await?,
         None => work.await?,
     };
+    for thread in &mut response.page.threads {
+        crate::redaction::metadata(&mut thread.metadata);
+    }
     if let Some(capture) = capture {
         let use_shared = shared_only || (!local_only && config.shared.is_some());
         response.diagnostics = Some(Diagnostics {

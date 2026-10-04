@@ -16,6 +16,7 @@ mod indexing;
 mod publication;
 mod readiness;
 mod real_models;
+mod redaction;
 mod retrieval;
 mod shared_server;
 mod threads;

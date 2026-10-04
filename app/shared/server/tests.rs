@@ -12,6 +12,7 @@ mod exact;
 mod freshness;
 mod gold;
 mod native;
+mod redaction;
 mod relevance;
 mod restart;
 mod selections;

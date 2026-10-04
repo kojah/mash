@@ -1,0 +1,126 @@
+[
+  {
+    "name": "json-auth",
+    "text": "{\"Authorization\": \"Bearer zYX987opaque\"}",
+    "secrets": [
+      "zYX987opaque"
+    ]
+  },
+  {
+    "name": "case-header",
+    "text": "PROXY-AUTHORIZATION=Basic YWxpY2U6cGFzczEyMw==",
+    "secrets": [
+      "YWxpY2U6cGFzczEyMw=="
+    ]
+  },
+  {
+    "name": "aws-secret-env",
+    "text": "AWS_SECRET_ACCESS_KEY=F8r2nL4qM9tZ6xB3cV7sK1wD5hJ0pY2aE4uG6bR8",
+    "secrets": [
+      "F8r2nL4qM9tZ6xB3cV7sK1wD5hJ0pY2aE4uG6bR8"
+    ]
+  },
+  {
+    "name": "json-refresh",
+    "text": "{\"refresh_token\":\"r3fr3sh-short\"}",
+    "secrets": [
+      "r3fr3sh-short"
+    ]
+  },
+  {
+    "name": "quoted-unicode",
+    "text": "password=\"\u6771\u4eac caf\u00e9 \ud83d\udd11\"",
+    "secrets": [
+      "\u6771\u4eac caf\u00e9 \ud83d\udd11"
+    ]
+  },
+  {
+    "name": "escaped-quote",
+    "text": "password=\"pa\\\"ssword\"",
+    "secrets": [
+      "pa\\\"ssword"
+    ]
+  },
+  {
+    "name": "single-quote",
+    "text": "password='pa\"ssword'",
+    "secrets": [
+      "pa\"ssword"
+    ]
+  },
+  {
+    "name": "client-secret",
+    "text": "client_secret=\"short-client-secret\"",
+    "secrets": [
+      "short-client-secret"
+    ]
+  },
+  {
+    "name": "encoded-url",
+    "text": "https://user:p%40ss%3Aword@host/api",
+    "secrets": [
+      "p%40ss%3Aword"
+    ]
+  },
+  {
+    "name": "mongodb-url",
+    "text": "mongodb+srv://admin:db-secret@cluster/db",
+    "secrets": [
+      "db-secret"
+    ]
+  },
+  {
+    "name": "unterminated-pem",
+    "text": "-----BEGIN EC PRIVATE KEY-----\nUNFINISHEDSECRETBODY",
+    "secrets": [
+      "UNFINISHEDSECRETBODY"
+    ]
+  },
+  {
+    "name": "jwt",
+    "text": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.ZXhhbXBsZXNpZ25hdHVyZQ",
+    "secrets": [
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.ZXhhbXBsZXNpZ25hdHVyZQ"
+    ]
+  },
+  {
+    "name": "code-pwd",
+    "text": "let pwd = None;",
+    "secrets": []
+  },
+  {
+    "name": "code-token",
+    "text": "token = env::var(\"TOKEN\")?;",
+    "secrets": []
+  },
+  {
+    "name": "sql-identifiers",
+    "text": "CREATE TABLE credentials (password_hash TEXT, token_count INT);",
+    "secrets": []
+  },
+  {
+    "name": "interpolated-template",
+    "text": "password=\"${DB_PASSWORD}\"",
+    "secrets": []
+  },
+  {
+    "name": "oauth-discussion",
+    "text": "We should renew the access token before its expiry time.",
+    "secrets": []
+  },
+  {
+    "name": "public-key",
+    "text": "-----BEGIN PUBLIC KEY-----\nPUBLICDATA\n-----END PUBLIC KEY-----",
+    "secrets": []
+  },
+  {
+    "name": "auth-example",
+    "text": "Authorization: Bearer <your-token>",
+    "secrets": []
+  },
+  {
+    "name": "plain-url",
+    "text": "https://example.org/search?q=token",
+    "secrets": []
+  }
+]

@@ -189,6 +189,26 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
 }
 
 impl Storage {
+    pub(crate) fn publication_target_matches(&self, target: &str) -> Result<bool, AppError> {
+        self.connection
+            .query_row(
+                "SELECT target=?1 FROM shared_publication WHERE singleton=1",
+                [target],
+                |row| row.get(0),
+            )
+            .map_err(AppError::database)
+    }
+    /// New publication policy/destination must advance the revision even if
+    /// bronze is unchanged. Persist the target now so failed uploads retry the
+    /// same revision; acknowledgement remains pending until the HTTP commit.
+    pub(crate) fn prepare_publication_target(&self, target: &str) -> Result<(), AppError> {
+        self.connection.execute(
+            "UPDATE shared_publication SET target=?1,revision=revision+CASE WHEN acknowledged>0 THEN 1 ELSE 0 END WHERE singleton=1 AND target<>?1",
+            [target],
+        ).map_err(AppError::database)?;
+        Ok(())
+    }
+
     pub(crate) fn queue_shared_forget(&self, scope: &str, id: &str) -> Result<(), AppError> {
         let transaction = self
             .connection

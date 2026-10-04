@@ -15,6 +15,16 @@ hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
 The service uses Qdrant as its sole shared storage backend. Local SQLite is required for offline search.
 
+Mash masks recognizable credentials in CLI/MCP search results, thread metadata,
+and `view` output, shared HTTP read responses and outgoing publications, and text
+sent to remote embedding APIs. Full values use `[REDACTED_SECRET]`; excerpts use
+masking characters to retain their source offsets. Original provider histories
+and local canonical SQLite data remain intact. Detection is best effort, not a
+guarantee that arbitrary or obfuscated secrets are absent. Existing deployments
+and stored shared history require an upgrade and explicit re-indexing; rebuilding
+alone does not delete previous publications. See the
+[redaction evaluation and limits](research/redaction/README.md).
+
 ## Commands
 
 SQLite query models are generated with sqlc 1.31.1 / sqlc-gen-rust 0.1.12.

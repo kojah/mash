@@ -67,7 +67,8 @@ fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, App
             snapshot.visit(BatchKind::Tombstones, |batch| {
                 write_event(&mut writer, &Event::Batch(batch))
             })?;
-            snapshot.visit(BatchKind::Conversations, |batch| {
+            snapshot.visit(BatchKind::Conversations, |mut batch| {
+                crate::redaction::batch(&mut batch);
                 if let Batch::Conversations { records } = &batch {
                     for conversation in records {
                         hashes.insert(
@@ -80,6 +81,7 @@ fn capture(path: &Path, target: &Target, reuse_gold: bool) -> Result<Source, App
                 write_event(&mut writer, &Event::Batch(batch))
             })?;
             snapshot.visit_messages_by_thread(|mut batch| {
+                crate::redaction::batch(&mut batch);
                 if let Batch::Messages { records } = &mut batch {
                     for message in records {
                         if active

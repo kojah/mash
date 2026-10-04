@@ -23,6 +23,7 @@ mod core;
 mod mcp;
 mod observability;
 mod progress;
+mod redaction;
 mod scratch;
 mod shared;
 mod storage;

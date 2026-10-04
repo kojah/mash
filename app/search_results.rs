@@ -254,12 +254,17 @@ fn collect_inner(
                 .filter(|hit| exact_reference || qualifies_as_evidence(hit))
                 .filter(&matches)
                 .take(limit.min(1000))
+                .map(|mut hit| {
+                    hit.content = crate::redaction::text(&hit.content);
+                    crate::redaction::metadata(&mut hit.metadata);
+                    hit
+                })
                 .collect(),
         );
     }
     let mut threads = Vec::<ThreadHit>::new();
     let mut groups = HashMap::new();
-    for (rank, hit) in deduplicate(hits, unit)
+    for (rank, mut hit) in deduplicate(hits, unit)
         .into_iter()
         // A literal reference is independently verifiable even outside the
         // bounded model budget; its exact number is checked below.
@@ -267,6 +272,7 @@ fn collect_inner(
         .filter(matches)
         .enumerate()
     {
+        crate::redaction::metadata(&mut hit.metadata);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
         let key = (hit.provider, hit.conversation_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
@@ -276,11 +282,9 @@ fn collect_inner(
                 node_id: hit.node_id.clone(),
                 metadata: ThreadMetadata {
                     enrichment: None,
-                    title: hit
-                        .metadata
-                        .title
-                        .clone()
-                        .or_else(|| crate::silver::dialogue::title(&hit.content)),
+                    title: hit.metadata.title.clone().or_else(|| {
+                        crate::silver::dialogue::title(&crate::redaction::text(&hit.content))
+                    }),
                     ..hit.metadata.clone()
                 },
                 score: 0.0,
@@ -409,6 +413,8 @@ fn evidence_excerpt(content: &str, query: &str, length: usize) -> (String, Proje
 }
 
 fn evidence_window_at(content: &str, offset: usize, length: usize) -> (String, ProjectionSpan) {
+    let safe = crate::redaction::projection(content);
+    let content = safe.as_str();
     // An ASCII match begins at a UTF-8 boundary even in multilingual content.
     let leading_context = (length / 3).min(160);
     let start = content[..offset]

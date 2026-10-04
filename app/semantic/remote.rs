@@ -160,6 +160,11 @@ impl Client {
                     false,
                 ));
             }
+            let safe = batch
+                .iter()
+                .map(|text| crate::redaction::text(text))
+                .collect::<Vec<_>>();
+            let batch = safe.as_slice();
             let body = if self.config.api == Api::Voyage {
                 Request::Voyage {
                     model: &self.config.model,
@@ -347,6 +352,22 @@ mod tests {
         }
         let duplicate = serde_json::json!({"data":[{"index":0,"embedding":[1,0]},{"index":0,"embedding":[0,1]}]});
         assert!(decode(&serde_json::to_vec(&duplicate).unwrap(), 2, 2).is_err());
+    }
+
+    #[tokio::test]
+    async fn redaction_precedes_remote_embedding_request_serialization() {
+        let (config, mock, task) = mock().await;
+        let client = Client::new(config).unwrap();
+        let input = vec!["password=\"hunter2\" Authorization: Bearer opaque-value".into()];
+        client.embed(&input, false).await.unwrap();
+        client.embed(&input, true).await.unwrap();
+        for request in mock.requests.lock().unwrap().iter() {
+            let body = request.to_string();
+            assert!(!body.contains("hunter2") && !body.contains("opaque-value"));
+            assert!(body.contains("REDACTED_SECRET"));
+        }
+        assert!(input[0].contains("hunter2"));
+        task.abort();
     }
 
     #[tokio::test]

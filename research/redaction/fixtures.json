@@ -1,0 +1,202 @@
+[
+  {
+    "name": "github-bare",
+    "text": "Use this token: ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r",
+    "secrets": [
+      "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r"
+    ]
+  },
+  {
+    "name": "github-env",
+    "text": "export GITHUB_TOKEN=\"ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r\"",
+    "secrets": [
+      "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r"
+    ]
+  },
+  {
+    "name": "github-unicode",
+    "text": "\ud83d\udd11 cl\u00e9: ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r",
+    "secrets": [
+      "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r"
+    ]
+  },
+  {
+    "name": "allow-comment",
+    "text": "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r # gitleaks:allow",
+    "secrets": [
+      "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r"
+    ]
+  },
+  {
+    "name": "allow-comment-native",
+    "text": "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r # secrets-scanner:allow",
+    "secrets": [
+      "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r"
+    ]
+  },
+  {
+    "name": "aws-id",
+    "text": "AWS_ACCESS_KEY_ID=AKIAJ7NQ2W9E6T4R8Y5U",
+    "secrets": [
+      "AKIAJ7NQ2W9E6T4R8Y5U"
+    ]
+  },
+  {
+    "name": "openai-project",
+    "text": "OPENAI_API_KEY=sk-proj-aB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eGaB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eGaB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eGaB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eG",
+    "secrets": [
+      "sk-proj-aB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eGaB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eGaB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eGaB7xC9qW2nM6pL4zR8tV3hF5sK1jD0eG"
+    ]
+  },
+  {
+    "name": "anthropic",
+    "text": "ANTHROPIC_API_KEY=sk-ant-api03-Z7vP4qT9rM2sL8nK5xW3Z7vP4qT9rM2sL8nK5xW3Z7vP4qT9rM2sL8nK5xW3Z7vP4qT9rM2sL8nK5xW3-aBcD",
+    "secrets": [
+      "sk-ant-api03-Z7vP4qT9rM2sL8nK5xW3Z7vP4qT9rM2sL8nK5xW3Z7vP4qT9rM2sL8nK5xW3Z7vP4qT9rM2sL8nK5xW3-aBcD"
+    ]
+  },
+  {
+    "name": "slack",
+    "text": "token=xoxb-123456789012-123456789012-aB8zM2qW9nR4tL7xV5sK1pF6",
+    "secrets": [
+      "xoxb-123456789012-123456789012-aB8zM2qW9nR4tL7xV5sK1pF6"
+    ]
+  },
+  {
+    "name": "bearer-opaque",
+    "text": "Authorization: Bearer opaque-session-abc123",
+    "secrets": [
+      "opaque-session-abc123"
+    ]
+  },
+  {
+    "name": "basic-auth",
+    "text": "Authorization: Basic dXNlcjpzdXBlcnNlY3JldA==",
+    "secrets": [
+      "dXNlcjpzdXBlcnNlY3JldA=="
+    ]
+  },
+  {
+    "name": "postgres-url",
+    "text": "postgres://james:hunter2@localhost/mash",
+    "secrets": [
+      "hunter2"
+    ]
+  },
+  {
+    "name": "redis-url",
+    "text": "redis://:secret-pass@redis:6379",
+    "secrets": [
+      "secret-pass"
+    ]
+  },
+  {
+    "name": "password-short",
+    "text": "password = \"hunter2\"",
+    "secrets": [
+      "hunter2"
+    ]
+  },
+  {
+    "name": "password-json",
+    "text": "{\"password\":\"rosebud\", \"status\":\"ok\"}",
+    "secrets": [
+      "rosebud"
+    ]
+  },
+  {
+    "name": "api-key-short",
+    "text": "api_key: \"some-secret-value\"",
+    "secrets": [
+      "some-secret-value"
+    ]
+  },
+  {
+    "name": "private-key-multiline",
+    "text": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAy3sM5zF7qR9\n-----END RSA PRIVATE KEY-----",
+    "secrets": [
+      "MIIEowIBAAKCAQEAy3sM5zF7qR9"
+    ]
+  },
+  {
+    "name": "private-key-crlf",
+    "text": "-----BEGIN OPENSSH PRIVATE KEY-----\r\nb3BlbnNzaC1rZXktdjEAAAAA\r\n-----END OPENSSH PRIVATE KEY-----",
+    "secrets": [
+      "b3BlbnNzaC1rZXktdjEAAAAA"
+    ]
+  },
+  {
+    "name": "github-repeated",
+    "text": "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r\nghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r",
+    "secrets": [
+      "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r"
+    ]
+  },
+  {
+    "name": "embedded-nul",
+    "text": "hello\u0000ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r",
+    "secrets": [
+      "ghp_K9nR2xW7bT4qM8vC6zA3sF5uH1jL0dE9pQ2r"
+    ]
+  },
+  {
+    "name": "hash",
+    "text": "Commit 8c3f9e2a7b6d5c4e1f0a9b8c7d6e5f4a3b2c1d0e fixes it.",
+    "secrets": []
+  },
+  {
+    "name": "uuid",
+    "text": "Thread 0F0B09EF-9E6C-47C4-96AA-17FCC0C79E13",
+    "secrets": []
+  },
+  {
+    "name": "code",
+    "text": "let api_key = std::env::var(\"OPENAI_API_KEY\")?;",
+    "secrets": []
+  },
+  {
+    "name": "placeholder",
+    "text": "password = \"${PASSWORD}\"; token = \"<your-token>\"",
+    "secrets": []
+  },
+  {
+    "name": "discussion",
+    "text": "How do we configure password authentication, OAuth, and API keys?",
+    "secrets": []
+  },
+  {
+    "name": "url",
+    "text": "https://github.com/kojah/mash/issues/123",
+    "secrets": []
+  },
+  {
+    "name": "sql",
+    "text": "SELECT password_hash FROM users WHERE id = 12;",
+    "secrets": []
+  },
+  {
+    "name": "example-words",
+    "text": "The words secret, token, authorization, and password appear in documentation.",
+    "secrets": []
+  },
+  {
+    "name": "long-code",
+    "text": "fn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\nfn main() { println!(\"hello world\"); }\n",
+    "secrets": []
+  },
+  {
+    "name": "model-vector",
+    "text": "[0.12645, -0.37829, 0.00912, 0.52871]",
+    "secrets": []
+  },
+  {
+    "name": "regex",
+    "text": "Regex pattern: (?i)api[_-]?key\\s*[:=]\\s*([a-z0-9]+)",
+    "secrets": []
+  },
+  {
+    "name": "repo-path",
+    "text": "/home/james/scratch/mash/app/shared/client.rs",
+    "secrets": []
+  }
+]
