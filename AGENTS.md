@@ -149,6 +149,17 @@ checks above. Do not treat a unit-only run as evidence for integration behavior.
 
 Work on and push `main`; it is the repository's sole development branch.
 
+## Deployment
+
+Build once per platform and reuse the validated artifact for nodes on that platform.
+Ordinary binary deployment must not run `index` automatically. Inspect local
+`status` and, for shared publication, `status --shared` after installing. Refresh
+only when the configured artifacts, source interpretation or publication target
+need repair; do not skip required provider/privacy/schema migrations. A query-model
+availability failure needs explicit model setup, rather than repeated indexing.
+Keep background synchronization or explicit ingestion separate from redeployment.
+See `docs/redeployment.md` for readiness checks, measured costs and pending delta work.
+
 ## Agent work tracking
 
 Topic modeling is the first priority. Follow the research sequence: compile

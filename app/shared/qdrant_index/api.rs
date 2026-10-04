@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 #[cfg(test)]
 mod schema_tests;
+mod staging;
+pub(super) use staging::StagingBatch;
 
 #[derive(Clone)]
 pub(super) struct Client {
@@ -73,7 +75,7 @@ pub(super) struct Upsert<P> {
 }
 #[derive(Serialize)]
 struct UpsertSlice<'a, P> {
-    points: &'a [Point<P>],
+    points: &'a [P],
     #[serde(skip_serializing_if = "Option::is_none")]
     update_filter: Option<&'a Filter>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1615,6 +1615,10 @@ the missing secret names; credential values are never printed by this check.
 Successful CI alone does not confirm that any machine was updated: verify the
 deployment job and destination smoke checks too.
 
+Binary deployment does not rebuild indexes. Use the
+[redeployment checks](docs/redeployment.md) to refresh only incompatible or
+pending artifacts, while preserving required data migrations.
+
 ## License
 
 See [LICENSE](LICENSE).

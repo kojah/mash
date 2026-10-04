@@ -261,44 +261,27 @@ impl Store {
         data: &Data,
         version: &str,
     ) -> Result<(), AppError> {
-        let mut catalog = Vec::new();
+        let mut catalog = api::StagingBatch::default();
+        let collection = collection(&identity.group_id, true);
         for conversation in data.conversations.values() {
-            catalog.push(api::Point {
-                id: point_id(&["catalog", version, &conversation.id]),
-                vector: api::Vectors::default(),
-                payload: CatalogRecord {
-                    kind: PointKind::Catalog,
-                    version: version.into(),
-                    node_id: identity.node_id.clone(),
-                    conversation: conversation.clone(),
-                },
-            });
-            if catalog.len() == 32 {
-                self.api
-                    .upsert(
-                        &collection(&identity.group_id, true),
-                        &api::Upsert {
-                            points: std::mem::take(&mut catalog),
-                            update_filter: None,
-                            update_mode: None,
+            catalog
+                .push(
+                    &self.api,
+                    &collection,
+                    api::Point {
+                        id: point_id(&["catalog", version, &conversation.id]),
+                        vector: api::Vectors::default(),
+                        payload: CatalogRecord {
+                            kind: PointKind::Catalog,
+                            version: version.into(),
+                            node_id: identity.node_id.clone(),
+                            conversation: conversation.clone(),
                         },
-                    )
-                    .await?;
-            }
-        }
-        if !catalog.is_empty() {
-            self.api
-                .upsert(
-                    &collection(&identity.group_id, true),
-                    &api::Upsert {
-                        points: catalog,
-                        update_filter: None,
-                        update_mode: None,
                     },
                 )
                 .await?;
         }
-        Ok(())
+        catalog.flush(&self.api, &collection).await
     }
     #[tracing::instrument(name = "qdrant_stage_documents", skip_all)]
     async fn stage_documents(
@@ -307,62 +290,45 @@ impl Store {
         data: &Data,
         version: &str,
     ) -> Result<(), AppError> {
-        let mut points = Vec::new();
+        let mut points = api::StagingBatch::default();
+        let collection = collection(&identity.group_id, false);
         for message in data.messages.values() {
             let conversation = data
                 .conversations
                 .get(&message.conversation_id)
                 .ok_or_else(failure)?;
-            points.push(api::Point {
-                id: point_id(&["message", version, &message.id]),
-                vector: api::Vectors {
-                    dense: message
-                        .vector
-                        .clone()
-                        .map(|v| (self.dense_name(identity).into(), v)),
-                    lexical: (!tokens(&message.projection).is_empty())
-                        .then(|| sparse(&message.projection, false)),
-                },
-                payload: Document {
-                    version: version.into(),
-                    node_id: identity.node_id.clone(),
-                    provider: conversation.provider,
-                    role: message.role.clone(),
-                    conversation_id: conversation.id.clone(),
-                    project: conversation.project.clone(),
-                    repository: conversation.repository.clone(),
-                    created_at: message.created_at,
-                    tokens: tokens(&message.projection),
-                    conversation: conversation.clone(),
-                    message: message.clone(),
-                },
-            });
-            if points.len() == 32 {
-                self.api
-                    .upsert(
-                        &collection(&identity.group_id, false),
-                        &api::Upsert {
-                            points: std::mem::take(&mut points),
-                            update_filter: None,
-                            update_mode: None,
+            points
+                .push(
+                    &self.api,
+                    &collection,
+                    api::Point {
+                        id: point_id(&["message", version, &message.id]),
+                        vector: api::Vectors {
+                            dense: message
+                                .vector
+                                .clone()
+                                .map(|v| (self.dense_name(identity).into(), v)),
+                            lexical: (!tokens(&message.projection).is_empty())
+                                .then(|| sparse(&message.projection, false)),
                         },
-                    )
-                    .await?;
-            }
-        }
-        if !points.is_empty() {
-            self.api
-                .upsert(
-                    &collection(&identity.group_id, false),
-                    &api::Upsert {
-                        points,
-                        update_filter: None,
-                        update_mode: None,
+                        payload: Document {
+                            version: version.into(),
+                            node_id: identity.node_id.clone(),
+                            provider: conversation.provider,
+                            role: message.role.clone(),
+                            conversation_id: conversation.id.clone(),
+                            project: conversation.project.clone(),
+                            repository: conversation.repository.clone(),
+                            created_at: message.created_at,
+                            tokens: tokens(&message.projection),
+                            conversation: conversation.clone(),
+                            message: message.clone(),
+                        },
                     },
                 )
                 .await?;
         }
-        Ok(())
+        points.flush(&self.api, &collection).await
     }
     #[tracing::instrument(name = "qdrant_publish", skip_all, fields(revision = plan.revision, outcome = tracing::field::Empty))]
     pub(super) async fn commit(

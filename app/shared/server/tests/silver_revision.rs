@@ -39,9 +39,9 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
 
     let checkpoint = vec![
         json!({"type":"start","instance":"snapshot-instance","revision":3,"base_revision":2,"snapshot":false,"forgets":[]}),
-        json!({"type":"source","provider":"codex","path_hash":"source","size_bytes":42,"modified_ns":123,"conversation_id":"conversation","interpretation_version":1}),
+        json!({"type":"source","provider":"codex","path_hash":"source","size_bytes":42,"modified_ns":123,"conversation_id":"conversation","interpretation_version":crate::silver::certificate::INTERPRETATION_VERSION}),
         json!({"type":"reconcile","provider":"codex","cutoff":0}),
-        json!({"type":"scan","provider":"codex","cutoff":0,"interpretation_version":1,"authoritative":true}),
+        json!({"type":"scan","provider":"codex","cutoff":0,"interpretation_version":crate::silver::certificate::INTERPRETATION_VERSION,"authoritative":true}),
         json!({"type":"finish"}),
     ];
     // Mark the source observed so reconciliation does not remove its thread.

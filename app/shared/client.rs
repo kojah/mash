@@ -5,6 +5,8 @@ use serde::Serialize;
 use std::{sync::LazyLock, time::Duration};
 use tokio::sync::{Semaphore, SemaphorePermit};
 mod body;
+#[cfg(test)]
+mod retry_tests;
 
 struct Admission {
     interactive: Semaphore,
@@ -171,6 +173,7 @@ async fn response_admitted<T: serde::de::DeserializeOwned + Send + 'static>(
         elapsed_ms = tracing::field::Empty,
         queue_ms = tracing::field::Empty,
         endpoint = endpoint.route(),
+        retry_attempt = tracing::field::Empty,
         admission = if endpoint.bulk() {
             "bulk"
         } else {
@@ -194,7 +197,8 @@ async fn response_admitted<T: serde::de::DeserializeOwned + Send + 'static>(
                 .map_err(|_| AppError::shared("shared index HTTP admission is unavailable"))?;
             admitted = true;
             tracing::Span::current().record("queue_ms", crate::progress::milliseconds(started));
-            response_inner(request, endpoint, permit).await
+            // Keep transport/retry state off the nested CLI/MCP indexing future.
+            Box::pin(response_inner(request, endpoint, permit)).await
         })
         .await
         .unwrap_or_else(|_| Err(AppError::shared("shared index HTTP request timed out")));
@@ -211,35 +215,67 @@ async fn response_admitted<T: serde::de::DeserializeOwned + Send + 'static>(
 }
 
 async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
-    request: reqwest::RequestBuilder,
+    mut request: reqwest::RequestBuilder,
     endpoint: Endpoint,
     permit: SemaphorePermit<'static>,
 ) -> Result<T, AppError> {
-    let response = request.send().await.map_err(|error| {
-        AppError::shared(if error.is_timeout() {
-            "shared index HTTP request timed out"
-        } else {
-            "shared index HTTP request failed; check the API address and network"
-        })
-    })?;
-    tracing::Span::current().record("status", response.status().as_u16());
-    if !response.status().is_success() {
-        let status = response.status();
-        let message = match status.as_u16() {
-            401 | 403 => {
-                "shared index authorization failed; check node token and group configuration"
-            }
-            409 => {
-                "shared index revision or node identity conflict; retry indexing or choose a new node_id"
-            }
-            400 | 413 | 422 => "shared index rejected invalid or oversized data",
-            _ => "shared index service is unavailable; retry later",
-        };
-        let mut error = AppError::shared(message);
-        error.error.retryable = !matches!(status.as_u16(), 400 | 401 | 403 | 413 | 422);
-        return Err(error);
+    // Negotiation is an idempotent GET and owns no mutation. Busy responses
+    // can outlive a newly visible head while the previous writer cleans up.
+    // Retry only this read; an ambiguous POST must never be replayed here.
+    let retry = matches!(endpoint, Endpoint::PublicationPlan)
+        && request
+            .try_clone()
+            .and_then(|copy| copy.build().ok())
+            .is_some_and(|copy| copy.method() == reqwest::Method::GET);
+    let started = std::time::Instant::now();
+    let mut delay = Duration::from_secs(1);
+    let mut attempts = 0;
+    loop {
+        let next = if retry { request.try_clone() } else { None };
+        let response = request.send().await.map_err(|error| {
+            AppError::shared(if error.is_timeout() {
+                "shared index HTTP request timed out"
+            } else {
+                "shared index HTTP request failed; check the API address and network"
+            })
+        })?;
+        tracing::Span::current().record("status", response.status().as_u16());
+        if response.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE
+            && let Some(next) = next
+        {
+            drop(response);
+            attempts += 1;
+            tracing::Span::current().record("retry_attempt", attempts);
+            crate::progress::emit(&crate::progress::Event::new(
+                crate::progress::Phase::SharedWaiting,
+                crate::progress::milliseconds(started),
+                None,
+            ));
+            // The enclosing admission deadline bounds all attempts and releases
+            // capacity on cancellation. Interactive requests use separate slots.
+            tokio::time::sleep(delay).await;
+            delay = (delay * 2).min(Duration::from_secs(5));
+            request = next;
+            continue;
+        }
+        if !response.status().is_success() {
+            let status = response.status();
+            let message = match status.as_u16() {
+                401 | 403 => {
+                    "shared index authorization failed; check node token and group configuration"
+                }
+                409 => {
+                    "shared index revision or node identity conflict; retry indexing or choose a new node_id"
+                }
+                400 | 413 | 422 => "shared index rejected invalid or oversized data",
+                _ => "shared index service is unavailable; retry later",
+            };
+            let mut error = AppError::shared(message);
+            error.error.retryable = !matches!(status.as_u16(), 400 | 401 | 403 | 413 | 422);
+            return Err(error);
+        }
+        return body::read(response, endpoint, permit).await;
     }
-    body::read(response, endpoint, permit).await
 }
 pub(super) async fn get<T: serde::de::DeserializeOwned + Send + 'static>(
     config: &SharedConfig,

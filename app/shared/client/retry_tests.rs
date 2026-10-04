@@ -1,0 +1,108 @@
+use super::*;
+use axum::{Router, extract::State, http::StatusCode, routing::any};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+struct Replies {
+    calls: AtomicUsize,
+    failures: usize,
+    status: StatusCode,
+}
+#[derive(Debug, serde::Deserialize)]
+struct Reply {
+    value: u32,
+}
+async fn reply(State(state): State<Arc<Replies>>) -> (StatusCode, &'static str) {
+    if state.calls.fetch_add(1, Ordering::SeqCst) < state.failures {
+        return (state.status, "{}");
+    }
+    (StatusCode::OK, r#"{"value":42}"#)
+}
+async fn fixture(
+    status: StatusCode,
+    failures: usize,
+) -> (String, Arc<Replies>, tokio::task::JoinHandle<()>) {
+    let state = Arc::new(Replies {
+        calls: AtomicUsize::new(0),
+        failures,
+        status,
+    });
+    let app = Router::new()
+        .route("/plan", any(reply))
+        .with_state(state.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/plan", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (url, state, server)
+}
+
+#[tokio::test]
+async fn busy_publication_negotiation_retries_and_streams_waiting_progress() {
+    let (url, state, server) = fixture(StatusCode::SERVICE_UNAVAILABLE, 1).await;
+    let (sink, mut progress) = tokio::sync::mpsc::channel(4);
+    let result: Reply = crate::progress::scope(
+        sink,
+        response(reqwest::Client::new().get(url), Endpoint::PublicationPlan),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.value, 42);
+    assert_eq!(state.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        progress.try_recv().unwrap().phase,
+        crate::progress::Phase::SharedWaiting
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn mutation_posts_and_authorization_failures_are_never_replayed() {
+    for (endpoint, status) in [
+        (Endpoint::Index, StatusCode::SERVICE_UNAVAILABLE),
+        (Endpoint::PublicationPlan, StatusCode::UNAUTHORIZED),
+    ] {
+        let (url, state, server) = fixture(status, usize::MAX).await;
+        let request = if matches!(endpoint, Endpoint::Index) {
+            reqwest::Client::new().post(url)
+        } else {
+            reqwest::Client::new().get(url)
+        };
+        let error = response::<Reply>(request, endpoint).await.unwrap_err();
+        assert_eq!(state.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(error.error.retryable, status != StatusCode::UNAUTHORIZED);
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn cancelling_busy_negotiation_releases_bulk_capacity() {
+    static CAPACITY: Admission = Admission::new(8, 1);
+    let (url, state, server) = fixture(StatusCode::SERVICE_UNAVAILABLE, usize::MAX).await;
+    let (sink, mut events) = tokio::sync::mpsc::channel(4);
+    let mut call = Box::pin(crate::progress::scope(
+        sink,
+        response_admitted::<Reply>(
+            reqwest::Client::new().get(url),
+            Endpoint::PublicationPlan,
+            &CAPACITY,
+        ),
+    ));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::select! {
+            _ = &mut call => panic!("busy negotiation unexpectedly completed"),
+            event = events.recv() => assert_eq!(
+                event.unwrap().phase,
+                crate::progress::Phase::SharedWaiting,
+            ),
+        }
+    })
+    .await
+    .unwrap();
+    drop(call);
+    assert_eq!(state.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(CAPACITY.bulk.available_permits(), 1);
+    assert_eq!(CAPACITY.interactive.available_permits(), 8);
+    server.abort();
+}
