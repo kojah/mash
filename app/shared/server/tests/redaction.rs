@@ -3,11 +3,14 @@ use super::*;
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with disposable Qdrant 1.19+"]
 async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
+    const APP_TOKEN: &str = "xapp-1-A1B2C3D4E5-1234567890123-abcdef0123456789abcdef0123456789";
     let service = Service::qdrant(384).await;
     let mut events = snapshot(1);
     events[1]["records"][0]["title"] = json!("password=\"rosebud\"");
-    events[2]["records"][0]["content"] = json!("credentialneedle password=\"hunter2\"");
-    events[2]["records"][0]["projection"] = json!("credentialneedle password=\"hunter2\"");
+    let content =
+        format!("credentialneedle password=\"hunter2\" token = fetch_token(); {APP_TOKEN}");
+    events[2]["records"][0]["content"] = json!(content);
+    events[2]["records"][0]["projection"] = json!(content);
     // An old client can still publish raw data; current read boundaries mask it.
     assert_eq!(
         service.upload(FIRST, &events).await.status(),
@@ -34,13 +37,16 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
             .unwrap();
         let body = response.text().await.unwrap();
         assert!(
-            !body.contains("hunter2") && !body.contains("rosebud"),
+            !body.contains("hunter2") && !body.contains("rosebud") && !body.contains(APP_TOKEN),
             "{body}"
         );
         assert!(
             body.contains("REDACTED_SECRET") || body.contains("*****"),
             "{body}"
         );
+        if route == "view" {
+            assert!(body.contains("token = fetch_token()"), "{body}");
+        }
     }
     events[0]["revision"] = json!(2);
     let mut file = Vec::new();
@@ -52,7 +58,8 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
         .unwrap();
     }
     let body = String::from_utf8(file).unwrap();
-    assert!(!body.contains("hunter2") && !body.contains("rosebud"));
+    assert!(!body.contains("hunter2") && !body.contains("rosebud") && !body.contains(APP_TOKEN));
+    assert!(body.contains("token = fetch_token()"));
     assert_eq!(
         service
             .request("index", FIRST)

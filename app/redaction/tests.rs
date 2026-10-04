@@ -17,6 +17,12 @@ fn synthetic_credentials_and_benign_chat_contract() {
         ))
         .unwrap(),
     );
+    fixtures.extend(
+        serde_json::from_str::<Vec<Fixture>>(include_str!(
+            "../../research/redaction/audit-regressions.json"
+        ))
+        .unwrap(),
+    );
     for fixture in fixtures {
         let safe = text(&fixture.text);
         assert_eq!(text(&safe), safe, "idempotence: {}", fixture.name);
@@ -45,6 +51,30 @@ fn synthetic_credentials_and_benign_chat_contract() {
             );
         }
     }
+}
+
+#[test]
+fn nested_serialization_masks_values_without_eating_following_content() {
+    for value in [
+        r#"password="pa\"ssword" tail-kept"#,
+        r#"password="pa\\" tail-kept"#,
+    ] {
+        let mut source = value.to_owned();
+        let mut expected = "password=\"[REDACTED_SECRET]\" tail-kept".to_owned();
+        for _ in 0..4 {
+            assert_eq!(text(&source), expected);
+            let masked = projection(&source);
+            assert_eq!(masked.len(), source.len());
+            assert_eq!(masked.chars().count(), source.chars().count());
+            assert!(masked.contains("tail-kept"));
+            source = serde_json::to_string(&source).unwrap();
+            expected = serde_json::to_string(&expected).unwrap();
+        }
+    }
+    assert_eq!(
+        text(r#"password=\"unfinished"#),
+        r#"password=\"[REDACTED_SECRET]"#
+    );
 }
 
 #[test]

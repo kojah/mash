@@ -41,6 +41,49 @@ The long benign code fixture disproportionately contributes bytes; numbers are
 not cross-machine performance guarantees. Scanner defaults can be improved with
 custom rules; this comparison does not measure their maximum possible recall.
 
+## Real-history follow-up (2026-10-04)
+
+A read-only audit scanned 330,056 canonical messages in 815 threads on Xenia
+(Claude Code and Codex), plus nonempty projection overrides and thread metadata.
+The harness imported the production detector. It persisted only aggregate counts
+and masked structural sketches, never credential values or original history.
+No token validity checks or provider calls were made.
+
+The initial policy masked 2,393 spans in 1,717 messages. A conservative structural
+check flagged 40 spans on identifiers followed by calls/member access; sampled
+review confirmed ordinary code being masked. A sampled independent-scanner check
+also found a plausible Slack app token missed by the policy. Seventy initial
+scanner disagreements were not seventy missed credentials: fifty were whole URLs
+with already-masked passwords, ten were email addresses outside credential scope,
+and three Stripe examples had their tokens already masked by contextual rules.
+The remaining six were four larger spans around already-masked passwords and two
+matches on a code reference and a prose word. The initial diagnostic had left
+these six unresolved; subsequent byte-level review resolved them.
+
+Corrections distinguish unquoted calls, indexing, namespaced/member references,
+declarations and comparison/arrow syntax from credential values. Known token
+formats still mask independently of that distinction. Slack app and standalone
+Stripe secret/restricted key formats are covered. Additional regressions cover
+unquoted Unicode/punctuation and escaped quoted credentials in nested serialized
+content, preserving following text and source offsets. `audit-regressions.json`
+contains fabricated cases; observed credentials were not copied into fixtures.
+Existing scalar/code ambiguity means this remains a bounded regex policy.
+
+A second deterministic reservoir seed selected 277 affected rows, 1,053
+unaffected rows and 80 credential-hint rows after a full-corpus rescan. The
+structural check then flagged zero spans in the previous call/member category,
+and the known Slack token was fully covered. This is not a complete false-positive
+audit or an overall precision/recall estimate; samples can overlap and repetitions
+are correlated. New scanner disagreements included a JWT span that extended into
+serialization delimiters, already-covered passwords/Stripe values, emails, URLs,
+and code/prose matches. Neither scanner supplies ground-truth labels.
+
+Private value-free audit artifacts and methodology remain outside Git under
+`/home/james/scratch/mash-artifacts/real-redaction-audit-20261004`.
+The publication destination version is advanced so upgraded nodes republish
+canonical snapshots on the next explicit indexing run. No fleet deployment or
+historical Qdrant purge is implied by this change.
+
 Observed bundled-policy gaps: both scanners leave private-key bodies intact;
 Rusty Hog misses current GitHub token fixtures. The bundled secrets_scanner rules
 also miss several short credentials and opaque Authorization values. Neither is
