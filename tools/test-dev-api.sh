@@ -61,6 +61,7 @@ fi
 new_pid=$(jq -r .pid "$TEST_API_POINTER")
 [[ "$new_pid" != "$old_pid" ]]
 [[ "$(jq -r .source_commit "$TEST_API_POINTER")" == fixture ]]
+[[ "$(ps -p "$new_pid" -o sid=)" != "$(ps -p $$ -o sid=)" ]]
 bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 export TEST_API_ALWAYS_READY=1
@@ -70,5 +71,6 @@ bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml "$scratch
 [[ "$(jq -r .pid "$TEST_API_POINTER")" != "$previous_pid" ]]
 [[ "$(jq -r .previous_pid "$TEST_API_POINTER")" == "$previous_pid" ]]
 [[ "$(jq -r .source_commit "$TEST_API_POINTER")" == "$(git -C "$repository" rev-parse HEAD)" ]]
+[[ "$(ps -p "$(jq -r .pid "$TEST_API_POINTER")" -o sid=)" != "$(ps -p $$ -o sid=)" ]]
 bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null

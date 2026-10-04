@@ -21,7 +21,9 @@ new_pid=''
 committed=false
 
 start_api() {
-    nohup "$1" serve --server-config "$config" </dev/null >"$2" 2>&1 &
+    # Detach the API session from the short-lived deployment/MCP process group.
+    # nohup alone does not protect it from process-group cleanup on disconnect.
+    nohup setsid "$1" serve --server-config "$config" </dev/null >"$2" 2>&1 &
     new_pid=$!
 }
 
