@@ -534,4 +534,32 @@ checked protocol initialization and tool discovery.
 This completes only the dev-Mac default cutover. The personal Mac remains
 unreachable, Xenia's new scan remains blocked by its malformed Claude source,
 and the legacy Redis service and those two installed configurations are retained.
-The shared preview API remains the previously verified `6e8f2bb` release.
+At that cutover, the shared preview API remained the verified `6e8f2bb` release.
+
+### Shared API model-switch release (2026-10-04)
+
+The Qdrant HTTP API now runs the optimized LLVM release of `22dd8b6`, including
+the verified named-vector dimension-switch implementation and CLI/HTTP/MCP
+model-routing contracts. The existing embedding model, gold configuration,
+Qdrant collections and node configurations were retained; no activation or
+reindexing was performed. Authenticated freshness captures before and after
+deployment are exactly equal, including source and silver revisions, both
+timestamps, manifests, counts and the unpublished-node list. Authenticated
+capabilities succeeded and unauthenticated freshness returned HTTP 401.
+
+The first replacement process exited because the old HTTP listener had not yet
+released its port. After confirming that process had exited and the port was
+free, the replacement started successfully. The frozen previous executable and
+release metadata remain available for rollback. `active-api-release.json` and
+`preview-server-current-log.txt` in the private migration artifact directory
+identify the current executable, PID, SHA and trace log.
+
+The dev Mac's installed `addb212` CLI returned two thread results for exact
+`cbioportal` searches in both shared-only and combined modes. Wall times were
+261 ms and 2.326 s respectively; these are single observations, not percentiles
+or a performance comparison. Diagnostics confirmed all requested sources and
+stages completed, with no fallback or incomplete shared context. The combined
+observation spent 2.296 s in local exact retrieval; its shared request took
+227 ms and correctly excluded this node's duplicate shared results. This
+deployment does not establish actual alternate learned-model quality or complete
+the remaining fleet migration.
