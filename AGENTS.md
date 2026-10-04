@@ -68,6 +68,21 @@ JSON limited to opaque provider tool payloads and SDK boundaries requiring it.
 Use `apply_patch` for source edits. Preserve unrelated worktree changes. Do not
 create compatibility copies or versioned replacement files.
 
+## Python conventions
+
+Use `.agents/skills/python-coding-conventions/SKILL.md` when changing Python.
+The same skill is linked under `.claude/skills` and `.codex/skills`.
+Run Python through `uv`; use Ruff and `ty` for the affected modules and run
+the full Python test suite before completing Python changes.
+
+The research lab's frozen experiment contracts and dependency-free CI fixtures
+take precedence over library defaults in the skill. Keep existing stdlib
+`argparse`/`json` entry points and canonical codecs where replacing them would
+change pinned bytes, historical reproduction, or the dependency-free execution
+contract. Do not migrate archived experiments or their code pins as stylistic
+cleanup. New validated records should be typed; new standalone tooling may use
+Click, Pydantic and orjson when its environment explicitly provides them.
+
 ## Verification
 
 Keep project logs, downloads, research captures and other durable work artifacts
