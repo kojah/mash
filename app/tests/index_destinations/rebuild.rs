@@ -271,6 +271,7 @@ impl Drop for Mcp {
 fn assert_mcp_status(
     input: &mut std::process::ChildStdin,
     receiver: &std::sync::mpsc::Receiver<Value>,
+    fixture: &Fixture,
 ) {
     use std::io::Write;
     writeln!(
@@ -296,6 +297,24 @@ fn assert_mcp_status(
     assert_eq!(node["artifacts"]["metadata"], "ready");
     assert_eq!(node["artifacts"]["lexical"], "ready");
     assert_eq!(node["artifacts"]["dense"], "ready");
+    let cli = fixture.json(&["status", "--shared"], true);
+    let expected = cli["shared_index"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["node_id"] == "split")
+        .unwrap();
+    assert_eq!(node["source_silver"], expected["source_silver"]);
+    assert_eq!(node["silver_coverage"], expected["silver_coverage"]);
+    if node.get("source_silver").is_none() {
+        let scopes = node["silver_coverage"].as_array().unwrap();
+        assert_ne!(scopes.as_slice(), &[] as &[Value]);
+        assert!(
+            scopes
+                .iter()
+                .all(|scope| scope["completeness"] == "complete")
+        );
+    }
 }
 
 pub(super) fn assert_mcp_rebuild(fixture: &Fixture) {
@@ -364,7 +383,7 @@ pub(super) fn assert_mcp_rebuild(fixture: &Fixture) {
     assert!(phases.contains(&serde_json::json!("shared-silver-read")));
     assert!(phases.contains(&serde_json::json!("shared-embeddings")));
     assert!(phases.contains(&serde_json::json!("complete")));
-    assert_mcp_status(&mut input, &receiver);
+    assert_mcp_status(&mut input, &receiver, fixture);
     for (id, arguments) in [
         (
             3,

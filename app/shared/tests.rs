@@ -26,8 +26,10 @@ fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
     }"#;
     let node: NodeFreshness = serde_json::from_str(response).unwrap();
     assert!(node.artifacts.is_none());
+    assert!(node.source_silver.is_none());
     let encoded = serde_json::to_string(&node).unwrap();
     assert!(!encoded.contains("\"artifacts\""));
+    assert!(!encoded.contains("\"source_silver\""));
     let reported = r#"{
         "node_id":"node", "revision":1, "last_synced_at":null,
         "last_updated_at":null, "conversations":0, "messages":0,
@@ -47,6 +49,34 @@ fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
     assert_eq!(decoded.artifacts, node.artifacts);
     assert!(
         serde_json::from_str::<NodeFreshness>(&reported.replace("disabled", "invented")).is_err()
+    );
+}
+
+#[test]
+fn freshness_source_certificate_is_typed_and_distinct_from_shared_identity() {
+    let response = r#"{
+        "node_id":"node", "revision":100, "last_synced_at":null,
+        "last_updated_at":null, "conversations":0, "messages":0,
+        "source_silver":{"revision":7,"interpretation_version":1,
+            "completeness":"incomplete","rejected_sources":2}
+    }"#;
+    let node: NodeFreshness = serde_json::from_str(response).unwrap();
+    assert_eq!(
+        node.source_silver,
+        Some(crate::silver::certificate::Certificate {
+            revision: 7,
+            interpretation_version: 1,
+            completeness: crate::silver::certificate::Completeness::Incomplete,
+            rejected_sources: 2,
+        })
+    );
+    assert!(node.silver_revision.is_none());
+    assert_eq!(node.revision, 100);
+    let decoded: NodeFreshness =
+        serde_json::from_str(&serde_json::to_string(&node).unwrap()).unwrap();
+    assert_eq!(decoded.source_silver, node.source_silver);
+    assert!(
+        serde_json::from_str::<NodeFreshness>(&response.replace("incomplete", "invented")).is_err()
     );
 }
 

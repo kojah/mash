@@ -243,6 +243,7 @@ impl Store {
                 gold_current,
                 silver_coverage: h.silver_coverage.clone(),
                 silver_revision: h.silver_revision.clone(),
+                source_silver: h.source_silver.clone(),
                 node_id: node_id.clone(),
                 revision: h.revision,
                 last_synced_at: h.last_synced_at.clone(),

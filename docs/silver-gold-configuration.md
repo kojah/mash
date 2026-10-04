@@ -40,6 +40,23 @@ and query model availability. Continue inspecting the silver certificate/scoped
 coverage and unpublished nodes for those limitations. Topics have no production
 artifact here, and no readiness claim is made for them.
 
+Shared freshness also exposes `nodes[].source_silver` when the immutable node
+head retains a full-snapshot source certificate. This is the source node's
+existing interpretation version, completeness, rejected-source count and local
+silver revision. That revision belongs to the source database; it is separate
+from the shared `silver_revision` identity and upload `revision` counter.
+Gold-only rebuilds and configuration switches preserve the certificate. Canonical
+mutations that revoke it leave the field absent rather than reporting stale
+completeness. A missing field is unavailable evidence, not proof of completeness
+or incompleteness; older service responses also omit it.
+
+Routed provider publications use their existing `silver_coverage` reports and
+authority/cutoff fields instead. No provider scope is synthesized from a
+full-snapshot certificate, and no status read re-verifies provider files. These
+are retained evidence with the existing ingestion/interpretation scope, not an
+independent filesystem audit or a claim that all history from every provider is
+represented. Certificate reporting adds no storage query or model work.
+
 ## Current silver contract and enrichment audit
 
 These are existing capabilities, not a claim that every provider supplies every

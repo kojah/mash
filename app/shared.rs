@@ -111,6 +111,9 @@ struct NodeFreshness {
     silver_coverage: Vec<silver_coverage::Coverage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     silver_revision: Option<silver_revision::State>,
+    /// Retained source-node certificate, not the server-owned canonical revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_silver: Option<crate::silver::certificate::Certificate>,
     node_id: String,
     revision: i64,
     last_synced_at: Option<String>,

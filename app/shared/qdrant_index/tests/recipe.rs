@@ -3,6 +3,45 @@ use crate::gold::readiness::{Artifacts, State};
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_freshness_revokes_source_certificate_after_forget() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .store
+        .index(&fixture.identity, certified_source_upload(&fixture))
+        .await
+        .unwrap();
+    let before = fixture.store.freshness(&fixture.identity).await.unwrap();
+    assert!(
+        before.nodes[0]
+            .source_silver
+            .as_ref()
+            .unwrap()
+            .is_complete()
+    );
+    fixture
+        .store
+        .forget(
+            &fixture.identity,
+            protocol::Forget {
+                instance: "instance".into(),
+                revision: Some(2),
+                ids: vec!["thread".into()],
+            },
+        )
+        .await
+        .unwrap();
+    let after = fixture.store.freshness(&fixture.identity).await.unwrap();
+    assert!(after.nodes[0].source_silver.is_none());
+    assert_ne!(
+        before.nodes[0].silver_revision,
+        after.nodes[0].silver_revision
+    );
+    assert_eq!(after.nodes[0].revision, 2);
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_dimension_switch_preserves_silver_lexical_and_restart_recovery() {
     for memory in [MemoryTier::Cached, MemoryTier::Cold] {
         dimension_switch(memory).await;
@@ -70,6 +109,7 @@ async fn dimension_switch(memory: MemoryTier) {
     let freshness = fixture.store.freshness(&fixture.identity).await.unwrap();
     assert!(freshness.nodes[0].lexical_current);
     assert!(!freshness.nodes[0].gold_current);
+    assert_source_certificate(&freshness.nodes[0], &original);
     assert_eq!(
         freshness.nodes[0].artifacts,
         Some(crate::gold::readiness::Artifacts {
@@ -108,6 +148,13 @@ async fn dimension_switch(memory: MemoryTier) {
     );
     dimension_roundtrip(&mut fixture, old_store, old_identity, &original).await;
     fixture.cleanup().await;
+}
+
+fn assert_source_certificate(node: &crate::shared::NodeFreshness, original: &Loaded) {
+    assert_eq!(
+        node.source_silver,
+        original.head.as_ref().unwrap().source_silver
+    );
 }
 
 async fn dimension_roundtrip(
@@ -397,6 +444,7 @@ async fn assert_artifact_switch(
     assert_eq!(store.capabilities(&fixture.identity).await.unwrap(), recipe);
     let freshness = store.freshness(&fixture.identity).await.unwrap();
     assert!(freshness.nodes[0].gold_current);
+    assert_source_certificate(&freshness.nodes[0], original);
     assert_eq!(
         freshness.nodes[0].artifacts,
         Some(Artifacts {

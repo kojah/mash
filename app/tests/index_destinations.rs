@@ -150,11 +150,18 @@ fn claude_copy_reconciliation_qdrant_routed() {
     claude_copy_reconciliation(true);
 }
 
-fn assert_ready_node(node: &Value, messages: u64) {
+fn assert_ready_node(node: &Value, messages: u64, routed: bool) {
     assert_eq!(node["messages"], messages);
     assert_eq!(node["artifacts"]["metadata"], "ready");
     assert_eq!(node["artifacts"]["lexical"], "ready");
     assert_eq!(node["artifacts"]["dense"], "ready");
+    if routed {
+        assert!(node.get("source_silver").is_none());
+    } else {
+        assert_eq!(node["source_silver"]["completeness"], "complete");
+        assert_eq!(node["source_silver"]["interpretation_version"], 1);
+        assert_eq!(node["source_silver"]["rejected_sources"], 0);
+    }
 }
 
 fn claude_copy_reconciliation(routed: bool) {
@@ -210,7 +217,7 @@ fn claude_copy_reconciliation(routed: bool) {
             .iter()
             .find(|node| node["node_id"] == "split")
             .unwrap();
-        assert_ready_node(node, messages);
+        assert_ready_node(node, messages, routed);
         if routed {
             fixture.assert_claude_scan("split");
         }

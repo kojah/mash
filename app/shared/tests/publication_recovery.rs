@@ -30,6 +30,7 @@ fn current_node(target: &reuse::Target) -> NodeFreshness {
     let silver = silver_revision::State::next(None, "a".repeat(64)).unwrap();
     NodeFreshness {
         artifacts: None,
+        source_silver: None,
         lexical_manifest: Some(lexical_manifest::Manifest::new(silver.clone())),
         lexical_current: true,
         gold_manifest: Some(gold_manifest::Manifest::new(
