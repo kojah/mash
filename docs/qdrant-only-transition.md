@@ -563,3 +563,56 @@ observation spent 2.296 s in local exact retrieval; its shared request took
 227 ms and correctly excluded this node's duplicate shared results. This
 deployment does not establish actual alternate learned-model quality or complete
 the remaining fleet migration.
+
+### Artifact readiness rollout (2026-10-04)
+
+Both the shared API and dev Mac's installed CLI now run optimized native LLVM
+releases of `fae282b`. The API's existing per-node freshness read reports typed
+metadata/lexical/dense publication states. The installed CLI and MCP `status`
+with `shared=true` expose those fields through the shared core. For the dev Mac,
+all three local and shared artifact states are `ready`. This is publication
+readiness, not a certificate of exhaustive provider history or topic quality.
+
+This was a binary-only upgrade. Before/after API freshness is identical after
+removing the additive `artifacts` field: revisions, timestamps, manifests,
+canonical fingerprints, counts and unpublished members are unchanged. The
+server retained the same TOML, embedding model, gold configuration and Qdrant
+collections. Authenticated capabilities passed and unauthenticated freshness
+returned HTTP 401. The previous API executable and metadata remain available
+for rollback; the active release record and current log pointer identify the
+new process and frozen executable.
+
+The dev Mac build completed in 68.9 s using its existing Cargo target cache.
+The installed binary's SHA256 is
+`5f2175891a2322c71df5f20a4eef6609245c15d6d389cf3d739be0c81db9510b`.
+Before replacement, the staged release passed default-path local/shared status
+checks. With no Mash processes active, the installer retained the preceding
+binary/release record in `installed-rollback-fae282b/` and atomically replaced
+only `~/.local/bin/mash`. SHA256 hashes of the installed TOML, SQLite database
+and present WAL were unchanged after staging, installation and all smoke checks.
+The database still contains 3,018 threads and 434,486 messages. No provider scan,
+gold rebuild or model download was performed.
+
+Installed `cbioportal` searches returned two threads in each tested case, with
+all requested sources/stages completed and no fallback or incomplete context:
+
+| Intent | Scope | Observed wall time |
+| --- | --- | --- |
+| Exact mention | Local | 152 ms |
+| Exact mention | Shared | 257 ms |
+| Exact mention | Combined | 256 ms |
+| Related discussion | Shared | 1.744 s |
+| Related discussion | Combined | 976 ms |
+
+Each search used `--no-worker`; these are individual smoke observations with
+uncontrolled filesystem/model-runtime caches, not percentiles or a comparative
+speedup. Combined mode still excludes this node's shared copies, so the remote
+source returned no additional candidates. An installed stdio MCP session also
+initialized and called `status(shared=true)`, verifying the same local/shared
+artifact states through the actual protocol.
+
+Native build/install/status/search/MCP captures remain private in the dev Mac's
+migration directory and `dev-installed-fae282b/` in the Xenia artifact directory.
+Personal-Mac connectivity, Xenia's malformed source and retirement of the legacy
+Redis service remain outstanding; this rollout does not close fleet migration
+or the independent held-out search/topic quality gates.
