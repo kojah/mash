@@ -40,12 +40,23 @@ pub(super) struct Scored<P> {
     pub score: f32,
     pub payload: P,
 }
-#[derive(Default, Serialize)]
+#[derive(Default)]
 pub(super) struct Vectors {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dense: Option<Vec<f64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dense: Option<(String, Vec<f64>)>,
     pub lexical: Option<Sparse>,
+}
+impl Serialize for Vectors {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some((name, vector)) = &self.dense {
+            map.serialize_entry(name, vector)?;
+        }
+        if let Some(vector) = &self.lexical {
+            map.serialize_entry("lexical", vector)?;
+        }
+        map.end()
+    }
 }
 #[derive(Serialize)]
 pub(super) struct Sparse {
@@ -131,7 +142,7 @@ pub(super) enum QueryVector {
 #[derive(Serialize)]
 pub(super) struct QueryRequest {
     pub query: QueryVector,
-    pub using: &'static str,
+    pub using: String,
     pub filter: Filter,
     pub params: Params,
     pub limit: usize,
@@ -285,9 +296,11 @@ fn schema_fields(
 ) -> Result<&'static [(&'static str, &'static str)], AppError> {
     let vectors = &info.config.params.vectors;
     let valid = if let Some(dimensions) = dimensions {
-        vectors.len() == 1
-            && vectors.get("dense").is_some_and(|v| {
-                v.size == dimensions
+        dense_name(info, dimensions).is_some()
+            && vectors.contains_key("dense")
+            && vectors.iter().all(|(name, v)| {
+                (name == "dense" || name == &format!("dense_{}", v.size))
+                    && (1..=2048).contains(&v.size)
                     && v.placement.matches(memory)
                     && v.distance == "Cosine"
                     && v.quantization_config.is_none()
@@ -340,6 +353,19 @@ fn schema_fields(
         &[("kind", "keyword"), ("version", "keyword")]
     };
     Ok(fields)
+}
+
+fn dense_name(info: &Info, dimensions: usize) -> Option<String> {
+    let vectors = &info.config.params.vectors;
+    if vectors.get("dense").is_some_and(|v| v.size == dimensions) {
+        Some("dense".into())
+    } else {
+        let name = format!("dense_{dimensions}");
+        vectors
+            .get(&name)
+            .filter(|v| v.size == dimensions)
+            .map(|_| name)
+    }
 }
 
 impl Client {
@@ -447,7 +473,7 @@ impl Client {
         name: &str,
         dimensions: Option<usize>,
         memory: MemoryTier,
-    ) -> Result<(), AppError> {
+    ) -> Result<Option<String>, AppError> {
         let path = format!("collections/{name}");
         let exists = self
             .http
@@ -493,7 +519,7 @@ impl Client {
         } else if !exists.status().is_success() {
             return Err(failure());
         }
-        let info: Info = self.call(Method::GET, &path, None::<&()>).await?;
+        let info = self.prepare_dense(&path, dimensions, memory).await?;
         let fields = schema_fields(&info, dimensions, memory)?;
         for &(field_name, field_schema) in fields {
             if let Some(installed) = info.payload_schema.get(field_name) {
@@ -515,6 +541,101 @@ impl Client {
                 )
                 .await?;
         }
+        Ok(dimensions.and_then(|size| dense_name(&info, size)))
+    }
+    async fn prepare_dense(
+        &self,
+        path: &str,
+        dimensions: Option<usize>,
+        memory: MemoryTier,
+    ) -> Result<Info, AppError> {
+        let mut info: Info = self.call(Method::GET, path, None::<&()>).await?;
+        if let Some(size) = dimensions {
+            if !(1..=2048).contains(&size) {
+                return Err(failure());
+            }
+            if dense_name(&info, size).is_none() {
+                let existing = info
+                    .config
+                    .params
+                    .vectors
+                    .get("dense")
+                    .ok_or_else(failure)?
+                    .size;
+                schema_fields(&info, Some(existing), memory)?;
+                self.add_dense(path, size, memory).await?;
+                info = self.call(Method::GET, path, None::<&()>).await?;
+            }
+            let name = dense_name(&info, size).ok_or_else(failure)?;
+            // Creating a named field and setting cold placement are separate
+            // Qdrant operations. Resume only this known secondary field; validate
+            // every other schema property before finishing interrupted setup.
+            if name != "dense"
+                && memory == MemoryTier::Cold
+                && info.config.params.vectors[&name]
+                    .placement
+                    .matches(MemoryTier::Cached)
+            {
+                info.config
+                    .params
+                    .vectors
+                    .get_mut(&name)
+                    .ok_or_else(failure)?
+                    .placement = Placement::new(memory);
+                schema_fields(&info, Some(size), memory)?;
+                self.set_dense_memory(path, name, memory).await?;
+                info = self.call(Method::GET, path, None::<&()>).await?;
+            }
+        }
+        Ok(info)
+    }
+    async fn add_dense(&self, path: &str, size: usize, memory: MemoryTier) -> Result<(), AppError> {
+        #[derive(Serialize)]
+        struct Geometry {
+            size: usize,
+            distance: &'static str,
+        }
+        #[derive(Serialize)]
+        struct CreateVector {
+            dense: Geometry,
+        }
+        let name = format!("dense_{size}");
+        let _: Result<Operation, _> = self
+            .call(
+                Method::PUT,
+                &format!("{path}/vectors/{name}?wait=true"),
+                Some(&CreateVector {
+                    dense: Geometry {
+                        size,
+                        distance: "Cosine",
+                    },
+                }),
+            )
+            .await;
+        if memory == MemoryTier::Cold {
+            self.set_dense_memory(path, name, memory).await?;
+        }
+        Ok(())
+    }
+    async fn set_dense_memory(
+        &self,
+        path: &str,
+        name: String,
+        memory: MemoryTier,
+    ) -> Result<(), AppError> {
+        #[derive(Serialize)]
+        struct Update {
+            vectors: BTreeMap<String, Placement>,
+        }
+        let _: bool = self
+            .call(
+                Method::PATCH,
+                path,
+                Some(&Update {
+                    vectors: BTreeMap::from([(name, Placement::new(memory))]),
+                }),
+            )
+            .await?;
         Ok(())
     }
     pub(super) async fn upsert<P: Serialize>(

@@ -380,7 +380,7 @@ impl Store {
         };
         let semantic_query = api::QueryRequest {
             query: api::QueryVector::Dense(input.vector),
-            using: "dense",
+            using: self.dense_name(identity).into(),
             filter,
             params: api::Params { exact, hnsw_ef: ef },
             limit: input.unit.candidate_limit(),
@@ -388,7 +388,7 @@ impl Store {
         };
         let lexical_query = api::QueryRequest {
             query: api::QueryVector::Sparse(sparse(&input.query, true)),
-            using: "lexical",
+            using: "lexical".into(),
             filter: lexical_filter,
             params: api::Params {
                 exact: true,

@@ -25,6 +25,37 @@ fn legacy() -> serde_json::Value {
 }
 
 #[test]
+fn dimension_fields_preserve_the_original_schema_and_reject_foreign_shapes() {
+    let mut document = legacy();
+    document["config"]["params"]["vectors"]["dense_8"] =
+        serde_json::json!({"size":8,"distance":"Cosine"});
+    let info: Info = serde_json::from_value(document.clone()).unwrap();
+    assert_eq!(dense_name(&info, 4).as_deref(), Some("dense"));
+    assert_eq!(dense_name(&info, 8).as_deref(), Some("dense_8"));
+    assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_ok());
+    assert!(schema_fields(&info, Some(8), MemoryTier::Cached).is_ok());
+    for (name, size, distance) in [
+        ("foreign", 8, "Cosine"),
+        ("dense_8", 9, "Cosine"),
+        ("dense_8", 8, "Dot"),
+    ] {
+        let mut invalid = document.clone();
+        invalid["config"]["params"]["vectors"][name] =
+            serde_json::json!({"size":size,"distance":distance});
+        let info: Info = serde_json::from_value(invalid).unwrap();
+        assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_err());
+    }
+    let vectors = Vectors {
+        dense: Some(("dense_8".into(), vec![1.0, 0.0])),
+        lexical: None,
+    };
+    assert_eq!(
+        serde_json::to_value(vectors).unwrap(),
+        serde_json::json!({"dense_8":[1.0,0.0]})
+    );
+}
+
+#[test]
 fn memory_schema_checks_each_component_and_preserves_legacy_cached_collections() {
     let info: Info = serde_json::from_value(legacy()).unwrap();
     assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_ok());

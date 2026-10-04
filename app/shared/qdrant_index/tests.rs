@@ -122,13 +122,15 @@ impl Fixture {
         file
     }
     fn query(&self) -> protocol::Search {
+        let mut vector = vec![0.0; self.identity.dimensions];
+        vector[0] = 127.0;
         protocol::Search {
             intent: crate::gold::exact::Intent::RelatedDiscussion,
             vector_policy: None,
             unit: crate::search_results::SearchUnit::Messages,
             query: "needle".into(),
             generation: self.identity.generation.clone(),
-            vector: vec![127.0, 0.0, 0.0, 0.0],
+            vector,
             provider: None,
             days: None,
             exclude_self: false,
@@ -373,7 +375,7 @@ async fn qdrant_conditional_publication_handles_competing_first_and_replacement_
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
-async fn qdrant_reopen_schema_mismatch_and_failed_upload_preserve_published_data() {
+async fn qdrant_reopen_without_activation_and_failed_upload_preserve_published_data() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
         .store
@@ -383,19 +385,21 @@ async fn qdrant_reopen_schema_mismatch_and_failed_upload_preserve_published_data
     let mut bad = fixture.file(2, "broken");
     writeln!(bad, "{{\"type\":\"finish\"}}").unwrap();
     assert!(fixture.store.index(&fixture.identity, bad).await.is_err());
-    assert!(
-        Store::connect(
-            &fixture.url,
-            None,
-            std::slice::from_ref(&fixture.identity.group_id),
-            8,
-            64 * 1024 * 1024,
-            VectorIndex::default(),
-            MemoryTier::Cached,
-        )
-        .await
-        .is_err()
-    );
+    let prepared = Store::connect(
+        &fixture.url,
+        None,
+        std::slice::from_ref(&fixture.identity.group_id),
+        8,
+        64 * 1024 * 1024,
+        VectorIndex::default(),
+        MemoryTier::Cached,
+    )
+    .await
+    .unwrap();
+    let mut next = fixture.identity.clone();
+    next.dimensions = 8;
+    next.generation = crate::semantic::model_space("alternate-test", 8);
+    assert!(prepared.select_gold(&next, false).await.is_err());
     let reopen = Store::connect(
         &fixture.url,
         None,
@@ -652,6 +656,7 @@ async fn qdrant_missing_old_chunk_after_publication_is_a_conflict() {
         .unwrap();
     });
     let store = Store {
+        dense_names: std::collections::BTreeMap::new(),
         build: crate::gold::config::Build::default(),
         api: api::Client::new(&url, None, 4096).unwrap(),
         max_node_bytes: 1024,

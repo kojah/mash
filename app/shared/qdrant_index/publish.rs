@@ -316,7 +316,10 @@ impl Store {
             points.push(api::Point {
                 id: point_id(&["message", version, &message.id]),
                 vector: api::Vectors {
-                    dense: message.vector.clone(),
+                    dense: message
+                        .vector
+                        .clone()
+                        .map(|v| (self.dense_name(identity).into(), v)),
                     lexical: (!tokens(&message.projection).is_empty())
                         .then(|| sparse(&message.projection, false)),
                 },

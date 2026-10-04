@@ -27,6 +27,7 @@ pub(super) use crate::gold::vector::Search as VectorIndex;
 
 #[derive(Clone)]
 pub(super) struct Store {
+    dense_names: std::collections::BTreeMap<String, String>,
     build: crate::gold::config::Build,
     api: api::Client,
     max_node_bytes: usize,
@@ -151,6 +152,7 @@ impl Store {
     #[cfg(test)]
     pub(in crate::shared) fn unavailable() -> Self {
         Self {
+            dense_names: std::collections::BTreeMap::new(),
             build: crate::gold::config::Build::default(),
             api: api::Client::new("http://127.0.0.1:9", None, 64 * 1024 * 1024).unwrap(),
             max_node_bytes: 64 * 1024 * 1024,
@@ -184,19 +186,29 @@ impl Store {
         vector_index.validate()?;
         let api = api::Client::new(url, key, max_node_bytes)?;
         api.verify_version().await?;
+        let mut dense_names = std::collections::BTreeMap::new();
         for group in groups {
             api.initialize(&collection(group, true), None, MemoryTier::Cached)
                 .await?;
-            api.initialize(&collection(group, false), Some(dimensions), memory)
-                .await?;
+            let name = api
+                .initialize(&collection(group, false), Some(dimensions), memory)
+                .await?
+                .ok_or_else(failure)?;
+            dense_names.insert(group.clone(), name);
         }
         Ok(Self {
+            dense_names,
             build: crate::gold::config::Build::default(),
             api,
             max_node_bytes,
             vector_index,
             snapshot_budget: super::snapshot_budget::Budget::default(),
         })
+    }
+    fn dense_name(&self, identity: &Identity) -> &str {
+        self.dense_names
+            .get(&identity.group_id)
+            .map_or("dense", String::as_str)
     }
     async fn node(&self, identity: &Identity) -> Result<NodeHead, AppError> {
         let mut nodes = configuration::catalogue_nodes(self.active_configuration(identity).await?)?;

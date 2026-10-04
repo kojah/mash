@@ -296,6 +296,7 @@ async fn start(outcome: Outcome) -> (Fixture, Shared, tokio::task::JoinHandle<()
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let store = Store {
+        dense_names: std::collections::BTreeMap::new(),
         build: crate::gold::config::Build::default(),
         api: api::Client::new(&url, None, 1024 * 1024).unwrap(),
         max_node_bytes: 1024 * 1024,

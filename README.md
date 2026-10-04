@@ -1155,10 +1155,12 @@ requires compatible manifests across the group. This preserves canonical history
 but interrupts dense search during replacement. See
 [the activation contract](docs/silver-gold-configuration.md#durable-shared-group-configuration)
 for publication races and remaining lifecycle gates.
-Model changes through this path must retain the existing embedding dimensions.
-`--activate-gold` does not resize the Qdrant collection: a different dimension
-fails schema validation. Preserving the same group through a dimension change
-requires a migration path that is not implemented yet.
+Embedding dimension changes retain the same group and canonical history. Mash
+prepares an additional named dense field in the existing collection, then the
+same `--activate-gold` and source-free rebuild workflow selects and populates it.
+The original dense field and lexical data are retained. Preparation alone does
+not activate the new model; dense search requires current manifests after the
+switch, while compatible metadata and lexical queries remain available.
 
 Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
 contain credentials, paths, queries or fragments; redirects are disabled so keys
@@ -1183,8 +1185,9 @@ lexical ranking function; it differs from SQLite FTS5 ranking.
 The existing application core still fuses, reranks, and groups message candidates.
 All expressive filters apply inside Qdrant before candidate limits. HNSW is
 approximate; exact mode stays available without rebuilding the collection.
-Quantization is disabled. Existing incompatible dimensions, vector configuration,
-or payload index types are rejected without deleting data.
+Quantization is disabled. Foreign vector fields, incompatible vector settings,
+or payload index types are rejected without deleting data. Dimension-specific
+fields are prepared without changing the original vector space.
 
 Uploads stage immutable versions and atomically update a group catalogue with
 expected configuration, catalogue and node versions. Activation updates that same
@@ -1245,8 +1248,9 @@ dimensions = 1024
 The service configuration applies to every group it serves. Publishers and
 searchers must use the matching model and dimensions. Changing them rebuilds
 local embeddings on the next index pass; reindex all shared publishers before
-searching. Qdrant collections have fixed dimensions: use a new group ID when changing dimensions,
-then reindex its members. Model identifiers and dimensions prevent mismatched
+searching. For a shared model or dimension change, explicitly activate the server
+settings and rebuild each member's shared gold; a new group ID is unnecessary.
+Model identifiers and dimensions prevent mismatched
 queries from being compared with the stored embedding space.
 
 ## Automatic synchronization

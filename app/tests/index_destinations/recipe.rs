@@ -107,11 +107,15 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     assert_eq!(local_witness(&fixture), local);
     let title_scores = search_scores(&fixture);
     assert_ne!(title_scores, dialogue_scores);
+    let current = fixture.remote_node("split");
     let noop = fixture.json(&["index", "--all-history"], true);
     assert_eq!(noop["shared"]["state"], "published");
     assert_eq!(noop["shared"]["preparation"]["model_inferences"], 0);
-    assert_eq!(noop["shared"]["preparation"]["reused_threads"], 2);
-    assert_eq!(noop["shared"]["preparation"]["reused_embeddings"], 2);
+    // Already-current acknowledgement skips snapshot preparation entirely.
+    assert_eq!(noop["shared"]["preparation"]["reused_threads"], 0);
+    assert_eq!(noop["shared"]["preparation"]["reused_embeddings"], 0);
+    assert_eq!(noop["shared"]["preparation"]["upload_bytes"], 0);
+    assert_eq!(fixture.remote_node("split"), current);
     assert_eq!(search_scores(&fixture), title_scores);
     write_source(&fixture, "canonical updated compilation topic");
     let edited = fixture.json(&["index", "--all-history"], true);

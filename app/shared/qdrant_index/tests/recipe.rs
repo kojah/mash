@@ -2,6 +2,155 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_dimension_switch_preserves_silver_lexical_and_restart_recovery() {
+    for memory in [MemoryTier::Cached, MemoryTier::Cold] {
+        dimension_switch(memory).await;
+    }
+}
+
+async fn dimension_switch(memory: MemoryTier) {
+    let mut fixture = Fixture::with_memory(VectorIndex::default(), memory).await;
+    fixture
+        .store
+        .index(&fixture.identity, certified_source_upload(&fixture))
+        .await
+        .unwrap();
+    let original = fixture.store.load(&fixture.identity).await.unwrap();
+    let old_store = fixture.store.clone();
+    let old_identity = fixture.identity.clone();
+    let old_query = fixture.query();
+    if memory == MemoryTier::Cold {
+        // Simulate termination between named-field creation and placement setup.
+        reqwest::Client::new()
+            .put(format!(
+                "{}/collections/{}/vectors/dense_8?wait=true",
+                fixture.url,
+                collection(&fixture.identity.group_id, false)
+            ))
+            .json(&serde_json::json!({"dense":{"size":8,"distance":"Cosine"}}))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+    }
+    let connect = || {
+        Store::connect(
+            &fixture.url,
+            None,
+            std::slice::from_ref(&fixture.identity.group_id),
+            8,
+            64 * 1024 * 1024,
+            VectorIndex::default(),
+            memory,
+        )
+    };
+    let prepared = connect().await.unwrap();
+    let mut next = fixture.identity.clone();
+    next.dimensions = 8;
+    next.generation = crate::semantic::model_space("alternate-test", 8);
+    assert!(prepared.select_gold(&next, false).await.is_err());
+    assert!(
+        !old_store
+            .search(&old_identity, fixture.query())
+            .await
+            .unwrap()
+            .semantic
+            .is_empty()
+    );
+    // Restart after preparation. It must reuse the field without activating it.
+    fixture.store = connect().await.unwrap();
+    fixture.identity = next;
+    fixture
+        .store
+        .select_gold(&fixture.identity, true)
+        .await
+        .unwrap();
+    let freshness = fixture.store.freshness(&fixture.identity).await.unwrap();
+    assert!(freshness.nodes[0].lexical_current);
+    assert!(!freshness.nodes[0].gold_current);
+    assert!(old_store.search(&old_identity, old_query).await.is_err());
+    assert!(
+        old_store
+            .index(&old_identity, certified_source_upload(&fixture))
+            .await
+            .is_err()
+    );
+    let mut exact = fixture.query();
+    exact.intent = crate::gold::exact::Intent::ExactMention;
+    exact.vector.clear();
+    exact.generation.clear();
+    assert_eq!(
+        fixture
+            .store
+            .search(&fixture.identity, exact)
+            .await
+            .unwrap()
+            .lexical
+            .len(),
+        2
+    );
+    assert!(
+        fixture
+            .store
+            .search(&fixture.identity, fixture.query())
+            .await
+            .is_err()
+    );
+    dimension_roundtrip(&mut fixture, old_store, old_identity, &original).await;
+    fixture.cleanup().await;
+}
+
+async fn dimension_roundtrip(
+    fixture: &mut Fixture,
+    old_store: Store,
+    old_identity: Identity,
+    original: &Loaded,
+) {
+    use crate::shared::gold_rebuild::Embedding;
+    let silver = serde_json::to_vec(&original.data.silver()).unwrap();
+    let fingerprint = original.data.canonical_fingerprint().unwrap();
+    for dimensions in [8, 4] {
+        if dimensions == 4 {
+            fixture.store = old_store.clone();
+            fixture.identity = old_identity.clone();
+        }
+        let vectors = original
+            .data
+            .messages
+            .values()
+            .map(|m| {
+                let mut vector = m.vector.clone().unwrap();
+                vector.resize(dimensions, 0.0);
+                Embedding {
+                    message_id: m.id.clone(),
+                    vector,
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_artifact_switch(
+            fixture,
+            original,
+            &vectors,
+            &fingerprint,
+            crate::gold::config::Build::default(),
+        )
+        .await;
+        let after = fixture.store.load(&fixture.identity).await.unwrap();
+        assert_eq!(serde_json::to_vec(&after.data.silver()).unwrap(), silver);
+        let before = original.head.as_ref().unwrap();
+        let after = after.head.unwrap();
+        assert_eq!(after.revision, before.revision);
+        assert_eq!(after.instance, before.instance);
+        assert_eq!(after.silver_revision, before.silver_revision);
+        assert_eq!(after.source_silver, before.source_silver);
+        assert_eq!(after.last_synced_at, before.last_synced_at);
+        assert_eq!(after.last_updated_at, before.last_updated_at);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_model_generation_switch_preserves_silver_and_requires_rebuilding_gold() {
     use crate::shared::gold_rebuild::Embedding;
     let mut fixture = Fixture::new(VectorIndex::default()).await;

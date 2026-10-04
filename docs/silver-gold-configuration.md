@@ -1333,13 +1333,42 @@ metadata up to three times; same-node conflicts and configuration changes cannot
 rebase. The catalogue contains at most 512 node references, without canonical
 bodies or vectors. Recipe changes intentionally require explicit node rebuilds;
 there is no candidate staging or uninterrupted all-node replacement feature.
-Model generations with unchanged dimensions can use explicit activation and
-source-free gold rebuilding. An existing message collection has a fixed dense
-vector size: `--activate-gold` does not resize it, and startup rejects different
-dimensions before activation. A same-group dimension migration preserving silver
-is not implemented yet (`mash-q3e.5.1`). Broader cost measurements remain separate
-work. Frozen-vector contracts establish storage/identity behavior, not model
-quality, inference equivalence or complete native ingestion costs.
+Model and dimension changes use explicit activation and source-free gold
+rebuilding. Each group keeps its original `dense` field. When the configured
+dimension differs, startup prepares `dense_<dimensions>` in the same collection
+and directs subsequent dense publication and retrieval to that field. Existing
+silver snapshots, node references, lexical fields and publication authority stay
+in place; activation still conditionally replaces the existing group catalogue.
+Preparing a field does not change the active gold configuration. It can leave an
+unused schema field if activation is declined; the adapter does not automatically
+delete such fields or retain multiple active model profiles.
+
+Secondary field setup uses [Qdrant's named-vector creation endpoint](https://api.qdrant.tech/master/api-reference/collections/create-vector-name). Cached
+placement needs one operation; cold placement needs a subsequent parameter
+update, which startup can resume after validating the known field's other
+properties. The adapter validates all retained fields and rejects foreign names,
+dimension/name mismatches, incompatible metrics and physical settings. Switching
+back reuses the original field and requires another explicit source-free rebuild.
+Dense search intentionally pauses until compatible manifests are current;
+metadata and lexical retrieval remain available with the active API settings.
+Frozen-vector contracts establish storage/identity behavior, not model quality,
+inference equivalence or complete native ingestion costs. Real-model full-path
+switch coverage and broader cost measurements remain separate work.
+
+Validation on disposable Qdrant 1.19.1 covers 4-to-8-to-4 dimension switches with
+frozen vectors under cached and cold placement, interrupted secondary-field
+setup, declined activation, lexical availability while dense gold is stale,
+rebuilding without provider sources, stale-process rejection and unchanged
+serialized silver, source revisions, certificates and publication timestamps.
+The 629 standard tests passed. All 67 shared Qdrant contracts have passing
+coverage across the broad run and focused corrections, including the existing
+real-model relevance fixture. This is regression coverage, not evaluation of a
+new embedding model. The initial unbounded-worker test instance timed out during
+payload-index creation; the fresh bounded instance completed the contracts.
+Two outdated assertions were corrected: dimension preparation now succeeds
+without activation, and already-current acknowledgement skips all snapshot
+reuse/upload work. Original failure captures remain outside Git in
+`mash-artifacts/dimension-switch-*` alongside passing results.
 Activating several configured groups is per-group, not one cross-group transaction.
 
 Existing schema-1 groups require explicit `--activate-gold` migration even when
