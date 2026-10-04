@@ -1369,6 +1369,20 @@ Two outdated assertions were corrected: dimension preparation now succeeds
 without activation, and already-current acknowledgement skips all snapshot
 reuse/upload work. Original failure captures remain outside Git in
 `mash-artifacts/dimension-switch-*` alongside passing results.
+
+An additional CLI/HTTP contract uses a typed, controlled OpenAI-compatible
+embedding service with three synthetic model responses: A at four dimensions,
+B at four dimensions, and C at eight dimensions. It indexes with A, removes
+provider roots, explicitly activates and rebuilds B, C and A again, and checks
+shared fusion search and rejection of queries configured for a different model.
+All local witness tables and shared silver remain unchanged, including source
+revisions, coverage and timestamps. At C, it also executes the MCP shared rebuild
+and verifies its progress notifications. Existing real-model recipe/rebuild
+contracts run alongside this check. The HTTP fixture demonstrates complete
+configuration, request, publication and protocol behavior; its synthetic vectors
+do not establish trained-model inference equivalence, quality or hosted-provider
+availability. Actual alternate-model validation remains open; no credentials,
+paid calls, downloads or live model activation were involved.
 Activating several configured groups is per-group, not one cross-group transaction.
 
 Existing schema-1 groups require explicit `--activate-gold` migration even when

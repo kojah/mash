@@ -198,7 +198,7 @@ fn remote_score(fixture: &Fixture) -> f64 {
     })
 }
 
-fn remote_silver(fixture: &Fixture) -> Value {
+pub(super) fn remote_silver(fixture: &Fixture) -> Value {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let retained: Value = reqwest::Client::new()
             .get(format!(
@@ -234,7 +234,7 @@ const TABLES: &[&str] = &[
     "shared_publication",
 ];
 
-fn snapshot_local(connection: &Connection) {
+pub(super) fn snapshot_local(connection: &Connection) {
     for table in TABLES {
         connection
             .execute_batch(&format!(
@@ -244,7 +244,7 @@ fn snapshot_local(connection: &Connection) {
     }
 }
 
-fn assert_local_unchanged(connection: &Connection) {
+pub(super) fn assert_local_unchanged(connection: &Connection) {
     for table in TABLES {
         for query in [
             format!("SELECT * FROM {table} EXCEPT SELECT * FROM expected_{table}"),
@@ -268,7 +268,7 @@ impl Drop for Mcp {
     }
 }
 
-fn assert_mcp_rebuild(fixture: &Fixture) {
+pub(super) fn assert_mcp_rebuild(fixture: &Fixture) {
     use std::io::{BufRead, Write};
     use std::process::Stdio;
     let mut child = Mcp(

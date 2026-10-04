@@ -12,12 +12,35 @@ pub struct Server {
 }
 impl Server {
     pub fn new(root: &Path, group: &str, nodes: &[&str]) -> Self {
-        Self::start(root, group, nodes, "dialogue", false)
+        Self::start(root, group, nodes, "dialogue", false, None)
     }
     pub fn with_recipe(root: &Path, group: &str, nodes: &[&str], recipe: &str) -> Self {
-        Self::start(root, group, nodes, recipe, true)
+        Self::start(root, group, nodes, recipe, true, None)
     }
-    fn start(root: &Path, group: &str, nodes: &[&str], recipe: &str, activate: bool) -> Self {
+    pub fn with_embedding_space(
+        root: &Path,
+        group: &str,
+        nodes: &[&str],
+        model: &str,
+        dimensions: usize,
+    ) -> Self {
+        Self::start(
+            root,
+            group,
+            nodes,
+            "dialogue",
+            true,
+            Some((model, dimensions)),
+        )
+    }
+    fn start(
+        root: &Path,
+        group: &str,
+        nodes: &[&str],
+        recipe: &str,
+        activate: bool,
+        space: Option<(&str, usize)>,
+    ) -> Self {
         let path = root.join("server.toml");
         let credentials: Vec<_> = nodes
             .iter()
@@ -40,6 +63,13 @@ impl Server {
             "gold".into(),
             toml::toml! {build = {embedding_text = (recipe)}}.into(),
         );
+        if let Some((model, dimensions)) = space {
+            config.insert(
+                "embeddings".into(),
+                toml::toml! { model = (model) dimensions = (i64::try_from(dimensions).unwrap()) }
+                    .into(),
+            );
+        }
         std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
         let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"));
         command
@@ -225,7 +255,14 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
     );
     assert_eq!(before["nodes"], serde_json::json!([]));
     drop(active);
-    let restarted = Server::start(root.path(), &group, &["node"], "title-and-dialogue", false);
+    let restarted = Server::start(
+        root.path(),
+        &group,
+        &["node"],
+        "title-and-dialogue",
+        false,
+        None,
+    );
     let after: serde_json::Value = client
         .get(format!("{}/v1/freshness", restarted.url))
         .bearer_auth(token("node"))
