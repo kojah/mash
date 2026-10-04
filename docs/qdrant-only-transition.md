@@ -616,3 +616,38 @@ migration directory and `dev-installed-fae282b/` in the Xenia artifact directory
 Personal-Mac connectivity, Xenia's malformed source and retirement of the legacy
 Redis service remain outstanding; this rollout does not close fleet migration
 or the independent held-out search/topic quality gates.
+
+### Source-silver certificate rollout (2026-10-04)
+
+The shared API and dev Mac's installed CLI/MCP now run optimized LLVM releases
+of `5572b57`. Shared status exposes the retained full-snapshot source certificate,
+separately from the server-owned silver identity, upload revision and routed
+provider coverage. The dev Mac's certificate reports local silver revision
+627,495, interpretation version 1, `complete` and zero rejected sources. This
+is the existing certificate's ingestion scope; it does not certify all history
+from every provider or independently verify the provider filesystem.
+
+Before/after API freshness is exactly equal after removing the additive
+`source_silver` field. Counts, canonical fingerprints, manifests, revisions,
+timestamps, artifact states and unpublished members remain unchanged.
+Authenticated capabilities passed and unauthenticated freshness returned 401.
+Server configuration and environment-file hashes were unchanged. No model/gold
+activation, provider scan or index rebuild occurred. The prior frozen API
+executable and release record remain available for rollback.
+
+The API release build took 41.9 s; the native Mac build took 30.8 s using its
+existing Cargo target cache. Staged and installed Mac executables each passed
+default-path CLI shared status and a real stdio MCP `status(shared=true)` call,
+returning the same source certificate and ready metadata/lexical/dense states.
+The installer preserved the prior executable in `installed-rollback-5572b57/`
+and replaced only the binary. Configuration, SQLite and present WAL hashes
+were unchanged after staging, installation, status and search checks.
+
+Installed exact `cbioportal` searches returned two threads in shared and combined
+modes, in 257 ms and 261 ms respectively. Diagnostics reported every requested
+source/stage complete, with no fallback or incomplete shared context. These
+individual smoke observations are not percentiles or a quality comparison.
+The active API release record and private `dev-installed-5572b57/` captures
+retain build, source archive, native binary, status, MCP and data-hash evidence.
+Personal-Mac connectivity, Xenia source recovery, legacy Redis retirement and
+independent search/topic quality acceptance remain outstanding.
