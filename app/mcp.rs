@@ -285,7 +285,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Report index/model readiness. Set shared=true to include per-node last_synced_at and last_updated_at from the shared HTTP service backed by Qdrant."
+        description = "Report index/model readiness. Set shared=true to include each node's artifact publication states, last_synced_at and last_updated_at from the shared HTTP service backed by Qdrant. Artifact readiness does not certify complete provider history or installed query models."
     )]
     async fn status(&self, Parameters(request): Parameters<Status>) -> CallToolResult {
         self.execute(Operation::Status {

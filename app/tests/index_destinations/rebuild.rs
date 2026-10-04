@@ -268,6 +268,36 @@ impl Drop for Mcp {
     }
 }
 
+fn assert_mcp_status(
+    input: &mut std::process::ChildStdin,
+    receiver: &std::sync::mpsc::Receiver<Value>,
+) {
+    use std::io::Write;
+    writeln!(
+        input,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{
+        "name":"status","arguments":{"shared":true}}})
+    )
+    .unwrap();
+    input.flush().unwrap();
+    let status = receiver
+        .recv_timeout(std::time::Duration::from_secs(60))
+        .unwrap();
+    assert_eq!(status["id"], 5);
+    assert_ne!(status["result"]["isError"], true, "{status}");
+    let nodes = status["result"]["structuredContent"]["shared_index"]["nodes"]
+        .as_array()
+        .unwrap();
+    let node = nodes
+        .iter()
+        .find(|node| node["node_id"] == "split")
+        .unwrap();
+    assert_eq!(node["artifacts"]["metadata"], "ready");
+    assert_eq!(node["artifacts"]["lexical"], "ready");
+    assert_eq!(node["artifacts"]["dense"], "ready");
+}
+
 pub(super) fn assert_mcp_rebuild(fixture: &Fixture) {
     use std::io::{BufRead, Write};
     use std::process::Stdio;
@@ -334,6 +364,7 @@ pub(super) fn assert_mcp_rebuild(fixture: &Fixture) {
     assert!(phases.contains(&serde_json::json!("shared-silver-read")));
     assert!(phases.contains(&serde_json::json!("shared-embeddings")));
     assert!(phases.contains(&serde_json::json!("complete")));
+    assert_mcp_status(&mut input, &receiver);
     for (id, arguments) in [
         (
             3,

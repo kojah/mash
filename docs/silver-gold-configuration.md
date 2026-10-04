@@ -12,6 +12,34 @@ incomplete judgments from irrelevant results. Independent real-session review,
 evidence quality and complete build/query costs remain required; synthetic
 protocol and regression tests do not settle retrieval quality.
 
+## Shared artifact publication states
+
+`status --shared` and MCP `status` with `shared=true` include
+`shared_index.nodes[].artifacts`, using the same typed states as
+`local_artifacts`: `ready`, `stale`, `missing` and `disabled`.
+The shared service derives these during its existing stable freshness read;
+there are no extra Qdrant requests, model calls or indexing operations.
+
+For a retained node, metadata is ready only when both message metadata and the
+thread catalogue are current; otherwise it is stale. Lexical state is missing
+without its manifest, stale when the manifest/projection is not current, and
+ready when its existing silver-pinned publication checks pass. Dense state is
+disabled when the active build is lexical-only, regardless of retained vectors.
+Otherwise it is missing without a manifest, stale for a model/build/silver or
+coverage mismatch, and ready when the existing gold checks pass. An explicitly
+completed empty publication can be ready with zero results/vectors.
+
+Configured unpublished nodes remain in `unpublished_nodes`; they are not given
+fabricated artifact states. A service response without `artifacts` means unknown,
+not missing or ready. The existing manifests, current flags and freshness
+timestamps are retained. State computation does not change canonical data,
+build selection, stale query rejection or publication revisions.
+
+Artifact readiness is separate from provider-scan completeness, corpus coverage
+and query model availability. Continue inspecting the silver certificate/scoped
+coverage and unpublished nodes for those limitations. Topics have no production
+artifact here, and no readiness claim is made for them.
+
 ## Current silver contract and enrichment audit
 
 These are existing capabilities, not a claim that every provider supplies every

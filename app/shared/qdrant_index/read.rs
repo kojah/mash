@@ -4,6 +4,7 @@ use super::{
     AppError, Document, Identity, NodeHead, PointKind, Store, VectorIndex, api, collection,
     failure, point_id, sparse, tokens,
 };
+use crate::gold::readiness::{Artifacts, State};
 use crate::shared::{Freshness, NodeFreshness, protocol, validation::valid_id};
 use crate::storage::{Counts, Message, SearchHit};
 use std::collections::{BTreeMap, BTreeSet};
@@ -211,22 +212,35 @@ impl Store {
             if let Some(revision) = &h.silver_revision {
                 revision.validate()?;
             }
+            let lexical_current = h.metadata_ready
+                && h.catalog_ready
+                && h.lexical_manifest
+                    .as_ref()
+                    .is_some_and(|m| m.matches(h.silver_revision.as_ref()));
+            let gold_current = h.gold_manifest.as_ref().is_some_and(|m| {
+                m.matches(
+                    &self.build,
+                    &identity.generation,
+                    h.silver_revision.as_ref(),
+                )
+            }) && Some(h.counts.embeddings)
+                == h.counts.expected_dense(&self.build);
             nodes.push(NodeFreshness {
+                artifacts: Some(Artifacts {
+                    // A retained node head exists. Its metadata projection may
+                    // still need repair independently of lexical/dense gold.
+                    metadata: State::publication(true, h.metadata_ready && h.catalog_ready),
+                    lexical: State::publication(h.lexical_manifest.is_some(), lexical_current),
+                    dense: if self.build.dense_enabled() {
+                        State::publication(h.gold_manifest.is_some(), gold_current)
+                    } else {
+                        State::Disabled
+                    },
+                }),
                 lexical_manifest: h.lexical_manifest.clone(),
-                lexical_current: h.metadata_ready
-                    && h.catalog_ready
-                    && h.lexical_manifest
-                        .as_ref()
-                        .is_some_and(|m| m.matches(h.silver_revision.as_ref())),
+                lexical_current,
                 gold_manifest: h.gold_manifest.clone(),
-                gold_current: h.gold_manifest.as_ref().is_some_and(|m| {
-                    m.matches(
-                        &self.build,
-                        &identity.generation,
-                        h.silver_revision.as_ref(),
-                    )
-                }) && Some(h.counts.embeddings)
-                    == h.counts.expected_dense(&self.build),
+                gold_current,
                 silver_coverage: h.silver_coverage.clone(),
                 silver_revision: h.silver_revision.clone(),
                 node_id: node_id.clone(),

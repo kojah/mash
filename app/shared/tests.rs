@@ -3,6 +3,7 @@ use super::publication::{target, upload};
 use super::retrieval::{CONTEXT_DEADLINE, context_documents, prepare_search, search_prepared};
 use super::*;
 use crate::config::SharedConfig;
+use crate::gold::readiness::{Artifacts, State};
 use crate::search_results::SearchUnit;
 use crate::semantic::{self, Models};
 use crate::silver::{Conversation, NormalizedMessage};
@@ -16,6 +17,38 @@ mod decoding;
 mod diagnostics;
 mod publication_recovery;
 mod selections;
+
+#[test]
+fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
+    let response = r#"{
+        "node_id":"node", "revision":1, "last_synced_at":null,
+        "last_updated_at":null, "conversations":0, "messages":0
+    }"#;
+    let node: NodeFreshness = serde_json::from_str(response).unwrap();
+    assert!(node.artifacts.is_none());
+    let encoded = serde_json::to_string(&node).unwrap();
+    assert!(!encoded.contains("\"artifacts\""));
+    let reported = r#"{
+        "node_id":"node", "revision":1, "last_synced_at":null,
+        "last_updated_at":null, "conversations":0, "messages":0,
+        "artifacts":{"metadata":"ready","lexical":"stale","dense":"disabled"}
+    }"#;
+    let node: NodeFreshness = serde_json::from_str(reported).unwrap();
+    assert_eq!(
+        node.artifacts,
+        Some(Artifacts {
+            metadata: State::Ready,
+            lexical: State::Stale,
+            dense: State::Disabled,
+        })
+    );
+    let encoded = serde_json::to_string(&node).unwrap();
+    let decoded: NodeFreshness = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(decoded.artifacts, node.artifacts);
+    assert!(
+        serde_json::from_str::<NodeFreshness>(&reported.replace("disabled", "invented")).is_err()
+    );
+}
 
 #[tokio::test]
 async fn context_deadline_preserves_completed_evidence_without_waiting_for_every_wave() {

@@ -96,6 +96,9 @@ struct GroupGold {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct NodeFreshness {
+    /// None means the service did not report artifact publication states.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifacts: Option<crate::gold::readiness::Artifacts>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     lexical_manifest: Option<lexical_manifest::Manifest>,
     #[serde(default)]

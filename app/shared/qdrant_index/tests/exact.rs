@@ -1,4 +1,26 @@
 use super::*;
+use crate::gold::readiness::State;
+
+async fn assert_artifact_states(fixture: &Fixture, corrupt: u8) {
+    let freshness = fixture.store.freshness(&fixture.identity).await.unwrap();
+    let artifacts = freshness.nodes[0].artifacts.as_ref().unwrap();
+    assert_eq!(
+        artifacts.lexical,
+        if corrupt == 0 {
+            State::Missing
+        } else {
+            State::Stale
+        }
+    );
+    assert_eq!(
+        artifacts.metadata,
+        if matches!(corrupt, 1 | 2) {
+            State::Stale
+        } else {
+            State::Ready
+        }
+    );
+}
 
 fn exact_query(fixture: &Fixture, text: &str) -> protocol::Search {
     let mut query = fixture.query();
@@ -49,6 +71,15 @@ async fn assert_recipe_independent_lexical(fixture: &Fixture) {
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_exact_readiness_rejects_stale_artifacts_and_unpublished_staging() {
     let fixture = Fixture::new(VectorIndex::default()).await;
+    assert!(
+        fixture
+            .store
+            .freshness(&fixture.identity)
+            .await
+            .unwrap()
+            .nodes
+            .is_empty()
+    );
     fixture
         .store
         .index(&fixture.identity, fixture.file(1, "retained"))
@@ -95,6 +126,7 @@ async fn qdrant_exact_readiness_rejects_stale_artifacts_and_unpublished_staging(
             }
         }
         head(&fixture, changed).await;
+        assert_artifact_states(&fixture, corrupt).await;
         let error = fixture
             .store
             .search(&fixture.identity, exact_query(&fixture, "retained"))

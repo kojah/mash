@@ -1,4 +1,5 @@
 use super::*;
+use crate::gold::readiness::{Artifacts, State};
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
@@ -69,6 +70,14 @@ async fn dimension_switch(memory: MemoryTier) {
     let freshness = fixture.store.freshness(&fixture.identity).await.unwrap();
     assert!(freshness.nodes[0].lexical_current);
     assert!(!freshness.nodes[0].gold_current);
+    assert_eq!(
+        freshness.nodes[0].artifacts,
+        Some(crate::gold::readiness::Artifacts {
+            metadata: crate::gold::readiness::State::Ready,
+            lexical: crate::gold::readiness::State::Ready,
+            dense: crate::gold::readiness::State::Stale,
+        })
+    );
     assert!(old_store.search(&old_identity, old_query).await.is_err());
     assert!(
         old_store
@@ -386,7 +395,20 @@ async fn assert_artifact_switch(
         );
     }
     assert_eq!(store.capabilities(&fixture.identity).await.unwrap(), recipe);
-    assert!(store.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
+    let freshness = store.freshness(&fixture.identity).await.unwrap();
+    assert!(freshness.nodes[0].gold_current);
+    assert_eq!(
+        freshness.nodes[0].artifacts,
+        Some(Artifacts {
+            metadata: State::Ready,
+            lexical: State::Ready,
+            dense: if recipe.dense_enabled() {
+                State::Ready
+            } else {
+                State::Disabled
+            },
+        })
+    );
     let mut exact = fixture.query();
     exact.intent = crate::gold::exact::Intent::ExactMention;
     exact.vector.clear();
@@ -933,6 +955,14 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
             &fixture.identity.generation,
             head.silver_revision.as_ref()
         ));
+        assert_eq!(
+            store.freshness(&fixture.identity).await.unwrap().nodes[0].artifacts,
+            Some(Artifacts {
+                metadata: State::Ready,
+                lexical: State::Ready,
+                dense: State::Ready
+            })
+        );
         let result = store
             .search(&fixture.identity, fixture.query())
             .await

@@ -1,5 +1,6 @@
 //! Stable typed requests and responses shared by CLI, MCP and search worker.
 use crate::config::ConfigurationStatus;
+pub(super) use crate::gold::readiness::{Artifacts as LocalArtifacts, State as ArtifactState};
 use crate::provider::Provider;
 use crate::{semantic, shared};
 use serde::{Deserialize, Serialize};
@@ -219,34 +220,6 @@ pub(crate) struct StatusResponse {
     pub(super) shared: Option<shared::Publication>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared_index: Option<shared::Freshness>,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct LocalArtifacts {
-    pub(super) metadata: ArtifactState,
-    pub(super) lexical: ArtifactState,
-    pub(super) dense: ArtifactState,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum ArtifactState {
-    Missing,
-    Stale,
-    Ready,
-    Disabled,
-}
-
-impl ArtifactState {
-    pub(super) fn publication(present: bool, current: bool) -> Self {
-        if !present {
-            Self::Missing
-        } else if current {
-            Self::Ready
-        } else {
-            Self::Stale
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]

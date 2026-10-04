@@ -150,6 +150,13 @@ fn claude_copy_reconciliation_qdrant_routed() {
     claude_copy_reconciliation(true);
 }
 
+fn assert_ready_node(node: &Value, messages: u64) {
+    assert_eq!(node["messages"], messages);
+    assert_eq!(node["artifacts"]["metadata"], "ready");
+    assert_eq!(node["artifacts"]["lexical"], "ready");
+    assert_eq!(node["artifacts"]["dense"], "ready");
+}
+
 fn claude_copy_reconciliation(routed: bool) {
     let mut fixture = Fixture::new();
     fixture.models = std::env::var("MASH_TEST_MODELS_DIR").unwrap().into();
@@ -203,7 +210,7 @@ fn claude_copy_reconciliation(routed: bool) {
             .iter()
             .find(|node| node["node_id"] == "split")
             .unwrap();
-        assert_eq!(node["messages"], messages);
+        assert_ready_node(node, messages);
         if routed {
             fixture.assert_claude_scan("split");
         }
