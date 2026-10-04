@@ -97,14 +97,17 @@ impl<R: BufRead> BufRead for Counted<'_, R> {
 enum EnvelopeKind {
     #[serde(rename = "event_msg")]
     Event,
+    #[serde(rename = "compacted")]
+    Compacted,
     #[serde(other)]
     Other,
 }
-#[derive(Deserialize, PartialEq)]
+#[derive(Default, Deserialize, PartialEq)]
 enum EventKind {
     #[serde(rename = "item_completed")]
     Completed,
     #[serde(other)]
+    #[default]
     Other,
 }
 #[derive(Deserialize, PartialEq)]
@@ -127,9 +130,13 @@ struct Envelope {
 }
 #[derive(Deserialize)]
 struct Event {
-    #[serde(rename = "type")]
+    #[serde(default, rename = "type")]
     kind: EventKind,
-    item: Item,
+    item: Option<Item>,
+    // Compaction replays are not canonical dialogue in the ordinary parser.
+    // IgnoredAny validates every replay value without retaining its text.
+    replacement_history: Option<Vec<serde::de::IgnoredAny>>,
+    message: Option<serde::de::IgnoredAny>,
 }
 #[derive(Deserialize)]
 struct Item {
@@ -150,12 +157,18 @@ fn skip_event(reader: &mut impl BufRead) -> Result<bool, AppError> {
     let event: Envelope = serde_json::from_reader(BufReader::new(line)).map_err(|_| {
         AppError::configuration("invalid or oversized Codex lifecycle envelope; canonical records retain the 8 MiB ingestion limit")
     })?;
-    Ok(event.kind == EnvelopeKind::Event
-        && event.payload.kind == EventKind::Completed
-        && matches!(
-            event.payload.item.kind,
-            ItemKind::FileChange | ItemKind::CommandExecution
-        ))
+    Ok(match event.kind {
+        EnvelopeKind::Event => {
+            event.payload.kind == EventKind::Completed
+                && event.payload.item.is_some_and(|item| {
+                    matches!(item.kind, ItemKind::FileChange | ItemKind::CommandExecution)
+                })
+        }
+        EnvelopeKind::Compacted => {
+            event.payload.replacement_history.is_some() && event.payload.message.is_some()
+        }
+        EnvelopeKind::Other => false,
+    })
 }
 
 struct Line<'a, R> {

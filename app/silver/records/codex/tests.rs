@@ -8,6 +8,48 @@ fn event(kind: &str, body: &str) -> String {
 }
 
 #[test]
+fn oversized_compaction_replay_preserves_canonical_messages_and_line_numbers() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("replay.jsonl");
+    let first = r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"canonical before"}]}}"#;
+    let last = first.replace("canonical before", "canonical after");
+    let replay = format!(
+        r#"{{"timestamp":"2026-08-08T00:00:00Z","ordinal":5727,"type":"compacted","payload":{{"message":"summary","replacement_history":[{{"content":"{}"}}],"window_number":1}}}}"#,
+        "x".repeat(super::super::super::MAX_RECORD_BYTES + 1)
+    );
+    let input = format!("{first}\n{replay}\r\n{last}\n");
+    std::fs::write(&path, &input).unwrap();
+    let parsed = crate::silver::parsers::parse_codex(&path)
+        .unwrap()
+        .conversation
+        .unwrap();
+    let messages = parsed.messages.inline();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].content, "canonical before");
+    assert_eq!(messages[1].content, "canonical after");
+    let numbered = Lines::new(BufReader::new(Cursor::new(input)))
+        .numbered()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(numbered, vec![(1, first.to_owned()), (3, last)]);
+    for invalid in [
+        replay.replace(
+            "\"replacement_history\":[",
+            "\"replacement_history\":\"bad\",\"other\":[",
+        ),
+        replay.replace("\"type\":\"compacted\"", "\"type\":\"unknown\""),
+        replay[..replay.len() - 1].to_owned(),
+    ] {
+        assert!(
+            Lines::new(BufReader::new(Cursor::new(invalid)))
+                .next()
+                .unwrap()
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn oversized_tool_mirrors_are_validated_and_do_not_consume_following_messages() {
     for kind in ["FileChange", "CommandExecution"] {
         let large = event(kind, &"x".repeat(super::super::super::MAX_RECORD_BYTES + 1));
