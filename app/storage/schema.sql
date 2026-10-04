@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     UNIQUE (provider, source_key)
 );
 CREATE TABLE IF NOT EXISTS messages (
+    attachments TEXT NOT NULL DEFAULT '[]',
     storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -137,6 +138,7 @@ CREATE TABLE IF NOT EXISTS claude_sources (
 );
 CREATE INDEX IF NOT EXISTS claude_sources_conversation ON claude_sources(conversation_id, source_key);
 CREATE TABLE IF NOT EXISTS claude_source_messages (
+    attachments TEXT NOT NULL DEFAULT '[]',
     source_key TEXT NOT NULL REFERENCES claude_sources(source_key) ON DELETE CASCADE,
     message_id TEXT NOT NULL,
     parent_id TEXT,
@@ -147,6 +149,10 @@ CREATE TABLE IF NOT EXISTS claude_source_messages (
     PRIMARY KEY(source_key, message_id)
 ) WITHOUT ROWID;
 -- Gold readiness/invalidation metadata; silver commits invalidate this state.
+CREATE TABLE IF NOT EXISTS attachment_policy (
+    singleton INTEGER PRIMARY KEY CHECK (singleton=1),
+    fingerprint TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS derived_state (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     search_dirty INTEGER NOT NULL CHECK (search_dirty IN (0, 1)),

@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 39;
+pub(super) const SCHEMA_VERSION: i64 = 40;
 mod cline;
 
 const SCHEMA: &str = include_str!("schema.sql");
@@ -24,7 +24,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if matches!(version, 32..=38) {
+    if matches!(version, 32..=39) {
         return migrate_current_projections(connection, version);
     }
 
@@ -113,6 +113,7 @@ fn migrate_current_projections(connection: &Connection, version: i64) -> Result<
         .execute_batch(SCHEMA)
         .map_err(AppError::database)?;
     install_silver_contract(&transaction)?;
+    prepare_message_columns(&transaction)?;
     if version < 35 {
         cline::migrate(&transaction)?;
     }
@@ -155,6 +156,12 @@ fn prepare_message_columns(connection: &Connection) -> Result<(), AppError> {
     add_column_if_missing(
         connection,
         "messages",
+        "attachments",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )?;
+    add_column_if_missing(
+        connection,
+        "messages",
         "fingerprint",
         "TEXT NOT NULL DEFAULT ''",
     )?;
@@ -169,6 +176,12 @@ fn prepare_message_columns(connection: &Connection) -> Result<(), AppError> {
 }
 
 fn install_silver_contract(connection: &Connection) -> Result<(), AppError> {
+    add_column_if_missing(
+        connection,
+        "claude_source_messages",
+        "attachments",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )?;
     for (column, declaration) in [
         ("resume_generation", "TEXT"),
         ("resume_silver_revision", "INTEGER"),
@@ -301,6 +314,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
                 UNIQUE(provider, source_key)
              );
              CREATE TABLE messages_next (
+                attachments TEXT NOT NULL DEFAULT '[]',
                 storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 id TEXT NOT NULL UNIQUE,
                 conversation_id TEXT NOT NULL REFERENCES conversations_next(id) ON DELETE CASCADE,
@@ -320,7 +334,7 @@ fn rebuild_history_schema(connection: &Connection) -> Result<(), AppError> {
                        source_key, source_session
                 FROM conversations;
              INSERT INTO messages_next
-                SELECT rowid, id, conversation_id, ordinal, role, content, search_projection,
+                SELECT attachments, rowid, id, conversation_id, ordinal, role, content, search_projection,
                        created_at, context_parent, fingerprint
                 FROM messages;
              INSERT INTO message_embeddings_next(

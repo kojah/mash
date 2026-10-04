@@ -96,6 +96,7 @@ pub(crate) async fn index(
         } else {
             ingest_scan(
                 file.as_file_mut(),
+                database,
                 &state,
                 owner,
                 scan,
@@ -136,6 +137,7 @@ pub(crate) async fn index(
 )]
 async fn ingest_scan(
     file: &mut std::fs::File,
+    database: &Path,
     state: &NodeState,
     owner: &RoutedOwner,
     scan: &DirectScan,
@@ -195,8 +197,14 @@ async fn ingest_scan(
         let source = source.clone();
         let expected_stamp = stamp.clone();
         let provider = scan.provider;
+        let db = database.to_path_buf();
         let (parsed, stamp) = crate::blocking(move || {
-            DirectScan::parse_source_with_retries(provider, &source, expected_stamp)
+            let (mut parsed, stamp) =
+                DirectScan::parse_source_with_retries(provider, &source, expected_stamp)?;
+            if let Some(conversation) = &mut parsed.conversation {
+                crate::storage::Storage::open_catalog(&db)?.link_attachments(conversation)?;
+            }
+            Ok((parsed, stamp))
         })
         .await?;
         let size = stamp.size_bytes;

@@ -9,11 +9,11 @@ fn fixture() -> rusqlite::Connection {
                 title TEXT, project TEXT, repository TEXT);
              CREATE TABLE claude_source_messages (
                 source_key TEXT, message_id TEXT, parent_id TEXT, role TEXT,
-                content TEXT, projection TEXT, created_at INTEGER);
+                content TEXT, projection TEXT, created_at INTEGER, attachments TEXT NOT NULL DEFAULT '[]');
              INSERT INTO claude_sources VALUES
                 ('a','/a','thread','title a','project a','repository a'),
                 ('b','/b','thread','title b','project b','repository b');
-             INSERT INTO claude_source_messages VALUES
+             INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at) VALUES
                 ('a','root',NULL,'user','root text',NULL,10),
                 ('a','left','root','assistant','left text','left projection',20),
                 ('b','root',NULL,'user','root text',NULL,10),
@@ -84,7 +84,7 @@ fn streamed_contributions_reject_conflicts_and_late_decode_failures() {
     connection.execute("UPDATE claude_source_messages SET content='root text' WHERE source_key='b' AND message_id='root'", []).unwrap();
     connection
         .execute(
-            "INSERT INTO claude_source_messages VALUES ('b','z-late',NULL,'user',x'ff',NULL,40)",
+            "INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at) VALUES ('b','z-late',NULL,'user',x'ff',NULL,40)",
             [],
         )
         .unwrap();
@@ -118,6 +118,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
             .into_iter()
             .enumerate()
             .map(|(ordinal, id)| NormalizedMessage {
+                attachments: Vec::new(),
                 id: id.to_owned(),
                 ordinal: i64::try_from(ordinal).unwrap(),
                 context: crate::message_context::MessageContext::Linear,

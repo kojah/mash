@@ -47,9 +47,17 @@ pub(crate) fn batch(batch: &mut crate::shared::protocol::Batch) {
             for record in records {
                 record.content = text(&record.content);
                 record.projection = text(&record.projection);
+                attachments(&mut record.attachments);
             }
         }
         Batch::Tombstones { .. } => {}
+    }
+}
+
+pub(crate) fn attachments(records: &mut [crate::attachments::Metadata]) {
+    for record in records {
+        record.name = text(&record.name);
+        record.media_type = text(&record.media_type);
     }
 }
 

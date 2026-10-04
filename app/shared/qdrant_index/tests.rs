@@ -101,6 +101,7 @@ impl Fixture {
             Event::Batch(Batch::Messages {
                 records: (0..2)
                     .map(|i| MessageRecord {
+                        attachments: Vec::new(),
                         id: format!("message-{i}"),
                         conversation_id: "thread".into(),
                         ordinal: i,

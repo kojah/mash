@@ -8,6 +8,42 @@ use crate::shared;
 use crate::storage::Storage;
 use std::path::Path;
 
+pub(super) async fn list_attachments(
+    configuration: &ResolvedConfig,
+    database: &Path,
+    message: String,
+    node: Option<String>,
+) -> Result<crate::attachments::Listing, AppError> {
+    if let Some(node) = node {
+        shared::attachments::list(required_shared(configuration)?, &node, &message).await
+    } else {
+        let db = database.to_path_buf();
+        crate::blocking(move || Storage::open_catalog(&db)?.list_attachments(&message)).await
+    }
+}
+
+pub(super) async fn get_attachment(
+    configuration: &ResolvedConfig,
+    database: &Path,
+    message: String,
+    attachment: String,
+    node: Option<String>,
+) -> Result<crate::attachments::Retrieved, AppError> {
+    if let Some(node) = node {
+        shared::attachments::get(
+            required_shared(configuration)?,
+            &node,
+            &message,
+            &attachment,
+        )
+        .await
+    } else {
+        let db = database.to_path_buf();
+        crate::blocking(move || Storage::open_catalog(&db)?.get_attachment(&message, &attachment))
+            .await
+    }
+}
+
 pub(super) async fn view(
     configuration: &ResolvedConfig,
     database: &Path,
@@ -49,6 +85,7 @@ fn local_view(database_path: &Path, id: String, context: u32) -> Result<ViewResp
     let mut messages = storage.view(&id, context)?;
     for message in &mut messages {
         message.content = crate::redaction::text(&message.content);
+        message.attachments = storage.list_attachments(&message.id)?.attachments;
     }
     Ok(ViewResponse { id, messages })
 }

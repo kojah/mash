@@ -10,6 +10,7 @@ use crate::provider::{Provider, ProviderRoots};
 
 #[derive(Debug)]
 pub(super) struct ParsedDocument {
+    pub(super) attachments: crate::attachments::Configuration,
     pub(super) providers: ProviderRoots,
     pub(super) since_days: Option<u32>,
     pub(super) shared: Option<SharedConfig>,
@@ -23,6 +24,8 @@ pub(super) struct ParsedDocument {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawDocument {
+    #[serde(default)]
+    attachments: crate::attachments::Configuration,
     version: u32,
     providers: RawProviders,
     #[serde(default)]
@@ -68,6 +71,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         embeddings.validate()?;
     }
     raw.gold.validate()?;
+    raw.attachments.validate()?;
     if raw.index.all_history && raw.index.since_days.is_some() {
         return Err(AppError::configuration(
             "index all_history and since_days cannot both be specified",
@@ -134,6 +138,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     }
     validate_local_coverage(&raw, destination)?;
     Ok(ParsedDocument {
+        attachments: raw.attachments,
         providers: raw
             .providers
             .into_iter()

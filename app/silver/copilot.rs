@@ -396,6 +396,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
         let ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("too many Copilot messages"))?;
         messages.push(NormalizedMessage {
+            attachments: Vec::new(),
             id: super::parsers::stable_id(
                 "message",
                 &[Provider::Copilot.as_str(), &start.session_id, &record.id],

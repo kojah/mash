@@ -161,6 +161,7 @@ fn normalize(
                 continue;
             }
             messages.push(NormalizedMessage {
+                attachments: Vec::new(),
                 id: super::super::parsers::stable_id(
                     "message",
                     &["copilot-chat", id, &request.request_id, role.as_str()],

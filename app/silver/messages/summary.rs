@@ -72,6 +72,7 @@ mod tests {
         .enumerate()
         {
             rows.push(NormalizedMessage {
+                attachments: Vec::new(),
                 id: id.into(),
                 ordinal: i64::try_from(ordinal).unwrap(),
                 role: crate::role::Role::User,

@@ -51,7 +51,7 @@ WHERE conversation_id=sqlc.arg(conversation_id) ORDER BY source_key;
 SELECT source_key,source_path,conversation_id FROM claude_sources ORDER BY source_key;
 
 -- name: ClaudeContributionMessages :many
-SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at
+SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at,m.attachments
 FROM claude_source_messages m JOIN claude_sources s USING(source_key)
 WHERE s.conversation_id=sqlc.arg(conversation_id) ORDER BY m.message_id,m.source_key;
 
@@ -69,8 +69,8 @@ conversation_id=excluded.conversation_id,title=excluded.title,project=excluded.p
 DELETE FROM claude_source_messages WHERE source_key=sqlc.arg(source_key);
 
 -- name: InsertClaudeSourceMessage :exec
-INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at)
-VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),sqlc.arg(content),sqlc.narg(projection),sqlc.narg(created_at));
+INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments)
+VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),sqlc.arg(content),sqlc.narg(projection),sqlc.narg(created_at),sqlc.arg(attachments));
 
 -- name: DeleteClaudeSource :exec
 DELETE FROM claude_sources WHERE source_key=sqlc.arg(source_key);
@@ -99,6 +99,18 @@ SELECT COALESCE(search_projection,content) AS content FROM messages WHERE id=?1;
 
 -- name: Anchor :one
 SELECT conversation_id,ordinal,context_parent FROM messages WHERE id=?1;
+
+-- name: MessageAttachments :one
+SELECT attachments FROM messages WHERE id=?1;
+
+-- name: AttachmentCandidates :many
+SELECT id,attachments FROM messages WHERE attachments<>'[]' ORDER BY id;
+
+-- name: AttachmentPolicy :one
+SELECT fingerprint FROM attachment_policy WHERE singleton=1;
+
+-- name: SetAttachmentPolicy :exec
+INSERT INTO attachment_policy(singleton,fingerprint) VALUES(1,sqlc.arg(fingerprint)) ON CONFLICT(singleton) DO UPDATE SET fingerprint=excluded.fingerprint;
 
 -- name: ViewMessages :many
 SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM messages

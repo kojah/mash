@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 fn row(thread: &str, ordinal: i64) -> Message {
     Message {
+        attachments: Vec::new(),
         id: format!("{thread}-{ordinal}"),
         conversation_id: thread.into(),
         ordinal,

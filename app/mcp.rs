@@ -85,6 +85,21 @@ struct View {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+struct ListAttachments {
+    message_id: String,
+    shared: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct GetAttachment {
+    message_id: String,
+    attachment_id: String,
+    shared: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[allow(
     clippy::struct_excessive_bools,
     reason = "SDK arguments mirror CLI flags; core validates and uses enum-selected indexing modes"
@@ -229,6 +244,7 @@ impl Mash {
 
 fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResult {
     match result {
+        Ok(core::Response::GetAttachment(file)) => attachment_result(file),
         Ok(value) => match serde_json::to_value(&value) {
             Ok(json) if value.needs_retry() => CallToolResult::structured_error(json),
             Ok(json) => CallToolResult::structured(json),
@@ -245,6 +261,37 @@ fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResul
     }
 }
 
+fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
+    let uri = format!(
+        "mash-attachment://{}/{}",
+        file.message_id, file.attachment.id
+    );
+    let media_type = file.attachment.media_type.clone();
+    let block = if matches!(
+        media_type.as_str(),
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+    ) {
+        ContentBlock::image(file.data, media_type)
+    } else {
+        ContentBlock::resource(
+            rmcp::model::ResourceContents::blob(file.data, uri).with_mime_type(media_type),
+        )
+    };
+    match serde_json::to_value(crate::attachments::Listing {
+        message_id: file.message_id,
+        attachments: vec![file.attachment],
+    }) {
+        Ok(json) => {
+            let mut result = CallToolResult::structured(json);
+            result.content.push(block);
+            result
+        }
+        Err(_) => CallToolResult::error(vec![ContentBlock::text(
+            "failed to serialize attachment metadata",
+        )]),
+    }
+}
+
 #[tool_router]
 impl Mash {
     #[tool(
@@ -253,6 +300,34 @@ impl Mash {
     )]
     async fn watch_start(&self, Parameters(input): Parameters<WatchStart>) -> CallToolResult {
         watching::start(self.clone(), input.debounce_ms).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "List attachment metadata for a message without loading file contents or models. Omit shared for local evidence, or supply the publishing node ID for shared evidence. Returns stable attachment IDs, names, MIME types, sizes, redaction status and explicit availability, including not_uploaded for shared metadata without bytes. Only captured provider attachments are discoverable; reindex older histories to capture them."
+    )]
+    async fn list_attachments(
+        &self,
+        Parameters(input): Parameters<ListAttachments>,
+    ) -> CallToolResult {
+        self.execute(Operation::ListAttachments {
+            message_id: input.message_id,
+            shared: input.shared,
+        })
+        .await
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "Retrieve an attachment by message_id and attachment_id from list_attachments. Omit shared for local evidence, or supply the publishing node ID for uploaded shared files. Returns metadata plus native MCP image content or a base64 embedded resource, capped at 4 MiB per file. No arbitrary path reads or URL downloads. UTF-8 content is credential-redacted; binary images/PDFs are not sanitized. Missing or unretained files return an explicit error."
+    )]
+    async fn get_attachment(&self, Parameters(input): Parameters<GetAttachment>) -> CallToolResult {
+        self.execute(Operation::GetAttachment {
+            message_id: input.message_id,
+            attachment_id: input.attachment_id,
+            shared: input.shared,
+        })
+        .await
     }
 
     #[tool(

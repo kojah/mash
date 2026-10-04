@@ -13,6 +13,15 @@ error are not transport failures; changing transport does not repair the index.
 
 ## Find the conversation and inspect evidence
 
+When a message refers to an attachment, use `list_attachments` with its `message_id`,
+then `get_attachment` with a returned `attachment_id` when the file is relevant.
+For shared evidence, pass the same publishing node ID in `shared` to both tools;
+omit it for local evidence. Check availability first: shared metadata does not
+prove bytes were uploaded. Retrieval returns native image content or an embedded
+resource. Text views are credential-redacted; binary images/PDFs are not sanitized.
+Only captured provider attachments are available; do not infer file access from
+a path mentioned in prose. The CLI has no attachment retrieval subcommand.
+
 - For a named thread or a provider/time reference, start with `list_threads`.
   Use `title_contains`, provider/node filters and an activity range when known.
   MCP sorting uses `sort: "updated_at"` and `direction: "desc"`. A thread's

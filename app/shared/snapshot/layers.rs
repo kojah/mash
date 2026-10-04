@@ -33,6 +33,8 @@ pub(in crate::shared) struct Silver {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(in crate::shared) struct Message {
+    #[serde(default)]
+    pub(in crate::shared) attachments: Vec<crate::attachments::Metadata>,
     pub(in crate::shared) id: String,
     pub(in crate::shared) conversation_id: String,
     pub(in crate::shared) ordinal: i64,
@@ -71,6 +73,7 @@ impl Snapshot {
             messages.insert(
                 id,
                 MessageRecord {
+                    attachments: message.attachments,
                     id: message.id,
                     conversation_id: message.conversation_id,
                     ordinal: message.ordinal,
@@ -115,6 +118,8 @@ pub(in crate::shared) struct SilverRef<'a> {
 }
 #[derive(Serialize)]
 pub(in crate::shared) struct MessageRef<'a> {
+    #[serde(skip_serializing_if = "<[crate::attachments::Metadata]>::is_empty")]
+    attachments: &'a [crate::attachments::Metadata],
     id: &'a str,
     conversation_id: &'a str,
     ordinal: i64,
@@ -128,6 +133,7 @@ pub(in crate::shared) struct MessageRef<'a> {
 impl MessageRecord {
     pub(in crate::shared) fn silver_ref(&self) -> MessageRef<'_> {
         MessageRef {
+            attachments: &self.attachments,
             id: &self.id,
             conversation_id: &self.conversation_id,
             ordinal: self.ordinal,

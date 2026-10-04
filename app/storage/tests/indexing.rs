@@ -642,6 +642,7 @@ fn benchmark_fts_refresh_crossover() {
         let mut writer = Storage::open_writer(&benchmark_path).expect("writer");
         let messages = (0..25_000)
             .map(|index| crate::silver::NormalizedMessage {
+                attachments: Vec::new(),
                 id: format!("message-{index:05}"),
                 ordinal: i64::from(index),
                 context: crate::message_context::MessageContext::Linear,
@@ -853,6 +854,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
             .messages
             .inline_mut()
             .push(crate::silver::NormalizedMessage {
+                attachments: Vec::new(),
                 id: "reply".into(),
                 ordinal: shift + 1,
                 content: "original reply".into(),
@@ -865,6 +867,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
             value.messages.inline_mut().insert(
                 0,
                 crate::silver::NormalizedMessage {
+                    attachments: Vec::new(),
                     id: "inserted".into(),
                     ordinal: 0,
                     content: "recovered dialogue".into(),

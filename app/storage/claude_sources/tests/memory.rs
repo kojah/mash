@@ -62,6 +62,7 @@ fn benchmark_claude_contribution_memory() {
             claude::reconcile(rows.into_iter().map(|row| {
                 Ok((
                     NormalizedMessage {
+                        attachments: Vec::new(),
                         id: row.message_id,
                         ordinal: 0,
                         context: crate::message_context::MessageContext::Root,

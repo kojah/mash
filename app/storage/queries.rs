@@ -49,6 +49,7 @@ impl Storage {
             ));
         }
         Ok(Self {
+            attachments_config: crate::attachments::Configuration::default(),
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
@@ -95,6 +96,7 @@ impl Storage {
             });
         }
         let storage = Self {
+            attachments_config: crate::attachments::Configuration::default(),
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
@@ -262,6 +264,7 @@ impl Storage {
         Ok(rows
             .into_iter()
             .map(|row| Message {
+                attachments: Vec::new(),
                 id: row.id,
                 ordinal: row.ordinal,
                 role: row.role.into(),
@@ -321,6 +324,7 @@ impl Storage {
         Ok(rows
             .into_iter()
             .map(|row| Message {
+                attachments: Vec::new(),
                 id: row.id,
                 ordinal: row.ordinal,
                 role: row.role.into(),

@@ -17,6 +17,7 @@ fn conversation(content: &str) -> Conversation {
         created_at: Some(1),
         updated_at: Some(2),
         messages: vec![crate::silver::NormalizedMessage {
+            attachments: Vec::new(),
             id: "message-1".to_owned(),
             ordinal: 0,
             context: crate::message_context::MessageContext::Linear,
@@ -36,6 +37,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
         .enumerate()
         .map(
             |(ordinal, (id, content))| crate::silver::NormalizedMessage {
+                attachments: Vec::new(),
                 id: (*id).to_owned(),
                 ordinal: i64::try_from(ordinal).expect("test ordinal"),
                 context: crate::message_context::MessageContext::Linear,

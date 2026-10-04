@@ -197,6 +197,8 @@ impl ConversationRecord {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MessageRecord {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<crate::attachments::Metadata>,
     pub id: String,
     pub conversation_id: String,
     pub ordinal: i64,

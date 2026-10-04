@@ -7,6 +7,7 @@ fn fixture() -> Data {
     data.messages.insert(
         "message".into(),
         MessageRecord {
+            attachments: Vec::new(),
             id: "message".into(),
             conversation_id: "thread".into(),
             ordinal: 0,

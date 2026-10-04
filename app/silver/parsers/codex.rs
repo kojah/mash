@@ -110,6 +110,24 @@ impl Extractor {
 
 fn completed(raw: &Record) -> Option<ExtractedMessage> {
     let payload = raw.payload.as_ref()?;
+    let attachments = match payload.item.as_ref()? {
+        CompletedItem::UserMessage { content, .. } => content
+            .iter()
+            .filter_map(|item| match item {
+                UserText::Image { image_url } => Some(image_url.as_deref().map_or_else(
+                    || crate::attachments::Source::External {
+                        name: "image".into(),
+                        media_type: "application/octet-stream".into(),
+                    },
+                    |url| crate::attachments::url("image", url),
+                )),
+                UserText::LocalImage { path } => Some(crate::attachments::local_image(path)),
+                _ => None,
+            })
+            .take(crate::attachments::MAX_FILES)
+            .collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
     let (id, role, parts) = match payload.item.as_ref()? {
         CompletedItem::UserMessage { id, content } => (
             id,
@@ -118,7 +136,7 @@ fn completed(raw: &Record) -> Option<ExtractedMessage> {
                 .iter()
                 .filter_map(|item| match item {
                     UserText::Text { text } => Some(text.as_str()),
-                    UserText::Other => None,
+                    UserText::Other | UserText::Image { .. } | UserText::LocalImage { .. } => None,
                 })
                 .collect::<Vec<_>>(),
         ),
@@ -136,11 +154,23 @@ fn completed(raw: &Record) -> Option<ExtractedMessage> {
         CompletedItem::Other => return None,
     };
     let turn = payload.turn_id.as_deref()?;
+    let projection = parts.join("\n");
+    let dialogue_text = (!attachments.is_empty()).then(|| projection.clone());
+    let content = if attachments.is_empty() {
+        projection
+    } else {
+        std::iter::once(projection)
+            .filter(|s| !s.is_empty())
+            .chain(attachments.iter().map(|_| "[Attachment: image]".into()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     Some(ExtractedMessage {
+        attachments,
         source_id: Some(format!("completed:{turn}:{id}")),
         role,
-        content: parts.join("\n"),
-        dialogue_text: None,
+        content,
+        dialogue_text,
         created_at: parse_timestamp(raw.timestamp.as_deref()),
         session_id: payload.thread_id.clone(),
     })
@@ -181,6 +211,10 @@ fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
         _ => return None,
     };
     Some(ExtractedMessage {
+        attachments: payload
+            .content
+            .as_ref()
+            .map_or_else(Vec::new, json::Content::attachments),
         source_id: payload.id.clone().or_else(|| {
             payload
                 .call_id

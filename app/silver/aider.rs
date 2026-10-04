@@ -32,6 +32,7 @@ impl Turn {
         let clean = crate::silver::dialogue::visible(&role, &content);
         let dialogue_text = (clean.as_ref() != content).then(|| clean.into_owned());
         messages.push(NormalizedMessage {
+            attachments: Vec::new(),
             id: super::parsers::stable_id(
                 "message",
                 &[

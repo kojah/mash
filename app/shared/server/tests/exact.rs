@@ -11,6 +11,7 @@ use crate::{
 
 fn row(id: &str, ordinal: i64, content: &str, created_at: Option<i64>) -> MessageRecord {
     MessageRecord {
+        attachments: Vec::new(),
         id: id.into(),
         conversation_id: "conversation".into(),
         ordinal,
@@ -304,6 +305,7 @@ fn seed_core(database: &std::path::Path) {
         .into_iter()
         .filter(|m| ["old", "recent", "undated"].contains(&m.id.as_str()))
         .map(|m| crate::silver::NormalizedMessage {
+            attachments: Vec::new(),
             id: m.id,
             ordinal: m.ordinal,
             context: m.context,

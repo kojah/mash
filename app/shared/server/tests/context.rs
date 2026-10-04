@@ -23,6 +23,7 @@ async fn qdrant_small_tree_context_matches_large_view_with_unrelated_roots() {
                     records: batch
                         .iter()
                         .map(|&ordinal| MessageRecord {
+                            attachments: Vec::new(),
                             id: format!("message-{ordinal}"),
                             ordinal,
                             context: MessageContext::Root,
@@ -72,6 +73,7 @@ async fn qdrant_context_projects_multiple_topology_pages_and_fetches_selected_ba
     // multiple smaller retrieval batches.
     let records: Vec<_> = (0..1256)
         .map(|ordinal| MessageRecord {
+            attachments: Vec::new(),
             id: format!("message-{ordinal}"),
             ordinal,
             context: MessageContext::Linear,
@@ -170,6 +172,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
     ]
     .into_iter()
     .map(|(ordinal, context, content, projection)| MessageRecord {
+        attachments: Vec::new(),
         id: format!("message-{ordinal}"),
         conversation_id: "branch".into(),
         ordinal,

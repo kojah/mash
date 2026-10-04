@@ -76,6 +76,7 @@ fn seed(directory: &Path) -> std::path::PathBuf {
                 updated_at: Some(2),
                 messages: (0..length)
                     .map(|ordinal| NormalizedMessage {
+                        attachments: Vec::new(),
                         id: format!("{thread}-{}", 100 - ordinal),
                         ordinal,
                         context: crate::message_context::MessageContext::Linear,

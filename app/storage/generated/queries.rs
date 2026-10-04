@@ -1135,6 +1135,7 @@ pub struct ClaudeContributionMessagesRow {
     pub content: String,
     pub projection: Option<String>,
     pub created_at: Option<i64>,
+    pub attachments: String,
 }
 impl ClaudeContributionMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1146,6 +1147,7 @@ impl ClaudeContributionMessagesRow {
             content: row.get(4)?,
             projection: row.get(5)?,
             created_at: row.get(6)?,
+            attachments: row.get(7)?,
         })
     }
 }
@@ -1153,7 +1155,7 @@ pub struct ClaudeContributionMessages<'a> {
     conversation_id: &'a str,
 }
 impl<'a> ClaudeContributionMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at
+    pub const QUERY: &'static str = r"SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at,m.attachments
 FROM claude_source_messages m JOIN claude_sources s USING(source_key)
 WHERE s.conversation_id=?1 ORDER BY m.message_id,m.source_key";
     pub fn query_str(&self) -> &str {
@@ -1617,10 +1619,11 @@ pub struct InsertClaudeSourceMessage<'a> {
     content: &'a str,
     projection: Option<&'a str>,
     created_at: Option<i64>,
+    attachments: &'a str,
 }
 impl<'a> InsertClaudeSourceMessage<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at)
-VALUES(?1,?2,?3,?4,?5,?6,?7)";
+    pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments)
+VALUES(?1,?2,?3,?4,?5,?6,?7,?8)";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1644,22 +1647,24 @@ impl<'a> InsertClaudeSourceMessage<'a> {
             self.content,
             self.projection,
             self.created_at,
+            self.attachments,
         )
     }
 }
 impl<'a> InsertClaudeSourceMessage<'a> {
-    pub const fn builder() -> InsertClaudeSourceMessageBuilder<'a, ((), (), (), (), (), (), ())> {
+    pub const fn builder() -> InsertClaudeSourceMessageBuilder<'a, ((), (), (), (), (), (), (), ())>
+    {
         InsertClaudeSourceMessageBuilder {
-            fields: ((), (), (), (), (), (), ()),
+            fields: ((), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct InsertClaudeSourceMessageBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
+pub struct InsertClaudeSourceMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt>
+impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
     InsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1670,6 +1675,7 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     >
 {
@@ -1686,19 +1692,28 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     > {
-        let ((), message_id, parent_id, role, content, projection, created_at) = self.fields;
+        let ((), message_id, parent_id, role, content, projection, created_at, attachments) =
+            self.fields;
         let _phantom = self._phantom;
         InsertClaudeSourceMessageBuilder {
             fields: (
-                source_key, message_id, parent_id, role, content, projection, created_at,
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt>
+impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
     InsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1709,6 +1724,7 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     >
 {
@@ -1725,19 +1741,28 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     > {
-        let (source_key, (), parent_id, role, content, projection, created_at) = self.fields;
+        let (source_key, (), parent_id, role, content, projection, created_at, attachments) =
+            self.fields;
         let _phantom = self._phantom;
         InsertClaudeSourceMessageBuilder {
             fields: (
-                source_key, message_id, parent_id, role, content, projection, created_at,
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt>
+impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments>
     InsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1748,6 +1773,7 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     >
 {
@@ -1764,19 +1790,28 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     > {
-        let (source_key, message_id, (), role, content, projection, created_at) = self.fields;
+        let (source_key, message_id, (), role, content, projection, created_at, attachments) =
+            self.fields;
         let _phantom = self._phantom;
         InsertClaudeSourceMessageBuilder {
             fields: (
-                source_key, message_id, parent_id, role, content, projection, created_at,
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt>
+impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachments>
     InsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1787,6 +1822,7 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     >
 {
@@ -1803,19 +1839,28 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt>
             Content,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     > {
-        let (source_key, message_id, parent_id, (), content, projection, created_at) = self.fields;
+        let (source_key, message_id, parent_id, (), content, projection, created_at, attachments) =
+            self.fields;
         let _phantom = self._phantom;
         InsertClaudeSourceMessageBuilder {
             fields: (
-                source_key, message_id, parent_id, role, content, projection, created_at,
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt>
+impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachments>
     InsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1826,6 +1871,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt>
             (),
             Projection,
             CreatedAt,
+            Attachments,
         ),
     >
 {
@@ -1842,22 +1888,40 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt>
             &'a str,
             Projection,
             CreatedAt,
+            Attachments,
         ),
     > {
-        let (source_key, message_id, parent_id, role, (), projection, created_at) = self.fields;
+        let (source_key, message_id, parent_id, role, (), projection, created_at, attachments) =
+            self.fields;
         let _phantom = self._phantom;
         InsertClaudeSourceMessageBuilder {
             fields: (
-                source_key, message_id, parent_id, role, content, projection, created_at,
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt>
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
     InsertClaudeSourceMessageBuilder<
         'a,
-        (SourceKey, MessageId, ParentId, Role, Content, (), CreatedAt),
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            (),
+            CreatedAt,
+            Attachments,
+        ),
     >
 {
     pub fn projection(
@@ -1873,19 +1937,28 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt>
             Content,
             Option<&'a str>,
             CreatedAt,
+            Attachments,
         ),
     > {
-        let (source_key, message_id, parent_id, role, content, (), created_at) = self.fields;
+        let (source_key, message_id, parent_id, role, content, (), created_at, attachments) =
+            self.fields;
         let _phantom = self._phantom;
         InsertClaudeSourceMessageBuilder {
             fields: (
-                source_key, message_id, parent_id, role, content, projection, created_at,
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection>
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
     InsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1896,6 +1969,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection>
             Content,
             Projection,
             (),
+            Attachments,
         ),
     >
 {
@@ -1912,13 +1986,71 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection>
             Content,
             Projection,
             Option<i64>,
+            Attachments,
         ),
     > {
-        let (source_key, message_id, parent_id, role, content, projection, ()) = self.fields;
+        let (source_key, message_id, parent_id, role, content, projection, (), attachments) =
+            self.fields;
         let _phantom = self._phantom;
         InsertClaudeSourceMessageBuilder {
             fields: (
-                source_key, message_id, parent_id, role, content, projection, created_at,
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
+    InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+            (),
+        ),
+    >
+{
+    pub fn attachments(
+        self,
+        attachments: &'a str,
+    ) -> InsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+            &'a str,
+        ),
+    > {
+        let (source_key, message_id, parent_id, role, content, projection, created_at, ()) =
+            self.fields;
+        let _phantom = self._phantom;
+        InsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
             ),
             _phantom,
         }
@@ -1935,11 +2067,12 @@ impl<'a>
             &'a str,
             Option<&'a str>,
             Option<i64>,
+            &'a str,
         ),
     >
 {
     pub fn build(self) -> InsertClaudeSourceMessage<'a> {
-        let (source_key, message_id, parent_id, role, content, projection, created_at) =
+        let (source_key, message_id, parent_id, role, content, projection, created_at, attachments) =
             self.fields;
         InsertClaudeSourceMessage {
             source_key,
@@ -1949,6 +2082,7 @@ impl<'a>
             content,
             projection,
             created_at,
+            attachments,
         }
     }
 }
@@ -2553,6 +2687,253 @@ impl<'a> AnchorBuilder<'a, (&'a str,)> {
     pub fn build(self) -> Anchor<'a> {
         let (id,) = self.fields;
         Anchor { id }
+    }
+}
+pub struct MessageAttachmentsRow {
+    pub attachments: String,
+}
+impl MessageAttachmentsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            attachments: row.get(0)?,
+        })
+    }
+}
+pub struct MessageAttachments<'a> {
+    id: &'a str,
+}
+impl<'a> MessageAttachments<'a> {
+    pub const QUERY: &'static str = r"SELECT attachments FROM messages WHERE id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> MessageAttachments<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<MessageAttachmentsRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), MessageAttachmentsRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<MessageAttachmentsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), MessageAttachmentsRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl<'a> MessageAttachments<'a> {
+    pub const fn builder() -> MessageAttachmentsBuilder<'a, ((),)> {
+        MessageAttachmentsBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct MessageAttachmentsBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> MessageAttachmentsBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> MessageAttachmentsBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        MessageAttachmentsBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> MessageAttachmentsBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> MessageAttachments<'a> {
+        let (id,) = self.fields;
+        MessageAttachments { id }
+    }
+}
+pub struct AttachmentCandidatesRow {
+    pub id: String,
+    pub attachments: String,
+}
+impl AttachmentCandidatesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            attachments: row.get(1)?,
+        })
+    }
+}
+pub struct AttachmentCandidates;
+impl AttachmentCandidates {
+    pub const QUERY: &'static str =
+        r"SELECT id,attachments FROM messages WHERE attachments<>'[]' ORDER BY id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl AttachmentCandidates {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<AttachmentCandidatesRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), AttachmentCandidatesRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl AttachmentCandidates {
+    pub const fn builder() -> AttachmentCandidatesBuilder<'static, ()> {
+        AttachmentCandidatesBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct AttachmentCandidatesBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> AttachmentCandidatesBuilder<'a, ()> {
+    pub fn build(self) -> AttachmentCandidates {
+        let () = self.fields;
+        AttachmentCandidates {}
+    }
+}
+pub struct AttachmentPolicyRow {
+    pub fingerprint: String,
+}
+impl AttachmentPolicyRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            fingerprint: row.get(0)?,
+        })
+    }
+}
+pub struct AttachmentPolicy;
+impl AttachmentPolicy {
+    pub const QUERY: &'static str = r"SELECT fingerprint FROM attachment_policy WHERE singleton=1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl AttachmentPolicy {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<AttachmentPolicyRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), AttachmentPolicyRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<AttachmentPolicyRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), AttachmentPolicyRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl AttachmentPolicy {
+    pub const fn builder() -> AttachmentPolicyBuilder<'static, ()> {
+        AttachmentPolicyBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct AttachmentPolicyBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> AttachmentPolicyBuilder<'a, ()> {
+    pub fn build(self) -> AttachmentPolicy {
+        let () = self.fields;
+        AttachmentPolicy {}
+    }
+}
+pub struct SetAttachmentPolicyRow {}
+impl SetAttachmentPolicyRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct SetAttachmentPolicy<'a> {
+    fingerprint: &'a str,
+}
+impl<'a> SetAttachmentPolicy<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO attachment_policy(singleton,fingerprint) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET fingerprint=excluded.fingerprint";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> SetAttachmentPolicy<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.fingerprint,)
+    }
+}
+impl<'a> SetAttachmentPolicy<'a> {
+    pub const fn builder() -> SetAttachmentPolicyBuilder<'a, ((),)> {
+        SetAttachmentPolicyBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct SetAttachmentPolicyBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> SetAttachmentPolicyBuilder<'a, ((),)> {
+    pub fn fingerprint(self, fingerprint: &'a str) -> SetAttachmentPolicyBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        SetAttachmentPolicyBuilder {
+            fields: (fingerprint,),
+            _phantom,
+        }
+    }
+}
+impl<'a> SetAttachmentPolicyBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> SetAttachmentPolicy<'a> {
+        let (fingerprint,) = self.fields;
+        SetAttachmentPolicy { fingerprint }
     }
 }
 pub struct ViewMessagesRow {

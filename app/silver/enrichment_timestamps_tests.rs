@@ -19,6 +19,7 @@ fn selected_message_boundaries_are_traceable_and_legacy_evidence_is_not_invented
             .enumerate()
             .map(
                 |(ordinal, (id, timestamp))| super::super::NormalizedMessage {
+                    attachments: Vec::new(),
                     id: id.into(),
                     ordinal: i64::try_from(ordinal).unwrap(),
                     role: crate::role::Role::User,

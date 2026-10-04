@@ -12,6 +12,7 @@ mod claude;
 mod codex;
 
 struct ExtractedMessage {
+    attachments: Vec<crate::attachments::Source>,
     source_id: Option<String>,
     role: crate::role::Role,
     content: String,
@@ -36,6 +37,7 @@ fn parse_claude_file(path: &Path, file: File) -> Result<ParsedFile, AppError> {
         let message = raw.message.as_ref()?;
         let (content, dialogue_text) = message.content.as_ref()?.projected()?;
         Some(ExtractedMessage {
+            attachments: message.content.as_ref()?.attachments(),
             source_id: raw.uuid.clone(),
             role: message
                 .role
@@ -128,6 +130,7 @@ fn parse_jsonl(
         }
         let message_key = extracted.source_id.unwrap_or_else(|| ordinal.to_string());
         messages.push(NormalizedMessage {
+            attachments: extracted.attachments,
             id: stable_id(
                 "message",
                 &[provider.as_str(), &path.to_string_lossy(), &message_key],

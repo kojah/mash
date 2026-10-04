@@ -97,6 +97,7 @@ pub(super) fn normalize(
         String::new()
     };
     Ok(Some(NormalizedMessage {
+        attachments: Vec::new(),
         id: parsers::stable_id(
             "message",
             &[

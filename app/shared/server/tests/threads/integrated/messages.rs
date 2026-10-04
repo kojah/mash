@@ -25,6 +25,7 @@ fn conversation(id: &str, provider: Provider) -> Conversation {
         created_at: Some(1000),
         updated_at: Some(2000),
         messages: vec![NormalizedMessage {
+            attachments: Vec::new(),
             id: format!("{id}-message"),
             ordinal: 0,
             context: crate::message_context::MessageContext::Linear,

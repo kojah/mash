@@ -100,6 +100,7 @@ impl Messages {
         );
         *occurrence += 1;
         self.items.push(NormalizedMessage {
+            attachments: Vec::new(),
             id: message_id,
             ordinal: i64::try_from(self.items.len()).map_err(|_| invalid("too many messages"))?,
             context: MessageContext::Linear,

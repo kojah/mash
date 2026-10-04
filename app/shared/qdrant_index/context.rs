@@ -267,6 +267,7 @@ impl Selection {
             output.insert(
                 m.ordinal,
                 Message {
+                    attachments: m.attachments,
                     id: m.id,
                     ordinal: m.ordinal,
                     role: m.role,

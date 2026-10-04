@@ -119,6 +119,7 @@ pub(super) fn read(
             ));
         }
         messages.push(NormalizedMessage {
+            attachments: Vec::new(),
             id: crate::silver::parsers::stable_id(
                 "message",
                 &[Provider::Cursor.as_str(), "ide", id, &bubble.id],

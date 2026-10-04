@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 mod admission;
 mod antigravity;
+mod attachments;
 mod context;
 mod correlation;
 mod cursor;
@@ -46,6 +47,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
     let messages = Provider::ALL
         .iter()
         .map(|provider| MessageRecord {
+            attachments: Vec::new(),
             id: format!("{provider}-message"),
             conversation_id: provider.as_str().into(),
             ordinal: 0,
@@ -324,6 +326,7 @@ async fn remote_space_contract(service: Service) {
 }
 
 struct Service {
+    _attachments: tempfile::TempDir,
     url: String,
     group: String,
     task: tokio::task::JoinHandle<()>,
@@ -607,7 +610,9 @@ impl Service {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let uploads = Arc::new(tokio::sync::Semaphore::new(4));
+        let attachments = tempfile::tempdir().unwrap();
         let app = App {
+            attachments_dir: Some(attachments.path().to_path_buf()),
             store,
             identities,
             uploads: uploads.clone(),
@@ -616,6 +621,7 @@ impl Service {
             axum::serve(listener, router(app)).await.unwrap();
         });
         Self {
+            _attachments: attachments,
             url,
             group,
             task,

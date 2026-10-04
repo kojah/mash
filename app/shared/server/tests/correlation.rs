@@ -24,6 +24,7 @@ struct TraceSpan {
 
 fn traced_router(dispatcher: tracing::Dispatch) -> Router {
     let app = App {
+        attachments_dir: None,
         store: Store::unavailable(),
         identities: Arc::new(HashMap::from([(
             blake3::hash(FIRST.as_bytes()),

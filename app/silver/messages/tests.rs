@@ -5,6 +5,7 @@ fn fixtures() -> Vec<NormalizedMessage> {
         .into_iter()
         .enumerate()
         .map(|(index, projection)| NormalizedMessage {
+            attachments: Vec::new(),
             id: format!("message-{index}"),
             ordinal: i64::try_from(index).unwrap(),
             context: if index == 0 {

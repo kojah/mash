@@ -523,6 +523,7 @@ mod tests {
             created_at: None,
             updated_at: None,
             messages: vec![super::super::NormalizedMessage {
+                attachments: Vec::new(),
                 id: "first".into(),
                 ordinal: 0,
                 role: crate::role::Role::User,

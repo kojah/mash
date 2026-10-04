@@ -94,6 +94,15 @@ pub(crate) enum Operation {
         id: String,
     },
     ModelsInstall,
+    ListAttachments {
+        message_id: String,
+        shared: Option<String>,
+    },
+    GetAttachment {
+        message_id: String,
+        attachment_id: String,
+        shared: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -107,6 +116,8 @@ pub(crate) enum Response {
     Status(Box<StatusResponse>),
     Forget(ForgetResponse),
     ModelsInstall(ModelsInstallResponse),
+    ListAttachments(crate::attachments::Listing),
+    GetAttachment(crate::attachments::Retrieved),
 }
 
 #[derive(Debug, Serialize)]

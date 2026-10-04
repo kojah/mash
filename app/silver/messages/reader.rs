@@ -12,6 +12,7 @@ use crate::role::Role;
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Header {
+    attachments: Vec<crate::attachments::Source>,
     id: String,
     ordinal: i64,
     context: MessageContext,
@@ -26,6 +27,7 @@ pub(super) fn write_record(
     message: &NormalizedMessage,
 ) -> Result<(), AppError> {
     let header = Header {
+        attachments: message.attachments.clone(),
         id: message.id.clone(),
         ordinal: message.ordinal,
         context: message.context,
@@ -110,6 +112,7 @@ fn record(reader: &mut impl Read, length: u64) -> Result<NormalizedMessage, AppE
         return Err(invalid());
     }
     Ok(NormalizedMessage {
+        attachments: header.attachments,
         id: header.id,
         ordinal: header.ordinal,
         context: header.context,
@@ -189,6 +192,7 @@ mod tests {
     #[test]
     fn framing_rejects_impossible_lengths_and_invalid_utf8_before_exposing_a_message() {
         let message = NormalizedMessage {
+            attachments: Vec::new(),
             id: "id".to_owned(),
             ordinal: 0,
             context: MessageContext::Root,
@@ -220,6 +224,7 @@ mod tests {
         assert!(record(&mut changed_checksum.as_slice(), length).is_err());
         for content_bytes in [u64::MAX, 1] {
             let header = Header {
+                attachments: Vec::new(),
                 id: "id".to_owned(),
                 ordinal: 0,
                 context: MessageContext::Root,

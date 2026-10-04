@@ -18,6 +18,7 @@ struct AuthorizedNode {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Configuration {
+    pub(super) attachments_dir: Option<std::path::PathBuf>,
     version: u32,
     #[serde(default)]
     pub(super) gold: Gold,
@@ -105,6 +106,15 @@ pub(super) fn identities(
         }
     }
     crate::shared::snapshot_budget::Budget::validate(config.max_mutation_snapshot_mib)?;
+    if config
+        .attachments_dir
+        .as_ref()
+        .is_some_and(|path| !path.is_absolute())
+    {
+        return Err(AppError::configuration(
+            "attachments_dir must be an absolute path",
+        ));
+    }
     if !(1..=4096).contains(&config.qdrant_max_node_mib) {
         return Err(AppError::configuration(
             "qdrant_max_node_mib must be between 1 and 4096",

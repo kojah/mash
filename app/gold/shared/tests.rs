@@ -58,6 +58,7 @@ fn conversation() -> Conversation {
         messages: Messages::stage_fixture(
             (0..37)
                 .map(|ordinal| NormalizedMessage {
+                    attachments: Vec::new(),
                     id: format!("message-{ordinal}"),
                     ordinal,
                     context: if ordinal == 0 {

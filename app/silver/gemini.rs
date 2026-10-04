@@ -92,6 +92,7 @@ impl Replay {
         // runs only on final saved versions, after all updates and rewinds.
         let (role, text) = message.normalized();
         let message = NormalizedMessage {
+            attachments: Vec::new(),
             id: message.id,
             ordinal: 0,
             context: MessageContext::Linear,

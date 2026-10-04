@@ -67,6 +67,8 @@ pub(super) fn claude_thread(
             let row = row.map_err(AppError::database)?;
             Ok((
                 NormalizedMessage {
+                    attachments: serde_json::from_str(&row.attachments)
+                        .map_err(|_| AppError::database_data("invalid Claude attachments"))?,
                     id: row.message_id,
                     ordinal: 0,
                     context: crate::message_context::MessageContext::Root,
@@ -164,7 +166,16 @@ impl Storage {
                 let parent = lineage.get(&message.id).ok_or_else(|| {
                     AppError::internal("Claude contribution has incomplete ancestry")
                 })?;
+                let retained = storage.retain_attachments(&message)?;
+                let attachments = serde_json::to_string(
+                    &retained
+                        .into_iter()
+                        .map(|metadata| crate::attachments::Source::Retained { metadata })
+                        .collect::<Vec<_>>(),
+                )
+                .map_err(|_| AppError::internal("serialize Claude attachments"))?;
                 let query = sql::InsertClaudeSourceMessage::builder()
+                    .attachments(&attachments)
                     .source_key(&key)
                     .message_id(&message.id)
                     .parent_id(parent.as_deref())

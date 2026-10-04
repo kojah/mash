@@ -50,6 +50,7 @@ pub(super) fn load_from_paths(
         Err(error) if error.kind() == io::ErrorKind::NotFound && !explicit => {
             let providers = built_in_providers()?;
             return Ok(ResolvedConfig {
+                attachments: crate::attachments::Configuration::default(),
                 path,
                 loaded: false,
                 shared: None,
@@ -96,6 +97,7 @@ pub(super) fn load_from_paths(
 
     let parsed = parse_document(&bytes)?;
     Ok(ResolvedConfig {
+        attachments: parsed.attachments,
         path: canonical,
         loaded: true,
         providers: parsed.providers,

@@ -100,6 +100,7 @@ fn normalize(
         String::new()
     };
     Ok(Some(NormalizedMessage {
+        attachments: Vec::new(),
         id: parsers::stable_id(
             "message",
             &[Provider::Windsurf.as_str(), session, &position.to_string()],

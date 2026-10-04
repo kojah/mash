@@ -18,7 +18,7 @@ use std::time::Instant;
 use crate::{gold::local as gold, silver::local as silver};
 
 enum LocalInput {
-    ProviderFiles(history::IndexOptions),
+    ProviderFiles(history::IndexOptions, crate::attachments::Configuration),
     StoredSilver,
 }
 
@@ -50,6 +50,7 @@ pub(super) async fn run(
     let embeddings = configuration.embeddings.clone();
     let build = configuration.gold.build.clone();
     let all_sources = options.clone();
+    let attachments = configuration.attachments.clone();
     let mut result = crate::blocking(move || {
         history::validate_output_path(&db, &all_sources)?;
         index(
@@ -57,7 +58,7 @@ pub(super) async fn run(
             &root,
             embeddings,
             full,
-            LocalInput::ProviderFiles(local_options),
+            LocalInput::ProviderFiles(local_options, attachments),
             &build,
         )
     })
@@ -78,6 +79,14 @@ pub(super) async fn run(
             )
             .await,
         );
+    }
+    if configuration.attachments.share_files
+        && let Some(publication) = &mut result.shared
+        && !publication.is_pending()
+        && let Some(config) = configuration.shared.as_ref()
+        && let Err(error) = shared::attachments::publish(database, config).await
+    {
+        publication.attachment_failure(error);
     }
     result.total_milliseconds = elapsed_milliseconds(started);
     emit_finished(&result);
@@ -194,7 +203,8 @@ fn index(
     }
     let storage_setup_milliseconds = elapsed_milliseconds(storage_started);
     let (summary, certificate, ingestion_milliseconds) = match input {
-        LocalInput::ProviderFiles(options) => {
+        LocalInput::ProviderFiles(options, attachments) => {
+            storage.configure_attachments(attachments)?;
             let source = silver::ingest(&mut storage, &options)?;
             (source.summary, source.certificate, source.milliseconds)
         }

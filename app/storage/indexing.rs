@@ -429,8 +429,8 @@ impl Storage {
             .prepare_cached(
                 "INSERT INTO messages(
                     id, conversation_id, ordinal, role, content, search_projection,
-                    created_at, fingerprint, context_parent
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                    created_at, fingerprint, context_parent, attachments
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(id) DO UPDATE SET
                     conversation_id = excluded.conversation_id,
                     ordinal = excluded.ordinal,
@@ -439,7 +439,8 @@ impl Storage {
                     search_projection = excluded.search_projection,
                     created_at = excluded.created_at,
                     fingerprint = excluded.fingerprint,
-                    context_parent = excluded.context_parent",
+                    context_parent = excluded.context_parent,
+                    attachments = excluded.attachments",
             )
             .map_err(AppError::database)?;
         let mut stage_fts = self
@@ -474,6 +475,8 @@ impl Storage {
             if self.search_updates != SearchUpdates::FullRebuild {
                 self.stage_semantic_message(&message.id, None)?;
             }
+            let attachments = serde_json::to_string(&self.retain_attachments(&message)?)
+                .map_err(|_| AppError::internal("serialize attachments"))?;
             upsert_message
                 .execute(params![
                     message.id,
@@ -485,6 +488,7 @@ impl Storage {
                     message.created_at,
                     fingerprint,
                     message.context.parent(),
+                    attachments,
                 ])
                 .map_err(AppError::database)?;
             if self.search_updates != SearchUpdates::FullRebuild {
@@ -1026,6 +1030,12 @@ fn message_fingerprint(message: &crate::silver::NormalizedMessage) -> String {
     }
     update_hash(&mut hasher, message.role.as_str());
     update_hash(&mut hasher, &message.content);
+    for attachment in &message.attachments {
+        // Source data is typed and serialized deterministically, including changes to embedded bytes.
+        if let Ok(encoded) = serde_json::to_string(attachment) {
+            update_hash(&mut hasher, &encoded);
+        }
+    }
     match &message.dialogue_text {
         None => update_hash(&mut hasher, "canonical"),
         Some(projection) => {

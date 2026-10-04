@@ -91,6 +91,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
         }
         Json(vec![
             Message {
+                attachments: Vec::new(),
                 id: request.id,
                 ordinal: 0,
                 role: crate::role::Role::User,
@@ -98,6 +99,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
                 created_at: None,
             },
             Message {
+                attachments: Vec::new(),
                 id: "nearby".into(),
                 ordinal: 1,
                 role: crate::role::Role::Assistant,
@@ -540,6 +542,7 @@ fn seed(path: &Path) -> Storage {
             updated_at: Some(2),
             messages: vec![
                 NormalizedMessage {
+                    attachments: Vec::new(),
                     id: "searchable".to_owned(),
                     ordinal: 0,
                     context: crate::message_context::MessageContext::Linear,
@@ -549,6 +552,7 @@ fn seed(path: &Path) -> Storage {
                     created_at: Some(1),
                 },
                 NormalizedMessage {
+                    attachments: Vec::new(),
                     id: "context".to_owned(),
                     ordinal: 1,
                     context: crate::message_context::MessageContext::Linear,
@@ -635,6 +639,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     };
     for i in 0..61 {
         conversation.messages.inline_mut().push(NormalizedMessage {
+            attachments: Vec::new(),
             id: format!("message-{i:02}"),
             ordinal: i,
             context: crate::message_context::MessageContext::Linear,

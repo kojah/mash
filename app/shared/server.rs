@@ -12,6 +12,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 mod admission;
+mod attachments;
 mod configuration;
 mod store;
 mod upload;
@@ -32,6 +33,7 @@ pub(super) struct Identity {
 
 #[derive(Clone)]
 struct App {
+    attachments_dir: Option<std::path::PathBuf>,
     store: Store,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
     uploads: Arc<tokio::sync::Semaphore>,
@@ -147,6 +149,12 @@ fn router(app: App) -> Router {
         .route("/v1/search", post(search))
         .route("/v1/threads", post(list_threads))
         .route("/v1/view", post(view))
+        .route("/v1/attachments", post(attachments::list))
+        .route("/v1/attachment", post(attachments::get))
+        .route(
+            "/v1/attachment-upload",
+            post(attachments::upload).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
         .route("/v1/forget", post(forget))
         .route("/v1/index", post(index))
         .route("/v1/gold", post(rebuild_gold))
@@ -294,6 +302,7 @@ async fn view(
     let mut messages = app.store.view(&id, input).await?;
     for message in &mut messages {
         message.content = crate::redaction::text(&message.content);
+        crate::redaction::attachments(&mut message.attachments);
     }
     Ok(Json(messages))
 }
@@ -347,6 +356,7 @@ pub(crate) async fn run(
         .map_err(|_| AppError::internal("get HTTP listener address"))?;
     crate::write_json(&mut std::io::stderr(), &Listening { listening: address })?;
     let app = App {
+        attachments_dir: config.attachments_dir,
         store,
         identities: Arc::new(identities),
         uploads: Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_uploads)),

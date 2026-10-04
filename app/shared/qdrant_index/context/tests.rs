@@ -20,6 +20,7 @@ fn request(context: u32, representation: MessageContent) -> protocol::View {
 }
 fn message(ordinal: i64, context: MessageContext) -> protocol::MessageRecord {
     protocol::MessageRecord {
+        attachments: Vec::new(),
         id: format!("message-{ordinal}"),
         conversation_id: "thread".into(),
         ordinal,

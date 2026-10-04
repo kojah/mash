@@ -142,6 +142,8 @@ pub(crate) struct Conversation {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NormalizedMessage {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) attachments: Vec<crate::attachments::Source>,
     pub(crate) id: String,
     pub(crate) ordinal: i64,
     pub(crate) context: crate::message_context::MessageContext,

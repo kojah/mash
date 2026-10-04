@@ -27,6 +27,9 @@ pub(super) enum Kind {
     ToolResult,
     InputText,
     OutputText,
+    Image,
+    InputImage,
+    Document,
     #[default]
     #[serde(other)]
     Unknown,
@@ -37,6 +40,9 @@ impl Kind {
         matches!(
             self,
             Self::ToolUse
+                | Self::Image
+                | Self::InputImage
+                | Self::Document
                 | Self::ToolCall
                 | Self::ToolResult
                 | Self::Thinking
@@ -71,6 +77,9 @@ impl Kind {
             Self::ToolResult => "tool_result",
             Self::InputText => "input_text",
             Self::OutputText => "output_text",
+            Self::Image => "image",
+            Self::InputImage => "input_image",
+            Self::Document => "document",
             Self::Unknown => "unknown",
         }
     }
@@ -188,6 +197,10 @@ pub(super) enum CompletedItem {
 pub(super) enum UserText {
     #[serde(rename = "text")]
     Text { text: String },
+    #[serde(rename = "image")]
+    Image { image_url: Option<String> },
+    #[serde(rename = "local_image")]
+    LocalImage { path: std::path::PathBuf },
     #[serde(other)]
     Other,
 }
@@ -212,6 +225,9 @@ pub(super) enum Content {
 
 #[derive(Default, Deserialize)]
 pub(super) struct Block {
+    pub source: Option<MediaSource>,
+    pub image_url: Option<String>,
+    pub title: Option<String>,
     #[serde(rename = "type", default)]
     pub kind: Kind,
     pub text: Option<String>,
@@ -224,7 +240,32 @@ pub(super) struct Block {
     pub input: Option<Value>,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(super) enum MediaSource {
+    Base64 {
+        media_type: String,
+        data: String,
+    },
+    Url {
+        url: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
 impl Content {
+    pub fn attachments(&self) -> Vec<crate::attachments::Source> {
+        match self {
+            Self::Text(_) => Vec::new(),
+            Self::Block(block) => block.attachment().into_iter().collect(),
+            Self::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(Block::attachment)
+                .take(crate::attachments::MAX_FILES)
+                .collect(),
+        }
+    }
     pub fn flatten(&self) -> Option<String> {
         match self {
             Self::Text(text) => Some(text.clone()),
@@ -255,6 +296,34 @@ impl Content {
 }
 
 impl Block {
+    fn attachment(&self) -> Option<crate::attachments::Source> {
+        if !matches!(self.kind, Kind::Image | Kind::InputImage | Kind::Document) {
+            return None;
+        }
+        let name = self
+            .title
+            .as_deref()
+            .unwrap_or(if self.kind == Kind::Document {
+                "document"
+            } else {
+                "image"
+            });
+        Some(match &self.source {
+            Some(MediaSource::Base64 { media_type, data }) => crate::attachments::Source::Base64 {
+                name: name.into(),
+                media_type: media_type.clone(),
+                data: data.clone(),
+            },
+            Some(MediaSource::Url { url }) => crate::attachments::url(name, url),
+            _ => self.image_url.as_deref().map_or_else(
+                || crate::attachments::Source::External {
+                    name: name.into(),
+                    media_type: "application/octet-stream".into(),
+                },
+                |url| crate::attachments::url(name, url),
+            ),
+        })
+    }
     fn flatten(&self) -> Option<String> {
         if let Some(text) = self.text.as_ref().or(match self.content.as_ref() {
             Some(Content::Text(text)) => Some(text),
@@ -263,6 +332,16 @@ impl Block {
             return Some(text.clone());
         }
         match self.kind {
+            Kind::Image | Kind::InputImage | Kind::Document => Some(format!(
+                "[Attachment: {}]",
+                self.title
+                    .as_deref()
+                    .unwrap_or(if self.kind == Kind::Document {
+                        "document"
+                    } else {
+                        "image"
+                    })
+            )),
             Kind::Thinking => self
                 .thinking
                 .as_ref()

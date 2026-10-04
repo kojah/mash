@@ -455,7 +455,14 @@ fn codex_completed_dialogue_does_not_promote_transient_or_unknown_items() {
     }
     let parsed = parse_codex(file.path()).unwrap();
     assert_eq!(parsed.malformed_records, 0);
-    assert_eq!(parsed.conversation.unwrap().messages.len(), 4);
+    let conversation = parsed.conversation.unwrap();
+    assert_eq!(conversation.messages.len(), 5);
+    let image = &conversation.messages.inline()[4];
+    assert_eq!(image.dialogue_text.as_deref(), Some(""));
+    assert_eq!(image.attachments.len(), 1);
+    assert!(
+        matches!(&image.attachments[0], crate::attachments::Source::File {path,..} if path == Path::new("/synthetic/image.png"))
+    );
 }
 
 #[test]

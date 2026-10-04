@@ -24,7 +24,7 @@ pub(crate) struct Spool {
     summary: summary::Summary,
 }
 
-pub(super) struct Builder {
+pub(crate) struct Builder {
     state: State,
     limit: usize,
 }
@@ -67,7 +67,7 @@ impl Builder {
         }
     }
 
-    pub(super) fn push(&mut self, message: NormalizedMessage) -> Result<usize, AppError> {
+    pub(crate) fn push(&mut self, message: NormalizedMessage) -> Result<usize, AppError> {
         let result = self.push_inner(message);
         if result.is_err() {
             self.state = State::Failed;
@@ -79,6 +79,13 @@ impl Builder {
         let retained = std::mem::size_of::<NormalizedMessage>()
             .saturating_add(message.id.capacity())
             .saturating_add(message.content.capacity())
+            .saturating_add(
+                message
+                    .attachments
+                    .iter()
+                    .map(crate::attachments::Source::retained_size)
+                    .sum::<usize>(),
+            )
             .saturating_add(match &message.role {
                 crate::role::Role::Other(role) => role.capacity(),
                 _ => 0,
@@ -147,7 +154,7 @@ impl Builder {
         }
     }
 
-    pub(super) fn finish(self) -> Result<Messages, AppError> {
+    pub(crate) fn finish(self) -> Result<Messages, AppError> {
         match self.state {
             State::Inline { messages, .. } => Ok(Messages::Inline(messages)),
             State::Staged(mut writer) => {

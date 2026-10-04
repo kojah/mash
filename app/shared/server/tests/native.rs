@@ -30,6 +30,7 @@ pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Val
             let projection = m.dialogue_text.unwrap();
             let visible = !projection.is_empty();
             MessageRecord {
+                attachments: Vec::new(),
                 id: m.id,
                 conversation_id: conversation.id.clone(),
                 ordinal: m.ordinal,

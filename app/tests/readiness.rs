@@ -65,6 +65,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
         serde_json::json!({
             "path": std::fs::canonicalize(&config).expect("canonical config"),
             "loaded": true,
+            "attachments": {"allowed_roots": [], "share_files": false},
             "shared": null,
             "gold": {"build": {"embedding_text": "dialogue"}, "query": {
                 "intent": "related-discussion", "unit": "threads", "limit": 20,

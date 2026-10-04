@@ -39,6 +39,7 @@ fn test_conversation(
         created_at: None,
         updated_at: None,
         messages: vec![NormalizedMessage {
+            attachments: Vec::new(),
             id: format!("{id}-message"),
             ordinal: 0,
             context: crate::message_context::MessageContext::Linear,

@@ -42,6 +42,8 @@ async fn execute_admitted(
         Operation::Status { .. } => "status",
         Operation::Forget { .. } => "forget",
         Operation::ModelsInstall => "models_install",
+        Operation::ListAttachments { .. } => "list_attachments",
+        Operation::GetAttachment { .. } => "get_attachment",
     };
     async {
         let started = std::time::Instant::now();
@@ -178,6 +180,18 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::ListAttachments { message_id, shared } => {
+            inspection::list_attachments(configuration, database, message_id, shared)
+                .await
+                .map(Response::ListAttachments)
+        }
+        Operation::GetAttachment {
+            message_id,
+            attachment_id,
+            shared,
+        } => inspection::get_attachment(configuration, database, message_id, attachment_id, shared)
+            .await
+            .map(Response::GetAttachment),
         Operation::ListThreads {
             input,
             local,

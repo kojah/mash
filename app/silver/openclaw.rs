@@ -257,6 +257,7 @@ fn messages(
                 .into_owned(),
         );
         messages.push(NormalizedMessage {
+            attachments: Vec::new(),
             id: super::parsers::stable_id(
                 "message",
                 &[Provider::Openclaw.as_str(), &source.key(), id],

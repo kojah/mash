@@ -252,6 +252,7 @@ fn reranking_windows_reveal_late_evidence_without_changing_short_messages() {
 fn contextual_evidence_uses_nearest_searchable_messages_with_a_fixed_budget() {
     let anchor = hit("thread", "anchor");
     let message = |id: &str, role, content: String| crate::storage::Message {
+        attachments: Vec::new(),
         id: id.into(),
         ordinal: 0,
         role,

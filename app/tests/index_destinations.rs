@@ -159,7 +159,7 @@ fn assert_ready_node(node: &Value, messages: u64, routed: bool) {
         assert!(node.get("source_silver").is_none());
     } else {
         assert_eq!(node["source_silver"]["completeness"], "complete");
-        assert_eq!(node["source_silver"]["interpretation_version"], 1);
+        assert_eq!(node["source_silver"]["interpretation_version"], 2);
         assert_eq!(node["source_silver"]["rejected_sources"], 0);
     }
 }

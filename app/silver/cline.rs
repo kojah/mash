@@ -158,6 +158,7 @@ fn sdk(
         );
         *occurrence += 1;
         messages.push(NormalizedMessage {
+            attachments: Vec::new(),
             id,
             ordinal: i64::try_from(messages.len()).map_err(|_| invalid("too many messages"))?,
             context: MessageContext::Linear,
@@ -207,6 +208,7 @@ fn ui(path: &Path) -> Result<(Session, Vec<NormalizedMessage>), AppError> {
             String::new()
         };
         messages.push(NormalizedMessage {
+            attachments: Vec::new(),
             id: super::parsers::stable_id(
                 "message",
                 &[Provider::Cline.as_str(), &id, &ts.to_string()],

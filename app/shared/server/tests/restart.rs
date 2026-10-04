@@ -44,6 +44,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     let mut messages: Vec<_> = providers
         .iter()
         .map(|provider| MessageRecord {
+            attachments: Vec::new(),
             id: if *provider == Provider::ClaudeCode {
                 "claude"
             } else if *provider == Provider::Pi {
@@ -69,6 +70,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
         .collect();
     if !second {
         messages.push(MessageRecord {
+            attachments: Vec::new(),
             id: "context".into(),
             conversation_id: "codex".into(),
             ordinal: 1,

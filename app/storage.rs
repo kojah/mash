@@ -20,6 +20,7 @@ mod semantic;
 mod semantic_chunks;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.
+mod attachments;
 mod claude_sources;
 mod enrichment;
 mod indexing;
@@ -41,6 +42,7 @@ use schema::initialize;
 use semantic_chunks::validate_quantized_vector;
 
 pub(crate) struct Storage {
+    attachments_config: crate::attachments::Configuration,
     connection: Connection,
     writer_active: bool,
     search_updates: SearchUpdates,
@@ -121,6 +123,8 @@ pub(crate) struct SearchHit {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Message {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) attachments: Vec<crate::attachments::Metadata>,
     pub(crate) id: String,
     pub(crate) ordinal: i64,
     pub(crate) role: crate::role::Role,
@@ -196,6 +200,7 @@ impl Storage {
             )
             .map_err(AppError::database)?;
         Ok(Self {
+            attachments_config: crate::attachments::Configuration::default(),
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,

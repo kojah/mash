@@ -62,12 +62,12 @@ impl Snapshot<'_> {
             }
             BatchKind::Messages if by_thread => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent
+                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent, m.attachments
                 FROM messages m ORDER BY m.conversation_id, m.ordinal, m.id"
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector, m.context_parent
+                COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector, m.context_parent, m.attachments
                 FROM messages m LEFT JOIN message_embeddings e ON e.message_id = m.id ORDER BY m.id"
             }
             BatchKind::Tombstones => {
@@ -171,6 +171,11 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
                 .collect::<Vec<_>>()
         });
     Ok(MessageRecord {
+        attachments: serde_json::from_str(
+            &row.get::<_, String>("attachments")
+                .map_err(AppError::database)?,
+        )
+        .map_err(|_| AppError::database_data("invalid attachment metadata"))?,
         id: row.get::<_, String>(0).map_err(AppError::database)?,
         conversation_id: row.get::<_, String>(1).map_err(AppError::database)?,
         ordinal: row.get::<_, i64>(2).map_err(AppError::database)?,

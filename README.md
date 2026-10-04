@@ -1452,8 +1452,46 @@ to storage, and backend initialization completes before the listener opens.
 
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_threads`, `view`, `status`, `index`, `forget`,
-`models_install`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
+`models_install`, `list_attachments`, `get_attachment`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
+
+Attachment discovery uses a message ID from `view` or search:
+`list_attachments({"message_id":"…"})`, then
+`get_attachment({"message_id":"…","attachment_id":"…"})`.
+For shared evidence, pass `shared` with its publishing node ID to both tools.
+Retrieval returns metadata plus native MCP image content for PNG/JPEG/GIF/WebP,
+or a base64 embedded resource for other files. Local `view` also includes attachment
+metadata. No models, URL downloads, OCR, or arbitrary file reads are involved.
+
+The initial adapters capture Claude image/document blocks, Codex raw and completed
+[image inputs](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/user_input.rs),
+and OpenCode file parts. Other providers' attachment formats are not
+yet captured. Re-run `mash index` with this version to replay older interpretation
+checkpoints. Attachment names/markers stay out of semantic dialogue projections.
+Up to 32 attachments per message and 4 MiB per retained file are supported.
+
+Embedded base64 files are retained automatically. Explicit local file references
+require allowed roots in node TOML; missing or disallowed files retain metadata:
+
+```toml
+[attachments]
+allowed_roots = ["/absolute/path/to/provider/attachments"]
+share_files = false
+```
+
+Changing allowed roots triggers replay during the next explicit index operation.
+Local copies live beside SQLite in `<database-path>.attachments`, keyed by content
+hash, and work offline even after the provider file disappears. Back up this
+directory with SQLite. UTF-8 files are retained and returned as credential-redacted
+views; binary images/PDFs are not sanitized. Attachment bytes do not enter Qdrant.
+
+For optional shared files, set `share_files = true` on the node and configure an
+absolute `attachments_dir` in server TOML. Nodes upload only files linked to their
+published messages, after canonical publication; failed uploads leave indexing's
+shared result pending for retry. Metadata without uploaded bytes reports
+`not_uploaded`. Storage is isolated by group/node, and every read checks current
+published message membership. Removed attachments become inaccessible; orphaned
+content-addressed files currently remain on disk until the cache is removed.
 
 To stream an `index` tool call's progress, include a string or numeric
 `params._meta.progressToken` in the `tools/call` request. The server sends

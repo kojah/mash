@@ -107,6 +107,7 @@ fn exact_lexical_filters_literal_decoys_before_limit_and_never_reads_hidden_text
     hidden.id = "hidden-thread".into();
     hidden.source = crate::silver::SourceIdentity::file("hidden.jsonl");
     hidden.messages = vec![crate::silver::NormalizedMessage {
+        attachments: Vec::new(),
         id: "hidden-message".into(),
         ordinal: 0,
         context: crate::message_context::MessageContext::Linear,

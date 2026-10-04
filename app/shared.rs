@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 // Keep interactive client deadlines separate so ordinary search falls back promptly.
 const BULK_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(30);
 
+pub(crate) mod attachments;
 mod client;
 mod exact;
 mod gold_manifest;
@@ -52,6 +53,10 @@ pub(crate) struct Publication {
 }
 
 impl Publication {
+    pub(crate) fn attachment_failure(&mut self, error: crate::AppError) {
+        self.state = PublicationState::Pending;
+        self.error = Some(error.error.message);
+    }
     pub(crate) fn is_pending(&self) -> bool {
         self.state == PublicationState::Pending
     }

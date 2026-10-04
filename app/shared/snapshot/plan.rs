@@ -350,6 +350,7 @@ pub(in crate::shared) fn plan(
                         for m in records {
                             valid_id(&m.id)?;
                             valid_id(&m.conversation_id)?;
+                            crate::attachments::validate_metadata(&m.attachments)?;
                             if m.ordinal < 0
                                 || (!build.includes_dense(&m.role, &m.projection)
                                     && (m.vector.is_some() || m.generation.is_some()))

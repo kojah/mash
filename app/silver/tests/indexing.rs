@@ -751,6 +751,7 @@ fn purge_requires_a_complete_provider_scan() {
             created_at: None,
             updated_at: None,
             messages: vec![NormalizedMessage {
+                attachments: Vec::new(),
                 id: "old-message".to_owned(),
                 ordinal: 0,
                 context: crate::message_context::MessageContext::Linear,

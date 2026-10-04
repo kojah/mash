@@ -135,6 +135,14 @@ pub(crate) async fn materialize(
                 .dialogue_text
                 .unwrap_or_else(|| message.content.clone());
             records.push(MessageRecord {
+                attachments: message
+                    .attachments
+                    .iter()
+                    .filter_map(|source| match source {
+                        crate::attachments::Source::Retained { metadata } => Some(metadata.clone()),
+                        _ => None,
+                    })
+                    .collect(),
                 id: message.id,
                 conversation_id: conversation.id.clone(),
                 ordinal: message.ordinal,

@@ -22,6 +22,7 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
                 created_at: Some(2000),
                 updated_at: Some(2000),
                 messages: vec![NormalizedMessage {
+                    attachments: Vec::new(),
                     id: id.into(),
                     ordinal: 0,
                     context: crate::message_context::MessageContext::Linear,

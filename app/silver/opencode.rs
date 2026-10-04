@@ -164,6 +164,7 @@ enum Part {
 
 #[derive(Default)]
 struct Content {
+    attachments: Vec<crate::attachments::Source>,
     canonical: Vec<String>,
     prose: Vec<String>,
     retained: usize,
@@ -208,14 +209,20 @@ impl Content {
                 name,
                 url,
                 uri,
-            } => (
-                format!(
-                    "File {}: {}",
-                    filename.or(name).unwrap_or_default(),
-                    url.or(uri).unwrap_or_default()
-                ),
-                None,
-            ),
+            } => {
+                self.attachments.push(crate::attachments::url(
+                    filename.as_deref().or(name.as_deref()).unwrap_or("file"),
+                    url.as_deref().or(uri.as_deref()).unwrap_or(""),
+                ));
+                (
+                    format!(
+                        "File {}: {}",
+                        filename.or(name).unwrap_or_default(),
+                        url.or(uri).unwrap_or_default()
+                    ),
+                    None,
+                )
+            }
             Part::Unknown => return Ok(()),
         };
         self.append(canonical, prose)
@@ -247,6 +254,7 @@ fn normalize(
         return Ok(());
     }
     let message = NormalizedMessage {
+        attachments: content.attachments.clone(),
         id: super::parsers::stable_id("message", &[Provider::Opencode.as_str(), &source.key(), id]),
         ordinal: i64::try_from(messages.len())
             .map_err(|_| AppError::internal("too many OpenCode messages"))?,
@@ -295,6 +303,10 @@ fn current(
                 let user: User = sqlite_source::bounded_json(row)?;
                 let mut content = Content::text(user.text, true)?;
                 for file in user.files {
+                    content.attachments.push(crate::attachments::url(
+                        file.name.as_deref().unwrap_or("file"),
+                        &file.uri,
+                    ));
                     content.append(
                         format!(
                             "File {}: {}\n{}",

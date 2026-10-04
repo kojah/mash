@@ -9,6 +9,7 @@ pub(crate) fn pending_snapshot(path: &Path) -> Storage {
         .expect("snapshot schema");
     assert_eq!(version, SCHEMA_VERSION, "prepare a schema-current snapshot");
     Storage {
+        attachments_config: crate::attachments::Configuration::default(),
         connection,
         writer_active: false,
         search_updates: SearchUpdates::Immediate,

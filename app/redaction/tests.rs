@@ -108,6 +108,7 @@ fn upload_serialization_masks_canonical_projection_and_metadata() {
     use crate::shared::protocol::{Batch, Event, MessageRecord};
     let event = Event::Batch(Batch::Messages {
         records: vec![MessageRecord {
+            attachments: Vec::new(),
             id: "m".into(),
             conversation_id: "c".into(),
             ordinal: 0,

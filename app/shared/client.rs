@@ -41,6 +41,9 @@ pub(super) enum Endpoint {
     View,
     Index,
     Forget,
+    Attachments,
+    Attachment,
+    AttachmentUpload,
 }
 
 impl Endpoint {
@@ -53,6 +56,7 @@ impl Endpoint {
                 | Self::Gold
                 | Self::Index
                 | Self::Forget
+                | Self::AttachmentUpload
         )
     }
 
@@ -76,12 +80,17 @@ impl Endpoint {
             Self::View => "view",
             Self::Index => "index",
             Self::Forget => "forget",
+            Self::Attachments => "attachments",
+            Self::Attachment => "attachment",
+            Self::AttachmentUpload => "attachment-upload",
         }
     }
 
     pub(super) const fn timeout(self) -> Duration {
         if self.bulk() {
             super::BULK_TIMEOUT
+        } else if matches!(self, Self::Attachment) {
+            Duration::from_secs(15)
         } else if matches!(self, Self::Search) {
             // Exact vector retrieval over a full node can take nearly two
             // seconds before network transit and typed response decoding.

@@ -207,6 +207,7 @@ fn read_messages(
             ],
         );
         messages.push(NormalizedMessage {
+            attachments: Vec::new(),
             id,
             ordinal: i64::try_from(messages.len())
                 .map_err(|_| AppError::internal("too many Hermes messages"))?,

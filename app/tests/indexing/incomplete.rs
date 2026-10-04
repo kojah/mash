@@ -126,7 +126,7 @@ fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repai
         assert_eq!(output.status.code(), Some(exit_code));
         let summary: Summary = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(summary.malformed_records, malformed_records);
-        assert_eq!(summary.silver.interpretation_version, 1);
+        assert_eq!(summary.silver.interpretation_version, 2);
         assert_eq!(summary.silver.rejected_sources, malformed_records);
         assert_eq!(
             summary.silver.completeness,

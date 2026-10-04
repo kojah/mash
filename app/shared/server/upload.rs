@@ -7,6 +7,21 @@ use futures_util::TryStreamExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 pub(super) async fn spool(body: Body, max_bytes: u64) -> Result<tempfile::NamedTempFile, ApiError> {
+    spool_body(body, max_bytes, true).await
+}
+
+pub(super) async fn spool_bytes(
+    body: Body,
+    max_bytes: u64,
+) -> Result<tempfile::NamedTempFile, ApiError> {
+    spool_body(body, max_bytes, false).await
+}
+
+async fn spool_body(
+    body: Body,
+    max_bytes: u64,
+    line_framed: bool,
+) -> Result<tempfile::NamedTempFile, ApiError> {
     let file = crate::blocking(|| {
         tempfile::NamedTempFile::new().map_err(|_| AppError::internal("create incoming index"))
     })
@@ -47,7 +62,7 @@ pub(super) async fn spool(body: Body, max_bytes: u64) -> Result<tempfile::NamedT
         let consumed = chunk.len();
         input.consume(consumed);
     }
-    if line_bytes != 0 {
+    if line_framed && line_bytes != 0 {
         return Err(AppError::usage("unterminated index event").into());
     }
     output

@@ -3,6 +3,7 @@ use crate::test_support::create_valid_model_marker as install_test_marker;
 use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
+mod attachments;
 mod fusion;
 mod incomplete;
 mod rebuild;
@@ -387,7 +388,9 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         names,
         [
             "forget",
+            "get_attachment",
             "index",
+            "list_attachments",
             "list_threads",
             "models_install",
             "search",

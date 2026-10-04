@@ -17,6 +17,7 @@ mod semantic;
 mod thread_catalog;
 
 // Application composition and infrastructure supporting both layers.
+mod attachments;
 mod cli;
 mod config;
 mod core;

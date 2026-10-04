@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Increment when native interpretation or canonical enrichment rules change.
 /// A checkpoint produced by another version cannot skip provider replay.
-pub(crate) const INTERPRETATION_VERSION: u32 = 1;
+pub(crate) const INTERPRETATION_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
