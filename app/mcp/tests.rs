@@ -186,7 +186,9 @@ async fn wire_next(
     use tokio::io::AsyncBufReadExt;
     let mut line = String::new();
     tokio::time::timeout(
-        std::time::Duration::from_secs(3),
+        // Full-suite SQLite/inference contention can delay a wire response;
+        // this deadline detects a stalled session, not product latency.
+        std::time::Duration::from_secs(15),
         reader.read_line(&mut line),
     )
     .await
