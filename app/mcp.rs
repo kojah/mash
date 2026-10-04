@@ -11,12 +11,15 @@ use rmcp::{
 };
 use serde::Deserialize;
 
+mod watching;
+
 #[derive(Clone)]
 struct Mash {
     paths: Arc<Paths>,
     // Mutations serialize, while read-only calls may run concurrently.
     gate: Arc<tokio::sync::Mutex<()>>,
     model_work: Arc<tokio::sync::Semaphore>,
+    watcher: Arc<tokio::sync::Mutex<watching::Watcher>>,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -106,6 +109,14 @@ struct Index {
 #[serde(deny_unknown_fields)]
 struct Forget {
     conversation_id: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct WatchStart {
+    /// Quiet period in milliseconds, 50–60000; defaults to 1000 on a new start.
+    #[schemars(range(min = 50, max = 60_000))]
+    debounce_ms: Option<u64>,
 }
 
 impl Mash {
@@ -236,6 +247,30 @@ fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResul
 
 #[tool_router]
 impl Mash {
+    #[tool(
+        annotations(read_only_hint = false, destructive_hint = false),
+        description = "Start this MCP session's history watcher and an initial indexing pass. Returns promptly; poll watch_status for progress, errors and shared publication results. Uses TOML providers, destinations and credentials; never downloads models. Repeating a start preserves the active watcher; stop before changing debounce_ms. Settings are process-local."
+    )]
+    async fn watch_start(&self, Parameters(input): Parameters<WatchStart>) -> CallToolResult {
+        watching::start(self.clone(), input.debounce_ms).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = false, destructive_hint = false),
+        description = "Stop future watched refreshes in this MCP session. Returns promptly with stopping while an active indexing pass finishes; poll watch_status until stopped. Safe to repeat."
+    )]
+    async fn watch_stop(&self) -> CallToolResult {
+        watching::stop(self).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "Report this MCP session's watcher state, debounce_ms, indexing progress, last completed refresh/result (including shared publication state), and last error. Does not start indexing."
+    )]
+    async fn watch_status(&self) -> CallToolResult {
+        self.watcher.lock().await.response()
+    }
+
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
         description = "Quickly list thread metadata without models or inference. Filter by provider, node, literal title substring or thread activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned conversation_id and provider in search with unit=messages. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
@@ -379,51 +414,18 @@ pub(crate) async fn run(
         paths: Arc::new(paths),
         gate: Arc::new(tokio::sync::Mutex::new(())),
         model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+        watcher: Arc::default(),
     };
     let background = server.clone();
     let service = server
         .serve(rmcp::transport::stdio())
         .await
         .map_err(|_| crate::AppError::internal("MCP initialization failed"))?;
-    let (stop, shutdown) = tokio::sync::watch::channel(false);
-    let watcher = watch.then(|| {
-        tokio::spawn(async move {
-            let request = Request {
-                paths: background.paths.as_ref().clone(),
-                operation: Operation::Index(IndexRequest::default()),
-            };
-            let result = crate::watch::run(request, debounce_ms, shutdown, move || {
-                let server = background.clone();
-                async move {
-                    let result = tokio::spawn(async move {
-                        server
-                            .perform_response(Operation::Index(IndexRequest::default()))
-                            .await
-                    })
-                    .await
-                    .map_err(|_| crate::AppError::internal("index worker failed"))?;
-                    let retry = result.as_ref().map_or(true, core::Response::needs_retry);
-                    crate::write_json(
-                        &mut std::io::stderr(),
-                        &WatchIndex {
-                            event: WatchEvent::Index,
-                            result: tool_result(result),
-                        },
-                    )?;
-                    Ok(retry)
-                }
-            })
-            .await;
-            if let Err(error) = result {
-                let _ = crate::write_json(&mut std::io::stderr(), &error);
-            }
-        })
-    });
-    let success = service.waiting().await.is_ok();
-    let _ = stop.send(true);
-    if let Some(watcher) = watcher {
-        let _ = watcher.await;
+    if watch {
+        let _ = watching::start(background.clone(), Some(debounce_ms)).await;
     }
+    let success = service.waiting().await.is_ok();
+    watching::shutdown(&background).await;
     if success {
         Ok(())
     } else {

@@ -1364,6 +1364,19 @@ and exits. For MCP, use `mash mcp --watch` with optional `--debounce-ms`; watchi
 lasts for the MCP session and shares the tool mutation/model concurrency guards.
 Its refresh results go to stderr so stdout remains MCP protocol only.
 
+An existing MCP session can control that same watcher with `watch_start`,
+`watch_stop`, and `watch_status`. `watch_start` accepts optional `debounce_ms`
+(50–60000; default 1000), returns promptly, and triggers initial indexing.
+Repeated starts preserve the active watcher; stop it before changing the delay.
+`watch_stop` returns `stopping` while an active pass finishes, then the state
+becomes `stopped`. `watch_status` reports the state, whether a pass is running,
+latest progress/phase ETA, `last_refresh_at` (Unix milliseconds), the last
+index result including shared publication, and the last error. Poll it for
+background progress; explicit `index` calls retain MCP progress notifications.
+Provider routing and credentials remain in TOML. Watch settings are not persisted,
+and the watcher stops when this MCP session ends. These tools do not control
+another process running `mash index --watch`.
+
 Run `mash status --shared`, or call the MCP `status` tool with `{"shared":true}`,
 to inspect `shared_index.nodes` for every publishing node in the configured
 group. Each node includes its revision, conversation/message counts, and UTC
@@ -1429,7 +1442,7 @@ to storage, and backend initialization completes before the listener opens.
 
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_threads`, `view`, `status`, `index`, `forget`,
-and `models_install`. The server uses the same operations and typed JSON errors
+`models_install`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
 
 To stream an `index` tool call's progress, include a string or numeric
@@ -1464,7 +1477,8 @@ Example MCP client configuration:
 For shared operations, provide the configured node token environment variable to
 `mash mcp` through your MCP client's environment mechanism. `search` accepts a
 `shared` boolean and a `unit` of `threads` (default) or `messages`; `view` accepts a `shared` publishing node ID. Search, view, and
-status and `list_threads` are annotated read-only. Index and forget mutate data; `models_install`
+status, `list_threads`, and `watch_status` are annotated read-only. Watch start/stop
+control background indexing without waiting for the index mutation guard. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;
 service-side Qdrant I/O uses async HTTP. SQLite, parsing, and local FastEmbed inference run on blocking
 workers and are awaited by callers. MCP mutations serialize per session; status

@@ -22,6 +22,7 @@ async fn lexical_gold_rebuild_streams_mcp_progress_without_models_sources_or_sha
     let missing = directory.path().join("missing-sources");
     std::fs::write(&config, format!("version=1\nproviders={{codex={{roots=[{:?}]}}}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='node'\napi_url='http://127.0.0.1:9'\ntoken_env='MASH_GOLD_REBUILD_NO_TOKEN'\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n", missing.to_str().unwrap())).unwrap();
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database.clone()),

@@ -8,6 +8,7 @@ async fn invalid_fusion_overrides_bypass_busy_model_work_and_leave_paths_untouch
     let database = root.path().join("missing.sqlite3");
     let models = root.path().join("missing-models");
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database.clone()),
@@ -77,6 +78,7 @@ async fn vector_overrides_reject_invalid_or_irrelevant_requests_before_model_adm
     let config = root.path().join("node.toml");
     std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(root.path().join("absent.sqlite3")),
@@ -132,6 +134,7 @@ async fn vector_override_checks_shared_capabilities_before_busy_model_admission(
     let config = root.path().join("node.toml");
     std::fs::write(&config, transport.configuration()).unwrap();
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(root.path().join("absent.sqlite3")),
@@ -159,6 +162,7 @@ async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_mo
     let mut transport = crate::test_support::vector::Service::new().await;
     std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n").unwrap();
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config.clone()),
             db: Some(root.path().join("unused.sqlite3")),
@@ -234,6 +238,7 @@ async fn indexed_fixture() -> (Mash, tempfile::TempDir) {
     let config = root.path().join("node.toml");
     std::fs::write(&config, configuration(root.path(), 10, 4)).unwrap();
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(root.path().join("index.sqlite3")),

@@ -20,6 +20,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
     )
     .unwrap();
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(directory.path().join("index.sqlite3")),
@@ -129,6 +130,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
         .unwrap();
     storage.commit_writer().unwrap();
     let server = Mash {
+        watcher: Arc::default(),
         paths: Arc::new(Paths {
             config: Some(config),
             db: Some(database),

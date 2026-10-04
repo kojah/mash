@@ -72,6 +72,12 @@ topic tools or additional intents. Search never builds missing indexes. Use
 or forgetting only as part of a user-requested maintenance task. Otherwise
 report the problem and the needed command. Do not print credentials.
 
+When the user requests automatic synchronization, `watch_start` starts the
+session's watcher and initial indexing; poll `watch_status` for progress and
+shared publication/errors. `watch_stop` lets an active pass finish. Debounce
+settings are process-local; provider routing and credentials remain in TOML.
+Do not start watching merely to answer a history search.
+
 ## CLI fallback
 
 Use `mash-dev` when that developer launcher is available; otherwise use `mash`
