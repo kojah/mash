@@ -62,6 +62,38 @@ If the worker cannot be reached, search runs directly. Configurations and index
 data are read for every request; results are not cached. MCP sessions continue
 to reuse models within their own process and do not launch CLI workers.
 
+## Using Mash in Codex during development
+
+Point Codex at the build output so rebuilding does not require copying or
+reinstalling the executable. Build with Cranelift in a stable target directory:
+
+```bash
+env CARGO_TARGET_DIR=/absolute/path/to/build cargo build-clif --bin mash
+```
+
+Add this to your local `~/.codex/config.toml`, or a trusted project's
+`.codex/config.toml`:
+
+```toml
+[mcp_servers.mash]
+command = "/absolute/path/to/build/debug/mash"
+args = ["mcp"]
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+```
+
+Mash uses its normal node configuration, SQLite index and model directory.
+To override those paths, put `--config PATH`, `--db PATH` and
+`--models-dir PATH` before `mcp` in `args`. Forward the configured token
+environment variable using Codex's `env_vars`, or use a local launcher that
+loads your private node environment before executing the same build output.
+Keep credentials and machine-specific launchers outside Git.
+
+Restart the MCP server/client after a successful rebuild. New processes use
+the rebuilt binary; an already-running process continues executing its previous
+build. This setup does not automatically build, index or install models.
+See the [official Codex MCP configuration documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
 ## Models and indexing
 
 Search is semantic by default and has no production lexical-only mode. Install
