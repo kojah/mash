@@ -94,6 +94,48 @@ the rebuilt binary; an already-running process continues executing its previous
 build. This setup does not automatically build, index or install models.
 See the [official Codex MCP configuration documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
+## Codex and Claude Code history plugin
+
+`plugins/mash` packages a shared `history` skill for both clients. It prefers
+Mash MCP, falls back to the CLI when MCP is unavailable, and guides thread
+discovery, scoped message searches and evidence-backed answers about past
+decisions. It uses the existing Mash connection rather than starting a duplicate
+MCP server. The plugin requires a configured Mash executable/index; install and
+connect Mash using the setup above. No startup hooks or automatic indexing are
+part of this plugin.
+
+From this repository, install the local plugin:
+
+```bash
+codex plugin marketplace add .
+codex plugin add mash@mash-local
+
+claude plugin marketplace add "$PWD"
+claude plugin install mash@mash-local
+```
+
+If Claude Code does not already have the Mash MCP connection, register it:
+
+```bash
+claude mcp add --scope user mash -- /absolute/path/to/build/debug/mash mcp
+```
+
+Use your private node-environment launcher as the command when credentials or
+custom index paths are needed, as in the Codex setup above. The skill uses
+`mash-dev` when available for CLI fallback, otherwise the normal Mash executable.
+
+Restart the client after installation. In Claude Code, invoke
+`/mash:history`; in Codex, select the plugin's `history` skill or let it activate
+for requests about past conversations. For developing the Claude plugin directly,
+use `claude --plugin-dir ./plugins/mash` instead of installing it. After edits,
+reload the plugin or start a new session; installed copies may require a
+marketplace/plugin refresh. Rebuilding the Mash binary and reloading skill files
+are separate operations.
+
+The manifests/catalogues follow the official
+[Codex plugin format](https://developers.openai.com/plugins/build/plugins) and
+[Claude Code marketplace format](https://code.claude.com/docs/en/plugin-marketplaces).
+
 ## Models and indexing
 
 Search is semantic by default and has no production lexical-only mode. Install

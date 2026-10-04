@@ -9,7 +9,10 @@
 *.db-shm
 *.sqlite-wal
 *.sqlite-shm
-/.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json
 /.claude/
 /.codex/*
 !/.codex/config.toml
