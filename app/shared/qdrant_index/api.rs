@@ -451,6 +451,12 @@ impl Client {
         let mut request = self
             .http
             .request(method, self.url.join(path).map_err(|_| failure())?);
+        // Awaited writes can exceed the interactive database deadline while
+        // Qdrant indexes large batches. Keep reads bounded and do not replay
+        // ambiguous mutations; publication verification owns their recovery.
+        if path.ends_with("?wait=true&ordering=strong") {
+            request = request.timeout(crate::shared::BULK_TIMEOUT);
+        }
         if let Some(body) = body {
             request = request.json(body);
         }

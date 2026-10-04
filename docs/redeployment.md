@@ -45,6 +45,12 @@ five seconds, within the existing 30-minute bulk request deadline. Waiting emits
 `shared-waiting` progress through the CLI and MCP sink. Authorization errors,
 conflicts and mutation POSTs are not automatically replayed.
 
+Awaited Qdrant point writes and filtered deletions use the same bulk deadline;
+database reads retain their 30-second deadline. A completed backend write can
+take more than 30 seconds during full-node staging. Timeout does not prove that
+the write was rejected, so publication verification owns ambiguous-write
+recovery rather than blindly replaying a mutation.
+
 Qdrant catalogue/document staging uses at most 512 points and approximately
 2 MiB of encoded point bytes per request, whichever fills first. A single larger
 valid point is sent alone; the existing 30 MiB hard transport allowance remains.

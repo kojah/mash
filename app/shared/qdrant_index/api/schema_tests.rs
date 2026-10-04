@@ -1,5 +1,80 @@
 use super::*;
 
+#[tokio::test]
+async fn awaited_mutations_outlive_read_deadlines_without_replaying_requests() {
+    use axum::{
+        Router,
+        routing::{post, put},
+    };
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let writes = Arc::new(AtomicUsize::new(0));
+    let captured = writes.clone();
+    let mutation = move || {
+        let captured = captured.clone();
+        async move {
+            captured.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            r#"{"status":"ok","result":{"status":"completed"}}"#
+        }
+    };
+    let router = Router::new()
+        .route(
+            "/collections/test/points",
+            put(mutation.clone()).post(|| async {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                r#"{"status":"ok","result":[]}"#
+            }),
+        )
+        .route("/collections/test/points/delete", post(mutation));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let client = Client {
+        http: reqwest::Client::builder()
+            .timeout(Duration::from_millis(50))
+            .build()
+            .unwrap(),
+        url: format!("http://{}/", listener.local_addr().unwrap())
+            .parse()
+            .unwrap(),
+        max_response: 1024,
+    };
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    client
+        .upsert(
+            "test",
+            &Upsert {
+                points: vec![Point {
+                    id: "one".into(),
+                    vector: Vectors::default(),
+                    payload: (),
+                }],
+                update_filter: None,
+                update_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .delete_versions("test", &["old".into()])
+        .await
+        .unwrap();
+    assert!(
+        client
+            .retrieve::<()>("test", &["one".into()])
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        writes.load(Ordering::SeqCst),
+        2,
+        "each mutation is sent once"
+    );
+    server.abort();
+    let _ = server.await;
+}
+
 #[test]
 fn ordinal_matches_preserve_integers_above_float_precision() {
     let condition = integers("message.ordinal", vec![9_007_199_254_740_993, i64::MAX]);
