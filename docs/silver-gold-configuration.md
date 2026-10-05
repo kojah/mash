@@ -37,8 +37,7 @@ build selection, stale query rejection or publication revisions.
 
 Artifact readiness is separate from provider-scan completeness, corpus coverage
 and query model availability. Continue inspecting the silver certificate/scoped
-coverage and unpublished nodes for those limitations. Topics have no production
-artifact here, and no readiness claim is made for them.
+coverage and unpublished nodes for those limitations.
 
 Shared freshness also exposes `nodes[].source_silver` when the immutable node
 head retains a full-snapshot source certificate. This is the source node's
@@ -76,7 +75,7 @@ The authoritative models are `app/silver.rs`, `app/silver/source.rs` and
 Enrichment must preserve source facts, use typed models, expose absence, and
 record the rule/version and provenance of inferred annotations. No mandatory
 LLM enrichment is proposed. Embedding models, gold chunking and ranking do not
-belong in canonical silver. Topic assignments remain experimental gold.
+belong in canonical silver.
 
 Prioritize shared interpretation/completeness versioning and traceable metadata
 before speculative enrichment fields. Gold should consume the retained visible
@@ -644,7 +643,7 @@ and local/shared cost children establish the two enabled builds, source-free
 replacement, model-free lexical operation, capability errors and measured costs.
 The native Mac rebuild described in [the migration record](qdrant-only-transition.md)
 also preserves all ten silver table hashes on a larger corpus. This does not
-complete shared migration, topic integration or broader lifecycle/quality work
+complete shared migration or broader lifecycle/quality work
 in `.5` and `.4.5`. Fleet resource, sustained-load and recovery work belong to
 those tasks rather than repeatedly extending this configuration milestone.
 
@@ -828,7 +827,7 @@ shared failure reports local completion and fallback; failed shared-only calls
 remain errors. Reports contain no source text, credentials, paths or model URLs.
 Diagnostics do not change ranking, run indexing or persist query policy. They
 are omitted by default. Artifact readiness/coverage, filter-stage counts,
-metadata/topic diagnostics and held-out attribution remain `mash-q3e.4.4` work.
+metadata diagnostics and held-out attribution remain `mash-q3e.4.4` work.
 
 Validation on 2026-10-03 passed 645 standard tests, both real-model CLI/MCP
 contracts, strict all-target Clippy, formatting and doctest compilation.
@@ -861,8 +860,7 @@ counts. CLI `list-threads --diagnostics` and MCP `list_threads` with
 protocol field is introduced. Failed source attempts have zero completed calls
 and no reported output count. Ordinary metadata responses omit diagnostics.
 Listing elapsed time excludes startup/configuration loading. This does not
-claim complete node coverage or topic-artifact readiness; those remain separate
-status/evaluation work.
+claim complete node coverage; that remains separate status/evaluation work.
 
 | Stage | Input count | Output count |
 | --- | --- | --- |
@@ -892,7 +890,7 @@ outcome independently of diagnostics. Successful shared retrieval reports
 `shared_context_error` carries that later degradation. `shared_error` remains
 candidate failure with local fallback; shared-only candidate failure remains
 an error. Both optional error fields are omitted when absent. Artifact readiness,
-coverage, filter-stage counts and metadata/topic diagnostics remain parent work.
+coverage, filter-stage counts and metadata diagnostics remain parent work.
 
 Opt-in search diagnostics now include `filter_fields`: a deterministic,
 deduplicated list of requested predicate names (`provider`, `node`, `role`,
@@ -927,7 +925,7 @@ range must not be used to slice that canonical text. The range belongs to the
 primary `message_id`/`node_id`, not to alternate deduplicated `copies`, whose
 projection formatting can differ. This records locations for the existing
 extractive presentation; it does not implement multi-passage gold units,
-projection-to-canonical mappings, summaries or topic memberships.
+projection-to-canonical mappings or summaries.
 Spans describe the projection observed by that search; subsequent edits can
 change it. Verify the excerpt against the current projection before reusing
 saved coordinates.
@@ -1607,12 +1605,12 @@ search can fall back to local results when the shared request fails. Searches
 never build missing artifacts automatically. See the intent and diagnostics
 sections above for the implemented contracts and limitations.
 
-Topic memberships/labels, contextual episodes and representative extractive
+Contextual episodes and representative extractive
 passages remain candidate additions, not available artifacts or configuration
 options. Their utility and cost must be demonstrated before integration.
-`mash-q3e.4.3` and `.4.5` retain topic/evidence presentation and held-out evaluation
+`mash-q3e.4.3` and `.4.5` retain evidence presentation and held-out evaluation
 work; `.6` retains broader artifact contracts. The existing two-intent routing
-does not establish topic quality or guided-search gains. Keep this concrete
+does not establish guided-search gains. Keep this concrete
 selection rather than adding a registry or arbitrary projection framework.
 
 ## Remaining build and query configuration

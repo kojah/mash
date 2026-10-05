@@ -15,12 +15,11 @@ build-configuration contracts.
 | Search views | Gold | Query-oriented projections of interpreted silver dialogue |
 | Retrieval | Gold | FTS, embeddings, vector indexes, ranking and retrieval caches |
 | Thread search | Gold | Searchable thread views and ranked excerpts |
-| Topics | Gold | Derived memberships, labels and topic-filtering views |
 
 The intended invariant is that gold can be rebuilt from silver without reading
 bronze. Silver retains the native interpretation required to distinguish visible
 dialogue from context-only records; gold decides how that interpreted history is
-represented for retrieval. Changing an embedding model or topic algorithm must
+represented for retrieval. Changing an embedding model must
 not rewrite canonical history.
 
 CLI/MCP adapters, HTTP transport, configuration and database connections support
@@ -45,7 +44,7 @@ ranking or embedding policy.
 
 Gold model execution and retrieval live in `app/semantic/`; the `app/search_*`
 modules own gold query models, ranking and results, and `app/thread_catalog.rs`
-owns metadata discovery views over silver. Experimental topics are also gold.
+owns metadata discovery views over silver.
 The module groups in `app/lib.rs` identify silver, gold and supporting
 infrastructure. `app/shared/` owns HTTP transport, publication coordination and
 backend adapters supporting both layers.

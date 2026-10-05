@@ -1551,9 +1551,7 @@ production worker behavior. On nightly, use `CARGO_ARGS=--branch` to include
 LLVM's experimental branch instrumentation. This does not measure MC/DC.
 Generated SQL bindings, separate test files, standalone test helpers and the
 test-only relevance evaluator and manual benchmark modules are excluded from
-the report. Topic research lives separately under `research/topics`; retired
-Rust prototypes are available in Git at `cd661a1` and are no longer compiled
-with application tests.
+the report.
 Tests embedded in production source files still contribute to those files'
 coverage, so assess uncovered behavior as well as the aggregate percentage.
 Coverage needs LLVM instrumentation; regular development continues to use

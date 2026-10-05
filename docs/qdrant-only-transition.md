@@ -111,7 +111,7 @@ The application now supports server-owned silver revisions/completeness,
 independent lexical/dense manifests, one active gold configuration and explicit
 source-free shared rebuilds. See [the current layer contract](silver-gold-configuration.md).
 These application capabilities do not prove live fleet migration or complete the
-remaining topic-quality and retrieval evaluation work in `mash-q3e`.
+remaining retrieval evaluation work in `mash-q3e`.
 
 ### Active JSONL replay fix
 
@@ -140,7 +140,7 @@ Redis service. Private captures are `xenia-silver-prefix.json` and
 ### Current dev MacBook replay
 
 The dev MacBook received archived source `d5ac7ac`, including verified JSONL
-captures and the removal of unselected Rust topic prototypes. The native locked
+captures. The native locked
 Cranelift incremental build passed in 18.44 seconds. Its binary SHA-256 is
 `3e7c346dbb7d8fa2291f7b7a499750da207d34b63fa84049f325d1e1a07c2b8e`.
 
@@ -230,7 +230,7 @@ The staged Mac configuration now enables lexical and dense representations with
 related-discussion intent. An explicit `index --rebuild-local-gold` completed
 without scanning provider files: 68,731 stored embeddings, 48,287 model inferences
 and hybrid readiness in 434.467 seconds. This is one native corpus run, not a
-controlled benchmark or evidence of topic/search quality.
+controlled benchmark or evidence of search quality.
 
 The existing ten-table silver digest helper in `tools/benchmark-gold.py` produced
 the same SHA-256 before and after the rebuild:
@@ -484,7 +484,7 @@ fresh processes and one resident worker, preserving local silver and shared
 freshness. See [the measured costs and limitations](shared-ranking-cost-2026-10-04.md).
 The first attempt's worker-path failure is preserved separately. This completes
 the bounded context regression/cost check, not a universal latency or relevance
-claim. Fleet migration and topic acceptance remain incomplete.
+claim. Fleet migration and search quality acceptance remain incomplete.
 
 ### Dev Mac default deployment: 4 October 2026
 
@@ -571,7 +571,7 @@ releases of `fae282b`. The API's existing per-node freshness read reports typed
 metadata/lexical/dense publication states. The installed CLI and MCP `status`
 with `shared=true` expose those fields through the shared core. For the dev Mac,
 all three local and shared artifact states are `ready`. This is publication
-readiness, not a certificate of exhaustive provider history or topic quality.
+readiness, not a certificate of exhaustive provider history or search quality.
 
 This was a binary-only upgrade. Before/after API freshness is identical after
 removing the additive `artifacts` field: revisions, timestamps, manifests,
@@ -615,7 +615,7 @@ Native build/install/status/search/MCP captures remain private in the dev Mac's
 migration directory and `dev-installed-fae282b/` in the Xenia artifact directory.
 Personal-Mac connectivity, Xenia's malformed source and retirement of the legacy
 Redis service remain outstanding; this rollout does not close fleet migration
-or the independent held-out search/topic quality gates.
+or the independent held-out search quality gates.
 
 ### Source-silver certificate rollout (2026-10-04)
 
@@ -650,4 +650,4 @@ individual smoke observations are not percentiles or a quality comparison.
 The active API release record and private `dev-installed-5572b57/` captures
 retain build, source archive, native binary, status, MCP and data-hash evidence.
 Personal-Mac connectivity, Xenia source recovery, legacy Redis retirement and
-independent search/topic quality acceptance remain outstanding.
+independent search quality acceptance remain outstanding.

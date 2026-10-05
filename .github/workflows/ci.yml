@@ -64,17 +64,6 @@ jobs:
         run: TMPDIR="$RUNNER_TEMP" bash tools/test-dev-api.sh
       - name: Verify offline search evaluation
         run: python3 -m unittest discover -s tools -p 'test_search_evaluation.py'
-      - name: Verify topic parity comparator
-        run: |
-          python3 -m unittest discover -s research/topics -p 'test_stage_parity.py'
-          python3 -m unittest discover -s research/topics -p 'test_tiage.py'
-          python3 -m unittest discover -s research/topics -p 'test_qmsum.py'
-          python3 -m unittest discover -s research/topics -p 'test_numeric_guidance.py'
-          python3 -m unittest discover -s research/topics -p 'test_qmsum_validation_capture.py'
-          python3 -m unittest discover -s research/topics -p 'test_chat_review.py'
-          python3 -m unittest discover -s research/topics -p 'test_science_env.py'
-          python3 -m unittest discover -s research/topics -p 'test_distinct_support.py'
-          python3 -m unittest discover -s research/topics -p 'test_topic_quality.py'
       - name: Install pinned sqlc release
         run: |
           mkdir -p "$RUNNER_TEMP/mash-sqlc"

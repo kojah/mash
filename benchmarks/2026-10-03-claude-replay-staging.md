@@ -1,7 +1,7 @@
 # Bounded Claude compaction replay metadata
 
 Tracking: `mash-c0d.7.4.3.4.5`, within the still-open aggregate ingestion-memory
-work. This changes parsing bookkeeping, not search ranking or topic selection.
+work. This changes parsing bookkeeping, not search ranking.
 
 ## Behavior
 
@@ -109,4 +109,4 @@ strict all-target Clippy passed, formatting/diff checks passed, and one doctest
 passed. Two additional installed-model controls above passed in separate test
 processes. Final validation logs use the `claude-replay-staging-` prefix and
 `20261003` suffix in the private artifact directory. These checks do not replace
-the remaining fleet, complete-corpus or independent topic-quality gates.
+the remaining fleet, complete-corpus or independent search-quality gates.

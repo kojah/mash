@@ -93,7 +93,7 @@ and do not establish model-versus-parser stage attribution. Status RSS/HWM
 counters are approximate. The retained `wait4` high-water marks include the
 pre-exec process lifetime and are not subtracted or treated as stage peaks.
 Tracing, procfs sampling, scheduler/cache state and a debug build affect timing.
-There is no fleet result, hard memory cap, topic-performance result, or claim that
+There is no fleet result, hard memory cap, or claim that
 operational-only ancestry covers large dialogue/replay histories.
 
 Tracking: `mash-c0d.7.4.3.4.3` (measurement); parent

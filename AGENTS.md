@@ -76,12 +76,10 @@ The same skill is linked under `.claude/skills` and `.codex/skills`.
 Run Python through `uv`; use Ruff and `ty` for the affected modules and run
 the full Python test suite before completing Python changes.
 
-The research lab's frozen experiment contracts and dependency-free CI fixtures
-take precedence over library defaults in the skill. Keep existing stdlib
+Dependency-free CI fixtures take precedence over library defaults in the skill. Keep existing stdlib
 `argparse`/`json` entry points and canonical codecs where replacing them would
 change pinned bytes, historical reproduction, or the dependency-free execution
-contract. Do not migrate archived experiments or their code pins as stylistic
-cleanup. New validated records should be typed; new standalone tooling may use
+contract. New validated records should be typed; new standalone tooling may use
 Click, Pydantic and orjson when its environment explicitly provides them.
 
 ## Verification
@@ -171,47 +169,6 @@ an active development job.
 
 ## Agent work tracking
 
-Topic modeling is the first priority. Follow the research sequence: compile
-prior art, shortlist approaches, perform reproducible Python experiments and
-record results, select a method, then implement it in Rust. Keep the Python lab
-isolated from the application and private corpora/artifacts outside Git.
-Before topic work, read `research/topics/SELECTION_CRITERIA.md` and
-`research/topics/WORKLIST.md`. Respect the finite experiment cap; historical
-follow-up notes do not authorize new algorithm rounds or restore hierarchy.
-Keep pending acceptance gates open and continue other production work while
-independent review is pending.
-Update `paper/main.tex` and `paper/references.bib` alongside substantive topic
-experiments with procedures, setup, prior art, results, analysis and limitations.
-Topic modeling must not use an LLM: no generative summaries, rewriting, labeling,
-taxonomy synthesis or paid topic-inference calls. Prefer reusing existing local
-embeddings with lightweight online clustering and lexical labels. Any additional
-non-generative model work must be measured, bounded and justified by quality.
-Measure complete ingestion with topics enabled versus disabled, including context
-processing, clustering, label maintenance and persistence, including draining
-asynchronous topic work. Following the user's generous performance budget, there
-is no fixed percentage overhead rejection gate. Prioritize topic quality and
-genuine online discovery, and disclose the measured quality/cost tradeoff. Report
-initial indexing, incremental edits/deletes, p95 update latency, CPU, peak RSS,
-publication lag and sustained-arrival backlog on supported node classes. Topic
-work must not block ordinary search or accumulate an indefinitely growing backlog.
-Follow `research/topics/SELECTION_CRITERIA.md`; do not promote a method using
-clustering-only timings or quality alone.
-Keep exploratory development distinct from held-out evaluation; do not claim
-semantic quality, novelty or guided-search gains without corresponding evidence.
-Before promoting a selected Python topic method to Rust, require the executable
-reference and shared stage fixtures described in `research/topics/PORT_CONTRACT.md`.
-Freeze source/offset, numerical, tie and lifecycle semantics; test fixed-vector
-algorithm parity separately from full inference, and enforce differential CI
-before shipping the Rust implementation. Parity does not replace semantic
-quality or complete-ingestion performance gates.
-For Linux topic memory measurements, retain rusage and per-program-image counters
-and use `research/topics/memory_audit.py` for external RSS/PSS evidence before a
-performance gate. Rusage can preserve pre-exec launcher peaks; do not attribute
-them to the workload or subtract peaks. Status counters are approximate and
-externally sampled maxima are lower bounds. Define target/child scope and account
-for monitoring overhead; these research audits are not production ingestion
-measurements.
-Build the living manuscript using `paper/build.py` with output outside Git.
 
 Use Beads (`bd`) for substantive work and discovered follow-ups. On a fresh clone,
 run `bd bootstrap`; then run `bd prime` for the workflow and `bd ready` for available

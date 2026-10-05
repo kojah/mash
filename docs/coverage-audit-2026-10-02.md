@@ -31,11 +31,8 @@ Three detached search workers exited normally before export, allowing their
 profiles to flush.
 
 Generated bindings, separate test files, standalone test helpers, manual
-benchmark modules, the test-only relevance evaluator and offline topic prototypes
-were excluded in this historical run. At that revision, `app/lib.rs` compiled the
-entire topic module only under `cfg(test)`; its tests remained in the run, but its
-source could not pad application coverage. Those unselected Rust topic prototypes
-were subsequently retired; their source remains available in Git at `cd661a1`.
+benchmark modules, the test-only relevance evaluator and retired offline
+prototypes were excluded in this historical run.
 The first export also exposed two missed test-only helpers:
 `semantic/evaluation/cleanup.rs` and `semantic/embeddings/cpu/sensitivity.rs`.
 Their enclosing modules are test-only. The final filter removes both, re-exporting
@@ -119,5 +116,5 @@ was skipped. Exact-head hosted validation and all-node deployment remain open.
 This local coverage run does not satisfy those external gates.
 
 Tracking: `mash-c0d.8.19` completes this measurement/workflow slice;
-`mash-c0d.8`, native-provider compatibility, real-corpus relevance, topic selection,
+`mash-c0d.8`, native-provider compatibility, real-corpus relevance,
 fleet latency and exact-revision deployment remain open.

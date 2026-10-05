@@ -50,8 +50,6 @@ all-visible content, and message/user-messages. Each alternative changes one
 build field. Use the current contextual-rerank query policy first, then the
 existing fusion-only policy as one ranking ablation for those same captures.
 There is no new algorithm grid, adaptive routing or ensemble in this round.
-Topic exploration remains gated by its separate independent topic review;
-ordinary search must work without topic artifacts.
 
 For each scope, require judged-pool recall@10 >= 0.90 and overall nDCG@10 >= 0.80.
 Require category MRR@10 >= 0.95 exact, 0.80 semantic, 0.65 referential, 0.85
@@ -73,7 +71,7 @@ declare filesystem/model-cache conditions. Budget each variant at <= 2x baseline
 full build wall time, <= 2x gold bytes and peak RSS, and <= 1.25x baseline p95
 query time per scope/mode. This allows slower indexing for quality, while
 keeping query cost controlled. Missing node measurements leave cost acceptance
-open; do not substitute clustering-only or small-fixture timings.
+open; do not substitute small-fixture timings.
 
 Stop after the declared variants and one completed independent review. Keep the
 baseline if no alternative meets every gate; if the baseline misses an absolute

@@ -120,4 +120,4 @@ only the completed `measured/capture.json` supplies the tables above.
 Fleet/remote latency, server/backend resource accounting, steady-state storage
 after compaction, incremental edits/deletes, concurrent readers/writers and
 held-out relevance remain open acceptance work. Prefer those evidence gaps and
-ordinary retrieval/topic quality over expanding advanced activation machinery.
+ordinary retrieval quality over expanding advanced activation machinery.

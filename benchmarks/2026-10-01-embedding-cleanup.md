@@ -81,11 +81,10 @@ do not establish a throughput gain or justify production preprocessing.
 
 ## Decision and remaining work
 
-Keep production embedding inputs unchanged. Complete boilerplate exclusions,
-topic-word weighting and source-aware context recovery remain separate trials.
+Keep production embedding inputs unchanged. Complete boilerplate exclusions
+and source-aware context recovery remain separate trials.
 An option approval cannot safely be treated as disposable filler merely because
-it lacks subject nouns; the accompanying
-[topic-context experiment](2026-10-01-topic-option-context.md) tests that case.
+it lacks subject nouns.
 
 The open `mash-c0d.19.2.17` task still requires a larger independently judged
 real-history corpus, held-out relevance and negative queries, long-input/token
@@ -113,5 +112,5 @@ cargo test-clif --lib --run-ignored only -E 'test(benchmark_paired_embedding_cle
 
 Each TOML document has `id`, `raw` and `cleaned`; each query has `text` and a
 nonempty `relevant` ID array; the top-level `version` is 1. Private histories must
-stay outside Git. All three manual trials passed. The 97 focused topic tests and
-all-target/all-feature Clippy also pass with the evaluation harness.
+stay outside Git. All three manual trials and all-target/all-feature Clippy
+passed with the evaluation harness.
