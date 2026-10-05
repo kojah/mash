@@ -2,6 +2,7 @@
 
 import gzip
 import hashlib
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,9 +17,13 @@ from turn_ancestry import (
     CanonicalRole,
     Capture,
     CapturedThread,
+    NativeAncestryError,
+    NativeIssue,
     bridge,
+    canonical_history,
     native_check,
     stable_id,
+    verify_native,
 )
 from turns import AssistantActivity, Boundary, extract
 
@@ -42,6 +47,39 @@ def row(
 
 
 class FullAncestryContracts(unittest.TestCase):
+    def test_named_silver_read_preserves_empty_projection_and_parent(self) -> None:
+        with sqlite3.connect(":memory:") as db:
+            db.execute(
+                "CREATE TABLE messages(id TEXT,ordinal INTEGER,role TEXT,"
+                "context_parent INTEGER,search_projection TEXT,content TEXT,"
+                "created_at INTEGER,conversation_id TEXT)"
+            )
+            db.execute(
+                "INSERT INTO messages VALUES(?,?,?,?,?,?,?,?)",
+                ("record", 4, "tool", 2, "", "hidden canonical text", 9, "history"),
+            )
+            result = canonical_history(db, "history")
+            self.assertEqual(result[0].projection, "")
+            self.assertEqual(result[0].context_parent, 2)
+            self.assertEqual(result[0].role, CanonicalRole.TOOL)
+            self.assertEqual(
+                result[0].content_sha256,
+                hashlib.sha256(b"hidden canonical text").hexdigest(),
+            )
+            self.assertIsNone(db.row_factory)
+
+    def test_incomplete_native_coverage_is_not_admitted(self) -> None:
+        source = thread((Role.USER,)).model_copy(update={"provider": Provider.CLAUDE})
+        identity = stable_id("claude-message", (source.id, "visible"))
+        canonical = (
+            row(identity, 0, CanonicalRole.USER, -1),
+            row("missing-native-record", 1, CanonicalRole.ASSISTANT, 0),
+        )
+        raw = orjson.dumps({"type": "user", "uuid": "visible", "parentUuid": None})
+        with self.assertRaises(NativeAncestryError) as raised:
+            verify_native(source, canonical, raw)
+        self.assertEqual(raised.exception.reason, NativeIssue.COVERAGE)
+
     def test_capture_rejects_source_tampering_and_wrong_or_duplicate_cohort(
         self,
     ) -> None:

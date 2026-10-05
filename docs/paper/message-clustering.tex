@@ -457,6 +457,55 @@ Prioritize stronger independent cross-turn references and a selection metric
 accounting for negative-only threads before another comparison. The companion
 document records complete family outcomes, exact protocol bytes and digests.
 
+\section{Related work and implications for the next comparison}
+Dialogue intent induction offers a closer precedent than generic document
+topic modelling. Perkins and Yang~\cite{multiview} use two learned views: the
+initial user query and the remaining dialogue. This motivates a separate
+prompt/answer representation ablation, but fixed pooling would not reproduce
+their alternating-view training method. Park et al.~\cite{intentanalysis}
+compare embedding and clustering combinations for task-oriented intent
+induction, supporting compact encoders and agglomerative candidates without
+establishing performance on our corpus.
+
+Dialogue Sentence Embedding~\cite{dse} learns from consecutive utterance pairs;
+DialogueCSE~\cite{dialoguecse} contrasts context-aware and context-free response
+representations. These provide evidence for studying context, not for assuming
+that adjacent turns always share a subject. Both involve representation
+learning that we have not performed. Dialogue topic segmentation~\cite{xing}
+addresses contiguous boundaries, whereas our within-session clustering must
+also accommodate nonadjacent returns to a subject.
+
+Clio~\cite{clio} is a direct deployed precedent for mining LLM conversations,
+but uses generative facet extraction followed by embedding and k-means on
+conversation-level facets. Mysore et al.~\cite{paths} analyze real Bing Copilot
+and WildChat writing sessions using GPT-4o classifiers and PCA of follow-up-type
+frequency representations. These distinguish conversational actions from task
+intents, rather than solving our within-thread subject clustering problem.
+Neither generative pipeline meets our non-generative processing constraint.
+
+Much of the representation research concerns task-oriented dialogue. Transfer to branching,
+open-ended agent sessions therefore requires fresh evaluation. The next study
+will broaden multi-turn coverage and use separate blind annotation agents,
+as authorized by the user. Those judgments permit a provisional decision,
+not a claim of independent human validation. No results from that study are
+reported here yet. The detailed literature review is maintained in
+\texttt{docs/turn-clustering-prior-art.md}.
+
+The user subsequently expanded the desired cohort to 200 threads. The local
+pool alone was insufficient after independence exclusions. We captured a private
+research snapshot from the development MacBook and combined pools before
+sampling. The revised procedure favors histories with at least eight
+prompted turns, permits shorter multi-turn histories, and excludes single-turn
+histories from the clustering cohort. Provider, node and length strata must be
+reported separately. The frozen cohort contains 5,082 prompted turns in 200
+independent histories: 160 development histories (91 Claude Code and 69 Codex)
+and forty fresh confirmation histories (twenty per provider). There are 140
+development-MacBook histories and sixty Xenia histories; 102 have at least eight
+prompted turns, and 98 have two to seven. One native source with ambiguous UUID
+parent links was excluded before selection. This collection stage is not a
+clustering-quality result. The finite comparison and stopping rules are recorded
+in \texttt{docs/turn-clustering-study.md} before new labels or scores.
+
 \section{Limitations and reproducibility}
 Only two providers, sparse agent-authored excerpt judgments, a structural
 support proxy, and one timing host limit interpretation. Human independent
@@ -467,7 +516,25 @@ and results remain outside Git in private directories; paper tables contain
 aggregate measurements only. The first study's negative decision does not
 establish that message clustering is impossible.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
+\bibitem{clio} A. Tamkin et al. Clio: Privacy-Preserving Insights into
+Real-World AI Use. 2024. \url{https://arxiv.org/abs/2412.13678}
+\bibitem{paths} S. Mysore, D. Das, H. Cao and B. Sarrafzadeh.
+Prototypical Human-AI Collaboration Behaviors from LLM-Assisted Writing in
+the Wild. EMNLP, 2025. \url{https://aclanthology.org/2025.emnlp-main.852/}
+\bibitem{multiview} H. Perkins and Y. Yang. Dialog Intent Induction with
+Deep Multi-View Clustering. EMNLP-IJCNLP, 2019.
+\url{https://aclanthology.org/D19-1413/}
+\bibitem{intentanalysis} J. Park, Y. Jang, C. Lee and H. Lim.
+Analysis of Utterance Embeddings and Clustering Methods Related to Intent
+Induction for Task-Oriented Dialogue. DSTC, 2023.
+\url{https://aclanthology.org/2023.dstc-1.8/}
+\bibitem{dse} Z. Zhou et al. Learning Dialogue Representations from
+Consecutive Utterances. NAACL, 2022.
+\url{https://aclanthology.org/2022.naacl-main.55/}
+\bibitem{dialoguecse} C. Liu et al. DialogueCSE: Dialogue-based Contrastive
+Learning of Sentence Embeddings. EMNLP, 2021.
+\url{https://aclanthology.org/2021.emnlp-main.185/}
 \bibitem{hearst} M. Hearst. TextTiling: Segmenting Text into Multi-paragraph
 Subtopic Passages. Computational Linguistics, 1997.
 \url{https://aclanthology.org/J97-1003/}

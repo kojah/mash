@@ -2,8 +2,19 @@
 
 This isolated Python environment implements the candidate algorithms from
 [the preregistered evaluation](../../docs/message-clustering-evaluation.md).
-It is not imported by Mash, does not change ingestion or search, and uses no LLM
-or embedding inference. Dependencies are pinned in `uv.lock`.
+It is not imported by Mash, does not change ingestion or search, and uses no
+generative model inference. Turn-representation experiments use explicitly
+installed local embedding assets. Dependencies are pinned in `uv.lock`.
+
+The [turn-clustering literature review](../../docs/turn-clustering-prior-art.md)
+records the rationale and expanded sampling procedure. `snapshot_node.py`
+captures a read-only research copy of a node's SQLite database and native files;
+`turn_study_corpus.py --threads 200 --min-prompted-turns 2
+--confirmation-per-provider 20 --snapshot /private/capture` combines that node
+with the database supplied by `--database`. Also supply both old `--previous`
+corpora and a private `--output-dir`. Selection fails if it cannot meet the
+independent-thread target. Captures contain sensitive raw history; do not commit
+or publish them. Sampling does not change production Mash.
 
 From this directory:
 

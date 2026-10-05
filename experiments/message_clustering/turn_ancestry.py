@@ -24,6 +24,18 @@ class CanonicalRole(StrEnum):
     DEVELOPER = "developer"
 
 
+class NativeIssue(StrEnum):
+    CONFLICT = "conflicting native parents for one UUID"
+    CYCLE = "native ancestry cycle"
+    COVERAGE = "native ancestry verification failed"
+
+
+class NativeAncestryError(ValueError):
+    def __init__(self, reason: NativeIssue) -> None:
+        self.reason = reason
+        super().__init__(reason.value)
+
+
 class Canonical(Record):
     id: str
     ordinal: int = Field(ge=0)
@@ -104,6 +116,67 @@ def stable_id(domain: str, parts: tuple[str, ...]) -> str:
     return blake3.blake3(
         domain.encode() + b"".join(b"\0" + part.encode() for part in parts)
     ).hexdigest()[:24]
+
+
+def canonical_history(db: sqlite3.Connection, identity: str) -> tuple[Canonical, ...]:
+    """Read complete ancestry within the caller's read-only snapshot transaction."""
+    cursor = db.execute(
+        """SELECT id,ordinal,role,context_parent,
+            COALESCE(search_projection,content) AS projection,content,created_at
+            FROM messages WHERE conversation_id=? ORDER BY ordinal""",
+        (identity,),
+    )
+    cursor.row_factory = sqlite3.Row
+    return tuple(
+        Canonical(
+            id=row["id"],
+            ordinal=row["ordinal"],
+            role=CanonicalRole(row["role"]),
+            context_parent=row["context_parent"],
+            projection=row["projection"],
+            content_sha256=hashlib.sha256(row["content"].encode()).hexdigest(),
+            created_at=row["created_at"],
+        )
+        for row in cursor
+    )
+
+
+def capture_thread(
+    thread: Thread, canonical: tuple[Canonical, ...], index: int, directory: Path
+) -> CapturedThread:
+    fixed, resolutions, activities = bridge(thread, canonical)
+    raw = thread.source_path.read_bytes()
+    matched, checked, mismatches, compactions = verify_native(thread, canonical, raw)
+    with gzip.open(directory / f"source-{index}.jsonl.gz", "wb") as file:
+        file.write(raw)
+    return CapturedThread(
+        index=index,
+        thread=fixed,
+        canonical=canonical,
+        resolutions=resolutions,
+        activities=activities,
+        original_turns=extract(thread),
+        bridged_turns=extract(fixed),
+        turns=extract(fixed, activities),
+        source_sha256=hashlib.sha256(raw).hexdigest(),
+        native_matched=matched,
+        native_parent_checked=checked,
+        native_parent_mismatches=mismatches,
+        native_compactions=compactions,
+    )
+
+
+def verify_native(
+    thread: Thread, canonical: tuple[Canonical, ...], raw: bytes
+) -> tuple[int, int, int, int]:
+    """Reject ambiguous ancestry and incomplete Claude coverage before selection."""
+    matched, checked, mismatches, compactions = native_check(thread, canonical, raw)
+    if mismatches or (
+        thread.provider == Provider.CLAUDE
+        and (matched != len(canonical) or checked != len(canonical))
+    ):
+        raise NativeAncestryError(NativeIssue.COVERAGE)
+    return matched, checked, mismatches, compactions
 
 
 def bridge(
@@ -236,7 +309,7 @@ def native_check(
             continue
         previous = native.get(record.uuid)
         if previous is not None and previous.parentUuid != record.parentUuid:
-            raise ValueError("conflicting native parents for one UUID")
+            raise NativeAncestryError(NativeIssue.CONFLICT)
         native[record.uuid] = record
     mapped = {uid: stable_id("claude-message", (thread.id, uid)) for uid in native}
     found = {identity: uid for uid, identity in mapped.items() if identity in by_id}
@@ -249,7 +322,7 @@ def native_check(
         seen: set[str] = set()
         while parent is not None and mapped.get(parent) not in by_id:
             if parent in seen:
-                raise ValueError("native ancestry cycle")
+                raise NativeAncestryError(NativeIssue.CYCLE)
             seen.add(parent)
             ancestor = native.get(parent)
             if ancestor is None or "parentUuid" not in ancestor.model_fields_set:
