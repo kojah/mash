@@ -15,6 +15,7 @@ from turns import Turn, Unit
 
 
 class Artifact(Record):
+    ancestry_sha256: str | None = None
     source_sha256: str
     protocol_sha256: str
     encoder_generation: str

@@ -152,3 +152,38 @@ that adds within-turn bundles to the selected clusters. It is never used for
 registered candidate selection. The completed comparison found modest combined
 view improvement but insufficient precision/baseline gain; reserved data stayed
 unjudged and unscored. See the protocol/results document for all limitations.
+
+## Complete ancestry and audited replication
+
+Visible embedded messages can point to omitted tool/reasoning records.
+`turn_ancestry.py` captures complete canonical histories and native files, then
+bridges those parents while retaining roots and branches. Omitted assistant
+activity also closes a prompt bundle before the next user reply.
+`audit_turns.py` checks provenance/coverage and selects balanced boundary cases.
+See [turn-ancestry-audit.md](../../docs/turn-ancestry-audit.md).
+
+```bash
+uv run python turn_ancestry.py --database /path/to/mash.sqlite3 \
+  --corpus /path/to/new-corpus.json \
+  --output-dir /home/james/scratch/mash-artifacts/new-ancestry
+uv run python audit_turns.py \
+  --capture /home/james/scratch/mash-artifacts/new-ancestry/capture.json \
+  --output /home/james/scratch/mash-artifacts/new-ancestry/audit.json
+# Inspect the selected private boundary cases before repeating the screen.
+env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  uv run python run_turns.py --corpus /path/to/new-corpus.json \
+  --references /path/to/new-labels.toml --snapshot /path/to/installed/snapshot \
+  --ancestry /home/james/scratch/mash-artifacts/new-ancestry/capture.json \
+  --output-dir /home/james/scratch/mash-artifacts/new-ancestry-run
+uv run python summarize_turns.py --corpus /path/to/new-corpus.json \
+  --references /path/to/new-labels.toml \
+  --report /home/james/scratch/mash-artifacts/new-ancestry-run/report.json \
+  --ancestry /home/james/scratch/mash-artifacts/new-ancestry/capture.json \
+  --output /home/james/scratch/mash-artifacts/new-ancestry-run/summary.json
+```
+
+The optional ancestry input must cover exactly the frozen development cohort;
+both runner and summarizer recheck source identity and native capture hashes.
+The summarizer requires the capture digest recorded by the runner so its
+cross-turn baselines use the same boundaries. Original message vectors and
+reserved data remain unchanged.

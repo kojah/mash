@@ -44,6 +44,11 @@ class Turn(Record):
         return self.prompts + self.answers
 
 
+class AssistantActivity(Record):
+    ordinal: int = Field(ge=0)
+    parent: int | None
+
+
 class Unit(Record):
     id: str
     turn_id: str
@@ -60,19 +65,33 @@ def injected(message: Message) -> bool:
     )
 
 
-def extract(thread: Thread) -> tuple[Turn, ...]:
-    """Group eligible prompts/responses; a user reply after any answer splits.
+def extract(
+    thread: Thread, activities: tuple[AssistantActivity, ...] = ()
+) -> tuple[Turn, ...]:
+    """Group eligible prompts/responses; a reply after response activity splits.
 
     Native parent outside the active source set and explicit roots split branches.
     A skipped instruction record is not an answer or a new semantic prompt.
+    Omitted assistant activity counts only on the active branch or linear history.
     IDs depend on the first source identity; edits change revisions, not IDs.
     """
     turns: list[Turn] = []
     prompts: list[int] = []
     answers: list[int] = []
     boundary = Boundary.START
+    responded = False
+    activity_index = 0
+    if tuple(sorted(activities, key=lambda activity: activity.ordinal)) != activities:
+        raise ValueError("assistant activity must be in canonical order")
+    if any(
+        activity.parent is not None
+        and (activity.parent < -1 or activity.parent >= activity.ordinal)
+        for activity in activities
+    ):
+        raise ValueError("assistant activity parent must be earlier or root")
 
     def finish(closed: bool) -> None:
+        nonlocal responded
         if not prompts and not answers:
             return
         sources = prompts + answers
@@ -95,8 +114,20 @@ def extract(thread: Thread) -> tuple[Turn, ...]:
         )
         prompts.clear()
         answers.clear()
+        responded = False
 
     for index, message in enumerate(thread.messages):
+        while (
+            activity_index < len(activities)
+            and activities[activity_index].ordinal < message.ordinal
+        ):
+            activity = activities[activity_index]
+            activity_index += 1
+            active_ordinals = {thread.messages[i].ordinal for i in prompts + answers}
+            if active_ordinals and (
+                activity.parent is None or activity.parent in active_ordinals
+            ):
+                responded = True
         if not message.projection.strip() or injected(message):
             continue
         active = prompts + answers
@@ -108,13 +139,13 @@ def extract(thread: Thread) -> tuple[Turn, ...]:
                 not in {thread.messages[i].ordinal for i in active}
             )
         )
-        if native_split or (message.role == Role.USER and answers):
+        if native_split or (message.role == Role.USER and (answers or responded)):
             finish(True)
             boundary = Boundary.BRANCH if native_split else Boundary.USER_REPLY
         if message.role == Role.USER:
             prompts.append(index)
         else:
-            if not prompts and not answers:
+            if not prompts and not answers and not native_split:
                 boundary = Boundary.ORPHAN
             answers.append(index)
     finish(False)

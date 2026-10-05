@@ -1,11 +1,13 @@
 """Aggregate sparse turn scores, including negative-only threads and fixed baselines."""
 
+import hashlib
 from pathlib import Path
 
 import click
 import numpy as np
 import orjson
 
+from audit_turns import load_capture
 from clustering import Configuration, Method, cluster
 from corpus import Record, Split
 from evaluation import evaluate_pairs
@@ -57,11 +59,20 @@ def aggregate(name: str, outcomes: tuple[Fit, ...]) -> Aggregate:
     "--references", type=click.Path(path_type=Path, exists=True), required=True
 )
 @click.option("--output", type=click.Path(path_type=Path), required=True)
-def main(report: Path, corpus: Path, references: Path, output: Path) -> None:
+@click.option("--ancestry", type=click.Path(path_type=Path, exists=True))
+def main(
+    report: Path, corpus: Path, references: Path, output: Path, ancestry: Path | None
+) -> None:
     if not output.resolve().is_relative_to(Path("/home/james/scratch/mash-artifacts")):
         raise click.ClickException("use private artifact directory")
     results = Report.model_validate_json(report.read_bytes())
     source, labels, reference_hash = load_references(references, corpus)
+    ancestry_hash = (
+        hashlib.sha256(ancestry.read_bytes()).hexdigest() if ancestry else None
+    )
+    if ancestry_hash != results.ancestry_sha256:
+        raise click.ClickException("ancestry differs from recorded experiment")
+    captured = load_capture(ancestry, source, labels.corpus_sha256) if ancestry else {}
     if (
         results.corpus_sha256 != labels.corpus_sha256
         or results.references_sha256 != reference_hash
@@ -102,7 +113,8 @@ def main(report: Path, corpus: Path, references: Path, output: Path) -> None:
                 )
             )
             expanded = expand(result, prepared)
-            dummy = Inputs(thread, extract(thread), (), np.empty((0, 384)), reference)
+            turns = captured[reference.index].turns if ancestry else extract(thread)
+            dummy = Inputs(thread, turns, (), np.empty((0, 384)), reference)
             outcomes.append(
                 Fit(
                     status="complete",

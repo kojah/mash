@@ -379,6 +379,84 @@ memory estimates. Complete ancestry and independent cross-turn references are
 tracked as the next validation step before any promotion. Frozen protocol,
 asset/report digests and complete outcomes are recorded in the companion document.
 
+\subsection{Complete-ancestry replication and boundary audit}
+The original embedded-message corpus omits non-visible provider records. An
+assistant segment can point to an omitted tool call, reasoning segment or tool
+result, breaking the prompt--answer chain in a visible-only experiment. We
+captured complete silver histories in a read-only transaction and corresponding
+native provider files, preserving all 5,498 development source identities,
+texts and vectors. The 24 reserved threads remain uninspected and unscored.
+The capture contains 39,689 canonical records (11,443 Claude, 28,246 Codex).
+Native Claude UUID and parent verification checks 11,443 records with zero
+mismatches. Codex text fingerprints provide supplementary presence evidence,
+not independent reconciliation of repeated native events.
+
+Resolve omitted parents to the nearest eligible visible ancestor while
+preserving explicit roots and forks. Omitted assistant response activity counts
+as an answer having started; user tool results alone do not. This yields 347
+Claude turns instead of 1,725 and 681 Codex turns, unchanged: 1,028 total instead
+of 2,406. Assistant-only runs fall from 1,393 to 16. Four Claude boundaries are
+added by recognizing omitted assistant activity rather than relying solely on
+visible answers. Every eligible source appears exactly once; source edits,
+missing/future parents and mismatched native ancestry fail closed.
+
+A deterministic development-agent audit inspects two paired bundles per
+provider/length stratum (12), every remaining orphan (16), and all four added
+hidden-response boundaries. The remaining Claude orphan follows an explicit
+native root reset; Codex orphans lack eligible captured prompts, often after
+excluding injected worker/setup instructions. Visible interruption markers,
+local-command envelopes and image-only prompts remain representation concerns.
+One inspected Codex turn has 160 assistant segments spanning autonomous work
+after one user prompt. Thus correct turn delineation does not imply atomic
+subject matter. This audit checks structural plausibility and selected context;
+it is not independent human semantic annotation.
+
+The replication repeats the four representation recipes and unchanged
+algorithm configurations with the same encoder assets and sparse references.
+Capture digests identify the new artifacts. Recompute cross-turn scores for
+every baseline using the repaired units, because their judged cross-turn subset
+has changed; compare original-message pair scores on the unchanged pair set.
+The frozen replication procedure is
+\path{docs/turn-ancestry-audit.md}. No production integration follows from
+structural repair alone.
+
+\subsection{Replication results and stopping decision}
+After ancestry repair the cross-turn references contain only eight related,
+48 unrelated and three ambiguous pairs, with positives in seven threads,
+versus 57/59/37 in 24 positive threads previously. Most previously cross-turn
+positives are continuations within one true prompt--answer turn. Joint
+truncation and complete passages tie at .852 in the representation screen's
+positive-thread macro F1; registration order selects joint truncation. The
+unchanged algorithm screen selects BIRCH (radius .60, membership cosine .35)
+at .924 macro F1. However, it predicts eight true matches and 16 false matches,
+giving micro precision .333, recall 1.000 and F1 .500. The selection metric
+omits false matches on negative-only threads, while micro counts expose them.
+One affinity .25 fit fails to converge; no fit times out.
+
+Chronological windows score cross-turn micro P/R/F1 .556/.625/.588. A post-hoc
+micro ranking finds complete-link .65 strongest, with six true matches, five
+false matches and two misses (.545/.750/.632). This is not the registered
+winner; the .044 gain over chronology and precision below .85 do not pass
+screening. Eight positives are insufficient to claim a stable algorithm ranking.
+
+Turn grouping alone reaches all-pair macro P/R/F1 .832/.910/.850, micro
+.824/.928/.873. Repeating the earlier post-hoc bundle union on the registered
+BIRCH winner gives macro .771/.979/.847, micro .745/1.000/.854: slightly worse
+F1 and lower precision than structural grouping alone. The 48 plain refits
+reproduce registered counts and union leaves cross-turn scores unchanged.
+Original-message pair identities and baseline all-pair scores remain unchanged.
+
+The complete replication costs 635.32 seconds and 40.50 MiB of experimental
+SQLite artifacts; vector cache verification/reuse costs .071 seconds with zero
+inference. Prompt-only, joint and passage recipes have 1,136/1,028/2,796 inputs;
+incremental build costs are 49.23/66.46/179.08 seconds. Joint truncation discards
+228,351 tokenizer tokens and covers 62.40\% of source characters; passages
+cover 99.97\%. These are single-run Python cohort costs including cache I/O,
+not production latency. Stop without promotion or additional parameter tuning.
+Prioritize stronger independent cross-turn references and a selection metric
+accounting for negative-only threads before another comparison. The companion
+document records complete family outcomes, exact protocol bytes and digests.
+
 \section{Limitations and reproducibility}
 Only two providers, sparse agent-authored excerpt judgments, a structural
 support proxy, and one timing host limit interpretation. Human independent

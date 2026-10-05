@@ -10,6 +10,7 @@ import numpy as np
 import orjson
 
 from alternatives import SETTINGS
+from audit_turns import load_capture
 from clustering import (
     CONFIGURATIONS,
     Configuration,
@@ -44,6 +45,7 @@ class Build(Record):
 
 
 class Report(Record):
+    ancestry_sha256: str | None = None
     corpus_sha256: str
     references_sha256: str
     protocol_sha256: str
@@ -65,8 +67,15 @@ class Report(Record):
     "--references", type=click.Path(path_type=Path, exists=True), required=True
 )
 @click.option("--snapshot", type=click.Path(path_type=Path, exists=True), required=True)
+@click.option("--ancestry", type=click.Path(path_type=Path, exists=True))
 @click.option("--output-dir", type=click.Path(path_type=Path), required=True)
-def main(corpus: Path, references: Path, snapshot: Path, output_dir: Path) -> None:
+def main(
+    corpus: Path,
+    references: Path,
+    snapshot: Path,
+    ancestry: Path | None,
+    output_dir: Path,
+) -> None:
     if not output_dir.resolve().is_relative_to(
         Path("/home/james/scratch/mash-artifacts")
     ):
@@ -78,8 +87,24 @@ def main(corpus: Path, references: Path, snapshot: Path, output_dir: Path) -> No
     os.umask(0o077)
     start = time.perf_counter()
     source, judgments, reference_hash = load_references(references, corpus)
+    captured = (
+        load_capture(ancestry, source, judgments.corpus_sha256) if ancestry else {}
+    )
+    ancestry_hash = (
+        hashlib.sha256(ancestry.read_bytes()).hexdigest() if ancestry else None
+    )
     protocol = Path(__file__).resolve().parents[2] / "docs/turn-embedding-experiment.md"
-    protocol_hash = hashlib.sha256(protocol.read_bytes()).hexdigest()
+    protocol_bytes = protocol.read_bytes()
+    if ancestry:
+        protocol_bytes += (
+            b"\0" + (protocol.parent / "turn-ancestry-audit.md").read_bytes()
+        )
+    protocol_hash = hashlib.sha256(protocol_bytes).hexdigest()
+    protocol_copy = output_dir / "protocol.txt"
+    if protocol_copy.exists() and protocol_copy.read_bytes() != protocol_bytes:
+        raise click.ClickException("resume protocol differs from recorded experiment")
+    if not protocol_copy.exists():
+        protocol_copy.write_bytes(protocol_bytes)
     encoder = Encoder(snapshot)
     metadata = output_dir / "encoder.json"
     encoded_manifest = orjson.dumps(encoder.manifest.model_dump())
@@ -104,8 +129,8 @@ def main(corpus: Path, references: Path, snapshot: Path, output_dir: Path) -> No
             for index, selected in enumerate(source.selected):
                 if selected.split != Split.DEVELOPMENT:
                     continue
-                thread = selected.thread
-                turns = extract(thread)
+                thread = captured[index].thread if ancestry else selected.thread
+                turns = captured[index].turns if ancestry else extract(thread)
                 prepared = tuple(
                     unit
                     for turn in turns
@@ -189,6 +214,7 @@ def main(corpus: Path, references: Path, snapshot: Path, output_dir: Path) -> No
                     source_sha256=judgments.corpus_sha256,
                     protocol_sha256=protocol_hash,
                     encoder_generation=generation(encoder),
+                    ancestry_sha256=ancestry_hash,
                     turns=tuple(all_turns),
                     units=tuple(all_units),
                 ),
@@ -216,8 +242,9 @@ def main(corpus: Path, references: Path, snapshot: Path, output_dir: Path) -> No
             for index, entry in enumerate(source.selected)
             if entry.split == Split.DEVELOPMENT
         ):
-            thread = selected.thread
-            turns = extract(thread)
+            index = reference.index
+            thread = captured[index].thread if ancestry else selected.thread
+            turns = captured[index].turns if ancestry else extract(thread)
             owners = {i: turn.id for turn in turns for i in turn.sources}
             raw_units = []
             stored_vectors = []
@@ -304,6 +331,7 @@ def main(corpus: Path, references: Path, snapshot: Path, output_dir: Path) -> No
                 if count or not np.array_equal(reloaded, item.vectors):
                     raise ValueError("artifact reuse mismatch")
         report = Report(
+            ancestry_sha256=ancestry_hash,
             corpus_sha256=judgments.corpus_sha256,
             references_sha256=reference_hash,
             protocol_sha256=protocol_hash,
