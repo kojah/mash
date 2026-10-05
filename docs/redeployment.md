@@ -835,3 +835,14 @@ The change passed 607 standard tests, strict Clippy, formatting and doctests.
 Private inputs, setup failures, native watcher output and paired timings remain
 in `native-watcher-20261005` and `readiness-coverage-20261005` under
 `/home/james/scratch/mash-artifacts`.
+
+Release `407634c` was installed on Xenia and the development MacBook after the
+Linux release build (46.26 seconds) and native ARM64 build (31.04 seconds).
+Explicit stored-silver migrations took 178 and 867 ms, respectively, with zero
+provider scans and zero model inferences. Both retained complete silver and
+hybrid readiness. Fresh combined MCP searches returned three threads with
+complete shared context and no fallback in 2.818 and 2.850 seconds. These are
+deployment smoke checks rather than search speedup evidence. The shared API and
+Qdrant were not restarted or reindexed. The personal MacBook remains offline;
+the ARM64 artifact is staged for its explicit upgrade when reachable. Existing
+stdio clients need their normal reconnect after binary replacement.
