@@ -669,3 +669,36 @@ Xenia and 2.442 seconds on the development MacBook. These are search smoke check
 not effects of this publication-only optimization. Node binary replacement is
 unnecessary for this change; the personal MacBook's earlier upgrade remains
 pending connectivity.
+
+### Complete incremental publication with buffered encoding (2026-10-05)
+
+One warm ABBA cycle compared pre-buffering API `364d848` with `b635dbc` on the
+same private retained-corpus backend. Before the comparison, its earlier pinned
+graph experiment was restored to cached placement; the healthy optimizer reached
+green after 236 seconds of sampled conversion time. No timed publication ran
+during that conversion. This restoration changes segment layout, so timings
+cannot be compared directly with the older pinned experiment.
+
+Each run made a small title edit to the same complete 29-message thread, using
+the same retained vectors, without model inference. An initial old-API warmup
+took 20.160 seconds and was excluded. Timed HTTP publications took 11.221 and
+12.372 seconds with the old encoder versus 9.484 and 9.354 seconds with the new
+encoder. Medians were 11.797 and 9.419 seconds, approximately 20% lower.
+
+For each timed request, all 750 snapshots were still decoded and encoded:
+encoder busy time fell from 3.103–3.707 seconds to 1.100–1.138 seconds, while
+decoder busy time remained 2.798–3.064 seconds. All four responses were HTTP 200
+and retained 749 conversations, 238,257 messages and 32,606 embeddings. Freshness
+confirmed current lexical/gold manifests and ready metadata, lexical and dense
+artifacts after every publication. Request times include upload, retained-state
+reads, planning, serialization, staging and acknowledgement; phase spans are
+instrumented work, not a complete partition of wall time.
+
+This single alternating cycle is evidence of a complete warm small-edit
+publication improvement on real retained history, not initial-ingestion
+throughput, p95 latency, sustained watcher backlog, MacBook inference performance
+or cold-search performance. Temporary APIs and the owned backend were stopped;
+the production API's readiness and authorization checks still passed without any
+production indexing or Qdrant restart. Private captures and the executable
+comparison are under
+`/home/james/scratch/mash-artifacts/publication-buffering-20261005`.
