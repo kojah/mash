@@ -1083,3 +1083,9 @@ revision conflicts; the slowest request was 3.339 seconds. Validation passed
 and three disposable Qdrant retention/concurrent-publication contracts.
 Private captures and the corrected test-only integer-conversion lint failure
 are under `/home/james/scratch/mash-artifacts/borrowed-threads-20261005`.
+
+Release `2dcd126` is deployed to the shared API with authenticated readiness and
+unchanged publication identities. No indexing ran. Fresh direct Xenia combined
+CLI checks returned three threads, complete context and no fallback in 2.245
+and 1.248 seconds (shared candidates 204 and 151 ms). Cold search and native
+staging tails remain separate performance work.
