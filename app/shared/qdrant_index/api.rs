@@ -452,6 +452,17 @@ impl Client {
         path: &str,
         body: Option<&impl Serialize>,
     ) -> Result<T, AppError> {
+        self.call_with_limit(method, path, body, self.max_response)
+            .await
+    }
+
+    async fn call_with_limit<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&impl Serialize>,
+        limit: usize,
+    ) -> Result<T, AppError> {
         let mut request = self
             .http
             .request(method, self.url.join(path).map_err(|_| failure())?);
@@ -470,7 +481,7 @@ impl Client {
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| failure())? {
-            if bytes.len().saturating_add(chunk.len()) > self.max_response {
+            if bytes.len().saturating_add(chunk.len()) > limit.min(self.max_response) {
                 return Err(failure());
             }
             bytes.extend_from_slice(&chunk);
@@ -710,7 +721,16 @@ impl Client {
         name: &str,
         ids: &[String],
     ) -> Result<Vec<Record<P>>, AppError> {
-        self.call(
+        self.retrieve_bounded(name, ids, self.max_response).await
+    }
+
+    pub(super) async fn retrieve_bounded<P: DeserializeOwned>(
+        &self,
+        name: &str,
+        ids: &[String],
+        limit: usize,
+    ) -> Result<Vec<Record<P>>, AppError> {
+        self.call_with_limit(
             Method::POST,
             &format!("collections/{name}/points?consistency=all"),
             Some(&Retrieve {
@@ -718,6 +738,7 @@ impl Client {
                 with_payload: true,
                 with_vector: false,
             }),
+            limit,
         )
         .await
     }

@@ -5,6 +5,7 @@ use super::{
 };
 use crate::shared::snapshot::{self, Data, Encoded, Plan};
 use std::collections::BTreeMap;
+mod receive;
 
 pub(super) struct Prepared {
     pub(super) threads: BTreeMap<String, ThreadSnapshot>,
@@ -122,83 +123,6 @@ impl Prepared {
 }
 
 impl Store {
-    #[tracing::instrument(name = "qdrant_receive_thread_parts", skip_all, fields(parts = parts.len()))]
-    async fn receive_parts(
-        &self,
-        identity: &Identity,
-        parts: &[(&str, &Manifest)],
-    ) -> Result<Vec<snapshot::payload::Received>, AppError> {
-        let mut ids = std::collections::VecDeque::new();
-        for (version, manifest) in parts {
-            // A generated chunk fills 4 MiB except for at most three UTF-8 bytes.
-            // Reject impossible chunk counts before allocating the read queue.
-            if manifest.bytes == 0
-                || manifest.chunks == 0
-                || manifest.chunks > manifest.bytes / (4 * 1024 * 1024 - 3) + 1
-            {
-                return Err(failure());
-            }
-            for chunk in 0..manifest.chunks {
-                ids.push_back((
-                    point_id(&["chunk", version, &chunk.to_string()]),
-                    manifest.bytes.min(4 * 1024 * 1024),
-                ));
-            }
-        }
-        let mut cache = BTreeMap::new();
-        let mut completed = Vec::new();
-        // Keep small thread snapshots off disk without retaining a whole node
-        // in RAM. Larger snapshots and overflow remain checksummed file spools.
-        let mut memory_remaining = 64 * 1024 * 1024;
-        for (version, manifest) in parts {
-            let mut receiver =
-                if manifest.bytes <= 1024 * 1024 && manifest.bytes <= memory_remaining {
-                    memory_remaining -= manifest.bytes;
-                    snapshot::payload::Receiver::in_memory(manifest.bytes)?
-                } else {
-                    snapshot::payload::Receiver::new(manifest.bytes).await?
-                };
-            for chunk in 0..manifest.chunks {
-                if cache.is_empty() {
-                    let mut batch = Vec::new();
-                    let mut bytes = 0;
-                    while let Some((_, size)) = ids.front() {
-                        if batch.len() >= 100
-                            || (!batch.is_empty() && bytes + size > 8 * 1024 * 1024)
-                        {
-                            break;
-                        }
-                        let (id, size) = ids.pop_front().ok_or_else(failure)?;
-                        bytes += size;
-                        batch.push(id);
-                    }
-                    let points = self
-                        .api
-                        .retrieve::<Chunk>(&collection(&identity.group_id, true), &batch)
-                        .await?;
-                    if points.len() != batch.len() {
-                        return Err(failure());
-                    }
-                    for point in points {
-                        if !batch.contains(&point.id)
-                            || cache.insert(point.id, point.payload).is_some()
-                        {
-                            return Err(failure());
-                        }
-                    }
-                }
-                let point = cache
-                    .remove(&point_id(&["chunk", version, &chunk.to_string()]))
-                    .ok_or_else(failure)?;
-                if point.kind != PointKind::Chunk || point.version != *version {
-                    return Err(failure());
-                }
-                receiver.append(point.text.as_bytes()).await?;
-            }
-            completed.push(receiver.finish(&manifest.digest).await?);
-        }
-        Ok(completed)
-    }
     pub(super) async fn pending_threads(
         &self,
         identity: &Identity,

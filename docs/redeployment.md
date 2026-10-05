@@ -1030,3 +1030,31 @@ Fresh Xenia combined CLI checks returned three threads with complete context and
 no fallback: first 5.277 seconds (shared candidates 4.161 seconds), follow-up
 1.323 seconds (candidates 163 ms). These are deployment checks, and preserve the
 unresolved cold-candidate limitation.
+
+Retained thread snapshots now use four concurrent native retrieval requests,
+delivered in snapshot order. Each batch requests at most 100 chunks and 8 MiB of
+declared decoded text, with a separate bounded response-body allowance for JSON
+escaping. Assembly still checks identities, kinds, versions, byte counts and
+BLAKE3 checksums before publication. Dropping assembly cancels pending requests;
+the existing final revision check and 64 MiB small-part memory budget remain.
+These are logical request bounds, not a process RSS guarantee.
+
+An eight-publication old/new/new/old comparison repeated twice on the same
+238,257-message node and 1,018,215-message group measured median publication time
+of 14.443 seconds before and 8.066 seconds after prefetch. Snapshot-loading span
+lifetimes fell from a median 6.325 to 2.000 seconds. Observed API RSS maxima were
+1,901 and 1,769 MiB, respectively; sampling maxima are lower bounds. Four samples
+per variant, initial cold state and host/native-write variation limit these
+results: they do not establish fleet p95, complete initial-indexing throughput
+or cold-search latency.
+
+Of 96 concurrent raw HTTP candidate reads, 93 returned HTTP 200 and three
+returned retryable revision conflicts (two before, one after). The client already
+retries one search conflict within its admission deadline. All node counts and
+current lexical/dense manifests were preserved; default HNSW remained enabled.
+Validation included 619 standard tests, strict Clippy, formatting and doctests,
+plus three disposable Qdrant checks for unchanged-thread retention, edits and
+deletions, concurrent writers and stale catalogue publication. Four new tests
+exercise ordered concurrency, cancellation, corruption and response bounds.
+Private captures are under
+`/home/james/scratch/mash-artifacts/snapshot-prefetch-20261005`.
