@@ -436,3 +436,42 @@ offline by Tailscale, with its last-seen timestamp at 06:30 UTC, so its upgrade
 and final checks remain pending. The owned benchmark API/backend were stopped;
 the live shared API and Qdrant were unchanged. Validation passed 602 standard
 tests, four retry-boundary tests, strict Clippy, formatting and doctests.
+
+### Native-request attribution under disk contention
+
+Matching the earlier failed CLI call to its server trace shows 4.946 seconds in
+`backend_search`, followed by roughly 112 ms before HTTP 200 completed. The client
+expired at its five-second shared-request deadline. Admission was immediate and
+query preparation took 523 ms outside that deadline. This isolates the timeout to
+backend retrieval and response handling, but does not identify the slow native
+Qdrant request in that earlier run.
+
+A subsequent private diagnostic proxy recorded individual Qdrant requests against
+the same retained corpus. The owned backend needed approximately 110 seconds to
+restart while host I/O pressure was high: kernel I/O `some` stalls averaged 40%
+over a sampled minute. This is a contention stress screen, not a normal startup
+estimate. No live service was restarted and no global cache was dropped.
+
+Six fresh-process shared-only searches succeeded in 1.934–2.753 seconds;
+candidate retrieval took 317–411 ms. Four searches exhausted the existing
+one-second context budget and reported incomplete shared context. The third
+returned thread varied in one search. Therefore, successful responses do not
+establish identical ranking or complete reranking evidence under this load.
+
+The proxy recorded 12 vector queries, 222 state-point reads, 398 message scrolls
+and 98 message-point reads, including initialization and context requests that
+continued after cancellation. These are not all candidate-search requests:
+neighbor retrieval for reranking accounts for most of the fan-out. The slowest
+native request observed was 202 ms; replaying the captured dense query directly
+without the proxy took 147–195 ms across six reads. It used HNSW ef 200,
+`exact=false`, and a 200-candidate limit. The proxy buffers responses and adds a
+connection hop, so these measurements are diagnostic rather than a production
+latency comparison.
+
+The next bounded opportunity is batching neighboring-message retrieval while
+preserving node isolation, topology selection, publication consistency,
+redaction and the existing cancellation budget. Increasing deadlines or reducing
+reranking evidence would obscure the issue rather than establish equivalent
+search quality. This screen does not justify either change or startup warming.
+Private captures are in the `native-timing` subdirectory of the corpus benchmark
+above; they are not included in Git.
