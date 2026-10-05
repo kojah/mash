@@ -1164,3 +1164,13 @@ counters use Qdrant accounting units; they are not CPU seconds, physical disk
 bytes or cache-miss counts. Missing counters remain absent, and no upstream
 request/response bodies or identities are logged. The fields follow the
 [Qdrant query response contract](https://api.qdrant.tech/api-reference/search/query-points).
+
+The accounting instrumentation passed 630 standard tests, strict Clippy,
+formatting and doctests and was deployed to the HTTP API as `6977a8e` without
+restarting Qdrant. Authenticated readiness and publication identities passed.
+Twelve warmed, provider-filtered MCP searches completed without fallback in
+727–1,655 ms. Qdrant's reported dense processing times were 56–73 ms. Hardware
+counters were absent in this deployment; operating-system counters remain
+necessary for physical disk/fault attribution. This verifies the new tracing
+boundary, not a fix for first-search stalls. Private captures are under
+`/home/james/scratch/mash-artifacts/native-accounting-20261005`.
