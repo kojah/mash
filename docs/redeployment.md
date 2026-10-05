@@ -1064,3 +1064,22 @@ and unchanged publication identities passed, without indexing or collection
 changes. Two direct Xenia combined CLI checks returned three threads with
 complete context and no fallback in 1.382 and 1.452 seconds (shared candidates
 174 and 188 ms). These checks do not resolve the earlier cold-query outliers.
+
+Thread preparation now borrows conversation/message rows, including embedding
+vectors, instead of copying them into an owned snapshot per thread. It shares
+the existing layered serializer; differential tests verify identical canonical
+bytes, hashes, ordering and byte-limit behavior for empty and populated threads.
+The full-node comparison against prefetch alone measured preparation-span
+medians of 2.205 and 1.880 seconds. Eight ABBA publications had overall medians
+9.426 and 7.206 seconds, but one old publication took 46.576 seconds, mostly
+in native snapshot staging. This variability prevents attributing the whole
+publication difference to borrowing. Observed API RSS maxima were 1,738 and
+1,804 MiB; this run does not demonstrate a memory reduction.
+
+All counts/current manifests and default HNSW remained intact. Of 96 raw
+concurrent candidate reads, 94 returned HTTP 200 and two returned retryable
+revision conflicts; the slowest request was 3.339 seconds. Validation passed
+620 standard tests, final byte-parity and strict Clippy/format/doctest checks,
+and three disposable Qdrant retention/concurrent-publication contracts.
+Private captures and the corrected test-only integer-conversion lint failure
+are under `/home/james/scratch/mash-artifacts/borrowed-threads-20261005`.

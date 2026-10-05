@@ -44,24 +44,22 @@ pub(super) fn prepare(
     }
     let mut threads = BTreeMap::new();
     let mut changed = BTreeMap::new();
+    let empty = Data::default();
     for (id, conversation) in &data.conversations {
-        let thread = Data {
-            conversations: BTreeMap::from([(id.clone(), conversation.clone())]),
-            messages: grouped
-                .remove(id.as_str())
-                .unwrap_or_default()
-                .into_iter()
-                .map(|message| (message.id.clone(), message.clone()))
-                .collect(),
-            ..Data::default()
-        };
+        let messages = grouped
+            .remove(id.as_str())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|message| (message.id.as_str(), message))
+            .collect();
+        let thread = empty.thread_layers(id, conversation, &messages);
         if let Some(retained) = previous
             .threads
             .as_ref()
             .and_then(|threads| threads.get(id))
             .filter(|_| reuse)
             && Encoded::matches(
-                &thread.layers(),
+                &thread,
                 limit,
                 retained.manifest.bytes,
                 &retained.manifest.digest,
@@ -71,7 +69,7 @@ pub(super) fn prepare(
             threads.insert(id.clone(), retained.clone());
             continue;
         }
-        let encoded = Encoded::new(&thread.layers(), limit)?;
+        let encoded = Encoded::new(&thread, limit)?;
         bytes = add_bytes(bytes, encoded.bytes, limit)?;
         let thread_version = blake3::hash(format!("{version}\0{id}").as_bytes())
             .to_hex()

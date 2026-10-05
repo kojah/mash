@@ -57,6 +57,79 @@ fn fixture() -> Data {
 }
 
 #[test]
+fn borrowed_thread_rows_preserve_canonical_bytes_and_retained_hashes() {
+    let empty = Data::default();
+    for count in [0, 1, 17] {
+        let mut data = fixture();
+        let template = data.messages.remove("message").unwrap();
+        let mut other = data.conversations["thread"].clone();
+        other.id = "unrelated".into();
+        data.conversations.insert(other.id.clone(), other);
+        for index in (0..count).rev() {
+            let mut message = template.clone();
+            message.id = format!("m-{index}");
+            message.ordinal = index;
+            message.content = "text 🦀\n\"\\\t".repeat(11);
+            message.context = if index == 0 {
+                MessageContext::Root
+            } else {
+                MessageContext::Parent { ordinal: index - 1 }
+            };
+            message.role = Role::Assistant;
+            if index % 2 == 0 {
+                message.vector = None;
+                message.generation = None;
+            }
+            data.messages.insert(message.id.clone(), message);
+        }
+        let mut other = template;
+        other.id = "foreign".into();
+        other.conversation_id = "unrelated".into();
+        data.messages.insert(other.id.clone(), other);
+        let rows: BTreeMap<_, _> = data
+            .messages
+            .values()
+            .filter(|row| row.conversation_id == "thread")
+            .map(|row| (row.id.as_str(), row))
+            .collect();
+        let owned = Data {
+            conversations: BTreeMap::from([(
+                "thread".into(),
+                data.conversations["thread"].clone(),
+            )]),
+            messages: rows
+                .iter()
+                .map(|(id, row)| ((*id).to_owned(), (*row).clone()))
+                .collect(),
+            ..Data::default()
+        };
+        let borrowed = empty.thread_layers("thread", &data.conversations["thread"], &rows);
+        let expected = serde_json::to_vec(&owned.layers()).unwrap();
+        assert_eq!(serde_json::to_vec(&borrowed).unwrap(), expected);
+        let digest = blake3::hash(&expected).to_hex().to_string();
+        assert!(
+            crate::shared::snapshot::Encoded::matches(
+                &borrowed,
+                expected.len(),
+                expected.len(),
+                &digest
+            )
+            .unwrap()
+        );
+        assert!(crate::shared::snapshot::Encoded::new(&borrowed, expected.len() - 1).is_err());
+        let decoded = serde_json::from_slice::<Snapshot>(&expected)
+            .unwrap()
+            .into_data()
+            .unwrap();
+        assert_eq!(decoded.messages.len(), usize::try_from(count).unwrap());
+        assert_eq!(
+            decoded.canonical_fingerprint().unwrap(),
+            owned.canonical_fingerprint().unwrap()
+        );
+    }
+}
+
+#[test]
 fn canonical_identity_excludes_gold_and_checkpoints_and_tracks_silver_edits() {
     let mut data = fixture();
     let fingerprint = data.canonical_fingerprint().unwrap();

@@ -111,7 +111,7 @@ pub(in crate::shared) struct SnapshotRef<'a> {
 }
 #[derive(Serialize)]
 pub(in crate::shared) struct SilverRef<'a> {
-    conversations: &'a BTreeMap<String, ConversationRecord>,
+    conversations: ConversationsRef<'a>,
     messages: MessagesRef<'a>,
     sources: SourcesRef<'a>,
     tombstones: &'a BTreeMap<String, Tombstone>,
@@ -145,11 +145,53 @@ impl MessageRecord {
         }
     }
 }
-struct MessagesRef<'a>(&'a BTreeMap<String, MessageRecord>);
+enum ConversationsRef<'a> {
+    All(&'a BTreeMap<String, ConversationRecord>),
+    Thread(&'a str, &'a ConversationRecord),
+}
+impl Serialize for ConversationsRef<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::All(rows) => rows.serialize(serializer),
+            Self::Thread(id, conversation) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(id, conversation)?;
+                map.end()
+            }
+        }
+    }
+}
+#[derive(Clone, Copy)]
+enum Rows<'a> {
+    All(&'a BTreeMap<String, MessageRecord>),
+    Thread(&'a BTreeMap<&'a str, &'a MessageRecord>),
+}
+impl<'a> Rows<'a> {
+    fn iter(self) -> impl Iterator<Item = (&'a str, &'a MessageRecord)> {
+        let (all, thread) = match self {
+            Self::All(rows) => (Some(rows), None),
+            Self::Thread(rows) => (None, Some(rows)),
+        };
+        all.into_iter()
+            .flat_map(|rows| rows.iter().map(|(id, row)| (id.as_str(), row)))
+            .chain(
+                thread
+                    .into_iter()
+                    .flat_map(|rows| rows.iter().map(|(id, row)| (*id, *row))),
+            )
+    }
+    fn len(self) -> usize {
+        match self {
+            Self::All(rows) => rows.len(),
+            Self::Thread(rows) => rows.len(),
+        }
+    }
+}
+struct MessagesRef<'a>(Rows<'a>);
 impl Serialize for MessagesRef<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(self.0.len()))?;
-        for (id, m) in self.0 {
+        for (id, m) in self.0.iter() {
             map.serialize_entry(id, &m.silver_ref())?;
         }
         map.end()
@@ -164,11 +206,11 @@ struct EmbeddingRef<'a> {
     generation: Option<&'a str>,
     vector: Option<&'a [f64]>,
 }
-struct EmbeddingsRef<'a>(&'a BTreeMap<String, MessageRecord>);
+struct EmbeddingsRef<'a>(Rows<'a>);
 impl Serialize for EmbeddingsRef<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(None)?;
-        for (id, m) in self.0 {
+        for (id, m) in self.0.iter() {
             if m.generation.is_some() || m.vector.is_some() {
                 map.serialize_entry(
                     id,
@@ -209,7 +251,7 @@ impl Data {
             &mut output,
             &Canonical {
                 conversations: &self.conversations,
-                messages: MessagesRef(&self.messages),
+                messages: MessagesRef(Rows::All(&self.messages)),
                 tombstones: &self.tombstones,
             },
         )
@@ -222,8 +264,8 @@ impl Data {
 
     pub(in crate::shared) fn silver(&self) -> SilverRef<'_> {
         SilverRef {
-            conversations: &self.conversations,
-            messages: MessagesRef(&self.messages),
+            conversations: ConversationsRef::All(&self.conversations),
+            messages: MessagesRef(Rows::All(&self.messages)),
             sources: SourcesRef(&self.sources),
             tombstones: &self.tombstones,
         }
@@ -232,13 +274,33 @@ impl Data {
     pub(in crate::shared) fn layers(&self) -> SnapshotRef<'_> {
         SnapshotRef {
             silver: SilverRef {
-                conversations: &self.conversations,
-                messages: MessagesRef(&self.messages),
+                conversations: ConversationsRef::All(&self.conversations),
+                messages: MessagesRef(Rows::All(&self.messages)),
                 sources: SourcesRef(&self.sources),
                 tombstones: &self.tombstones,
             },
             gold: GoldRef {
-                embeddings: EmbeddingsRef(&self.messages),
+                embeddings: EmbeddingsRef(Rows::All(&self.messages)),
+            },
+        }
+    }
+
+    /// Borrow a partition's rows; the caller supplies empty metadata for threads.
+    pub(in crate::shared) fn thread_layers<'a>(
+        &'a self,
+        id: &'a str,
+        conversation: &'a ConversationRecord,
+        messages: &'a BTreeMap<&'a str, &'a MessageRecord>,
+    ) -> SnapshotRef<'a> {
+        SnapshotRef {
+            silver: SilverRef {
+                conversations: ConversationsRef::Thread(id, conversation),
+                messages: MessagesRef(Rows::Thread(messages)),
+                sources: SourcesRef(&self.sources),
+                tombstones: &self.tombstones,
+            },
+            gold: GoldRef {
+                embeddings: EmbeddingsRef(Rows::Thread(messages)),
             },
         }
     }
