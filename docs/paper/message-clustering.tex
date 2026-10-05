@@ -950,6 +950,28 @@ development SHA256 prefixes are \texttt{991ad49eda8e} and
 \texttt{1dc8a1985e3f}. This closes the registered heuristic screen; further work
 must address representation quality rather than retune these combinations.
 
+\subsection{Pairwise representation diagnostic}
+To distinguish representation limitations from grouping losses, we inspect
+three cached scalar similarities on development labels only: raw pooled cosine,
+whole-context pooled cosine and maximum heading-chunk cosine. Overall ROC AUC
+is .807/.859/.851; long-history AUC is .767/.843/.826. An exploratory scan of
+observed thresholds, keeping equal scores together, yields maximum recall at
+precision at least .85 of .707/.828/.838 overall and .357/.688/.678 long.
+These thresholds are fitted to the same labels: this is optimistic descriptive
+evidence, not held-out performance, an accepted threshold or an upper bound on
+all clustering algorithms. Neither enhanced scalar score reaches the long
+recall floor, supporting further representation assessment over cutoff tuning.
+
+Distant-pair AUC is .742/.787/.764 and optimistic recall is .052/.311/.096.
+Different positive prevalence limits interpretation across length/distance
+slices. Maximum chunk similarity also has a multiplicity bias: median
+related/unrelated comparison counts are 24/16 overall and 28/21 long.
+The first diagnostic invocation stops before output due to an incorrect raw
+artifact filename; correction uses its existing enum without changing inputs
+or scores. Restart takes 6.16 seconds and peaks at 1,046,524 KiB RSS. All matrix
+and annotation provenance checks pass. Protocol/result SHA256 prefixes are
+\texttt{caa4ab603825}/\texttt{098986438a49}; confirmation remains sealed.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt

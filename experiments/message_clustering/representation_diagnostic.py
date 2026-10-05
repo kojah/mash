@@ -14,6 +14,7 @@ from threadpoolctl import threadpool_limits
 from blind_turn_pairs import Verdict
 from clustering import VectorMatrix
 from corpus import Record
+from followup_inputs import Variant
 from run_input_followup import FollowupReport
 from run_structure_followup import StructureReport
 from run_turn_ensemble import A_SHA, B_SHA
@@ -191,7 +192,8 @@ def main(
                 structural = view == "structure_heading"
                 directory = structural_artifacts if structural else pooled_artifacts
                 parent = b if structural else a
-                name = f"{index}-{view}.npz"
+                artifact_view = Variant.RAW if view == "raw" else view
+                name = f"{index}-{artifact_view}.npz"
                 data = (directory / name).read_bytes()
                 if hashlib.sha256(data).hexdigest() != parent.artifact_sha256[name]:
                     raise click.ClickException("matrix hash changed")
