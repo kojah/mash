@@ -1022,3 +1022,11 @@ thread retention, edits/deletions, concurrent writers and stale publication
 rejection on a separate disposable Qdrant backend. Private artifacts and failed
 setup/lint invocations are retained under
 `/home/james/scratch/mash-artifacts/shared-sustained-20261005`.
+
+Release `e28cbd9` was deployed to the shared API only; this change does not alter
+node schemas or client protocols. Authenticated readiness and unchanged
+publication identities passed, with no indexing or collection-setting change.
+Fresh Xenia combined CLI checks returned three threads with complete context and
+no fallback: first 5.277 seconds (shared candidates 4.161 seconds), follow-up
+1.323 seconds (candidates 163 ms). These are deployment checks, and preserve the
+unresolved cold-candidate limitation.
