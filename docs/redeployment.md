@@ -235,5 +235,27 @@ still running Cargo for every build. Its first validation run took 48.31 seconds
 warm reuse, not a comparison against the old helper on different commits. Builds
 sharing a remote root must be serialized.
 
+Release `2a60e9d` was deployed to the shared API and all three nodes using one
+validated artifact per platform, without reindexing. API readiness, unauthorized
+rejection and publication identities passed the restart helper's checks. The
+native feature-update build took 75.05 seconds, including transport and a
+34.05-second Cargo build.
+
+Actual `cbioportal` MCP checks after deployment returned successful thread
+results without fallback:
+
+| Node | Local-only | Warm local + shared | Shared candidates in warm combined call |
+| --- | ---: | ---: | ---: |
+| Xenia | 1.346 s | 2.144 s | 0.208 s |
+| Development MacBook | 0.597 s | 2.625 s | 1.249 s |
+| Personal MacBook | 1.077 s | 2.883 s | 1.277 s |
+
+These are individual calls, not percentiles or a general latency guarantee.
+The first post-deployment calls took 15.176 seconds on Xenia and 5.569/5.247
+seconds on the MacBooks. Xenia's first-call delay is not explained by the recorded
+retrieval/reranking stages, so this deployment does not establish a cold-search
+fix. A later traced local call spent 458 ms loading models and 7.7 ms loading
+vectors. Larger full-rebuild optimizer comparisons remain separate experiments.
+
 Private corpus copies, requests, traces and validation logs are retained under
 `/home/james/scratch/mash-artifacts/publication-throughput-20261005`.
