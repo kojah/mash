@@ -4,6 +4,7 @@ use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
 mod attachments;
+mod export;
 mod fusion;
 mod incomplete;
 mod rebuild;
@@ -389,8 +390,10 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     assert_eq!(
         names,
         [
+            "export_silver",
             "forget",
             "get_attachment",
+            "import_silver",
             "index",
             "list_attachments",
             "list_threads",

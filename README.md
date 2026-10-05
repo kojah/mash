@@ -45,6 +45,8 @@ mash list-threads [--local | --shared] [--provider PROVIDER] [--title-contains T
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <conversation-id>
+mash export <new-directory>
+mash import <export-directory> --into <new-database>
 mash models install
 mash mcp [--watch [--debounce-ms N]]
 mash serve --server-config PATH
@@ -1288,7 +1290,7 @@ their credentials are later removed.
 ## MCP
 
 CLI and MCP are wrappers around the same typed application core in `app/core.rs`.
-The core owns indexing, search, thread listing, view, status, forgetting, and model installation.
+The core owns indexing, search, thread listing, view, status, forgetting, silver export/import, and model installation.
 MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
 The cached search worker and watcher also use typed core requests.
 
@@ -1321,8 +1323,15 @@ to storage, and backend initialization completes before the listener opens.
 
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_threads`, `view`, `status`, `index`, `forget`,
-`models_install`, `list_attachments`, `get_attachment`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
+`models_install`, `list_attachments`, `get_attachment`, `export_silver`, `import_silver`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
+
+`export_silver({"directory":"/path/to/new-export"})` saves local silver and
+retained attachments offline, with a typed JSON manifest and checksums.
+`import_silver({"directory":"/path/to/new-export","database":"/path/to/new.sqlite3"})`
+imports to a fresh path and leaves gold explicitly unready. It does not redirect
+the running MCP session or overwrite existing history. See [silver exports](docs/silver-exports.md)
+for format, CLI commands, import/rebuild steps and data scope.
 
 Attachment discovery uses a message ID from `view` or search:
 `list_attachments({"message_id":"…"})`, then

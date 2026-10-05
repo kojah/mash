@@ -100,6 +100,22 @@ struct GetAttachment {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+struct ExportSilver {
+    /// New local directory; must not already exist. Contains sensitive silver history.
+    directory: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ImportSilver {
+    /// Local export directory created by `export_silver`.
+    directory: String,
+    /// New SQLite database path; existing databases and attachment directories are refused.
+    database: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[allow(
     clippy::struct_excessive_bools,
     reason = "SDK arguments mirror CLI flags; core validates and uses enum-selected indexing modes"
@@ -225,7 +241,11 @@ impl Mash {
     ) -> Result<core::Response, crate::AppError> {
         let _guard = if matches!(
             operation,
-            Operation::Index(_) | Operation::Forget { .. } | Operation::ModelsInstall
+            Operation::Index(_)
+                | Operation::Forget { .. }
+                | Operation::ModelsInstall
+                | Operation::ExportSilver { .. }
+                | Operation::ImportSilver { .. }
         ) {
             Some(self.gate.lock().await)
         } else {
@@ -451,6 +471,29 @@ impl Mash {
     )]
     async fn models_install(&self) -> CallToolResult {
         self.execute(Operation::ModelsInstall).await
+    }
+
+    #[tool(
+        annotations(read_only_hint = false, destructive_hint = false),
+        description = "Export local silver to a new directory, including retained attachments and deletion/checkpoint evidence, without models or network access. Excludes gold/models/config. Contains canonical private history, not redacted search output."
+    )]
+    async fn export_silver(&self, Parameters(request): Parameters<ExportSilver>) -> CallToolResult {
+        self.execute(Operation::ExportSilver {
+            directory: request.directory.into(),
+        })
+        .await
+    }
+
+    #[tool(
+        annotations(read_only_hint = false, destructive_hint = false),
+        description = "Verify and import a local silver export to a new database. Never overwrites or merges existing history and does not change this MCP session's configured database. Search requires explicit gold rebuild using the imported database."
+    )]
+    async fn import_silver(&self, Parameters(request): Parameters<ImportSilver>) -> CallToolResult {
+        self.execute(Operation::ImportSilver {
+            directory: request.directory.into(),
+            database: request.database.into(),
+        })
+        .await
     }
 }
 

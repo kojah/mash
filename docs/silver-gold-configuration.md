@@ -1640,6 +1640,10 @@ bounded work.
 
 ## Quiescent backup and restore
 
+For portable per-node silver exports, use `mash export` or MCP
+`export_silver`; see [silver export/import](silver-exports.md). The procedure
+below backs up the entire shared group, including gold, through Qdrant snapshots.
+
 Each shared group has two Qdrant collections. Back up both: the state collection
 holds retained silver, source checkpoints, tombstones, node references and group
 configuration; the message collection holds searchable documents and vectors.

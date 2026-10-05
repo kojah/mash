@@ -11,6 +11,7 @@ use support::*;
 
 mod commands;
 mod configuration;
+mod export;
 mod index_destinations;
 mod indexing;
 mod publication;

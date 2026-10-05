@@ -94,6 +94,13 @@ pub(crate) enum Operation {
         id: String,
     },
     ModelsInstall,
+    ExportSilver {
+        directory: PathBuf,
+    },
+    ImportSilver {
+        directory: PathBuf,
+        database: PathBuf,
+    },
     ListAttachments {
         message_id: String,
         shared: Option<String>,
@@ -116,6 +123,8 @@ pub(crate) enum Response {
     Status(Box<StatusResponse>),
     Forget(ForgetResponse),
     ModelsInstall(ModelsInstallResponse),
+    ExportSilver(crate::export::Exported),
+    ImportSilver(crate::export::Imported),
     ListAttachments(crate::attachments::Listing),
     GetAttachment(crate::attachments::Retrieved),
 }

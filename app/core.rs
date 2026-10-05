@@ -42,6 +42,8 @@ async fn execute_admitted(
         Operation::Status { .. } => "status",
         Operation::Forget { .. } => "forget",
         Operation::ModelsInstall => "models_install",
+        Operation::ExportSilver { .. } => "export_silver",
+        Operation::ImportSilver { .. } => "import_silver",
         Operation::ListAttachments { .. } => "list_attachments",
         Operation::GetAttachment { .. } => "get_attachment",
     };
@@ -180,6 +182,22 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::ExportSilver { directory } => {
+            let database = database.to_path_buf();
+            let source_node = configuration
+                .shared
+                .as_ref()
+                .map(|shared| shared.node_id.clone());
+            crate::blocking(move || crate::export::write(&database, &directory, source_node))
+                .await
+                .map(Response::ExportSilver)
+        }
+        Operation::ImportSilver {
+            directory,
+            database,
+        } => crate::blocking(move || crate::export::load(&directory, &database))
+            .await
+            .map(Response::ImportSilver),
         Operation::ListAttachments { message_id, shared } => {
             inspection::list_attachments(configuration, database, message_id, shared)
                 .await

@@ -21,6 +21,7 @@ mod attachments;
 mod cli;
 mod config;
 mod core;
+mod export;
 mod mcp;
 mod observability;
 mod progress;

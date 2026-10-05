@@ -138,6 +138,14 @@ enum Command {
     },
     /// Remove one conversation and its derived search rows.
     Forget { id: String },
+    /// Export local silver and retained attachments to a new private directory.
+    Export { directory: PathBuf },
+    /// Import verified silver into a new database; project gold explicitly afterward.
+    Import {
+        directory: PathBuf,
+        #[arg(long, value_name = "NEW_DATABASE")]
+        into: PathBuf,
+    },
     /// Manage semantic retrieval models.
     Models {
         #[command(subcommand)]
@@ -332,6 +340,11 @@ impl Cli {
             },
             Command::Status { shared } => Operation::Status { shared },
             Command::Forget { id } => Operation::Forget { id },
+            Command::Export { directory } => Operation::ExportSilver { directory },
+            Command::Import { directory, into } => Operation::ImportSilver {
+                directory,
+                database: into,
+            },
             Command::Models {
                 command: ModelsCommand::Install,
             } => Operation::ModelsInstall,
@@ -674,6 +687,8 @@ mod tests {
                 "view",
                 "status",
                 "forget",
+                "export",
+                "import",
                 "models",
                 "mcp",
                 "serve"

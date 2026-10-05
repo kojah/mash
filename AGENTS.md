@@ -5,7 +5,7 @@
 mash is a Rust CLI with JSON output and stdio MCP server for local agent histories.
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
 Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view`, `status`,
-`forget`, `models install`, `mcp`, and `serve`.
+`forget`, `export`, `import`, `models install`, `mcp`, and `serve`.
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
@@ -25,7 +25,9 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
   Keep immutable staging invisible, enforce
   revisions across API processes, and fail closed on incompatible existing schemas.
 - Do not add provider traits, registries, installed daemons, compatibility
-  shims, alternate output modes, a TUI, export, or analytics.
+  shims, alternate output modes, a TUI, or analytics. Portable silver export/import
+  is supported; exclude deployment credentials, models and provider files.
+  Clearly document that exports preserve sensitive canonical history.
 - CLI searches may share an on-demand, per-user local worker. It must exit after
   60 seconds of inactivity, accept only searches, and preserve direct execution
   with `search --no-worker`. Do not install it as a system service.
