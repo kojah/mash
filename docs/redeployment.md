@@ -425,3 +425,14 @@ metadata. It is not an inference, semantic-quality, production watcher or all-no
 latency benchmark. Requests, pinned heads, traces, arrivals, acknowledgements and
 verification results remain private under
 `/home/james/scratch/mash-artifacts/incremental-backlog-20261005`.
+
+Release `bf2c847` was installed on Xenia and the development MacBook without
+reindexing. Local/shared status calls succeeded and fresh combined MCP calls
+returned three threads without fallback: Xenia initially 4.151 seconds and then
+1.771 seconds; development MacBook 4.661 seconds. The native build took 53.26
+seconds (Cargo 31.53 seconds). The spread remains relevant to cold-read work;
+these deployment checks are not a latency SLA. The personal MacBook is confirmed
+offline by Tailscale, with its last-seen timestamp at 06:30 UTC, so its upgrade
+and final checks remain pending. The owned benchmark API/backend were stopped;
+the live shared API and Qdrant were unchanged. Validation passed 602 standard
+tests, four retry-boundary tests, strict Clippy, formatting and doctests.
