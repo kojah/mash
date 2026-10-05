@@ -800,6 +800,58 @@ Performance budgets pass; base embedding costs are unchanged. The private
 development result SHA256 starts \texttt{d4ab356b33f2}; the prospective protocol
 starts \texttt{7463c0311fa6}. No further weights/windows are tuned after this grid.
 
+\subsection{Retained window vectors: completed}
+To investigate loss from pooling, we register eight cache-only cells: original
+whole-context windows, or the same context prompt windows with all original raw
+assistant windows, crossed with BIRCH and average linkage at .65/.75 cuts.
+BIRCH radii remain .75/.60 respectively. Centroid memberships use the existing
+cutoff and .05 relative-best margin; retained groups require two distinct owning
+turns, followed by membership union per turn. A turn's repeated windows cannot
+provide two supports. We also reproduce the unchanged pooled-context anchor.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Inputs & Family/cut & P & R & F1 & Long P & Long R & Long F1 \\
+\midrule
+Pooled anchor & BIRCH/.75 & .887 & .724 & .798 & .855 & .564 & .679 \\
+Context windows & BIRCH/.65 & .803 & .870 & .835 & .743 & .790 & .765 \\
+Context windows & BIRCH/.75 & .883 & .639 & .741 & .843 & .497 & .625 \\
+Context windows & Average/.65 & .916 & .598 & .724 & .865 & .490 & .626 \\
+Context windows & Average/.75 & .946 & .340 & .501 & .933 & .268 & .416 \\
+Full answers & BIRCH/.65 & .781 & .874 & .825 & .692 & .787 & .736 \\
+Full answers & BIRCH/.75 & .888 & .684 & .773 & .838 & .561 & .672 \\
+Full answers & Average/.65 & .897 & .661 & .761 & .830 & .529 & .646 \\
+Full answers & Average/.75 & .925 & .361 & .520 & .895 & .299 & .449 \\
+\bottomrule
+\end{tabular}
+\caption{Complete registered retained-window screen, with the unchanged anchor.
+No configuration satisfies every quality gate.}
+\end{table}
+
+At the matching .65 BIRCH setting, separate context windows improve the point
+estimate from pooled whole-context F1 .816 to .835, precision .768 to .803,
+with recall unchanged at .870. Long precision rises .694 to .743 and recall
+.780 to .790. The paired thread-bootstrap F1-gain interval is -.005--.045,
+including no gain; repeated development reuse further limits inference.
+Comparison only with the .75 anchor would conflate representation and cutoff.
+The best aggregate-F1 cell has overall TP=537, FP=132, FN=80 and long-history
+TP=248, FP=86, FN=66. Nearby unrelated FPR is .600 and distant recall .719.
+Precision remains insufficient. Restoring all answer segments improves recall
+at stricter cuts but does not consistently improve quality, while average-link
+trades recall for precision. More windows are not proof of more coherent topics.
+
+Context windows provide 8,231 points for 3,396 development turns; restored
+answers provide 9,534, with maxima of 18 and 54 points per turn. Point
+multiplicity can still influence fit despite distinct-turn retention. Read-only
+cache and original source/role/turn provenance checks pass. Complete scoring
+takes 13.88 seconds, peak RSS 1,068,432 KiB, and maximum cache preparation plus
+fit p95 64.68 ms. These are cache-only costs, not new embedding construction.
+The protocol and result SHA256 prefixes are \texttt{3e981e55e9c6} and
+\texttt{126544f75c82}. Confirmation remains unopened. Structure-aware segmentation
+is the separately approved next hypothesis, not a modification of these results.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
