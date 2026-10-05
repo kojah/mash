@@ -69,3 +69,27 @@ disposable containers are removed after terminal test handles.
 
 Private requests, responses, vectors, traces and logs live outside Git in
 `/home/james/scratch/mash-artifacts/shared-tail-20261005`.
+
+## Deployment verification
+
+Deploy 96c4ee6 to the API and all three nodes without indexing. Build once per
+platform; the committed ARM64 release compiles in 29.91 seconds and is reused on
+both Macs. Authenticated API readiness passes and publication identities are
+preserved. Every node reports ready metadata, lexical and dense artifacts, with
+the previous conversation/message/vector counts intact. Stop the private API;
+leave the production API's diagnostic tracing enabled for the unresolved tail.
+
+Fresh MCP sessions then search `cbioportal` three times locally and three times
+in combined scope on each node:
+
+| Node | Local core latency, ms | Combined core latency, ms |
+| --- | --- | --- |
+| Xenia | 1,111 / 579 / 587 | 759 / 685 / 756 |
+| Dev Mac | 538 / 324 / 276 | 1,828 / 1,516 / 1,776 |
+| Personal Mac | 1,318 / 487 / 473 | 3,843 / 1,767 / 1,429 |
+
+All 18 searches succeed, with no fallback or incomplete shared context. Each
+returns two or three threads. This is a post-deployment smoke sample in natural
+cache state, not a percentile estimate or proof that first-request tails are
+resolved. Existing MCP processes keep their client implementation until they
+reconnect; their projection-restoration contract also supports the new API.
