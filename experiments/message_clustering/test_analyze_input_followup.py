@@ -4,9 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from analyze_input_followup import coverage, peak_rss, union_length
+from analyze_input_followup import coverage, peak_rss, union_length, validate_sources
+from build_input_followup import Built
 from corpus import Role
-from test_turns import thread
+from followup_inputs import Variant, prepare
+from test_turns import thread, tokenizer
+from turn_study_corpus import Phase
 from turns import Span, extract
 
 
@@ -15,6 +18,57 @@ def span(source: int, start: int, end: int) -> Span:
 
 
 class FollowupAnalysis(unittest.TestCase):
+    def test_provenance_checks_literal_ranges_identity_and_ancestry(self):
+        source = thread(
+            (Role.USER, Role.ASSISTANT, Role.USER, Role.ASSISTANT),
+            ("proposal", "use this design", "yes", "done"),
+        )
+        turns = extract(source)
+        inputs = prepare(source, turns, 1, Variant.CONTEXT_TARGET, tokenizer())
+        built = Built(
+            thread_index=0,
+            phase=Phase.DEVELOPMENT,
+            variant=Variant.CONTEXT_TARGET,
+            seconds=0,
+            new_vectors=0,
+            input_tokens=0,
+            matrix_sha256="unused",
+            turn_ids=tuple(turn.id for turn in turns),
+            inputs=inputs,
+        )
+        validate_sources(built, source, turns)
+        item = inputs[0]
+        bad_location = item.content.locations[0].model_copy(
+            update={
+                "source": item.content.locations[0].source.model_copy(
+                    update={"message_id": "wrong source"}
+                )
+            }
+        )
+        bad_content = item.content.model_copy(
+            update={"locations": (bad_location,) + item.content.locations[1:]}
+        )
+        for changed in (
+            item.model_copy(update={"context_turn_id": "unrelated"}),
+            item.model_copy(update={"content": bad_content}),
+            item.model_copy(
+                update={
+                    "content": item.content.model_copy(
+                        update={"text": "changed" + item.content.text}
+                    )
+                }
+            ),
+        ):
+            with self.assertRaises(ValueError):
+                validate_sources(
+                    built.model_copy(update={"inputs": (changed,)}), source, turns
+                )
+        future = inputs[-1].model_copy(update={"turn_id": turns[0].id})
+        with self.assertRaises(ValueError):
+            validate_sources(
+                built.model_copy(update={"inputs": (future,)}), source, turns
+            )
+
     def test_overlapping_windows_count_once_and_context_is_not_own_coverage(self):
         turns = extract(
             thread(

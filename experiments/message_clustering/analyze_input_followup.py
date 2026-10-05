@@ -12,8 +12,8 @@ import numpy as np
 import orjson
 
 from build_input_followup import Built
-from corpus import Record
-from followup_inputs import Variant
+from corpus import Record, Role, Thread
+from followup_inputs import Variant, ancestor
 from run_input_followup import FollowupReport
 from study_analysis import FitCost, Slice, build_costs, fit_costs, slices
 from study_annotations import load_development
@@ -22,6 +22,41 @@ from summarize_turn_study import verify_rows
 from turn_artifact import Artifact
 from turn_study_corpus import Cohort, Phase
 from turns import Span, Turn
+
+
+def validate_sources(built: Built, thread: Thread, turns: tuple[Turn, ...]) -> None:
+    """Verify literal mappings and ancestry without inference or annotation access."""
+    indices = {turn.id: index for index, turn in enumerate(turns)}
+    for item in built.inputs:
+        if item.turn_id not in indices or item.turn_id not in built.turn_ids:
+            raise ValueError("input has no owning prompted turn")
+        current = indices[item.turn_id]
+        turn = turns[current]
+        if item.role not in (Role.USER, Role.ASSISTANT):
+            raise ValueError("input has an unsupported role")
+        allowed = set(turn.prompts if item.role == Role.USER else turn.answers)
+        if item.context_turn_id is not None:
+            previous = ancestor(thread, turns, current)
+            if (
+                item.role != Role.USER
+                or previous is None
+                or previous.turn_id != item.context_turn_id
+            ):
+                raise ValueError("input borrows from an impermissible ancestor")
+            allowed.update(previous.sources)
+        for location in item.content.locations:
+            source = location.source
+            if source.source not in allowed:
+                raise ValueError("input contains a future or unrelated source")
+            message = thread.messages[source.source]
+            if (
+                message.id != source.message_id
+                or not 0 <= source.start <= source.end <= len(message.projection)
+                or not 0 <= location.start <= location.end <= len(item.content.text)
+                or item.content.text[location.start : location.end]
+                != message.projection[source.start : source.end]
+            ):
+                raise ValueError("input text does not match its original source range")
 
 
 def union_length(intervals: tuple[tuple[int, int], ...]) -> int:
@@ -211,6 +246,7 @@ def main(
                 ):
                     raise click.ClickException("scored provenance changed")
                 built = Built.model_validate_json(provenance)
+                validate_sources(built, thread.thread, thread.turns)
                 spans = {
                     turn.id: tuple(
                         location.source
