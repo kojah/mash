@@ -32,12 +32,35 @@ class ClusteringContracts(unittest.TestCase):
     def test_returning_subjects_and_deterministic_representatives(self) -> None:
         vectors = np.array([[1, 0], [0, 1], [1, 0], [0, 1]], dtype=np.float64)
         for setting in CONFIGURATIONS:
+            if setting.method == Method.HDBSCAN:
+                continue  # Minimum density support differs from centroid grouping.
             with self.subTest(setting=setting):
                 result = cluster(vectors, setting)
                 self.assertEqual(result.partition, (0, 1, 0, 1))
                 self.assertEqual(
                     [group.representative for group in result.groups], [0, 1]
                 )
+                self.assertEqual(result, cluster(vectors, setting))
+
+    def test_density_groups_and_noise_are_not_one_shared_cluster(self) -> None:
+        vectors = np.array(
+            [[1, 0, 0]] * 6 + [[0, 1, 0]] * 6 + [[0, 0, 1]], dtype=np.float64
+        )
+        for setting in CONFIGURATIONS:
+            if setting.method != Method.HDBSCAN:
+                continue
+            with self.subTest(setting=setting):
+                result = cluster(vectors, setting)
+                self.assertGreaterEqual(len(result.groups), 2)
+                # Leaf selection may split an exact-distance plateau. It must
+                # still separate the subjects and keep noise out of every group.
+                for group in result.groups:
+                    self.assertTrue(
+                        all(index < 6 for index in group.primary_members)
+                        or all(6 <= index < 12 for index in group.primary_members)
+                    )
+                self.assertEqual(result.partition[-1], -1)
+                self.assertEqual(result.memberships[-1], ())
                 self.assertEqual(result, cluster(vectors, setting))
 
     def test_incremental_leader_matches_replay_and_rejects_dimension_change(

@@ -11,7 +11,7 @@ from enum import StrEnum
 
 import numpy as np
 from numpy.typing import NDArray
-from sklearn.cluster import AgglomerativeClustering, Birch
+from sklearn.cluster import HDBSCAN, AgglomerativeClustering, Birch
 
 VectorMatrix = NDArray[np.float64]
 
@@ -20,6 +20,7 @@ class Method(StrEnum):
     LEADER = "leader"
     BIRCH = "birch"
     AVERAGE_LINK = "average_link"
+    HDBSCAN = "hdbscan"
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class Configuration:
     method: Method
     cosine_threshold: float
     radius: float | None = None
+    min_cluster_size: int | None = None
 
     def __post_init__(self) -> None:
         if not 0 < self.cosine_threshold < 1:
@@ -40,15 +42,27 @@ class Configuration:
                 raise ValueError("BIRCH requires a positive finite radius")
         elif self.radius is not None:
             raise ValueError("radius is only meaningful for BIRCH")
+        if self.method == Method.HDBSCAN:
+            if self.min_cluster_size is None or self.min_cluster_size < 2:
+                raise ValueError("HDBSCAN requires a minimum cluster size >=2")
+        elif self.min_cluster_size is not None:
+            raise ValueError("minimum cluster size is only configured for HDBSCAN")
 
 
-CONFIGURATIONS = tuple(
-    Configuration(method, threshold)
-    for method in (Method.LEADER, Method.AVERAGE_LINK)
-    for threshold in (0.35, 0.50, 0.65)
-) + tuple(
-    Configuration(Method.BIRCH, threshold, radius)
-    for radius, threshold in ((0.40, 0.65), (0.50, 0.50), (0.60, 0.35))
+CONFIGURATIONS = (
+    tuple(
+        Configuration(method, threshold)
+        for method in (Method.LEADER, Method.AVERAGE_LINK)
+        for threshold in (0.35, 0.50, 0.65)
+    )
+    + tuple(
+        Configuration(Method.BIRCH, threshold, radius)
+        for radius, threshold in ((0.40, 0.65), (0.50, 0.50), (0.60, 0.35))
+    )
+    + tuple(
+        Configuration(Method.HDBSCAN, threshold, min_cluster_size=size)
+        for size, threshold in ((2, 0.65), (3, 0.50), (5, 0.35))
+    )
 )
 
 
@@ -139,7 +153,7 @@ def primary_partition(
 ) -> tuple[int, ...]:
     """Fit a partition; BIRCH reassigns all messages to final leaf centres."""
     if len(vectors) <= 1:
-        return (0,) * len(vectors)
+        return (-1 if configuration.method == Method.HDBSCAN else 0,) * len(vectors)
     if configuration.method == Method.LEADER:
         model = OnlineLeader(configuration.cosine_threshold)
         labels = [model.append(vector) for vector in vectors]
@@ -154,6 +168,22 @@ def primary_partition(
             model_birch.partial_fit(vector.reshape(1, -1))
         # partial_fit.labels_ covers only the latest batch, not the thread.
         labels = [int(label) for label in model_birch.predict(vectors)]
+    elif configuration.method == Method.HDBSCAN:
+        # Cosine isn't supported by KD/Ball trees. Bound this offline candidate
+        # to a single job and explicitly measure its quadratic-memory cost.
+        if len(vectors) < (configuration.min_cluster_size or 2):
+            return (-1,) * len(vectors)
+        model_density = HDBSCAN(
+            min_cluster_size=configuration.min_cluster_size,
+            min_samples=2,
+            metric="cosine",
+            algorithm="brute",
+            cluster_selection_method="leaf",
+            allow_single_cluster=False,
+            n_jobs=1,
+            copy=True,
+        )
+        labels = [int(label) for label in model_density.fit_predict(vectors)]
     else:
         model_average = AgglomerativeClustering(
             n_clusters=None,
@@ -164,7 +194,9 @@ def primary_partition(
         labels = [int(label) for label in model_average.fit_predict(vectors)]
     # Third-party labels have no meaningful order. Canonicalize by first member.
     remap: dict[int, int] = {}
-    return tuple(remap.setdefault(label, len(remap)) for label in labels)
+    return tuple(
+        -1 if label < 0 else remap.setdefault(label, len(remap)) for label in labels
+    )
 
 
 def cluster(
@@ -188,6 +220,8 @@ def cluster(
     groups: list[Group] = []
     centroids: list[NDArray[np.float64]] = []
     for label in sorted(set(partition)):
+        if label < 0:
+            continue
         members = tuple(
             index for index, group in enumerate(partition) if group == label
         )

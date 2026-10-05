@@ -47,6 +47,27 @@ vectors and detailed reports in the private artifact directory outside Git.
 Do not mix embedding generations within a thread or sample only successful
 embeddings while claiming coverage of all canonical messages.
 
+The first corpus is frozen with SHA-256
+`fd625ba86b8d44940062f52335380518164d40af5aa6dca73b2210013012ed16`.
+Seed `mash-message-clustering-20261005-v1` selects four independent components per
+provider/length stratum (8–24, 25–150, 151+ vectors), alternating development and
+held-out assignment. SHA-256(seed + thread ID) orders candidates, with >1,000-vector
+threads prioritized in long strata. All 817 source files were checked for lineage:
+Codex session/fork/parent links and Claude UUID/parent/logical-parent/session links.
+Copy grouping conservatively uses all nonempty projections, not just projections
+later judged substantive. No component appears in both splits.
+
+| Split | Threads | Vectors / searchable messages | Canonical messages | >1,000-vector threads |
+| --- | ---: | ---: | ---: | ---: |
+| Development | 12 | 11,081 / 11,081 | 76,574 | 4 |
+| Held out | 12 | 4,705 / 4,705 | 39,441 | 3 |
+
+Each split has two threads in every provider/length stratum. Canonical counts
+include non-searchable provider/tool records; they are not evidence of missing
+embeddings. The sample uses one existing embedding generation and the default
+dialogue build. Subject/case coverage and blind pair judgments remain to be
+established before candidate outputs are inspected.
+
 Before algorithm output is visible, freeze up to forty pair judgments per thread:
 same concrete subject, different subject, or ambiguous. Include distant returning
 subjects, nearby subject changes, question/answer pairs and referential replies.
@@ -72,19 +93,25 @@ Compare only these initial methods:
    results are flat. Edits/deletions rebuild only the affected thread.
 3. Average-link agglomeration with cosine distance as a batch quality reference.
    This is not a streaming algorithm; measure affected-thread rebuilds separately.
+4. Offline HDBSCAN with cosine distance, brute-force distances, one job,
+   `min_samples=2`, leaf selection and no forced single cluster. Its noise labels
+   remain unassigned in the primary partition, never one shared noise group.
 
 Leader and average-link use cosine thresholds 0.35, 0.50 and 0.65. BIRCH uses
 radius/membership-cosine pairs (0.40, 0.65), (0.50, 0.50), (0.60, 0.35).
 These are predefined configurations, not a claimed radius-to-cosine conversion.
-This shortlist amendment precedes any candidate output or quality measurement.
-The nine settings run on development data only. Use signed-byte stored vectors decoded exactly as
+HDBSCAN uses minimum-cluster-size/membership-cosine pairs (2, 0.65), (3, 0.50),
+(5, 0.35). The user broadened the scope to offline methods before any candidate
+quality outputs: the budget is now twelve first-round settings and at most twelve
+second-round settings, with no additional families. The twelve initial settings
+run on development data only. Use signed-byte stored vectors decoded exactly as
 Rust, verify dimensions/norms and normalize without changing the embedding basis.
 Collapse exact repeated prepared text within a thread for fitting; retain the
 mapping back to every original message and prevent duplicate pairs inflating
 metrics. Report missing, zero and invalid vectors separately.
 
 Round one uses individual message vectors. One second development round is
-allowed, with at most nine additional configurations: either refine thresholds
+allowed, with at most twelve additional configurations: either refine thresholds
 around the strongest method, or test a fixed context view (0.7 normalized anchor
 + 0.3 normalized eligible parent, renormalized). Choose the round-two change
 from recorded development errors before running it; do not combine both changes.
@@ -98,7 +125,7 @@ messages are not one shared noise cluster. Ties use source ordinal then message
 ID. Evaluate both primary partitions and final overlapping memberships so soft
 assignment cannot conceal a bad partition.
 
-After these at most eighteen configurations, freeze one setting per method and
+After these at most twenty-four configurations, freeze one setting per method and
 evaluate the held-out split once. Do not tune on held-out failures. No ensemble,
 new model or extra clustering family is introduced within this experiment.
 
@@ -132,6 +159,14 @@ Choose a method only if the held-out results meet all these gates:
   incremental versus affected-thread rebuild cost; whole-corpus rebuilding is
   prohibited. Local batch recomputation after debounce is an acceptable online
   maintenance strategy if it meets the latency gates.
+
+Online insertion is not a requirement for the winning algorithm. Following the
+user's scope change, offline recomputation on request is eligible: cache by thread
+revision, embedding generation and algorithm/configuration version; reuse results
+for unchanged threads and rebuild only a requested changed thread. These cache
+semantics describe the candidate maintenance strategy, not an implemented feature.
+Measure unchanged-cache lookup separately from changed-thread computation; judge
+the latter against the same latency gates. Do not hide rebuild time in ingestion.
 
 Among passing methods, maximize held-out macro F1. Within 0.02 F1, prefer the
 simpler method with cheaper updates and lower memory. Report sensitivity around
@@ -167,3 +202,16 @@ provides incremental CF-tree updates with `partial_fit`. Its merge threshold
 bounds subcluster radius, not cosine similarity; `n_clusters=None` avoids a final
 batch agglomeration. Incremental insertion does not imply native deletion support
 or stable cluster IDs, so both are evaluated explicitly.
+
+[Scikit-learn's HDBSCAN contract](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.HDBSCAN.html)
+supports flat density clusters and explicit noise labels. Cosine uses brute-force
+distances; this experiment measures memory and rebuild time rather than assuming
+that an offline method will be fast enough. The internal hierarchy is not exposed.
+
+[Monath et al. (2019), GRINCH](https://arxiv.org/abs/2001.00076) describes
+incremental hierarchical clustering with rotations and grafting that revise early
+decisions. It could supply a flat tree cut followed by our membership rule; a
+product hierarchy is not required. It is not implemented or measured here.
+Revisit it in a bounded follow-up if simpler online methods fail quality and
+offline rebuilds fail latency. Its paper's benchmark results are not evidence of
+performance or accuracy on Mash sessions.
