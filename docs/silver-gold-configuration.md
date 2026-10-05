@@ -687,8 +687,8 @@ The HTTP server separately accepts a strict shared-candidate query policy:
 
 ```toml
 [gold.query.vector_search]
-algorithm = "exact" # Default; or "hnsw" for approximate dense candidates.
-# ef_runtime = 200 # HNSW only, integer 1..4096; default 200.
+algorithm = "hnsw" # Default; use "exact" for exhaustive dense candidates.
+ef_runtime = 200 # HNSW only, integer 1..4096; default 200.
 
 # Optional complete default for one configured group:
 [gold.query.groups.personal]
@@ -712,7 +712,7 @@ or database access. All API handles read the persisted policy for each hybrid
 search, so a running handle configured with an older query default observes the
 selected policy without restarting. Status exposes `group_gold.vector_search`.
 Older catalogue records without this field have the explicit exact default;
-select HNSW with intentional query activation if needed.
+use intentional query activation to adopt the new HNSW default without rebuilding.
 
 Query activation preserves the gold version, build/model identity and immutable
 node references. It changes only policy and the catalogue CAS publication token,

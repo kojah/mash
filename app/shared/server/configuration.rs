@@ -218,13 +218,23 @@ mod tests {
             toml::from_str("[query.vector_search]\nalgorithm = 'hnsw'\nef_runtime = 80").unwrap();
         assert_eq!(
             default.query.vector_search,
-            qdrant_index::VectorIndex::Exact {}
+            qdrant_index::VectorIndex::Hnsw { ef_runtime: 200 }
         );
         assert_eq!(
             hnsw.query.vector_search,
             qdrant_index::VectorIndex::Hnsw { ef_runtime: 80 }
         );
         assert_eq!(default.build, hnsw.build);
+        let exact: Gold = toml::from_str("[query.vector_search]\nalgorithm = 'exact'").unwrap();
+        assert_eq!(
+            exact.query.vector_search,
+            qdrant_index::VectorIndex::Exact {}
+        );
+        assert_eq!(default.build, exact.build);
+        assert_eq!(
+            default.build.generation("model"),
+            exact.build.generation("model")
+        );
         assert_eq!(
             default.build.generation("model"),
             hnsw.build.generation("model")

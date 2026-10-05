@@ -15,9 +15,12 @@ pub(crate) enum Search {
 }
 impl Default for Search {
     fn default() -> Self {
-        Self::Exact {}
+        Self::Hnsw {
+            ef_runtime: default_ef(),
+        }
     }
 }
+
 const fn default_ef() -> usize {
     200
 }
@@ -56,5 +59,23 @@ impl Algorithm {
         };
         policy.validate_request()?;
         Ok(policy)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_search_defaults_to_hnsw_with_explicit_exact_available() {
+        assert_eq!(Search::default(), Search::Hnsw { ef_runtime: 200 });
+        assert_eq!(
+            serde_json::from_str::<Search>(r#"{"algorithm":"hnsw"}"#).unwrap(),
+            Search::default()
+        );
+        assert_eq!(
+            serde_json::from_str::<Search>(r#"{"algorithm":"exact"}"#).unwrap(),
+            Search::Exact {}
+        );
     }
 }

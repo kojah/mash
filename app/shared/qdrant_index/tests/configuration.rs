@@ -4,7 +4,7 @@ use super::*;
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_group_query_activation_preserves_gold_and_silver_across_processes() {
-    let fixture = Fixture::new(VectorIndex::default()).await;
+    let fixture = Fixture::new(VectorIndex::Exact {}).await;
     let other = Fixture::new(VectorIndex::default()).await;
     fixture
         .store

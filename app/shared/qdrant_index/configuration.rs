@@ -25,7 +25,7 @@ pub(super) struct Configuration {
     pub(super) build: Build,
     pub(super) generation: String,
     pub(super) dimensions: usize,
-    #[serde(default)]
+    #[serde(default = "missing_vector_search")]
     pub(super) vector_search: super::VectorIndex,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) publication: Option<String>,
@@ -33,6 +33,12 @@ pub(super) struct Configuration {
     pub(super) phase: Option<Phase>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) nodes: Option<BTreeMap<String, super::NodeHead>>,
+}
+
+// Missing fields in persisted catalogues retain their original retrieval policy.
+// New server configurations use HNSW; changing existing authority is explicit.
+fn missing_vector_search() -> super::VectorIndex {
+    super::VectorIndex::Exact {}
 }
 
 impl Configuration {
@@ -287,5 +293,23 @@ impl Store {
             ));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn omitted_persisted_policy_requires_explicit_activation_to_adopt_hnsw() {
+        let existing: Configuration = serde_json::from_str(
+            r#"{"kind":"configuration","schema_version":1,"version":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","build":{},"generation":"test","dimensions":4}"#,
+        ).unwrap();
+        existing.validate().unwrap();
+        assert_eq!(existing.vector_search, super::super::VectorIndex::Exact {});
+        assert_eq!(
+            super::super::VectorIndex::default(),
+            super::super::VectorIndex::Hnsw { ef_runtime: 200 }
+        );
     }
 }

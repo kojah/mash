@@ -1045,7 +1045,8 @@ recall tradeoffs before choosing approximate retrieval.
 Configure `qdrant_url_env` on the HTTP service. Nodes continue using the same
 API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
 required for conditional node publication; older versions are rejected before
-creating collections. Exact vector retrieval remains the default; HNSW is opt-in.
+creating collections. Filtered HNSW vector retrieval is the default, with
+`ef_runtime = 200`; exact vector retrieval remains an explicit option.
 
 ```toml
 version = 1
@@ -1062,10 +1063,10 @@ node_id = "xenia"
 token_env = "MASH_XENIA_TOKEN"
 
 [gold.query.vector_search]
-algorithm = "exact"
-# To opt into approximate retrieval instead:
-# algorithm = "hnsw"
-# ef_runtime = 200
+algorithm = "hnsw"
+ef_runtime = 200
+# To request exhaustive vector retrieval instead:
+# algorithm = "exact" # Omit ef_runtime with exact.
 
 # Optional default for a configured group:
 # [gold.query.groups.personal]
