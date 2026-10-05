@@ -1189,7 +1189,7 @@ Following the user's experiment-management decision, subsequent declared
 comparisons use bounded Optuna trials with pinned input contracts and resumable
 storage; the ledger does not replace acceptance gates or independent evaluation.
 
-\section{Thread-local representation study: setup}
+\section{Thread-local representation study}
 We preregister six comparisons: no current prompt, first 80 prompt tokens or a
 semantically selected prompt span, each with assistant boilerplate weighting
 off/on. Candidate spans are source-preserving sentence/paragraph windows of at
@@ -1214,8 +1214,53 @@ singleton cache commits each vector separately; we resume with eight cache
 writes per transaction while preserving single-input inference and vector
 identities. Completed artifacts and cached vectors are retained. Consequently
 construction timings mix cold/resumed work and cannot establish isolated cold
-throughput. The construction and scoring runs are pending;
-this section records setup rather than claiming an outcome.
+throughput. All six Optuna trials subsequently complete on 160 development
+histories, with confirmation still sealed. The audit verifies 960 artifacts and
+24 real-model cold-cache isolation comparisons on short/long histories 91/109.
+Original user vectors and unmasked points remain bit-identical across cells.
+
+\begin{center}
+\begin{tabular}{lrrrrrr}
+\hline
+Context (weighting off/on) & P & R & F1 & Long P & Long R & Long F1\\
+\hline
+None & .8431 & .8622 & .8526 & .8153 & .7452 & .7787\\
+First80 & .8479 & .8671 & .8574 & .8293 & .7580 & .7920\\
+Selected80 & .8433 & .8720 & .8574 & .8197 & .7675 & .7928\\
+\hline
+\end{tabular}
+\end{center}
+Weighting produces identical scored outcomes within each context mode.
+First80 gains .004808 F1 versus the matching singleton control (paired thread
+bootstrap 95\% interval $[-.002319,.012051]$); selected80 gains .004806
+($[-.003093,.013657]$). Selected80 versus first80 is -.000001277 F1
+($[-.006593,.007802]$), with long recall +.009554 but precision -.009540.
+No cell passes the existing precision gates. The historical frozen baseline
+remains .854618 F1; the singleton control adds three false positives with
+unchanged TP/FN. Separate this inference-regime effect from treatment effects.
+
+The conservative filler rules match nine greetings (18 tokens), changing nine
+vectors in each mode. Among all 133,724 possible development turn pairs,
+weighting changes zero links for none/selection and adds four links for first80;
+none of these four is in either reference manifest. Zero scored gain therefore
+does not establish zero population effect. Greeting-only coverage cannot support
+a broad claim about agent-specific scaffolding. The separate targeted diagnostic
+has TP/FP/FN/TN 34/15/8/5, 30/13/12/7 and 33/12/9/8 for none, first80 and
+selection; independent-review substitution changes one TP to FP in each case.
+Do not combine purposive diagnostic counts with benchmark prevalence.
+
+The study constructs 45,643 unique new vectors. Build wall time is 8:56.39 before
+controlled interruption plus 10:06.79 after cache-preserving resumption.
+Observed construction p95 is at most 18.23 seconds/history (max 210.01), fit p95
+at most .148 seconds, and six-cell scoring 67.45 seconds. Peak measured RSS is
+1,083,668 KiB. Observed performance budgets pass, but mixed cold/resumed timing
+under I/O contention does not establish isolated cold throughput. Selection
+accepts 10,226 original answer units and produces 10,253 conditioned chunks.
+Protocol/result SHA256 prefixes are \texttt{9e71c1b35d97}/\texttt{94d2fb1ac0a5}.
+Retain the frozen experimental baseline: neither treatment earns promotion.
+Repeated-development, unadjusted bootstrap intervals are exploratory rather
+than confirmatory significance tests. No new trials, confirmation run or
+production changes follow automatically from this study.
 
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
