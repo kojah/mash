@@ -40,16 +40,67 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
         digest: Some(hash.clone()),
         redacted: true,
     };
-    let json = serde_json::to_string(&[metadata]).unwrap();
+    let json = serde_json::to_string(std::slice::from_ref(&metadata)).unwrap();
     connection
         .execute("UPDATE messages SET attachments=?1", [&json])
         .unwrap();
+    let source_json = serde_json::to_string(&[attachments::Source::Retained { metadata }]).unwrap();
     connection
-        .execute("UPDATE claude_source_messages SET attachments=?1", [&json])
+        .execute(
+            "UPDATE claude_source_messages SET attachments=?1",
+            [&source_json],
+        )
         .unwrap();
     fs::create_dir(attachments::directory(&path)).unwrap();
     fs::write(attachments::directory(&path).join(hash), bytes).unwrap();
     (path, connection)
+}
+
+#[test]
+fn export_keeps_retained_files_from_nonvisible_claude_branches() {
+    let root = tempfile::tempdir().unwrap();
+    let (database, writer) = fixture(root.path());
+    writer
+        .execute("UPDATE messages SET attachments='[]'", [])
+        .unwrap();
+    let exported = root.path().join("export");
+    let result = write(&database, &exported, None).unwrap();
+    assert_eq!(result.counts.attachment_files, 1);
+    let imported = root.path().join("imported.sqlite3");
+    load(&exported, &imported).unwrap();
+    let restored = Connection::open(&imported).unwrap();
+    assert_eq!(
+        rows(&restored, "claude_source_messages"),
+        rows(&writer, "claude_source_messages")
+    );
+    let files = fs::read_dir(attachments::directory(&imported))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(fs::read(files[0].path()).unwrap(), b"retained attachment");
+}
+
+#[test]
+fn export_rejects_unresolved_provider_attachments_in_stored_claude_evidence() {
+    let root = tempfile::tempdir().unwrap();
+    let (database, writer) = fixture(root.path());
+    let unresolved = serde_json::to_string(&[attachments::Source::File {
+        name: "private.txt".into(),
+        media_type: "text/plain".into(),
+        path: root.path().join("must-not-be-read"),
+    }])
+    .unwrap();
+    writer
+        .execute(
+            "UPDATE claude_source_messages SET attachments=?1",
+            [&unresolved],
+        )
+        .unwrap();
+    let exported = root.path().join("export");
+    let error = write(&database, &exported, None).unwrap_err();
+    assert_eq!(error.error.message, "invalid export attachment metadata");
+    assert!(!exported.exists());
 }
 
 fn rows(connection: &Connection, table: &str) -> Vec<Vec<Value>> {

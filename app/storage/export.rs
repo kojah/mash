@@ -73,32 +73,69 @@ pub(crate) fn validate(storage: &Storage) -> Result<(), AppError> {
 pub(crate) fn attachments(storage: &Storage) -> Result<BTreeMap<String, u64>, AppError> {
     let mut files = BTreeMap::new();
     // Claude's branch evidence can retain files absent from the visible thread.
-    let mut statement = storage.connection.prepare(
-        "SELECT attachments FROM messages UNION ALL SELECT attachments FROM claude_source_messages"
-    ).map_err(AppError::database)?;
-    let rows = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(AppError::database)?;
-    for row in rows {
-        let records: Vec<crate::attachments::Metadata> =
-            serde_json::from_str(&row.map_err(AppError::database)?)
-                .map_err(|_| AppError::database_data("invalid export attachment metadata"))?;
-        crate::attachments::validate_metadata(&records)?;
-        for record in records {
-            if record.availability == crate::attachments::Availability::Retained {
-                let digest = record
-                    .digest
-                    .ok_or_else(|| AppError::database_data("missing attachment digest"))?;
-                let bytes = record
-                    .bytes
-                    .ok_or_else(|| AppError::database_data("missing attachment size"))?;
-                if files.insert(digest, bytes).is_some_and(|old| old != bytes) {
-                    return Err(AppError::database_data(
-                        "conflicting export attachment sizes",
-                    ));
+    for (query, format) in [
+        (
+            "SELECT attachments FROM messages",
+            AttachmentFormat::Canonical,
+        ),
+        (
+            "SELECT attachments FROM claude_source_messages",
+            AttachmentFormat::ClaudeSource,
+        ),
+    ] {
+        let mut statement = storage
+            .connection
+            .prepare(query)
+            .map_err(AppError::database)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(AppError::database)?;
+        for row in rows {
+            let records = format.decode(&row.map_err(AppError::database)?)?;
+            crate::attachments::validate_metadata(&records)?;
+            for record in records {
+                if record.availability == crate::attachments::Availability::Retained {
+                    let digest = record
+                        .digest
+                        .ok_or_else(|| AppError::database_data("missing attachment digest"))?;
+                    let bytes = record
+                        .bytes
+                        .ok_or_else(|| AppError::database_data("missing attachment size"))?;
+                    if files.insert(digest, bytes).is_some_and(|old| old != bytes) {
+                        return Err(AppError::database_data(
+                            "conflicting export attachment sizes",
+                        ));
+                    }
                 }
             }
         }
     }
     Ok(files)
+}
+
+enum AttachmentFormat {
+    Canonical,
+    ClaudeSource,
+}
+
+impl AttachmentFormat {
+    fn decode(&self, value: &str) -> Result<Vec<crate::attachments::Metadata>, AppError> {
+        let invalid = || AppError::database_data("invalid export attachment metadata");
+        match self {
+            Self::Canonical => serde_json::from_str(value).map_err(|_| invalid()),
+            Self::ClaudeSource => {
+                let sources: Vec<crate::attachments::Source> =
+                    serde_json::from_str(value).map_err(|_| invalid())?;
+                sources
+                    .into_iter()
+                    .map(|source| match source {
+                        crate::attachments::Source::Retained { metadata } => Ok(metadata),
+                        // Stored contributions contain normalized metadata, never
+                        // provider paths or raw bytes to resolve during export.
+                        _ => Err(invalid()),
+                    })
+                    .collect()
+            }
+        }
+    }
 }
