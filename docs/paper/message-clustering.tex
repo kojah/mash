@@ -1060,6 +1060,109 @@ scoring without changing side/total budgets. Model, input, identity and label
 hashes validate across all 160 histories. Corrected protocol/analysis SHA256
 prefixes are \texttt{10c05e42fc25}/\texttt{f87d91750b84}.
 
+\subsection{Prospective three-factor ablation against the fixed baseline}
+The user fixes the smoothed pooled/heading-chunk union as the experimental
+baseline (overall .847/.862/.855; long .824/.745/.783) and requests ablations
+of three remaining levers. We register all eight on/off combinations before
+any treatment scoring: current-prompt conditioning of answer chunks (C),
+evidence-aware fusion (F), and generic-answer confidence weighting (G).
+This supplies one-factor baseline comparisons and full-model leave-one-out
+comparisons without treating repeated cells as independent observations.
+The original smoothing, BIRCH radius .60, ordinary membership cutoff .75,
+relative-best margin .05, heading boundaries, source selections and encoder
+remain fixed. Full reconstructed baseline predictions must match the pinned
+pair-only report before treatment analysis; confirmation is not evaluated.
+
+C prefixes answer chunks with the literal first 80 tokens of the current
+turn's lean prompts. Only answer-excerpt states are pooled, so prompt tokens
+influence attention but do not directly dominate the output mean. Prompt chunks
+remain unchanged. Existing chunks split only when the added prefix exceeds the
+512-token budget, retaining sentence/code-line boundaries and the token
+fallback. Prompt/body provenance is checked separately, combined text and
+pooling spans are deterministic, and all selected non-whitespace body coverage
+must remain intact. This treatment jointly changes conditioning and output
+pooling, and can increase chunk multiplicity; its effect is not attributed to
+context alone independently of these mechanisms.
+
+F retains .75 memberships supported by both views, but requires .80 confidence
+for one-view evidence. Strong groups and supported intersections retain view
+namespaces and are never merged transitively. G subtracts .05 from generic
+answer-chunk confidence before the membership gates, leaving insertion and
+centroids fixed. A fixed content-term proxy flags fewer than three distinct
+non-stopwords or absence of a term occurring in at most 20\% of development
+turns. Frequencies use each turn's lean prompts and last selected answer once,
+excluding borrowed context, overlap and confirmation histories. Added prompt
+text cannot change a chunk's generic flag. This corpus-wide background would
+require a frozen generation/invalidation policy in production.
+
+All 160 development histories pass source/budget preflight before new
+inference, and synthetic tests cover source ownership, length bounds, baseline
+confidence parity, distinct-turn retention, consensus and penalties. The full
+experiment suite passes 122 tests. The new embedding build uses the installed
+encoder, its selection-aware cache and durable per-history artifacts. Completed
+reporting includes all eight confusion matrices, nearby and distant slices,
+paired thread-bootstrap baseline contrasts, actual group coverage, construction
+and preparation/fit costs, and external peak RSS. Existing absolute quality
+floors remain separate from exploratory gains against this new baseline.
+No model replacement, parameter grid, confirmation evaluation or production
+promotion belongs to this ablation task; null and negative outcomes are retained.
+
+\subsection{Completed eight-cell ablation results}
+All eight cells complete on the same 160 development histories. Reconstructed
+baseline memberships reproduce all 1,051 reference predictions and all history
+confusion counts; the final scorer also reproduces primary-partition diagnostics.
+All body coverage and source/ancestry checks pass. Confirmation remains sealed.
+
+\begin{center}
+\begin{tabular}{ccc|ccc|ccc}
+\toprule
+C & F & G & P & R & F1 & Long P & Long R & Long F1\\
+\midrule
+0 & 0 & 0 & .847 & .862 & .855 & .824 & .745 & .783\\
+0 & 0 & 1 & .847 & .862 & .855 & .824 & .745 & .783\\
+0 & 1 & 0 & .876 & .799 & .836 & .841 & .659 & .739\\
+0 & 1 & 1 & .876 & .799 & .836 & .841 & .659 & .739\\
+1 & 0 & 0 & .848 & .865 & .856 & .826 & .755 & .789\\
+1 & 0 & 1 & .848 & .865 & .856 & .826 & .755 & .789\\
+1 & 1 & 0 & .873 & .806 & .838 & .837 & .672 & .746\\
+1 & 1 & 1 & .873 & .806 & .838 & .837 & .672 & .746\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+C alone changes overall TP/FP/FN from 532/96/85 to 534/96/83, and long counts
+from 234/50/80 to 237/50/77. Its overall F1 gain is .00184 (paired interval
+$[-.00483,.00921]$) and long gain .00608. Nearby TP/FP changes 460/64 to 463/65;
+distant TP/FP changes 72/32 to 71/31. This does not demonstrate improved
+distant-topic recall or a robust gain. F alone removes 26 FP but loses 39 TP,
+with overall F1 gain -.01903 (interval $[-.03436,-.00472]$) and long gain -.04332.
+The corresponding full-model leave-one-out gains for C/F/G are
+.00252/-.01834/.00000 overall and .00630/-.04310/.00000 long. C leave-one-out
+interval is $[-.00661,.01131]$; F is $[-.03217,-.00511]$; G is exactly zero.
+Intervals are exploratory and unadjusted; repeated cells are not independent.
+
+G flags 301 of 15,699 original answer points (about 1.9\%) and 301 conditioned
+points. It changes some actual memberships/group counts, but no judged-pair
+predictions in any corresponding cell. Baseline group count falls 3,664 to
+3,662 with G, and F group count 6,272 to 6,241. Thus the penalty is active,
+but this proxy does not establish a quality benefit. No cell clears all
+overall/long quality floors. Retain the frozen baseline; do not promote the
+small uncertain C gain or retune these fixed treatments.
+
+C leaves all 4,251 user points unchanged. Total points rise 19,950 to 19,992,
+answer points 15,699 to 15,741; median/p95/max multiplicity stays 5/13/49.
+Forced-fallback points rise 71 to 93. Prompt context reaches 3,350 turns, with
+236 truncated prefixes and 84,337/168,185 supplied/full prompt tokens.
+Truncation concerns added context, not user chunks or preserved answer bodies.
+Build takes 367.78 seconds, infers 15,722 new vectors, and has construction
+median/p95 .472/10.265 seconds per history. Existing user vectors are cached,
+so this is incremental construction. Build/scoring peak RSS is
+1,400,664/1,091,448 KiB; scoring takes 17.95 seconds. Preparation/fit p95 is
+.141 seconds for baseline and at most .198 seconds across cells. Performance
+budgets pass. Protocol/development/background/build-analysis SHA256 prefixes
+are \texttt{760104da726f}, \texttt{19ae4fd9f2c2}, \texttt{79d6b10b7542},
+and \texttt{168a7a829bdd}. No production index or configuration is changed.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
