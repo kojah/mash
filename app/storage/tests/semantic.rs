@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn dense_queue_selection_preserves_users_and_all_role_recipes() {
+    use crate::gold::config::{Build, DenseContent};
+    use crate::role::Role;
+
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let mut source = conversation_with_messages(&[
+        ("user", "question"),
+        ("assistant", "answer"),
+        ("tool", "tool result"),
+        ("unknown", "provider-defined role"),
+    ]);
+    for (message, role) in source.messages.inline_mut().iter_mut().zip([
+        Role::User,
+        Role::Assistant,
+        Role::Tool,
+        Role::Other("custom".to_owned()),
+    ]) {
+        message.role = role;
+    }
+    storage.replace_conversation(&source).unwrap();
+    let queued = |storage: &Storage| {
+        storage
+            .connection
+            .prepare("SELECT message_id FROM pending_embeddings ORDER BY message_id")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    let initial = queued(&storage);
+    assert_eq!(initial.len(), 4);
+    storage
+        .restrict_dense_queue(&Build {
+            dense_content: DenseContent::AllVisible,
+            ..Build::default()
+        })
+        .unwrap();
+    assert_eq!(queued(&storage), initial);
+    storage
+        .restrict_dense_queue(&Build {
+            dense_content: DenseContent::UserMessages,
+            ..Build::default()
+        })
+        .unwrap();
+    assert_eq!(queued(&storage), ["user"]);
+    assert_eq!(storage.counts().unwrap().messages, 4);
+    storage
+        .connection
+        .execute("DELETE FROM pending_embeddings", [])
+        .unwrap();
+    storage.restrict_dense_queue(&Build::default()).unwrap();
+    assert_eq!(queued(&storage), Vec::<String>::new());
+}
+
+#[test]
 fn empty_index_requires_an_explicit_completed_generation_and_search_is_read_only() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("empty.sqlite3");

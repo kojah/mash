@@ -581,3 +581,33 @@ The personal MacBook remains offline and its outstanding upgrade/checks remain
 pending. The temporary baseline API and disposable correctness backend were
 stopped; production continues on the new API. Private evidence is in
 `/home/james/scratch/mash-artifacts/catalogue-read-20261005`.
+
+### Native local refresh and pending-queue lookup (2026-10-05)
+
+A consistent private copy of Xenia's local database was refreshed against its
+real provider files with installed local models, using local-only publication.
+The installed database and shared index were untouched. The catch-up pass took
+65.21 seconds: ingestion 58.914 seconds, search refresh 298 ms, and the embedding
+phase 4.293 seconds (including model setup and storage work). Stored messages
+grew from 345,451 to 353,102; 1,162 vectors were added, with 1,007 model inferences
+and 155 reused embeddings. Peak RSS was 1,211,624 KiB. This is a backlog refresh,
+not initial indexing from an empty database.
+
+The next incremental pass took 14.63 seconds for 11 changed messages and two
+inferences. It skipped 821 of 823 sources by checkpoint; ingestion took 7.874
+seconds and the embedding phase 4.265 seconds, including 635 ms model loading.
+Peak RSS was 370,316 KiB. These different workloads are not a before/after speed
+comparison, and the embedding phase is not pure model inference time.
+
+The user-only embedding-queue restriction previously enumerated every non-user
+message before deleting matching queue entries, twice when rebuilding pending
+embeddings. It now iterates queued IDs and checks each message's role through its
+primary-key index. Rollback-only ABBA trials on the 353,113-message copy preserved
+identical removal counts. With 12 queued messages, each old call took 622–665 ms
+versus 0.021–0.191 ms for the new query. With all messages queued, old calls took
+745–853 ms versus 936–1,007 ms for the new query; both removed 310,782 entries
+and retained 42,331 user entries. This favors frequent small incremental updates
+at a modest full-queue cost. It requires no schema migration or reindexing.
+The isolated timings do not establish a complete ingestion speedup, watcher
+latency, or MacBook performance. Private evidence is in
+`/home/james/scratch/mash-artifacts/native-refresh-20261005`.

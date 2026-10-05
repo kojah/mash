@@ -136,7 +136,19 @@ impl Storage {
     ) -> Result<(), AppError> {
         self.require_writer()?;
         if build.users_only() {
-            self.connection.execute("DELETE FROM pending_embeddings WHERE message_id IN (SELECT id FROM messages WHERE role <> 'user')", []).map_err(AppError::database)?;
+            // Drive the lookup from the queue: an incremental refresh may have
+            // only a handful of entries in a large message archive.
+            self.connection
+                .execute(
+                    "DELETE FROM pending_embeddings
+                     WHERE EXISTS (
+                         SELECT 1 FROM messages
+                         WHERE messages.id = pending_embeddings.message_id
+                           AND messages.role <> 'user'
+                     )",
+                    [],
+                )
+                .map_err(AppError::database)?;
         }
         Ok(())
     }
