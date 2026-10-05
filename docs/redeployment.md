@@ -475,3 +475,41 @@ reranking evidence would obscure the issue rather than establish equivalent
 search quality. This screen does not justify either change or startup warming.
 Private captures are in the `native-timing` subdirectory of the corpus benchmark
 above; they are not included in Git.
+
+### Rejected parallel-neighborhood prototype
+
+A smaller preliminary change fetched the anchor outline, ancestor chain and
+descendant chain concurrently, retaining order within each chain and the same
+union validation and topology selector. A barrier-based transport test required
+all three independent paths to start together and compared the selected IDs
+against the full topology reference. Three existing Qdrant context contracts,
+603 standard tests, strict Clippy, formatting and doctests passed. Two initial
+disk-backed integration fixtures timed out creating payload indexes before
+exercising the change; all three context contracts passed on a separate disposable
+Qdrant instance with storage in tmpfs. That verifies context behavior, not disk
+durability or performance.
+
+The old and prototype APIs then read the same retained, disk-backed corpus using
+the same unchanged CLI. After separate warm-up queries, four ABBA rounds gave
+eight measurements per API. Median end-to-end search was 1,737 ms before and
+1,798.5 ms after; median context retrieval was 126,043 and 136,719 microseconds.
+All 16 measured searches had complete context, no shared fallback, and identical
+ordered thread and message identities. The host remained busy and compilation
+overlapped early measurements, so this is a rejection screen rather than a
+precise regression estimate. It provides no evidence of a useful speedup. The
+prototype was reverted and was not deployed. Its patch and captures remain
+private under `/home/james/scratch/mash-artifacts/parallel-context-20261005`.
+
+The first baseline warm-up attempt also reproduced the cold candidate timeout.
+Qdrant's own request log recorded the dense query at 5.397 seconds and the parallel
+lexical query at 0.145 seconds. The client expired at its unchanged five-second
+deadline before context retrieval began. This attributes that outlier to native
+dense retrieval, independently of the rejected context prototype.
+
+Qdrant's [memory-tier documentation](https://qdrant.tech/documentation/ops-configuration/memory-tiers/)
+states that cached vectors and graph data can be evicted from the OS page cache;
+cached placement does not guarantee residency. Pinning graph links is a possible
+separate screen, but dense vectors cannot use the pinned tier. No placement,
+deadline, ranking evidence or live-service setting changed in this experiment.
+The remaining batched-context task is `mash-hu2`; cold dense-read diagnosis remains
+part of `mash-16b`.
