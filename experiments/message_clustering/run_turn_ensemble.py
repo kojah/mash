@@ -13,7 +13,7 @@ from run_input_followup import FollowupReport, Gate, choose
 from run_structure_followup import StructureReport
 from run_study_development import Prediction, Report, Row, bootstrap, summarize
 from study_analysis import FitCost, Slice, fit_costs, slices
-from study_annotations import load_development
+from study_annotations import DevelopmentLabels, load_development
 from study_scoring import JudgedPair, absolute_gate, combine, minimum_gain, score
 from turn_ensemble import Mode, predictions
 from turn_evaluation import Counts
@@ -83,6 +83,41 @@ def main(
     cohort_sha = hashlib.sha256(data).hexdigest()
     captured = Cohort.model_validate_json(data)
     labels = load_development(annotations)
+    result = score_ensemble(
+        a_report,
+        b_report,
+        captured,
+        labels,
+        cohort_sha,
+        hashlib.sha256(protocol.read_bytes()).hexdigest(),
+        A_SHA,
+        B_SHA,
+        A_NAME,
+        B_NAME,
+        tuple(Mode),
+    )
+    with output.open("xb") as destination:
+        destination.write(orjson.dumps(result.model_dump(mode="json")))
+    click.echo(
+        f"Ensemble quality choice: {result.report.decision.selected}; "
+        "membership verification precedes confirmation"
+    )
+
+
+def score_ensemble(
+    a_report: Report,
+    b_report: Report,
+    captured: Cohort,
+    labels: DevelopmentLabels,
+    cohort_sha: str,
+    protocol_sha: str,
+    a_sha: str,
+    b_sha: str,
+    a_name: str,
+    b_name: str,
+    modes: tuple[Mode, ...],
+) -> EnsembleReport:
+    """Shared scoring only; each caller pins its prospective parents and cells."""
     if (
         a_report.cohort_sha256 != cohort_sha
         or b_report.cohort_sha256 != cohort_sha
@@ -102,12 +137,12 @@ def main(
         a = next(
             row
             for row in a_report.rows
-            if row.thread_index == index and row.name == A_NAME
+            if row.thread_index == index and row.name == a_name
         )
         b = next(
             row
             for row in b_report.rows
-            if row.thread_index == index and row.name == B_NAME
+            if row.thread_index == index and row.name == b_name
         )
         if (a.provider, a.node, a.prompted_turns) != (
             b.provider,
@@ -149,7 +184,7 @@ def main(
         }
         if score(pairs, left) != a.counts or score(pairs, right) != b.counts:
             raise click.ClickException("parent predictions do not reproduce counts")
-        for mode in Mode:
+        for mode in modes:
             started = time.perf_counter()
             combined = predictions(left, right, mode)
             primary = predictions(
@@ -206,7 +241,7 @@ def main(
                 )
             )
     frozen_rows = tuple(rows)
-    summaries = tuple(summarize(frozen_rows, mode.value) for mode in Mode)
+    summaries = tuple(summarize(frozen_rows, mode.value) for mode in modes)
     baseline = summarize(frozen_rows, "chronological_4")
     decision = choose(summaries, frozen_rows, baseline)
     baseline_counts = tuple(
@@ -238,8 +273,8 @@ def main(
             )
         )
     result = EnsembleReport(
-        parent_a_sha256=A_SHA,
-        parent_b_sha256=B_SHA,
+        parent_a_sha256=a_sha,
+        parent_b_sha256=b_sha,
         gates=tuple(gates),
         scores=slices(
             frozen_rows,
@@ -250,7 +285,7 @@ def main(
         diagnostics=tuple(diagnostics),
         report=Report(
             cohort_sha256=cohort_sha,
-            protocol_sha256=hashlib.sha256(protocol.read_bytes()).hexdigest(),
+            protocol_sha256=protocol_sha,
             annotation_sha256=labels.file_sha256,
             annotation_manifest_sha256=labels.manifest_sha256,
             artifact_sha256={},
@@ -266,12 +301,7 @@ def main(
             ),
         ),
     )
-    with output.open("xb") as destination:
-        destination.write(orjson.dumps(result.model_dump(mode="json")))
-    click.echo(
-        f"Ensemble quality choice: {decision.selected}; "
-        "membership verification precedes confirmation"
-    )
+    return result
 
 
 if __name__ == "__main__":

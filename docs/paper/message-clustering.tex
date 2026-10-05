@@ -1004,6 +1004,32 @@ fit p95 is 23.60 ms/history. Control timings remain historical. Protocol/result
 SHA256 prefixes are \texttt{2ac00207795f}/\texttt{daee901beef0}. No chunk-view
 composite is tested here; confirmation remains sealed.
 
+\subsection{User-selected original smoothing with structural chunks}
+The user selects original uniform alpha=.10/window=4 smoothing and explicitly
+requests combining it with the heading-aware chunk view. We register one
+namespaced union plus unchanged parent controls, both with BIRCH radius .60
+and cutoff .75, before computing combined predictions. No transitive merging,
+threshold grid, new inference or confirmation scoring occurs.
+
+Union reaches P=.847, R=.862, F1=.855 overall (TP=532, FP=96, FN=85) and
+.824/.745/.783 on long histories (TP=234, FP=50, FN=80). Compared with the
+unsmoothed pooled/chunk union, long recall improves .666 to .745 and F1 .746
+to .783, while precision falls .850 to .824. Both long and overall precision
+fail the .85 floor. Nearby-related recall is 460/482=.954 and nearby unrelated
+FPR 64/100=.640, versus .894/.590 for the smoothed pooled parent. Adding chunks
+raises distant-related recall .496 to .533. Bounded smoothing can change
+distant fitted-group relationships without directly attracting distant vectors.
+
+The paired thread-bootstrap F1 interval is .822--.884, with baseline gain
+.139--.225. Parent counts reproduce, and a shared-scorer refactor reproduces
+all 800 original ensemble rows and gates, excluding timing. Scoring takes
+5.06 seconds with peak RSS 1,031,168 KiB; historical summed preparation/fit p95
+is .136 seconds/history, not measured end-to-end construction. Full combined
+memberships are not recomputed because quality fails. Current prompts and
+selected answers are chunked separately: answer chunks have bounded headings
+but no repeated current-turn prompts. Protocol/result SHA256 prefixes are
+\texttt{9cf602650b75}/\texttt{9835b7cd6549}. Confirmation remains sealed.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
