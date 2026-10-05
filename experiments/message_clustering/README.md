@@ -231,3 +231,22 @@ closed while annotation is incomplete. `confirm_turn_study.py` unseals only
 after a development selection, checks frozen annotation and matrix hashes, and
 evaluates only that choice and its registered baseline. It reports quality
 acceptance separately from the remaining performance/production checks.
+
+`study_analysis.py` aggregates provider, node, length and sampling-stratum/batch
+counts, preserving negative-only histories and primary-only diagnostics.
+`summarize_turn_study.py` checks complete configuration/thread coverage and
+frozen annotation provenance before exporting those breakdowns, weighted
+assignment coverage, group sizes and per-view construction costs. Optional
+confirmation input must match the frozen development report. This command
+does not fit new configurations or change the selected method.
+
+```bash
+uv run python summarize_turn_study.py \
+  --development /path/to/frozen-development.json \
+  --annotations /path/to/blind-packets \
+  --costs /path/to/artifact-build/costs.jsonl \
+  --output /home/james/scratch/mash-artifacts/new-study-analysis.json
+```
+
+Deterministic turn cleanup/extractive selection is tracked separately in bead
+`mash-jfn`; it does not alter this study's registered five views or thresholds.
