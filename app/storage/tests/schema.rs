@@ -4,8 +4,14 @@ use rusqlite::params;
 
 #[test]
 fn searchable_index_migration_preserves_publication_and_tracks_projection_edits() {
+    for version in [42, 43] {
+        check_searchable_index_migration(version);
+    }
+}
+
+fn check_searchable_index_migration(version: i64) {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("ready-v42.sqlite3");
+    let path = directory.path().join("ready.sqlite3");
     let mut writer = Storage::open_writer(&path).unwrap();
     writer
         .connection
@@ -18,24 +24,30 @@ fn searchable_index_migration_preserves_publication_and_tracks_projection_edits(
                ('hidden','session',2,'user','hidden body','');
          UPDATE derived_state SET semantic_ready_generation='preserved',search_dirty=0;
          DROP INDEX messages_searchable_role;
-         PRAGMA user_version=42;",
+         DROP INDEX messages_searchable_metadata;",
         )
         .unwrap();
-    let before = writer
+    writer
         .connection
-        .query_row(
-            "SELECT instance,revision,acknowledged,target FROM shared_publication",
-            [],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            },
-        )
+        .pragma_update(None, "user_version", version)
         .unwrap();
+    let publication = |connection: &Connection| {
+        connection
+            .query_row(
+                "SELECT instance,revision,acknowledged,target FROM shared_publication",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .unwrap()
+    };
+    let before = publication(&writer.connection);
     writer.commit_writer().unwrap();
     drop(writer);
 
@@ -46,21 +58,7 @@ fn searchable_index_migration_preserves_publication_and_tracks_projection_edits(
             .unwrap()
     );
     assert!(!writer.derived_search_is_dirty().unwrap());
-    let after = writer
-        .connection
-        .query_row(
-            "SELECT instance,revision,acknowledged,target FROM shared_publication",
-            [],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            },
-        )
-        .unwrap();
+    let after = publication(&writer.connection);
     assert_eq!(before, after);
     let count = "SELECT count(*) FROM messages
                  WHERE COALESCE(search_projection, content) <> '' AND (?1=0 OR role='user')";
@@ -93,6 +91,11 @@ fn searchable_index_migration_preserves_publication_and_tracks_projection_edits(
         .query_row(count, [true], |row| row.get(0))
         .unwrap();
     assert_eq!(actual, 1);
+    let visible: Vec<String> = writer.connection.prepare(
+        "SELECT id FROM messages INDEXED BY messages_searchable_metadata
+         WHERE COALESCE(search_projection, content) <> '' ORDER BY created_at, conversation_id, role"
+    ).unwrap().query_map([], |row| row.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
+    assert_eq!(visible, ["hidden"]);
     writer.commit_writer().unwrap();
 }
 

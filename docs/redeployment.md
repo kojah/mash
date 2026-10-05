@@ -702,3 +702,36 @@ the production API's readiness and authorization checks still passed without any
 production indexing or Qdrant restart. Private captures and the executable
 comparison are under
 `/home/james/scratch/mash-artifacts/publication-buffering-20261005`.
+
+### Cold filtered local search (2026-10-05)
+
+A 120-request MCP matrix across Xenia and the development MacBook exercised
+local, shared and combined scopes, including provider/time, role, project,
+thread, exact-mention and no-match filters. All requests succeeded without
+shared fallback or incomplete context. The first provider/time local search
+spent 3.552 seconds in dense retrieval on Xenia and 1.581 seconds on the MacBook.
+The local eligibility query scanned canonical message rows, including messages
+that have no searchable projection.
+
+Schema 44 adds a partial metadata index over searchable message timestamps,
+conversation IDs and roles. Filtered dense retrieval explicitly uses this index
+to avoid scattered canonical-body reads; the smaller role index remains for
+readiness counts. Migrations from schemas 42 and 43 preserve readiness and
+publication identity without replaying sources or recomputing embeddings.
+The index occupied 2,666,496 bytes on the private 353,232-message database.
+
+One ABBA comparison used separate identical private SQLite copies, fresh MCP
+processes and file-specific eviction advice before each run. An unfiltered
+primer loaded models and packed vectors, followed by the same Codex/time-filtered
+query. Old complete query times were 3.846 and 3.510 seconds; new times were
+0.483 and 0.373 seconds. Dense retrieval took 3.614/3.187 seconds before and
+0.229/0.107 seconds after. All four complete result arrays were identical.
+This isolates cold filtering after model loading; it does not establish a
+fully cold CLI latency, fleet p95, or initial-indexing throughput improvement.
+Production files received no cache-eviction advice.
+
+A preliminary change that only added the searchable predicate was rejected:
+it selected the smaller role index and caused scattered message-table reads,
+increasing dense retrieval from 3.0–3.2 to 5.2–5.5 seconds. The final metadata
+index avoids those reads. Private captures, including the rejected comparison,
+are under `/home/james/scratch/mash-artifacts/query-matrix-20261005`.

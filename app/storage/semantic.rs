@@ -320,11 +320,9 @@ impl Storage {
         filters: Option<&crate::search_filter::Scope>,
     ) -> Result<SemanticChunks, AppError> {
         let filters = filters.filter(|f| !matches!(&f.filter, crate::search_filter::Filter::All(children) if children.is_empty()));
-        let allowed = filters.map(|f| {
-            let predicate = f.filter.sql(Some(&f.node));
-            let mut statement = self.connection.prepare(&format!("SELECT m.rowid FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE {predicate}")).map_err(AppError::database)?;
-            statement.query_map([], |r| r.get::<_, i64>(0)).map_err(AppError::database)?.collect::<Result<std::collections::HashSet<_>, _>>().map_err(AppError::database)
-        }).transpose()?;
+        let allowed = filters
+            .map(|scope| self.filtered_semantic_rowids(scope))
+            .transpose()?;
         let cutoff = cutoff_timestamp(days)?;
         let requested_provider = provider.map(provider_code);
         let mut statement = self
@@ -420,6 +418,19 @@ impl Storage {
         Ok(result)
     }
 
+    fn filtered_semantic_rowids(
+        &self,
+        scope: &crate::search_filter::Scope,
+    ) -> Result<std::collections::HashSet<i64>, AppError> {
+        self.connection
+            .prepare(&semantic_filter_query(scope))
+            .map_err(AppError::database)?
+            .query_map([], |row| row.get(0))
+            .map_err(AppError::database)?
+            .collect::<Result<_, _>>()
+            .map_err(AppError::database)
+    }
+
     pub(crate) fn invalidate_embedding_generation(
         &mut self,
         generation: &str,
@@ -468,4 +479,16 @@ impl Storage {
             .map_err(AppError::database)?;
         u64::try_from(removed).map_err(|_| AppError::internal("too many stale embeddings"))
     }
+}
+
+pub(super) fn semantic_filter_query(scope: &crate::search_filter::Scope) -> String {
+    let predicate = scope.filter.sql(Some(&scope.node));
+    // Packed vectors contain only searchable messages. Match that eligibility
+    // here. Require the metadata index to avoid scattered canonical-body reads
+    // when applying time, role and conversation filters to a cold database.
+    format!(
+        "SELECT m.rowid FROM messages m INDEXED BY messages_searchable_metadata
+         JOIN conversations c ON c.id=m.conversation_id
+         WHERE COALESCE(m.search_projection, m.content) <> '' AND {predicate}"
+    )
 }

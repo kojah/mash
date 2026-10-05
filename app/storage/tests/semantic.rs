@@ -1,6 +1,100 @@
 use super::*;
 
 #[test]
+fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_scope() {
+    use crate::search_filter::{Filter, Scope};
+    let directory = tempfile::tempdir().unwrap();
+    let mut writer = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let mut source = conversation_with_messages(&[
+        ("recent", "recent visible message"),
+        ("fallback", "legacy visible message"),
+        ("older", "older visible message"),
+        ("hidden", "private tool payload"),
+    ]);
+    for message in source.messages.inline_mut() {
+        message.created_at = Some(if message.id == "older" { 1000 } else { 3000 });
+        if message.id == "hidden" {
+            message.role = crate::role::Role::Tool;
+            message.dialogue_text = Some(String::new());
+        }
+    }
+    writer.replace_conversation(&source).unwrap();
+    writer
+        .connection
+        .execute(
+            "UPDATE messages SET search_projection=NULL WHERE id='fallback'",
+            [],
+        )
+        .unwrap();
+    let embeddings = ["recent", "fallback", "older"].map(|message_id| EmbeddingWrite {
+        message_id,
+        vector: &[127],
+        norm: 127.0,
+    });
+    writer
+        .replace_embeddings("generation", &embeddings)
+        .unwrap();
+    writer.mark_semantic_index_ready("generation").unwrap();
+    let scope = Scope {
+        node: "local".into(),
+        filter: Filter::Any(vec![
+            Filter::After(2),
+            Filter::Conversation(vec!["absent".into()]),
+        ]),
+    };
+    let query = super::super::semantic::semantic_filter_query(&scope);
+    let plans = writer
+        .connection
+        .prepare(&format!("EXPLAIN QUERY PLAN {query}"))
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(
+        plans
+            .iter()
+            .any(|plan| plan.contains("messages_searchable_metadata")),
+        "{plans:?}"
+    );
+    let chunks = writer
+        .semantic_chunks_filtered("generation", None, None, Some(&scope))
+        .unwrap();
+    let eligible = chunks
+        .chunks
+        .iter()
+        .flat_map(|chunk| {
+            chunk
+                .message_rowids
+                .iter()
+                .zip(&chunk.eligible)
+                .filter_map(|(id, allowed)| allowed.then_some(*id))
+        })
+        .collect::<Vec<_>>();
+    let mut ids = writer
+        .search_hits(&eligible)
+        .unwrap()
+        .into_iter()
+        .map(|hit| hit.id)
+        .collect::<Vec<_>>();
+    ids.sort();
+    assert_eq!(ids, ["fallback", "recent"]);
+    let excluded = Scope {
+        node: "local".into(),
+        filter: Filter::Node(vec!["another-node".into()]),
+    };
+    let chunks = writer
+        .semantic_chunks_filtered("generation", None, None, Some(&excluded))
+        .unwrap();
+    assert!(
+        chunks
+            .chunks
+            .iter()
+            .all(|chunk| chunk.eligible.iter().all(|allowed| !allowed))
+    );
+}
+
+#[test]
 fn dense_queue_selection_preserves_users_and_all_role_recipes() {
     use crate::gold::config::{Build, DenseContent};
     use crate::role::Role;
