@@ -12,6 +12,9 @@ use tokio_util::{
 };
 
 const PREVIEW_BYTES: usize = 1024 * 1024;
+// Measured candidate replies commonly exceed 1 MiB. Eight admitted searches
+// retain at most 16 MiB of previews; full-node bulk reads still always stream.
+const SEARCH_PREVIEW_BYTES: usize = 2 * PREVIEW_BYTES;
 const READER_BYTES: usize = 64 * 1024;
 
 fn invalid() -> AppError {
@@ -23,18 +26,23 @@ pub(super) async fn read<T: DeserializeOwned + Send + 'static>(
     endpoint: Endpoint,
     permit: SemaphorePermit<'static>,
 ) -> Result<T, AppError> {
+    let preview_limit = if matches!(endpoint, Endpoint::Search) {
+        SEARCH_PREVIEW_BYTES
+    } else {
+        PREVIEW_BYTES
+    };
     if matches!(
         endpoint,
         Endpoint::State | Endpoint::Silver | Endpoint::PublicationPlan
     ) || response
         .content_length()
-        .is_some_and(|bytes| bytes > PREVIEW_BYTES as u64)
+        .is_some_and(|bytes| bytes > preview_limit as u64)
     {
         return streamed(response, Vec::new(), permit).await;
     }
     let mut preview = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|_| invalid())? {
-        if chunk.len() > PREVIEW_BYTES - preview.len() {
+        if chunk.len() > preview_limit - preview.len() {
             let mut prefix = Vec::with_capacity(2);
             if !preview.is_empty() {
                 prefix.push(Bytes::from(preview));
@@ -48,7 +56,7 @@ pub(super) async fn read<T: DeserializeOwned + Send + 'static>(
                 .capacity()
                 .saturating_mul(2)
                 .max(needed)
-                .min(PREVIEW_BYTES);
+                .min(preview_limit);
             preview.reserve_exact(capacity - preview.len());
         }
         preview.extend_from_slice(&chunk);

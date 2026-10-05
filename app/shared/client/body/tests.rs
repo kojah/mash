@@ -75,7 +75,12 @@ async fn chunked_preview_boundary_preserves_data_and_selects_decode_mode() {
         mode: Option<String>,
     }
     static CAPACITY: Admission = Admission::new(1, 1);
-    for (length, mode) in [(PREVIEW_BYTES, "buffered"), (PREVIEW_BYTES + 1, "streamed")] {
+    for (endpoint, length, mode) in [
+        (Endpoint::Freshness, PREVIEW_BYTES, "buffered"),
+        (Endpoint::Freshness, PREVIEW_BYTES + 1, "streamed"),
+        (Endpoint::Search, SEARCH_PREVIEW_BYTES, "buffered"),
+        (Endpoint::Search, SEARCH_PREVIEW_BYTES + 1, "streamed"),
+    ] {
         let expected = "x".repeat(length - 2);
         let bytes = Bytes::from(serde_json::to_vec(&expected).unwrap());
         assert_eq!(bytes.len(), length);
@@ -85,7 +90,7 @@ async fn chunked_preview_boundary_preserves_data_and_selects_decode_mode() {
         let (trace, subscriber) = crate::observability::test_support::capture();
         let actual: String = response_admitted(
             reqwest::Client::new().get(format!("{}/", service.url)),
-            Endpoint::Freshness,
+            endpoint,
             &CAPACITY,
         )
         .with_subscriber(subscriber)
@@ -133,6 +138,10 @@ async fn complete_large_state_matches_typed_records_across_header_and_chunked_mo
         ("fixed", Endpoint::State, true),
         ("fixed", Endpoint::Freshness, true),
         ("chunked", Endpoint::Freshness, true),
+        ("fixed", Endpoint::Search, false),
+        ("chunked", Endpoint::Search, false),
+        ("fixed", Endpoint::Search, true),
+        ("chunked", Endpoint::Search, true),
     ] {
         // Inspect negotiation without automatic decompression, then decode
         // through the real pooled shared client (or an older plain client).
