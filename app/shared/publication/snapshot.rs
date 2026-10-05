@@ -254,7 +254,7 @@ async fn embed_batch(
     target: &Target,
     prepared: &[String],
     inference: Option<&Inference<'_>>,
-    pool: &mut Option<crate::semantic::EmbeddingPool>,
+    pool: &mut Option<crate::semantic::LoadedIndexer>,
     build: &mut gold::Build,
 ) -> Result<(), AppError> {
     let inference = inference

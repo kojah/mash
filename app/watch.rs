@@ -147,7 +147,15 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<bool, AppError>>,
 {
-    run_with_intervals(request, debounce_ms, shutdown, refresh, RETRY, RECONCILE).await
+    crate::semantic::indexer::scope(run_with_intervals(
+        request,
+        debounce_ms,
+        shutdown,
+        refresh,
+        RETRY,
+        RECONCILE,
+    ))
+    .await
 }
 
 async fn run_with_intervals<F, Fut>(

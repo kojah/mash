@@ -846,3 +846,61 @@ deployment smoke checks rather than search speedup evidence. The shared API and
 Qdrant were not restarted or reindexed. The personal MacBook remains offline;
 the ARM64 artifact is staged for its explicit upgrade when reachable. Existing
 stdio clients need their normal reconnect after binary replacement.
+
+### Watcher-scoped embedding model reuse (2026-10-05)
+
+Each running watcher retains at most one idle local indexing pool. CLI and MCP
+watching share this scope through the application core, including its blocking
+workers. Ordinary one-shot indexing retains no pool. Every checkout validates
+the installed assets and matches the asset directory, marker timestamp, and
+inventory sizes/timestamps. Changed assets cannot reuse the previous pool;
+missing local assets or switching to remote inference clears it. Remote clients
+are never retained. The pool keeps both asset-generation and lazy Core ML cache
+leases, and normal watcher shutdown releases the resources on a blocking worker.
+This does not change embeddings, inference batching, indexing readiness or the
+shared publication protocol.
+
+The development MacBook comparison used the same reset private SQLite baseline
+(435,167 messages), retained attachment blobs, three copied real Codex sessions,
+installed Core ML models, fixed probe timestamps and Low Power Mode off. Each
+binary received twelve isolated additions followed by twelve arrivals 200 ms
+apart. The order was old then new, rather than randomized.
+
+| Measurement | Previous loading | Watcher reuse |
+| --- | ---: | ---: |
+| Median arrival-to-ack, including one-second debounce | 5.175 s | 1.947 s |
+| Median indexing core time | 4.155 s | 0.927 s |
+| Median model-load time | 3.213 s | 0 ms |
+| First isolated arrival-to-ack | 5.397 s | 18.193 s |
+| Complete twelve-arrival burst drain | 7.378 s | 4.267 s |
+| Final burst arrival-to-ack | 5.076 s | 1.978 s |
+| Sampled watcher peak RSS | 1,101 MiB | 1,229 MiB |
+| Sampled median RSS between isolated passes | 931 MiB | 1,127 MiB |
+
+The new first update still loaded its model (16.104 seconds); the following
+eleven loads and the burst reused it. A preceding setup load with the old binary
+also took 16.052 seconds. Preserve these outliers: the experiment establishes
+lower steady update costs, not improved cold loading. Both watchers exited
+cleanly, every addition retained complete/hybrid readiness, and all 24 persisted
+probe IDs, generations, vector bytes and norms matched exactly. The new median
+visibility latency was about 62% lower on this sample.
+
+Memory samples used `ps` every 100 ms for the watcher PID only. Sampled peaks are
+lower bounds, exclude device-wide/Core ML memory, and have unmeasured monitoring
+overhead. Retaining models increases idle memory while watching is active. These
+are local-only measurements, not initial-ingestion throughput, fleet p95,
+sustained shared-publication backlog or a guarantee for the offline personal
+MacBook. Private scripts, setup failures, vector fingerprints and raw captures
+are in `/home/james/scratch/mash-artifacts/watcher-model-reuse-20261005`.
+
+Validation passed 612 standard tests, strict Clippy, formatting, doctests,
+the real-model Linux reuse/vector-parity test, all six indexing-cache tests
+on native ARM64 (including real Core ML parity), and the real Qdrant scoped
+message-search contract on a disposable backend. The backend was stopped after
+its test completed; no live shared API or Qdrant index was changed.
+
+A private native stdio MCP lifecycle check also completed three real-inference
+updates: first load 3,496 ms, second load 0 ms, then 3,187 ms after stopping and
+restarting watching. Every update retained complete/hybrid readiness and the
+MCP exited cleanly. This verifies shared-core reuse and stop/restart lifecycle;
+its repeated SQLite visibility polling is not a clean MCP latency benchmark.

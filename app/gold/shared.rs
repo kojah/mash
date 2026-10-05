@@ -1,7 +1,7 @@
 //! Node-side gold materialization from interpreted silver conversations.
 //! No provider discovery, source files, checkpoints or reconciliation.
 use crate::AppError;
-use crate::semantic::{self, EmbeddingPool, EmbeddingSummary, Models};
+use crate::semantic::{self, EmbeddingSummary, LoadedIndexer, Models};
 use crate::shared::protocol::{Batch, ConversationRecord, Event, MessageRecord};
 use crate::shared::write_event;
 use crate::silver::Conversation;
@@ -29,7 +29,7 @@ mod tests;
 pub(crate) async fn embed_texts(
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
-    pool: &mut Option<EmbeddingPool>,
+    pool: &mut Option<LoadedIndexer>,
     texts: &[&str],
     result: &mut Build,
 ) -> Result<Vec<Vec<f64>>, AppError> {
@@ -74,7 +74,7 @@ pub(crate) async fn materialize(
     conversation: &Conversation,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
-    pool: &mut Option<EmbeddingPool>,
+    pool: &mut Option<LoadedIndexer>,
     result: &mut Build,
 ) -> Result<(), AppError> {
     let summary = conversation.messages.summary()?;

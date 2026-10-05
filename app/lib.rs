@@ -43,10 +43,17 @@ async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
 ) -> Result<T, AppError> {
     let sink = progress::current_sink();
+    let indexer_cache = semantic::indexer::current();
     let context = observability::ThreadContext::capture();
-    tokio::task::spawn_blocking(move || context.run(|| progress::on_blocking_thread(sink, work)))
-        .await
-        .map_err(|_| AppError::internal("blocking worker failed"))?
+    tokio::task::spawn_blocking(move || {
+        context.run(|| {
+            semantic::indexer::on_blocking_thread(indexer_cache, || {
+                progress::on_blocking_thread(sink, work)
+            })
+        })
+    })
+    .await
+    .map_err(|_| AppError::internal("blocking worker failed"))?
 }
 
 /// Runs mash with the process arguments, writing JSON or serving stdio MCP.

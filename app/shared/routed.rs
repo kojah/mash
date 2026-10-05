@@ -5,7 +5,7 @@ use super::protocol::{Checkpoint, Event, Forget, Forgotten, NodeState, Start};
 use super::publication::{upload, write_event};
 use crate::AppError;
 use crate::config::SharedConfig;
-use crate::semantic::{self, EmbeddingPool, Models};
+use crate::semantic::{self, LoadedIndexer, Models};
 use crate::silver::{self, DirectScan, IndexOptions, IndexSummary};
 use crate::storage::Counts;
 use crate::storage::publication::RoutedOwner;
@@ -144,7 +144,7 @@ async fn ingest_scan(
     full: bool,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
-    pool: &mut Option<EmbeddingPool>,
+    pool: &mut Option<LoadedIndexer>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
     let checkpoints: std::collections::HashMap<_, _> = state

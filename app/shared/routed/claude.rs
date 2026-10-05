@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use super::{
-    Checkpoint, DirectScan, EmbeddingPool, Event, IndexResult, NodeState, RoutedOwner, write_event,
+    Checkpoint, DirectScan, Event, IndexResult, LoadedIndexer, NodeState, RoutedOwner, write_event,
 };
 use crate::AppError;
 use crate::provider::Provider;
@@ -124,7 +124,7 @@ pub(super) async fn ingest(
     full: bool,
     models: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
-    pool: &mut Option<EmbeddingPool>,
+    pool: &mut Option<LoadedIndexer>,
     result: &mut IndexResult,
 ) -> Result<(), AppError> {
     let db = database.to_path_buf();

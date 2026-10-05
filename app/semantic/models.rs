@@ -19,6 +19,7 @@ use std::time::SystemTime;
 mod assets;
 mod downloads;
 mod generations;
+pub(crate) mod indexer;
 mod install;
 use assets::InstallMarker;
 pub(super) use assets::{read_model_file, read_tokenizer_files, snapshot};
@@ -228,20 +229,49 @@ impl Models {
     }
 
     #[tracing::instrument(name = "load_embedding_models", skip_all)]
-    pub(crate) fn load_indexer(&self) -> Result<Option<EmbeddingPool>, AppError> {
+    pub(crate) fn load_indexer(&self) -> Result<Option<indexer::LoadedIndexer>, AppError> {
         if let Some(config) = &self.remote {
-            return Ok(Some(EmbeddingPool {
+            if let Some(cache) = indexer::current() {
+                cache.clear();
+            }
+            return Ok(Some(indexer::LoadedIndexer::uncached(EmbeddingPool {
                 backend: EmbeddingPoolBackend::Remote(remote::Client::new(config.clone())?),
                 assets_lease: None,
-            }));
+            })));
         }
         if !self.root.join(MARKER_NAME).is_file() {
+            if let Some(cache) = indexer::current() {
+                cache.clear();
+            }
             return Ok(None);
         }
         let selected = generations::select(&self.root, false)?;
-        let mut pool = EmbeddingPool::load_local(&selected.root)?;
+        let key = indexer::AssetsKey {
+            root: selected.root.clone(),
+            marker_modified: fs::metadata(self.root.join(MARKER_NAME))
+                .map_err(AppError::io)?
+                .modified()
+                .ok(),
+            files: selected
+                .marker
+                .files
+                .into_iter()
+                .map(|file| {
+                    let modified = fs::metadata(selected.root.join(&file.path))
+                        .map_err(AppError::io)?
+                        .modified()
+                        .ok();
+                    Ok((file.path, file.size, modified))
+                })
+                .collect::<Result<_, AppError>>()?,
+        };
+        let cache = indexer::current();
+        let mut pool = match cache.as_ref().and_then(|cache| cache.take(&key)) {
+            Some(pool) => pool,
+            None => EmbeddingPool::load_local(&selected.root)?,
+        };
         pool.assets_lease = selected.lease;
-        Ok(Some(pool))
+        Ok(Some(indexer::LoadedIndexer::new(pool, key, cache)))
     }
 
     fn read_valid_marker(&self) -> Result<InstallMarker, AppError> {
