@@ -875,6 +875,17 @@ the same overall and long-history gates. The protocol SHA256 begins
 boundaries, closed/unclosed fences, source selection and oversized atoms.
 No structural quality results or confirmation measurements are available yet.
 
+The first structural build stops before scoring at a coverage guard in history
+85. Inspection finds a retained leading private-use citation marker
+(\texttt{U+E200}) that the older token-offset windows omitted, rather than lost
+content. The guard is corrected to validate the agreed selected source text
+directly, while still forbidding removal of any previously covered character
+or restoration of excluded assistant segments. A regression fixture covers this
+case, and a no-inference preflight passes both structural treatments for all
+200 histories. Boundary rules, model, labels and quality gates do not change.
+The failed run remains archived; restart costs reuse its durable vector cache
+and must be reported as cache-assisted.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt

@@ -10,6 +10,21 @@ from turns import extract
 
 
 class CoverageContracts(unittest.TestCase):
+    def test_non_token_citation_marker_is_preserved_even_if_old_window_omitted_it(self):
+        source = thread(
+            (Role.USER, Role.ASSISTANT), ("Question", "\ue200citation text")
+        )
+        turns = extract(source)
+        current = prepare(source, turns, 0, Variant.CONTEXT_MEAN, tokenizer())
+        full = source_text(source, 1)
+        kept = current[-1].model_copy(update={"content": full})
+        old = current[:-1] + (
+            kept.model_copy(update={"content": full.slice(1, len(full.text))}),
+        )
+        check_coverage(old, current[:-1] + (kept,), source, turns)
+        with self.assertRaises(ValueError):
+            check_coverage(old, old, source, turns)
+
     def test_missing_prompt_text_fails_selected_source_coverage(self):
         source = thread((Role.USER, Role.ASSISTANT), ("Do NOT remove A.", "Keep it."))
         turns = extract(source)

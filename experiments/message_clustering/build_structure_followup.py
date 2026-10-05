@@ -12,7 +12,7 @@ import orjson
 from analyze_input_followup import validate_input_sources
 from build_input_followup import Built, import_cache
 from corpus import Record, Thread
-from followup_inputs import Input, Variant, prepare
+from followup_inputs import Input, Variant, lean_prompt, prepare, source_text
 from local_encoder import Encoder
 from structure_chunks import Mode, Prepared, prepare_structured
 from turn_artifact import Store
@@ -52,10 +52,18 @@ def check_coverage(
     thread: Thread,
     turns: tuple[Turn, ...],
 ) -> None:
-    """Require identical selected non-whitespace coverage, independent of packing."""
+    """Preserve selected sources, including markers omitted by old token offsets."""
     for turn in turns:
         if not turn.prompts:
             continue
+        selected = tuple(lean_prompt(thread, source) for source in turn.prompts)
+        answers = tuple(
+            source
+            for source in turn.answers
+            if thread.messages[source].projection.strip()
+        )
+        if answers:
+            selected += (source_text(thread, answers[-1]),)
         for source in turn.sources:
             text = thread.messages[source].projection
             nonwhite = np.fromiter(
@@ -63,7 +71,12 @@ def check_coverage(
             )
             old = own_mask(original, turn.id, source, len(text))
             new = own_mask(current, turn.id, source, len(text))
-            if np.any((old != new) & nonwhite):
+            expected = np.zeros(len(text), dtype=np.bool_)
+            for part in selected:
+                for location in part.locations:
+                    if location.source.source == source:
+                        expected[location.source.start : location.source.end] = True
+            if np.any((expected != new) & nonwhite) or np.any(old & ~new & nonwhite):
                 raise ValueError(
                     "structural selection changed non-whitespace source coverage"
                 )
@@ -75,8 +88,14 @@ def check_coverage(
 @click.option("--model", type=click.Path(path_type=Path, exists=True), required=True)
 @click.option("--original", type=click.Path(path_type=Path, exists=True), required=True)
 @click.option("--output", type=click.Path(path_type=Path), required=True)
+@click.option("--cache", type=click.Path(path_type=Path, exists=True))
 def main(
-    cohort: Path, protocol: Path, model: Path, original: Path, output: Path
+    cohort: Path,
+    protocol: Path,
+    model: Path,
+    original: Path,
+    output: Path,
+    cache: Path | None,
 ) -> None:
     os.umask(0o077)
     data = cohort.read_bytes()
@@ -97,6 +116,8 @@ def main(
     store = Store(output / "vectors.sqlite")
     try:
         import_cache(store, original / "vectors.sqlite")
+        if cache:
+            import_cache(store, cache)
         for entry in captured.entries:
             thread = entry.captured
             turns = tuple(turn for turn in thread.turns if turn.prompts)
