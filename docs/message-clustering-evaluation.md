@@ -66,12 +66,18 @@ Compare only these initial methods:
 
 1. Online cosine leader/centroid clustering in source order: assign to the closest
    qualifying normalized centroid, otherwise create a new group.
-2. Average-link agglomeration with cosine distance.
-3. Complete-link agglomeration with cosine distance, to test whether avoiding
-   weak similarity chains improves precision.
+2. BIRCH on normalized embeddings, with branching factor 50, no final global
+   clustering (`n_clusters=None`), and one-message `partial_fit` in source order.
+   Use final leaf centres to assign the current thread. Its tree is internal;
+   results are flat. Edits/deletions rebuild only the affected thread.
+3. Average-link agglomeration with cosine distance as a batch quality reference.
+   This is not a streaming algorithm; measure affected-thread rebuilds separately.
 
-Use similarity thresholds 0.35, 0.50 and 0.65 for every method. The nine settings
-run on development data only. Use signed-byte stored vectors decoded exactly as
+Leader and average-link use cosine thresholds 0.35, 0.50 and 0.65. BIRCH uses
+radius/membership-cosine pairs (0.40, 0.65), (0.50, 0.50), (0.60, 0.35).
+These are predefined configurations, not a claimed radius-to-cosine conversion.
+This shortlist amendment precedes any candidate output or quality measurement.
+The nine settings run on development data only. Use signed-byte stored vectors decoded exactly as
 Rust, verify dimensions/norms and normalize without changing the embedding basis.
 Collapse exact repeated prepared text within a thread for fitting; retain the
 mapping back to every original message and prevent duplicate pairs inflating
@@ -86,7 +92,7 @@ An explicit root or missing parent never borrows unrelated previous text.
 
 Apply the same membership policy to each method: groups need two distinct
 substantive source projections to qualify. Allow secondary memberships when
-centroid similarity meets the method's threshold and is within 0.05 of the best
+centroid similarity meets the configuration's cosine threshold and is within 0.05 of the best
 qualifying similarity. These memberships do not update centroids. Unassigned
 messages are not one shared noise cluster. Ties use source ordinal then message
 ID. Evaluate both primary partitions and final overlapping memberships so soft
@@ -152,6 +158,12 @@ accuracy are not implementations or performance claims for our embedding-only
 experiment.
 
 [Scikit-learn's agglomerative clustering contract](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.AgglomerativeClustering.html)
-provides cosine average/complete linkage and distance-threshold partitioning.
+provides cosine average linkage and distance-threshold partitioning.
 The prototype will use those implementations rather than invent a clustering
 library. Their hierarchy is an internal computation; our output remains flat.
+
+[Scikit-learn's BIRCH contract](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.Birch.html)
+provides incremental CF-tree updates with `partial_fit`. Its merge threshold
+bounds subcluster radius, not cosine similarity; `n_clusters=None` avoids a final
+batch agglomeration. Incremental insertion does not imply native deletion support
+or stable cluster IDs, so both are evaluated explicitly.
