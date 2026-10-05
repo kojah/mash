@@ -56,7 +56,8 @@ Blind development review agrees on 106 of 116 pairs, including 99 of 104 with
 decisive judgments from both annotators. Confirmation label sufficiency is true
 without exposing those judgments or scores. The enlarged annotation manifest
 hash is `a725b589699dfb7b03b6a601666251349bbb168f1e2371cb16214067b195482f`.
-The representation build remains in progress; no algorithm has been selected.
+The completed representation build and negative development decision are
+documented below; no algorithm has been accepted.
 
 Before making a selection, require at least 100 related and 200 unrelated
 development judgments, and at least 20 related and 40 unrelated confirmation
@@ -131,10 +132,67 @@ cold inference, cache reuse and long-answer passage counts. Offline per-thread
 recomputation is permitted. A provisional research choice does not authorize
 production promotion without Rust parity and integration checks.
 
-The artifact builder is running separately from annotation and scoring. It
+The artifact builder ran separately from annotation and scoring. It
 reuses matching vectors from the previous private cache, keyed by encoder
 generation and exact input text. Report these construction timings as
 cache-assisted, not fully cold inference. Costs record newly inferred vectors,
 input token counts, discarded tokens and clustering-point counts per view.
 The new separate-view windowing/pooling tests check source coverage, equal view
 weights and fallback when no answer is present.
+
+## Completed development comparison
+
+All 1,000 thread/view matrices and cost records completed. The registered
+development runner scored all sixty configurations on all 160 development
+histories. No configuration met all quality gates; the frozen selection is
+`null`. The strongest simple baseline was chronological four-turn blocks:
+precision 0.869, recall 0.548 and F1 0.672. Its recall and F1 fail the absolute
+floors too. Confirmation judgments and algorithm scores remain closed.
+
+Best registered configuration per representation (all BIRCH radius 0.75,
+membership cutoff 0.65):
+
+| Representation | Precision | Recall | F1 | Bootstrap 95% F1 interval |
+| --- | ---: | ---: | ---: | --- |
+| Prompt-only | 0.859 | 0.386 | 0.532 | 0.483–0.585 |
+| Joint truncation | 0.781 | 0.804 | 0.792 | 0.752–0.828 |
+| Prompt-conditioned passages | 0.798 | 0.793 | 0.795 | 0.759–0.830 |
+| Pooled existing messages | 0.825 | 0.733 | 0.776 | 0.733–0.820 |
+| Separate prompt/answer pooling | 0.839 | 0.737 | 0.785 | 0.737–0.828 |
+
+These are exploratory within-development rankings, not held-out winners.
+Intervals use 2,000 paired thread bootstrap resamples, including negative-only
+histories. The highest-F1 passage method gains 0.123 over the baseline, but
+precision is below 0.85. Separate pooling gains 0.113 but also misses precision.
+The corresponding bootstrap gain intervals are 0.072–0.171 and 0.058–0.163;
+the preregistered gate uses point estimates, not an interval-based exception.
+
+The separate-pooling configuration scores F1 0.909 on two-to-seven-turn
+histories but 0.643 on histories with at least eight turns. Its distant-pair
+precision/recall are 0.629/0.541. Passage BIRCH scores F1 0.889/0.707 on those
+length strata and distant-pair precision/recall 0.561/0.680. Thus the global
+precision near-miss is not sufficient evidence of robust long-thread grouping.
+The four-turn baseline has zero recall for distant pairs by construction.
+
+The predeclared primary-only diagnostic for joint BIRCH (radius 0.60) scores
+precision 0.864, recall 0.729 and F1 0.791, with an F1 gain of 0.119. That mode
+was diagnostic, not an eligible selection in the sixty-configuration grid.
+Its long-thread precision/recall/F1 are 0.817/0.554/0.660, versus short-thread
+F1 0.903. It must not be retroactively promoted as the registered winner.
+
+Per-thread cache-assisted construction p95 is 2.826 s for prompts, 7.369 s for
+joint inputs, 14.258 s for conditioned passages, 0.248 s for stored-message
+pooling and 14.197 s for separate pooling. Joint inputs record 1,478,672 discarded
+tokens; passage and separate inputs record none. Construction inferred 24,359
+new vectors across the four fresh views. The leading passage and separate
+BIRCH configurations have clustering p95 31.0 ms and 11.6 ms, respectively;
+runtime is not the limiting development gate. The observed kernel high-water
+RSS during the near-complete build was 1.43 GiB; this is an observation through
+that point, not a complete externally captured process memory benchmark.
+
+Private authoritative artifacts are `turn-study-development-20261005.json`,
+`turn-study-analysis-20261005.json` and the original matrices/annotation packets
+under `/home/james/scratch/mash-artifacts`. The cleanup/extractive-selection
+follow-up is tracked in `mash-jfn`. It must freeze its changes before new scores
+and preserve the unopened confirmation set; this study's negative decision is
+not permission to retry successive candidates on confirmation.

@@ -19,7 +19,12 @@ separate expanded screen of five additional families, none of which passed its
 development screen. A turn-representation follow-up gives a modest exploratory
 gain when bundles are combined with clusters, but fails precision and baseline-gain
 requirements. This is a living research
-record, not a completed publication: references are sparse and agent-authored,
+record. A new blind agent-annotated study freezes 200 independent histories,
+5,082 prompted turns and 1,451 judged pairs, comparing sixty configurations
+across five representations. Its strongest development F1 is 0.795, but no
+registered configuration satisfies all quality gates. Performance is adequate;
+long-thread and distant-pair errors remain the main quality limitations. This is
+not a completed publication: references are agent-authored,
 and planned experiments are explicitly distinguished from measurements.
 \end{abstract}
 
@@ -297,7 +302,8 @@ are prerequisites for promotion and tracked separately.
 The representation screen selected prompt-conditioned passages: cross-turn
 macro F1 at average-link cut .35 was .736, compared with prompt-only .667,
 joint truncation .726 and pooled stored vectors .718. Corresponding cross-turn
-micro F1 was .673/.707/.661/.632 (passages/prompt/joint/pooled). This disagreement
+micro F1 was .673 for passages, .707 for prompts, .661 for joint inputs and
+.632 for pooled vectors. This disagreement
 between metrics matters: macro selection on positive-bearing threads does not
 penalize false positives from negative-only threads. It must not be treated as
 the whole acceptance gate.
@@ -484,11 +490,11 @@ intents, rather than solving our within-thread subject clustering problem.
 Neither generative pipeline meets our non-generative processing constraint.
 
 Much of the representation research concerns task-oriented dialogue. Transfer to branching,
-open-ended agent sessions therefore requires fresh evaluation. The next study
-will broaden multi-turn coverage and use separate blind annotation agents,
-as authorized by the user. Those judgments permit a provisional decision,
-not a claim of independent human validation. No results from that study are
-reported here yet. The detailed literature review is maintained in
+open-ended agent sessions therefore requires fresh evaluation. The subsequent
+study broadens multi-turn coverage and uses separate blind annotation agents,
+as authorized by the user. Those judgments support provisional conclusions,
+not a claim of independent human validation. Its results follow below. The
+detailed literature review is maintained in
 \texttt{docs/turn-clustering-prior-art.md}.
 
 The user subsequently expanded the desired cohort to 200 threads. The local
@@ -531,8 +537,7 @@ manifest. Enrichment annotation has completed: all 69 annotation files validate.
 Development now has 617 related, 313 unrelated and 121 ambiguous judgments.
 Independent development review agrees on 106 of 116 pairs, including 99 of 104
 where both judgments are decisive. Confirmation sufficiency is verified without
-opening its scores. The artifact build remains in progress; no clustering
-result or accepted algorithm is reported yet.
+opening its scores. The completed development comparison is reported below.
 
 We have implemented the registered sixty-configuration grid and its
 distinct-turn support checks. Passage memberships are unioned by owning turn;
@@ -542,11 +547,73 @@ Separate-view pooling normalizes each prompt/answer view before giving the
 views equal weight, avoiding answer-length dominance. Construction reuses
 matching vectors from a prior text-and-encoder-keyed cache; its recorded timing
 must therefore be described as cache-assisted rather than fully cold. The
-artifact build is ongoing and no new algorithm scores are reported yet.
+completed artifact build and scored comparison are described below.
+
+\subsection{Completed 200-thread development results}
+All 1,000 thread/view artifacts completed, and the registered runner evaluated
+all sixty configurations on the 160 development histories. No eligible method
+passed all gates. Chronological four-turn blocks were the strongest registered
+simple baseline, with precision 0.869, recall 0.548 and F1 0.672; this baseline
+also fails the absolute floors. The frozen selection is empty, so confirmation
+judgments and scores remain closed. Table~\ref{tab:turn200} reports the best
+development configuration within each representation, not held-out winners.
+All five entries use BIRCH radius 0.75 and centroid-membership cosine 0.65.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Representation & Precision & Recall & F1 & 95\% F1 interval \\
+\midrule
+Prompt-only & .859 & .386 & .532 & .483--.585 \\
+Joint truncation & .781 & .804 & .792 & .752--.828 \\
+Conditioned passages & .798 & .793 & .795 & .759--.830 \\
+Pooled message control & .825 & .733 & .776 & .733--.820 \\
+Separate view pooling & .839 & .737 & .785 & .737--.828 \\
+\bottomrule
+\end{tabular}
+\caption{Exploratory development rankings in the 200-thread study. Intervals
+use 2,000 paired thread-bootstrap resamples, retaining negative-only histories.}
+\label{tab:turn200}
+\end{table}
+
+Passage BIRCH gains 0.123 F1 over the baseline but misses the precision floor.
+Separate pooling gains 0.113 but also misses precision. Their bootstrap gain
+intervals are respectively 0.072--0.171 and 0.058--0.163. These intervals do not
+provide an exception to the point-estimate gates. Separate pooling has F1 0.909
+on two-to-seven-turn histories but only 0.643 on histories with at least eight
+turns; its distant-pair precision/recall are 0.629/0.541. Passage BIRCH has
+F1 0.889/0.707 in those length strata and distant-pair precision/recall
+0.561/0.680. The four-turn baseline necessarily has zero distant-pair recall.
+Aggregate scores therefore obscure substantial long-history weaknesses.
+
+The predeclared primary-only diagnostic for joint BIRCH radius 0.60 scores
+precision 0.864, recall 0.729 and F1 0.791, gaining 0.119 over the baseline.
+It was not an eligible selection mode in the registered grid, and its
+long-thread precision/recall/F1 are only 0.817/0.554/0.660. We do not promote
+this post-hoc observation to a registered winner.
+
+Cache-assisted per-thread construction p95 is 2.826, 7.369, 14.258, 0.248 and
+14.197 seconds for prompt, joint, passage, stored-message and separate views.
+The four fresh views infer 24,359 new vectors. Joint truncation records
+1,478,672 discarded tokens, whereas passage and separate views discard none.
+The leading passage and separate BIRCH configurations have clustering p95
+31.0 and 11.6 milliseconds. Runtime is not the limiting development criterion.
+The kernel high-water RSS observed near build completion is 1.43 GiB; a
+complete externally captured memory benchmark has not been performed.
+
+The next bounded follow-up concerns deterministic cleanup/extractive selection,
+as proposed by the user. Boilerplate removal, input truncation and representation
+collapse are hypotheses requiring ablations, not established explanations for
+these errors. The original silver data and unopened confirmation set remain
+unchanged. Full stratified scores and provenance hashes are stored in the
+private analysis artifacts; this paper reports aggregates.
 
 \section{Limitations and reproducibility}
-Only two providers, sparse agent-authored excerpt judgments, a structural
-support proxy, and one timing host limit interpretation. Human independent
+Only two providers, agent-authored judgments, a structural support proxy,
+and one timing host limit interpretation. Earlier studies used sparse excerpt
+judgments; the 200-thread study adds full-text access and independent blind
+review, but correlated annotator errors remain possible. Human independent
 annotation, case-specific negative controls, broader provider coverage and
 fresh held-out evaluation remain necessary. Similar-thread search and thread
 vector quality are follow-ons. Source histories, embeddings, detailed judgments
@@ -555,6 +622,7 @@ aggregate measurements only. The first study's negative decision does not
 establish that message clustering is impossible.
 
 \begin{thebibliography}{99}
+\raggedright
 \bibitem{clio} A. Tamkin et al. Clio: Privacy-Preserving Insights into
 Real-World AI Use. 2024. \url{https://arxiv.org/abs/2412.13678}
 \bibitem{paths} S. Mysore, D. Das, H. Cao and B. Sarrafzadeh.
