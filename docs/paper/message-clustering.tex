@@ -655,7 +655,11 @@ choice may advance to unopened confirmation. These are planned measurements.
 The follow-up implementation records exact Unicode source ranges, borrowed
 ancestor identities and pooling spans alongside each matrix. Target pooling
 leaves transformer attention unchanged and excludes special-token zero offsets
-from the output average. Cache identity includes the selected span; whole-input
+from the output average. Whole-input
+pooling retains the original special-token states. The current-prompt variant
+excludes these states even when no ancestor is available, so its comparison is
+a compound pooling treatment rather than a pure isolation of contextual attention.
+Cache identity includes the selected span; whole-input
 cache keys retain their original generation. An installed-model smoke check
 reproduces the original whole-input vectors bit-for-bit on two inputs. This is
 an implementation compatibility check, not evidence of clustering improvement.
