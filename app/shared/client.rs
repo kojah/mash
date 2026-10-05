@@ -222,17 +222,23 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
 ) -> Result<T, AppError> {
     // Negotiation is an idempotent GET and owns no mutation. Busy responses
     // can outlive a newly visible head while the previous writer cleans up.
-    // Retry only this read; an ambiguous POST must never be replayed here.
+    // Only negotiation and the explicitly read-only search POST may be replayed.
+    // A search can overlap head publication and fail its final revision check.
     let retry = matches!(endpoint, Endpoint::PublicationPlan)
         && request
             .try_clone()
             .and_then(|copy| copy.build().ok())
             .is_some_and(|copy| copy.method() == reqwest::Method::GET);
     let started = std::time::Instant::now();
+    let search = matches!(endpoint, Endpoint::Search);
     let mut delay = Duration::from_secs(1);
     let mut attempts = 0;
     loop {
-        let next = if retry { request.try_clone() } else { None };
+        let next = if retry || search {
+            request.try_clone()
+        } else {
+            None
+        };
         let response = request.send().await.map_err(|error| {
             AppError::shared(if error.is_timeout() {
                 "shared index HTTP request timed out"
@@ -241,20 +247,29 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
             })
         })?;
         tracing::Span::current().record("status", response.status().as_u16());
-        if response.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE
+        let busy = retry && response.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE;
+        let changed = search && attempts == 0 && response.status() == reqwest::StatusCode::CONFLICT;
+        if (busy || changed)
             && let Some(next) = next
         {
             drop(response);
             attempts += 1;
             tracing::Span::current().record("retry_attempt", attempts);
-            crate::progress::emit(&crate::progress::Event::new(
-                crate::progress::Phase::SharedWaiting,
-                crate::progress::milliseconds(started),
-                None,
-            ));
+            if retry {
+                crate::progress::emit(&crate::progress::Event::new(
+                    crate::progress::Phase::SharedWaiting,
+                    crate::progress::milliseconds(started),
+                    None,
+                ));
+            }
             // The enclosing admission deadline bounds all attempts and releases
             // capacity on cancellation. Interactive requests use separate slots.
-            tokio::time::sleep(delay).await;
+            tokio::time::sleep(if changed {
+                Duration::from_millis(25)
+            } else {
+                delay
+            })
+            .await;
             delay = (delay * 2).min(Duration::from_secs(5));
             request = next;
             continue;
@@ -262,6 +277,7 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
         if !response.status().is_success() {
             let status = response.status();
             let message = match status.as_u16() {
+                409 if search => "shared index changed while searching; retry the search",
                 401 | 403 => {
                     "shared index authorization failed; check node token and group configuration"
                 }

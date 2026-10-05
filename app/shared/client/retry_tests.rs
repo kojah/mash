@@ -58,16 +58,43 @@ async fn busy_publication_negotiation_retries_and_streams_waiting_progress() {
 }
 
 #[tokio::test]
+async fn search_revision_conflicts_retry_once_without_indexing_progress() {
+    for failures in [1, usize::MAX] {
+        let (url, state, server) = fixture(StatusCode::CONFLICT, failures).await;
+        let (sink, mut progress) = tokio::sync::mpsc::channel(4);
+        let result = crate::progress::scope(
+            sink,
+            response::<Reply>(reqwest::Client::new().post(url).json(&42), Endpoint::Search),
+        )
+        .await;
+        assert_eq!(state.calls.load(Ordering::SeqCst), 2);
+        assert!(progress.try_recv().is_err());
+        if failures == 1 {
+            assert_eq!(result.unwrap().value, 42);
+        } else {
+            let error = result.unwrap_err();
+            assert!(error.error.retryable);
+            assert!(error.error.message.contains("retry the search"));
+        }
+        server.abort();
+    }
+}
+
+#[tokio::test]
 async fn mutation_posts_and_authorization_failures_are_never_replayed() {
     for (endpoint, status) in [
         (Endpoint::Index, StatusCode::SERVICE_UNAVAILABLE),
+        (Endpoint::Index, StatusCode::CONFLICT),
+        (Endpoint::Gold, StatusCode::CONFLICT),
+        (Endpoint::Search, StatusCode::SERVICE_UNAVAILABLE),
+        (Endpoint::Search, StatusCode::UNAUTHORIZED),
         (Endpoint::PublicationPlan, StatusCode::UNAUTHORIZED),
     ] {
         let (url, state, server) = fixture(status, usize::MAX).await;
-        let request = if matches!(endpoint, Endpoint::Index) {
-            reqwest::Client::new().post(url)
-        } else {
+        let request = if matches!(endpoint, Endpoint::PublicationPlan) {
             reqwest::Client::new().get(url)
+        } else {
+            reqwest::Client::new().post(url)
         };
         let error = response::<Reply>(request, endpoint).await.unwrap_err();
         assert_eq!(state.calls.load(Ordering::SeqCst), 1);

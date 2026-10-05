@@ -379,3 +379,49 @@ took 52.30 seconds (Cargo 31.21 seconds). The personal MacBook remains unreachab
 its prior deployment is retained and this additive upgrade is pending. The shared
 API and Qdrant were not restarted for this local-only schema change. Existing MCP
 clients need their normal reconnect after binary replacement.
+
+## Incremental publication under concurrent reads
+
+A stopped copy of the shared corpus ran on an isolated Qdrant 1.19.1 backend,
+with the existing two-job optimizer cap, HNSW ef 200 and unchanged write batches.
+The personal-node copy retained 749 threads, 238,257 messages and 32,606 embeddings.
+A metadata-only edit uploaded one complete 29-message thread with five retained
+vectors, approximately 90 KiB, through the normal pinned `/v1/index` delta protocol.
+There was no inference, provider scan or local SQLite ingestion in these trials.
+
+The initial delta took 21.797 seconds. Eight title updates arriving two seconds
+apart were then coalesced by a serial test controller into two publications taking
+15.680 and 16.832 seconds. The final title was verified through thread listing;
+all nodes retained their thread/message counts. The last arrival was acknowledged
+18.684 seconds later, with the burst drained in 32.738 seconds. The native watcher
+already bounds pending notifications to one pass; this controller exercises the
+same latest-state coalescing pattern but does not measure native watcher latency.
+
+During the burst, 39 of 40 direct candidate searches returned HTTP 200 and one
+returned a retryable HTTP 409 because publication changed the group catalogue
+during its read. Across all responses, median latency was 335 ms, nearest-rank
+p95 415 ms and maximum 823 ms. The client now retries that read-only search
+conflict once after 25 ms within the original five-second admission/request/body
+deadline. Indexing, gold publication and other mutations are never replayed;
+authorization failures and service-unavailable search responses are not retried.
+A persistent conflict reports a search retry action rather than indexing advice.
+
+A second burst used the actual updated CLI: all 20 fresh-process shared-only
+searches returned three threads without fallback, in 1.549–2.471 seconds. Its
+publications took 17.713 and 17.088 seconds. No conflict occurred in those client
+traces, so deterministic transport tests, rather than this timing run, establish
+the retry behavior and its two-attempt limit.
+
+The first direct search in the initial trial timed out after eight seconds while
+overlapping 6.14 seconds of obsolete-version cleanup. Five reads after an owned
+backend restart returned HTTP 200 in 279–393 ms on warm filesystem caches. However,
+a standalone actual shared-only CLI call before the second burst hit its
+five-second request deadline. These observations do not isolate cold-cache effects
+from backend maintenance or establish a cold-read guarantee. Startup warming is
+not justified by this screen alone. These remain explicit follow-ups in `mash-16b`.
+
+This was one query on one busy host, with retained real history and edited thread
+metadata. It is not an inference, semantic-quality, production watcher or all-node
+latency benchmark. Requests, pinned heads, traces, arrivals, acknowledgements and
+verification results remain private under
+`/home/james/scratch/mash-artifacts/incremental-backlog-20261005`.
