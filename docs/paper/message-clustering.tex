@@ -852,7 +852,7 @@ The protocol and result SHA256 prefixes are \texttt{3e981e55e9c6} and
 \texttt{126544f75c82}. Confirmation remains unopened. Structure-aware segmentation
 is the separately approved next hypothesis, not a modification of these results.
 
-\subsection{Structure-aware chunks: registered, build in progress}
+\subsection{Structure-aware chunks: registered procedure}
 The next prospective comparison retains the same prompt/last-assistant sources,
 installed encoder, whole-input pooling and 80+80-token ancestor context. Before
 building, extracting the reusable context function reproduces all 12,627 frozen
@@ -873,7 +873,7 @@ use the previous radius/cutoff pairs, with two unchanged window controls and
 the same overall and long-history gates. The protocol SHA256 begins
 \texttt{b9a53097c171}. Synthetic tests cover Unicode, message and heading
 boundaries, closed/unclosed fences, source selection and oversized atoms.
-No structural quality results or confirmation measurements are available yet.
+Structural quality results are reported below; confirmation remains unopened.
 
 The first structural build stops before scoring at a coverage guard in history
 85. Inspection finds a retained leading private-use citation marker
@@ -885,6 +885,42 @@ case, and a no-inference preflight passes both structural treatments for all
 200 histories. Boundary rules, model, labels and quality gates do not change.
 The failed run remains archived; restart costs reuse its durable vector cache
 and must be reported as cache-assisted.
+
+\subsection{Structure-aware chunks: completed results}
+No registered structural cell meets every gate. At .65, heading-aware chunks
+reach P=.832, R=.825, F1=.828 overall and P=.801, R=.732, F1=.765 on long
+histories (overall TP=509, FP=103, FN=108; long TP=230, FP=57, FN=84).
+The matching token-window control has .803/.870/.835 overall and
+.743/.790/.765 on long histories. Thus precision improves while recall falls;
+the paired-bootstrap F1-gain interval is -.031--.017. Plain structure yields
+.828/.820/.824 overall and .794/.723/.757 long, with gain interval -.034--.012.
+At .75, plain/heading structure reaches precision .912/.917 but recall only
+.608/.611 overall; long precision is .884/.901 and recall .484/.490.
+Nearby unrelated FPR for heading/.65 is .600 and distant related recall .600;
+at .75 these become .280 and .207. Structure does not automatically establish
+better semantic coherence or satisfy the joint precision/recall requirement.
+
+Both variants have median five vectors per turn and p95 14 across all 5,082
+prompted turns; totals are 31,657/31,661, about 2.5 times the 12,627 original
+context-window points. Exceptional maxima are 148/150. Input-token medians
+are 98/99 and p95 203/205, including context rather than body-only lengths.
+Inputs under 16 tokens comprise 4.1\%/3.7\%. Prose/code/standalone-heading
+counts are 28,890/2,721/46 for plain structure and 28,892/2,723/46 with heading
+context; only 79/81 points use forced token fallback. All source and budget
+checks pass. This representation is not one embedding per paragraph, but its
+substantial multiplicity increase is a practical limitation.
+
+The interrupted first build takes 445.24 seconds and publishes 23,084 new
+vectors across 170 artifacts. Restart takes 181.78 seconds, reuses these cached
+vectors and infers another 6,123 plain plus 975 heading vectors. Total build
+attempt time is 627.02 seconds, excluding the separate coverage preflight.
+Successful restart construction p95 is 2.763/.937 seconds; these are heavily
+cache-assisted, sequential timings. Scoring takes 18.54 seconds, with maximum
+preparation-plus-fit p95 118.33 ms. Successful build/scoring peak RSS is
+1,463,852/1,039,756 KiB; the failed build peaks at 1,392,188 KiB. Performance
+gates pass, quality gates fail. Private development/analysis SHA256 prefixes
+are \texttt{50d7ef826e4d} and \texttt{b84c7ff03af7}. No boundary parameters are
+retuned and no algorithm is promoted from this screen.
 
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
