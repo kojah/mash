@@ -972,6 +972,38 @@ or scores. Restart takes 6.16 seconds and peaks at 1,046,524 KiB RSS. All matrix
 and annotation provenance checks pass. Protocol/result SHA256 prefixes are
 \texttt{caa4ab603825}/\texttt{098986438a49}; confirmation remains sealed.
 
+\subsection{User-requested selective smoothing refinement}
+After closing the earlier heuristic screen, the user requests a new selective
+semantic-gating hypothesis. We register one treatment: target only turns with
+at most 32 prompt-input and 128 own-input tokens from the frozen lean inventory;
+retain the four-position ancestor/descendant restriction and alpha=.10. Weight
+neighbours by $\exp(-|i-j|/2)\max(0,\cos(x_i,x_j)-.55)$, normalize their mean,
+and blend into the original vector simultaneously. No parameter grid is run.
+
+The treatment has overall TP=448, FP=61, FN=169, giving P=.880, R=.726,
+F1=.796, versus .887/.724/.798 unsmoothed. Long-history TP=178, FP=31,
+FN=136 gives .852/.567/.681, versus .855/.564/.679 unsmoothed. Nearby unrelated
+false positives rise 42 to 45; distant related matches rise 44 to 47. F1-gain
+intervals are -.016--.014 versus unsmoothed and -.063---.005 versus uniform
+smoothing. Selectivity avoids most of the uniform treatment's false-positive
+increase, but also forfeits its recall benefit. No configuration passes gates.
+For the intended local mechanism, nearby-related recall is 401/482=.832,
+versus 403/482=.836 unsmoothed and 431/482=.894 with uniform smoothing.
+The uniform method recovers nearby links at a false-positive cost; this fixed
+refinement does not retain that benefit. A lack of large long-history gain
+alone would not refute proximity smoothing: distant relations require other
+evidence, while the long-history gate applies to accepting the complete method.
+
+Of 3,396 development turns, 615 qualify and 598 move; long histories account
+for 550 qualifying and 539 moving turns out of 3,057. Short prompts with long
+selected answers are deliberately excluded. Limited targeting may explain the
+small effect, but caps are not retuned after this result. Hash and literal
+ancestry checks pass, and the refitted anchor reproduces frozen predictions.
+Scoring takes 7.76 seconds, peaks at 1,057,324 KiB RSS, and new preparation plus
+fit p95 is 23.60 ms/history. Control timings remain historical. Protocol/result
+SHA256 prefixes are \texttt{2ac00207795f}/\texttt{daee901beef0}. No chunk-view
+composite is tested here; confirmation remains sealed.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
