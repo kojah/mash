@@ -546,3 +546,38 @@ private under `/home/james/scratch/mash-artifacts/graph-residency-20261005`.
 The diagnostic copy intentionally retains pinned graph placement, which the
 current Mash API's cached/cold schema rejects. Restore cached placement and wait
 for optimizer completion before reusing that copy for API benchmarks.
+
+### Candidate catalogue read simplification
+
+Release `364d848` reads one validated active catalogue for both node visibility
+and vector policy. Previously, a second read selected the policy, and an eager
+`unwrap_or` evaluated that read even with an explicit request override. The
+post-query catalogue check still rejects changed heads; recipe, generation,
+filter and payload validation are unchanged. HNSW ef 200 remains the default.
+
+The shared API was deployed without indexing, with authenticated readiness and
+publication identities preserved. Validation passed 602 standard tests, five
+real-backend query-policy/activation contracts, strict Clippy, formatting and
+doctests. The optimized release build took 58.77 seconds. This is a server-only
+change and does not require replacing node binaries or reconnecting stdio MCPs.
+
+Eight pre-deployment candidate calls all succeeded: the first took 3.101 seconds
+and the others 137–192 ms. Eight post-deployment calls took 171–209 ms while fresh
+MCP verification ran concurrently. All saved pre/post response bodies matched
+after canonical JSON serialization. The overlapping workload prevents treating
+those timings as a direct speed comparison.
+
+A subsequent alternating ABBA comparison used old and new APIs reading the same
+live backend: all 32 requests succeeded, 16 per variant, with medians of 170.054
+and 167.164 ms respectively. The 16 retained paired response bodies matched;
+repeated filenames overwrote the first body in each same-variant pair. The small
+timing difference on this busy host is not a significant fleet speedup or a fix
+for cold dense reads. The benefit established by the code change is one fewer
+catalogue request and one coherent snapshot for policy and visibility.
+
+Fresh combined MCP searches returned three threads, complete shared context and
+no fallback in 1.845 seconds on Xenia and 2.259 seconds on the development MacBook.
+The personal MacBook remains offline and its outstanding upgrade/checks remain
+pending. The temporary baseline API and disposable correctness backend were
+stopped; production continues on the new API. Private evidence is in
+`/home/james/scratch/mash-artifacts/catalogue-read-20261005`.
