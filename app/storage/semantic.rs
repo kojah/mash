@@ -60,20 +60,21 @@ impl Storage {
     ) -> Result<bool, AppError> {
         self.connection
             .query_row(
-                "SELECT NOT EXISTS (
+                // Unique message IDs make equal cardinality plus inclusion an
+                // exact coverage check, including surplus/hidden vectors. The
+                // partial identity index keeps both checks off message bodies.
+                "SELECT
+                 (SELECT count(*) FROM message_embeddings WHERE generation=?1) =
+                 (SELECT count(*) FROM messages
+                  WHERE COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user'))
+                 AND NOT EXISTS (
                     SELECT 1
-                      FROM messages m
+                      FROM messages m INDEXED BY messages_searchable_identity
                       LEFT JOIN message_embeddings e
                         ON e.message_id = m.id AND e.generation = ?1
                      WHERE COALESCE(m.search_projection, m.content) <> ''
                        AND (?2 = 0 OR m.role = 'user')
                        AND e.message_id IS NULL
-                    UNION ALL
-                    SELECT 1
-                      FROM message_embeddings e
-                      JOIN messages m ON m.id = e.message_id
-                     WHERE e.generation = ?1
-                       AND (COALESCE(m.search_projection, m.content) = '' OR (?2 = 1 AND m.role <> 'user'))
                  )",
                 params![generation, users_only],
                 |row| row.get(0),

@@ -1,6 +1,61 @@
 use super::*;
 
 #[test]
+fn coverage_requires_membership_as_well_as_cardinality() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut writer = Storage::open_writer(&directory.path().join("coverage.sqlite3")).unwrap();
+    let mut source = conversation_with_messages(&[
+        ("first", "first visible message"),
+        ("second", "second visible message"),
+        ("hidden", "context-only content"),
+    ]);
+    source.messages.inline_mut()[2].dialogue_text = Some(String::new());
+    writer.replace_conversation(&source).unwrap();
+    let embedding = |message_id| EmbeddingWrite {
+        message_id,
+        vector: &[127],
+        norm: 127.0,
+    };
+    writer
+        .replace_embeddings("generation", &[embedding("first"), embedding("hidden")])
+        .unwrap();
+    // Two vectors for two eligible messages still fails: one is the wrong member.
+    assert!(!writer.semantic_coverage_is_complete("generation").unwrap());
+    writer
+        .connection
+        .execute(
+            "DELETE FROM message_embeddings WHERE message_id='hidden'",
+            [],
+        )
+        .unwrap();
+    writer
+        .replace_embeddings("other-generation", &[embedding("second")])
+        .unwrap();
+    assert!(!writer.semantic_coverage_is_complete("generation").unwrap());
+    writer
+        .replace_embeddings("generation", &[embedding("second")])
+        .unwrap();
+    assert!(writer.semantic_coverage_is_complete("generation").unwrap());
+    writer
+        .connection
+        .execute(
+            "UPDATE messages SET search_projection='' WHERE id='second'",
+            [],
+        )
+        .unwrap();
+    // Surplus vectors must fail even when every remaining eligible row is covered.
+    assert!(!writer.semantic_coverage_is_complete("generation").unwrap());
+    writer
+        .connection
+        .execute(
+            "DELETE FROM message_embeddings WHERE message_id='second'",
+            [],
+        )
+        .unwrap();
+    assert!(writer.semantic_coverage_is_complete("generation").unwrap());
+}
+
+#[test]
 fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_scope() {
     use crate::search_filter::{Filter, Scope};
     let directory = tempfile::tempdir().unwrap();

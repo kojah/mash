@@ -4,7 +4,7 @@ use rusqlite::params;
 
 #[test]
 fn searchable_index_migration_preserves_publication_and_tracks_projection_edits() {
-    for version in [42, 43] {
+    for version in [42, 43, 44] {
         check_searchable_index_migration(version);
     }
 }
@@ -24,7 +24,8 @@ fn check_searchable_index_migration(version: i64) {
                ('hidden','session',2,'user','hidden body','');
          UPDATE derived_state SET semantic_ready_generation='preserved',search_dirty=0;
          DROP INDEX messages_searchable_role;
-         DROP INDEX messages_searchable_metadata;",
+         DROP INDEX messages_searchable_metadata;
+         DROP INDEX messages_searchable_identity;",
         )
         .unwrap();
     writer
@@ -96,6 +97,18 @@ fn check_searchable_index_migration(version: i64) {
          WHERE COALESCE(search_projection, content) <> '' ORDER BY created_at, conversation_id, role"
     ).unwrap().query_map([], |row| row.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
     assert_eq!(visible, ["hidden"]);
+    let identities: Vec<String> = writer
+        .connection
+        .prepare(
+            "SELECT id FROM messages INDEXED BY messages_searchable_identity
+         WHERE COALESCE(search_projection,content) <> ''",
+        )
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(identities, ["hidden"]);
     writer.commit_writer().unwrap();
 }
 

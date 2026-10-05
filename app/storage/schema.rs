@@ -4,7 +4,7 @@ use std::fmt::Write;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 44;
+pub(super) const SCHEMA_VERSION: i64 = 45;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -24,7 +24,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     if version == SCHEMA_VERSION {
         return Ok(());
     }
-    if matches!(version, 42..=43) {
+    if matches!(version, 42..=44) {
         return migrate_searchable_index(connection);
     }
     if version == 41 {
@@ -197,6 +197,8 @@ fn install_searchable_index(connection: &Connection) -> Result<(), AppError> {
          WHERE COALESCE(search_projection, content) <> '';
          CREATE INDEX IF NOT EXISTS messages_searchable_metadata
          ON messages(created_at, conversation_id, role)
+         WHERE COALESCE(search_projection, content) <> '';
+         CREATE INDEX IF NOT EXISTS messages_searchable_identity ON messages(id, role)
          WHERE COALESCE(search_projection, content) <> ''",
         )
         .map_err(AppError::database)

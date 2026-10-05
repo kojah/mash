@@ -799,3 +799,39 @@ and no fallback in 1.189 seconds on Xenia and 2.078 seconds on the development
 MacBook. Those are smoke checks, not measured decoder effects on search latency.
 Node binaries and indexes were not changed; Qdrant was not restarted. Both owned
 benchmark backends and all temporary APIs were stopped after validation.
+
+### Covered local embedding readiness (2026-10-05)
+
+The native Linux watcher was exercised against a private full-corpus database
+with three cloned real Codex sessions and retained attachment blobs. Twelve
+isolated edits completed real local inference with median visibility latency
+2.595 seconds and maximum 3.086 seconds, including the default one-second
+debounce. Median indexing core time was 1.591 seconds; model loading took 502 ms.
+Twelve additional edits arriving 200 ms apart coalesced into one completed pass
+and drained in 5.191 seconds, with the final arrival acknowledged after 2.777
+seconds. Every edit remained certified/hybrid and the final exact search passed.
+This is local native watcher evidence, not shared publication or MacBook timing.
+
+Readiness checked eligible IDs through message bodies and separately checked for
+surplus vectors. Schema 45 adds a partial `(id, role)` index (1,843,200 bytes on
+the private corpus). Equal cardinality plus inclusion is exact because message
+IDs are unique: every eligible message must have a vector in the requested
+generation, and no surplus current-generation vectors can remain. Missing,
+wrong-generation, hidden and equal-count wrong-member regressions pass. Additive
+migrations from 42–44 preserve publication/readiness and track projection edits.
+
+A first eight-pass paired comparison encountered substantial host I/O pressure
+and mixed results; old core times were 23.425/3.272/3.014/4.704 seconds versus
+15.133/12.402/4.437/4.091 seconds after. These remain in the record and are not
+speedup evidence. A following paired comparison explicitly read each owned
+private database before timing, with no global cache manipulation. Old core
+times were 2.273/2.687/2.068/2.122 seconds; new times were
+2.080/1.748/2.043/1.527 seconds. Medians were 2.198 and 1.896 seconds, about 14%
+lower. Each pair indexed the same one-message edit with one inference, identical
+gold manifests and identical new vector bytes. This is a warm indexing result,
+not a cold-cache, fleet p95 or sustained shared-watcher guarantee.
+
+The change passed 607 standard tests, strict Clippy, formatting and doctests.
+Private inputs, setup failures, native watcher output and paired timings remain
+in `native-watcher-20261005` and `readiness-coverage-20261005` under
+`/home/james/scratch/mash-artifacts`.
