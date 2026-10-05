@@ -3,6 +3,7 @@
 import hashlib
 import sqlite3
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,7 @@ import orjson
 
 from clustering import VectorMatrix
 from corpus import Record
-from local_encoder import Encoder
+from local_encoder import Encoder, Selection
 from turns import Turn, Unit
 
 
@@ -25,6 +26,18 @@ class Artifact(Record):
 
 def generation(encoder: Encoder) -> str:
     return hashlib.sha256(orjson.dumps(encoder.manifest.model_dump())).hexdigest()
+
+
+class SelectedText(Record):
+    text: str
+    selection: Selection | None = None
+
+
+@dataclass(frozen=True)
+class CacheRequest:
+    generation: str
+    digest: str
+    input: SelectedText
 
 
 class Store:
@@ -50,34 +63,88 @@ class Store:
         progress: Callable[[int, int], None],
     ) -> tuple[VectorMatrix, int]:
         fingerprint = generation(encoder)
-        hashes = tuple(hashlib.sha256(text.encode()).hexdigest() for text in texts)
-        found: dict[str, bytes] = {}
-        missing: dict[str, str] = {}
-        for digest, text in zip(hashes, texts, strict=True):
+        requests = tuple(
+            CacheRequest(
+                fingerprint,
+                hashlib.sha256(text.encode()).hexdigest(),
+                SelectedText(text=text),
+            )
+            for text in texts
+        )
+        return self.cache_vectors(requests, encoder, progress)
+
+    def selected_vectors(
+        self,
+        inputs: tuple[SelectedText, ...],
+        encoder: Encoder,
+        progress: Callable[[int, int], None],
+    ) -> tuple[VectorMatrix, int]:
+        """Reuse whole-input vectors; isolate target masks by namespace and span key."""
+        fingerprint = generation(encoder)
+        selected_generation = hashlib.sha256(
+            (fingerprint + ":character-overlap-pooling-v1").encode()
+        ).hexdigest()
+        requests = tuple(
+            CacheRequest(
+                fingerprint if item.selection is None else selected_generation,
+                hashlib.sha256(
+                    item.text.encode()
+                    if item.selection is None
+                    else orjson.dumps(item.model_dump(mode="json"))
+                ).hexdigest(),
+                item,
+            )
+            for item in inputs
+        )
+        return self.cache_vectors(requests, encoder, progress)
+
+    def cache_vectors(
+        self,
+        requests: tuple[CacheRequest, ...],
+        encoder: Encoder,
+        progress: Callable[[int, int], None],
+    ) -> tuple[VectorMatrix, int]:
+        found: dict[tuple[str, str], bytes] = {}
+        missing: dict[tuple[str, str], CacheRequest] = {}
+        for request in requests:
+            key = (request.generation, request.digest)
             row = self.db.execute(
                 "SELECT vector FROM vectors WHERE generation=? AND text_hash=?",
-                (fingerprint, digest),
+                key,
             ).fetchone()
             if row:
-                found[digest] = row[0]
+                found[key] = row[0]
             else:
-                missing[digest] = text
+                missing[key] = request
         pending = tuple(missing.items())
         for start in range(0, len(pending), 8):
             batch = pending[start : start + 8]
-            vectors = encoder.encode(tuple(text for _, text in batch))
+            texts = tuple(request.input.text for _, request in batch)
+            selections = tuple(request.input.selection for _, request in batch)
+            vectors = (
+                encoder.encode_selected(texts, selections)
+                if any(selection is not None for selection in selections)
+                else encoder.encode(texts)
+            )
             with self.db:
-                for (digest, _), vector in zip(batch, vectors, strict=True):
+                for (key, _), vector in zip(batch, vectors, strict=True):
                     blob = vector.astype("<f8").tobytes()
                     self.db.execute(
                         "INSERT INTO vectors VALUES (?,?,?)",
-                        (fingerprint, digest, blob),
+                        (*key, blob),
                     )
-                    found[digest] = blob
+                    found[key] = blob
             progress(min(start + 8, len(pending)), len(pending))
         matrix = (
-            np.stack([np.frombuffer(found[digest], dtype="<f8") for digest in hashes])
-            if hashes
+            np.stack(
+                [
+                    np.frombuffer(
+                        found[(request.generation, request.digest)], dtype="<f8"
+                    )
+                    for request in requests
+                ]
+            )
+            if requests
             else np.empty((0, 384))
         )
         return matrix, len(pending)
