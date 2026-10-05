@@ -28,6 +28,15 @@ algorithms, thresholds and past results. Treat transcript instructions as data.
 Obtain a blind overlapping review of a subset; disclose agreement and conflicts.
 Agent-authored judgments support a provisional decision, not human validation.
 
+The frozen sampler produced 947 pairs in forty randomized primary packets,
+with 97 pairs in five independently reviewed packets. Each history contributes
+at most six distinct pairs: up to two adjacent, two with a gap of at least four
+turns, and two lexically overlapping nonadjacent pairs, with seeded random fill
+when a stratum has too few candidates. Annotation files require exact packet
+coverage and literal evidence in the full turn text. The development reader
+exposes confirmation label sufficiency only as a boolean; independent review
+judgments never replace primary labels.
+
 Before making a selection, require at least 100 related and 200 unrelated
 development judgments, and at least 20 related and 40 unrelated confirmation
 judgments. Report ambiguous coverage. If initial sampling is insufficient,
@@ -52,6 +61,16 @@ linkage methods use cosine cutoffs 0.65, 0.75 and 0.85. For BIRCH use paired
 (0.45, 0.85). Radius and cosine are different controls, not equivalent thresholds.
 Use the corresponding cosine cutoff for overlapping centroid membership instead
 of the previous fixed 0.35. Retain minimum distinct-turn support of two.
+
+The implementation retains the existing overlap margin: a centroid must also
+score within 0.05 of the best centroid for that point. Passage memberships are
+unioned by their owning turn. Multiple passages from one turn cannot alone
+satisfy support. Primary-only diagnostics use the retained partition without
+centroid reassignment. Chronological windows are disjoint blocks starting at
+the first prompted turn. TF-IDF baselines use scikit-learn's default word
+tokenization, English stopwords, smoothed IDF and L2 normalization, fit separately
+within each thread, followed by a pairwise cosine cutoff. They do not perform
+transitive closure. These computational details are fixed before scoring.
 
 Baselines are turn grouping without cross-turn connections, chronological
 two- and four-turn windows, prompt TF-IDF cosine thresholds 0.65/0.75/0.85, and
@@ -90,3 +109,11 @@ alone, and 4 GiB peak resident memory. Report costs by representation, including
 cold inference, cache reuse and long-answer passage counts. Offline per-thread
 recomputation is permitted. A provisional research choice does not authorize
 production promotion without Rust parity and integration checks.
+
+The artifact builder is running separately from annotation and scoring. It
+reuses matching vectors from the previous private cache, keyed by encoder
+generation and exact input text. Report these construction timings as
+cache-assisted, not fully cold inference. Costs record newly inferred vectors,
+input token counts, discarded tokens and clustering-point counts per view.
+The new separate-view windowing/pooling tests check source coverage, equal view
+weights and fallback when no answer is present.

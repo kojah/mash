@@ -198,3 +198,22 @@ both runner and summarizer recheck source identity and native capture hashes.
 The summarizer requires the capture digest recorded by the runner so its
 cross-turn baselines use the same boundaries. Original message vectors and
 reserved data remain unchanged.
+
+## Registered 200-thread study
+
+`blind_turn_pairs.py` freezes opaque pair packets before predictions, and
+`study_annotations.py` validates full coverage and literal evidence while
+exposing only development judgments and a confirmation-adequacy boolean.
+Review labels remain independent diagnostics. See
+[the frozen protocol](../../docs/turn-clustering-study.md).
+
+`study_artifacts.py` builds five views without reading annotations. It stores
+per-thread point matrices with turn owners, source-preserving artifact manifests
+and inference/cache costs. Optional `--cache` reads an existing vector store
+without modifying it; timings with that option are cache-assisted.
+
+`study_scoring.py` implements the fixed 60 candidates, distinct-turn retention,
+passage-to-turn membership unions, lexical/chronological controls, micro counts
+including negative-only histories, and the development stopping rules. It is
+the tested scoring core; the full study runner and final decision remain pending.
+Nothing here changes production search or message embeddings.

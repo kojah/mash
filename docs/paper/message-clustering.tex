@@ -506,6 +506,27 @@ parent links was excluded before selection. This collection stage is not a
 clustering-quality result. The finite comparison and stopping rules are recorded
 in \texttt{docs/turn-clustering-study.md} before new labels or scores.
 
+The prediction-independent sampler produced 947 turn pairs in forty randomized
+annotation packets and selected 97 pairs for an independent blind review.
+Histories contribute at most six pairs across adjacent, distant and lexical
+overlap strata, with seeded fill for short histories. Annotators receive opaque
+identities and role-marked text, with complete text available when excerpts are
+insufficient. Literal-evidence and exact-coverage checks validate the resulting
+files. Review judgments do not overwrite primary labels. The development
+reader exposes confirmation adequacy only as a boolean, preserving the split
+until the development choice is frozen. Annotation is ongoing; these counts
+describe the sampled workload, not completed judgments or quality results.
+
+We have implemented the registered sixty-configuration grid and its
+distinct-turn support checks. Passage memberships are unioned by owning turn;
+several passages from one turn cannot form a supported group by themselves.
+Tests explicitly include false positives in histories with no positive labels.
+Separate-view pooling normalizes each prompt/answer view before giving the
+views equal weight, avoiding answer-length dominance. Construction reuses
+matching vectors from a prior text-and-encoder-keyed cache; its recorded timing
+must therefore be described as cache-assisted rather than fully cold. The
+artifact build is ongoing and no new algorithm scores are reported yet.
+
 \section{Limitations and reproducibility}
 Only two providers, sparse agent-authored excerpt judgments, a structural
 support proxy, and one timing host limit interpretation. Human independent
