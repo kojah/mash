@@ -21,6 +21,56 @@ pub(super) struct Client {
 struct Envelope<T> {
     result: T,
     status: ResponseStatus,
+    time: Option<f64>,
+    usage: Option<Usage>,
+}
+#[derive(Deserialize)]
+struct Usage {
+    hardware: Option<HardwareUsage>,
+}
+#[derive(Deserialize)]
+struct HardwareUsage {
+    cpu: Option<u64>,
+    payload_io_read: Option<u64>,
+    payload_io_write: Option<u64>,
+    payload_index_io_read: Option<u64>,
+    payload_index_io_write: Option<u64>,
+    vector_io_read: Option<u64>,
+    vector_io_write: Option<u64>,
+}
+impl<T> Envelope<T> {
+    fn record_metrics(&self) {
+        let span = tracing::Span::current();
+        if let Some(time) = self.time.filter(|time| time.is_finite() && *time >= 0.0) {
+            span.record("qdrant_time_seconds", time);
+        }
+        if let Some(hardware) = self
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.hardware.as_ref())
+        {
+            // Native accounting units, not CPU seconds or physical disk bytes.
+            for (field, value) in [
+                ("qdrant_cpu", hardware.cpu),
+                ("qdrant_payload_io_read", hardware.payload_io_read),
+                ("qdrant_payload_io_write", hardware.payload_io_write),
+                (
+                    "qdrant_payload_index_io_read",
+                    hardware.payload_index_io_read,
+                ),
+                (
+                    "qdrant_payload_index_io_write",
+                    hardware.payload_index_io_write,
+                ),
+                ("qdrant_vector_io_read", hardware.vector_io_read),
+                ("qdrant_vector_io_write", hardware.vector_io_write),
+            ] {
+                if let Some(value) = value {
+                    span.record(field, value);
+                }
+            }
+        }
+    }
 }
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -457,7 +507,19 @@ impl Client {
             .await
     }
 
-    #[tracing::instrument(name = "qdrant_native_http", skip_all, fields(method = %method, status = tracing::field::Empty, response_bytes = tracing::field::Empty))]
+    #[tracing::instrument(name = "qdrant_native_http", skip_all, fields(
+        method = %method,
+        status = tracing::field::Empty,
+        response_bytes = tracing::field::Empty,
+        qdrant_time_seconds = tracing::field::Empty,
+        qdrant_cpu = tracing::field::Empty,
+        qdrant_payload_io_read = tracing::field::Empty,
+        qdrant_payload_io_write = tracing::field::Empty,
+        qdrant_payload_index_io_read = tracing::field::Empty,
+        qdrant_payload_index_io_write = tracing::field::Empty,
+        qdrant_vector_io_read = tracing::field::Empty,
+        qdrant_vector_io_write = tracing::field::Empty
+    ))]
     async fn call_with_limit<T: DeserializeOwned>(
         &self,
         method: Method,
@@ -514,6 +576,7 @@ impl Client {
         if envelope.status != ResponseStatus::Ok {
             return Err(failure());
         }
+        envelope.record_metrics();
         Ok(envelope.result)
     }
     pub(super) async fn initialize(

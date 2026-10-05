@@ -1,5 +1,33 @@
 use super::*;
 
+#[test]
+fn native_accounting_accepts_optional_and_extensible_typed_response_fields() {
+    let bare: Envelope<Vec<u64>> =
+        serde_json::from_str(r#"{"result":[42],"status":"ok"}"#).unwrap();
+    assert_eq!(bare.result, [42]);
+    assert!(bare.time.is_none() && bare.usage.is_none());
+
+    let response: Envelope<Vec<u64>> = serde_json::from_str(
+        r#"{"result":[42],"status":"ok","time":0.123,"usage":{"hardware":{
+          "cpu":7,"payload_io_read":0,"vector_io_read":1024,"future_counter":1
+        },"inference":{"models":{}}}}"#,
+    )
+    .unwrap();
+    assert_eq!(response.result, bare.result);
+    assert_eq!(response.time, Some(0.123));
+    let hardware = response.usage.unwrap().hardware.unwrap();
+    assert_eq!(hardware.cpu, Some(7));
+    assert_eq!(hardware.payload_io_read, Some(0));
+    assert_eq!(hardware.vector_io_read, Some(1024));
+    assert!(hardware.payload_index_io_read.is_none());
+    assert!(
+        serde_json::from_str::<Envelope<Vec<u64>>>(
+            r#"{"result":[42],"status":"ok","usage":{"hardware":{"cpu":"7"}}}"#
+        )
+        .is_err()
+    );
+}
+
 #[tokio::test]
 async fn awaited_mutations_outlive_read_deadlines_without_replaying_requests() {
     use axum::{

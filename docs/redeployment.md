@@ -1156,3 +1156,11 @@ is counted as passing for this deployment. Cold shared search, native staging
 tails and full initial-ingestion/fleet acceptance remain open. Private build,
 deployment, MCP, native-counter and failure captures are under
 `/home/james/scratch/mash-artifacts/perf-fleet-20261005`.
+
+Native HTTP traces also record Qdrant's optional `time` response field in
+seconds and typed hardware accounting counters when present. These distinguish
+the backend's reported processing time from Mash's send/wait span. CPU and I/O
+counters use Qdrant accounting units; they are not CPU seconds, physical disk
+bytes or cache-miss counts. Missing counters remain absent, and no upstream
+request/response bodies or identities are logged. The fields follow the
+[Qdrant query response contract](https://api.qdrant.tech/api-reference/search/query-points).
