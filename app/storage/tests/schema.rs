@@ -3,6 +3,100 @@ use super::*;
 use rusqlite::params;
 
 #[test]
+fn searchable_index_migration_preserves_publication_and_tracks_projection_edits() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("ready-v42.sqlite3");
+    let mut writer = Storage::open_writer(&path).unwrap();
+    writer
+        .connection
+        .execute_batch(
+            "INSERT INTO conversations(id,provider,source_path,source_key)
+         VALUES('session','codex','source','source');
+         INSERT INTO messages(id,conversation_id,ordinal,role,content,search_projection)
+         VALUES('user','session',0,'user','fallback',NULL),
+               ('assistant','session',1,'assistant','canonical','visible'),
+               ('hidden','session',2,'user','hidden body','');
+         UPDATE derived_state SET semantic_ready_generation='preserved',search_dirty=0;
+         DROP INDEX messages_searchable_role;
+         PRAGMA user_version=42;",
+        )
+        .unwrap();
+    let before = writer
+        .connection
+        .query_row(
+            "SELECT instance,revision,acknowledged,target FROM shared_publication",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )
+        .unwrap();
+    writer.commit_writer().unwrap();
+    drop(writer);
+
+    let mut writer = Storage::open_writer(&path).unwrap();
+    assert!(
+        writer
+            .semantic_generation_is_published("preserved")
+            .unwrap()
+    );
+    assert!(!writer.derived_search_is_dirty().unwrap());
+    let after = writer
+        .connection
+        .query_row(
+            "SELECT instance,revision,acknowledged,target FROM shared_publication",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(before, after);
+    let count = "SELECT count(*) FROM messages
+                 WHERE COALESCE(search_projection, content) <> '' AND (?1=0 OR role='user')";
+    for (users_only, expected) in [(false, 2), (true, 1)] {
+        let actual: i64 = writer
+            .connection
+            .query_row(count, [users_only], |row| row.get(0))
+            .unwrap();
+        assert_eq!(actual, expected);
+        let plan: String = writer
+            .connection
+            .query_row(
+                &format!("EXPLAIN QUERY PLAN {count}"),
+                [users_only],
+                |row| row.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("messages_searchable_role"), "{plan}");
+    }
+    writer
+        .connection
+        .execute_batch(
+            "UPDATE messages SET search_projection='' WHERE id='user';
+         UPDATE messages SET search_projection='new visible' WHERE id='hidden';
+         DELETE FROM messages WHERE id='assistant';",
+        )
+        .unwrap();
+    let actual: i64 = writer
+        .connection
+        .query_row(count, [true], |row| row.get(0))
+        .unwrap();
+    assert_eq!(actual, 1);
+    writer.commit_writer().unwrap();
+}
+
+#[test]
 fn version_forty_removes_retired_provider_caches_and_preserves_supported_vectors() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("old.sqlite3");

@@ -334,3 +334,38 @@ earlier development MacBook call hit the five-second shared deadline and fell
 back to local results. Healthy optimizer status alone therefore does not prove
 a latency guarantee. Cold-search outliers and a broader latency distribution
 remain tracked in `mash-16b`.
+
+## Local readiness index
+
+Schema 43 adds a partial index on message role for nonempty interpreted dialogue
+(`COALESCE(search_projection, content) <> ''`). Readiness still checks the same
+eligible-message count against packed vectors; it no longer needs to scan message
+bodies. Combined retrieval checks readiness during preparation and again when
+opening local candidates, so this removes repeated canonical-text reads.
+
+The additive migration preserves canonical history, embeddings, gold manifests,
+readiness markers and shared publication identity. As with other schema upgrades,
+run an explicit `index --rebuild-local-gold` before validating the upgraded node.
+This reads stored silver offline; it does not rescan providers or publish shared
+gold. The private Xenia-copy upgrade took 0.23 seconds with zero model inferences,
+zero changed messages and zero removed messages.
+
+On that frozen 1.1 GiB copy, the index occupied 720,896 bytes (704 KiB). Ten count
+queries per selection retained exactly 42,150 eligible messages and 7,668 eligible
+user messages. Table scans took approximately 100–110 ms; indexed counts took
+approximately 1–2 ms. SQLite's plans confirmed use of the partial index for both
+selections. The migration test also covers projection edits and deletion.
+
+Eight fresh-process local searches before migration and eight afterward returned
+identical ordered thread and message identities. Median core search time was
+1.891 seconds before and 1.626 seconds afterward. These sequential runs overlapped
+compilation on a busy host; they are a screen rather than a controlled percentage
+speedup or a cold-disk latency guarantee. Model loading and contextual reranking
+remain part of complete search latency.
+
+Separately, twelve fresh Xenia combined CLI searches took 1.636–2.065 seconds,
+and twelve fresh development MacBook combined MCP searches took 2.292–2.595 seconds,
+all without shared fallback. These repeated one query on warm filesystem/backend
+caches, not a diverse-query or sustained-arrival benchmark. Private snapshots,
+plans, identities, traces and test logs are retained under
+`/home/james/scratch/mash-artifacts/search-tail-20261005`.

@@ -4,7 +4,7 @@ use std::fmt::Write;
 use super::semantic_chunks::rebuild_all_semantic_chunks;
 use crate::AppError;
 
-pub(super) const SCHEMA_VERSION: i64 = 42;
+pub(super) const SCHEMA_VERSION: i64 = 43;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -23,6 +23,9 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         .map_err(AppError::database)?;
     if version == SCHEMA_VERSION {
         return Ok(());
+    }
+    if version == 42 {
+        return migrate_searchable_index(connection);
     }
     if version == 41 {
         return migrate_publication_journal(connection);
@@ -69,6 +72,7 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
     add_column_if_missing(&transaction, "conversations", "project", "TEXT")?;
     add_column_if_missing(&transaction, "conversations", "repository", "TEXT")?;
     migrate_source_identities(&transaction)?;
+    install_searchable_index(&transaction)?;
     install_silver_contract(&transaction)?;
     transaction.execute_batch("CREATE INDEX IF NOT EXISTS messages_context_parent ON messages(conversation_id, context_parent, ordinal) WHERE context_parent IS NOT NULL").map_err(AppError::database)?;
     if version < 8 {
@@ -106,11 +110,23 @@ pub(super) fn initialize(connection: &Connection) -> Result<(), AppError> {
         .map_err(AppError::database)
 }
 
+fn migrate_searchable_index(connection: &Connection) -> Result<(), AppError> {
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(AppError::database)?;
+    install_searchable_index(&transaction)?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(AppError::database)?;
+    transaction.commit().map_err(AppError::database)
+}
+
 fn migrate_publication_journal(connection: &Connection) -> Result<(), AppError> {
     let transaction = connection
         .unchecked_transaction()
         .map_err(AppError::database)?;
     install_publication_triggers(&transaction)?;
+    install_searchable_index(&transaction)?;
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(AppError::database)?;
@@ -127,6 +143,7 @@ fn migrate_current_projections(connection: &Connection, version: i64) -> Result<
         .map_err(AppError::database)?;
     install_silver_contract(&transaction)?;
     prepare_message_columns(&transaction)?;
+    install_searchable_index(&transaction)?;
     install_publication_triggers(&transaction)?;
     let before = transaction.total_changes();
     purge_unsupported_providers(&transaction)?;
@@ -169,6 +186,17 @@ fn migrate_current_projections(connection: &Connection, version: i64) -> Result<
         .pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(AppError::database)?;
     transaction.commit().map_err(AppError::database)
+}
+
+fn install_searchable_index(connection: &Connection) -> Result<(), AppError> {
+    // Keep readiness counts off canonical bodies and projection overflow pages.
+    // The partial predicate must match semantic coverage's eligibility rule.
+    connection
+        .execute_batch(
+            "CREATE INDEX IF NOT EXISTS messages_searchable_role ON messages(role)
+         WHERE COALESCE(search_projection, content) <> ''",
+        )
+        .map_err(AppError::database)
 }
 
 fn prepare_message_columns(connection: &Connection) -> Result<(), AppError> {
