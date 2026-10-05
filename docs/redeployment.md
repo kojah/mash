@@ -513,3 +513,36 @@ separate screen, but dense vectors cannot use the pinned tier. No placement,
 deadline, ranking evidence or live-service setting changed in this experiment.
 The remaining batched-context task is `mash-hu2`; cold dense-read diagnosis remains
 part of `mash-16b`.
+
+### Graph-residency screen
+
+On the owned retained copy, the first dense query after another graceful restart
+took 159 ms when host I/O pressure was low; a following query took 181 ms.
+The actual collection used cached dense vectors and cached HNSW links. Exact
+counts found 1,018,215 points matching the captured active-publication filter
+among 1,054,824 live points (96.5%). This does not support obsolete staging as
+the dominant explanation for the earlier slow query.
+
+Changing only the private message collection's HNSW memory tier to pinned
+triggered an optimizer conversion. The first sampled green status occurred
+approximately 193 seconds after the PATCH. The Qdrant process's observed
+VmHWM reached 9,303,240 KiB during conversion; that includes mapped/file-backed
+pages and startup, and is not an estimate of graph heap size. The settled query
+took 254 ms, and the first query after a subsequent graceful restart took 241 ms.
+Its top-200 candidate set and per-ID scores matched the cached baseline exactly;
+some tie ordering changed. Four following native queries without payload took
+126–156 ms, while interleaved full-payload queries took 146–200 ms.
+
+The post-restart Qdrant process gained 13,162 minor faults and no major faults
+during the first measured query. Initial counter captures accidentally targeted
+the container's shell entry point; those were explicitly discarded. There was
+no global cache drop, private-file eviction, matched high-pressure comparison,
+or end-to-end inference benchmark. The low-pressure cached and pinned samples
+therefore do not establish a precise regression or prove pinning fixes cold
+outliers. They provide no evidence to promote this setting.
+
+The owned backend was stopped and production was unchanged. Captures remain
+private under `/home/james/scratch/mash-artifacts/graph-residency-20261005`.
+The diagnostic copy intentionally retains pinned graph placement, which the
+current Mash API's cached/cold schema rejects. Restore cached placement and wait
+for optimizer completion before reusing that copy for API benchmarks.
