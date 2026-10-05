@@ -137,19 +137,26 @@ class Store:
             else:
                 missing[key] = request
         pending = tuple(missing.items())
-        batch_size = 1 if singleton else 8
+        # Inference isolation does not require an fsync for every vector.
+        batch_size = 8
         for start in range(0, len(pending), batch_size):
             batch = pending[start : start + batch_size]
-            texts = tuple(request.input.text for _, request in batch)
-            selections = tuple(request.input.selection for _, request in batch)
-            spans = tuple(request.input.downweighted for _, request in batch)
-            vectors = (
-                encoder.encode_selected(texts, selections, spans)
-                if any(spans)
-                else encoder.encode_selected(texts, selections)
-                if any(selection is not None for selection in selections)
-                else encoder.encode(texts)
+            inference_batches = (
+                tuple((item,) for item in batch) if singleton else (batch,)
             )
+            matrices = []
+            for inference in inference_batches:
+                texts = tuple(request.input.text for _, request in inference)
+                selections = tuple(request.input.selection for _, request in inference)
+                spans = tuple(request.input.downweighted for _, request in inference)
+                matrices.append(
+                    encoder.encode_selected(texts, selections, spans)
+                    if any(spans)
+                    else encoder.encode_selected(texts, selections)
+                    if any(selection is not None for selection in selections)
+                    else encoder.encode(texts)
+                )
+            vectors = np.concatenate(matrices, axis=0)
             with self.db:
                 for (key, _), vector in zip(batch, vectors, strict=True):
                     blob = vector.astype("<f8").tobytes()

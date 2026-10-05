@@ -1209,7 +1209,12 @@ six-cell singleton control isolates representation effects from companion-batch
 effects. Historical baseline differences are reported separately. The experiment
 does not claim independent regeneration of the immutable historical parents.
 Real-model isolated/reordered/cache-population probes and full artifact audits
-precede quality interpretation. The construction and scoring runs are pending;
+precede quality interpretation. Under substantial host I/O pressure, the initial
+singleton cache commits each vector separately; we resume with eight cache
+writes per transaction while preserving single-input inference and vector
+identities. Completed artifacts and cached vectors are retained. Consequently
+construction timings mix cold/resumed work and cannot establish isolated cold
+throughput. The construction and scoring runs are pending;
 this section records setup rather than claiming an outcome.
 
 \section{Limitations and reproducibility}

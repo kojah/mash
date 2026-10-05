@@ -106,6 +106,11 @@ def main(parent: Path, artifacts: Path, model: Path, output: Path) -> None:
                 e
                 for e in entries
                 if (sum(bool(t.prompts) for t in e.captured.turns) >= 8) == long
+                and sum(
+                    u.input.role == Role.ASSISTANT
+                    for u in source(e, parent, report)[0].units
+                )
+                >= 2
             ),
             key=lambda e: len(source(e, parent, report)[0].units),
         )

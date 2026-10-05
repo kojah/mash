@@ -10,7 +10,6 @@ import numpy as np
 import orjson
 
 from ablation_inputs import Conditioned
-from build_input_followup import import_cache
 from build_structure_followup import StructuredArtifact
 from build_turn_ablation import Artifact as ConditionedArtifact
 from corpus import Record, Role
@@ -257,13 +256,6 @@ def main(parent: Path, protocol: Path, model: Path, output: Path) -> None:
     contract_path.write_bytes(orjson.dumps(contract.model_dump(mode="json")))
     store = Store(output / "vectors.sqlite")
     try:
-        import_cache(
-            store,
-            parent / "turn-three-factor-ablation-20261006/artifacts/vectors.sqlite",
-        )
-        import_cache(
-            store, parent / "turn-input-followup-20261005/artifacts/vectors.sqlite"
-        )
         for entry in entries:
             build(entry, parent, report, output, contract, encoder, store)
     finally:
