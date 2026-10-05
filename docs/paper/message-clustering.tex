@@ -662,6 +662,14 @@ an implementation compatibility check, not evidence of clustering improvement.
 Synthetic tests cover unknown envelopes, ordinal parent links, sibling exclusion,
 token budgets, restart reuse and equal prompt/answer view weights. New construction
 timings are cache-assisted; the raw control is copied rather than re-embedded.
+The coverage report unions overlapping Unicode source ranges separately for
+each turn's own sources and borrowed context. This measures text supplied to
+attention, including whitespace, rather than semantic sufficiency. Raw-view
+construction costs are taken from the original build, excluding control-copy
+time. Completed external resource logs measure peak RSS for the full build and
+development scorer; an incomplete or unsuccessful command cannot satisfy the
+memory gate. The scorer also requires the unchanged raw view to reproduce its
+original confusion counts in both assignment modes.
 Temporal embedding smoothing, proposed subsequently, remains a separate queued
 ablation and does not change this registered input comparison.
 
