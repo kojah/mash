@@ -1058,3 +1058,9 @@ deletions, concurrent writers and stale catalogue publication. Four new tests
 exercise ordered concurrency, cancellation, corruption and response bounds.
 Private captures are under
 `/home/james/scratch/mash-artifacts/snapshot-prefetch-20261005`.
+
+Release `b076ef0` was deployed to the shared API only. Authenticated readiness
+and unchanged publication identities passed, without indexing or collection
+changes. Two direct Xenia combined CLI checks returned three threads with
+complete context and no fallback in 1.382 and 1.452 seconds (shared candidates
+174 and 188 ms). These checks do not resolve the earlier cold-query outliers.
