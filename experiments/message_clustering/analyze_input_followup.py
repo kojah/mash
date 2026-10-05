@@ -13,7 +13,7 @@ import orjson
 
 from build_input_followup import Built
 from corpus import Record, Role, Thread
-from followup_inputs import Variant, ancestor
+from followup_inputs import Input, Variant, ancestor
 from run_input_followup import FollowupReport
 from study_analysis import FitCost, Slice, build_costs, fit_costs, slices
 from study_annotations import load_development
@@ -25,10 +25,19 @@ from turns import Span, Turn
 
 
 def validate_sources(built: Built, thread: Thread, turns: tuple[Turn, ...]) -> None:
+    validate_input_sources(built.inputs, built.turn_ids, thread, turns)
+
+
+def validate_input_sources(
+    inputs: tuple[Input, ...],
+    owners: tuple[str, ...],
+    thread: Thread,
+    turns: tuple[Turn, ...],
+) -> None:
     """Verify literal mappings and ancestry without inference or annotation access."""
     indices = {turn.id: index for index, turn in enumerate(turns)}
-    for item in built.inputs:
-        if item.turn_id not in indices or item.turn_id not in built.turn_ids:
+    for item in inputs:
+        if item.turn_id not in indices or item.turn_id not in owners:
             raise ValueError("input has no owning prompted turn")
         current = indices[item.turn_id]
         turn = turns[current]

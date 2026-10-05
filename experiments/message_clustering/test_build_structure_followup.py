@@ -1,0 +1,39 @@
+"""Segmentation cannot silently drop prompts or restore excluded answers."""
+
+import unittest
+
+from build_structure_followup import check_coverage
+from corpus import Role
+from followup_inputs import Input, Variant, prepare, source_text
+from test_turns import thread, tokenizer
+from turns import extract
+
+
+class CoverageContracts(unittest.TestCase):
+    def test_missing_prompt_text_fails_selected_source_coverage(self):
+        source = thread((Role.USER, Role.ASSISTANT), ("Do NOT remove A.", "Keep it."))
+        turns = extract(source)
+        original = prepare(source, turns, 0, Variant.CONTEXT_MEAN, tokenizer())
+        check_coverage(original, original, source, turns)
+        with self.assertRaises(ValueError):
+            check_coverage(original, original[1:], source, turns)
+
+    def test_restoring_intermediate_answer_is_a_different_treatment(self):
+        source = thread(
+            (Role.USER, Role.ASSISTANT, Role.ASSISTANT),
+            ("Question", "Intermediate answer", "Final answer"),
+        )
+        turns = extract(source)
+        original = prepare(source, turns, 0, Variant.CONTEXT_MEAN, tokenizer())
+        added = Input(
+            turn_id=turns[0].id,
+            role=Role.ASSISTANT,
+            content=source_text(source, 1),
+            tokens=2,
+        )
+        with self.assertRaises(ValueError):
+            check_coverage(original, original + (added,), source, turns)
+
+
+if __name__ == "__main__":
+    unittest.main()

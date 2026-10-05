@@ -209,24 +209,14 @@ class Input(Record):
     tokens: int
 
 
-def prepare(
+def context_prefix(
     thread: Thread,
     turns: tuple[Turn, ...],
     current: int,
-    variant: Variant,
     tokenizer: Tokenizer,
-) -> tuple[Input, ...]:
-    if variant == Variant.RAW:
-        raise ValueError("raw control must use frozen original matrices")
-    turn = turns[current]
-    prompt = concat(tuple(lean_prompt(thread, index) for index in turn.prompts))
-    answer_indices = tuple(
-        index for index in turn.answers if thread.messages[index].projection.strip()
-    )
-    answer = (
-        source_text(thread, answer_indices[-1]) if answer_indices else Text(text="")
-    )
-    previous = ancestor(thread, turns, current) if variant != Variant.LEAN else None
+) -> tuple[Text, str | None]:
+    """The frozen 80-token prompt/80-token answer ancestor context."""
+    previous = ancestor(thread, turns, current)
     prefix = Text(text="")
     if previous:
         prompts = concat(
@@ -254,6 +244,31 @@ def prepare(
         if parts:
             parts.append(Text(text="Current user:\n"))
             prefix = concat(tuple(parts), separator="")
+    return prefix, previous.turn_id if previous and prefix.text else None
+
+
+def prepare(
+    thread: Thread,
+    turns: tuple[Turn, ...],
+    current: int,
+    variant: Variant,
+    tokenizer: Tokenizer,
+) -> tuple[Input, ...]:
+    if variant == Variant.RAW:
+        raise ValueError("raw control must use frozen original matrices")
+    turn = turns[current]
+    prompt = concat(tuple(lean_prompt(thread, index) for index in turn.prompts))
+    answer_indices = tuple(
+        index for index in turn.answers if thread.messages[index].projection.strip()
+    )
+    answer = (
+        source_text(thread, answer_indices[-1]) if answer_indices else Text(text="")
+    )
+    prefix, context_id = (
+        (Text(text=""), None)
+        if variant == Variant.LEAN
+        else context_prefix(thread, turns, current, tokenizer)
+    )
     prefix_tokens = len(tokenizer.encode(prefix.text, add_special_tokens=False).ids)
     result = []
     for role, text, budget in (
@@ -277,9 +292,7 @@ def prepare(
                     role=role,
                     content=content,
                     target=target,
-                    context_turn_id=previous.turn_id
-                    if included.text and previous
-                    else None,
+                    context_turn_id=context_id if included.text else None,
                     tokens=tokens,
                 )
             )
