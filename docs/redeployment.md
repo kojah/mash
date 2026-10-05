@@ -780,7 +780,9 @@ Those runs remain in the record and were not used as speedup evidence. After
 validation finished, another ABBA cycle on the same retained corpus took
 9.864/10.452 seconds before versus 9.236/9.145 seconds after, approximately 10%
 lower at the median. All responses retained 749 threads, 238,257 messages and
-32,606 embeddings. Per-process VmHWM samples were 869,752–926,840 KiB; these do not
+32,606 embeddings. Across 750 snapshots per timed request, decoder busy time fell
+from 2.963/3.230 seconds to 2.103/1.947 seconds; encoder busy time remained
+1.151–1.186 seconds. Per-process VmHWM samples were 869,752–926,840 KiB; these do not
 establish an RSS regression bound or a fleet memory estimate.
 
 The change passed 606 standard tests, strict Clippy, formatting and doctests,
@@ -789,3 +791,11 @@ tmpfs backend. Measurements exclude inference, provider scans and local SQLite
 work, and do not establish initial-ingestion throughput or p95 publication
 latency. Private captures are in `watcher-burst-20261005` and
 `decode-spool-20261005` under `/home/james/scratch/mash-artifacts`.
+
+Release `aff5c9b` was deployed only to the shared API. Authenticated readiness,
+unauthorized rejection and preservation of publication identities passed.
+Fresh combined MCP searches returned three threads with complete shared context
+and no fallback in 1.189 seconds on Xenia and 2.078 seconds on the development
+MacBook. Those are smoke checks, not measured decoder effects on search latency.
+Node binaries and indexes were not changed; Qdrant was not restarted. Both owned
+benchmark backends and all temporary APIs were stopped after validation.
