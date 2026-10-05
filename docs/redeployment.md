@@ -611,3 +611,22 @@ at a modest full-queue cost. It requires no schema migration or reindexing.
 The isolated timings do not establish a complete ingestion speedup, watcher
 latency, or MacBook performance. Private evidence is in
 `/home/james/scratch/mash-artifacts/native-refresh-20261005`.
+
+A following native refresh using the optimized release completed in 6.85 seconds
+for 119 changed messages and 13 inferences, with 821 sources skipped. Ingestion
+took 4.735 seconds; the embedding phase took 1.005 seconds including 687 ms model
+loading. Peak RSS was 394,812 KiB. Source changes and host scheduling differed
+from the earlier pass, so this is a successful production-data smoke test rather
+than a controlled before/after speedup. The focused role-selection regression,
+603 standard tests, strict Clippy, formatting and doctests passed. Xenia's binary
+was installed without indexing; local status remained ready/hybrid. A fresh
+combined MCP search returned three threads in 1.792 seconds, with complete shared
+context and no fallback.
+
+The same source was built natively for ARM64 on the development MacBook (Cargo
+31.72 seconds), installed atomically, and checked without indexing. Local and
+shared status succeeded; a fresh combined MCP search returned three threads in
+2.798 seconds with complete shared context and no fallback. The personal MacBook
+remains offline (last seen 06:30 UTC), so its outstanding deployment remains
+pending. Existing stdio MCP sessions require the usual client reconnect to use
+the replacement binary; the live shared API and Qdrant were not restarted.
