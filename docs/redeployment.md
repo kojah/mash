@@ -904,3 +904,16 @@ updates: first load 3,496 ms, second load 0 ms, then 3,187 ms after stopping and
 restarting watching. Every update retained complete/hybrid readiness and the
 MCP exited cleanly. This verifies shared-core reuse and stop/restart lifecycle;
 its repeated SQLite visibility polling is not a clean MCP latency benchmark.
+
+Release `94f2582` was installed on Xenia and the development MacBook; the
+committed native build took 31.57 seconds. Local/shared status retained complete
+silver, hybrid readiness and published state. All three shared node heads still
+reported current lexical/dense gold. No reindex, API restart or Qdrant change was
+required. Fresh combined MCP checks returned three complete threads in 4.686
+seconds on Xenia. The development MacBook's first call hit the five-second shared
+deadline and returned two local threads; the following call returned three
+complete threads without fallback in 2.174 seconds. Qdrant was green with healthy
+optimizers. These are deployment checks, not search gains from indexing-pool
+reuse; the first-call shared timeout remains open. The personal MacBook was
+confirmed offline (last seen 06:30 UTC), with the new ARM64 artifact staged.
+Existing stdio clients need their normal reconnect to use the installed binary.
