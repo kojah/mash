@@ -93,3 +93,28 @@ MKL_NUM_THREADS=1` before running; numerical thread counts are also bounded
 inside the runner. `benchmark.py` reports ten warm rebuilds, three controlled
 updates per kind, peak RSS and cold imports separately. Its 5,000-unit scaling
 case is synthetic. Private qualitative group judgments supplement the reports.
+
+## Additional algorithms and larger cohort
+
+The separate follow-up is specified in
+[message-clustering-alternatives.md](../../docs/message-clustering-alternatives.md).
+`expanded_corpus.py` freezes 72 fresh components, excluding the first study:
+48 development and 24 reserved. `alternatives.py` defines fifteen fixed settings
+for complete-link, DP-means, OPTICS, spectral and affinity propagation.
+`screen_alternatives.py` runs only development, using isolated Linux processes
+with deadlines and explicit nonconvergence. No dependencies were added.
+
+```bash
+uv run python expanded_corpus.py --database /path/to/mash.sqlite3 \
+  --previous /path/to/first-study-corpus.json \
+  --output /home/james/scratch/mash-artifacts/new-corpus.json
+# Freeze diagnostic references before running the screen.
+env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  uv run python screen_alternatives.py --corpus /path/to/new-corpus.json \
+  --references /path/to/new-labels.toml \
+  --output /home/james/scratch/mash-artifacts/new-screen.json
+```
+
+No candidate passed development screening on the expanded cohort; reserved data
+remain unjudged/unscored. The living LaTeX paper is
+[`docs/paper/message-clustering.tex`](../../docs/paper/message-clustering.tex).

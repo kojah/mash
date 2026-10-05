@@ -217,6 +217,20 @@ def cluster(
     if eligible.shape != (len(units),):
         raise ValueError("substantive mask must match message count")
     partition = primary_partition(units, configuration)
+    return result_from_partition(
+        units, partition, configuration.cosine_threshold, eligible
+    )
+
+
+def result_from_partition(
+    units: VectorMatrix,
+    partition: tuple[int, ...],
+    cosine_threshold: float,
+    eligible: NDArray[np.bool_],
+) -> Result:
+    """Shared retention/overlap contract for already normalized candidate inputs."""
+    if len(partition) != len(units) or eligible.shape != (len(units),):
+        raise ValueError("partition and support mask must match message count")
     groups: list[Group] = []
     centroids: list[NDArray[np.float64]] = []
     for label in sorted(set(partition)):
@@ -244,7 +258,7 @@ def cluster(
             tuple(
                 Membership(group.id, float(score))
                 for group, score in zip(groups, scores, strict=True)
-                if score >= configuration.cosine_threshold and score >= best - 0.05
+                if score >= cosine_threshold and score >= best - 0.05
             )
         )
     return Result(partition, tuple(groups), tuple(memberships))

@@ -1,0 +1,239 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage[hidelinks]{hyperref}
+\title{Clustering Related Messages in LLM Chat Sessions for Guided Agent Search}
+\author{Mash project --- experimental working draft}
+\date{October 5, 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+We investigate flat, overlapping groups of related messages within agent chat
+threads, using existing embeddings without generative model inference. A first
+bounded comparison of four clustering families on 24 real threads found that
+context-aware average linkage recovered distant returning subjects but did not
+satisfy preregistered quality gates. We document this negative result and a
+separate expanded screen of five additional families, none of which passed its
+development screen. This is a living research
+record, not a completed publication: references are sparse and agent-authored,
+and planned experiments are explicitly distinguished from measurements.
+\end{abstract}
+
+\section{Task and motivation}
+An agent searching a long thread needs messages addressing the same concrete
+subject, even when intervening turns address other subjects. Shared repository,
+vocabulary, or broad intent alone does not establish relatedness. A mixed-subject
+message may belong to several groups; noise may remain unassigned. The output
+contains source identities and actual representative messages, not generated
+summaries. Global topics and a user-facing hierarchy are outside scope.
+Contiguous dialogue segmentation motivates local coherence checks
+\cite{hearst,xing}, but cannot itself recover distant returning subjects.
+
+\section{Representation and scoring}
+The existing local index supplies 384-dimensional all-MiniLM-L6-v2 message
+embeddings, produced by quantized CPU ONNX inference and stored as symmetric
+signed bytes. Decoding validates dimensions and stored norms. Experiments use
+normalized float64 vectors, without new inference, PCA, training, or an LLM.
+Canonical history is unchanged. Exact prepared projections are deduplicated for
+fitting; all original source identities remain in the scoring map.
+
+The second representation in the first study fixes context weights:
+\[
+ z_i=\operatorname{normalize}(0.7v_i+0.3v_{p(i)}).
+\]
+An explicit earlier parent is preferred; an absent parent uses the immediately
+preceding visible embedded message if eligible. Explicit roots and missing
+explicit parents abstain. Eligibility is a structural proxy: at least five
+whitespace tokens, excluding whole injected instruction/envelope headers.
+This proxy is not semantic verification and never reads reference labels.
+
+Groups need two eligible unique projections. Final mean centroids supply
+memberships above the configured cosine cutoff and within 0.05 of the best
+centroid score; this step does not change the fitted partition. Representatives
+are observed messages closest to those means. We score primary partitions and
+overlap separately. Only explicitly judged pairs enter quality metrics;
+ambiguous pairs are excluded, and unjudged pairs are never negative labels.
+Precision, recall, and F1 are macro-averaged per thread. Coverage counts reviewed
+substantive messages, not every message passing the structural proxy.
+
+\section{First study: completed}
+\subsection{Corpus and experimental procedure}
+The read-only Xenia inventory contained 42,150 message vectors in 817 threads,
+from Claude Code and Codex. Twenty-four independent components were sampled:
+12 development and 12 held out, two threads per provider and short/medium/long
+stratum per split. Length bins were 8--24, 25--150, and 151+ vectors. All 817
+source files were checked for known lineage. Provider ancestry, common sessions,
+and conservative exact-projection copy overlap kept related components together.
+Development contained 11,081 vectors; held out contained 4,705.
+
+Before candidate outputs, 282 agent-authored pair judgments were frozen:
+development 71 related, 57 unrelated, 14 ambiguous; held out 70, 59, 11.
+Long messages were reviewed as excerpts, not independently annotated in full.
+Twelve settings compared online cosine leader, BIRCH, cosine average linkage,
+and HDBSCAN. Another twelve used the fixed context view. One setting per family
+was chosen by development F1; held-out data were scored once. No settings were
+tuned on held-out failures. Exact settings, hashes and codec contracts are
+recorded in \path{docs/message-clustering-evaluation.md} and the locked Python
+experiment. BIRCH used individual partial fits and reassigned all messages to
+the final leaf centres; HDBSCAN noise was never one shared cluster.
+
+\subsection{Acceptance criteria}
+Promotion required macro precision $\geq .85$, recall $\geq .70$, F1 $\geq .75$,
+reviewed substantive coverage $\geq .80$, and F1 gain $\geq .10$ over the best
+simple baseline. Returning-subject, short-reply and mixed-message precision
+needed to reach .75 with adequate controls. No provider/representation stratum
+could lose more than .10 F1 against its best baseline. At least 90\% of audited
+groups needed coherent representatives and farthest members. Warm grouping
+p95 limits were 2 seconds at 1,000 messages and 15 seconds at 5,000, with process
+peak RSS at most 512 MiB. Determinism and source identity preservation under
+append/edit/delete/restart were additional contracts. Failure after the fixed
+budget meant rejecting that pipeline, not indefinitely extending its grid.
+
+\subsection{Quality results}
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Held-out method & Precision & Recall & F1 & Coverage\\
+\midrule
+Leader + context & .719 & .842 & .736 & .945\\
+BIRCH + context & .842 & .749 & .763 & .963\\
+Average linkage + context & .839 & .815 & .774 & .963\\
+HDBSCAN + context & .687 & .573 & .618 & .862\\
+Whole thread & .543 & 1.000 & .698 & 1.000\\
+Chronological windows (8) & .839 & .741 & .769 & .991\\
+\bottomrule
+\end{tabular}
+\end{center}
+Every method failed precision and the required baseline gain. Average linkage
+recovered 11/13 returning-subject positives versus 3/13 for windows, but its
+overall F1 gain was only .005. All held-out case-tagged pairs were positive;
+apparent case precision lacked negative controls and could not pass that gate.
+A fixed-hash sample audited 11 average-link groups from four held-out threads,
+using representatives and two farthest primary members: nine were coherent.
+Failures grouped unrelated Git progress or distinct session-related problems.
+This suggests a representation/context issue worth testing, but does not prove
+it is the dominant bottleneck or that other algorithms cannot help.
+
+\subsection{Cost and update results}
+Each method ran in a separate Python process on Xenia with one numerical thread.
+Ten warm rebuilds estimated sample p95; three controlled prepared-unit updates
+per operation measured rebuild cost. Model inference, preparation, transport,
+cache lookup and cold imports were excluded. On one real 3,775-unit thread,
+average-link warm p95 was 1.678 seconds and peak RSS 327 MiB; append/edit/delete
+rebuild medians were 1.351/1.325/1.328 seconds. At 5,000 synthetic units its
+p95 was 2.476 seconds and RSS 431 MiB. Synthetic scaling repeated real vectors
+with seeded tiny jitter and provides no quality evidence. HDBSCAN exceeded the
+memory gate at 5,000 (700 MiB); all methods met grouping-time gates. Repeated
+result hashes matched within each controlled operation. These are small-sample
+Python measurements, not production Rust or end-to-end latency claims.
+
+\section{Expanded algorithm screen: completed development comparison}
+The user requested both additional offline candidates and a larger cohort.
+We froze 72 fresh components: 48 development, 24 reserved. We excluded all components
+containing a first-study thread. The available Claude medium and long strata
+have only six fresh independent candidates each; use Claude short/medium/long
+allocation 18/6/6 and Codex 18/12/12, with two-thirds development in every stratum.
+This availability-limited cohort is not balanced or representative of provider
+market share. Selection seed and SHA order are fixed before candidate outputs;
+long strata prioritize threads above 1,000 vectors.
+
+Keep representation, retention, and cosine overlap cutoff .35 fixed. Compare
+complete linkage (cuts .35/.50/.65), Euclidean DP-means \cite{dpmeans}
+(squared penalties 1.30/1.00/.70), OPTICS (xi .03/.05/.10), spectral clustering
+(4/8/16 groups), and affinity propagation (preference quantiles .25/.50/.75).
+Implementation parameters are fixed in
+\path{docs/message-clustering-alternatives.md}. Each fit uses an isolated
+single-threaded Linux process with a 30-second deadline. Nonconvergence, failures,
+timeouts, and peak RSS are reported; incomplete candidates cannot be ranked as
+complete successes. Sparse development references must be frozen before fit
+outputs. Reserved threads remain unjudged and unscored until a candidate passes
+development screening. No new settings are added after outputs.
+
+The expanded corpus contains 12,037 vectors: 5,498 development and 6,539 reserved.
+The longest development thread has 716 messages; the reserved split includes a
+4,118-message thread. Thus this screen does not establish long-thread scaling.
+Each development thread contributes six sampled positions (two at the start,
+midpoint, and end) and six fixed adjacent/cross-block pair judgments. Review used
+140-character heads and 90-character tails. The 288 agent-authored references
+contain 111 related, 117 unrelated, and 60 ambiguous pairs. These sparse excerpts
+are diagnostic, not independent human ground truth. Exact duplicate projections
+were checked; no case-specific quality claim follows from these labels.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Best complete development setting & Precision & Recall & F1\\
+\midrule
+Complete-link (.35 cut) & .773 & .701 & .696\\
+DP-means (.70 squared penalty) & .684 & .833 & .716\\
+OPTICS (.03 xi) & .650 & .875 & .710\\
+Spectral (8 clusters) & .755 & .748 & .716\\
+Affinity propagation (.25 quantile) & .703 & .661 & .652\\
+Average-link reference & .720 & .819 & .716\\
+Chronological windows (8) & .773 & .748 & .718\\
+Whole thread & .517 & .979 & .653\\
+\bottomrule
+\end{tabular}
+\end{center}
+None reached development precision .85, F1 .75, or a .10 baseline gain. Across
+768 fits including the reference, 766 completed; affinity quantiles .50 and .75
+each failed convergence on one thread. Partial-cohort metrics were not ranked as
+complete results. No timeouts or other errors occurred. The fixed screen therefore
+stopped without judging or scoring the 24 reserved threads. These development
+scores cannot be compared directly to the first study's held-out scores.
+
+Maximum observed completed-fit times across settings were .078 seconds
+(complete-link), 1.133 (DP-means), 1.226 (OPTICS), .045 (spectral), .247
+(affinity), and .063 (average-link). Corresponding process peak RSS maxima were
+164/163/175/190/197/166 MiB, including inherited forked input state. Each fit was
+measured once; these are not p95 estimates or end-to-end latency. Complete settings,
+failed runs, source hashes and per-provider metrics are recorded in the companion
+protocol/results document. Average-link primary-only F1 (.728) exceeded its overlap
+F1 (.716), whereas OPTICS/spectral benefited substantially from overlap. This
+motivates isolating the shared membership heuristic in subsequent work, rather
+than attributing all quality differences to the partition algorithm.
+
+GRINCH \cite{grinch} is relevant as an incremental hierarchy with rotations and
+grafting, followed by a flat cut and separate overlapping assignment. It is not
+implemented or evaluated in this batch. Online insertion is not required:
+cached on-request affected-thread recomputation is eligible, but no such cache
+or production clustering feature has been implemented.
+
+\section{Next representation experiment: proposed, not measured}
+The user proposed clustering prompt/answer pairs rather than individual messages.
+Question and answer may be complementary, particularly for short referential
+turns, but long answers may cover multiple subjects. Compare prompt-only units,
+jointly embedded prompt/answer text, and prompt-conditioned bounded answer
+passages against the existing message pipeline. Pooled existing vectors provide
+a separate cheap control; they are not equivalent to jointly embedding text.
+Token limits and truncation, multiple assistant messages, tool/progress filtering,
+explicit parent boundaries and active incomplete turns must be specified before
+outputs. Preserve original source identities and evaluate the same judged message
+pairs, not a denominator changed by the new unit definition. This proposal has
+no measurements yet and does not reopen the completed fifteen-setting screen.
+
+\section{Limitations and reproducibility}
+Only two providers, sparse agent-authored excerpt judgments, a structural
+support proxy, and one timing host limit interpretation. Human independent
+annotation, case-specific negative controls, broader provider coverage and
+fresh held-out evaluation remain necessary. Similar-thread search and thread
+vector quality are follow-ons. Source histories, embeddings, detailed judgments
+and results remain outside Git in private directories; paper tables contain
+aggregate measurements only. The first study's negative decision does not
+establish that message clustering is impossible.
+
+\begin{thebibliography}{9}
+\bibitem{hearst} M. Hearst. TextTiling: Segmenting Text into Multi-paragraph
+Subtopic Passages. Computational Linguistics, 1997.
+\url{https://aclanthology.org/J97-1003/}
+\bibitem{xing} L. Xing and G. Carenini. Improving Unsupervised Dialogue Topic
+Segmentation with Utterance-Pair Coherence Scoring. SIGDIAL, 2021.
+\url{https://aclanthology.org/2021.sigdial-1.18/}
+\bibitem{dpmeans} B. Kulis and M. Jordan. Revisiting k-means: New Algorithms
+via Bayesian Nonparametrics. ICML, 2012.
+\url{https://icml.cc/2012/papers/291.pdf}
+\bibitem{grinch} N. Monath et al. Scalable Hierarchical Clustering with Tree
+Grafting. KDD, 2019. \url{https://arxiv.org/abs/2001.00076}
+\end{thebibliography}
+\end{document}
