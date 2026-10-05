@@ -50,6 +50,14 @@ selected. This expands the workload to 1,451 pairs in 61 primary packets and
 preserved byte-for-byte and its hash is recorded by the enlarged manifest.
 Enrichment cannot run a second time. Both phases receive the same sampling rule.
 
+The enrichment subsequently completed and all 69 annotation files validated.
+Development now contains 617 related, 313 unrelated and 121 ambiguous judgments.
+Blind development review agrees on 106 of 116 pairs, including 99 of 104 with
+decisive judgments from both annotators. Confirmation label sufficiency is true
+without exposing those judgments or scores. The enlarged annotation manifest
+hash is `a725b589699dfb7b03b6a601666251349bbb168f1e2371cb16214067b195482f`.
+The representation build remains in progress; no algorithm has been selected.
+
 Before making a selection, require at least 100 related and 200 unrelated
 development judgments, and at least 20 related and 40 unrelated confirmation
 judgments. Report ambiguous coverage. If initial sampling is insufficient,

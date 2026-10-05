@@ -148,6 +148,17 @@ def main(
         or not labels.confirmation_adequate
     ):
         raise click.ClickException("registered label adequacy gate is not satisfied")
+    missing = tuple(
+        f"{entry.captured.index}-{view.value}.npz"
+        for entry in data.entries
+        if entry.phase == Phase.DEVELOPMENT
+        for view in View
+        if not (artifacts / f"{entry.captured.index}-{view.value}.npz").is_file()
+    )
+    if missing:
+        raise click.ClickException(
+            f"artifact build incomplete: {len(missing)} development matrices missing"
+        )
     rows: list[Row] = []
     artifact_sha256: dict[str, str] = {}
     baseline_names = [
