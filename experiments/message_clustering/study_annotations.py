@@ -20,6 +20,7 @@ class Agreement(Record):
 @dataclass(frozen=True)
 class DevelopmentLabels:
     manifest: Manifest
+    manifest_sha256: str
     labels: dict[str, Label]
     file_sha256: dict[str, str]
     confirmation_adequate: bool
@@ -32,7 +33,8 @@ def load_development(root: Path) -> DevelopmentLabels:
     Review labels never replace primary labels. Their agreement is diagnostic,
     and confirmation disagreements remain hidden until a choice is frozen.
     """
-    manifest = Manifest.model_validate_json((root / "manifest.json").read_bytes())
+    manifest_bytes = (root / "manifest.json").read_bytes()
+    manifest = Manifest.model_validate_json(manifest_bytes)
     primary: dict[str, Label] = {}
     review: dict[str, Label] = {}
     checksums: dict[str, str] = {}
@@ -78,6 +80,7 @@ def load_development(root: Path) -> DevelopmentLabels:
     )
     return DevelopmentLabels(
         manifest=manifest,
+        manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
         labels=labels,
         file_sha256=checksums,
         confirmation_adequate=(

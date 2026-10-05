@@ -37,6 +37,19 @@ coverage and literal evidence in the full turn text. The development reader
 exposes confirmation label sufficiency only as a boolean; independent review
 judgments never replace primary labels.
 
+All initial packets subsequently passed validation. Development contains 455
+related, 167 unrelated and 85 ambiguous judgments. The blind development review
+agreed on 69 of 76 pairs, or 65 of 67 when both judgments were decisive; these
+are annotation-consistency measurements, not algorithm-quality results. Because
+unrelated coverage was below the registered minimum of 200, the single allowed
+enrichment was frozen before fitting. It adds 504 previously unsampled pairs,
+up to four per eligible history in seeded identity order, preferring nonadjacent
+pairs. Text, label verdicts and predictions do not determine which pairs are
+selected. This expands the workload to 1,451 pairs in 61 primary packets and
+150 independently reviewed pairs in eight packets. The initial manifest is
+preserved byte-for-byte and its hash is recorded by the enlarged manifest.
+Enrichment cannot run a second time. Both phases receive the same sampling rule.
+
 Before making a selection, require at least 100 related and 200 unrelated
 development judgments, and at least 20 related and 40 unrelated confirmation
 judgments. Report ambiguous coverage. If initial sampling is insufficient,

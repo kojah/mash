@@ -222,3 +222,12 @@ exclusive output file, with paired thread-bootstrap uncertainty. Lexical and
 chronological controls share TF-IDF construction and report amortized runtime.
 Confirmation evaluation and the final decision remain pending.
 Nothing here changes production search or message embeddings.
+
+`enrich_turn_pairs.py` is the single registered remedy for insufficient label
+counts. It requires complete initial judgments, preserves the initial manifest,
+and samples at most four unsampled pairs per history using only identities and
+position. It refuses a second batch. The development reader keeps confirmation
+closed while annotation is incomplete. `confirm_turn_study.py` unseals only
+after a development selection, checks frozen annotation and matrix hashes, and
+evaluates only that choice and its registered baseline. It reports quality
+acceptance separately from the remaining performance/production checks.

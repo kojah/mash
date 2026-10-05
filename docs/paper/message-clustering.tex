@@ -514,8 +514,20 @@ identities and role-marked text, with complete text available when excerpts are
 insufficient. Literal-evidence and exact-coverage checks validate the resulting
 files. Review judgments do not overwrite primary labels. The development
 reader exposes confirmation adequacy only as a boolean, preserving the split
-until the development choice is frozen. Annotation is ongoing; these counts
-describe the sampled workload, not completed judgments or quality results.
+until the development choice is frozen. All initial primary packets subsequently
+passed validation. The development judgments comprise 455 related, 167 unrelated
+and 85 ambiguous pairs. Independent development review agreed on 69 of 76 pairs,
+including 65 of 67 pairs where both judgments were decisive. These measurements
+concern annotation consistency, not clustering quality.
+
+Unrelated development coverage did not meet the registered minimum of 200. We
+therefore froze the sole permitted enrichment batch before opening model scores:
+504 additional unsampled pairs, with up to four per eligible history, ordered
+by seeded turn identities and preferring nonadjacent pairs. Neither text nor
+judgments nor predictions determine pair selection. Both phases use the same
+rule. The workload becomes 1,451 primary pairs and 150 independently reviewed
+pairs. The original manifest remains preserved with a hash in the enlarged
+manifest. Enrichment annotation is ongoing; no clustering result is reported.
 
 We have implemented the registered sixty-configuration grid and its
 distinct-turn support checks. Passage memberships are unioned by owning turn;

@@ -70,6 +70,7 @@ class Reference(Record):
     a_turn_id: str
     b_turn_id: str
     stratum: Stratum
+    batch: int = 0
 
 
 class Manifest(Record):
@@ -79,6 +80,7 @@ class Manifest(Record):
     references: tuple[Reference, ...]
     packets: tuple[Path, ...]
     review_packets: tuple[Path, ...]
+    initial_manifest_sha256: str | None = None
 
 
 class Label(Record):

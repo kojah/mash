@@ -18,12 +18,24 @@ from study_scoring import (
     connections,
     fit,
     lexical_baselines,
+    minimum_gain,
     score,
 )
 from turn_evaluation import Counts
 
 
 class StudyScoring(unittest.TestCase):
+    def test_exact_tenth_gain_is_not_lost_to_float_subtraction(self):
+        stronger = Counts(tp=90, fp=10, fn=10, tn=200, ambiguous=0)
+        weaker = Counts(tp=80, fp=20, fn=20, tn=200, ambiguous=0)
+        self.assertLess(stronger.f1 - weaker.f1, 0.10)
+        self.assertTrue(minimum_gain(stronger, weaker))
+        result = choose(
+            (Summary(name="candidate", counts=stronger, seconds=1),),
+            (Summary(name="baseline", counts=weaker, seconds=1),),
+        )
+        self.assertEqual(result.selected, "candidate")
+
     def test_paired_bootstrap_is_deterministic_and_zero_when_no_predictions(self):
         counts = (
             Counts(tp=0, fp=0, fn=2, tn=5, ambiguous=1),

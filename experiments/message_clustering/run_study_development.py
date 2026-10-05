@@ -35,6 +35,7 @@ from turn_study_corpus import Cohort, Phase
 class Prediction(Record):
     pair_id: str
     stratum: Stratum
+    batch: int = 0
     overlapping: bool
     primary: bool
 
@@ -64,6 +65,7 @@ class Report(Record):
     cohort_sha256: str
     protocol_sha256: str
     annotation_sha256: dict[str, str]
+    annotation_manifest_sha256: str
     artifact_sha256: dict[str, str]
     encoder_manifest_sha256: str
     agreement: Agreement
@@ -208,6 +210,7 @@ def main(
                             Prediction(
                                 pair_id=ref.pair_id,
                                 stratum=ref.stratum,
+                                batch=ref.batch,
                                 overlapping=predictions[ref.pair_id],
                                 primary=predictions[ref.pair_id],
                             )
@@ -248,6 +251,7 @@ def main(
                                 Prediction(
                                     pair_id=ref.pair_id,
                                     stratum=ref.stratum,
+                                    batch=ref.batch,
                                     overlapping=overlapping[ref.pair_id],
                                     primary=primary[ref.pair_id],
                                 )
@@ -274,6 +278,7 @@ def main(
         cohort_sha256=cohort_sha,
         protocol_sha256=protocol_sha,
         annotation_sha256=labels.file_sha256,
+        annotation_manifest_sha256=labels.manifest_sha256,
         artifact_sha256=artifact_sha256,
         encoder_manifest_sha256=hashlib.sha256(
             (artifacts / "encoder.json").read_bytes()

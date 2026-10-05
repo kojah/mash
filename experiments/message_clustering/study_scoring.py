@@ -3,6 +3,7 @@
 import time
 from dataclasses import dataclass
 from enum import StrEnum
+from fractions import Fraction
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -191,6 +192,16 @@ def absolute_gate(counts: Counts) -> bool:
     return counts.precision >= 0.85 and counts.recall >= 0.70 and counts.f1 >= 0.75
 
 
+def minimum_gain(selected: Counts, baseline: Counts) -> bool:
+    """Compare the registered 0.10 gain exactly from integer confusion counts."""
+
+    def exact_f1(counts: Counts) -> Fraction:
+        denominator = 2 * counts.tp + counts.fp + counts.fn
+        return Fraction(2 * counts.tp, denominator) if denominator else Fraction(0)
+
+    return exact_f1(selected) - exact_f1(baseline) >= Fraction(1, 10)
+
+
 class Summary(Record):
     name: str
     counts: Counts
@@ -214,7 +225,7 @@ def choose(candidates: tuple[Summary, ...], baselines: tuple[Summary, ...]) -> D
         candidate
         for candidate in candidates
         if absolute_gate(candidate.counts)
-        and candidate.counts.f1 - baseline.counts.f1 >= 0.10
+        and minimum_gain(candidate.counts, baseline.counts)
     )
     if eligible:
         return Decision(
