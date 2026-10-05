@@ -369,3 +369,13 @@ all without shared fallback. These repeated one query on warm filesystem/backend
 caches, not a diverse-query or sustained-arrival benchmark. Private snapshots,
 plans, identities, traces and test logs are retained under
 `/home/james/scratch/mash-artifacts/search-tail-20261005`.
+
+Release `2366e2f` was installed on Xenia and the development MacBook. Their explicit
+stored-silver upgrades took 315 ms and 1,851 ms in the indexing core, respectively,
+with zero inference and zero changed/removed messages. Local and shared status
+checks succeeded. Fresh combined MCP searches returned three threads without
+fallback in 1.713 seconds and 2.255 seconds, respectively. The native Mac build
+took 52.30 seconds (Cargo 31.21 seconds). The personal MacBook remains unreachable;
+its prior deployment is retained and this additive upgrade is pending. The shared
+API and Qdrant were not restarted for this local-only schema change. Existing MCP
+clients need their normal reconnect after binary replacement.
