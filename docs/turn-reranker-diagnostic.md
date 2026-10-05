@@ -25,7 +25,7 @@ CPU ONNX Runtime, one intra/inter-op thread, batch one. No downloads,
 generative model, remote service, training or new dependency.
 
 For each side, retain the literal prefix ending at the 510th tokenizer token
-offset, or the full text if shorter. Pair encoding includes its three special
+offset, or the full text if shorter. Pair encoding includes its four special
 tokens and must fit 1,024 tokens. Reject unexpected tokenization/overflow rather
 than silently apply another truncation. Report retained/full token counts and
 truncated-turn counts. This is a deliberate experimental budget, below the
@@ -61,3 +61,10 @@ baseline, register one bounded affinity-based clustering study including real
 construction costs. Otherwise retire this model as an affinity candidate and
 evaluate a stronger encoder. Do not sweep budgets, directional reducers or
 input inventories on these scores. Existing acceptance criteria remain intact.
+
+Pre-scoring correction: the first invocation stopped during tokenizer setup,
+before any history or pair was scored. The installed tokenizer uses four pair
+special tokens (`<s> A </s> </s> B </s>`), rather than the initially assumed
+three. Correct the guard and this description before resuming. Side budgets
+remain 510 each and total budget remains 1,024; no experimental scores informed
+this correction. Preserve the failed log and initial protocol copy.

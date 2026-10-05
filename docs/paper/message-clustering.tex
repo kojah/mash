@@ -1030,6 +1030,36 @@ selected answers are chunked separately: answer chunks have bounded headings
 but no repeated current-turn prompts. Protocol/result SHA256 prefixes are
 \texttt{9cf602650b75}/\texttt{9835b7cd6549}. Confirmation remains sealed.
 
+\subsection{Installed local cross-encoder affinity diagnostic}
+We register a diagnostic of the installed 37.8M-parameter Jina turbo reranker
+\cite{jinareranker}, whose training target is query-document search relevance,
+not topic equivalence. For all 1,051 development reference pairs we score both
+directions and average sigmoid values. Two fixed inventories concatenate lean
+own inputs or context-bearing inputs in their recorded order. Each side retains
+a literal 510-token prefix; total paired budget is 1,024 tokens. Inference reads
+pair identities without verdicts, and confirmation remains sealed.
+
+Lean/context overall ROC AUC is .735/.653 and long AUC .723/.608, below existing
+context-cosine .859 overall/.843 long. Optimistically fitted recall at P at
+least .85 is .556/.323 overall and .347/.089 long, versus context cosine
+.828/.688. Distant AUC is .686/.556. This setup is not adopted for affinity;
+it does not evaluate the model's intended production search reranking use.
+Truncation affects 1,185/1,478 of 3,396 turns, including 1,095/1,359 long-history
+turns. Repeated context in concatenated windows and omitted answer content
+limit interpretation. Directional score-difference median/p95 is .132/.512
+lean and .104/.392 context. These possible causes are not experimentally isolated.
+
+Inference takes 809.32 seconds, peaks at 1,401,108 KiB RSS, and scores 2,102
+directed pairs per inventory. Full all-pairs construction would require 267,448
+directed pairs per inventory; its throughput is not measured. Annotated-pair
+inference p95 is 5.57/6.07 seconds per history, not complete clustering cost.
+Analysis takes 6.83 seconds and peaks at 1,039,032 KiB. The first invocation
+stops before pair inference at an incorrect three-special-token assumption;
+the installed tokenizer uses four. The guard and protocol are corrected before
+scoring without changing side/total budgets. Model, input, identity and label
+hashes validate across all 160 histories. Corrected protocol/analysis SHA256
+prefixes are \texttt{10c05e42fc25}/\texttt{f87d91750b84}.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
@@ -1075,5 +1105,7 @@ via Bayesian Nonparametrics. ICML, 2012.
 Grafting. KDD, 2019. \url{https://arxiv.org/abs/2001.00076}
 \bibitem{minilm} Sentence Transformers. all-MiniLM-L6-v2 model card.
 \url{https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2}
+\bibitem{jinareranker} Jina AI. jina-reranker-v1-turbo-en model card.
+\url{https://huggingface.co/jinaai/jina-reranker-v1-turbo-en}
 \end{thebibliography}
 \end{document}
