@@ -650,7 +650,7 @@ segment is a complete final answer. Unknown transport envelopes remain intact.
 Context follows structural ancestry, never future text or an unresolved branch.
 In addition to the previous overall gates, this follow-up requires the absolute
 quality floors on the long-history development stratum. Only one eligible
-choice may advance to unopened confirmation. These are planned measurements.
+choice may advance to unopened confirmation. This comparison is now complete.
 
 The follow-up implementation records exact Unicode source ranges, borrowed
 ancestor identities and pooling spans alongside each matrix. Target pooling
@@ -676,6 +676,65 @@ memory gate. The scorer also requires the unchanged raw view to reproduce its
 original confusion counts in both assignment modes.
 Temporal embedding smoothing, proposed subsequently, remains a separate queued
 ablation and does not change this registered input comparison.
+
+\subsection{Bounded input/context follow-up: completed}
+All sixteen registered cells were scored on the 160 development histories.
+None satisfies every quality gate, so confirmation remains unopened. Whole-input
+context with BIRCH radius .60, cutoff .75 and centroid memberships is the only
+cell satisfying the overall absolute floors and baseline gain. It reaches
+precision .887, recall .724 and F1 .798 (TP=447, FP=57, FN=170), but long-history
+recall is .564, below the .70 requirement (precision .855, F1 .679;
+TP=177, FP=30, FN=137). The paired-bootstrap F1 interval is .758--.837 and
+baseline-gain interval .080--.170; intervals do not override point-estimate gates.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Input & Radius/cut/mode & P & R & F1 & Long P & Long R & Long F1 \\
+\midrule
+Raw & .75/.65/primary & .757 & .861 & .806 & .684 & .745 & .713 \\
+Raw & .75/.65/centroid & .839 & .737 & .785 & .767 & .554 & .643 \\
+Raw & .60/.75/primary & .899 & .561 & .691 & .838 & .363 & .507 \\
+Raw & .60/.75/centroid & .917 & .499 & .646 & .844 & .328 & .472 \\
+Lean & .75/.65/primary & .770 & .843 & .805 & .704 & .713 & .709 \\
+Lean & .75/.65/centroid & .842 & .728 & .781 & .796 & .548 & .649 \\
+Lean & .60/.75/primary & .924 & .511 & .658 & .868 & .315 & .463 \\
+Lean & .60/.75/centroid & .932 & .442 & .600 & .874 & .287 & .432 \\
+Context whole & .75/.65/primary & .690 & .979 & .810 & .600 & .959 & .738 \\
+Context whole & .75/.65/centroid & .768 & .870 & .816 & .694 & .780 & .735 \\
+Context whole & .60/.75/primary & .843 & .784 & .813 & .825 & .615 & .704 \\
+Context whole & .60/.75/centroid & .887 & .724 & .798 & .855 & .564 & .679 \\
+Context current & .75/.65/primary & .719 & .950 & .818 & .639 & .901 & .748 \\
+Context current & .75/.65/centroid & .816 & .814 & .815 & .758 & .688 & .721 \\
+Context current & .60/.75/primary & .878 & .699 & .778 & .852 & .548 & .667 \\
+Context current & .60/.75/centroid & .913 & .645 & .756 & .884 & .487 & .628 \\
+\bottomrule
+\end{tabular}
+\caption{Complete registered input/context follow-up. Long denotes histories
+with at least eight prompted turns. No row passes all gates.}
+\end{table}
+
+Context improves some configurations but broad primary assignments introduce
+false positives. Lean selection alone does not improve aggregate F1. These
+inputs retain 9,195,820 of 13,373,228 own-source characters (68.8\%) and exclude
+16,925 of 27,440 sources entirely, primarily intermediate assistant segments;
+last-segment selection is therefore a substantial information reduction.
+Context is supplied to 4,913 of 5,082 prompted turns. All follow-up source slices
+match their original Unicode ranges and permitted ancestry; raw-control
+confusion counts reproduce the original per-history results in both modes.
+
+The complete cache-assisted build takes 609.48 seconds and development scoring
+13.15 seconds. Per-history construction p95 is 5.402 seconds for lean, 3.760
+for whole context and 3.663 for current-prompt context. The original raw-view
+p95 is 14.197 seconds; copy time is excluded. Sequential cache reuse prevents
+interpreting these as independent cold comparisons. Maximum clustering p95
+is 12.76 ms. Full-process external peak RSS is 1,502,240 KiB for building and
+1,145,560 KiB for scoring, satisfying all registered performance budgets.
+The private development and analysis artifacts have SHA256 prefixes
+\texttt{d95bb0cb317a} and \texttt{d2fa16653a41}; full checksums and commands
+are retained in the result documentation and scripts. The temporal smoothing
+proposal requires a separate prospective comparison, not a change to these gates.
 
 The input-marker audit finds only four question/reply transport messages among
 4,098 development user-role messages, spanning two histories. Known injected
