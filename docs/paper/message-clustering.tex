@@ -609,6 +609,56 @@ these errors. The original silver data and unopened confirmation set remain
 unchanged. Full stratified scores and provenance hashes are stored in the
 private analysis artifacts; this paper reports aggregates.
 
+\subsection{Development-only drift and input diagnostics}
+To distinguish representation weakness from assignment effects, we hold each
+turn embedding fixed and compare full-thread assignments against a fit ending
+at the later member of each judged pair. The arrival order is unchanged. This
+post-result diagnostic is not an additional eligible candidate, and does not
+use confirmation. Of 701 decisive separate-pooling pairs with subsequent turns,
+63 decisions change: removing subsequent turns corrects 37 and worsens 26.
+On long histories, 44 of 510 eligible decisions change, correcting 27 and
+worsening 17; fourteen primary decisions change. The difference implicates
+centroid membership effects as well as primary partition changes. Joint BIRCH
+radius 0.60 changes 21 of 510 long-pair decisions, correcting fourteen and
+worsening seven, with thirteen primary changes.
+
+Without clustering, pairwise cosine ROC AUC is 0.856 on short histories and
+0.767 on long ones for separate pooling, and 0.840/0.787 for joint inputs.
+These are diagnostic rankings, not optimized thresholds. Pair composition
+differs by length stratum, precluding a causal claim that length itself degrades
+the encoder. The evidence supports both harder semantic discrimination and
+assignment instability; it does not identify one sufficient fix.
+
+A deterministic twelve-case development audit includes four false positives,
+four false negatives and four true-positive controls, with at most two cases
+per history. It reveals question/reply transport JSON in one input and a
+high-similarity false positive between distinct proposal-writing tasks. We
+preserve the reference labels rather than changing them after observing
+predictions. These cases motivate explicit input/context ablations instead of
+an expanding list of approval-phrase recognizers. The local transformer already
+uses attention over supplied text; supplying bounded ancestral context and
+pooling current-turn token states are testable alternatives, not measured
+improvements at this point.
+
+The bounded follow-up is frozen in \texttt{docs/turn-input-followup.md} before
+new variant scores. Four inputs (raw separate views, lean selection, bounded
+context with whole-input pooling, and the same context with current-prompt
+pooling) are crossed with two existing BIRCH settings and two explicit
+assignment modes, giving sixteen configurations. Lean selection retains all
+prompts and the last nonempty assistant segment; it does not infer that this
+segment is a complete final answer. Unknown transport envelopes remain intact.
+Context follows structural ancestry, never future text or an unresolved branch.
+In addition to the previous overall gates, this follow-up requires the absolute
+quality floors on the long-history development stratum. Only one eligible
+choice may advance to unopened confirmation. These are planned measurements.
+
+The input-marker audit finds only four question/reply transport messages among
+4,098 development user-role messages, spanning two histories. Known injected
+task notifications, skills and repository instructions occur in canonical
+history but do not appear as prompted-turn inputs. Thus transport cleanup alone
+is not a credible explanation for the aggregate deficit; its benefit and the
+loss from last-segment selection must be measured separately.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt

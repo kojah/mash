@@ -196,3 +196,35 @@ under `/home/james/scratch/mash-artifacts`. The cleanup/extractive-selection
 follow-up is tracked in `mash-jfn`. It must freeze its changes before new scores
 and preserve the unopened confirmation set; this study's negative decision is
 not permission to retry successive candidates on confirmation.
+
+## Development-only assignment-drift diagnostic
+
+After inspecting development results, we compared the existing full-thread
+assignments with a fit using only turns through the later member of each judged
+pair. Embeddings and insertion order remain identical; only subsequent turns
+are removed. This is an exploratory counterfactual, not a new eligible method
+or an online-quality validation. Ambiguous labels are excluded from its counts.
+
+For separate pooling/BIRCH radius 0.75, 701 of 930 decisive pairs have later
+turns; 63 decisions change, with 37 corrected and 26 worsened by removal. On
+long threads, 44 of 510 eligible pair decisions change, with 27 corrected and
+17 worsened. Only 14 long-pair primary assignments change, so the centroid
+membership stage contributes to instability beyond primary partition changes.
+Joint/BIRCH radius 0.60 changes 21 of 510 eligible long-pair decisions, correcting
+14 and worsening seven; thirteen primary decisions change.
+
+Pairwise cosine ROC AUC, independent of clustering, is 0.856 for short and
+0.767 for long histories with separate pooling, and 0.840/0.787 with joint
+inputs. These are discrimination diagnostics, not newly tuned thresholds.
+The strata contain different types of pairs, so the AUC difference does not
+isolate a causal effect of length. Assignment drift is real, but removing later
+turns fixes only part of the observed errors. Input normalization, context and
+clustering changes require separate, bounded ablations.
+
+The deterministic twelve-case development audit (four false positives, four
+false negatives and four true-positive controls, at most two cases per history)
+also exposed provider question/reply transport JSON inside an embedding input
+and a very high-similarity false positive between different proposal-writing
+tasks. These are hypotheses for normalization and context work, not reasons
+to rewrite labels or add phrase-specific exceptions. Private case excerpts and
+the complete drift audit remain outside Git.

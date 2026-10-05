@@ -250,3 +250,9 @@ uv run python summarize_turn_study.py \
 
 Deterministic turn cleanup/extractive selection is tracked separately in bead
 `mash-jfn`; it does not alter this study's registered five views or thresholds.
+
+`audit_turn_drift.py` is a development-only post-result diagnostic. For two
+fixed configurations it refits prefixes ending at each pair's later turn while
+holding vectors/order fixed. It reports decision changes separately from
+pairwise cosine discrimination. It does not tune thresholds, select a method
+or inspect confirmation judgments.
