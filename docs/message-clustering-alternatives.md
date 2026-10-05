@@ -149,7 +149,10 @@ GRINCH remain distinct possible follow-ups. No production behavior changed.
 
 ## Next representation question (not measured here)
 
-The user proposed grouping prompts and answers before embedding/clustering.
+The user proposed grouping prompts and answers before embedding/clustering,
+calling these units turns. `turn_embeddings` is an additional gold artifact
+alongside `message_embeddings`; it does not replace them. A turn means a user
+prompt bundle plus its associated assistant responses.
 Compare message units with user-turn units: prompt alone, combined prompt/answer
 text, and prompt plus bounded answer passages. A pooled combination of existing
 message vectors is a cheap separate control, not equivalent to jointly embedding
