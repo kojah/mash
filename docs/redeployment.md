@@ -658,3 +658,14 @@ including errors during the final flush. Existing Unicode chunk-boundary tests
 also apply. The real-Qdrant incremental reuse/edit/delete contract passed on an
 owned disposable tmpfs backend. Private evidence is in
 `/home/james/scratch/mash-artifacts/snapshot-buffering-20261005`.
+
+Release `b635dbc` passed 604 standard tests, strict Clippy, formatting and
+doctests, plus the real-backend contract above. The release build took 46.09
+seconds. It was deployed only to the shared API: authenticated readiness and
+unauthorized rejection passed, and publication identities were preserved. No
+indexing or Qdrant restart was performed. Fresh combined MCP searches returned
+three threads with complete shared context and no fallback in 1.527 seconds on
+Xenia and 2.442 seconds on the development MacBook. These are search smoke checks,
+not effects of this publication-only optimization. Node binary replacement is
+unnecessary for this change; the personal MacBook's earlier upgrade remains
+pending connectivity.
