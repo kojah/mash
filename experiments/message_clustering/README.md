@@ -215,5 +215,10 @@ without modifying it; timings with that option are cache-assisted.
 `study_scoring.py` implements the fixed 60 candidates, distinct-turn retention,
 passage-to-turn membership unions, lexical/chronological controls, micro counts
 including negative-only histories, and the development stopping rules. It is
-the tested scoring core; the full study runner and final decision remain pending.
+the tested scoring core. `run_study_development.py` checks completeness,
+provenance and registered label adequacy before scoring the development grid.
+It hashes the consumed matrices and freezes one development choice in an
+exclusive output file, with paired thread-bootstrap uncertainty. Lexical and
+chronological controls share TF-IDF construction and report amortized runtime.
+Confirmation evaluation and the final decision remain pending.
 Nothing here changes production search or message embeddings.

@@ -5,6 +5,7 @@ import unittest
 import numpy as np
 
 from blind_turn_pairs import Verdict
+from run_study_development import bootstrap
 from study_artifacts import View
 from study_scoring import (
     CANDIDATES,
@@ -23,6 +24,20 @@ from turn_evaluation import Counts
 
 
 class StudyScoring(unittest.TestCase):
+    def test_paired_bootstrap_is_deterministic_and_zero_when_no_predictions(self):
+        counts = (
+            Counts(tp=0, fp=0, fn=2, tn=5, ambiguous=1),
+            Counts(tp=0, fp=0, fn=0, tn=10, ambiguous=0),
+        )
+        interval = bootstrap(counts, counts)
+        self.assertEqual(interval, bootstrap(counts, counts))
+        self.assertEqual(
+            (interval.f1_low, interval.f1_high, interval.gain_low, interval.gain_high),
+            (0.0, 0.0, 0.0, 0.0),
+        )
+        with self.assertRaises(ValueError):
+            bootstrap(counts, counts[:1])
+
     def test_grid_is_exactly_sixty_unique_registered_settings(self):
         self.assertEqual(len(CANDIDATES), 60)
         self.assertEqual(len({c.name for c in CANDIDATES}), 60)
