@@ -25,11 +25,11 @@ Optuna records them in a persistent bounded study, not adaptive parameter search
 
 - **none:** original structural input, no repeated current prompt.
 - **first80:** existing conditioning with the first 80 current lean-prompt tokens.
-  This off-weighting cell must reproduce prior C-only predictions.
+  Input units must exactly reproduce prior C-only inputs.
 - **selected80:** split the current lean prompt into sentence/paragraph spans,
   then at most 80-token nonoverlapping windows. Embed all candidates using the
   same encoder. For each original answer chunk, select the candidate with highest
-  cosine to its original unconditioned vector; exact ties select source order.
+  cosine to its singleton unconditioned vector; exact ties select source order.
   Use a candidate only if cosine is at least .20. No ancestor, future turn,
   other history or label enters selection. This threshold is fixed, not tuned.
 
@@ -53,7 +53,9 @@ region, filler spans and encoder generation.
 ## Validation, evaluation and reporting
 
 Before scoring, validate full non-whitespace body coverage and prompt ownership.
-Check baseline and first80-off parity against all frozen judged predictions.
+Reproduce historical baseline graphs separately from their frozen vectors;
+first80 input units must match their parent exactly. New singleton predictions
+are not required to equal old batched predictions.
 Verify no-filler vector parity, token-weight effects and code/technical-content
 protection. Test isolation by preparing/encoding/clustering the same thread
 alone and in reordered/mutated surrounding cohorts, using fresh caches; output
@@ -75,3 +77,24 @@ peak RSS. Report negative outcomes as outcomes; do not add trials, retune
 thresholds or open confirmation to rescue a result. Log procedures/results in
 the paper. Completing this comparison requires actual scored artifacts for
 both levers, not just implementation or a study ledger.
+
+## Pre-score amendment: quantized inference batching
+
+During a label-free runtime isolation probe, the same sentence encoded alone
+versus alongside a different long sentence produced cosine .9908990864, with
+380/384 coordinates changed. The quantized encoder is not batch invariant.
+The initial batched build was stopped with no quality scoring and retained as
+an abandoned artifact. Before any new scoring, amend new inference to singleton
+calls with a separate cache namespace. Candidate and answer vectors must be
+independent of batch companions and cache population/order.
+
+All three modes re-embed assistant points using singleton calls; filler off/on
+therefore share the same inference regime. The new none/off cell is the matched
+single-input control. Compare both levers to it (and weighting to its matched
+context/off cell), while reporting historical frozen-baseline differences
+separately. Keep pooled-view vectors and user chunks as fixed per-history parent
+artifacts in every cell, isolating changes to assistant chunk representations.
+These immutable own-history inputs do not read surrounding histories at runtime;
+this study does not claim to rebuild historical parent embeddings independently.
+Record the amendment and inference-control effect in the paper. There are still
+six declared trials; no trial was chosen using new quality outcomes.

@@ -12,7 +12,9 @@ from turn_artifact import SelectedText, Store
 
 
 class SelectedEncoder(FakeEncoder):
-    def encode_selected(self, texts, selections):
+    def encode_selected(self, texts, selections, downweighted=None):
+        if downweighted is not None:
+            raise ValueError("this fake tests selections only")
         self.calls += len(texts)
         return np.array(
             [
@@ -25,6 +27,30 @@ class SelectedEncoder(FakeEncoder):
 
 
 class SelectedContracts(unittest.TestCase):
+    def test_singleton_cache_isolates_batch_sensitive_inference(self):
+        class BatchSensitive(FakeEncoder):
+            def encode(self, texts):
+                self.calls += len(texts)
+                return np.array([[float(len(texts)), float(len(t))] for t in texts])
+
+        encoder = BatchSensitive()
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory) / "vectors.sqlite")
+            batched, _ = store.vectors(("alpha", "beta"), encoder, lambda *_: None)
+            isolated, _ = store.vectors(
+                ("alpha", "beta"), encoder, lambda *_: None, singleton=True
+            )
+            self.assertFalse(np.array_equal(batched, isolated))
+            prior_calls = encoder.calls
+            store.vectors(("unrelated",), encoder, lambda *_: None, singleton=True)
+            cached, count = store.vectors(
+                ("beta", "alpha"), encoder, lambda *_: None, singleton=True
+            )
+            self.assertEqual(count, 0)
+            self.assertEqual(encoder.calls, prior_calls + 1)
+            np.testing.assert_array_equal(cached, isolated[::-1])
+            store.close()
+
     def test_pooling_masks_current_unicode_tokens_without_changing_attention(self):
         text = "previous café current 日本語"
         encoded = (tokenizer().encode(text),)

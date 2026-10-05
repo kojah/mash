@@ -31,6 +31,7 @@ def generation(encoder: Encoder) -> str:
 class SelectedText(Record):
     text: str
     selection: Selection | None = None
+    downweighted: tuple[Selection, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -61,8 +62,11 @@ class Store:
         texts: tuple[str, ...],
         encoder: Encoder,
         progress: Callable[[int, int], None],
+        singleton: bool = False,
     ) -> tuple[VectorMatrix, int]:
         fingerprint = generation(encoder)
+        if singleton:
+            fingerprint += ":singleton-v1"
         requests = tuple(
             CacheRequest(
                 fingerprint,
@@ -71,38 +75,54 @@ class Store:
             )
             for text in texts
         )
-        return self.cache_vectors(requests, encoder, progress)
+        return self.cache_vectors(requests, encoder, progress, singleton)
 
     def selected_vectors(
         self,
         inputs: tuple[SelectedText, ...],
         encoder: Encoder,
         progress: Callable[[int, int], None],
+        singleton: bool = False,
     ) -> tuple[VectorMatrix, int]:
         """Reuse whole-input vectors; isolate target masks by namespace and span key."""
         fingerprint = generation(encoder)
+        if singleton:
+            fingerprint += ":singleton-v1"
         selected_generation = hashlib.sha256(
             (fingerprint + ":character-overlap-pooling-v1").encode()
         ).hexdigest()
         requests = tuple(
             CacheRequest(
-                fingerprint if item.selection is None else selected_generation,
+                (
+                    hashlib.sha256(
+                        (fingerprint + ":weighted-pooling-4-1-v1").encode()
+                    ).hexdigest()
+                    if item.downweighted
+                    else fingerprint
+                    if item.selection is None
+                    else selected_generation
+                ),
                 hashlib.sha256(
                     item.text.encode()
-                    if item.selection is None
-                    else orjson.dumps(item.model_dump(mode="json"))
+                    if item.selection is None and not item.downweighted
+                    else orjson.dumps(
+                        item.model_dump(mode="json")
+                        if item.downweighted
+                        else item.model_dump(mode="json", exclude={"downweighted"})
+                    )
                 ).hexdigest(),
                 item,
             )
             for item in inputs
         )
-        return self.cache_vectors(requests, encoder, progress)
+        return self.cache_vectors(requests, encoder, progress, singleton)
 
     def cache_vectors(
         self,
         requests: tuple[CacheRequest, ...],
         encoder: Encoder,
         progress: Callable[[int, int], None],
+        singleton: bool = False,
     ) -> tuple[VectorMatrix, int]:
         found: dict[tuple[str, str], bytes] = {}
         missing: dict[tuple[str, str], CacheRequest] = {}
@@ -117,12 +137,16 @@ class Store:
             else:
                 missing[key] = request
         pending = tuple(missing.items())
-        for start in range(0, len(pending), 8):
-            batch = pending[start : start + 8]
+        batch_size = 1 if singleton else 8
+        for start in range(0, len(pending), batch_size):
+            batch = pending[start : start + batch_size]
             texts = tuple(request.input.text for _, request in batch)
             selections = tuple(request.input.selection for _, request in batch)
+            spans = tuple(request.input.downweighted for _, request in batch)
             vectors = (
-                encoder.encode_selected(texts, selections)
+                encoder.encode_selected(texts, selections, spans)
+                if any(spans)
+                else encoder.encode_selected(texts, selections)
                 if any(selection is not None for selection in selections)
                 else encoder.encode(texts)
             )
@@ -134,7 +158,7 @@ class Store:
                         (*key, blob),
                     )
                     found[key] = blob
-            progress(min(start + 8, len(pending)), len(pending))
+            progress(min(start + batch_size, len(pending)), len(pending))
         matrix = (
             np.stack(
                 [

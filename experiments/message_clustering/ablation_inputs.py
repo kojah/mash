@@ -41,7 +41,6 @@ def prepare(
     turns: tuple[Turn, ...],
     tokenizer: Tokenizer,
 ) -> tuple[Conditioned, ...]:
-    owners = tuple(t.id for t in turns if t.prompts)
     prompts = {}
     for turn in turns:
         if not turn.prompts:
@@ -49,10 +48,32 @@ def prepare(
         text = concat(tuple(lean_prompt(thread, i) for i in turn.prompts))
         first = windows(tokenizer, text, 80, overlap=0, first_only=True)
         prompts[turn.id] = first[0] if first else Text(text="")
+    return condition(
+        original,
+        tuple(
+            prompts[u.input.turn_id]
+            if u.input.role == Role.ASSISTANT
+            else Text(text="")
+            for u in original
+        ),
+        thread,
+        turns,
+        tokenizer,
+    )
+
+
+def condition(
+    original: tuple[Prepared, ...],
+    prompts: tuple[Text, ...],
+    thread: Thread,
+    turns: tuple[Turn, ...],
+    tokenizer: Tokenizer,
+) -> tuple[Conditioned, ...]:
+    """Condition each structural input on an explicitly selected own-turn span."""
+    owners = tuple(t.id for t in turns if t.prompts)
     result = []
-    for unit in original:
+    for unit, prompt in zip(original, prompts, strict=True):
         item = unit.input
-        prompt = prompts[item.turn_id] if item.role == Role.ASSISTANT else Text(text="")
         before = prefix(prompt)
         budget = 500 - tokens(tokenizer, before) if before.text else 510
         pieces = (

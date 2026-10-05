@@ -103,7 +103,10 @@ class Encoder:
         return self.encode_selected(texts, (None,) * len(texts))
 
     def encode_selected(
-        self, texts: tuple[str, ...], selections: tuple[Selection | None, ...]
+        self,
+        texts: tuple[str, ...],
+        selections: tuple[Selection | None, ...],
+        downweighted: tuple[tuple[Selection, ...], ...] | None = None,
     ) -> VectorMatrix:
         """Selections change output pooling, not transformer attention inputs.
 
@@ -132,4 +135,29 @@ class Encoder:
             )[0],
             dtype=np.float32,
         )
-        return pool_vectors(hidden, selection_mask(texts, encoded, mask, selections))
+        pooling = selection_mask(texts, encoded, mask, selections)
+        if downweighted is not None:
+            pooling = weight_mask(texts, encoded, pooling, downweighted)
+        return pool_vectors(hidden, pooling)
+
+
+def weight_mask(
+    texts: tuple[str, ...],
+    encoded: tuple[Encoding, ...],
+    mask: NDArray[np.int64],
+    spans: tuple[tuple[Selection, ...], ...],
+) -> NDArray[np.int64]:
+    """Relative 4/1 pooling weights; no spans preserves original mask exactly."""
+    if len(spans) != len(texts) or len(encoded) != len(texts):
+        raise ValueError("each input needs its own weighting spans")
+    result = mask.copy()
+    for row, regions in enumerate(spans):
+        if not regions:
+            continue
+        if any(not 0 <= r.start < r.end <= len(texts[row]) for r in regions):
+            raise ValueError("weighting region outside input")
+        result[row] *= 4
+        for token, (left, right) in enumerate(encoded[row].offsets):
+            if right > left and any(left < r.end and right > r.start for r in regions):
+                result[row, token] = mask[row, token]
+    return result
