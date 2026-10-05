@@ -8,6 +8,9 @@ use crate::{AppError, config::SharedConfig};
 use futures_util::FutureExt;
 use std::{collections::HashMap, path::Path, time::Duration};
 
+#[cfg(test)]
+mod tests;
+
 pub(super) const CONTEXT_DEADLINE: Duration = Duration::from_secs(1);
 
 pub(crate) enum SharedRetrieval {

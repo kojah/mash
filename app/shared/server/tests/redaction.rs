@@ -16,6 +16,8 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
         service.upload(FIRST, &events).await.status(),
         StatusCode::OK
     );
+    let mut vector = vec![0.0; 384];
+    vector[0] = 127.0;
     for (route, input) in [
         (
             "view",
@@ -29,6 +31,10 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
         (
             "search",
             json!({"query":"credentialneedle","intent":"exact-mention","unit":"messages","exclude_self":false}),
+        ),
+        (
+            "search",
+            json!({"query":"credentialneedle","vector":vector,"generation":crate::semantic::SHARED_EMBEDDING_GENERATION,"unit":"messages","exclude_self":false}),
         ),
     ] {
         let response = service
