@@ -2,20 +2,22 @@
 set -euo pipefail
 [[ $# == 3 ]] || { echo 'usage: build-dev-macos.sh SSH_HOST REMOTE_ROOT OUTPUT' >&2; exit 2; }
 host=$1 root=$2 output=$3
+# Use a fresh connection: a reused control master can retain disabled keepalives.
+transport=(-o ControlPath=none -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2)
 [[ "$host" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && "$root" =~ ^/[A-Za-z0-9/._-]+$ ]]
 revision=$(git rev-parse HEAD)
 [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
 mkdir -p "$(dirname "$output")"
 archive="$output.source.tar"
 git archive --format=tar HEAD > "$archive"
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "mkdir -p $root/source-$revision $root/build-source $root/build-tmp"
-scp -o BatchMode=yes -o ConnectTimeout=10 "$archive" "$host:$root/source-$revision.tar"
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
+ssh "${transport[@]}" "$host" "mkdir -p $root/source-$revision $root/build-source $root/build-tmp"
+scp "${transport[@]}" "$archive" "$host:$root/source-$revision.tar"
+ssh "${transport[@]}" "$host" \
     "tar -xf $root/source-$revision.tar -C $root/source-$revision && rsync -rlpc --delete $root/source-$revision/ $root/build-source/ && cd $root/build-source && PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin TMPDIR=$root/build-tmp CARGO_TARGET_DIR=$root/target CARGO_INCREMENTAL=0 cargo build --release --locked --bin mash"
 # A stable source path and checksum synchronization preserve unchanged source
 # mtimes, so Cargo can reuse its fingerprints across commits. Always run Cargo;
 # this also checks toolchain, flags, dependency and changed-source inputs.
-remote_digest=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "shasum -a 256 $root/target/release/mash")
+remote_digest=$(ssh "${transport[@]}" "$host" "shasum -a 256 $root/target/release/mash")
 remote_digest=${remote_digest%% *}
 [[ "$remote_digest" =~ ^[0-9a-f]{64}$ ]]
 local_digest=''
@@ -25,7 +27,7 @@ if [[ -f "$output" ]]; then
 fi
 candidate=$output
 if [[ "$local_digest" != "$remote_digest" ]]; then
-    scp -o BatchMode=yes -o ConnectTimeout=10 "$host:$root/target/release/mash" "$output.incoming"
+    scp "${transport[@]}" "$host:$root/target/release/mash" "$output.incoming"
     incoming_digest=$(sha256sum "$output.incoming")
     [[ "${incoming_digest%% *}" == "$remote_digest" ]]
     chmod 755 "$output.incoming"

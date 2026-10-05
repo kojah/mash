@@ -257,5 +257,80 @@ retrieval/reranking stages, so this deployment does not establish a cold-search
 fix. A later traced local call spent 458 ms loading models and 7.7 ms loading
 vectors. Larger full-rebuild optimizer comparisons remain separate experiments.
 
+## Paired optimizer-parallelism screen
+
+Two copies of the same stopped, healthy backend started with 1,054,824 message
+points, 362,239 indexed vectors and seven segments. Both used release `2a60e9d`,
+the same geometry-preserving vector-change input, existing 2 MiB/512-point write
+batches and the bounded snapshot receive path. There was no model inference.
+The two-job trial ran first; the default trial followed on the same busy host.
+
+The experiment set `max_optimization_threads = 2` on both collections in one copy,
+leaving the other copy at Qdrant's automatic default. This controls concurrent
+optimizer jobs per shard, rather than the worker threads within an individual
+job; see [Qdrant's configuration reference](https://qdrant.tech/documentation/ops-configuration/configuration/).
+Progress samples observed at most two running message-collection jobs in the
+capped trial and five at the default.
+
+| Measurement | Automatic default | Two-job cap |
+| --- | ---: | ---: |
+| Acknowledged full gold publication | 427.28 s | 360.47 s |
+| Stage snapshots, catalogue and documents (inclusive) | 145.22 s | 215.71 s |
+| Reclaim obsolete versions | 4.90 s | 53.10 s |
+| Drain optimizer work | 259.00 s | 68.31 s |
+| Exact and HNSW read probes | 1.80 s | 6.48 s |
+| First following shared candidate search | 357 ms | 414 ms |
+| Mean of 30 following searches | 320 ms | 306 ms |
+
+Both publications retained 749 threads, 238,257 messages and 32,606 embeddings.
+All 60 following searches returned HTTP 200 within the existing five-second
+deadline. The first queries returned the same 200 semantic candidate identities
+(node, thread and message), despite different storage versions. This is one
+query's consistency check, not a general recall evaluation.
+
+The cap improved acknowledged publication by 15.6% in this paired screen while
+slowing staging and reclamation. It was applied to this Xenia server's existing
+message and state collections, with publication identities verified unchanged.
+The setting also survived restart of the owned test backend. HNSW parameters,
+completed-write acknowledgements and committed-message visibility are unchanged.
+This is a host-specific operator setting, not a new application-wide default.
+The setting is persisted by Qdrant; new groups need their own operator policy.
+
+Starting storage and input were matched, but timing, cache state, segment evolution
+and unrelated workloads were not controlled or repeated. The result supports this
+bounded host tuning; it does not establish a fleet-wide ingestion speedup, initial
+embedding throughput, a latency SLA or a percentage improvement over the earlier
+590-second run. The paired source copies, progress samples, traces and responses
+remain private under
+`/home/james/scratch/mash-artifacts/optimizer-parallelism-20261005`.
+
+The Mac helper's next, documentation-only commit (`919237b`) completed in
+5.69 seconds, with Cargo taking 0.18 seconds and the executable checksum unchanged.
+This verifies reuse across commits with unchanged Rust inputs, not just repeats
+of the same revision.
+
 Private corpus copies, requests, traces and validation logs are retained under
 `/home/james/scratch/mash-artifacts/publication-throughput-20261005`.
+
+## Disconnected deployment targets
+
+The build and remote-install helpers disable SSH control-socket reuse for their
+own connections, use a ten-second connection timeout, and set keepalives to
+15 seconds with two unanswered probes permitted. Reusing an existing master
+would otherwise retain its older keepalive policy and could hang after a node
+disconnects. These settings bound an unresponsive transport, not a healthy
+long-running remote build.
+
+With fresh connections, the cached development MacBook build completed in
+9.46 seconds (Cargo 0.15 seconds), and the identical-artifact install check in
+1.82 seconds. The unavailable personal MacBook failed after 20.07 seconds:
+the digest check and subsequent installation connection each hit the
+ten-second timeout. Its new binary had already been deployed and had passed
+search checks earlier; a final repeat is pending connectivity.
+
+After the optimizer setting changed, warm combined MCP search took 1.473 seconds
+on Xenia and 2.991 seconds on the development MacBook without fallback. An
+earlier development MacBook call hit the five-second shared deadline and fell
+back to local results. Healthy optimizer status alone therefore does not prove
+a latency guarantee. Cold-search outliers and a broader latency distribution
+remain tracked in `mash-16b`.
