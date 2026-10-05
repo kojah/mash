@@ -1,6 +1,7 @@
 //! Receive checksummed canonical JSON through bounded chunks, then decode on a worker.
 use crate::AppError;
 use serde::de::DeserializeOwned;
+use std::io::Read;
 use tokio::io::AsyncWriteExt;
 
 pub(in crate::shared) struct Receiver {
@@ -111,7 +112,25 @@ impl Received {
             VerifiedStorage::File(path) => {
                 let file = std::fs::File::open(&path)
                     .map_err(|_| AppError::internal("open received snapshot spool"))?;
-                serde_json::from_reader(std::io::BufReader::with_capacity(64 * 1024, file))
+                // One temporary buffer at a time, bounded independently of the
+                // node size. Larger snapshots retain streaming deserialization.
+                if self.bytes <= 32 * 1024 * 1024 {
+                    let mut bytes = Vec::new();
+                    bytes
+                        .try_reserve_exact(self.bytes + 1)
+                        .map_err(|_| AppError::internal("allocate snapshot decode buffer"))?;
+                    let limit = u64::try_from(self.bytes + 1)
+                        .map_err(|_| AppError::internal("snapshot decode size overflow"))?;
+                    file.take(limit)
+                        .read_to_end(&mut bytes)
+                        .map_err(|_| AppError::internal("read received snapshot spool"))?;
+                    if bytes.len() != self.bytes {
+                        return Err(AppError::shared("invalid canonical snapshot length"));
+                    }
+                    serde_json::from_slice(&bytes)
+                } else {
+                    serde_json::from_reader(std::io::BufReader::with_capacity(64 * 1024, file))
+                }
             }
         };
         result.map_err(|_| AppError::shared("invalid canonical snapshot JSON"))
@@ -126,6 +145,26 @@ mod tests {
     async fn verified_chunks_decode_unicode_and_reject_truncation_corruption_and_overflow() {
         for memory in [false, true] {
             verify_chunks(memory).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn spooled_decode_rejects_changed_file_lengths_before_parsing() {
+        for replacement in [b"1".as_slice(), b"1234".as_slice()] {
+            let mut input = receiver(3, false).await;
+            input.append(b"123").await.unwrap();
+            let verified = input
+                .finish(blake3::hash(b"123").to_hex().as_str())
+                .await
+                .unwrap();
+            let VerifiedStorage::File(path) = &verified.storage else {
+                unreachable!()
+            };
+            std::fs::write(path, replacement).unwrap();
+            assert_eq!(
+                verified.decode::<u64>().unwrap_err().error.message,
+                "invalid canonical snapshot length"
+            );
         }
     }
 

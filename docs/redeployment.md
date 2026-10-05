@@ -754,3 +754,38 @@ Qdrant were not restarted or reindexed. The personal MacBook remains offline
 (last seen 06:30 UTC), with its ARM64 artifact staged for the same explicit
 migration when connectivity returns. Existing stdio sessions still require a
 client reconnect to load the replacement binary.
+
+### Bounded decoding of retained file snapshots (2026-10-05)
+
+With the buffered encoder deployed, another private retained-corpus burst sent
+eight title edits two seconds apart. The serial controller coalesced them into
+two successful publications taking 19.534 and 10.593 seconds. It drained in
+30.298 seconds; the final arrival was acknowledged 16.264 seconds later. Of 40
+concurrent candidate reads, 39 returned HTTP 200 and one a retryable catalogue
+change conflict. Median read latency was 234 ms, nearest-rank p95 262 ms and
+maximum 300 ms. This tests latest-state coalescing on the HTTP publication path,
+not native watcher or local inference throughput.
+
+File-spooled snapshots up to 32 MiB now use a temporary bounded buffer and Serde's
+slice decoder; larger snapshots keep the streaming reader. Only one such buffer
+exists per decoder at a time, independently of node size. Existing aggregate
+receive and mutation admission remain unchanged; they are serialized-work
+budgets, not process RSS limits. Typed models, checksum verification and generic
+non-sensitive errors remain intact, with short/growing spool rejection tests.
+
+A first private ABBA comparison overlapped validation and substantial host I/O
+pressure. New publications took 27.879/39.631 seconds versus 11.051/14.821 seconds
+before, with most added time waiting on Qdrant staging, pointer writes or cleanup.
+Those runs remain in the record and were not used as speedup evidence. After
+validation finished, another ABBA cycle on the same retained corpus took
+9.864/10.452 seconds before versus 9.236/9.145 seconds after, approximately 10%
+lower at the median. All responses retained 749 threads, 238,257 messages and
+32,606 embeddings. Per-process VmHWM samples were 869,752–926,840 KiB; these do not
+establish an RSS regression bound or a fleet memory estimate.
+
+The change passed 606 standard tests, strict Clippy, formatting and doctests,
+plus the real-Qdrant incremental reuse/edit/delete contract on a separate owned
+tmpfs backend. Measurements exclude inference, provider scans and local SQLite
+work, and do not establish initial-ingestion throughput or p95 publication
+latency. Private captures are in `watcher-burst-20261005` and
+`decode-spool-20261005` under `/home/james/scratch/mash-artifacts`.
