@@ -1,7 +1,8 @@
 # Within-thread message clustering: preregistered evaluation
 
-Issue: mash-2we. Status: protocol fixed; no algorithm selected or quality result
-claimed yet. This experiment groups related messages inside one thread. It does
+Issue: mash-2we. Status: bounded comparison completed on 2026-10-05; reject the
+tested pipeline for production promotion. No production algorithm selected.
+This experiment groups related messages inside one thread. It does
 not restore global topic modelling, topic trees, production tags or a new search
 artifact. Python is the experimental reference; production remains unchanged.
 
@@ -65,8 +66,27 @@ later judged substantive. No component appears in both splits.
 Each split has two threads in every provider/length stratum. Canonical counts
 include non-searchable provider/tool records; they are not evidence of missing
 embeddings. The sample uses one existing embedding generation and the default
-dialogue build. Subject/case coverage and blind pair judgments remain to be
-established before candidate outputs are inspected.
+dialogue build: quantized all-MiniLM-L6-v2 on CPU, stored as symmetric signed-byte
+vectors. Frozen references below preceded candidate output inspection.
+
+Blind diagnostic references are now frozen with SHA-256
+`8379d8ccf9ff4ef8df39472db0eb2e279108c0678b0eb8112c04e6329a4bf568`.
+They contain 282 judgments: development 71 related / 57 unrelated / 14 ambiguous;
+held-out 70 / 59 / 11. Tagged case counts are 15/13 returning-subject, 12/12
+short-reply and 16/10 mixed-message pairs (development/held-out). References are
+agent-authored; long source messages were reviewed as head/tail excerpts, not
+independently annotated in full by humans. Treat resulting metrics as diagnostic,
+with that limitation attached, rather than established human-ground-truth accuracy.
+Exact repeated projection pairs are excluded; ambiguous scope is not forced.
+
+Before any candidate outputs, fix a structural minimum-support proxy: at least
+five whitespace-separated tokens and no whole-record injected header (`# AGENTS.md`,
+`<skill>`, `[gas-city]`, `<hook_prompt`, `<task-notification>`). Vectors remain
+unchanged. This proxy controls minimum group support and parent eligibility; it
+does not read reference labels or infer topics. Unreviewed qualifying projections
+are potentially substantive, not verified substantive. Report this assumption;
+only reviewed substantive messages enter measured coverage. Qualitative review
+must still verify the substantive support/coherence of retained groups.
 
 Before algorithm output is visible, freeze up to forty pair judgments per thread:
 same concrete subject, different subject, or ambiguous. Include distant returning
@@ -116,6 +136,17 @@ around the strongest method, or test a fixed context view (0.7 normalized anchor
 + 0.3 normalized eligible parent, renormalized). Choose the round-two change
 from recorded development errors before running it; do not combine both changes.
 An explicit root or missing parent never borrows unrelated previous text.
+
+Round one development has completed. Best overlapping F1 is 0.579 (leader at
+0.35), versus 0.722 for the eight-message window baseline; the best leader finds
+3/12 short-reply links and misses 7/15 returning-subject links. Fix round two to
+the already specified 0.7 anchor / 0.3 eligible-parent view for the same twelve
+configurations. Do not also refine thresholds. This decision precedes round-two
+output and any held-out scoring. Eligibility uses the structural proxy, never
+reference message kinds. NULL links use the immediately preceding visible source
+message only when eligible; explicit roots abstain, and explicit missing parents
+do not fall back. Baseline window boundaries always use raw-projection deduplication,
+independent of the context view.
 
 Apply the same membership policy to each method: groups need two distinct
 substantive source projections to qualify. Allow secondary memberships when
@@ -215,3 +246,130 @@ product hierarchy is not required. It is not implemented or measured here.
 Revisit it in a bounded follow-up if simpler online methods fail quality and
 offline rebuilds fail latency. Its paper's benchmark results are not evidence of
 performance or accuracy on Mash sessions.
+
+## Completed comparison and decision
+
+The two development rounds used exactly twenty-four configurations: the twelve
+registered settings on raw projections, then the same twelve on the fixed
+0.7-message / 0.3-eligible-parent normalized context view. No reference labels
+affect preparation or clustering. Best development macro F1 by family changed
+from 0.579 to 0.717 (leader), 0.423 to 0.588 (BIRCH), 0.578 to 0.741
+(average-link), and 0.497 to 0.560 (HDBSCAN). Context is promising, but these
+development improvements do not establish held-out acceptance.
+
+Freeze one setting per family by development F1 before scoring held-out data:
+leader cosine 0.35; BIRCH radius 0.60 / cosine 0.35; average-link cosine 0.35;
+HDBSCAN minimum size 3 / cosine 0.50. All selected the context view.
+Frozen-settings SHA-256:
+`fad6a71e3a34d8b788c81294c90869dc0eade38de652ffb01cec9e3f9bafdbb0`.
+Held-out data were scored once; no settings were changed afterward.
+
+| Held-out method | Macro precision | Macro recall | Macro F1 | Reviewed substantive coverage | Primary-only F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Leader + context | 0.719 | 0.842 | 0.736 | 0.945 | 0.672 |
+| BIRCH + context | 0.842 | 0.749 | 0.763 | 0.963 | 0.673 |
+| Average-link + context | 0.839 | 0.815 | 0.774 | 0.963 | 0.731 |
+| HDBSCAN + context | 0.687 | 0.573 | 0.618 | 0.862 | 0.531 |
+| Whole thread | 0.543 | 1.000 | 0.698 | 1.000 | 0.698 |
+| Singletons | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+| Chronological windows of eight | 0.839 | 0.741 | 0.769 | 0.991 | 0.769 |
+
+Scores are per-thread macro averages; F1 is not computed from macro precision
+and recall. Every method fails the precision gate, and the strongest method's
+0.005 F1 improvement over windows falls well short of the required 0.10.
+Provider F1 for average-link is 0.786 Claude / 0.762 Codex, versus windows'
+0.703 / 0.835. HDBSCAN's 0.376 Claude / 0.859 Codex exposes a large provider
+gap. These are twelve held-out threads, not population estimates.
+
+Average-link recovers 11/13 positive returning-subject pairs versus windows'
+3/13; short-reply recall is 10/12 for both, and mixed-message recall is 7/10
+versus 3/10. All held-out case-tagged pairs are positives. Their apparent perfect
+precision has no negative controls and **cannot pass the case precision gates**.
+Overall negative judgments do exist, but this case-specific evidence gap remains.
+
+A fixed-hash selection reviewed up to three retained average-link groups from
+each of four held-out threads: eleven groups total, representative plus the two
+farthest primary members. Nine were coherent (81.8%, below 90%). Failures mixed
+unrelated Git work under generic progress language, and mixed a stopped-session
+investigation with codebase-index health under generic session vocabulary.
+This small agent-authored audit is diagnostic; it does not verify every group.
+It supports prioritizing subject/context representation, rather than claiming
+that switching clustering families alone will fix the problem.
+
+One reporting correction was made without rerunning or retuning candidates:
+chronological baselines now always deduplicate raw projections independently of
+the context view. The round-two development artifact used context-dependent
+deduplication for its window baseline (0.721); use round one's raw baseline
+(0.722) for the development comparison. The held-out baseline already uses
+the corrected raw boundaries. Algorithm scores were unaffected.
+
+## Measured cost and update behavior
+
+Each method ran in its own Python process on Xenia, with numerical thread counts
+bounded to one. Ten warm rebuilds estimate the sample p95; three controlled
+append/edit/delete rebuilds measure update cost. Source preparation, inference,
+transport, cache lookup and cold imports are excluded from grouping time.
+Imports cost 0.84–1.15 seconds separately. Peak RSS includes the interpreter,
+libraries, fixture and prepared update variants.
+
+The actual development thread contains 3,775 prepared context units. The 1,000
+case is its prefix. The 5,000 case cycles its vectors with deterministic tiny
+jitter; it is a synthetic scaling fixture, not real-data quality evidence.
+
+| Method | 1,000 p95 / peak MiB | Real 3,775 p95 / peak MiB | Synthetic 5,000 p95 / peak MiB |
+| --- | ---: | ---: | ---: |
+| Leader | 0.065 s / 163 | 0.292 s / 220 | 0.389 s / 228 |
+| BIRCH | 0.192 s / 171 | 1.650 s / 255 | 2.712 s / 288 |
+| Average-link | 0.077 s / 174 | 1.678 s / 327 | 2.476 s / 431 |
+| HDBSCAN | 0.049 s / 187 | 2.525 s / 493 | 4.047 s / 700 |
+
+All meet the grouping latency gates; HDBSCAN exceeds the 512 MiB memory gate
+at 5,000. These small-sample Python measurements are not Rust production SLAs.
+For the real thread, median append/edit/delete rebuild times respectively are
+0.246/0.242/0.249 s (leader), 1.494/1.525/1.425 s (BIRCH),
+1.351/1.325/1.328 s (average-link), and 2.662/2.147/2.301 s (HDBSCAN).
+All repeated result hashes matched within each operation.
+
+Single observed native insertions at 1,000/3,775 units cost 0.044/0.093 ms for
+leader and 0.162/5.323 ms for BIRCH. They exclude reassignment and publication;
+they are neither p95 estimates nor complete update costs. Native edit/deletion
+support is not claimed. Contract tests cover source identity preservation,
+edited-parent context propagation, deletion abstention and serialized restart.
+Controlled timing changes prepared units; it does not measure provider ingestion.
+
+Decision: **reject this tested pipeline for production promotion; stop this
+algorithm search at its registered budget**. Context-aware average-link is the
+best research candidate, and on-request affected-thread rebuilding is affordable
+in this fixture. No cache or production clustering feature has been implemented.
+GRINCH remains a possible follow-up, not a measured winner or an immediate need:
+offline latency did not fail. A separate next study should improve dialogue units
+and context representation, add case-specific negative controls and independent
+review, and use fresh held-out data rather than tune on these failures.
+
+## Reproduction evidence
+
+Code and dependency pins live in `experiments/message_clustering/`. Private
+artifacts live under `/home/james/scratch/mash-artifacts/message-clustering-20261005`
+(directory 0700, data files 0600). Histories, vectors and judgments are not in Git.
+The held-out command requires frozen settings matching the corpus/reference hashes.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Development round 1 | `5a18feb4401c42c690d2a0807bee29658fb554f7d855f34d3d9a30315592bbfe` |
+| Development round 2 | `d1f1e3de03a83c1aaab4d1b7d30c5f4872c7e32cb9ee9ec9765e555c4dbddd4e` |
+| Held-out report | `8ebc10a38593be7640e971ebbb2afa5518fdcfa02103cb364847dd7406eca00c` |
+| Timing fixture | `af3ef2fd428171d9977ffac25ab72eac59a9a42ed0fced3f2bae1bd804658966` |
+| Group audit | `8ac69ab9ed6921608db9c6beae9bd84653cc75a87b598a9acef0d174be49f959` |
+| Native insertion observations | `60dd2aabc06a58fa3e824abe61a4fed277ef447a5f814ccf53553edb5f0f767f` |
+
+Limitations: only Claude Code/Codex, sparse agent-authored pair references,
+head/tail review of long messages, unverified structural support proxy, few
+audited groups, no case-specific negative controls, and one machine for timing.
+These limitations prevent a broad accuracy claim and strengthen the decision
+against production promotion.
+
+Validation: all 21 experiment tests and all nine existing Python tests pass;
+Ruff lint/format and ty pass for the experiment. An additional broad check of
+unchanged `tools/` found existing lint/format failures and nine type diagnostics
+in older benchmark scripts; those files were not changed. Rust checks and
+deployment were not run because production code is unaffected.

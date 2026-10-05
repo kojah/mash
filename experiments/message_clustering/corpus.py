@@ -5,11 +5,11 @@ import os
 import sqlite3
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
 import click
 import orjson
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from clustering import decode_stored_vector
 
@@ -54,6 +54,14 @@ class Message(Record):
     dimensions: int = Field(gt=0)
     norm: float = Field(gt=0, allow_inf_nan=False)
     vector_hex: str
+
+    @model_validator(mode="after")
+    def valid_parent(self) -> Self:
+        if self.context_parent is not None and (
+            self.context_parent < -1 or self.context_parent >= self.ordinal
+        ):
+            raise ValueError("parent must be an earlier ordinal or explicit root")
+        return self
 
 
 class Thread(Record):
