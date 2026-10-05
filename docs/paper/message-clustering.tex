@@ -213,6 +213,40 @@ outputs. Preserve original source identities and evaluate the same judged messag
 pairs, not a denominator changed by the new unit definition. This proposal has
 no measurements yet and does not reopen the completed fifteen-setting screen.
 
+\subsection{Proposed interaction artifact and boundaries}
+The user clarified that interaction embeddings are an additional gold artifact
+alongside message embeddings, with independent recipe/generation tracking; they
+do not replace message embeddings. Both derive from the same canonical silver
+history and preserve links to original message identities and text spans.
+
+An interaction starts at a substantive user prompt. Consecutive user messages
+before an assistant response form a prompt bundle. The associated assistant
+responses end at the next substantive user prompt. Explicit parent/branch links
+take precedence over chronological adjacency; threads and forks never merge.
+Known provider instruction envelopes and tool records are excluded from embedding
+text. Progress/reasoning exclusion must use explicit provider metadata when
+available, rather than silently guessing from prose. An unanswered prompt is an
+open interaction, refreshed as answers arrive. Short referential follow-ups keep
+their own interaction; a separate, bounded previous-interaction context view is
+an experimental alternative, not a reason to merge the entire conversation.
+
+The initial embedding recipe jointly encodes prompt and answer text when they
+fit the configured model's tokenizer budget. Longer answers split on paragraph
+or heading boundaries, then tokens with a fixed small overlap, and each passage
+receives bounded prompt context. Long prompts also retain prompt passages;
+context selection/truncation rules must be fixed and measured explicitly.
+An interaction can therefore have several passage vectors, preserving multiple
+subjects rather than forcing a single averaged vector. Passage membership maps
+back to the interaction and original source spans; clustering uses passages and
+aggregates memberships without letting passage multiplicity alone increase
+interaction support. Model/tokenizer, source revision and segmentation recipe
+form cache keys. Only changed interactions need re-embedding, with bounded
+dependent-context invalidation where applicable. These are proposed semantics;
+no extraction, artifact storage or inference measurements are implemented yet.
+Evaluation must include a turn-bundling-only baseline and report cross-interaction
+pair quality separately: automatically joining a question to its answer must not
+be mistaken for improved discovery of relationships across interactions.
+
 \section{Limitations and reproducibility}
 Only two providers, sparse agent-authored excerpt judgments, a structural
 support proxy, and one timing host limit interpretation. Human independent
