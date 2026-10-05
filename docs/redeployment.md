@@ -1104,3 +1104,55 @@ on subsequent trials. These measurements do not establish fleet tail latency.
 Validation passed 620 standard tests, strict Clippy, formatting and doctests,
 and three disposable Qdrant publication contracts. Private operation/resource
 captures are under `/home/james/scratch/mash-artifacts/native-staging-20261005`.
+
+### Current fleet deployment and first-search checks (2026-10-05)
+
+Release `e6216d9` was built once per platform and deployed to the shared API,
+Xenia, the dev MacBook and the personal MacBook. The optimized Linux build took
+70 seconds; the ARM64 Cargo build took 31.62 seconds, excluding transfer and
+installation. API authenticated readiness and unchanged publication identities
+passed. Ordinary installation did not ingest provider files or republish data.
+The personal MacBook required an explicit stored-silver gold repair after its
+schema-42 installation: 185 ms, zero scanned files and zero model inferences.
+Its 749 threads, 238,257 messages and 32,606 stored embeddings were retained.
+All three nodes subsequently reported their local gold artifacts ready.
+
+Fresh MCP sessions advertised `export_silver` and `import_silver` on every node.
+Three alternating local/combined searches for `cbioportal` per node measured
+the following core elapsed times. These exclude MCP initialization and SSH
+transport; the first combined call followed a local call that loaded models.
+They are repeated-query observations, not fleet p95 or fully cold-machine tests.
+
+| Node | Local trials (ms) | Combined trials (ms) |
+| --- | --- | --- |
+| Xenia | 1,297 / 678 / 771 | 5,861 / 1,067 / 1,006 |
+| Dev MacBook | 701 / 303 / 275 | 5,351 / 2,426 / 2,335 |
+| Personal MacBook | 1,128 / 433 / 441 | 1,960 / 1,798 / 1,799 |
+
+All 18 calls returned successfully, but the dev MacBook's first combined call
+fell back to local results. Its later combined calls completed both sources.
+Native phase tracing isolates the two slow first combined calls to Qdrant dense
+request send/wait: 4.87 seconds for Xenia and 4.59 seconds for the dev MacBook.
+Encoding, response reading and decoding took milliseconds. Subsequent dense
+queries took approximately 74–137 ms. Dense retrieval remained HNSW; no search
+budget, collection policy or live backend configuration was changed.
+
+A separate read-only Xenia MCP probe ran `deployment`, `sqlite` and `cbioportal`
+with Codex and Claude Code filters, repeating each combination immediately.
+All 12 calls completed without fallback, in 877–1,968 ms; shared candidate
+retrieval took 102–580 ms. Process-counter differences around each complete
+search showed 150–1,070 Qdrant major faults and 0.6–4.4 MB of disk reads on every
+first combination, and zero major faults/disk reads on every repeat. Counters
+include both candidate and context work and any concurrent native work; these
+are not isolated dense-query I/O measurements. This supports cache misses as
+a contributor but does not explain the earlier multi-second tails, which did
+not recur in the counter-instrumented probe. No cache eviction was forced.
+
+Two separately attempted ignored recovery contracts failed on native startup
+deadlines: an empty collection creation took 55.7 seconds in one fixture and
+Docker startup exceeded 30 seconds in the other. Their owned containers were
+removed and absence verified before the search probes. Neither recovery check
+is counted as passing for this deployment. Cold shared search, native staging
+tails and full initial-ingestion/fleet acceptance remain open. Private build,
+deployment, MCP, native-counter and failure captures are under
+`/home/james/scratch/mash-artifacts/perf-fleet-20261005`.
