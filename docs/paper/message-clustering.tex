@@ -674,8 +674,15 @@ time. Completed external resource logs measure peak RSS for the full build and
 development scorer; an incomplete or unsuccessful command cannot satisfy the
 memory gate. The scorer also requires the unchanged raw view to reproduce its
 original confusion counts in both assignment modes.
-Temporal embedding smoothing, proposed subsequently, remains a separate queued
-ablation and does not change this registered input comparison.
+Temporal embedding smoothing, proposed subsequently, was registered separately
+and did not change this input comparison.
+
+The input-marker audit finds only four question/reply transport messages among
+4,098 development user-role messages, spanning two histories. Known injected
+task notifications, skills and repository instructions occur in canonical
+history but do not appear as prompted-turn inputs. This rarity cautions against
+attributing aggregate gains to transport cleanup. The lean condition also
+removes intermediate assistant segments, so the two changes are not causally isolated.
 
 \subsection{Bounded input/context follow-up: completed}
 All sixteen registered cells were scored on the 160 development histories.
@@ -734,14 +741,64 @@ is 12.76 ms. Full-process external peak RSS is 1,502,240 KiB for building and
 The private development and analysis artifacts have SHA256 prefixes
 \texttt{d95bb0cb317a} and \texttt{d2fa16653a41}; full checksums and commands
 are retained in the result documentation and scripts. The temporal smoothing
-proposal requires a separate prospective comparison, not a change to these gates.
+proposal was registered separately, preserving these gates.
 
-The input-marker audit finds only four question/reply transport messages among
-4,098 development user-role messages, spanning two histories. Known injected
-task notifications, skills and repository instructions occur in canonical
-history but do not appear as prompted-turn inputs. Thus transport cleanup alone
-is not a credible explanation for the aggregate deficit; its benefit and the
-loss from last-segment selection must be measured separately.
+\subsection{Bounded temporal embedding smoothing: completed}
+We separately register five settings after the context comparison, using its
+sole overall-eligible configuration as the fixed anchor: whole-input context,
+BIRCH radius .60, cutoff .75 and centroid memberships. For original normalized
+vectors $x_i$, eligible neighbors $N_i$ lie within $W$ prompted-turn positions
+and on a resolved ancestor/descendant chain. Siblings and unresolved branches
+are excluded. Both earlier and later turns may contribute:
+\[
+ w_{ij}=W+1-|i-j|,\quad
+ m_i=\operatorname{normalize}\!\left(\sum_{j\in N_i}w_{ij}x_j\right),\quad
+ x'_i=\operatorname{normalize}\!\left((1-\alpha)x_i+\alpha m_i\right).
+\]
+Missing neighbors or a mean norm at most $10^{-12}$ retain the original vector.
+All neighbors use original vectors, without iterative smoothing. This is a
+symmetric transformation of the currently visible thread, not causal streaming;
+new arrivals can invalidate older local representations. We evaluate zero
+smoothing and $\alpha\in\{.05,.10\}$ crossed with $W\in\{2,4\}$, retaining the
+previous overall and long-history gates. No additional inference is required.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrrrrrr}
+\toprule
+$\alpha/W$ & P & R & F1 & Long F1 & Near FPR & Distant R \\
+\midrule
+0/0 & .887 & .724 & .798 & .679 & .420 & .326 \\
+.05/2 & .877 & .749 & .808 & .698 & .450 & .400 \\
+.05/4 & .869 & .763 & .813 & .717 & .500 & .430 \\
+.10/2 & .854 & .788 & .820 & .728 & .520 & .504 \\
+.10/4 & .851 & .807 & .829 & .732 & .590 & .496 \\
+\bottomrule
+\end{tabular}
+\caption{Complete temporal-smoothing comparison on development histories.
+Near FPR uses 100 unrelated pairs within four turn positions; distant recall
+uses 135 related pairs more than four positions apart, regardless of $W$.}
+\end{table}
+
+Smoothing improves aggregate F1 but none passes every gate. At .10/window-4,
+overall TP=498, FP=87 and FN=119; long-history precision is .833 and recall .653
+(TP=205, FP=41, FN=109), still below the respective .85/.70 floors.
+The F1 gain over the unchanged anchor is .031, with paired thread-bootstrap
+95\% gain interval .002--.060. This interval is exploratory and unadjusted
+for selection and repeated development reuse. Confirmation remains unopened.
+Nearby unrelated false positives increase from 42/100 to 59/100, while distant
+related matches increase from 44/135 to 67/135. Refitting changes partitions
+and centroid memberships, so bounded attraction can affect distant links too.
+At the best aggregate-F1 setting, p95 cosine displacement is only .00338, yet
+12,616 co-membership links change across all turns, including unjudged pairs.
+We compare relational links rather than arbitrary cluster identifiers and do
+not assume that unjudged changes are improvements.
+
+Complete scoring takes 7.71 seconds, with peak RSS 1,049,016 KiB. Maximum p95
+time for smoothing and clustering is 14.67 ms, including ancestry construction.
+Performance budgets pass; base embedding costs are unchanged. The private
+development result SHA256 starts \texttt{d4ab356b33f2}; the prospective protocol
+starts \texttt{7463c0311fa6}. No further weights/windows are tuned after this grid.
 
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
