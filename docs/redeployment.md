@@ -735,3 +735,22 @@ it selected the smaller role index and caused scattered message-table reads,
 increasing dense retrieval from 3.0–3.2 to 5.2–5.5 seconds. The final metadata
 index avoids those reads. Private captures, including the rejected comparison,
 are under `/home/james/scratch/mash-artifacts/query-matrix-20261005`.
+
+Release `30f288b` passed 605 standard tests, the final focused migration/filter
+regressions, strict Clippy, formatting and doctests. A further ten-case private
+old/new MCP comparison preserved complete result arrays in every case. The
+Linux release took 45.84 seconds to build; the native ARM64 build took 30.92
+seconds. Both reachable nodes were installed atomically, then explicitly migrated
+using stored-silver local gold maintenance. Xenia took 176 ms and the development
+MacBook 1,010 ms; both scanned zero provider files and ran zero model inferences.
+Local/shared status remained hybrid and ready.
+
+After deployment, another 60 real MCP requests covered ten query types and all
+three scopes across both nodes. Every request succeeded without shared fallback
+or incomplete context. The provider/time local query took 264 ms on Xenia and
+24 ms on the development MacBook (which returned no local matches); these warm
+smoke timings are not a matched fleet speedup or p95 estimate. The shared API and
+Qdrant were not restarted or reindexed. The personal MacBook remains offline
+(last seen 06:30 UTC), with its ARM64 artifact staged for the same explicit
+migration when connectivity returns. Existing stdio sessions still require a
+client reconnect to load the replacement binary.
