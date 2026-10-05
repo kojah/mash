@@ -10,6 +10,11 @@ Existing MCP processes keep their running binary; reconnect clients to use the
 installed release. Restart the shared API separately using its existing server
 configuration and credentials, preserving Qdrant data.
 
+The local and remote install helpers skip binary replacement when the executable
+already matches the artifact (byte comparison locally, SHA-256 remotely). Remote
+installs check before transferring the artifact. Builds and readiness checks still
+run; an identical executable does not certify index readiness or source policy.
+
 ## Decide whether an index refresh is required
 
 Run `mash status` with the node's normal configuration/database/model paths.
@@ -184,3 +189,51 @@ version filter also grow with thread count. Sustained backlog, peak memory and
 full-size node latency need separate measurements. Private captures and the
 executable harness are in
 `/home/james/scratch/mash-artifacts/incremental-publication-20261004`.
+
+## Full-node publication overhead
+
+An isolated copy of the personal node contains 749 threads, 238,257 messages
+and 32,606 embeddings. Replaying its unchanged retained gold took 31.72 seconds.
+This sends the complete retained embedding stream and exercises server-side
+thread reuse; it is not an ordinary watcher update or an inference benchmark.
+
+Small canonical snapshots now use checksum-verified memory buffers: at most
+1 MiB per part and 64 MiB in aggregate per receive operation. Larger parts and
+overflow keep their existing disk spools. Decoding remains on blocking workers;
+the stored representation, checksums and publication visibility do not change.
+The first two unchanged replay trials with this receive path took 16.89 and
+15.96 seconds, compared with the 31.72-second baseline.
+
+Changing a single vector forced replacement of exactly one thread in each trial.
+A small thread (87,997 canonical bytes) took 31.28 seconds before and 35.17 seconds
+with memory receives. A large thread (54,590,067 bytes) took 53.85 and 73.85 seconds,
+respectively. The latter included 46.2 seconds of optimizer drain. These results
+do not establish an incremental latency improvement: backend waits and segment
+layout varied on the busy host, and large updates still replace whole threads.
+
+Shared HTTP responses negotiate gzip at the fastest compression level. Old
+clients receive plain JSON; current shared clients decompress into the existing
+typed, admitted decoder. Internal Qdrant reads stay uncompressed. Raw snapshot
+buffers are transient rather than a cache retained between requests.
+
+Five alternating real-network search pairs from the development MacBook returned
+byte-identical decoded responses. Gzip reduced each response from 932,903 to
+343,301 bytes (63% fewer bytes). Excluding the first warm-up pair, median candidate
+request time was 1.295 seconds with plain JSON and 1.091 seconds with gzip. These
+are HTTP candidate timings, not complete CLI/MCP search or a fleet p95.
+
+An 8 MiB/1,024-point staging experiment reduced completed point-write requests
+for the same large thread from 61 to 33, but acknowledged publication took
+85.13 seconds versus 73.85 seconds with the existing 2 MiB/512-point limits.
+Segment layout and host load varied. The larger limits were rejected because
+this trial did not show a latency improvement; the existing limits are retained.
+
+The Mac helper now uses a stable, checksum-synchronized source directory while
+still running Cargo for every build. Its first validation run took 48.31 seconds
+(32.33 seconds in Cargo); the identical-source repeat took 10.74 seconds
+(0.42 seconds in Cargo), reusing the matching downloaded binary. This demonstrates
+warm reuse, not a comparison against the old helper on different commits. Builds
+sharing a remote root must be serialized.
+
+Private corpus copies, requests, traces and validation logs are retained under
+`/home/james/scratch/mash-artifacts/publication-throughput-20261005`.

@@ -108,6 +108,7 @@ impl Endpoint {
 // another node's credentials in a cached client.
 static HTTP_CLIENT: LazyLock<Result<reqwest::Client, reqwest::Error>> = LazyLock::new(|| {
     reqwest::Client::builder()
+        .gzip(true)
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(5))
         .timeout(super::BULK_TIMEOUT)

@@ -120,15 +120,45 @@ async fn complete_large_state_matches_typed_records_across_header_and_chunked_mo
         .route(
             "/chunked",
             get(move || async { Response::new(chunked(bytes)) }),
+        )
+        .layer(
+            tower_http::compression::CompressionLayer::new()
+                .quality(tower_http::CompressionLevel::Fastest),
         );
     let service = serve(router).await;
-    for (path, endpoint) in [
-        ("fixed", Endpoint::State),
-        ("fixed", Endpoint::Freshness),
-        ("chunked", Endpoint::Freshness),
+    for (path, endpoint, gzip) in [
+        ("fixed", Endpoint::State, false),
+        ("fixed", Endpoint::Freshness, false),
+        ("chunked", Endpoint::Freshness, false),
+        ("fixed", Endpoint::State, true),
+        ("fixed", Endpoint::Freshness, true),
+        ("chunked", Endpoint::Freshness, true),
     ] {
+        // Inspect negotiation without automatic decompression, then decode
+        // through the real pooled shared client (or an older plain client).
+        let wire = reqwest::Client::builder()
+            .no_gzip()
+            .build()
+            .unwrap()
+            .get(format!("{}/{path}", service.url))
+            .header("accept-encoding", if gzip { "gzip" } else { "identity" })
+            .send()
+            .await
+            .unwrap();
+        if gzip {
+            assert_eq!(wire.headers()["content-encoding"], "gzip");
+            assert!(wire.bytes().await.unwrap().len() < PREVIEW_BYTES);
+        } else {
+            assert!(wire.headers().get("content-encoding").is_none());
+            assert!(wire.bytes().await.unwrap().len() > PREVIEW_BYTES);
+        }
+        let http = if gzip {
+            crate::shared::client::HTTP_CLIENT.as_ref().unwrap().clone()
+        } else {
+            reqwest::Client::builder().no_gzip().build().unwrap()
+        };
         let actual = response_admitted::<NodeState>(
-            reqwest::Client::new().get(format!("{}/{path}", service.url)),
+            http.get(format!("{}/{path}", service.url)),
             endpoint,
             &CAPACITY,
         )

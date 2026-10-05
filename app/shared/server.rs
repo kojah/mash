@@ -168,6 +168,10 @@ fn router(app: App) -> Router {
             ApiError(StatusCode::NOT_FOUND, AppError::usage("unknown API route"))
         })
         .layer(DefaultBodyLimit::max(64 * 1024))
+        .layer(
+            tower_http::compression::CompressionLayer::new()
+                .quality(tower_http::CompressionLevel::Fastest),
+        )
         .layer(middleware::from_fn_with_state(app.clone(), authorize))
         .with_state(app)
 }

@@ -431,6 +431,9 @@ impl Client {
             headers.insert("api-key", value);
         }
         let http = reqwest::Client::builder()
+            // Internal database reads usually stay on the same host. Keep
+            // their large snapshots free of compression CPU overhead.
+            .no_gzip()
             .default_headers(headers)
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(5))

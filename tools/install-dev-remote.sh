@@ -5,6 +5,10 @@ host=$1 artifact=$2 destination=$3
 [[ "$host" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && "$destination" =~ ^/[A-Za-z0-9/._-]+$ ]]
 digest=$(sha256sum "$artifact")
 digest=${digest%% *}
+if ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
+    "test -f $destination && test -x $destination && test \$(shasum -a 256 $destination | cut -d ' ' -f 1) = $digest"; then
+    exit 0
+fi
 incoming="$destination.incoming-$digest"
 ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "mkdir -p $(dirname "$destination")"
 scp -o BatchMode=yes -o ConnectTimeout=10 "$artifact" "$host:$incoming"

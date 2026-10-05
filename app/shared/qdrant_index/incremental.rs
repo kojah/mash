@@ -138,8 +138,17 @@ impl Store {
         }
         let mut cache = BTreeMap::new();
         let mut completed = Vec::new();
+        // Keep small thread snapshots off disk without retaining a whole node
+        // in RAM. Larger snapshots and overflow remain checksummed file spools.
+        let mut memory_remaining = 64 * 1024 * 1024;
         for (version, manifest) in parts {
-            let mut receiver = snapshot::payload::Receiver::new(manifest.bytes).await?;
+            let mut receiver =
+                if manifest.bytes <= 1024 * 1024 && manifest.bytes <= memory_remaining {
+                    memory_remaining -= manifest.bytes;
+                    snapshot::payload::Receiver::in_memory(manifest.bytes)?
+                } else {
+                    snapshot::payload::Receiver::new(manifest.bytes).await?
+                };
             for chunk in 0..manifest.chunks {
                 if cache.is_empty() {
                     let mut batch = Vec::new();

@@ -10,6 +10,9 @@ fi
 artifact=$1
 destination=$2
 [[ -f "$artifact" && -x "$artifact" ]]
+if [[ -f "$destination" && -x "$destination" ]] && cmp -s -- "$artifact" "$destination"; then
+    exit 0
+fi
 mkdir -p -- "$(dirname -- "$destination")"
 incoming=$(mktemp "${destination}.incoming.XXXXXX")
 trap 'rm -f -- "$incoming"' EXIT

@@ -41,6 +41,11 @@ dependency scheduler.
 
 `tools/build-dev-macos.sh` freezes `git archive HEAD`, builds once on the configured
 native Mac using its persistent target, and retrieves one Apple Silicon artifact.
+It synchronizes that frozen archive into its owned `build-source` directory using
+checksums, retaining unchanged source mtimes and a stable Cargo source path. Cargo
+still checks the build inputs on every invocation. An existing local artifact
+with the same SHA-256 avoids another download. Serialize builds sharing this root;
+the directory is owned by the deployment helper, including removal of old files.
 `tools/install-dev-remote.sh` verifies its checksum and atomically replaces the
 installed binary, retaining the previous binary. Both scripts restrict remote
 host/path syntax before constructing SSH commands. Their SSH access is deployment
