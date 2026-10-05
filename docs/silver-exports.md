@@ -102,3 +102,46 @@ They can contain sensitive text and binary attachments. On Unix, directories
 are created with mode 0700 and files with mode 0600; Windows inherits the parent
 directory's access controls. Checksums detect corruption, not malicious
 replacement. Encryption and trusted storage are handled outside this format.
+
+## Real-data verification (2026-10-05)
+
+Release `bc0dd6d` corrected attachment collection for Claude branch evidence.
+Canonical message rows store typed attachment metadata; native Claude rows
+store that metadata inside typed `Source::Retained` records. Export decodes
+each representation separately, validates it and deduplicates files by digest.
+Unresolved provider file/base64 sources in stored branch evidence are rejected.
+The regression fixtures now match the production writer, including a retained
+file present only in a nonvisible branch. Validation passed 632 standard tests,
+11 final export/MCP tests, strict Clippy, formatting and doctests. The fixed
+binary was installed on Xenia and both MacBooks.
+
+A real personal-Mac export/import preserved 749 threads, 238,257 messages,
+31 retained files (19,066,596 bytes) and the complete silver certificate. The
+receiver was a separate database on the same Mac with an empty provider
+configuration and local-only indexing. Source counts, stored-vector counts and
+the source silver certificate were unchanged afterward. This exercises the
+archive workflow on real data; it is not a cross-machine transfer measurement.
+
+| Operation | Elapsed time |
+| --- | --- |
+| Export silver and attachments | 14.96 seconds |
+| Import into a fresh database | 13.94 seconds |
+| Build local gold from imported silver | 226.03 seconds |
+
+The gold build ran on an Apple M4 with 10 logical CPUs and 24 GiB RAM, on battery
+with Low Power Mode enabled. It scanned zero provider files and performed no
+bronze ingestion or shared publication. It produced 32,606 vectors through
+25,650 model inferences and 6,956 within-build vector reuses. Embedding work
+took 224.16 seconds, including model initialization; lexical refresh took
+793 ms. Observed peak process RSS was 1.42 GiB, and macOS reported a peak memory
+footprint of 1.94 GiB. These measure fresh local silver-to-gold projection,
+rather than the complete provider-to-shared-index pipeline.
+
+The imported database reported ready hybrid search and returned three threads
+for `cbioportal`. A direct search bypassing the worker took 2,511 ms in the core.
+Three subsequent default CLI calls measured 1.34, 0.59 and 0.60 seconds of CLI
+wall time, with the worker retained between calls. These are repeated-query
+observations on this archive, not a latency distribution or cross-node result.
+Private logs, validation failures and measurements are under
+`/home/james/scratch/mash-artifacts/native-accounting-20261005`; the private Mac
+archive remains under `~/.local/share/mash/perf-initial-gold-fixed-20261005`.
