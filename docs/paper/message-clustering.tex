@@ -922,6 +922,34 @@ gates pass, quality gates fail. Private development/analysis SHA256 prefixes
 are \texttt{50d7ef826e4d} and \texttt{b84c7ff03af7}. No boundary parameters are
 retuned and no algorithm is promoted from this screen.
 
+\subsection{Frozen two-view ensemble}
+After the structural results, we prospectively register four cells: pooled
+whole-context BIRCH (A), heading-aware structural BIRCH (B), their namespaced
+union, and supported intersections of their memberships. Both parents use
+radius .60/cutoff .75 with centroid memberships. They are chosen from published
+aggregate results before examining error overlap. Union does not merge
+overlapping clusters transitively; intersection requires two distinct turns.
+The same 160 development histories and gates apply, with no new inference.
+
+Union achieves P=.881, R=.801, F1=.839 overall (TP=494, FP=67, FN=123), but
+long-history P=.84959, R=.666, F1=.746 (TP=209, FP=37, FN=105) fails both
+precision and recall floors. Rounding precision to .850 must not imply a pass.
+Intersection achieves .932/.535/.680 overall and .924/.389/.547 long.
+Union's paired thread-bootstrap F1 interval is .808--.869 and gain over the
+chronological-four baseline is .126--.208. Nearby unrelated FPR is .500/.200
+and distant related recall .378/.156 for union/intersection. Complementarity
+helps overall performance but does not solve the long-history requirement.
+
+Immutable parent predictions reproduce their counts, and synthetic tests
+verify pair-operator/membership equivalence and distinct view namespaces.
+Because no cell is eligible, combined full-corpus memberships are not
+recomputed and confirmation remains sealed. Scoring takes 4.86 seconds with
+peak RSS 1,056,764 KiB. Summed historical parent preparation/fit p95 is .130
+seconds/history, not measured end-to-end ensemble construction. Protocol and
+development SHA256 prefixes are \texttt{991ad49eda8e} and
+\texttt{1dc8a1985e3f}. This closes the registered heuristic screen; further work
+must address representation quality rather than retune these combinations.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
