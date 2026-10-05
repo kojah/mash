@@ -118,3 +118,37 @@ env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 No candidate passed development screening on the expanded cohort; reserved data
 remain unjudged/unscored. The living LaTeX paper is
 [`docs/paper/message-clustering.tex`](../../docs/paper/message-clustering.tex).
+
+## Turn embeddings and repeated algorithm screen
+
+See [turn-embedding-experiment.md](../../docs/turn-embedding-experiment.md).
+`turns.py` extracts prompt bundles and answer segments, ending a turn at the next
+user reply after any response. Branch boundaries take precedence. `local_encoder.py`
+loads installed quantized MiniLM assets with explicit token limits; it cannot
+download models. `turn_artifact.py` stores source-linked recipes separately from
+message embeddings in private SQLite, with transactional publication and
+content-addressed vector reuse. Production schema and search behavior are unchanged.
+
+```bash
+env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  uv run python run_turns.py --corpus /path/to/new-corpus.json \
+  --references /path/to/new-labels.toml --snapshot /path/to/installed/snapshot \
+  --output-dir /home/james/scratch/mash-artifacts/new-turn-run
+```
+
+Runs only development: four representations at three average-link cuts, then
+the fixed 27 algorithm settings on the representation selected by cross-turn
+macro F1. Report turn-bundling, stored-message and same-runtime message controls,
+original-source scores, input coverage, truncation and build/reuse costs.
+Artifacts and reports stay private. Completed reports cannot be overwritten;
+interrupted builds can reuse vectors without replacing a published recipe until
+rebuilding succeeds. Pooled control vectors are rebuilt from the unchanged
+corpus rather than stored as independently inferred cache entries.
+
+Use `summarize_turns.py --report ... --corpus ... --references ... --output ...`
+for original context/window baselines and micro metrics including negative-only
+threads. `fit(..., bundle_overlay=True)` exposes the separate post-hoc diagnostic
+that adds within-turn bundles to the selected clusters. It is never used for
+registered candidate selection. The completed comparison found modest combined
+view improvement but insufficient precision/baseline gain; reserved data stayed
+unjudged and unscored. See the protocol/results document for all limitations.

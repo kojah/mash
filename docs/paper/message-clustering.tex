@@ -3,19 +3,22 @@
 \usepackage{booktabs}
 \usepackage{amsmath}
 \usepackage[hidelinks]{hyperref}
-\title{Clustering Related Messages in LLM Chat Sessions for Guided Agent Search}
+\setlength{\emergencystretch}{2em}
+\title{Clustering Messages and Turns in LLM Chat Sessions for Guided Agent Search}
 \author{Mash project --- experimental working draft}
 \date{October 5, 2026}
 \begin{document}
 \maketitle
 \begin{abstract}
 We investigate flat, overlapping groups of related messages within agent chat
-threads, using existing embeddings without generative model inference. A first
+threads, using local bi-encoder embeddings without generative model inference. A first
 bounded comparison of four clustering families on 24 real threads found that
 context-aware average linkage recovered distant returning subjects but did not
 satisfy preregistered quality gates. We document this negative result and a
 separate expanded screen of five additional families, none of which passed its
-development screen. This is a living research
+development screen. A turn-representation follow-up gives a modest exploratory
+gain when bundles are combined with clusters, but fails precision and baseline-gain
+requirements. This is a living research
 record, not a completed publication: references are sparse and agent-authored,
 and planned experiments are explicitly distinguished from measurements.
 \end{abstract}
@@ -200,29 +203,29 @@ implemented or evaluated in this batch. Online insertion is not required:
 cached on-request affected-thread recomputation is eligible, but no such cache
 or production clustering feature has been implemented.
 
-\section{Next representation experiment: proposed, not measured}
+\section{Turn embedding experiment: setup}
 The user proposed clustering prompt/answer pairs rather than individual messages.
 Question and answer may be complementary, particularly for short referential
 turns, but long answers may cover multiple subjects. Compare prompt-only units,
 jointly embedded prompt/answer text, and prompt-conditioned bounded answer
 passages against the existing message pipeline. Pooled existing vectors provide
 a separate cheap control; they are not equivalent to jointly embedding text.
-Token limits and truncation, multiple assistant messages, tool/progress filtering,
-explicit parent boundaries and active incomplete turns must be specified before
-outputs. Preserve original source identities and evaluate the same judged message
-pairs, not a denominator changed by the new unit definition. This proposal has
-no measurements yet and does not reopen the completed fifteen-setting screen.
+We froze token limits, extraction, support and selection rules before outputs in
+\path{docs/turn-embedding-experiment.md}. Preserve original source identities and
+evaluate the same judged message pairs, not a denominator changed by the unit
+definition. This follow-up retries existing algorithms on a changed representation;
+it does not alter results of the completed message-only screen.
 
-\subsection{Proposed turn artifact and boundaries}
+\subsection{Experimental turn artifact and boundaries}
 Here a turn means a user prompt bundle plus its associated assistant responses.
 The user clarified that turn embeddings are an additional gold artifact
 alongside message embeddings, with independent recipe/generation tracking; they
 do not replace message embeddings. Both derive from the same canonical silver
 history and preserve links to original message identities and text spans.
 
-A turn starts at a substantive user prompt. Consecutive user messages
+A turn starts at a visible eligible user prompt. Consecutive user messages
 before an assistant response form a prompt bundle. The associated assistant
-responses end at the next substantive user prompt. Explicit parent/branch links
+responses end at the next user reply. Explicit parent/branch links
 take precedence over chronological adjacency; threads and forks never merge.
 Known provider instruction envelopes and tool records are excluded from embedding
 text. Progress/reasoning exclusion must use explicit provider metadata when
@@ -231,22 +234,150 @@ open turn, refreshed as answers arrive. Short referential follow-ups keep
 their own turn; a separate, bounded previous-turn context view is
 an experimental alternative, not a reason to merge the entire conversation.
 
-The initial embedding recipe jointly encodes prompt and answer text when they
-fit the configured model's tokenizer budget. Longer answers split on paragraph
-or heading boundaries, then tokens with a fixed small overlap, and each passage
-receives bounded prompt context. Long prompts also retain prompt passages;
-context selection/truncation rules must be fixed and measured explicitly.
+We compare four recipes: full prompt windows (assistant text for orphans),
+one concatenated prompt/answer input with reported truncation, complete
+prompt-conditioned answer windows, and normalized equal-weight means of existing
+message vectors. Windows use token offsets, at most 512 tokens including specials,
+32-token overlap, and at most 96 prompt tokens as answer context. Re-tokenization
+can increase counts when a window cuts inside a WordPiece word; validate actual
+inputs and shorten before inference. Answer windows leave four additional tokens
+of boundary headroom. Paragraph/heading segmentation is not used in this batch.
 A turn can therefore have several passage vectors, preserving multiple
 subjects rather than forcing a single averaged vector. Passage membership maps
 back to the turn and original source spans; clustering uses passages and
 aggregates memberships without letting passage multiplicity alone increase
 turn support. Model/tokenizer, source revision and segmentation recipe
-form cache keys. Only changed turns need re-embedding, with bounded
-dependent-context invalidation where applicable. These are proposed semantics;
-no extraction, artifact storage or inference measurements are implemented yet.
+form cache keys. An experimental SQLite store publishes complete recipe manifests
+transactionally, linking source spans to separately cached vectors. Cache batches
+can survive interruption; failed inference leaves the previous publication visible.
+Edits can reuse unchanged text, and publication removes deleted units while
+retaining reusable cache entries. Synthetic tests cover these boundaries. This
+prototype does not change production silver, message embeddings or search.
 Evaluation must include a turn-bundling-only baseline and report cross-turn
 pair quality separately: automatically joining a question to its answer must not
 be mistaken for improved discovery of relationships across turns.
+
+\subsection{Inference and bounded development selection}
+Use installed Xenova quantized all-MiniLM-L6-v2 ONNX assets, masked mean pooling,
+float32 normalization and signed-i8 per-vector quantization before normalized
+float64 scoring. ONNX Runtime 1.30.0 and tokenizers 0.23.2 are pinned in the
+isolated Python environment; inference batches contain at most eight inputs and
+use one intra/inter-op CPU thread. The MiniLM model card describes a sentence/
+short-paragraph encoder and default 256-wordpiece truncation \cite{minilm}; our
+explicit 512-token budget matches the inspected FastEmbed default but does not
+establish long-input quality. Same-runtime re-embedded message controls and a
+fixed 64-message cosine probe distinguish runtime drift from representation effects.
+Dynamic quantization can depend on batch padding; a content cache retains the
+first inferred vector for each text and exact encoder generation.
+
+Use only the same 48 development threads. Four representations at three
+average-link cuts produce twelve settings; highest complete cross-turn macro F1
+selects a representation, with registration-order ties. Retry the unchanged
+twelve first-study and fifteen second-study settings on that representation.
+Soft membership cutoff .35 and margin .05 remain fixed. Retained groups require
+at least two distinct substantively supported turns; overlapping passages from
+one turn cannot supply two supports. Passage memberships and primary partitions
+map to original messages by union, reported separately. Each fit is isolated with
+a 30-second deadline. This two-stage selection is exploratory development reuse,
+not independent validation. Macro cross-turn F1 averages the 24 threads with
+judged cross-turn positives; micro cross-turn counts include negative-only
+threads. All-message macro F1 covers all 48 threads. No unjudged negatives are added.
+
+The corpus has 2,406 extracted turns. Of 4,346 assistant messages, 1,346 point
+to parents absent from this embedded-visible-message corpus. Conservative extraction
+produces 1,393 assistant-only/orphan runs; 28 user-started turns have explicit
+branch splits. The remaining starts comprise 952 user replies and 33 initial
+user starts. A missing parent may be an omitted tool record, not a true branch;
+these conservative units therefore do not validate complete-provider turn extraction.
+Among frozen pairs, 57 related, 59 unrelated and 37 ambiguous pairs cross the
+extracted turn boundaries. Complete ancestry and stronger independent references
+are prerequisites for promotion and tracked separately.
+
+\subsection{Completed turn results and interpretation}
+The representation screen selected prompt-conditioned passages: cross-turn
+macro F1 at average-link cut .35 was .736, compared with prompt-only .667,
+joint truncation .726 and pooled stored vectors .718. Corresponding cross-turn
+micro F1 was .673/.707/.661/.632 (passages/prompt/joint/pooled). This disagreement
+between metrics matters: macro selection on positive-bearing threads does not
+penalize false positives from negative-only threads. It must not be treated as
+the whole acceptance gate.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Best complete passage setting & Cross macro F1 & Micro P & Micro R & Micro F1\\
+\midrule
+Leader (.35) & .758 & .672 & .719 & .695\\
+Average-link (.35) & .736 & .698 & .649 & .673\\
+BIRCH (radius .60) & .712 & .714 & .614 & .660\\
+HDBSCAN (minimum 2) & .572 & .692 & .474 & .562\\
+Complete-link (.50) & .650 & .681 & .561 & .615\\
+DP-means (parameter .50) & .749 & .554 & .807 & .657\\
+OPTICS (xi .05) & .688 & .597 & .702 & .645\\
+Spectral (4) & .634 & .571 & .491 & .528\\
+Affinity (quantile .50) & .700 & .680 & .596 & .636\\
+\bottomrule
+\end{tabular}
+\end{center}
+Of 1,872 candidate fits, 1,871 completed; affinity preference quantile .75 failed
+convergence on one thread and was excluded from complete ranking. All 288
+message-control fits completed. No timeouts or other errors occurred; degenerate
+equal-similarity affinity warnings remain in the private log. Repeated average-link
+settings produced identical pair and primary scores. Largest completed candidate
+fit was 1.311 seconds, excluding process startup, preparation and inference.
+
+Same-runtime raw-message average-link .35 gave cross macro/micro F1 .698/.679;
+stored-message control under the same distinct-turn support .648/.648. Original
+context-message reference gave .712/.667; chronological windows .673/.724;
+whole-thread .787/.659, with precision .491. No turn candidate beat chronological
+windows on micro cross-turn F1, and the whole-thread baseline exceeded the
+selected algorithm on the positive-thread macro metric while merging unrelated
+subjects. This reinforces the precision and baseline-gain gates.
+
+Cluster-only all-pair macro F1 was .515 for the selected leader, and at best .533
+for BIRCH, versus chronological .718. Its two-turn retention contract omits
+standalone prompt/answer bundles. A \emph{post-hoc diagnostic}, performed once
+for the selected leader, unions disjoint within-turn bundle groups with retained
+cluster memberships. It introduces no cross-turn matches, does not change
+selection, and is not independent validation. Resulting all-pair macro P/R/F1
+is .767/.858/.772 (micro .754/.856/.802), a .054 macro F1 gain over windows.
+Thus even the combined view fails precision .85 and the required .10 gain;
+cross-turn metrics remain exactly unchanged. The original 48 plain diagnostic
+refits reproduced registered scores, isolating the overlay from implementation
+drift. Stop without promotion, new settings or reserved-split evaluation.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Recipe & Inputs & New vectors & Build s & Character coverage\\
+\midrule
+Prompt-only & 2,755 & 2,716 & 110.50 & 50.53\%\\
+Joint truncation & 2,406 & 664 & 38.86 & 69.85\%\\
+Prompt-conditioned passages & 3,727 & 1,387 & 85.42 & 99.97\%\\
+Pooled control & 2,406 & 0 & .20 & No new text inference\\
+\bottomrule
+\end{tabular}
+\end{center}
+Recipe costs are incremental in this execution order: later recipes reuse text
+vectors from earlier ones. They are not independent cold-build comparisons.
+Joint truncation dropped 179,585 tokenizer tokens. Passage inputs used 653,502
+tokens including special tokens and repeated context/overlap. Character coverage
+unions original source spans once, independently of membership associations;
+665 uncovered characters were whitespace, with no uncovered non-whitespace.
+Prompt-only includes assistant-only orphans; pooled vectors already carry source
+information despite zero new text inference. The fixed 64-message inference probe
+had mean cosine .99184, minimum .98339 and fifth percentile .98671 versus stored
+vectors, motivating the same-runtime controls rather than a claim of Rust parity.
+
+Entire inference/control/sweep run took 681.30 seconds; reusing all three text
+recipes took .122 seconds with zero inference and identical cached vectors. The
+experiment SQLite store occupies 43.05 MiB including all recipes and raw-message
+controls. Linux parent high-water RSS reached 929.08 MiB; one-second child samples
+observed 889.56 MiB including inherited corpus/model state and may miss peaks.
+These are single-run Python cohort costs, not production per-thread latency or
+memory estimates. Complete ancestry and independent cross-turn references are
+tracked as the next validation step before any promotion. Frozen protocol,
+asset/report digests and complete outcomes are recorded in the companion document.
 
 \section{Limitations and reproducibility}
 Only two providers, sparse agent-authored excerpt judgments, a structural
@@ -270,5 +401,7 @@ via Bayesian Nonparametrics. ICML, 2012.
 \url{https://icml.cc/2012/papers/291.pdf}
 \bibitem{grinch} N. Monath et al. Scalable Hierarchical Clustering with Tree
 Grafting. KDD, 2019. \url{https://arxiv.org/abs/2001.00076}
+\bibitem{minilm} Sentence Transformers. all-MiniLM-L6-v2 model card.
+\url{https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2}
 \end{thebibliography}
 \end{document}

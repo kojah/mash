@@ -9,6 +9,12 @@ Compile from the repository root, keeping generated files outside Git:
 
 ```bash
 latexmk -pdf -interaction=nonstopmode -halt-on-error \
-  -outdir=/home/james/scratch/mash-artifacts/message-clustering-alternatives-20261005/paper \
+  -outdir=/home/james/scratch/mash-artifacts/turn-embeddings-20261005/paper \
   docs/paper/message-clustering.tex
 ```
+
+The latest experiment compares four turn representations and retries nine
+clustering families. Its combined bundle/cluster diagnostic improves macro F1
+modestly but misses precision and baseline-gain requirements. See
+[`turn-embedding-experiment.md`](../turn-embedding-experiment.md) for the frozen
+protocol, negative decision, timings and private reproduction ledger.
