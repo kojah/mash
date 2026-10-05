@@ -852,6 +852,29 @@ The protocol and result SHA256 prefixes are \texttt{3e981e55e9c6} and
 \texttt{126544f75c82}. Confirmation remains unopened. Structure-aware segmentation
 is the separately approved next hypothesis, not a modification of these results.
 
+\subsection{Structure-aware chunks: registered, build in progress}
+The next prospective comparison retains the same prompt/last-assistant sources,
+installed encoder, whole-input pooling and 80+80-token ancestor context. Before
+building, extracting the reusable context function reproduces all 12,627 frozen
+input windows across the 200 histories exactly. We now split within each source
+message at Markdown heading sections and fenced code blocks. Adjacent prose
+paragraphs in one section are packed toward 128 tokens; a larger paragraph
+that fits the input budget stays whole. Code blocks remain intact when possible.
+Oversized prose splits at a fixed sentence-ending heuristic, code at complete
+lines, and oversized atoms use the existing 32-token overlapping fallback.
+This does not create one embedding per paragraph or establish topic coherence.
+
+Two treatments are frozen: plain structural chunks and chunks additionally
+receiving up to 32 tokens of their own section heading when it is absent from
+the body. Heading context reserves input tokens and may alter boundaries, so
+the second treatment is compound. Exact source offsets, permitted ancestry,
+non-whitespace coverage and 512-token budgets are checked. Four BIRCH cells
+use the previous radius/cutoff pairs, with two unchanged window controls and
+the same overall and long-history gates. The protocol SHA256 begins
+\texttt{b9a53097c171}. Synthetic tests cover Unicode, message and heading
+boundaries, closed/unclosed fences, source selection and oversized atoms.
+No structural quality results or confirmation measurements are available yet.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
