@@ -608,6 +608,10 @@ versus 0.021–0.191 ms for the new query. With all messages queued, old calls t
 745–853 ms versus 936–1,007 ms for the new query; both removed 310,782 entries
 and retained 42,331 user entries. This favors frequent small incremental updates
 at a modest full-queue cost. It requires no schema migration or reindexing.
+This query runs only with `dense_content = "user-messages"`. The deployed fleet
+currently uses the default `all-visible` recipe, so this optimization does not
+reduce its refresh time. The different native refresh timings below must not be
+attributed to this query change.
 The isolated timings do not establish a complete ingestion speedup, watcher
 latency, or MacBook performance. Private evidence is in
 `/home/james/scratch/mash-artifacts/native-refresh-20261005`.
@@ -630,3 +634,27 @@ shared status succeeded; a fresh combined MCP search returned three threads in
 remains offline (last seen 06:30 UTC), so its outstanding deployment remains
 pending. Existing stdio MCP sessions require the usual client reconnect to use
 the replacement binary; the live shared API and Qdrant were not restarted.
+
+### Snapshot serialization buffering (2026-10-05)
+
+The full-node incremental trace shows 750 snapshot encodes per publication
+(metadata plus 749 threads), totaling 3.57–4.32 seconds of encoder busy time.
+The encoder buffered file writes but fed each small JSON token directly to
+BLAKE3. Its existing 64 KiB buffer now precedes both checksum updates and file
+writes. Canonical bytes, chunk boundaries, digests, admission limits and retained
+history validation remain unchanged; this adds no cache or snapshot-sized buffer.
+
+Two alternating ABBA cycles compared retained old/new optimized test executables
+using the existing deterministic 10,000-message synthetic fixture. Every run
+encoded 40,046,007 bytes. Old encoding times were 279, 539, 274 and 263 ms;
+buffered times were 172, 180, 182 and 173 ms. Medians were 276.5 and 176.5 ms,
+respectively, about 36% lower. The unchanged canonical-hash control took 21–25 ms.
+This busy-host microbenchmark does not establish a complete publication speedup,
+MacBook performance, or cold-search improvement.
+
+Regression checks compare complete bytes and checksums with direct Serde
+serialization and enforce exact limits around 64/128 KiB buffer boundaries,
+including errors during the final flush. Existing Unicode chunk-boundary tests
+also apply. The real-Qdrant incremental reuse/edit/delete contract passed on an
+owned disposable tmpfs backend. Private evidence is in
+`/home/james/scratch/mash-artifacts/snapshot-buffering-20261005`.

@@ -11,7 +11,7 @@ pub(in crate::shared) struct Encoded {
 }
 
 struct Writer<'a> {
-    output: BufWriter<&'a mut std::fs::File>,
+    output: &'a mut std::fs::File,
     hasher: blake3::Hasher,
     bytes: usize,
     limit: usize,
@@ -40,22 +40,27 @@ impl Encoded {
         let mut file = tempfile::NamedTempFile::new()
             .map_err(|_| AppError::internal("create canonical snapshot spool"))?;
         let mut writer = Writer {
-            output: BufWriter::with_capacity(64 * 1024, file.as_file_mut()),
+            output: file.as_file_mut(),
             hasher: blake3::Hasher::new(),
             bytes: 0,
             limit,
             exceeded: false,
         };
-        let result = serde_json::to_writer(&mut writer, value);
+        // Batch JSON's small writes before both hashing and file I/O. Buffering
+        // only the file still hashes every individual token separately.
+        let (result, flushed) = {
+            let mut output = BufWriter::with_capacity(64 * 1024, &mut writer);
+            let result = serde_json::to_writer(&mut output, value);
+            let flushed = output.flush();
+            (result, flushed)
+        };
         if writer.exceeded {
             return Err(AppError::usage(
                 "node exceeds the configured snapshot limit",
             ));
         }
         result.map_err(|_| AppError::internal("serialize canonical snapshot spool"))?;
-        writer
-            .flush()
-            .map_err(|_| AppError::internal("flush canonical snapshot spool"))?;
+        flushed.map_err(|_| AppError::internal("flush canonical snapshot spool"))?;
         let bytes = writer.bytes;
         let digest = writer.hasher.finalize().to_hex().to_string();
         tracing::Span::current().record("bytes", bytes);
@@ -113,6 +118,20 @@ pub(in crate::shared) async fn read_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn buffered_encoding_preserves_bytes_and_enforces_limits_at_flush_boundaries() {
+        for length in [0, 1, 65_533, 65_534, 65_535, 65_536, 131_069, 131_070] {
+            let value = "x".repeat(length);
+            let expected = serde_json::to_vec(&value).unwrap();
+            let encoded = Encoded::new(&value, expected.len()).unwrap();
+            assert_eq!(encoded.bytes, expected.len());
+            assert_eq!(encoded.digest, blake3::hash(&expected).to_hex().as_str());
+            assert_eq!(std::fs::read(&encoded.file).unwrap(), expected);
+            let error = Encoded::new(&value, expected.len() - 1).err().unwrap();
+            assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+        }
+    }
 
     #[tokio::test]
     async fn chunks_preserve_exact_json_digest_and_unicode_at_every_boundary() {
