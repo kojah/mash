@@ -61,7 +61,10 @@ pub(super) async fn commit(
         .find(|event| event.span.as_ref().unwrap().name == "qdrant_publish")
         .unwrap();
     let outcome = match expected {
-        Outcome::AppliedFailure => PublicationOutcome::Observed,
+        Outcome::AppliedFailure
+        | Outcome::ActivatedDuringOptimization
+        | Outcome::OptimizationFailed
+        | Outcome::ReadinessFailed => PublicationOutcome::Observed,
         Outcome::DelayedFailure | Outcome::DelayedAcknowledgment => PublicationOutcome::Unresolved,
         Outcome::UnreadableVerification | Outcome::ActivatedDuringPublication => {
             PublicationOutcome::VerificationFailed

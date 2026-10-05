@@ -4,6 +4,7 @@ use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::time::Duration;
+mod optimization;
 #[cfg(test)]
 mod schema_tests;
 mod staging;

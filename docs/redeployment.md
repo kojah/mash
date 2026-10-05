@@ -54,6 +54,22 @@ take more than 30 seconds during full-node staging. Timeout does not prove that
 the write was rejected, so publication verification owns ambiguous-write
 recovery rather than blindly replaying a mutation.
 
+After committing and reclaiming obsolete versions, publication waits for the
+message collection's optimizer queue and running jobs to drain before returning
+success. Collection health must also be green with a healthy optimizer. This
+wait belongs to indexing, is bounded to five minutes, and revalidates the active
+gold configuration before acknowledging completion. Small, already settled
+publications need no polling delay. Publications with retained embeddings also
+run a payload-free exact probe over all visible group versions followed by a
+probe of the configured HNSW path, with a 30-second budget per probe. Interactive
+search uses HNSW by default and retains its five-second deadline.
+
+The publication remains committed if the optimizer fails, pauses, cannot be
+inspected or exceeds that budget; failure does not undo acknowledged database
+writes. Inspect shared freshness and backend health before another ingestion
+attempt. Searches during staging/optimization and other concurrent publications
+can still contend for backend resources. See [the cold-search investigation](cold-search.md).
+
 Qdrant catalogue/document staging uses at most 512 points and approximately
 2 MiB of encoded point bytes per request, whichever fills first. A single larger
 valid point is sent alone; the existing 30 MiB hard transport allowance remains.

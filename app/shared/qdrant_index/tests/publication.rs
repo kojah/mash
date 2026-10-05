@@ -17,6 +17,9 @@ enum Outcome {
     CompletedLoser,
     CleanupFailure,
     ActivatedDuringPublication,
+    ActivatedDuringOptimization,
+    OptimizationFailed,
+    ReadinessFailed,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -185,6 +188,11 @@ async fn upsert(
                 backend.points.insert(point.id.clone(), point);
                 activate_title(&mut backend);
             }
+            Outcome::ActivatedDuringOptimization
+            | Outcome::OptimizationFailed
+            | Outcome::ReadinessFailed => {
+                backend.points.insert(point.id.clone(), point);
+            }
             Outcome::CompletedLoser | Outcome::CleanupFailure => {
                 // Another writer inserted a complete snapshot before this insert-only
                 // operation completed without replacing its head. Retain real chunks.
@@ -313,6 +321,34 @@ async fn start(outcome: Outcome) -> (Fixture, Shared, tokio::task::JoinHandle<()
         deletes: 0,
     }));
     let router = Router::new()
+        .route(
+            "/collections/{name}",
+            axum::routing::get(|State(shared): State<Shared>| async move {
+                let mut backend = shared.lock().unwrap();
+                if matches!(backend.outcome, Outcome::ActivatedDuringOptimization) {
+                    activate_title(&mut backend);
+                }
+                if matches!(backend.outcome, Outcome::OptimizationFailed) {
+                    return r#"{"status":"ok","result":{"status":"green","optimizer_status":{"error":"private-canary"}}}"#;
+                }
+                r#"{"status":"ok","result":{"status":"green","optimizer_status":"ok"}}"#
+            }),
+        )
+        .route(
+            "/collections/{name}/optimizations",
+            axum::routing::get(|| async {
+                r#"{"status":"ok","result":{"summary":{"queued_optimizations":0},"running":[]}}"#
+            }),
+        )
+        .route(
+            "/collections/{name}/points/query",
+            axum::routing::post(|State(shared): State<Shared>| async move {
+                if matches!(shared.lock().unwrap().outcome, Outcome::ReadinessFailed) {
+                    return (StatusCode::SERVICE_UNAVAILABLE, "private-canary");
+                }
+                (StatusCode::OK, r#"{"status":"ok","result":{"points":[]}}"#)
+            }),
+        )
         .route("/collections/{name}/points", post(retrieve).put(upsert))
         .route("/collections/{name}/points/delete", post(delete))
         .with_state(shared.clone());
@@ -359,6 +395,13 @@ async fn exercise(outcome: Outcome) {
     )
     .unwrap();
     let result = diagnostics::commit(&fixture.store, &fixture.identity, plan, outcome).await;
+    if matches!(
+        outcome,
+        Outcome::OptimizationFailed | Outcome::ReadinessFailed
+    ) {
+        let error = result.as_ref().unwrap_err();
+        assert!(error.error.message.contains("committed"));
+    }
     if matches!(outcome, Outcome::AppliedFailure) {
         assert_eq!(result.unwrap().revision, 1);
     } else {
@@ -388,7 +431,10 @@ async fn exercise(outcome: Outcome) {
                 .insert(pending.point.id.clone(), pending.point);
         }
     }
-    if matches!(outcome, Outcome::ActivatedDuringPublication) {
+    if matches!(
+        outcome,
+        Outcome::ActivatedDuringPublication | Outcome::ActivatedDuringOptimization
+    ) {
         assert!(fixture.store.state(&fixture.identity).await.is_err());
         fixture.store = fixture.store.with_build(crate::gold::config::Build {
             max_embedding_chars: None,
@@ -407,7 +453,10 @@ async fn exercise(outcome: Outcome) {
     if matches!(outcome, Outcome::StagingFailure) {
         assert!(loaded.head.is_none());
     } else {
-        if matches!(outcome, Outcome::ActivatedDuringPublication) {
+        if matches!(
+            outcome,
+            Outcome::ActivatedDuringPublication | Outcome::ActivatedDuringOptimization
+        ) {
             let head = loaded.head.as_ref().unwrap();
             assert!(!head.gold_manifest.as_ref().unwrap().matches(
                 &fixture.store.build,
@@ -446,4 +495,11 @@ async fn observed_publication_recovers_success_and_confirmed_loser_cleanup_prese
 #[tokio::test]
 async fn activation_after_node_cas_rejects_acknowledgement_and_preserves_stale_history() {
     exercise(Outcome::ActivatedDuringPublication).await;
+    exercise(Outcome::ActivatedDuringOptimization).await;
+}
+
+#[tokio::test]
+async fn readiness_failures_preserve_confirmed_publication() {
+    exercise(Outcome::OptimizationFailed).await;
+    exercise(Outcome::ReadinessFailed).await;
 }

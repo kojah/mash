@@ -481,6 +481,33 @@ impl Store {
             obsolete.dedup();
             self.cleanup_versions(identity, &obsolete).await;
         }
+        // Deletion can start another optimization after staging has finished.
+        // Pay that drain in indexing rather than the first interactive search.
+        self.api
+            .settle_search(&collection(&identity.group_id, false))
+            .await?;
+        if self.build.dense_enabled() && counts.embeddings > 0 {
+            let configuration = self.active_configuration(identity).await?;
+            let mut versions = configuration
+                .nodes
+                .as_ref()
+                .ok_or_else(failure)?
+                .values()
+                .flat_map(NodeHead::versions)
+                .collect::<Vec<_>>();
+            versions.sort_unstable();
+            versions.dedup();
+            self.api
+                .warm_search(
+                    &collection(&identity.group_id, false),
+                    self.dense_name(identity),
+                    identity.dimensions,
+                    &versions,
+                    configuration.vector_search,
+                )
+                .await?;
+        }
+        self.unchanged_gold(identity, &gold_version).await?;
         Ok(Indexed {
             counts,
             revision: plan.revision,
