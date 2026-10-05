@@ -358,7 +358,11 @@ impl Store {
                 .await.map_err(|_| AppError::usage("exact query exceeded the shared search budget; narrow the query or metadata filters"))?;
         }
         self.build.require_intent(input.intent)?;
-        let heads = self.heads(identity).await?;
+        // Use one durable snapshot for both visibility and retrieval policy.
+        // The post-query check still rejects a concurrently replaced node head.
+        let configuration = self.active_configuration(identity).await?;
+        let vector_policy = input.vector_policy.unwrap_or(configuration.vector_search);
+        let heads = super::configuration::catalogue_nodes(configuration)?;
         let active: BTreeMap<_, _> = heads
             .iter()
             .filter(|(n, _)| !input.exclude_self || **n != identity.node_id)
@@ -386,10 +390,7 @@ impl Store {
         for word in tokens(&input.query) {
             lexical_filter.must.push(api::matches("tokens", vec![word]));
         }
-        let (exact, ef) = match input
-            .vector_policy
-            .unwrap_or(self.active_configuration(identity).await?.vector_search)
-        {
+        let (exact, ef) = match vector_policy {
             VectorIndex::Exact {} => (true, 200),
             VectorIndex::Hnsw { ef_runtime } => (false, ef_runtime),
         };
