@@ -1163,6 +1163,32 @@ budgets pass. Protocol/development/background/build-analysis SHA256 prefixes
 are \texttt{760104da726f}, \texttt{19ae4fd9f2c2}, \texttt{79d6b10b7542},
 and \texttt{168a7a829bdd}. No production index or configuration is changed.
 
+\section{Targeted blind coverage review}
+Before annotation, we exclude the earlier corpus-wide generic-weighting
+treatment: the user requires every history's vectors and clusters to depend
+only on that history and fixed configuration. We reconstruct the four G-off
+C/F graphs, verify existing predictions and exclude all original reference
+pairs. Fixed hash quotas select 31 changed pairs plus 31 distinct stable
+controls (30 same-history/distance-band matches, one nearest-distance match).
+Two fresh blind agents label randomized packets; an independent reviewer labels
+16 pairs. Literal evidence and exact coverage are validated against frozen
+full texts. Manifest SHA256 prefix is \texttt{95903c86c5f1}.
+
+Of six C additions, four are judged related and two unrelated. Of nine C
+removals, six are related and three unrelated. Of seventeen F removals, ten
+are related and seven unrelated; one selection overlaps factors. Controls
+contain 22 related and nine unrelated judgments. There are no abstentions.
+Baseline, F, C and CF diagnostic counts (TP,FP,FN,TN) are respectively
+(35,15,7,5), (21,7,21,13), (33,14,9,6) and (24,6,18,14).
+Independent review agrees on 15/16 pairs; substituting its judgments changes
+one TP to FP in each method, without modifying primary labels. These purposive
+counts do not estimate population precision/recall or statistical significance.
+The original benchmark and sealed confirmation remain unchanged. Retain the
+baseline and investigate context selection and thread-local token weighting.
+Following the user's experiment-management decision, subsequent declared
+comparisons use bounded Optuna trials with pinned input contracts and resumable
+storage; the ledger does not replace acceptance gates or independent evaluation.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
