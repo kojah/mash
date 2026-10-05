@@ -1089,3 +1089,18 @@ unchanged publication identities. No indexing ran. Fresh direct Xenia combined
 CLI checks returned three threads, complete context and no fallback in 2.245
 and 1.248 seconds (shared candidates 204 and 151 ms). Cold search and native
 staging tails remain separate performance work.
+
+Opt-in `MASH_TRACE=1` instrumentation now separates native Qdrant request
+encoding, send/wait, response reading and decoding, with operation/count/status
+fields and no request bodies, identifiers, credentials or URLs. Eight additional
+metadata-only publications on the retained group took 7.085–11.455 seconds;
+snapshot staging took 45–173 ms. The earlier 35-second staging tail did not
+recur, so its cause remains unresolved. Concurrent candidate reads returned
+95 HTTP 200 responses and one revision conflict; maximum latency was 596 ms.
+Collection health stayed green with no queued/running optimizer jobs observed
+in the approximately one-second samples; transient jobs could be missed.
+The first snapshot load took 5.30 seconds, versus approximately two seconds
+on subsequent trials. These measurements do not establish fleet tail latency.
+Validation passed 620 standard tests, strict Clippy, formatting and doctests,
+and three disposable Qdrant publication contracts. Private operation/resource
+captures are under `/home/james/scratch/mash-artifacts/native-staging-20261005`.

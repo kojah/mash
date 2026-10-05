@@ -4,6 +4,7 @@ use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::time::Duration;
+use tracing::Instrument;
 mod optimization;
 #[cfg(test)]
 mod schema_tests;
@@ -456,6 +457,7 @@ impl Client {
             .await
     }
 
+    #[tracing::instrument(name = "qdrant_native_http", skip_all, fields(method = %method, status = tracing::field::Empty, response_bytes = tracing::field::Empty))]
     async fn call_with_limit<T: DeserializeOwned>(
         &self,
         method: Method,
@@ -463,30 +465,52 @@ impl Client {
         body: Option<&impl Serialize>,
         limit: usize,
     ) -> Result<T, AppError> {
-        let mut request = self
-            .http
-            .request(method, self.url.join(path).map_err(|_| failure())?);
-        // Awaited writes can exceed the interactive database deadline while
-        // Qdrant indexes large batches. Keep reads bounded and do not replay
-        // ambiguous mutations; publication verification owns their recovery.
-        if path.ends_with("?wait=true&ordering=strong") {
-            request = request.timeout(crate::shared::BULK_TIMEOUT);
-        }
-        if let Some(body) = body {
-            request = request.json(body);
-        }
-        let mut response = request.send().await.map_err(|_| failure())?;
+        // Trace only phases and scalar counts. URLs, collection/point identities,
+        // credentials, request values and upstream bodies must stay out of logs.
+        let request = {
+            let span = tracing::info_span!("qdrant_encode_request");
+            let _entered = span.enter();
+            let mut request = self
+                .http
+                .request(method, self.url.join(path).map_err(|_| failure())?);
+            // Awaited writes can exceed the interactive database deadline while
+            // Qdrant indexes large batches. Keep reads bounded and do not replay
+            // ambiguous mutations; publication verification owns their recovery.
+            if path.ends_with("?wait=true&ordering=strong") {
+                request = request.timeout(crate::shared::BULK_TIMEOUT);
+            }
+            if let Some(body) = body {
+                request = request.json(body);
+            }
+            request
+        };
+        let mut response = request
+            .send()
+            .instrument(tracing::info_span!("qdrant_send_request"))
+            .await
+            .map_err(|_| failure())?;
+        tracing::Span::current().record("status", response.status().as_u16());
         if !response.status().is_success() {
             return Err(failure());
         }
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|_| failure())? {
-            if bytes.len().saturating_add(chunk.len()) > limit.min(self.max_response) {
-                return Err(failure());
+        let bytes = async {
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.map_err(|_| failure())? {
+                if bytes.len().saturating_add(chunk.len()) > limit.min(self.max_response) {
+                    return Err(failure());
+                }
+                bytes.extend_from_slice(&chunk);
             }
-            bytes.extend_from_slice(&chunk);
+            Ok(bytes)
         }
-        let envelope: Envelope<T> = serde_json::from_slice(&bytes).map_err(|_| failure())?;
+        .instrument(tracing::info_span!("qdrant_read_response"))
+        .await?;
+        tracing::Span::current().record("response_bytes", bytes.len());
+        let envelope: Envelope<T> = {
+            let span = tracing::info_span!("qdrant_decode_response");
+            let _entered = span.enter();
+            serde_json::from_slice(&bytes).map_err(|_| failure())?
+        };
         if envelope.status != ResponseStatus::Ok {
             return Err(failure());
         }
@@ -662,6 +686,7 @@ impl Client {
             .await?;
         Ok(())
     }
+    #[tracing::instrument(name = "qdrant_native_upsert", skip_all, fields(points = input.points.len()))]
     pub(super) async fn upsert<P: Serialize>(
         &self,
         name: &str,
@@ -724,6 +749,7 @@ impl Client {
         self.retrieve_bounded(name, ids, self.max_response).await
     }
 
+    #[tracing::instrument(name = "qdrant_native_retrieve", skip_all, fields(points = ids.len()))]
     pub(super) async fn retrieve_bounded<P: DeserializeOwned>(
         &self,
         name: &str,
@@ -761,6 +787,7 @@ impl Client {
         self.scroll_selected(name, filter, Payload::Fields(fields), 1000)
             .await
     }
+    #[tracing::instrument(name = "qdrant_native_scroll_page", skip_all, fields(limit))]
     pub(super) async fn scroll_page<P: DeserializeOwned>(
         &self,
         name: &str,
@@ -790,6 +817,7 @@ impl Client {
         }
         Ok(reply)
     }
+    #[tracing::instrument(name = "qdrant_native_scroll", skip_all, fields(limit))]
     async fn scroll_selected<P: DeserializeOwned>(
         &self,
         name: &str,
@@ -828,6 +856,7 @@ impl Client {
             offset = reply.next_page_offset;
         }
     }
+    #[tracing::instrument(name = "qdrant_native_query", skip_all, fields(limit = input.limit, exact = input.params.exact, dense = matches!(&input.query, QueryVector::Dense(_))))]
     pub(super) async fn query<P: DeserializeOwned>(
         &self,
         name: &str,
@@ -849,6 +878,7 @@ impl Client {
     pub(super) async fn delete_version(&self, name: &str, version: &str) -> Result<(), AppError> {
         self.delete_versions(name, &[version.to_owned()]).await
     }
+    #[tracing::instrument(name = "qdrant_native_delete", skip_all, fields(versions = versions.len()))]
     pub(super) async fn delete_versions(
         &self,
         name: &str,

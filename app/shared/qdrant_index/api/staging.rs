@@ -46,6 +46,7 @@ impl StagingBatch {
         Ok(())
     }
 
+    #[tracing::instrument(name = "qdrant_staging_flush", skip_all, fields(points = self.points.len(), bytes = self.bytes))]
     pub(in crate::shared::qdrant_index) async fn flush(
         &mut self,
         client: &Client,
