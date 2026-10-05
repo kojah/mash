@@ -358,6 +358,34 @@ pub(super) struct View {
     pub content: crate::storage::MessageContent,
 }
 
+/// A bounded search-only batch; the explicit view API retains larger radii.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Contexts {
+    pub anchors: Vec<View>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
+pub(super) enum ContextResult {
+    Complete {
+        index: usize,
+        messages: Vec<crate::storage::Message>,
+    },
+    Failed {
+        index: usize,
+        error: crate::AppError,
+    },
+}
+
+impl ContextResult {
+    pub(super) const fn index(&self) -> usize {
+        match self {
+            Self::Complete { index, .. } | Self::Failed { index, .. } => *index,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Forget {

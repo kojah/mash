@@ -917,3 +917,63 @@ optimizers. These are deployment checks, not search gains from indexing-pool
 reuse; the first-call shared timeout remains open. The personal MacBook was
 confirmed offline (last seen 06:30 UTC), with the new ARM64 artifact staged.
 Existing stdio clients need their normal reconnect to use the installed binary.
+
+### Batched shared search context (2026-10-05)
+
+Shared contextual reranking now uses one authenticated `/v1/contexts` request
+instead of an HTTP request per anchor. The bounded NDJSON stream releases each
+completed context independently, so a stalled anchor does not discard evidence
+already received. The client retains its one-second context deadline. The server
+permits up to 64 unique anchors, radius at most two, and search projections only.
+It shares one validated catalogue within the request, keeps each published
+node's final revision check, and applies the ordinary content/attachment
+redaction. Explicit `view` retains its existing behavior.
+
+API context futures are limited to eight across concurrent batch requests.
+Dropping a response drops its pending futures; there are no detached context
+tasks. The decoder bounds each line to 4 MiB and the entire response to 64 MiB,
+validates typed frames and indices, and marks truncated, malformed or incomplete
+streams as partial. An HTTP cancellation fixture verifies completed evidence
+survives the deadline and observes the pending server stream drop within one
+second afterwards, without aborting the server to satisfy that assertion.
+
+Two private real-corpus comparisons alternated old/new/new/old clients, eight
+samples per variant per node, against the same temporary read-only API. All used
+fresh CLI processes, `--no-worker`, combined scope, `cbioportal`, three threads,
+installed models, and matching trace settings. The final comparison included the
+server's shared eight-read admission budget:
+
+| Node | Old median total | Batched median total | Old median context | Batched median context |
+| --- | ---: | ---: | ---: | ---: |
+| Xenia | 1,796.5 ms | 1,769 ms | 104.3 ms | 100.3 ms |
+| Development MacBook | 2,823 ms | 2,108 ms | 673.6 ms | 351.2 ms |
+
+All 16 Xenia responses had complete context and exactly identical results. All
+eight batched Mac responses had complete context and matched the seven complete
+old responses exactly. One old response hit the unchanged context deadline and
+ranked differently using partial evidence. Per complete Mac search, context HTTP
+requests fell from 17 to one; total native Qdrant reads fell from 123 to 107 and
+full catalogue reads from 36 to 20. Xenia used seven context requests before and
+one after, with native reads falling from 71 to 65. The first comparison showed
+a smaller Mac total benefit and no Xenia total improvement. These small,
+single-query samples on a shared host establish request reduction and context
+benefit, not fleet p95 or a universal end-to-end speedup. Node exclusion produces
+different workloads, so cross-node timings are not interchangeable.
+
+The first old Mac call in the earlier comparison still hit the five-second
+candidate deadline. Correlated traces attributed 4,265.9 ms to the native dense
+Qdrant query, 4,354 ms to the API handler, and 5,000 ms to the client request.
+The lexical query took 222.6 ms. This isolates a cold dense-retrieval outlier;
+it does not establish its storage, scheduler or query-planner cause. Batching
+context does not fix that candidate-stage issue or demonstrate a cold-search
+guarantee.
+
+Validation included 615 standard tests, the real-model shared-context failure
+contract, disposable Qdrant branch/projection parity, publication-conflict,
+group-isolation and legacy-redaction checks, strict Clippy, formatting and
+doctests. Raw captures, source/artifact evidence, earlier failed environment and
+lint invocations, and both comparison rounds are retained privately under
+`/home/james/scratch/mash-artifacts/context-batch-20261005`. No live publication
+or collection setting was changed for these comparisons. Deploy the API before
+updating clients that use the new batch route; ordinary deployment still does
+not trigger indexing.

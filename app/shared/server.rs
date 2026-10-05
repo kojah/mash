@@ -14,6 +14,7 @@ use serde::Deserialize;
 mod admission;
 mod attachments;
 mod configuration;
+mod contexts;
 mod store;
 mod upload;
 
@@ -149,6 +150,7 @@ fn router(app: App) -> Router {
         .route("/v1/search", post(search))
         .route("/v1/threads", post(list_threads))
         .route("/v1/view", post(view))
+        .route("/v1/contexts", post(contexts::read))
         .route("/v1/attachments", post(attachments::list))
         .route("/v1/attachment", post(attachments::get))
         .route(

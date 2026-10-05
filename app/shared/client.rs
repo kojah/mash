@@ -5,6 +5,8 @@ use serde::Serialize;
 use std::{sync::LazyLock, time::Duration};
 use tokio::sync::{Semaphore, SemaphorePermit};
 mod body;
+mod contexts;
+pub(super) use contexts::read as context_batch;
 #[cfg(test)]
 mod retry_tests;
 
@@ -41,6 +43,7 @@ pub(super) enum Endpoint {
     Search,
     Threads,
     View,
+    Contexts,
     Index,
     Forget,
     Attachments,
@@ -80,6 +83,7 @@ impl Endpoint {
             Self::Search => "search",
             Self::Threads => "threads",
             Self::View => "view",
+            Self::Contexts => "contexts",
             Self::Index => "index",
             Self::Forget => "forget",
             Self::Attachments => "attachments",

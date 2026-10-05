@@ -9,6 +9,44 @@ mod physical;
 mod publication;
 mod recipe;
 
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn qdrant_context_batch_rejects_a_head_changed_after_capture() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(1, "before"))
+        .await
+        .unwrap();
+    let heads = fixture
+        .store
+        .context_heads(&fixture.identity)
+        .await
+        .unwrap();
+    let head = heads[&fixture.identity.node_id].clone();
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(2, "after"))
+        .await
+        .unwrap();
+    let error = fixture
+        .store
+        .view_at(
+            &fixture.identity,
+            protocol::View {
+                node_id: fixture.identity.node_id.clone(),
+                id: "message-0".into(),
+                context: 2,
+                content: crate::storage::MessageContent::SearchProjection,
+            },
+            head,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.error.kind, crate::ErrorKind::Conflict);
+    fixture.cleanup().await;
+}
+
 struct Fixture {
     store: Store,
     identity: Identity,

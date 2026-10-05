@@ -45,7 +45,7 @@ struct Manifest {
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct NodeHead {
+pub(in crate::shared) struct NodeHead {
     kind: PointKind,
     node_id: String,
     version: String,
@@ -263,6 +263,18 @@ impl Store {
             return Err(failure());
         }
         Ok(node)
+    }
+
+    pub(in crate::shared) async fn context_heads(
+        &self,
+        identity: &Identity,
+    ) -> Result<std::collections::BTreeMap<String, std::sync::Arc<NodeHead>>, AppError> {
+        Ok(
+            configuration::catalogue_nodes(self.active_configuration(identity).await?)?
+                .into_iter()
+                .map(|(id, head)| (id, std::sync::Arc::new(head)))
+                .collect(),
+        )
     }
     async fn load(&self, identity: &Identity) -> Result<Loaded, AppError> {
         let pending = self.pending_snapshot(identity).await?;

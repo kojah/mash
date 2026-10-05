@@ -21,6 +21,10 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
             "view",
             json!({"node_id":"first","id":"searchable","context":0}),
         ),
+        (
+            "contexts",
+            json!({"anchors":[{"node_id":"first","id":"searchable","context":0,"content":"search-projection"}]}),
+        ),
         ("threads", json!({})),
         (
             "search",
@@ -44,7 +48,7 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
             body.contains("REDACTED_SECRET") || body.contains("*****"),
             "{body}"
         );
-        if route == "view" {
+        if matches!(route, "view" | "contexts") {
             assert!(body.contains("token = fetch_token()"), "{body}");
         }
     }

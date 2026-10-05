@@ -460,6 +460,17 @@ impl Store {
             ..identity.clone()
         };
         let head = self.node(&other).await?;
+        self.view_at(&other, input, std::sync::Arc::new(head)).await
+    }
+
+    /// Context batches reuse one validated catalogue without caching it across
+    /// requests. Each result still checks its node publication before release.
+    pub(in crate::shared) async fn view_at(
+        &self,
+        identity: &Identity,
+        input: protocol::View,
+        head: std::sync::Arc<NodeHead>,
+    ) -> Result<Vec<Message>, AppError> {
         if head.head.is_none() {
             return Ok(vec![]);
         }
@@ -484,7 +495,7 @@ impl Store {
                 .await?
         };
         let Some(anchor) = super::context::anchor(records, &head, &input)? else {
-            self.unchanged(&other, &head.version).await?;
+            self.unchanged(identity, &head.version).await?;
             return Ok(vec![]);
         };
         let thread_version = head
@@ -515,7 +526,7 @@ impl Store {
         for ids in selection.ids(&thread_version).chunks(100) {
             records.extend(self.api.retrieve::<Document>(&name, ids).await?);
         }
-        self.unchanged(&other, &head.version).await?;
+        self.unchanged(identity, &head.version).await?;
         crate::blocking(move || selection.messages(records, &head, &input)).await
     }
 }

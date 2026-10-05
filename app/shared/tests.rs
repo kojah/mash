@@ -12,6 +12,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
+mod context_batch;
 mod correlation;
 mod decoding;
 mod diagnostics;
@@ -82,32 +83,14 @@ fn freshness_source_certificate_is_typed_and_distinct_from_shared_identity() {
 
 #[tokio::test]
 async fn context_deadline_preserves_completed_evidence_without_waiting_for_every_wave() {
-    use axum::{Json, Router};
+    use axum::Router;
+    use context_batch::view;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
     use std::time::Instant;
 
-    async fn view(Json(request): Json<protocol::View>) -> Json<Vec<Message>> {
-        if request.id != "fast" {
-            std::future::pending::<()>().await;
-        }
-        Json(vec![
-            Message {
-                attachments: Vec::new(),
-                id: request.id,
-                ordinal: 0,
-                role: crate::role::Role::User,
-                content: "cache the model".into(),
-                created_at: None,
-            },
-            Message {
-                attachments: Vec::new(),
-                id: "nearby".into(),
-                ordinal: 1,
-                role: crate::role::Role::Assistant,
-                content: "keep the worker warm".into(),
-                created_at: None,
-            },
-        ])
-    }
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let config = SharedConfig {
         group_id: "test".into(),
@@ -115,10 +98,18 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
         api_url: format!("http://{}", listener.local_addr().unwrap()),
         token_env: "HOME".into(),
     };
+    let dropped = Arc::new(AtomicBool::new(false));
+    let server_dropped = Arc::clone(&dropped);
     let server = tokio::spawn(async move {
         axum::serve(
             listener,
-            Router::new().route("/v1/view", axum::routing::post(view)),
+            Router::new()
+                .route("/v1/contexts", axum::routing::post(view))
+                .layer(
+                    tower_http::compression::CompressionLayer::new()
+                        .quality(tower_http::CompressionLevel::Fastest),
+                )
+                .with_state(server_dropped),
         )
         .await
         .unwrap();
@@ -148,11 +139,18 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
     let (documents, error) = context_documents(&config, None, "test".into(), "cache", &hits)
         .await
         .unwrap();
-    server.abort();
     assert!(started.elapsed() < CONTEXT_DEADLINE + Duration::from_secs(1));
     assert!(error.unwrap().contains("deadline"));
     assert_eq!(documents.len(), 1);
     assert!(documents[&("remote".into(), "fast".into())].contains("keep the worker warm"));
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !dropped.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("HTTP cancellation must drain the pending server stream");
+    server.abort();
 }
 
 #[tokio::test]

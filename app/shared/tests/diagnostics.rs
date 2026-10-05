@@ -102,7 +102,7 @@ async fn fixture() -> Fixture {
             }),
         )
         .route(
-            "/v1/view",
+            "/v1/contexts",
             post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

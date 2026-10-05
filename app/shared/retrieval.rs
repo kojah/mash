@@ -3,7 +3,7 @@ use super::client::{Endpoint, get, post};
 use super::protocol;
 use crate::gold::config::{Fusion, Options};
 use crate::semantic::{self, Models};
-use crate::storage::{Message, SearchHit, Storage};
+use crate::storage::{SearchHit, Storage};
 use crate::{AppError, config::SharedConfig};
 use futures_util::FutureExt;
 use std::{collections::HashMap, path::Path, time::Duration};
@@ -348,7 +348,6 @@ pub(super) async fn context_documents(
     query: &str,
     hits: &[SearchHit],
 ) -> Result<(HashMap<(String, String), String>, Option<String>), AppError> {
-    use futures_util::{StreamExt, stream};
     let local_ids = hits
         .iter()
         .filter(|hit| hit.node_id.is_none())
@@ -375,44 +374,9 @@ pub(super) async fn context_documents(
         .iter()
         .filter_map(|hit| hit.node_id.clone().map(|node| (node, hit.id.clone())))
         .collect::<Vec<_>>();
-    let remote = async {
-        let mut pending = stream::iter(anchors)
-            .map(|(node, id)| {
-                let config = config.clone();
-                async move {
-                    let result = post::<Vec<Message>>(
-                        &config,
-                        Endpoint::View,
-                        &protocol::View {
-                            node_id: node.clone(),
-                            id: id.clone(),
-                            context: 2,
-                            content: crate::storage::MessageContent::SearchProjection,
-                        },
-                    )
-                    .await;
-                    ((node, id), result)
-                }
-            })
-            .buffer_unordered(8);
-        let deadline = tokio::time::sleep(CONTEXT_DEADLINE);
-        tokio::pin!(deadline);
-        let mut completed = Vec::new();
-        loop {
-            tokio::select! {
-                result = pending.next() => match result {
-                    Some(result) => completed.push(result),
-                    None => return (completed, false),
-                },
-                () = &mut deadline => return (completed, true),
-            }
-        }
-    };
-    let (contexts, (remote, timed_out)) = tokio::join!(local, remote);
+    let remote = super::client::context_batch(config, anchors);
+    let (contexts, (remote, mut error)) = tokio::join!(local, remote);
     let mut contexts = contexts?;
-    let mut error = timed_out.then(|| {
-        "shared context deadline exceeded; ranking uses available message evidence".to_owned()
-    });
     for (key, result) in remote {
         match result {
             Ok(messages) => {

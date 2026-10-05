@@ -6,6 +6,7 @@ mod admission;
 mod antigravity;
 mod attachments;
 mod context;
+mod contexts;
 mod correlation;
 mod cursor;
 mod enrichment;

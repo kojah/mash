@@ -297,6 +297,7 @@ async fn contract(service: Service) {
             .collect::<Vec<_>>(),
         [0, 5, 6, 8]
     );
+    batch_contract(&service).await;
     let before = service.get("freshness", FIRST).await;
     for parent in [-1, 4, 5, 7] {
         let mut invalid = snapshot(2);
@@ -319,4 +320,71 @@ async fn contract(service: Service) {
         );
     }
     service.cleanup().await;
+}
+
+async fn batch_contract(service: &Service) {
+    let anchors = vec![
+        protocol::View {
+            node_id: "first".into(),
+            id: "message-5".into(),
+            context: 2,
+            content: MessageContent::SearchProjection,
+        },
+        protocol::View {
+            node_id: "first".into(),
+            id: "message-0".into(),
+            context: 2,
+            content: MessageContent::SearchProjection,
+        },
+        protocol::View {
+            node_id: "first".into(),
+            id: "missing".into(),
+            context: 2,
+            content: MessageContent::SearchProjection,
+        },
+        protocol::View {
+            node_id: "unpublished".into(),
+            id: "missing".into(),
+            context: 2,
+            content: MessageContent::SearchProjection,
+        },
+    ];
+    let body = service
+        .request("contexts", SECOND)
+        .json(&protocol::Contexts { anchors })
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let mut results = std::collections::BTreeMap::new();
+    for line in body.lines() {
+        let protocol::ContextResult::Complete { index, messages } =
+            serde_json::from_str(line).unwrap()
+        else {
+            panic!("batch view failed: {line}");
+        };
+        assert!(results.insert(index, messages).is_none());
+    }
+    assert_eq!(results.len(), 4);
+    for (index, ordinal) in [(0, 5), (1, 0)] {
+        assert_eq!(
+            serde_json::to_value(&results[&index]).unwrap(),
+            serde_json::to_value(view(service, ordinal, 2, MessageContent::SearchProjection).await)
+                .unwrap()
+        );
+    }
+    assert!(results[&2].is_empty() && results[&3].is_empty());
+    let scoped = service.request("contexts", OTHER)
+        .json(&json!({"anchors":[{"node_id":"first","id":"message-5","context":2,"content":"search-projection"}]}))
+        .send().await.unwrap().error_for_status().unwrap().text().await.unwrap();
+    let protocol::ContextResult::Complete { messages, .. } =
+        serde_json::from_str(scoped.trim()).unwrap()
+    else {
+        panic!("scope")
+    };
+    assert!(messages.is_empty());
 }
