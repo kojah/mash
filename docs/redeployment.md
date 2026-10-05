@@ -977,3 +977,14 @@ lint invocations, and both comparison rounds are retained privately under
 or collection setting was changed for these comparisons. Deploy the API before
 updating clients that use the new batch route; ordinary deployment still does
 not trigger indexing.
+
+Release `c9f5523` was deployed in that order, with one committed build per
+platform (Linux 66 seconds, native ARM64 31.19 seconds). Authenticated API
+readiness and the before/after publication identities passed. Xenia and the
+development MacBook retained complete silver, ready hybrid search and published
+state; all three shared heads retained current lexical/dense gold. Fresh combined
+MCP searches returned three threads with complete context and no fallback in
+2.376 and 2.362 seconds, respectively. These are deployment checks, not paired
+speedup measurements. The personal MacBook remained offline (last seen 06:30 UTC)
+and the same ARM64 artifact is staged for it. No indexing or collection-setting
+change ran during deployment; existing stdio clients need their normal reconnect.
