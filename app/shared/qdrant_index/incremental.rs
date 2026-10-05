@@ -12,6 +12,7 @@ pub(super) struct Prepared {
     metadata: Encoded,
 }
 
+#[tracing::instrument(name = "qdrant_prepare_threads", skip_all, fields(threads = plan.loaded.data.conversations.len(), messages = plan.loaded.data.messages.len()))]
 pub(super) fn prepare(
     plan: Plan,
     previous: &NodeHead,
@@ -53,39 +54,39 @@ pub(super) fn prepare(
                 .collect(),
             ..Data::default()
         };
-        let encoded = Encoded::new(&thread.layers(), limit)?;
-        bytes = bytes
-            .checked_add(encoded.bytes)
-            .filter(|bytes| *bytes <= limit)
-            .ok_or_else(|| AppError::usage("node exceeds the configured snapshot limit"))?;
         if let Some(retained) = previous
             .threads
             .as_ref()
             .and_then(|threads| threads.get(id))
-            .filter(|thread| {
-                reuse
-                    && thread.manifest.bytes == encoded.bytes
-                    && thread.manifest.digest == encoded.digest
-            })
+            .filter(|_| reuse)
+            && Encoded::matches(
+                &thread.layers(),
+                limit,
+                retained.manifest.bytes,
+                &retained.manifest.digest,
+            )?
         {
+            bytes = add_bytes(bytes, retained.manifest.bytes, limit)?;
             threads.insert(id.clone(), retained.clone());
-        } else {
-            let thread_version = blake3::hash(format!("{version}\0{id}").as_bytes())
-                .to_hex()
-                .to_string();
-            threads.insert(
-                id.clone(),
-                ThreadSnapshot {
-                    version: thread_version,
-                    manifest: Manifest {
-                        bytes: encoded.bytes,
-                        digest: encoded.digest.clone(),
-                        chunks: 0,
-                    },
-                },
-            );
-            changed.insert(id.clone(), encoded);
+            continue;
         }
+        let encoded = Encoded::new(&thread.layers(), limit)?;
+        bytes = add_bytes(bytes, encoded.bytes, limit)?;
+        let thread_version = blake3::hash(format!("{version}\0{id}").as_bytes())
+            .to_hex()
+            .to_string();
+        threads.insert(
+            id.clone(),
+            ThreadSnapshot {
+                version: thread_version,
+                manifest: Manifest {
+                    bytes: encoded.bytes,
+                    digest: encoded.digest.clone(),
+                    chunks: 0,
+                },
+            },
+        );
+        changed.insert(id.clone(), encoded);
     }
     if !grouped.is_empty() {
         return Err(failure());
@@ -101,6 +102,13 @@ pub(super) fn prepare(
     ))
 }
 
+fn add_bytes(bytes: usize, next: usize, limit: usize) -> Result<usize, AppError> {
+    bytes
+        .checked_add(next)
+        .filter(|bytes| *bytes <= limit)
+        .ok_or_else(|| AppError::usage("node exceeds the configured snapshot limit"))
+}
+
 impl Prepared {
     pub(super) fn staged_versions(&self, version: &str) -> Vec<String> {
         std::iter::once(version.to_owned())
@@ -114,6 +122,7 @@ impl Prepared {
 }
 
 impl Store {
+    #[tracing::instrument(name = "qdrant_receive_thread_parts", skip_all, fields(parts = parts.len()))]
     async fn receive_parts(
         &self,
         identity: &Identity,

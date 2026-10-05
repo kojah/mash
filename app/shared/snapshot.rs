@@ -81,6 +81,7 @@ impl PendingSnapshot {
                 .as_ref()
                 .map_or(0, payload::Received::encoded_bytes)
     }
+    #[tracing::instrument(name = "shared_join_snapshot", skip_all)]
     pub(in crate::shared) fn decode(self) -> Result<Loaded, AppError> {
         let mut data = match self.payload {
             None => Data::default(),

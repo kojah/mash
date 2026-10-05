@@ -190,6 +190,7 @@ pub(in crate::shared) fn start(
     clippy::too_many_lines,
     reason = "validate the complete upload before staging any shared data"
 )]
+#[tracing::instrument(name = "shared_plan_publication", skip_all)]
 pub(in crate::shared) fn plan(
     file: &tempfile::NamedTempFile,
     mut loaded: Loaded,

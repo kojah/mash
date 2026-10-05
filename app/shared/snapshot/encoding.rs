@@ -11,7 +11,9 @@ pub(in crate::shared) struct Encoded {
 }
 
 struct Writer<'a> {
-    output: &'a mut std::fs::File,
+    // Fingerprint-only comparisons retain the identical canonical byte stream
+    // and limit without writing a temporary copy of unchanged history.
+    output: Option<&'a mut std::fs::File>,
     hasher: blake3::Hasher,
     bytes: usize,
     limit: usize,
@@ -23,13 +25,15 @@ impl Write for Writer<'_> {
             self.exceeded = true;
             return Err(std::io::Error::other("snapshot limit"));
         }
-        self.output.write_all(bytes)?;
+        if let Some(output) = &mut self.output {
+            output.write_all(bytes)?;
+        }
         self.hasher.update(bytes);
         self.bytes += bytes.len();
         Ok(bytes.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
-        self.output.flush()
+        self.output.as_mut().map_or(Ok(()), Write::flush)
     }
 }
 
@@ -40,27 +44,13 @@ impl Encoded {
         let mut file = tempfile::NamedTempFile::new()
             .map_err(|_| AppError::internal("create canonical snapshot spool"))?;
         let mut writer = Writer {
-            output: file.as_file_mut(),
+            output: Some(file.as_file_mut()),
             hasher: blake3::Hasher::new(),
             bytes: 0,
             limit,
             exceeded: false,
         };
-        // Batch JSON's small writes before both hashing and file I/O. Buffering
-        // only the file still hashes every individual token separately.
-        let (result, flushed) = {
-            let mut output = BufWriter::with_capacity(64 * 1024, &mut writer);
-            let result = serde_json::to_writer(&mut output, value);
-            let flushed = output.flush();
-            (result, flushed)
-        };
-        if writer.exceeded {
-            return Err(AppError::usage(
-                "node exceeds the configured snapshot limit",
-            ));
-        }
-        result.map_err(|_| AppError::internal("serialize canonical snapshot spool"))?;
-        flushed.map_err(|_| AppError::internal("flush canonical snapshot spool"))?;
+        serialize(value, &mut writer)?;
         let bytes = writer.bytes;
         let digest = writer.hasher.finalize().to_hex().to_string();
         tracing::Span::current().record("bytes", bytes);
@@ -72,11 +62,49 @@ impl Encoded {
         })
     }
 
+    /// Compare every canonical byte without allocating a temporary file.
+    /// A changed thread still uses `new` before it can enter immutable staging.
+    #[tracing::instrument(name = "fingerprint_shared_snapshot", skip_all)]
+    pub(in crate::shared) fn matches<T: Serialize>(
+        value: &T,
+        limit: usize,
+        bytes: usize,
+        digest: &str,
+    ) -> Result<bool, AppError> {
+        let mut writer = Writer {
+            output: None,
+            hasher: blake3::Hasher::new(),
+            bytes: 0,
+            limit,
+            exceeded: false,
+        };
+        serialize(value, &mut writer)?;
+        Ok(writer.bytes == bytes && writer.hasher.finalize().to_hex().as_str() == digest)
+    }
+
     pub(in crate::shared) fn reader(&self) -> Result<tokio::fs::File, AppError> {
         std::fs::File::open(&self.file)
             .map(tokio::fs::File::from_std)
             .map_err(|_| AppError::internal("open canonical snapshot spool"))
     }
+}
+
+fn serialize<T: Serialize>(value: &T, writer: &mut Writer<'_>) -> Result<(), AppError> {
+    // Buffer before hashing as well as file I/O, including fingerprint-only
+    // comparisons, so token-sized serializer writes do not amplify hash work.
+    let (result, flushed) = {
+        let mut output = BufWriter::with_capacity(64 * 1024, &mut *writer);
+        let result = serde_json::to_writer(&mut output, value);
+        let flushed = output.flush();
+        (result, flushed)
+    };
+    if writer.exceeded {
+        return Err(AppError::usage(
+            "node exceeds the configured snapshot limit",
+        ));
+    }
+    result.map_err(|_| AppError::internal("serialize canonical snapshot spool"))?;
+    flushed.map_err(|_| AppError::internal("flush canonical snapshot spool"))
 }
 
 pub(in crate::shared) async fn read_bytes(
@@ -128,7 +156,21 @@ mod tests {
             assert_eq!(encoded.bytes, expected.len());
             assert_eq!(encoded.digest, blake3::hash(&expected).to_hex().as_str());
             assert_eq!(std::fs::read(&encoded.file).unwrap(), expected);
+            assert!(
+                Encoded::matches(&value, expected.len(), encoded.bytes, &encoded.digest).unwrap()
+            );
+            assert!(
+                !Encoded::matches(&value, expected.len(), encoded.bytes + 1, &encoded.digest)
+                    .unwrap()
+            );
+            assert!(
+                !Encoded::matches(&value, expected.len(), encoded.bytes, &"0".repeat(64)).unwrap()
+            );
             let error = Encoded::new(&value, expected.len() - 1).err().unwrap();
+            assert_eq!(error.error.kind, crate::ErrorKind::Usage);
+            let error =
+                Encoded::matches(&value, expected.len() - 1, encoded.bytes, &encoded.digest)
+                    .unwrap_err();
             assert_eq!(error.error.kind, crate::ErrorKind::Usage);
         }
     }
@@ -140,6 +182,12 @@ mod tests {
         let encoded = Encoded::new(&value, expected.len()).unwrap();
         assert_eq!(encoded.bytes, expected.len());
         assert_eq!(encoded.digest, blake3::hash(&expected).to_hex().as_str());
+        assert!(Encoded::matches(&value, expected.len(), encoded.bytes, &encoded.digest).unwrap());
+        let mut changed = value.clone();
+        changed[1] = "other".into();
+        assert!(
+            !Encoded::matches(&changed, expected.len(), encoded.bytes, &encoded.digest).unwrap()
+        );
         for limit in 4..20 {
             let mut reader = encoded.reader().unwrap();
             let mut combined = String::new();

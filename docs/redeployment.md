@@ -988,3 +988,37 @@ MCP searches returned three threads with complete context and no fallback in
 speedup measurements. The personal MacBook remained offline (last seen 06:30 UTC)
 and the same ARM64 artifact is staged for it. No indexing or collection-setting
 change ran during deployment; existing stdio clients need their normal reconnect.
+
+Small shared publications now compare unchanged thread snapshots with a bounded
+hash-only serializer before allocating a spool file. It uses the same canonical
+JSON, 64 KiB buffering, BLAKE3 digest and byte-limit checks as immutable staging;
+changed threads still receive a verified staging file. Initial publication and
+incompatible gold recipes retain the single-pass staging path. An edited thread
+with a reusable prior manifest may require two serialization passes. Additional
+trace spans separate snapshot loading, joining, upload planning and thread
+preparation without recording history text or identifiers.
+
+The retained full-size comparison used a 238,257-message node within a
+1,018,215-message group, metadata edits to one existing 29-message thread and
+concurrent HNSW candidate reads. Eight alternating old/new publications had
+medians 12.226/11.583 seconds, with substantial cold-state and host variation.
+A bounded follow-up retained an old warmup and then old/new/new/old samples:
+11.492/11.027/20.377/15.630 seconds. This does not establish an overall latency
+gain. The 20.377-second new sample spent about 13.9 seconds loading the retained
+snapshot, before thread preparation; that remaining bottleneck is open.
+
+The follow-up measured API-process output counters around each update:
+`wchar` fell from approximately 1.372 GB to 0.657 GB, about 715 MB less temporary
+file traffic per update. These counters also include logs and concurrent socket
+output, and most accounted writes were subsequently cancelled on temporary-file
+deletion. They are not evidence of 715 MB of physical disk writes avoided.
+All 156 concurrent candidate reads across the two comparisons returned HTTP 200;
+counts and current lexical/dense manifests were preserved. This is loopback
+candidate and publication evidence, not full CLI/MCP latency or fleet p95.
+
+Validation: 615 standard tests, strict Clippy, formatting and doctests, plus five
+targeted current-source checks covering checksum/Unicode/limit parity, unchanged
+thread retention, edits/deletions, concurrent writers and stale publication
+rejection on a separate disposable Qdrant backend. Private artifacts and failed
+setup/lint invocations are retained under
+`/home/james/scratch/mash-artifacts/shared-sustained-20261005`.

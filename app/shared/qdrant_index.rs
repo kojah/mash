@@ -280,6 +280,7 @@ impl Store {
         let pending = self.pending_snapshot(identity).await?;
         crate::blocking(move || pending.decode()).await
     }
+    #[tracing::instrument(name = "qdrant_load_snapshot", skip_all)]
     async fn pending_snapshot(
         &self,
         identity: &Identity,
