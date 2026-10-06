@@ -78,6 +78,25 @@ not established. Float/int8 arms share the same raw vectors. No quality trial
 was added by that probe. Provider repeat variability is not included in the
 thread-bootstrap uncertainty estimates.
 
+\section{Baseline selection after development evaluation}
+On 6 October 2026, the user selected the calibrated Voyage 4 joint-turn float
+configuration as the new experimental reference, named
+\texttt{voyage4-joint-v1}. Its BIRCH radius is 0.50, absolute membership
+cutoff 0.75 and relative-best margin 0.05, retaining original pooled-view
+smoothing and the measured union with unsmoothed joint-piece memberships.
+The source revision, matrix catalogue, annotation catalogue, report and split
+hashes are pinned in the public baseline manifest. Cached matrices define
+the exact reference because remote model weights cannot be pinned.
+
+This selection uses the reported evaluation outcomes; consequently all 156
+matched histories, including the former 52-thread evaluation subset, are now
+development data for subsequent comparisons. The original confirmation set
+remains sealed. Selection freezes a useful experimental reference rather than
+claiming a statistically established superiority or production acceptance.
+The historical MiniLM reference is preserved and local production search
+continues using its existing model. No new inference or confirmation evaluation
+was performed as part of the freeze.
+
 \section{Sources and limitations}
 The frozen study remains a reference and production behavior is unchanged.
 Remote model weights cannot be pinned, and repeated API calls may expose

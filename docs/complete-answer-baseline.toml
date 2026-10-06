@@ -1,0 +1,55 @@
+# Frozen experimental baseline; production search configuration is separate.
+schema_version = 1
+id = "complete-answer-v1"
+frozen_on = "2026-10-06"
+implementation_revision = "cdc683efb83de14908d84481dedcaecbb944c580"
+confirmation = "sealed"
+
+[algorithm]
+answer_scope = "all"
+pooled_view = "context_whole_equal_role"
+chunk_view = "heading"
+structural_cutoffs = "pinned_implementation"
+context_selection = "pinned_bounded_ancestor"
+inference = "singleton"
+dimensions = 384
+encoder_generation = "2894b8dc20a8bea9f9f78c49d9e349728c69450a273a509298ec8aaf94905491"
+smoothing_alpha = 0.10
+smoothing_window = 4
+smoothing = "single_pass_branch_aware_distance_weighted_original_neighbors"
+clustering = "birch"
+birch_radius = 0.60
+membership_cosine_cutoff = 0.75
+minimum_distinct_turns_per_primary_cluster = 2
+fusion = "namespaced_membership_union"
+generic_penalty = 0.0
+consensus_required = false
+additional_denoising = false
+
+[development]
+histories = 160
+turns = 3396
+decisive_pairs = 930
+ambiguous_pairs = 121
+long_history_minimum_turns = 8
+bootstrap_resamples = 2000
+cohort_sha256 = "d779a9a1850cb29558987e510ddd2452878aca20ebb57dd12ee5c657d5192805"
+tp = 543
+fp = 102
+fn = 74
+tn = 211
+long_tp = 246
+long_fp = 58
+long_fn = 68
+long_tn = 185
+
+[provenance]
+private_run_directory = "/home/james/scratch/mash-artifacts/complete-answer-baseline-20261006"
+contract_sha256 = "9f47dac93a9f2dc56da26ac1843224565752174e0933589e3be162170baa81ec"
+protocol_sha256 = "9e6bae27ea680c559c1be8dfd890276782f58c2cbf1caf8576c5eb9a2e680d96"
+selected_report_sha256 = "7e104679c302eb34a8eaac3b35fba7f47e0d854f08938969861c05a072770a35"
+control_report_sha256 = "9a4904c17386b07a1c052810c0ef6f169e4fd991b1d5e2d37314d1f212cba6b8"
+# Catalogue digest: SHA256(orjson.dumps(dict(sorted(report[field].items())))).
+artifact_catalogue_sha256 = "a9b921273bab207e09986b0a18daaf5e24a5dbc1000f4d8ef11aaa4f95746447"
+annotation_catalogue_sha256 = "abd41c10385cc0fe76f5e6ebe7f3493301ce65b3b513432695580ac606770011"
+scoring_code_catalogue_sha256 = "3fb00527003b5feeea092f8f9be07590802a2bd1e8dc6b0d31bd5bf1c4bec2b4"

@@ -267,12 +267,15 @@ contention without weakening SQLite durability or changing cache identities.
 Already-running experiments retain their loaded implementation; frozen studies
 must preserve their pinned builder source when resuming.
 
-The current frozen turn-clustering baseline is **complete-answer-v1**, selected
+The current frozen turn-clustering baseline is **voyage4-joint-v1**, selected
 on 2026-10-06. See [the freeze contract](../../docs/turn-clustering-baseline.md)
-and [pinned manifest](../../docs/turn-clustering-baseline.toml). Preserve its
-all-answer coverage, structural chunks, original proximity smoothing and fixed
-BIRCH/union settings. Further changes are separate candidates; do not retune this
-baseline against its development labels. Confirmation remains sealed.
+and [pinned manifest](../../docs/turn-clustering-baseline.toml). It uses Voyage 4
+joint-turn floats, original proximity smoothing, BIRCH radius .50 and the
+measured two-view union. The [historical MiniLM baseline](../../docs/complete-answer-baseline.md)
+remains preserved, and production local search stays unchanged. All 156 matched
+Voyage-study histories are now development data; original confirmation remains
+sealed. Future MLflow summaries must explicitly set `baseline="voyage4-joint-v1"`;
+historical scripts retain their original MiniLM control rather than being repointed.
 
 New experiments use **Optuna + MLflow**: Optuna records the registered trial arms;
 MLflow stores parameters, hashes, aggregate metrics and summaries. Use
