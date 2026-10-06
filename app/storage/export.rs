@@ -1,4 +1,4 @@
-//! Export canonical records through one read snapshot during the storage cutover.
+//! Export canonical records through one read snapshot.
 use super::Storage;
 use crate::AppError;
 use std::{
@@ -10,7 +10,7 @@ mod records;
 
 pub(crate) struct Snapshot {
     pub(crate) silver: crate::silver::certificate::Certificate,
-    pub(crate) counts: crate::records::Counts,
+    pub(crate) counts: crate::storage::Counts,
     pub(crate) files: BTreeMap<String, u64>,
 }
 

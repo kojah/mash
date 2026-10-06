@@ -107,9 +107,8 @@ directory's access controls. Checksums detect corruption, not malicious
 replacement. Encryption and trusted storage are handled outside this format.
 
 Version 1 SQLite archives are not accepted by the version 2 importer. Export
-existing local data again with this build before the Qdrant-only cutover. Local
-runtime/import storage remains SQLite until that cutover is complete; the command
-examples above describe the current runtime, not the intended final backend.
+existing local data again with this build. Local runtime and import storage
+remain SQLite; version 2 is the portable exchange format between them.
 
 ## Version 2 real-data verification (2026-10-06)
 
@@ -120,8 +119,7 @@ local store preserved those counts and the certificate, and correctly reported
 that gold still needed rebuilding. Re-export produced a byte-for-byte identical
 `silver.jsonl` (1,026,902,224 bytes); all retained files also matched byte-for-byte.
 This verifies the portable record conversion, including source/branch evidence,
-without reading provider histories or running inference. The test still used the
-SQLite local runtime and does not prove the Qdrant destination is implemented.
+without reading provider histories or running inference.
 
 Validation passed 640 default Rust/CLI/MCP tests, strict Clippy, formatting and
 doctests. Corruption fixtures also reject unknown fields/record kinds, duplicates,

@@ -188,7 +188,7 @@ fn retained_attachments(row: &Row<'_>) -> Result<Vec<crate::attachments::Metadat
 
 #[allow(
     clippy::too_many_lines,
-    reason = "exhaustive typed record mapping; the SQLite destination is removed by the Qdrant cutover"
+    reason = "exhaustive typed record mapping for the portable silver format"
 )]
 pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> {
     record.validate()?;

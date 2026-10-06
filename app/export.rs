@@ -198,7 +198,7 @@ fn counts(storage: &Storage, files: &BTreeMap<String, u64>) -> Result<HistoryCou
 }
 
 fn history_counts(
-    counts: &crate::records::Counts,
+    counts: &crate::storage::Counts,
     files: &BTreeMap<String, u64>,
 ) -> Result<HistoryCounts, AppError> {
     Ok(HistoryCounts {
