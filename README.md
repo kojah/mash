@@ -176,7 +176,9 @@ mash replaces it with empty, unready gold. `mash index --rebuild-local-gold`
 rebuilds it from stored silver offline, reusing valid vectors; add `--full` to
 discard all local gold and replay it from silver. The first open by this version
 moves an existing single-file index's gold into the new file without
-re-embedding. See the
+re-embedding. Upgrades start from that last single-file schema (45): an older
+index is rejected untouched; move it aside and re-index from provider histories,
+or export it with the release that created it. See the
 [history pipeline](docs/history-pipeline.md) for layer ownership, storage schemas
 and recovery behavior.
 
@@ -1032,7 +1034,8 @@ silver lives on the API host under `silver_dir` (absolute path; default
 `shared-silver` in the platform data directory), one SQLite database per
 configured node at `<silver_dir>/<group_id>/<node_id>.sqlite3`, using the same
 silver schema as local indexes. Back it up: Qdrant can be rebuilt from it, but
-not the reverse. Filtered HNSW vector retrieval is the default, with
+not the reverse. One `mash serve` process owns a `silver_dir`; a second one using
+the same directory fails at startup. Filtered HNSW vector retrieval is the default, with
 `ef_runtime = 200`; exact vector retrieval remains an explicit option.
 
 ```toml

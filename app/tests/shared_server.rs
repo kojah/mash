@@ -209,19 +209,28 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
         "gold-startup-{}",
         root.path().file_name().unwrap().to_string_lossy()
     );
-    let old = Server::new(root.path(), &group, &["node"]);
     let path = root.path().join("server.toml");
+    let serve = || {
+        assert_cmd::Command::cargo_bin("mash")
+            .unwrap()
+            .args(["serve", "--server-config", path.to_str().unwrap()])
+            .env("MASH_TEST_TOKEN_0", token("node"))
+            .timeout(std::time::Duration::from_secs(10))
+            .output()
+            .unwrap()
+    };
+    let old = Server::new(root.path(), &group, &["node"]);
+    // One API process owns a silver directory; a second fails before Qdrant.
+    let second = serve();
+    assert!(!second.status.success());
+    assert_eq!(super::error_kind(&second), "configuration");
+    assert!(String::from_utf8_lossy(&second.stderr).contains("already using"));
+    drop(old);
     let document = std::fs::read_to_string(&path)
         .unwrap()
         .replace("dialogue", "title-and-dialogue");
     std::fs::write(&path, document).unwrap();
-    let output = assert_cmd::Command::cargo_bin("mash")
-        .unwrap()
-        .args(["serve", "--server-config", path.to_str().unwrap()])
-        .env("MASH_TEST_TOKEN_0", token("node"))
-        .timeout(std::time::Duration::from_secs(10))
-        .output()
-        .unwrap();
+    let output = serve();
     assert!(!output.status.success());
     assert_eq!(super::error_kind(&output), "configuration");
     assert!(String::from_utf8_lossy(&output.stderr).contains("--activate-gold"));
@@ -231,24 +240,23 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .unwrap();
-    let stale = client
-        .get(format!("{}/v1/state", old.url))
-        .bearer_auth(token("node"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
-    let before: serde_json::Value = client
-        .get(format!("{}/v1/freshness", active.url))
-        .bearer_auth(token("node"))
-        .send()
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    let freshness = |url: String| {
+        let client = client.clone();
+        async move {
+            client
+                .get(format!("{url}/v1/freshness"))
+                .bearer_auth(token("node"))
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .json::<serde_json::Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let before = freshness(active.url.clone()).await;
     assert_eq!(
         before["group_gold"]["build"]["embedding_text"],
         "title-and-dialogue"
@@ -263,29 +271,16 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
         false,
         None,
     );
-    let after: serde_json::Value = client
-        .get(format!("{}/v1/freshness", restarted.url))
-        .bearer_auth(token("node"))
-        .send()
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(before, after);
+    assert_eq!(before, freshness(restarted.url.clone()).await);
     drop(restarted);
-    drop(old);
     for kind in ["state", "messages"] {
         client
             .delete(format!(
-                "{}/collections/mash_q_{}_{}",
+                "{}/collections/mash_gold_{}_{kind}",
                 std::env::var("MASH_TEST_QDRANT_URL")
                     .unwrap()
                     .trim_end_matches('/'),
                 blake3::hash(group.as_bytes()).to_hex(),
-                kind
             ))
             .send()
             .await

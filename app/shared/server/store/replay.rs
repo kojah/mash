@@ -44,6 +44,7 @@ impl Store {
             messages: 0,
             embeddings: 0,
         };
+        let mut documents = crate::shared::qdrant_index::Documents::new(identity);
         for (id, fingerprint) in &fingerprints {
             let thread = id.clone();
             let (conversation, messages) = self
@@ -108,10 +109,11 @@ impl Store {
                     })
                     .collect::<Vec<_>>();
                 replayed.messages += records.len() as u64;
-                stored += self
-                    .gold
-                    .put_documents(identity, &conversation, records)
-                    .await?;
+                for record in records {
+                    stored += documents
+                        .push(&self.gold, identity, &conversation, record)
+                        .await?;
+                }
             }
             node.threads.insert(
                 id.clone(),
@@ -124,6 +126,7 @@ impl Store {
             replayed.threads += 1;
             replayed.embeddings += stored;
         }
+        documents.finish(&self.gold).await?;
         self.certify(identity, node, &fingerprints).await?;
         Ok(replayed)
     }

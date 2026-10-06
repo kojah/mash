@@ -75,6 +75,8 @@ impl Store {
         applied: &Applied,
         previous: Option<NodeGold>,
     ) -> Result<(), AppError> {
+        // Without prior gold every document is deleted, so none can be stale.
+        let fresh = previous.is_none();
         let mut gold = if let Some(gold) = previous {
             gold
         } else {
@@ -105,8 +107,10 @@ impl Store {
         let written = self.write_upload(identity, file, &supplied).await?;
         for id in &supplied {
             let thread = written.get(id);
-            let current = thread.map(|t| t.ids.clone()).unwrap_or_default();
-            self.gold.retain_documents(identity, id, current).await?;
+            if !fresh {
+                let current = thread.map(|t| t.ids.clone()).unwrap_or_default();
+                self.gold.retain_documents(identity, id, current).await?;
+            }
             let fingerprint = fingerprints
                 .get(id)
                 .cloned()
@@ -134,6 +138,7 @@ impl Store {
         let mut written = BTreeMap::<String, Written>::new();
         let mut conversations = HashMap::<String, ConversationRecord>::new();
         let build = self.gold.build().clone();
+        let mut documents = crate::shared::qdrant_index::Documents::new(identity);
         loop {
             let (next, batch) = crate::blocking(move || {
                 let mut batch = Vec::new();
@@ -156,19 +161,12 @@ impl Store {
             if batch.is_empty() {
                 break;
             }
-            let mut threads = BTreeMap::<String, Vec<MessageRecord>>::new();
             for message in batch {
-                if selected.contains(&message.conversation_id) {
-                    threads
-                        .entry(message.conversation_id.clone())
-                        .or_default()
-                        .push(message);
+                let id = message.conversation_id.clone();
+                if !selected.contains(&id) {
+                    continue;
                 }
-            }
-            for (id, messages) in threads {
-                let conversation = if let Some(conversation) = conversations.get(&id) {
-                    conversation.clone()
-                } else {
+                if !conversations.contains_key(&id) {
                     let thread = id.clone();
                     let record = self
                         .read(identity, move |connection| {
@@ -176,21 +174,18 @@ impl Store {
                         })
                         .await?
                         .ok_or_else(|| AppError::internal("supplied thread has no silver"))?;
-                    conversations.insert(id.clone(), record.clone());
-                    record
-                };
-                let entry = written.entry(id).or_default();
-                for message in &messages {
-                    entry.ids.push(message.id.clone());
-                    entry.expected +=
-                        u64::from(build.includes_dense(&message.role, &message.projection));
+                    conversations.insert(id.clone(), record);
                 }
-                entry.embeddings += self
-                    .gold
-                    .put_documents(identity, &conversation, messages)
+                let entry = written.entry(id.clone()).or_default();
+                entry.ids.push(message.id.clone());
+                entry.expected +=
+                    u64::from(build.includes_dense(&message.role, &message.projection));
+                entry.embeddings += documents
+                    .push(&self.gold, identity, &conversations[&id], message)
                     .await?;
             }
         }
+        documents.finish(&self.gold).await?;
         Ok(written)
     }
 
@@ -351,6 +346,7 @@ impl Store {
             })
             .await?;
         let build = self.gold.build().clone();
+        let mut documents = crate::shared::qdrant_index::Documents::new(identity);
         for (id, fingerprint) in &fingerprints {
             let thread = id.clone();
             let (conversation, messages) = self
@@ -363,24 +359,16 @@ impl Store {
                 })
                 .await?;
             let mut written = Written::default();
-            for chunk in messages.chunks(DOCUMENT_BATCH) {
-                let records = chunk
-                    .iter()
-                    .map(|message| {
-                        let mut message = message.clone();
-                        written.ids.push(message.id.clone());
-                        if build.includes_dense(&message.role, &message.projection) {
-                            written.expected += 1;
-                            message.vector = vector(&message);
-                            message.generation =
-                                message.vector.as_ref().map(|_| identity.generation.clone());
-                        }
-                        message
-                    })
-                    .collect();
-                written.embeddings += self
-                    .gold
-                    .put_documents(identity, &conversation, records)
+            for mut message in messages {
+                written.ids.push(message.id.clone());
+                if build.includes_dense(&message.role, &message.projection) {
+                    written.expected += 1;
+                    message.vector = vector(&message);
+                    message.generation =
+                        message.vector.as_ref().map(|_| identity.generation.clone());
+                }
+                written.embeddings += documents
+                    .push(&self.gold, identity, &conversation, message)
                     .await?;
             }
             gold.threads.insert(
@@ -392,6 +380,7 @@ impl Store {
                 },
             );
         }
+        documents.finish(&self.gold).await?;
         self.certify(identity, gold, &fingerprints).await
     }
 

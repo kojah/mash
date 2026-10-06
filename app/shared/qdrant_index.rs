@@ -12,7 +12,7 @@ use super::server::Identity;
 use crate::AppError;
 use serde::{Deserialize, Serialize};
 
-pub(super) use gold::{GoldThread, NodeGold};
+pub(super) use gold::{Documents, GoldThread, NodeGold};
 pub(super) use read::validate_search;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]

@@ -124,55 +124,6 @@ impl Store {
     }
 
     /// Upsert one batch of a thread's documents; returns stored dense vectors.
-    pub(in crate::shared) async fn put_documents(
-        &self,
-        identity: &Identity,
-        conversation: &ConversationRecord,
-        messages: Vec<MessageRecord>,
-    ) -> Result<u64, AppError> {
-        let name = collection(&identity.group_id, false);
-        let mut batch = api::StagingBatch::default();
-        let mut embeddings = 0;
-        for message in messages {
-            if message.conversation_id != conversation.id {
-                return Err(failure());
-            }
-            let words = tokens(&message.projection);
-            embeddings += u64::from(message.vector.is_some());
-            batch
-                .push(
-                    &self.api,
-                    &name,
-                    api::Point {
-                        id: document_id(&identity.node_id, &message.id),
-                        vector: api::Vectors {
-                            dense: message
-                                .vector
-                                .clone()
-                                .map(|v| (self.dense_name(identity).into(), v)),
-                            lexical: (!words.is_empty())
-                                .then(|| sparse(&message.projection, false)),
-                        },
-                        payload: Document {
-                            node_id: identity.node_id.clone(),
-                            provider: conversation.provider,
-                            role: message.role.clone(),
-                            conversation_id: conversation.id.clone(),
-                            project: conversation.project.clone(),
-                            repository: conversation.repository.clone(),
-                            created_at: message.created_at,
-                            tokens: words,
-                            conversation: conversation.clone(),
-                            message,
-                        },
-                    },
-                )
-                .await?;
-        }
-        batch.flush(&self.api, &name).await?;
-        Ok(embeddings)
-    }
-
     /// Delete a thread's documents except the listed current messages.
     pub(in crate::shared) async fn retain_documents(
         &self,
@@ -228,5 +179,69 @@ impl Store {
                 .await?;
         }
         Ok(())
+    }
+}
+
+/// Buffered gold documents for one node; `finish` sends the remainder.
+pub(in crate::shared) struct Documents {
+    name: String,
+    batch: api::StagingBatch,
+}
+
+impl Documents {
+    /// A writer that fills whole Qdrant requests across threads.
+    pub(in crate::shared) fn new(identity: &Identity) -> Self {
+        Self {
+            name: collection(&identity.group_id, false),
+            batch: api::StagingBatch::default(),
+        }
+    }
+
+    /// Queue one message's document; returns 1 when it carries an embedding.
+    pub(in crate::shared) async fn push(
+        &mut self,
+        store: &Store,
+        identity: &Identity,
+        conversation: &ConversationRecord,
+        message: MessageRecord,
+    ) -> Result<u64, AppError> {
+        if message.conversation_id != conversation.id {
+            return Err(failure());
+        }
+        let words = tokens(&message.projection);
+        let embedded = u64::from(message.vector.is_some());
+        self.batch
+            .push(
+                &store.api,
+                &self.name,
+                api::Point {
+                    id: document_id(&identity.node_id, &message.id),
+                    vector: api::Vectors {
+                        dense: message
+                            .vector
+                            .clone()
+                            .map(|v| (store.dense_name(identity).into(), v)),
+                        lexical: (!words.is_empty()).then(|| sparse(&message.projection, false)),
+                    },
+                    payload: Document {
+                        node_id: identity.node_id.clone(),
+                        provider: conversation.provider,
+                        role: message.role.clone(),
+                        conversation_id: conversation.id.clone(),
+                        project: conversation.project.clone(),
+                        repository: conversation.repository.clone(),
+                        created_at: message.created_at,
+                        tokens: words,
+                        conversation: conversation.clone(),
+                        message,
+                    },
+                },
+            )
+            .await?;
+        Ok(embedded)
+    }
+
+    pub(in crate::shared) async fn finish(mut self, store: &Store) -> Result<(), AppError> {
+        self.batch.flush(&store.api, &self.name).await
     }
 }

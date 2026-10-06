@@ -39,11 +39,31 @@ pub(super) struct Head {
 
 /// One silver database per configured node under a root directory:
 /// `<root>/<group_id>/<node_id>.sqlite3`. WAL readers run concurrently with
-/// the node's single writer.
+/// the node's single writer. One API process owns the directory at a time.
 #[derive(Clone)]
 pub(super) struct SilverStore {
     root: PathBuf,
     groups: BTreeMap<String, Vec<String>>,
+    _owner: Option<std::sync::Arc<std::fs::File>>,
+}
+
+/// Exclusive ownership of a silver directory for this process's lifetime:
+/// per-node publication locks and gold synchronization are in-process only.
+fn own(root: &Path) -> Result<std::fs::File, AppError> {
+    std::fs::create_dir_all(root).map_err(AppError::io)?;
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(root.join("serve.lock"))
+        .map_err(AppError::io)?;
+    match lock.try_lock() {
+        Ok(()) => Ok(lock),
+        Err(std::fs::TryLockError::WouldBlock) => Err(AppError::configuration(
+            "another mash serve is already using this silver_dir",
+        )),
+        Err(std::fs::TryLockError::Error(error)) => Err(AppError::io(error)),
+    }
 }
 
 fn database(error: rusqlite::Error) -> AppError {
@@ -93,6 +113,7 @@ impl SilverStore {
         let mut store = Self {
             root: root.to_path_buf(),
             groups: BTreeMap::new(),
+            _owner: Some(std::sync::Arc::new(own(root)?)),
         };
         for identity in identities {
             store
@@ -115,6 +136,7 @@ impl SilverStore {
         Self {
             root: PathBuf::from("/proc/mash-unavailable/silver"),
             groups: BTreeMap::new(),
+            _owner: None,
         }
     }
 
@@ -381,4 +403,22 @@ pub(super) fn coverage_gaps(connection: &Connection, provider: Provider) -> Resu
         .query_one(connection)
         .map_err(database)?;
     Ok(row.stale != 0 || row.unmapped != 0)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn one_process_owns_a_silver_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let identity = super::node_identity("group", "node");
+        let first = super::SilverStore::open(directory.path(), [&identity]).unwrap();
+        let second = super::SilverStore::open(directory.path(), [&identity]);
+        assert!(
+            second
+                .err()
+                .is_some_and(|error| error.error.message.contains("already using"))
+        );
+        drop(first);
+        super::SilverStore::open(directory.path(), [&identity]).unwrap();
+    }
 }
