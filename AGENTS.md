@@ -84,6 +84,13 @@ change pinned bytes, historical reproduction, or the dependency-free execution
 contract. New validated records should be typed; new standalone tooling may use
 Click, Pydantic and orjson when its environment explicitly provides them.
 
+New research experiments use Optuna for registered trial selection/records and
+MLflow for experiment tracking. Keep metadata in local SQLite and artifacts
+under the private research directory; log parameters, provenance hashes and
+aggregate results. Do not autolog or upload raw chat text, annotations, embeddings
+or per-thread predictions to MLflow. Preserve frozen baselines and keep new
+candidates separate. Do not rewrite historical studies just to add tracking.
+
 ## Verification
 
 Keep project logs, downloads, research captures and other durable work artifacts

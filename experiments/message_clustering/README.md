@@ -273,3 +273,30 @@ and [pinned manifest](../../docs/turn-clustering-baseline.toml). Preserve its
 all-answer coverage, structural chunks, original proximity smoothing and fixed
 BIRCH/union settings. Further changes are separate candidates; do not retune this
 baseline against its development labels. Confirmation remains sealed.
+
+New experiments use **Optuna + MLflow**: Optuna records the registered trial arms;
+MLflow stores parameters, hashes, aggregate metrics and summaries. Use
+`experiment_tracking.py` for local SQLite tracking with an explicit private
+artifact root. Raw histories, vectors and per-thread judgments/predictions stay
+in private research files, outside MLflow. Historical frozen studies are not
+rewritten. No tracking service is required for logging.
+
+The next registered comparison is
+[complete-answer prompt conditioning](../../docs/complete-answer-conditioning-protocol.md).
+From this directory, run the builder with `--parent`, `--reference`, `--protocol`,
+`--model`, `--cache`, and `--output` pointing to the installed/private artifacts:
+
+```bash
+uv run python build_complete_conditioning.py --help
+uv run python run_complete_conditioning.py --help
+```
+
+The scorer takes `--parent`, `--reference`, `--artifacts`, `--output` and
+`--tracking`. Both Optuna and MLflow must use explicit private directories.
+To browse recorded runs, start a local UI when needed:
+
+```bash
+uv run mlflow server \
+  --backend-store-uri sqlite:////home/james/scratch/mash-artifacts/mlflow/tracking.sqlite \
+  --host 127.0.0.1 --port 5050
+```

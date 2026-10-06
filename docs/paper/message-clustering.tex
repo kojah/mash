@@ -1386,6 +1386,54 @@ four histories reproduce newly included cached vectors exactly. The earlier
 full-answer window trial used a different representation pipeline and does not
 replace this controlled comparison. No denoising, new labels or tuning are added.
 
+\section{Prompt conditioning with complete answers}
+We register two fixed arms against complete-answer-v1: unchanged inputs versus
+the first at most 80 current-prompt tokens prefixed to every assistant chunk.
+Only answer-excerpt token states enter output pooling; prompt tokens affect
+attention. Overflow uses the existing structural splitter. This jointly tests
+prompt attention and answer-only pooling. Keep all assistant sources, pooled/user
+vectors, singleton MiniLM, smoothing and clustering settings fixed. Reuse 160
+development histories and the original 930 decisive judgments; confirmation
+remains sealed. Optuna records the two fixed trials; local MLflow 3.16.1 records
+parameters, provenance and aggregate outputs following its tracking API
+\cite{mlflowtracking}, without source chats, embeddings or detailed judgments.
+
+\begin{center}
+\begin{tabular}{lrrrrrrr}
+Arm & TP & FP & FN & TN & P & R & F1\\\hline
+Baseline & 543 & 102 & 74 & 211 & .8419 & .8801 & .8605\\
+Conditioned & 547 & 105 & 70 & 208 & .8390 & .8865 & .8621\\
+Long baseline & 246 & 58 & 68 & 185 & .8092 & .7834 & .7961\\
+Long conditioned & 251 & 62 & 63 & 181 & .8019 & .7994 & .8006\\
+\end{tabular}
+\end{center}
+
+Overall F1 gain is .00156 with paired bootstrap interval [-.00612, .01016];
+long gain is .00452, interval [-.01135, .02148] (2,000 thread resamples).
+Both include zero; neither arm meets the precision gate. Long related pairs
+recover nine misses and introduce four new misses, with four additional false
+positives. Overall there is only one fewer classification error. Twenty-nine
+predictions change including ambiguous pairs. For 144 long related pairs at gap
+$\geq4$, misses decrease from 57 to 53 (recall .6042 to .6319). Retain the frozen
+baseline. This reused-development result is exploratory and does not establish
+equivalence or rule out different context representations.
+
+All 160 baseline prediction maps reproduce exactly; pooled/user matrices remain
+bit-identical. Full assistant-source coverage, prompt ownership, hashes, owners
+and unit norms pass, as do 12 fresh selected-pooling probes. An initial standalone
+preflight retained tokenizer default padding and failed before inference; with
+the encoder's no-padding/no-truncation settings, preflight passes without changing
+the algorithm. All 15,975 assistant sources remain represented. Answer chunks
+increase from 29,854 to 29,899 while 4,251 user chunks stay unchanged; 249 prompts
+exceed the 80-token prefix budget. Summed inputs increase from 5.40M to 6.48M
+tokens. The builder infers 14,096 new cache entries, taking 5:57.13 wall time,
+180.50 CPU seconds and peak RSS 1,124,972 KiB. Scoring including audits, bootstrap
+and initial MLflow setup/logging takes 1:54.16, peak RSS 1,195,064 KiB. Summed fit
+times are 7.85/7.30 seconds. Cache reuse and recurring filesystem contention limit
+timing interpretation. Two finished MLflow runs are verified by read-back; Optuna
+links their IDs. No additional candidate, concurrency tuning or confirmation
+evaluation follows. All 150 Python tests and static checks pass.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
@@ -1436,5 +1484,7 @@ Grafting. KDD, 2019. \url{https://arxiv.org/abs/2001.00076}
 \bibitem{sif} S. Arora, Y. Liang and T. Ma.
 A Simple but Tough-to-Beat Baseline for Sentence Embeddings. ICLR, 2017.
 Author implementation: \url{https://github.com/PrincetonML/SIF}
+\bibitem{mlflowtracking} MLflow. Tracking APIs.
+\url{https://mlflow.org/docs/latest/ml/tracking/tracking-api/}
 \end{thebibliography}
 \end{document}

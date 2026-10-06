@@ -15,7 +15,7 @@ from ablation_evidence import (
 )
 from ablation_inputs import prepare, validate
 from corpus import Role
-from followup_inputs import source_text
+from followup_inputs import AnswerScope, source_text
 from structure_chunks import Mode, prepare_structured
 from study_artifacts import View
 from study_scoring import Candidate, Family
@@ -25,6 +25,34 @@ from turns import extract
 
 
 class AblationContracts(unittest.TestCase):
+    def test_all_answer_segments_receive_own_prompt_without_losing_chunks(self) -> None:
+        source = thread(
+            (Role.USER, Role.ASSISTANT, Role.ASSISTANT),
+            (
+                "own request",
+                "# First\nSubstantive explanation.",
+                "# Second\nFinal details.",
+            ),
+        )
+        turns = extract(source)
+        original = prepare_structured(
+            source, turns, 0, Mode.HEADING, tokenizer(), AnswerScope.ALL
+        )
+        conditioned = prepare(original, source, turns, tokenizer(), AnswerScope.ALL)
+        answers = tuple(u for u in conditioned if u.body.role == Role.ASSISTANT)
+        self.assertGreaterEqual(len(answers), 2)
+        self.assertTrue(all("own request" in u.content.text for u in answers))
+        self.assertTrue(all(u.selection is not None for u in answers))
+        self.assertEqual(
+            {
+                location.source.source
+                for u in answers
+                for location in u.body.content.locations
+            },
+            {1, 2},
+        )
+        self.assertEqual(conditioned[0].body, original[0].input)
+
     def test_answer_conditioning_preserves_prompts_and_checks_ownership(self) -> None:
         source = thread(
             (Role.USER, Role.ASSISTANT, Role.USER, Role.ASSISTANT),

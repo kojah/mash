@@ -40,6 +40,7 @@ def prepare(
     thread: Thread,
     turns: tuple[Turn, ...],
     tokenizer: Tokenizer,
+    answer_scope: AnswerScope = AnswerScope.LAST,
 ) -> tuple[Conditioned, ...]:
     prompts = {}
     for turn in turns:
@@ -59,6 +60,7 @@ def prepare(
         thread,
         turns,
         tokenizer,
+        answer_scope,
     )
 
 
@@ -68,6 +70,7 @@ def condition(
     thread: Thread,
     turns: tuple[Turn, ...],
     tokenizer: Tokenizer,
+    answer_scope: AnswerScope = AnswerScope.LAST,
 ) -> tuple[Conditioned, ...]:
     """Condition each structural input on an explicitly selected own-turn span."""
     owners = tuple(t.id for t in turns if t.prompts)
@@ -119,7 +122,7 @@ def condition(
         tuple(u.body for u in frozen),
         thread,
         turns,
-        AnswerScope.LAST,
+        answer_scope,
     )
     return frozen
 
