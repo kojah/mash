@@ -1,0 +1,58 @@
+\section{Simultaneous precision and recall targets}
+An adaptive follow-up specifies precision $>82\%$, overall recall $>90\%$,
+and distant-turn recall $>80\%$ simultaneously. These are point-estimate targets,
+not confidence-bound requirements. We retain the 104/52 development subdivision
+and seal confirmation. Optuna selection uses only calibration; one frozen
+candidate is scored per sweep. These reused-development, agent-labeled outcomes
+cannot establish independent generalization.
+
+The first 256-trial TPE sweep adjusts Code 4 2048-dimensional BIRCH radius,
+membership cutoff, relative-best margin and view. A 512-trial follow-up adds
+convex representation ensembles: concatenate $\sqrt{w}$ times normalized Code
+vectors and $\sqrt{1-w}$ times normalized Voyage vectors. The resulting cosine
+is the weighted sum of the model cosines. Five weights are registered.
+A final 768-trial sweep substitutes average-link, complete-link or online leader
+partitioning, retaining overlapping centroid memberships and distinct-turn
+support. We optimize the minimum ratio to the three targets until feasible;
+among feasible calibration settings, precision is maximized.
+
+\begin{center}\small
+\begin{tabular}{lrrrrrr}
+\toprule
+& \multicolumn{3}{c}{Calibration} & \multicolumn{3}{c}{Development evaluation}\\
+Sweep & P & R & Distant R & P & R & Distant R\\
+\midrule
+Code BIRCH &81.47&92.42&82.14&77.83&89.12&77.78\\
+BIRCH ensemble &83.52&90.46&86.90&76.60&93.26&88.89\\
+Family comparison &83.11&90.22&88.10&76.72&92.23&88.89\\
+Group refinement &83.52&90.46&86.90&76.60&93.26&88.89\\
+\bottomrule
+\end{tabular}
+\end{center}
+The latter two calibration candidates pass all targets, but evaluation precision
+fails. The BIRCH ensemble selects $w=.25$, radius .45, membership cosine .6375,
+relative margin .20 and chunk view. The family sweep selects complete-link at
+partition cosine .60 with the same weight and membership settings. Each recovers
+48 of 54 distant related evaluation pairs, versus 38 for the frozen reference,
+but admits 55 and 54 false positives respectively, versus 33. Their evaluation
+F1 scores are 84.11 and 83.76, with exploratory paired gain intervals
+$[-3.86,+1.11]$ and $[-5.27,+1.78]$ percentage points against the reference.
+Neither demonstrates a balanced-quality improvement.
+
+Calibration contains 409 related and 188 unrelated scored pairs; evaluation
+contains 193 and 103 respectively. We exclude 68/50 ambiguous judgments.
+Distant denominators are only 84/54. This finite evidence should not be treated
+as a corpus-wide performance guarantee. The precision generalization gap
+motivates a distinct weak-link check rather than more radius-only tuning.
+An additional 33-trial registered refinement splits overlapping centroid groups
+using complete-link on unsmoothed joint-turn vectors. Low cosine floors do not
+change calibration outcomes; stronger floors lose recall. Selection retains
+disabled refinement, exactly replaying the BIRCH ensemble. This row is a control
+replay rather than a distinct quality improvement.
+All 1,569 trials use cached vectors, cost no additional inference, and preserve
+thread-local processing. Driver times are 20.6, 52.1 and 62.1 seconds, excluding
+final SQLite persistence; refinement takes 21.9 seconds. Optuna trials and MLflow
+aggregate records remain local. The drivers pass Ruff, ty and all 168 Python tests, with
+regressions covering strict target selection, convex cosine geometry, distinct
+turn support and overlapping refinement. Production and the
+frozen baseline remain unchanged.

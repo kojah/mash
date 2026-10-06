@@ -1,0 +1,7 @@
+# Weak-link refinement follow-up
+
+Previous sweeps improved distant recall but failed evaluation precision. Register a clustering refinement before evaluating it: for each overlapping centroid group, split its assigned turns using complete-link clustering on unsmoothed, normalized joint-turn embeddings. Retain subgroups supported by at least two turns. A turn can remain in multiple refined groups; pooled/chunk group namespaces remain separate. This produces actual overlapping clusters rather than a pairwise classifier that cannot supply memberships.
+
+Use three already calibration-selected upstream pipelines: original high-recall Code 4 2048 BIRCH, selected convex BIRCH ensemble, and selected complete-link ensemble. Preserve all upstream settings. Try disabled refinement plus complete-link cosine floors .05/.15/.25/.35/.45/.50/.55/.60/.65/.70, for 33 exhaustive Optuna grid trials. The refinement vectors use the upstream ensemble weight. All token-budget chunks have one vector per turn in this cohort; assert this rather than silently aggregating them differently.
+
+Use the same calibration-only simultaneous-target objective and tie rules, freeze one candidate, then evaluate once on the existing 52-thread development subdivision. No evaluation-guided threshold selection, API calls, new annotations or confirmation access. All results remain provisional adaptive development. Report a missed target honestly; never alter scored-pair inclusion to make a target pass.
