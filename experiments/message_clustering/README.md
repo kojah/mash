@@ -300,3 +300,29 @@ uv run mlflow server \
   --backend-store-uri sqlite:////home/james/scratch/mash-artifacts/mlflow/tracking.sqlite \
   --host 127.0.0.1 --port 5050
 ```
+## Calibrated Voyage encoder comparison
+
+`run_voyage_calibration.py` compares the frozen complete-answer MiniLM control
+with Voyage Code 4 and Voyage 4. Remote arms retain raw floats, isolate the
+existing int8 codec, and test complete-turn inputs alongside short windows.
+It audits frozen-control parity and uses the same bounded Optuna budget for
+each representation. A deterministic split of development threads separates
+calibration from evaluation; the original confirmation remains sealed.
+The registered contract is in `docs/voyage-calibration-protocol.md`.
+
+Run from this directory with `uv run python run_voyage_calibration.py`, passing
+`--root` for private research parents, `--output` for a new private study
+directory, `--protocol` for the registered Markdown contract, and `--key-file`
+for an existing private `OPENROUTER_API_KEY=...` file. Use `--prepare-only` to
+freeze and inspect the split before API calls. Resume with identical code,
+sources and arguments; changed contracts fail rather than mixing caches.
+The script caps new estimated/reported API charges at $3 and logs aggregate
+calibration/evaluation results to local MLflow. No chat text enters MLflow.
+
+After completion, `summarize_voyage_calibration.py --root STUDY --markdown REPORT
+--latex PAPER` produces aggregate reports and a standalone LaTeX supplement.
+Keep vectors, receipts and per-thread predictions in private research storage.
+
+See [the aggregate results](../../docs/voyage-calibration-results.md) and
+[the LaTeX supplement](../../docs/paper/voyage-calibration.tex) for the completed
+comparison, implementation audit, calibration settings and limitations.
