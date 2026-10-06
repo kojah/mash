@@ -182,7 +182,7 @@ fn qdrant_cli_remote_model_and_dimension_switch_rebuilds_without_touching_silver
         fixture.json(&["index", "--all-history"], true)["shared"]["state"],
         "published"
     );
-    let connection = Connection::open(&fixture.database).unwrap();
+    let connection = open_index(&fixture.database);
     rebuild::snapshot_local(&connection);
     let canonical = rebuild::remote_silver(&fixture);
     let initial = fixture.remote_node("split");

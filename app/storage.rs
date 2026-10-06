@@ -1,6 +1,6 @@
 //! Shared SQLite infrastructure for silver history and gold retrieval tables.
 //! Canonical mutation also invalidates dependent gold in the same transaction;
-//! gold/local owns rebuilding. See schema.sql for the physical layer sections.
+//! gold/local owns rebuilding. See silver.sql and gold.sql for the two databases.
 use crate::provider::Provider;
 use std::fs;
 use std::path::Path;
@@ -30,7 +30,7 @@ mod silver_state;
 
 // Connection/schema and generated query infrastructure for both layers.
 mod queries;
-mod schema;
+pub(crate) mod schema;
 
 #[cfg(test)]
 use schema::SCHEMA_VERSION;
@@ -188,7 +188,7 @@ impl Storage {
             fs::create_dir_all(parent).map_err(AppError::io)?;
         }
         let connection = Connection::open(path).map_err(AppError::database)?;
-        initialize(&connection)?;
+        initialize(&connection, &schema::gold_path(path))?;
         connection
             .execute_batch(
                 "CREATE TEMP TABLE IF NOT EXISTS pending_fts_messages (

@@ -125,6 +125,7 @@ fn version_forty_one_installs_the_journal_without_discarding_history_or_vectors(
         )
         .unwrap();
     storage.commit_writer().unwrap();
+    crate::storage::test_support::combine_gold(&storage.connection, &path);
     storage
         .connection
         .execute_batch(

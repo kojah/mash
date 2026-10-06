@@ -61,6 +61,7 @@ fn schema_upgrade_never_invents_lexical_publication_and_explicit_rebuild_recover
     let messages = writer.view("message-1", 0).unwrap();
     drop(writer);
     let connection = Connection::open(&path).unwrap();
+    crate::storage::test_support::combine_gold(&connection, &path);
     connection
         .execute_batch("DROP TABLE lexical_manifest; PRAGMA user_version=38")
         .unwrap();

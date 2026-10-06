@@ -37,9 +37,10 @@ impl Store {
         let current = gold
             .as_ref()
             .is_some_and(|g| g.current(&self.gold, identity, silver_revision.as_ref()));
-        let scope = identity.clone();
         let fingerprints = self
-            .read(move |connection| silver_store::fingerprints(connection, &scope))
+            .read(identity, |connection| {
+                silver_store::fingerprints(connection)
+            })
             .await?;
         let view = GoldView {
             build: current.then(|| self.gold.build().clone()),
@@ -49,8 +50,9 @@ impl Store {
         let scope = identity.clone();
         let build = self.gold.build().clone();
         let (applied, file) = crate::blocking(move || {
-            let applied =
-                silver.write(|tx| silver_store::apply::apply(tx, &scope, &file, &build, &view))?;
+            let applied = silver.write(&scope, |tx| {
+                silver_store::apply::apply(tx, &scope, &file, &build, &view)
+            })?;
             Ok((applied, file))
         })
         .await?;
@@ -85,9 +87,10 @@ impl Store {
             self.gold.retain_documents(identity, id, Vec::new()).await?;
             gold.threads.remove(id);
         }
-        let scope = identity.clone();
         let fingerprints = self
-            .read(move |connection| silver_store::fingerprints(connection, &scope))
+            .read(identity, |connection| {
+                silver_store::fingerprints(connection)
+            })
             .await?;
         // A duplicate snapshot resupplies every thread with its vectors.
         let supplied: BTreeSet<String> = if applied.duplicate {
@@ -166,11 +169,10 @@ impl Store {
                 let conversation = if let Some(conversation) = conversations.get(&id) {
                     conversation.clone()
                 } else {
-                    let scope = identity.clone();
                     let thread = id.clone();
                     let record = self
-                        .read(move |connection| {
-                            silver_store::conversation(connection, &scope, &thread)
+                        .read(identity, move |connection| {
+                            silver_store::conversation(connection, &thread)
                         })
                         .await?
                         .ok_or_else(|| AppError::internal("supplied thread has no silver"))?;
@@ -228,7 +230,7 @@ impl Store {
         let scope = identity.clone();
         let build = self.gold.build().clone();
         let (head, vectors) = self
-            .read(move |connection| {
+            .read(identity, move |connection| {
                 let mut lines =
                     std::io::BufReader::new(file.reopen().map_err(AppError::io)?).lines();
                 let first = lines
@@ -248,7 +250,7 @@ impl Store {
                 silver
                     .validate()
                     .map_err(|_| AppError::usage("invalid gold silver identity"))?;
-                let head = silver_store::head(connection, &scope)?
+                let head = silver_store::head(connection)?
                     .ok_or_else(|| conflict("shared silver has not been indexed"))?;
                 if head.revision != publication_revision
                     || head.silver_revision.as_ref() != Some(&silver)
@@ -265,7 +267,7 @@ impl Store {
                 if requested != build {
                     return Err(conflict("shared gold recipe changed; restart gold rebuild"));
                 }
-                if !certified(connection, &scope, &head)? {
+                if !certified(connection, &head)? {
                     return Err(conflict(
                         "gold rebuild requires complete, current shared silver",
                     ));
@@ -285,7 +287,7 @@ impl Store {
                             }
                             for record in records {
                                 let message =
-                                    silver_store::message(connection, &scope, &record.message_id)?
+                                    silver_store::message(connection, &record.message_id)?
                                         .ok_or_else(|| {
                                             AppError::usage("gold embedding has no silver message")
                                         })?;
@@ -305,7 +307,7 @@ impl Store {
                         }
                     }
                 }
-                let expected = silver_store::dense_messages(connection, &scope, &build)?;
+                let expected = silver_store::dense_messages(connection, &build)?;
                 if !finished || vectors.len() as u64 != expected {
                     return Err(AppError::usage("incomplete gold replacement"));
                 }
@@ -318,11 +320,11 @@ impl Store {
         let scope = identity.clone();
         let silver = self.silver.clone();
         crate::blocking(move || {
-            silver.write(|tx| {
-                let mut head = silver_store::head(tx, &scope)?
+            silver.write(&scope, |tx| {
+                let mut head = silver_store::head(tx)?
                     .ok_or_else(|| conflict("shared silver has not been indexed"))?;
                 head.version = silver_store::token()?;
-                silver_store::put_head(tx, &scope, &head)
+                silver_store::put_head(tx, &head)
             })
         })
         .await?;
@@ -343,20 +345,20 @@ impl Store {
         self.gold.delete_node_documents(identity).await?;
         let mut gold = NodeGold::empty(&self.gold, identity);
         self.gold.put_node_gold(identity, &gold).await?;
-        let scope = identity.clone();
         let fingerprints = self
-            .read(move |connection| silver_store::fingerprints(connection, &scope))
+            .read(identity, |connection| {
+                silver_store::fingerprints(connection)
+            })
             .await?;
         let build = self.gold.build().clone();
         for (id, fingerprint) in &fingerprints {
-            let scope = identity.clone();
             let thread = id.clone();
             let (conversation, messages) = self
-                .read(move |connection| {
+                .read(identity, move |connection| {
                     Ok((
-                        silver_store::conversation(connection, &scope, &thread)?
+                        silver_store::conversation(connection, &thread)?
                             .ok_or_else(|| AppError::internal("silver thread disappeared"))?,
-                        silver_store::thread_messages(connection, &scope, &thread)?,
+                        silver_store::thread_messages(connection, &thread)?,
                     ))
                 })
                 .await?;
@@ -412,7 +414,7 @@ impl Store {
         let silver = self.silver.clone();
         let scope = identity.clone();
         let (forgotten, head, deleted) = crate::blocking(move || {
-            silver.write(|tx| {
+            silver.write(&scope, |tx| {
                 silver_store::apply::forget(tx, &scope, &input.instance, input.revision, &input.ids)
             })
         })

@@ -1,155 +1,172 @@
--- name: Head :one
-SELECT head FROM nodes WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id);
+-- Server queries over one node's silver database (the shared silver schema).
 
--- name: Heads :many
-SELECT node_id, head FROM nodes WHERE group_id = sqlc.arg(group_id) ORDER BY node_id;
+-- name: Head :one
+SELECT head FROM shared_head WHERE singleton = 1;
 
 -- name: PutHead :exec
-INSERT INTO nodes(group_id, node_id, head) VALUES (sqlc.arg(group_id), sqlc.arg(node_id), sqlc.arg(head))
-ON CONFLICT(group_id, node_id) DO UPDATE SET head = excluded.head;
+INSERT INTO shared_head(singleton, head) VALUES (1, sqlc.arg(head))
+ON CONFLICT(singleton) DO UPDATE SET head = excluded.head;
 
 -- name: Counts :one
-SELECT (SELECT count(*) FROM conversations c WHERE c.group_id = sqlc.arg(group_id) AND c.node_id = sqlc.arg(node_id)) AS conversations,
-    count(*) AS messages,
-    CAST(coalesce(sum(searchable), 0) AS INTEGER) AS searchable,
-    CAST(coalesce(sum(searchable * user), 0) AS INTEGER) AS searchable_users
-FROM messages WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id);
+SELECT (SELECT count(*) FROM conversations) AS conversations,
+    (SELECT count(*) FROM messages) AS messages,
+    (SELECT count(*) FROM messages WHERE COALESCE(search_projection, content) <> '') AS searchable,
+    (SELECT count(*) FROM messages
+        WHERE COALESCE(search_projection, content) <> '' AND role = 'user') AS searchable_users;
 
 -- name: Conversation :one
-SELECT record FROM conversations
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND id = sqlc.arg(id);
-
--- name: ConversationProvider :one
-SELECT provider FROM conversations
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND id = sqlc.arg(id);
+SELECT c.id, c.provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
+    e.evidence AS enrichment
+FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
+WHERE c.id = sqlc.arg(id);
 
 -- name: NodeConversations :many
-SELECT id, record FROM conversations
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) ORDER BY id;
+SELECT c.id, c.provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
+    e.evidence AS enrichment
+FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
+ORDER BY c.id;
+
+-- name: ConversationProvider :one
+SELECT provider FROM conversations WHERE id = sqlc.arg(id);
 
 -- name: Fingerprints :many
-SELECT id, fingerprint FROM conversations
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) ORDER BY id;
+SELECT id, thread_fingerprint FROM conversations ORDER BY id;
 
 -- name: Providers :many
-SELECT DISTINCT provider FROM conversations
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id);
+SELECT DISTINCT provider FROM conversations;
 
 -- name: InsertConversation :exec
-INSERT INTO conversations(group_id, node_id, id, provider, record, fingerprint)
-VALUES (sqlc.arg(group_id), sqlc.arg(node_id), sqlc.arg(id), sqlc.arg(provider), sqlc.arg(record), '');
+INSERT INTO conversations(
+    id, provider, source_path, title, created_at, updated_at, project, repository
+) VALUES (
+    sqlc.arg(id), sqlc.arg(provider), '', sqlc.narg(title), sqlc.narg(created_at),
+    sqlc.narg(updated_at), sqlc.narg(project), sqlc.narg(repository)
+);
+
+-- name: InsertEnrichment :exec
+INSERT INTO conversation_enrichment(conversation_id, evidence)
+VALUES (sqlc.arg(conversation_id), sqlc.arg(evidence));
 
 -- name: SetFingerprint :exec
-UPDATE conversations SET fingerprint = sqlc.arg(fingerprint)
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND id = sqlc.arg(id);
+UPDATE conversations SET thread_fingerprint = sqlc.arg(fingerprint) WHERE id = sqlc.arg(id);
 
--- name: DeleteConversation :exec
-DELETE FROM conversations
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND id = sqlc.arg(id);
+-- name: DeleteConversation :execrows
+DELETE FROM conversations WHERE id = sqlc.arg(id);
 
 -- name: DeleteNodeConversations :exec
-DELETE FROM conversations WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id);
+DELETE FROM conversations;
 
 -- name: Message :one
-SELECT ordinal, parent, record FROM messages
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND id = sqlc.arg(id);
+SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages WHERE id = sqlc.arg(id);
 
 -- name: MessageAt :one
-SELECT ordinal, parent, record FROM messages
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id)
-  AND conversation_id = sqlc.arg(conversation_id) AND ordinal = sqlc.arg(ordinal);
+SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages
+WHERE conversation_id = sqlc.arg(conversation_id) AND ordinal = sqlc.arg(ordinal);
 
 -- name: FirstChild :one
-SELECT ordinal, parent, record FROM messages
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id)
-  AND conversation_id = sqlc.arg(conversation_id) AND parent = sqlc.arg(parent)
+SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages
+WHERE conversation_id = sqlc.arg(conversation_id) AND context_parent = sqlc.arg(parent)
 ORDER BY ordinal LIMIT 1;
 
 -- name: MessageWindow :many
-SELECT record FROM messages
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id)
-  AND conversation_id = sqlc.arg(conversation_id)
+SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages
+WHERE conversation_id = sqlc.arg(conversation_id)
   AND ordinal >= sqlc.arg(first_ordinal) AND ordinal <= sqlc.arg(last_ordinal)
 ORDER BY ordinal;
 
 -- name: ThreadMessages :many
-SELECT record FROM messages
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id)
-  AND conversation_id = sqlc.arg(conversation_id)
+SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages WHERE conversation_id = sqlc.arg(conversation_id)
 ORDER BY ordinal;
 
 -- name: NodeMessages :many
-SELECT id, record FROM messages
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) ORDER BY id;
+SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages ORDER BY id;
 
 -- name: InsertMessage :exec
-INSERT INTO messages(group_id, node_id, id, conversation_id, ordinal, parent, searchable, user, record)
-VALUES (sqlc.arg(group_id), sqlc.arg(node_id), sqlc.arg(id), sqlc.arg(conversation_id),
-        sqlc.arg(ordinal), sqlc.narg(parent), sqlc.arg(searchable), sqlc.arg(user), sqlc.arg(record));
+INSERT INTO messages(
+    attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+) VALUES (
+    sqlc.arg(attachments), sqlc.arg(id), sqlc.arg(conversation_id), sqlc.arg(ordinal),
+    sqlc.arg(role), sqlc.arg(content), sqlc.arg(search_projection), sqlc.narg(created_at),
+    sqlc.narg(context_parent)
+);
 
--- name: DeleteThreadMessages :exec
-DELETE FROM messages
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id)
-  AND conversation_id = sqlc.arg(conversation_id);
+-- name: DeleteThreadMessages :execrows
+DELETE FROM messages WHERE conversation_id = sqlc.arg(conversation_id);
 
 -- name: DeleteNodeMessages :exec
-DELETE FROM messages WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id);
+DELETE FROM messages;
 
 -- name: MissingParent :one
 SELECT m.id FROM messages m
-WHERE m.group_id = sqlc.arg(group_id) AND m.node_id = sqlc.arg(node_id)
-  AND m.conversation_id = sqlc.arg(conversation_id) AND m.parent IS NOT NULL
+WHERE m.conversation_id = sqlc.arg(conversation_id) AND m.context_parent >= 0
   AND NOT EXISTS(SELECT 1 FROM messages p
-      WHERE p.group_id = m.group_id AND p.node_id = m.node_id
-        AND p.conversation_id = m.conversation_id AND p.ordinal = m.parent)
+      WHERE p.conversation_id = m.conversation_id AND p.ordinal = m.context_parent)
 LIMIT 1;
 
 -- name: NodeSources :many
-SELECT key, record FROM sources
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) ORDER BY key;
+SELECT provider, source_key, size_bytes, modified_ns, fingerprint, interpretation_version,
+    conversation_id, ready
+FROM source_checkpoints ORDER BY provider, source_key;
 
 -- name: ProviderSources :many
-SELECT key, record FROM sources
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND provider = sqlc.arg(provider);
+SELECT provider, source_key, size_bytes, modified_ns, fingerprint, interpretation_version,
+    conversation_id, ready
+FROM source_checkpoints WHERE provider = sqlc.arg(provider);
 
 -- name: UpsertSource :exec
-INSERT INTO sources(group_id, node_id, key, provider, conversation_id, interpretation_version, record)
-VALUES (sqlc.arg(group_id), sqlc.arg(node_id), sqlc.arg(key), sqlc.arg(provider),
-        sqlc.narg(conversation_id), sqlc.arg(interpretation_version), sqlc.arg(record))
-ON CONFLICT(group_id, node_id, key) DO UPDATE SET
-    provider = excluded.provider, conversation_id = excluded.conversation_id,
-    interpretation_version = excluded.interpretation_version, record = excluded.record;
+INSERT INTO source_checkpoints(
+    provider, source_key, source_path, size_bytes, modified_ns, fingerprint,
+    interpretation_version, conversation_id, ready
+) VALUES (
+    sqlc.arg(provider), sqlc.arg(source_key), '', sqlc.arg(size_bytes), sqlc.arg(modified_ns),
+    sqlc.arg(fingerprint), sqlc.arg(interpretation_version), sqlc.narg(conversation_id),
+    sqlc.arg(ready)
+)
+ON CONFLICT(provider, source_key) DO UPDATE SET
+    size_bytes = excluded.size_bytes, modified_ns = excluded.modified_ns,
+    fingerprint = excluded.fingerprint, interpretation_version = excluded.interpretation_version,
+    conversation_id = excluded.conversation_id, ready = excluded.ready;
 
 -- name: DeleteSource :exec
-DELETE FROM sources WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND key = sqlc.arg(key);
+DELETE FROM source_checkpoints
+WHERE provider = sqlc.arg(provider) AND source_key = sqlc.arg(source_key);
 
 -- name: DeleteNodeSources :exec
-DELETE FROM sources WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id);
+DELETE FROM source_checkpoints;
 
 -- name: SourceReference :one
-SELECT key FROM sources
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id)
-  AND conversation_id = sqlc.arg(conversation_id)
+SELECT source_key FROM source_checkpoints WHERE conversation_id = sqlc.arg(conversation_id)
 LIMIT 1;
 
 -- name: CoverageGaps :one
 SELECT
-    CAST(EXISTS(SELECT 1 FROM sources s WHERE s.group_id = sqlc.arg(group_id) AND s.node_id = sqlc.arg(node_id)
-        AND s.provider = sqlc.arg(provider) AND s.interpretation_version <> sqlc.arg(interpretation_version)) AS INTEGER) AS stale,
-    CAST(EXISTS(SELECT 1 FROM conversations c WHERE c.group_id = sqlc.arg(group_id) AND c.node_id = sqlc.arg(node_id)
-        AND c.provider = sqlc.arg(provider) AND NOT EXISTS(SELECT 1 FROM sources r
-            WHERE r.group_id = c.group_id AND r.node_id = c.node_id AND r.provider = c.provider
-              AND r.conversation_id = c.id)) AS INTEGER) AS unmapped;
+    CAST(EXISTS(SELECT 1 FROM source_checkpoints s WHERE s.provider = sqlc.arg(provider)
+        AND s.interpretation_version <> sqlc.arg(interpretation_version)) AS INTEGER) AS stale,
+    CAST(EXISTS(SELECT 1 FROM conversations c WHERE c.provider = sqlc.arg(provider)
+        AND NOT EXISTS(SELECT 1 FROM source_checkpoints r
+            WHERE r.provider = c.provider AND r.conversation_id = c.id)) AS INTEGER) AS unmapped;
 
 -- name: NodeTombstones :many
-SELECT key, record FROM tombstones
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) ORDER BY key;
+SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id;
 
 -- name: Tombstoned :one
-SELECT key FROM tombstones
-WHERE group_id = sqlc.arg(group_id) AND node_id = sqlc.arg(node_id) AND key = sqlc.arg(key);
+SELECT conversation_id FROM tombstones
+WHERE provider = sqlc.arg(provider) AND conversation_id = sqlc.arg(conversation_id);
 
 -- name: UpsertTombstone :exec
-INSERT INTO tombstones(group_id, node_id, key, record)
-VALUES (sqlc.arg(group_id), sqlc.arg(node_id), sqlc.arg(key), sqlc.arg(record))
-ON CONFLICT(group_id, node_id, key) DO UPDATE SET record = excluded.record;
+INSERT INTO tombstones(provider, conversation_id, forgotten_at)
+VALUES (sqlc.arg(provider), sqlc.arg(conversation_id), sqlc.arg(forgotten_at))
+ON CONFLICT(provider, conversation_id) DO NOTHING;

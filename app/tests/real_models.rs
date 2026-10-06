@@ -144,7 +144,7 @@ fn assert_source_independent_gold_rebuild(
     codex: &Path,
     models: &str,
 ) {
-    let connection = Connection::open(database).unwrap();
+    let connection = open_index(database);
     let silver_tables = [
         "conversation_enrichment",
         "conversations",
@@ -287,7 +287,8 @@ fn assert_gold_recipe_switches(config: &Path, database: &Path, models: &str) {
         }
     }
     std::fs::write(config, &build_config).unwrap();
-    let connection = Connection::open(database).unwrap();
+    let connection = open_index(database);
+    combine_gold(&connection);
     connection
         .execute_batch("DROP TABLE gold_manifest; PRAGMA user_version=36;")
         .unwrap();
@@ -327,7 +328,7 @@ fn assert_gold_rebuild_recovers_without_sources(config: &Path, database: &Path, 
         .unwrap();
     assert!(!failed.status.success());
     assert_eq!(failed.stdout, [] as [u8; 0]);
-    let connection = Connection::open(database).unwrap();
+    let connection = open_index(database);
     let ready: Option<String> = connection
         .query_row(
             "SELECT semantic_ready_generation FROM derived_state WHERE singleton=1",
@@ -732,12 +733,8 @@ fn benchmark_real_corpus_semantic_generation() {
     source_connection
         .execute("VACUUM INTO ?1", [database.to_string_lossy().as_ref()])
         .expect("snapshot benchmark database");
+    // The snapshot copies silver only; its gold starts empty.
     drop(source_connection);
-    let connection = Connection::open(&database).expect("open benchmark snapshot");
-    connection
-        .execute("DELETE FROM message_embeddings", [])
-        .expect("clear derived embeddings");
-    drop(connection);
 
     let output = Command::cargo_bin("mash")
         .expect("mash binary")

@@ -200,6 +200,12 @@ impl Storage {
         Ok(())
     }
 
+    /// Replace all local gold with empty, unready gold; silver is untouched.
+    pub(crate) fn discard_gold(&self) -> Result<(), AppError> {
+        self.require_writer()?;
+        super::schema::discard_gold(&self.connection)
+    }
+
     pub(crate) fn mark_derived_search_dirty(&self) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection

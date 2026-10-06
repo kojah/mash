@@ -23,17 +23,15 @@ impl HeadRow {
         Ok(Self { head: row.get(0)? })
     }
 }
-pub struct Head<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> Head<'a> {
-    pub const QUERY: &'static str = r"SELECT head FROM nodes WHERE group_id = ?1 AND node_id = ?2";
+pub struct Head;
+impl Head {
+    pub const QUERY: &'static str = r"
+SELECT head FROM shared_head WHERE singleton = 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> Head<'a> {
+impl Head {
     pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<HeadRow> {
         self.prepare(client)?
             .query_row(self.as_params(), HeadRow::from_row)
@@ -51,111 +49,25 @@ impl<'a> Head<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> Head<'a> {
-    pub const fn builder() -> HeadBuilder<'a, ((), ())> {
+impl Head {
+    pub const fn builder() -> HeadBuilder<'static, ()> {
         HeadBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct HeadBuilder<'a, Fields = ((), ())> {
+pub struct HeadBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> HeadBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> HeadBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        HeadBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> HeadBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> HeadBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        HeadBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> HeadBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> Head<'a> {
-        let (group_id, node_id) = self.fields;
-        Head { group_id, node_id }
-    }
-}
-pub struct HeadsRow {
-    pub node_id: String,
-    pub head: String,
-}
-impl HeadsRow {
-    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        Ok(Self {
-            node_id: row.get(0)?,
-            head: row.get(1)?,
-        })
-    }
-}
-pub struct Heads<'a> {
-    group_id: &'a str,
-}
-impl<'a> Heads<'a> {
-    pub const QUERY: &'static str =
-        r"SELECT node_id, head FROM nodes WHERE group_id = ?1 ORDER BY node_id";
-    pub fn query_str(&self) -> &str {
-        Self::QUERY
-    }
-}
-impl<'a> Heads<'a> {
-    pub fn query_many(&self, client: &impl RusqliteClient) -> rusqlite::Result<Vec<HeadsRow>> {
-        self.prepare(client)?
-            .query_map(self.as_params(), HeadsRow::from_row)?
-            .collect()
-    }
-    pub fn prepare<'conn>(
-        &self,
-        client: &'conn impl RusqliteClient,
-    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
-        client.prepare(self.query_str())
-    }
-    pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id,)
-    }
-}
-impl<'a> Heads<'a> {
-    pub const fn builder() -> HeadsBuilder<'a, ((),)> {
-        HeadsBuilder {
-            fields: ((),),
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-pub struct HeadsBuilder<'a, Fields = ((),)> {
-    fields: Fields,
-    _phantom: std::marker::PhantomData<&'a ()>,
-}
-impl<'a> HeadsBuilder<'a, ((),)> {
-    pub fn group_id(self, group_id: &'a str) -> HeadsBuilder<'a, (&'a str,)> {
-        let ((),) = self.fields;
-        let _phantom = self._phantom;
-        HeadsBuilder {
-            fields: (group_id,),
-            _phantom,
-        }
-    }
-}
-impl<'a> HeadsBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> Heads<'a> {
-        let (group_id,) = self.fields;
-        Heads { group_id }
+impl<'a> HeadBuilder<'a, ()> {
+    pub fn build(self) -> Head {
+        let () = self.fields;
+        Head {}
     }
 }
 pub struct PutHeadRow {}
@@ -165,13 +77,11 @@ impl PutHeadRow {
     }
 }
 pub struct PutHead<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     head: &'a str,
 }
 impl<'a> PutHead<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO nodes(group_id, node_id, head) VALUES (?1, ?2, ?3)
-ON CONFLICT(group_id, node_id) DO UPDATE SET head = excluded.head";
+    pub const QUERY: &'static str = r"INSERT INTO shared_head(singleton, head) VALUES (1, ?1)
+ON CONFLICT(singleton) DO UPDATE SET head = excluded.head";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -187,59 +97,35 @@ impl<'a> PutHead<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.head)
+        (self.head,)
     }
 }
 impl<'a> PutHead<'a> {
-    pub const fn builder() -> PutHeadBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> PutHeadBuilder<'a, ((),)> {
         PutHeadBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct PutHeadBuilder<'a, Fields = ((), (), ())> {
+pub struct PutHeadBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Head> PutHeadBuilder<'a, ((), NodeId, Head)> {
-    pub fn group_id(self, group_id: &'a str) -> PutHeadBuilder<'a, (&'a str, NodeId, Head)> {
-        let ((), node_id, head) = self.fields;
+impl<'a> PutHeadBuilder<'a, ((),)> {
+    pub fn head(self, head: &'a str) -> PutHeadBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         PutHeadBuilder {
-            fields: (group_id, node_id, head),
+            fields: (head,),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Head> PutHeadBuilder<'a, (GroupId, (), Head)> {
-    pub fn node_id(self, node_id: &'a str) -> PutHeadBuilder<'a, (GroupId, &'a str, Head)> {
-        let (group_id, (), head) = self.fields;
-        let _phantom = self._phantom;
-        PutHeadBuilder {
-            fields: (group_id, node_id, head),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> PutHeadBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn head(self, head: &'a str) -> PutHeadBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        PutHeadBuilder {
-            fields: (group_id, node_id, head),
-            _phantom,
-        }
-    }
-}
-impl<'a> PutHeadBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> PutHeadBuilder<'a, (&'a str,)> {
     pub fn build(self) -> PutHead<'a> {
-        let (group_id, node_id, head) = self.fields;
-        PutHead {
-            group_id,
-            node_id,
-            head,
-        }
+        let (head,) = self.fields;
+        PutHead { head }
     }
 }
 pub struct CountsRow {
@@ -258,21 +144,18 @@ impl CountsRow {
         })
     }
 }
-pub struct Counts<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> Counts<'a> {
-    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM conversations c WHERE c.group_id = ?1 AND c.node_id = ?2) AS conversations,
-    count(*) AS messages,
-    CAST(coalesce(sum(searchable), 0) AS INTEGER) AS searchable,
-    CAST(coalesce(sum(searchable * user), 0) AS INTEGER) AS searchable_users
-FROM messages WHERE group_id = ?1 AND node_id = ?2";
+pub struct Counts;
+impl Counts {
+    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM conversations) AS conversations,
+    (SELECT count(*) FROM messages) AS messages,
+    (SELECT count(*) FROM messages WHERE COALESCE(search_projection, content) <> '') AS searchable,
+    (SELECT count(*) FROM messages
+        WHERE COALESCE(search_projection, content) <> '' AND role = 'user') AS searchable_users";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> Counts<'a> {
+impl Counts {
     pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<CountsRow> {
         self.prepare(client)?
             .query_row(self.as_params(), CountsRow::from_row)
@@ -290,65 +173,59 @@ impl<'a> Counts<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> Counts<'a> {
-    pub const fn builder() -> CountsBuilder<'a, ((), ())> {
+impl Counts {
+    pub const fn builder() -> CountsBuilder<'static, ()> {
         CountsBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct CountsBuilder<'a, Fields = ((), ())> {
+pub struct CountsBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> CountsBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> CountsBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        CountsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> CountsBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> CountsBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        CountsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> CountsBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> Counts<'a> {
-        let (group_id, node_id) = self.fields;
-        Counts { group_id, node_id }
+impl<'a> CountsBuilder<'a, ()> {
+    pub fn build(self) -> Counts {
+        let () = self.fields;
+        Counts {}
     }
 }
 pub struct ConversationRow {
-    pub record: String,
+    pub id: String,
+    pub provider: String,
+    pub title: Option<String>,
+    pub project: Option<String>,
+    pub repository: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+    pub enrichment: Option<String>,
 }
 impl ConversationRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            record: row.get(0)?,
+            id: row.get(0)?,
+            provider: row.get(1)?,
+            title: row.get(2)?,
+            project: row.get(3)?,
+            repository: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+            enrichment: row.get(7)?,
         })
     }
 }
 pub struct Conversation<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     id: &'a str,
 }
 impl<'a> Conversation<'a> {
-    pub const QUERY: &'static str = r"SELECT record FROM conversations
-WHERE group_id = ?1 AND node_id = ?2 AND id = ?3";
+    pub const QUERY: &'static str = r"SELECT c.id, c.provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
+    e.evidence AS enrichment
+FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
+WHERE c.id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -374,59 +251,106 @@ impl<'a> Conversation<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.id)
+        (self.id,)
     }
 }
 impl<'a> Conversation<'a> {
-    pub const fn builder() -> ConversationBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> ConversationBuilder<'a, ((),)> {
         ConversationBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ConversationBuilder<'a, Fields = ((), (), ())> {
+pub struct ConversationBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Id> ConversationBuilder<'a, ((), NodeId, Id)> {
-    pub fn group_id(self, group_id: &'a str) -> ConversationBuilder<'a, (&'a str, NodeId, Id)> {
-        let ((), node_id, id) = self.fields;
+impl<'a> ConversationBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> ConversationBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         ConversationBuilder {
-            fields: (group_id, node_id, id),
+            fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Id> ConversationBuilder<'a, (GroupId, (), Id)> {
-    pub fn node_id(self, node_id: &'a str) -> ConversationBuilder<'a, (GroupId, &'a str, Id)> {
-        let (group_id, (), id) = self.fields;
-        let _phantom = self._phantom;
-        ConversationBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> ConversationBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn id(self, id: &'a str) -> ConversationBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        ConversationBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a> ConversationBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> ConversationBuilder<'a, (&'a str,)> {
     pub fn build(self) -> Conversation<'a> {
-        let (group_id, node_id, id) = self.fields;
-        Conversation {
-            group_id,
-            node_id,
-            id,
+        let (id,) = self.fields;
+        Conversation { id }
+    }
+}
+pub struct NodeConversationsRow {
+    pub id: String,
+    pub provider: String,
+    pub title: Option<String>,
+    pub project: Option<String>,
+    pub repository: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+    pub enrichment: Option<String>,
+}
+impl NodeConversationsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            provider: row.get(1)?,
+            title: row.get(2)?,
+            project: row.get(3)?,
+            repository: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+            enrichment: row.get(7)?,
+        })
+    }
+}
+pub struct NodeConversations;
+impl NodeConversations {
+    pub const QUERY: &'static str = r"SELECT c.id, c.provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
+    e.evidence AS enrichment
+FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
+ORDER BY c.id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl NodeConversations {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<NodeConversationsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), NodeConversationsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl NodeConversations {
+    pub const fn builder() -> NodeConversationsBuilder<'static, ()> {
+        NodeConversationsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
         }
+    }
+}
+pub struct NodeConversationsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> NodeConversationsBuilder<'a, ()> {
+    pub fn build(self) -> NodeConversations {
+        let () = self.fields;
+        NodeConversations {}
     }
 }
 pub struct ConversationProviderRow {
@@ -440,13 +364,10 @@ impl ConversationProviderRow {
     }
 }
 pub struct ConversationProvider<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     id: &'a str,
 }
 impl<'a> ConversationProvider<'a> {
-    pub const QUERY: &'static str = r"SELECT provider FROM conversations
-WHERE group_id = ?1 AND node_id = ?2 AND id = ?3";
+    pub const QUERY: &'static str = r"SELECT provider FROM conversations WHERE id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -475,171 +396,57 @@ impl<'a> ConversationProvider<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.id)
+        (self.id,)
     }
 }
 impl<'a> ConversationProvider<'a> {
-    pub const fn builder() -> ConversationProviderBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> ConversationProviderBuilder<'a, ((),)> {
         ConversationProviderBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ConversationProviderBuilder<'a, Fields = ((), (), ())> {
+pub struct ConversationProviderBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Id> ConversationProviderBuilder<'a, ((), NodeId, Id)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> ConversationProviderBuilder<'a, (&'a str, NodeId, Id)> {
-        let ((), node_id, id) = self.fields;
+impl<'a> ConversationProviderBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> ConversationProviderBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         ConversationProviderBuilder {
-            fields: (group_id, node_id, id),
+            fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Id> ConversationProviderBuilder<'a, (GroupId, (), Id)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> ConversationProviderBuilder<'a, (GroupId, &'a str, Id)> {
-        let (group_id, (), id) = self.fields;
-        let _phantom = self._phantom;
-        ConversationProviderBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> ConversationProviderBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn id(self, id: &'a str) -> ConversationProviderBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        ConversationProviderBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a> ConversationProviderBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> ConversationProviderBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ConversationProvider<'a> {
-        let (group_id, node_id, id) = self.fields;
-        ConversationProvider {
-            group_id,
-            node_id,
-            id,
-        }
-    }
-}
-pub struct NodeConversationsRow {
-    pub id: String,
-    pub record: String,
-}
-impl NodeConversationsRow {
-    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        Ok(Self {
-            id: row.get(0)?,
-            record: row.get(1)?,
-        })
-    }
-}
-pub struct NodeConversations<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> NodeConversations<'a> {
-    pub const QUERY: &'static str = r"SELECT id, record FROM conversations
-WHERE group_id = ?1 AND node_id = ?2 ORDER BY id";
-    pub fn query_str(&self) -> &str {
-        Self::QUERY
-    }
-}
-impl<'a> NodeConversations<'a> {
-    pub fn query_many(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Vec<NodeConversationsRow>> {
-        self.prepare(client)?
-            .query_map(self.as_params(), NodeConversationsRow::from_row)?
-            .collect()
-    }
-    pub fn prepare<'conn>(
-        &self,
-        client: &'conn impl RusqliteClient,
-    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
-        client.prepare(self.query_str())
-    }
-    pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
-    }
-}
-impl<'a> NodeConversations<'a> {
-    pub const fn builder() -> NodeConversationsBuilder<'a, ((), ())> {
-        NodeConversationsBuilder {
-            fields: ((), ()),
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-pub struct NodeConversationsBuilder<'a, Fields = ((), ())> {
-    fields: Fields,
-    _phantom: std::marker::PhantomData<&'a ()>,
-}
-impl<'a, NodeId> NodeConversationsBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> NodeConversationsBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        NodeConversationsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> NodeConversationsBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> NodeConversationsBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        NodeConversationsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> NodeConversationsBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> NodeConversations<'a> {
-        let (group_id, node_id) = self.fields;
-        NodeConversations { group_id, node_id }
+        let (id,) = self.fields;
+        ConversationProvider { id }
     }
 }
 pub struct FingerprintsRow {
     pub id: String,
-    pub fingerprint: String,
+    pub thread_fingerprint: Option<String>,
 }
 impl FingerprintsRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
-            fingerprint: row.get(1)?,
+            thread_fingerprint: row.get(1)?,
         })
     }
 }
-pub struct Fingerprints<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> Fingerprints<'a> {
-    pub const QUERY: &'static str = r"SELECT id, fingerprint FROM conversations
-WHERE group_id = ?1 AND node_id = ?2 ORDER BY id";
+pub struct Fingerprints;
+impl Fingerprints {
+    pub const QUERY: &'static str = r"SELECT id, thread_fingerprint FROM conversations ORDER BY id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> Fingerprints<'a> {
+impl Fingerprints {
     pub fn query_many(
         &self,
         client: &impl RusqliteClient,
@@ -655,45 +462,25 @@ impl<'a> Fingerprints<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> Fingerprints<'a> {
-    pub const fn builder() -> FingerprintsBuilder<'a, ((), ())> {
+impl Fingerprints {
+    pub const fn builder() -> FingerprintsBuilder<'static, ()> {
         FingerprintsBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct FingerprintsBuilder<'a, Fields = ((), ())> {
+pub struct FingerprintsBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> FingerprintsBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> FingerprintsBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        FingerprintsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> FingerprintsBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> FingerprintsBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        FingerprintsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> FingerprintsBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> Fingerprints<'a> {
-        let (group_id, node_id) = self.fields;
-        Fingerprints { group_id, node_id }
+impl<'a> FingerprintsBuilder<'a, ()> {
+    pub fn build(self) -> Fingerprints {
+        let () = self.fields;
+        Fingerprints {}
     }
 }
 pub struct ProvidersRow {
@@ -706,18 +493,14 @@ impl ProvidersRow {
         })
     }
 }
-pub struct Providers<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> Providers<'a> {
-    pub const QUERY: &'static str = r"SELECT DISTINCT provider FROM conversations
-WHERE group_id = ?1 AND node_id = ?2";
+pub struct Providers;
+impl Providers {
+    pub const QUERY: &'static str = r"SELECT DISTINCT provider FROM conversations";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> Providers<'a> {
+impl Providers {
     pub fn query_many(&self, client: &impl RusqliteClient) -> rusqlite::Result<Vec<ProvidersRow>> {
         self.prepare(client)?
             .query_map(self.as_params(), ProvidersRow::from_row)?
@@ -730,45 +513,25 @@ impl<'a> Providers<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> Providers<'a> {
-    pub const fn builder() -> ProvidersBuilder<'a, ((), ())> {
+impl Providers {
+    pub const fn builder() -> ProvidersBuilder<'static, ()> {
         ProvidersBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ProvidersBuilder<'a, Fields = ((), ())> {
+pub struct ProvidersBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> ProvidersBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> ProvidersBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        ProvidersBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> ProvidersBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> ProvidersBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        ProvidersBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> ProvidersBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> Providers<'a> {
-        let (group_id, node_id) = self.fields;
-        Providers { group_id, node_id }
+impl<'a> ProvidersBuilder<'a, ()> {
+    pub fn build(self) -> Providers {
+        let () = self.fields;
+        Providers {}
     }
 }
 pub struct InsertConversationRow {}
@@ -778,15 +541,21 @@ impl InsertConversationRow {
     }
 }
 pub struct InsertConversation<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     id: &'a str,
     provider: &'a str,
-    record: &'a str,
+    title: Option<&'a str>,
+    created_at: Option<i64>,
+    updated_at: Option<i64>,
+    project: Option<&'a str>,
+    repository: Option<&'a str>,
 }
 impl<'a> InsertConversation<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO conversations(group_id, node_id, id, provider, record, fingerprint)
-VALUES (?1, ?2, ?3, ?4, ?5, '')";
+    pub const QUERY: &'static str = r"INSERT INTO conversations(
+    id, provider, source_path, title, created_at, updated_at, project, repository
+) VALUES (
+    ?1, ?2, '', ?3, ?4,
+    ?5, ?6, ?7
+)";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -803,110 +572,337 @@ impl<'a> InsertConversation<'a> {
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
-            self.group_id,
-            self.node_id,
             self.id,
             self.provider,
-            self.record,
+            self.title,
+            self.created_at,
+            self.updated_at,
+            self.project,
+            self.repository,
         )
     }
 }
 impl<'a> InsertConversation<'a> {
-    pub const fn builder() -> InsertConversationBuilder<'a, ((), (), (), (), ())> {
+    pub const fn builder() -> InsertConversationBuilder<'a, ((), (), (), (), (), (), ())> {
         InsertConversationBuilder {
-            fields: ((), (), (), (), ()),
+            fields: ((), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct InsertConversationBuilder<'a, Fields = ((), (), (), (), ())> {
+pub struct InsertConversationBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Id, Provider, Record>
-    InsertConversationBuilder<'a, ((), NodeId, Id, Provider, Record)>
-{
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> InsertConversationBuilder<'a, (&'a str, NodeId, Id, Provider, Record)> {
-        let ((), node_id, id, provider, record) = self.fields;
-        let _phantom = self._phantom;
-        InsertConversationBuilder {
-            fields: (group_id, node_id, id, provider, record),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, Id, Provider, Record>
-    InsertConversationBuilder<'a, (GroupId, (), Id, Provider, Record)>
-{
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> InsertConversationBuilder<'a, (GroupId, &'a str, Id, Provider, Record)> {
-        let (group_id, (), id, provider, record) = self.fields;
-        let _phantom = self._phantom;
-        InsertConversationBuilder {
-            fields: (group_id, node_id, id, provider, record),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Provider, Record>
-    InsertConversationBuilder<'a, (GroupId, NodeId, (), Provider, Record)>
+impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<
+        'a,
+        (
+            (),
+            Provider,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    >
 {
     pub fn id(
         self,
         id: &'a str,
-    ) -> InsertConversationBuilder<'a, (GroupId, NodeId, &'a str, Provider, Record)> {
-        let (group_id, node_id, (), provider, record) = self.fields;
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            &'a str,
+            Provider,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    > {
+        let ((), provider, title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
-            fields: (group_id, node_id, id, provider, record),
+            fields: (
+                id, provider, title, created_at, updated_at, project, repository,
+            ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Id, Record>
-    InsertConversationBuilder<'a, (GroupId, NodeId, Id, (), Record)>
+impl<'a, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<'a, (Id, (), Title, CreatedAt, UpdatedAt, Project, Repository)>
 {
     pub fn provider(
         self,
         provider: &'a str,
-    ) -> InsertConversationBuilder<'a, (GroupId, NodeId, Id, &'a str, Record)> {
-        let (group_id, node_id, id, (), record) = self.fields;
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            Id,
+            &'a str,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    > {
+        let (id, (), title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
-            fields: (group_id, node_id, id, provider, record),
+            fields: (
+                id, provider, title, created_at, updated_at, project, repository,
+            ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Id, Provider>
-    InsertConversationBuilder<'a, (GroupId, NodeId, Id, Provider, ())>
+impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<'a, (Id, Provider, (), CreatedAt, UpdatedAt, Project, Repository)>
 {
-    pub fn record(
+    pub fn title(
         self,
-        record: &'a str,
-    ) -> InsertConversationBuilder<'a, (GroupId, NodeId, Id, Provider, &'a str)> {
-        let (group_id, node_id, id, provider, ()) = self.fields;
+        title: Option<&'a str>,
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            Id,
+            Provider,
+            Option<&'a str>,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    > {
+        let (id, provider, (), created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
-            fields: (group_id, node_id, id, provider, record),
+            fields: (
+                id, provider, title, created_at, updated_at, project, repository,
+            ),
             _phantom,
         }
     }
 }
-impl<'a> InsertConversationBuilder<'a, (&'a str, &'a str, &'a str, &'a str, &'a str)> {
+impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<'a, (Id, Provider, Title, (), UpdatedAt, Project, Repository)>
+{
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            Id,
+            Provider,
+            Title,
+            Option<i64>,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    > {
+        let (id, provider, title, (), updated_at, project, repository) = self.fields;
+        let _phantom = self._phantom;
+        InsertConversationBuilder {
+            fields: (
+                id, provider, title, created_at, updated_at, project, repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
+    InsertConversationBuilder<'a, (Id, Provider, Title, CreatedAt, (), Project, Repository)>
+{
+    pub fn updated_at(
+        self,
+        updated_at: Option<i64>,
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            Id,
+            Provider,
+            Title,
+            CreatedAt,
+            Option<i64>,
+            Project,
+            Repository,
+        ),
+    > {
+        let (id, provider, title, created_at, (), project, repository) = self.fields;
+        let _phantom = self._phantom;
+        InsertConversationBuilder {
+            fields: (
+                id, provider, title, created_at, updated_at, project, repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
+    InsertConversationBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, (), Repository)>
+{
+    pub fn project(
+        self,
+        project: Option<&'a str>,
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            Id,
+            Provider,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Option<&'a str>,
+            Repository,
+        ),
+    > {
+        let (id, provider, title, created_at, updated_at, (), repository) = self.fields;
+        let _phantom = self._phantom;
+        InsertConversationBuilder {
+            fields: (
+                id, provider, title, created_at, updated_at, project, repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
+    InsertConversationBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, Project, ())>
+{
+    pub fn repository(
+        self,
+        repository: Option<&'a str>,
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            Id,
+            Provider,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Option<&'a str>,
+        ),
+    > {
+        let (id, provider, title, created_at, updated_at, project, ()) = self.fields;
+        let _phantom = self._phantom;
+        InsertConversationBuilder {
+            fields: (
+                id, provider, title, created_at, updated_at, project, repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a>
+    InsertConversationBuilder<
+        'a,
+        (
+            &'a str,
+            &'a str,
+            Option<&'a str>,
+            Option<i64>,
+            Option<i64>,
+            Option<&'a str>,
+            Option<&'a str>,
+        ),
+    >
+{
     pub fn build(self) -> InsertConversation<'a> {
-        let (group_id, node_id, id, provider, record) = self.fields;
+        let (id, provider, title, created_at, updated_at, project, repository) = self.fields;
         InsertConversation {
-            group_id,
-            node_id,
             id,
             provider,
-            record,
+            title,
+            created_at,
+            updated_at,
+            project,
+            repository,
+        }
+    }
+}
+pub struct InsertEnrichmentRow {}
+impl InsertEnrichmentRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct InsertEnrichment<'a> {
+    conversation_id: &'a str,
+    evidence: &'a str,
+}
+impl<'a> InsertEnrichment<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO conversation_enrichment(conversation_id, evidence)
+VALUES (?1, ?2)";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> InsertEnrichment<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id, self.evidence)
+    }
+}
+impl<'a> InsertEnrichment<'a> {
+    pub const fn builder() -> InsertEnrichmentBuilder<'a, ((), ())> {
+        InsertEnrichmentBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct InsertEnrichmentBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Evidence> InsertEnrichmentBuilder<'a, ((), Evidence)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> InsertEnrichmentBuilder<'a, (&'a str, Evidence)> {
+        let ((), evidence) = self.fields;
+        let _phantom = self._phantom;
+        InsertEnrichmentBuilder {
+            fields: (conversation_id, evidence),
+            _phantom,
+        }
+    }
+}
+impl<'a, ConversationId> InsertEnrichmentBuilder<'a, (ConversationId, ())> {
+    pub fn evidence(
+        self,
+        evidence: &'a str,
+    ) -> InsertEnrichmentBuilder<'a, (ConversationId, &'a str)> {
+        let (conversation_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        InsertEnrichmentBuilder {
+            fields: (conversation_id, evidence),
+            _phantom,
+        }
+    }
+}
+impl<'a> InsertEnrichmentBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> InsertEnrichment<'a> {
+        let (conversation_id, evidence) = self.fields;
+        InsertEnrichment {
+            conversation_id,
+            evidence,
         }
     }
 }
@@ -917,14 +913,12 @@ impl SetFingerprintRow {
     }
 }
 pub struct SetFingerprint<'a> {
-    fingerprint: &'a str,
-    group_id: &'a str,
-    node_id: &'a str,
+    fingerprint: Option<&'a str>,
     id: &'a str,
 }
 impl<'a> SetFingerprint<'a> {
-    pub const QUERY: &'static str = r"UPDATE conversations SET fingerprint = ?1
-WHERE group_id = ?2 AND node_id = ?3 AND id = ?4";
+    pub const QUERY: &'static str =
+        r"UPDATE conversations SET thread_fingerprint = ?1 WHERE id = ?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -940,84 +934,48 @@ impl<'a> SetFingerprint<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.fingerprint, self.group_id, self.node_id, self.id)
+        (self.fingerprint, self.id)
     }
 }
 impl<'a> SetFingerprint<'a> {
-    pub const fn builder() -> SetFingerprintBuilder<'a, ((), (), (), ())> {
+    pub const fn builder() -> SetFingerprintBuilder<'a, ((), ())> {
         SetFingerprintBuilder {
-            fields: ((), (), (), ()),
+            fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SetFingerprintBuilder<'a, Fields = ((), (), (), ())> {
+pub struct SetFingerprintBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, GroupId, NodeId, Id> SetFingerprintBuilder<'a, ((), GroupId, NodeId, Id)> {
+impl<'a, Id> SetFingerprintBuilder<'a, ((), Id)> {
     pub fn fingerprint(
         self,
-        fingerprint: &'a str,
-    ) -> SetFingerprintBuilder<'a, (&'a str, GroupId, NodeId, Id)> {
-        let ((), group_id, node_id, id) = self.fields;
+        fingerprint: Option<&'a str>,
+    ) -> SetFingerprintBuilder<'a, (Option<&'a str>, Id)> {
+        let ((), id) = self.fields;
         let _phantom = self._phantom;
         SetFingerprintBuilder {
-            fields: (fingerprint, group_id, node_id, id),
+            fields: (fingerprint, id),
             _phantom,
         }
     }
 }
-impl<'a, Fingerprint, NodeId, Id> SetFingerprintBuilder<'a, (Fingerprint, (), NodeId, Id)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> SetFingerprintBuilder<'a, (Fingerprint, &'a str, NodeId, Id)> {
-        let (fingerprint, (), node_id, id) = self.fields;
+impl<'a, Fingerprint> SetFingerprintBuilder<'a, (Fingerprint, ())> {
+    pub fn id(self, id: &'a str) -> SetFingerprintBuilder<'a, (Fingerprint, &'a str)> {
+        let (fingerprint, ()) = self.fields;
         let _phantom = self._phantom;
         SetFingerprintBuilder {
-            fields: (fingerprint, group_id, node_id, id),
+            fields: (fingerprint, id),
             _phantom,
         }
     }
 }
-impl<'a, Fingerprint, GroupId, Id> SetFingerprintBuilder<'a, (Fingerprint, GroupId, (), Id)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> SetFingerprintBuilder<'a, (Fingerprint, GroupId, &'a str, Id)> {
-        let (fingerprint, group_id, (), id) = self.fields;
-        let _phantom = self._phantom;
-        SetFingerprintBuilder {
-            fields: (fingerprint, group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a, Fingerprint, GroupId, NodeId>
-    SetFingerprintBuilder<'a, (Fingerprint, GroupId, NodeId, ())>
-{
-    pub fn id(
-        self,
-        id: &'a str,
-    ) -> SetFingerprintBuilder<'a, (Fingerprint, GroupId, NodeId, &'a str)> {
-        let (fingerprint, group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        SetFingerprintBuilder {
-            fields: (fingerprint, group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a> SetFingerprintBuilder<'a, (&'a str, &'a str, &'a str, &'a str)> {
+impl<'a> SetFingerprintBuilder<'a, (Option<&'a str>, &'a str)> {
     pub fn build(self) -> SetFingerprint<'a> {
-        let (fingerprint, group_id, node_id, id) = self.fields;
-        SetFingerprint {
-            fingerprint,
-            group_id,
-            node_id,
-            id,
-        }
+        let (fingerprint, id) = self.fields;
+        SetFingerprint { fingerprint, id }
     }
 }
 pub struct DeleteConversationRow {}
@@ -1027,13 +985,10 @@ impl DeleteConversationRow {
     }
 }
 pub struct DeleteConversation<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     id: &'a str,
 }
 impl<'a> DeleteConversation<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM conversations
-WHERE group_id = ?1 AND node_id = ?2 AND id = ?3";
+    pub const QUERY: &'static str = r"DELETE FROM conversations WHERE id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1049,65 +1004,35 @@ impl<'a> DeleteConversation<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.id)
+        (self.id,)
     }
 }
 impl<'a> DeleteConversation<'a> {
-    pub const fn builder() -> DeleteConversationBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> DeleteConversationBuilder<'a, ((),)> {
         DeleteConversationBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteConversationBuilder<'a, Fields = ((), (), ())> {
+pub struct DeleteConversationBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Id> DeleteConversationBuilder<'a, ((), NodeId, Id)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> DeleteConversationBuilder<'a, (&'a str, NodeId, Id)> {
-        let ((), node_id, id) = self.fields;
+impl<'a> DeleteConversationBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> DeleteConversationBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         DeleteConversationBuilder {
-            fields: (group_id, node_id, id),
+            fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Id> DeleteConversationBuilder<'a, (GroupId, (), Id)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> DeleteConversationBuilder<'a, (GroupId, &'a str, Id)> {
-        let (group_id, (), id) = self.fields;
-        let _phantom = self._phantom;
-        DeleteConversationBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> DeleteConversationBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn id(self, id: &'a str) -> DeleteConversationBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        DeleteConversationBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a> DeleteConversationBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> DeleteConversationBuilder<'a, (&'a str,)> {
     pub fn build(self) -> DeleteConversation<'a> {
-        let (group_id, node_id, id) = self.fields;
-        DeleteConversation {
-            group_id,
-            node_id,
-            id,
-        }
+        let (id,) = self.fields;
+        DeleteConversation { id }
     }
 }
 pub struct DeleteNodeConversationsRow {}
@@ -1116,18 +1041,14 @@ impl DeleteNodeConversationsRow {
         Ok(Self {})
     }
 }
-pub struct DeleteNodeConversations<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> DeleteNodeConversations<'a> {
-    pub const QUERY: &'static str =
-        r"DELETE FROM conversations WHERE group_id = ?1 AND node_id = ?2";
+pub struct DeleteNodeConversations;
+impl DeleteNodeConversations {
+    pub const QUERY: &'static str = r"DELETE FROM conversations";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteNodeConversations<'a> {
+impl DeleteNodeConversations {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -1138,75 +1059,60 @@ impl<'a> DeleteNodeConversations<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> DeleteNodeConversations<'a> {
-    pub const fn builder() -> DeleteNodeConversationsBuilder<'a, ((), ())> {
+impl DeleteNodeConversations {
+    pub const fn builder() -> DeleteNodeConversationsBuilder<'static, ()> {
         DeleteNodeConversationsBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteNodeConversationsBuilder<'a, Fields = ((), ())> {
+pub struct DeleteNodeConversationsBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> DeleteNodeConversationsBuilder<'a, ((), NodeId)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> DeleteNodeConversationsBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        DeleteNodeConversationsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> DeleteNodeConversationsBuilder<'a, (GroupId, ())> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> DeleteNodeConversationsBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        DeleteNodeConversationsBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> DeleteNodeConversationsBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> DeleteNodeConversations<'a> {
-        let (group_id, node_id) = self.fields;
-        DeleteNodeConversations { group_id, node_id }
+impl<'a> DeleteNodeConversationsBuilder<'a, ()> {
+    pub fn build(self) -> DeleteNodeConversations {
+        let () = self.fields;
+        DeleteNodeConversations {}
     }
 }
 pub struct MessageRow {
+    pub attachments: String,
+    pub id: String,
+    pub conversation_id: String,
     pub ordinal: i64,
-    pub parent: Option<i64>,
-    pub record: String,
+    pub role: String,
+    pub content: String,
+    pub search_projection: Option<String>,
+    pub created_at: Option<i64>,
+    pub context_parent: Option<i64>,
 }
 impl MessageRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            ordinal: row.get(0)?,
-            parent: row.get(1)?,
-            record: row.get(2)?,
+            attachments: row.get(0)?,
+            id: row.get(1)?,
+            conversation_id: row.get(2)?,
+            ordinal: row.get(3)?,
+            role: row.get(4)?,
+            content: row.get(5)?,
+            search_projection: row.get(6)?,
+            created_at: row.get(7)?,
+            context_parent: row.get(8)?,
         })
     }
 }
 pub struct Message<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     id: &'a str,
 }
 impl<'a> Message<'a> {
-    pub const QUERY: &'static str = r"SELECT ordinal, parent, record FROM messages
-WHERE group_id = ?1 AND node_id = ?2 AND id = ?3";
+    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages WHERE id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1229,85 +1135,72 @@ impl<'a> Message<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.id)
+        (self.id,)
     }
 }
 impl<'a> Message<'a> {
-    pub const fn builder() -> MessageBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> MessageBuilder<'a, ((),)> {
         MessageBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct MessageBuilder<'a, Fields = ((), (), ())> {
+pub struct MessageBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Id> MessageBuilder<'a, ((), NodeId, Id)> {
-    pub fn group_id(self, group_id: &'a str) -> MessageBuilder<'a, (&'a str, NodeId, Id)> {
-        let ((), node_id, id) = self.fields;
+impl<'a> MessageBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> MessageBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         MessageBuilder {
-            fields: (group_id, node_id, id),
+            fields: (id,),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Id> MessageBuilder<'a, (GroupId, (), Id)> {
-    pub fn node_id(self, node_id: &'a str) -> MessageBuilder<'a, (GroupId, &'a str, Id)> {
-        let (group_id, (), id) = self.fields;
-        let _phantom = self._phantom;
-        MessageBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> MessageBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn id(self, id: &'a str) -> MessageBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        MessageBuilder {
-            fields: (group_id, node_id, id),
-            _phantom,
-        }
-    }
-}
-impl<'a> MessageBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> MessageBuilder<'a, (&'a str,)> {
     pub fn build(self) -> Message<'a> {
-        let (group_id, node_id, id) = self.fields;
-        Message {
-            group_id,
-            node_id,
-            id,
-        }
+        let (id,) = self.fields;
+        Message { id }
     }
 }
 pub struct MessageAtRow {
+    pub attachments: String,
+    pub id: String,
+    pub conversation_id: String,
     pub ordinal: i64,
-    pub parent: Option<i64>,
-    pub record: String,
+    pub role: String,
+    pub content: String,
+    pub search_projection: Option<String>,
+    pub created_at: Option<i64>,
+    pub context_parent: Option<i64>,
 }
 impl MessageAtRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            ordinal: row.get(0)?,
-            parent: row.get(1)?,
-            record: row.get(2)?,
+            attachments: row.get(0)?,
+            id: row.get(1)?,
+            conversation_id: row.get(2)?,
+            ordinal: row.get(3)?,
+            role: row.get(4)?,
+            content: row.get(5)?,
+            search_projection: row.get(6)?,
+            created_at: row.get(7)?,
+            context_parent: row.get(8)?,
         })
     }
 }
 pub struct MessageAt<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     conversation_id: &'a str,
     ordinal: i64,
 }
 impl<'a> MessageAt<'a> {
-    pub const QUERY: &'static str = r"SELECT ordinal, parent, record FROM messages
-WHERE group_id = ?1 AND node_id = ?2
-  AND conversation_id = ?3 AND ordinal = ?4";
+    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages
+WHERE conversation_id = ?1 AND ordinal = ?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1333,119 +1226,88 @@ impl<'a> MessageAt<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (
-            self.group_id,
-            self.node_id,
-            self.conversation_id,
-            self.ordinal,
-        )
+        (self.conversation_id, self.ordinal)
     }
 }
 impl<'a> MessageAt<'a> {
-    pub const fn builder() -> MessageAtBuilder<'a, ((), (), (), ())> {
+    pub const fn builder() -> MessageAtBuilder<'a, ((), ())> {
         MessageAtBuilder {
-            fields: ((), (), (), ()),
+            fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct MessageAtBuilder<'a, Fields = ((), (), (), ())> {
+pub struct MessageAtBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, ConversationId, Ordinal>
-    MessageAtBuilder<'a, ((), NodeId, ConversationId, Ordinal)>
-{
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> MessageAtBuilder<'a, (&'a str, NodeId, ConversationId, Ordinal)> {
-        let ((), node_id, conversation_id, ordinal) = self.fields;
-        let _phantom = self._phantom;
-        MessageAtBuilder {
-            fields: (group_id, node_id, conversation_id, ordinal),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, ConversationId, Ordinal>
-    MessageAtBuilder<'a, (GroupId, (), ConversationId, Ordinal)>
-{
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> MessageAtBuilder<'a, (GroupId, &'a str, ConversationId, Ordinal)> {
-        let (group_id, (), conversation_id, ordinal) = self.fields;
-        let _phantom = self._phantom;
-        MessageAtBuilder {
-            fields: (group_id, node_id, conversation_id, ordinal),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Ordinal> MessageAtBuilder<'a, (GroupId, NodeId, (), Ordinal)> {
+impl<'a, Ordinal> MessageAtBuilder<'a, ((), Ordinal)> {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> MessageAtBuilder<'a, (GroupId, NodeId, &'a str, Ordinal)> {
-        let (group_id, node_id, (), ordinal) = self.fields;
+    ) -> MessageAtBuilder<'a, (&'a str, Ordinal)> {
+        let ((), ordinal) = self.fields;
         let _phantom = self._phantom;
         MessageAtBuilder {
-            fields: (group_id, node_id, conversation_id, ordinal),
+            fields: (conversation_id, ordinal),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, ConversationId>
-    MessageAtBuilder<'a, (GroupId, NodeId, ConversationId, ())>
-{
-    pub fn ordinal(
-        self,
-        ordinal: i64,
-    ) -> MessageAtBuilder<'a, (GroupId, NodeId, ConversationId, i64)> {
-        let (group_id, node_id, conversation_id, ()) = self.fields;
+impl<'a, ConversationId> MessageAtBuilder<'a, (ConversationId, ())> {
+    pub fn ordinal(self, ordinal: i64) -> MessageAtBuilder<'a, (ConversationId, i64)> {
+        let (conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
         MessageAtBuilder {
-            fields: (group_id, node_id, conversation_id, ordinal),
+            fields: (conversation_id, ordinal),
             _phantom,
         }
     }
 }
-impl<'a> MessageAtBuilder<'a, (&'a str, &'a str, &'a str, i64)> {
+impl<'a> MessageAtBuilder<'a, (&'a str, i64)> {
     pub fn build(self) -> MessageAt<'a> {
-        let (group_id, node_id, conversation_id, ordinal) = self.fields;
+        let (conversation_id, ordinal) = self.fields;
         MessageAt {
-            group_id,
-            node_id,
             conversation_id,
             ordinal,
         }
     }
 }
 pub struct FirstChildRow {
+    pub attachments: String,
+    pub id: String,
+    pub conversation_id: String,
     pub ordinal: i64,
-    pub parent: Option<i64>,
-    pub record: String,
+    pub role: String,
+    pub content: String,
+    pub search_projection: Option<String>,
+    pub created_at: Option<i64>,
+    pub context_parent: Option<i64>,
 }
 impl FirstChildRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            ordinal: row.get(0)?,
-            parent: row.get(1)?,
-            record: row.get(2)?,
+            attachments: row.get(0)?,
+            id: row.get(1)?,
+            conversation_id: row.get(2)?,
+            ordinal: row.get(3)?,
+            role: row.get(4)?,
+            content: row.get(5)?,
+            search_projection: row.get(6)?,
+            created_at: row.get(7)?,
+            context_parent: row.get(8)?,
         })
     }
 }
 pub struct FirstChild<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     conversation_id: &'a str,
     parent: Option<i64>,
 }
 impl<'a> FirstChild<'a> {
-    pub const QUERY: &'static str = r"SELECT ordinal, parent, record FROM messages
-WHERE group_id = ?1 AND node_id = ?2
-  AND conversation_id = ?3 AND parent = ?4
+    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages
+WHERE conversation_id = ?1 AND context_parent = ?2
 ORDER BY ordinal LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -1472,117 +1334,93 @@ impl<'a> FirstChild<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (
-            self.group_id,
-            self.node_id,
-            self.conversation_id,
-            self.parent,
-        )
+        (self.conversation_id, self.parent)
     }
 }
 impl<'a> FirstChild<'a> {
-    pub const fn builder() -> FirstChildBuilder<'a, ((), (), (), ())> {
+    pub const fn builder() -> FirstChildBuilder<'a, ((), ())> {
         FirstChildBuilder {
-            fields: ((), (), (), ()),
+            fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct FirstChildBuilder<'a, Fields = ((), (), (), ())> {
+pub struct FirstChildBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, ConversationId, Parent>
-    FirstChildBuilder<'a, ((), NodeId, ConversationId, Parent)>
-{
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> FirstChildBuilder<'a, (&'a str, NodeId, ConversationId, Parent)> {
-        let ((), node_id, conversation_id, parent) = self.fields;
-        let _phantom = self._phantom;
-        FirstChildBuilder {
-            fields: (group_id, node_id, conversation_id, parent),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, ConversationId, Parent>
-    FirstChildBuilder<'a, (GroupId, (), ConversationId, Parent)>
-{
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> FirstChildBuilder<'a, (GroupId, &'a str, ConversationId, Parent)> {
-        let (group_id, (), conversation_id, parent) = self.fields;
-        let _phantom = self._phantom;
-        FirstChildBuilder {
-            fields: (group_id, node_id, conversation_id, parent),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Parent> FirstChildBuilder<'a, (GroupId, NodeId, (), Parent)> {
+impl<'a, Parent> FirstChildBuilder<'a, ((), Parent)> {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> FirstChildBuilder<'a, (GroupId, NodeId, &'a str, Parent)> {
-        let (group_id, node_id, (), parent) = self.fields;
+    ) -> FirstChildBuilder<'a, (&'a str, Parent)> {
+        let ((), parent) = self.fields;
         let _phantom = self._phantom;
         FirstChildBuilder {
-            fields: (group_id, node_id, conversation_id, parent),
+            fields: (conversation_id, parent),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, ConversationId>
-    FirstChildBuilder<'a, (GroupId, NodeId, ConversationId, ())>
-{
+impl<'a, ConversationId> FirstChildBuilder<'a, (ConversationId, ())> {
     pub fn parent(
         self,
         parent: Option<i64>,
-    ) -> FirstChildBuilder<'a, (GroupId, NodeId, ConversationId, Option<i64>)> {
-        let (group_id, node_id, conversation_id, ()) = self.fields;
+    ) -> FirstChildBuilder<'a, (ConversationId, Option<i64>)> {
+        let (conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
         FirstChildBuilder {
-            fields: (group_id, node_id, conversation_id, parent),
+            fields: (conversation_id, parent),
             _phantom,
         }
     }
 }
-impl<'a> FirstChildBuilder<'a, (&'a str, &'a str, &'a str, Option<i64>)> {
+impl<'a> FirstChildBuilder<'a, (&'a str, Option<i64>)> {
     pub fn build(self) -> FirstChild<'a> {
-        let (group_id, node_id, conversation_id, parent) = self.fields;
+        let (conversation_id, parent) = self.fields;
         FirstChild {
-            group_id,
-            node_id,
             conversation_id,
             parent,
         }
     }
 }
 pub struct MessageWindowRow {
-    pub record: String,
+    pub attachments: String,
+    pub id: String,
+    pub conversation_id: String,
+    pub ordinal: i64,
+    pub role: String,
+    pub content: String,
+    pub search_projection: Option<String>,
+    pub created_at: Option<i64>,
+    pub context_parent: Option<i64>,
 }
 impl MessageWindowRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            record: row.get(0)?,
+            attachments: row.get(0)?,
+            id: row.get(1)?,
+            conversation_id: row.get(2)?,
+            ordinal: row.get(3)?,
+            role: row.get(4)?,
+            content: row.get(5)?,
+            search_projection: row.get(6)?,
+            created_at: row.get(7)?,
+            context_parent: row.get(8)?,
         })
     }
 }
 pub struct MessageWindow<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     conversation_id: &'a str,
     first_ordinal: i64,
     last_ordinal: i64,
 }
 impl<'a> MessageWindow<'a> {
-    pub const QUERY: &'static str = r"SELECT record FROM messages
-WHERE group_id = ?1 AND node_id = ?2
-  AND conversation_id = ?3
-  AND ordinal >= ?4 AND ordinal <= ?5
+    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages
+WHERE conversation_id = ?1
+  AND ordinal >= ?2 AND ordinal <= ?3
 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -1604,140 +1442,66 @@ impl<'a> MessageWindow<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (
-            self.group_id,
-            self.node_id,
-            self.conversation_id,
-            self.first_ordinal,
-            self.last_ordinal,
-        )
+        (self.conversation_id, self.first_ordinal, self.last_ordinal)
     }
 }
 impl<'a> MessageWindow<'a> {
-    pub const fn builder() -> MessageWindowBuilder<'a, ((), (), (), (), ())> {
+    pub const fn builder() -> MessageWindowBuilder<'a, ((), (), ())> {
         MessageWindowBuilder {
-            fields: ((), (), (), (), ()),
+            fields: ((), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct MessageWindowBuilder<'a, Fields = ((), (), (), (), ())> {
+pub struct MessageWindowBuilder<'a, Fields = ((), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, ConversationId, FirstOrdinal, LastOrdinal>
-    MessageWindowBuilder<'a, ((), NodeId, ConversationId, FirstOrdinal, LastOrdinal)>
-{
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> MessageWindowBuilder<'a, (&'a str, NodeId, ConversationId, FirstOrdinal, LastOrdinal)>
-    {
-        let ((), node_id, conversation_id, first_ordinal, last_ordinal) = self.fields;
-        let _phantom = self._phantom;
-        MessageWindowBuilder {
-            fields: (
-                group_id,
-                node_id,
-                conversation_id,
-                first_ordinal,
-                last_ordinal,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, ConversationId, FirstOrdinal, LastOrdinal>
-    MessageWindowBuilder<'a, (GroupId, (), ConversationId, FirstOrdinal, LastOrdinal)>
-{
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> MessageWindowBuilder<'a, (GroupId, &'a str, ConversationId, FirstOrdinal, LastOrdinal)>
-    {
-        let (group_id, (), conversation_id, first_ordinal, last_ordinal) = self.fields;
-        let _phantom = self._phantom;
-        MessageWindowBuilder {
-            fields: (
-                group_id,
-                node_id,
-                conversation_id,
-                first_ordinal,
-                last_ordinal,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, FirstOrdinal, LastOrdinal>
-    MessageWindowBuilder<'a, (GroupId, NodeId, (), FirstOrdinal, LastOrdinal)>
-{
+impl<'a, FirstOrdinal, LastOrdinal> MessageWindowBuilder<'a, ((), FirstOrdinal, LastOrdinal)> {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> MessageWindowBuilder<'a, (GroupId, NodeId, &'a str, FirstOrdinal, LastOrdinal)> {
-        let (group_id, node_id, (), first_ordinal, last_ordinal) = self.fields;
+    ) -> MessageWindowBuilder<'a, (&'a str, FirstOrdinal, LastOrdinal)> {
+        let ((), first_ordinal, last_ordinal) = self.fields;
         let _phantom = self._phantom;
         MessageWindowBuilder {
-            fields: (
-                group_id,
-                node_id,
-                conversation_id,
-                first_ordinal,
-                last_ordinal,
-            ),
+            fields: (conversation_id, first_ordinal, last_ordinal),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, ConversationId, LastOrdinal>
-    MessageWindowBuilder<'a, (GroupId, NodeId, ConversationId, (), LastOrdinal)>
-{
+impl<'a, ConversationId, LastOrdinal> MessageWindowBuilder<'a, (ConversationId, (), LastOrdinal)> {
     pub fn first_ordinal(
         self,
         first_ordinal: i64,
-    ) -> MessageWindowBuilder<'a, (GroupId, NodeId, ConversationId, i64, LastOrdinal)> {
-        let (group_id, node_id, conversation_id, (), last_ordinal) = self.fields;
+    ) -> MessageWindowBuilder<'a, (ConversationId, i64, LastOrdinal)> {
+        let (conversation_id, (), last_ordinal) = self.fields;
         let _phantom = self._phantom;
         MessageWindowBuilder {
-            fields: (
-                group_id,
-                node_id,
-                conversation_id,
-                first_ordinal,
-                last_ordinal,
-            ),
+            fields: (conversation_id, first_ordinal, last_ordinal),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, ConversationId, FirstOrdinal>
-    MessageWindowBuilder<'a, (GroupId, NodeId, ConversationId, FirstOrdinal, ())>
+impl<'a, ConversationId, FirstOrdinal>
+    MessageWindowBuilder<'a, (ConversationId, FirstOrdinal, ())>
 {
     pub fn last_ordinal(
         self,
         last_ordinal: i64,
-    ) -> MessageWindowBuilder<'a, (GroupId, NodeId, ConversationId, FirstOrdinal, i64)> {
-        let (group_id, node_id, conversation_id, first_ordinal, ()) = self.fields;
+    ) -> MessageWindowBuilder<'a, (ConversationId, FirstOrdinal, i64)> {
+        let (conversation_id, first_ordinal, ()) = self.fields;
         let _phantom = self._phantom;
         MessageWindowBuilder {
-            fields: (
-                group_id,
-                node_id,
-                conversation_id,
-                first_ordinal,
-                last_ordinal,
-            ),
+            fields: (conversation_id, first_ordinal, last_ordinal),
             _phantom,
         }
     }
 }
-impl<'a> MessageWindowBuilder<'a, (&'a str, &'a str, &'a str, i64, i64)> {
+impl<'a> MessageWindowBuilder<'a, (&'a str, i64, i64)> {
     pub fn build(self) -> MessageWindow<'a> {
-        let (group_id, node_id, conversation_id, first_ordinal, last_ordinal) = self.fields;
+        let (conversation_id, first_ordinal, last_ordinal) = self.fields;
         MessageWindow {
-            group_id,
-            node_id,
             conversation_id,
             first_ordinal,
             last_ordinal,
@@ -1745,24 +1509,38 @@ impl<'a> MessageWindowBuilder<'a, (&'a str, &'a str, &'a str, i64, i64)> {
     }
 }
 pub struct ThreadMessagesRow {
-    pub record: String,
+    pub attachments: String,
+    pub id: String,
+    pub conversation_id: String,
+    pub ordinal: i64,
+    pub role: String,
+    pub content: String,
+    pub search_projection: Option<String>,
+    pub created_at: Option<i64>,
+    pub context_parent: Option<i64>,
 }
 impl ThreadMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            record: row.get(0)?,
+            attachments: row.get(0)?,
+            id: row.get(1)?,
+            conversation_id: row.get(2)?,
+            ordinal: row.get(3)?,
+            role: row.get(4)?,
+            content: row.get(5)?,
+            search_projection: row.get(6)?,
+            created_at: row.get(7)?,
+            context_parent: row.get(8)?,
         })
     }
 }
 pub struct ThreadMessages<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     conversation_id: &'a str,
 }
 impl<'a> ThreadMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT record FROM messages
-WHERE group_id = ?1 AND node_id = ?2
-  AND conversation_id = ?3
+    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages WHERE conversation_id = ?1
 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -1784,94 +1562,76 @@ impl<'a> ThreadMessages<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.conversation_id)
+        (self.conversation_id,)
     }
 }
 impl<'a> ThreadMessages<'a> {
-    pub const fn builder() -> ThreadMessagesBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> ThreadMessagesBuilder<'a, ((),)> {
         ThreadMessagesBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ThreadMessagesBuilder<'a, Fields = ((), (), ())> {
+pub struct ThreadMessagesBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, ConversationId> ThreadMessagesBuilder<'a, ((), NodeId, ConversationId)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> ThreadMessagesBuilder<'a, (&'a str, NodeId, ConversationId)> {
-        let ((), node_id, conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        ThreadMessagesBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, ConversationId> ThreadMessagesBuilder<'a, (GroupId, (), ConversationId)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> ThreadMessagesBuilder<'a, (GroupId, &'a str, ConversationId)> {
-        let (group_id, (), conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        ThreadMessagesBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> ThreadMessagesBuilder<'a, (GroupId, NodeId, ())> {
+impl<'a> ThreadMessagesBuilder<'a, ((),)> {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> ThreadMessagesBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
+    ) -> ThreadMessagesBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         ThreadMessagesBuilder {
-            fields: (group_id, node_id, conversation_id),
+            fields: (conversation_id,),
             _phantom,
         }
     }
 }
-impl<'a> ThreadMessagesBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> ThreadMessagesBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ThreadMessages<'a> {
-        let (group_id, node_id, conversation_id) = self.fields;
-        ThreadMessages {
-            group_id,
-            node_id,
-            conversation_id,
-        }
+        let (conversation_id,) = self.fields;
+        ThreadMessages { conversation_id }
     }
 }
 pub struct NodeMessagesRow {
+    pub attachments: String,
     pub id: String,
-    pub record: String,
+    pub conversation_id: String,
+    pub ordinal: i64,
+    pub role: String,
+    pub content: String,
+    pub search_projection: Option<String>,
+    pub created_at: Option<i64>,
+    pub context_parent: Option<i64>,
 }
 impl NodeMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            id: row.get(0)?,
-            record: row.get(1)?,
+            attachments: row.get(0)?,
+            id: row.get(1)?,
+            conversation_id: row.get(2)?,
+            ordinal: row.get(3)?,
+            role: row.get(4)?,
+            content: row.get(5)?,
+            search_projection: row.get(6)?,
+            created_at: row.get(7)?,
+            context_parent: row.get(8)?,
         })
     }
 }
-pub struct NodeMessages<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> NodeMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT id, record FROM messages
-WHERE group_id = ?1 AND node_id = ?2 ORDER BY id";
+pub struct NodeMessages;
+impl NodeMessages {
+    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+FROM messages ORDER BY id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> NodeMessages<'a> {
+impl NodeMessages {
     pub fn query_many(
         &self,
         client: &impl RusqliteClient,
@@ -1887,45 +1647,25 @@ impl<'a> NodeMessages<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> NodeMessages<'a> {
-    pub const fn builder() -> NodeMessagesBuilder<'a, ((), ())> {
+impl NodeMessages {
+    pub const fn builder() -> NodeMessagesBuilder<'static, ()> {
         NodeMessagesBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NodeMessagesBuilder<'a, Fields = ((), ())> {
+pub struct NodeMessagesBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> NodeMessagesBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> NodeMessagesBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        NodeMessagesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> NodeMessagesBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> NodeMessagesBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        NodeMessagesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> NodeMessagesBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> NodeMessages<'a> {
-        let (group_id, node_id) = self.fields;
-        NodeMessages { group_id, node_id }
+impl<'a> NodeMessagesBuilder<'a, ()> {
+    pub fn build(self) -> NodeMessages {
+        let () = self.fields;
+        NodeMessages {}
     }
 }
 pub struct InsertMessageRow {}
@@ -1935,20 +1675,25 @@ impl InsertMessageRow {
     }
 }
 pub struct InsertMessage<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
+    attachments: &'a str,
     id: &'a str,
     conversation_id: &'a str,
     ordinal: i64,
-    parent: Option<i64>,
-    searchable: i64,
-    user: i64,
-    record: &'a str,
+    role: &'a str,
+    content: &'a str,
+    search_projection: Option<&'a str>,
+    created_at: Option<i64>,
+    context_parent: Option<i64>,
 }
 impl<'a> InsertMessage<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO messages(group_id, node_id, id, conversation_id, ordinal, parent, searchable, user, record)
-VALUES (?1, ?2, ?3, ?4,
-        ?5, ?6, ?7, ?8, ?9)";
+    pub const QUERY: &'static str = r"INSERT INTO messages(
+    attachments, id, conversation_id, ordinal, role, content, search_projection,
+    created_at, context_parent
+) VALUES (
+    ?1, ?2, ?3, ?4,
+    ?5, ?6, ?7, ?8,
+    ?9
+)";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1965,15 +1710,15 @@ impl<'a> InsertMessage<'a> {
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
-            self.group_id,
-            self.node_id,
+            self.attachments,
             self.id,
             self.conversation_id,
             self.ordinal,
-            self.parent,
-            self.searchable,
-            self.user,
-            self.record,
+            self.role,
+            self.content,
+            self.search_projection,
+            self.created_at,
+            self.context_parent,
         )
     }
 }
@@ -1989,123 +1734,90 @@ pub struct InsertMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ()
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Id, ConversationId, Ordinal, Parent, Searchable, User, Record>
+impl<'a, Id, ConversationId, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent>
     InsertMessageBuilder<
         'a,
         (
             (),
-            NodeId,
             Id,
             ConversationId,
             Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     >
 {
-    pub fn group_id(
+    pub fn attachments(
         self,
-        group_id: &'a str,
+        attachments: &'a str,
     ) -> InsertMessageBuilder<
         'a,
         (
             &'a str,
-            NodeId,
             Id,
             ConversationId,
             Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     > {
-        let ((), node_id, id, conversation_id, ordinal, parent, searchable, user, record) =
-            self.fields;
+        let (
+            (),
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+        ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                group_id,
-                node_id,
+                attachments,
                 id,
                 conversation_id,
                 ordinal,
-                parent,
-                searchable,
-                user,
-                record,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
             ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Id, ConversationId, Ordinal, Parent, Searchable, User, Record>
+impl<
+    'a,
+    Attachments,
+    ConversationId,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+>
     InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            (),
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
-        ),
-    >
-{
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            &'a str,
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
-        ),
-    > {
-        let (group_id, (), id, conversation_id, ordinal, parent, searchable, user, record) =
-            self.fields;
-        let _phantom = self._phantom;
-        InsertMessageBuilder {
-            fields: (
-                group_id,
-                node_id,
-                id,
-                conversation_id,
-                ordinal,
-                parent,
-                searchable,
-                user,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, ConversationId, Ordinal, Parent, Searchable, User, Record>
-    InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
+            Attachments,
             (),
             ConversationId,
             Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     >
 {
@@ -2115,49 +1827,58 @@ impl<'a, GroupId, NodeId, ConversationId, Ordinal, Parent, Searchable, User, Rec
     ) -> InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
+            Attachments,
             &'a str,
             ConversationId,
             Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     > {
-        let (group_id, node_id, (), conversation_id, ordinal, parent, searchable, user, record) =
-            self.fields;
+        let (
+            attachments,
+            (),
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+        ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                group_id,
-                node_id,
+                attachments,
                 id,
                 conversation_id,
                 ordinal,
-                parent,
-                searchable,
-                user,
-                record,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
             ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Id, Ordinal, Parent, Searchable, User, Record>
+impl<'a, Attachments, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent>
     InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
+            Attachments,
             Id,
             (),
             Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     >
 {
@@ -2167,48 +1888,58 @@ impl<'a, GroupId, NodeId, Id, Ordinal, Parent, Searchable, User, Record>
     ) -> InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
+            Attachments,
             Id,
             &'a str,
             Ordinal,
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     > {
-        let (group_id, node_id, id, (), ordinal, parent, searchable, user, record) = self.fields;
+        let (
+            attachments,
+            id,
+            (),
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+        ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                group_id,
-                node_id,
+                attachments,
                 id,
                 conversation_id,
                 ordinal,
-                parent,
-                searchable,
-                user,
-                record,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
             ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Id, ConversationId, Parent, Searchable, User, Record>
+impl<'a, Attachments, Id, ConversationId, Role, Content, SearchProjection, CreatedAt, ContextParent>
     InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
+            Attachments,
             Id,
             ConversationId,
             (),
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     >
 {
@@ -2218,239 +1949,355 @@ impl<'a, GroupId, NodeId, Id, ConversationId, Parent, Searchable, User, Record>
     ) -> InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
+            Attachments,
             Id,
             ConversationId,
             i64,
-            Parent,
-            Searchable,
-            User,
-            Record,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     > {
-        let (group_id, node_id, id, conversation_id, (), parent, searchable, user, record) =
-            self.fields;
+        let (
+            attachments,
+            id,
+            conversation_id,
+            (),
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+        ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                group_id,
-                node_id,
+                attachments,
                 id,
                 conversation_id,
                 ordinal,
-                parent,
-                searchable,
-                user,
-                record,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
             ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Id, ConversationId, Ordinal, Searchable, User, Record>
+impl<
+    'a,
+    Attachments,
+    Id,
+    ConversationId,
+    Ordinal,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+>
     InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
+            Attachments,
             Id,
             ConversationId,
             Ordinal,
             (),
-            Searchable,
-            User,
-            Record,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     >
 {
-    pub fn parent(
+    pub fn role(
         self,
-        parent: Option<i64>,
+        role: &'a str,
     ) -> InsertMessageBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
+            Attachments,
             Id,
             ConversationId,
             Ordinal,
-            Option<i64>,
-            Searchable,
-            User,
-            Record,
-        ),
-    > {
-        let (group_id, node_id, id, conversation_id, ordinal, (), searchable, user, record) =
-            self.fields;
-        let _phantom = self._phantom;
-        InsertMessageBuilder {
-            fields: (
-                group_id,
-                node_id,
-                id,
-                conversation_id,
-                ordinal,
-                parent,
-                searchable,
-                user,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Id, ConversationId, Ordinal, Parent, User, Record>
-    InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            (),
-            User,
-            Record,
-        ),
-    >
-{
-    pub fn searchable(
-        self,
-        searchable: i64,
-    ) -> InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            i64,
-            User,
-            Record,
-        ),
-    > {
-        let (group_id, node_id, id, conversation_id, ordinal, parent, (), user, record) =
-            self.fields;
-        let _phantom = self._phantom;
-        InsertMessageBuilder {
-            fields: (
-                group_id,
-                node_id,
-                id,
-                conversation_id,
-                ordinal,
-                parent,
-                searchable,
-                user,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Id, ConversationId, Ordinal, Parent, Searchable, Record>
-    InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            Searchable,
-            (),
-            Record,
-        ),
-    >
-{
-    pub fn user(
-        self,
-        user: i64,
-    ) -> InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            Searchable,
-            i64,
-            Record,
-        ),
-    > {
-        let (group_id, node_id, id, conversation_id, ordinal, parent, searchable, (), record) =
-            self.fields;
-        let _phantom = self._phantom;
-        InsertMessageBuilder {
-            fields: (
-                group_id,
-                node_id,
-                id,
-                conversation_id,
-                ordinal,
-                parent,
-                searchable,
-                user,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Id, ConversationId, Ordinal, Parent, Searchable, User>
-    InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            Searchable,
-            User,
-            (),
-        ),
-    >
-{
-    pub fn record(
-        self,
-        record: &'a str,
-    ) -> InsertMessageBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            Id,
-            ConversationId,
-            Ordinal,
-            Parent,
-            Searchable,
-            User,
             &'a str,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
         ),
     > {
-        let (group_id, node_id, id, conversation_id, ordinal, parent, searchable, user, ()) =
-            self.fields;
+        let (
+            attachments,
+            id,
+            conversation_id,
+            ordinal,
+            (),
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+        ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                group_id,
-                node_id,
+                attachments,
                 id,
                 conversation_id,
                 ordinal,
-                parent,
-                searchable,
-                user,
-                record,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Attachments, Id, ConversationId, Ordinal, Role, SearchProjection, CreatedAt, ContextParent>
+    InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            (),
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+        ),
+    >
+{
+    pub fn content(
+        self,
+        content: &'a str,
+    ) -> InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            &'a str,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+        ),
+    > {
+        let (
+            attachments,
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            (),
+            search_projection,
+            created_at,
+            context_parent,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        InsertMessageBuilder {
+            fields: (
+                attachments,
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, CreatedAt, ContextParent>
+    InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            (),
+            CreatedAt,
+            ContextParent,
+        ),
+    >
+{
+    pub fn search_projection(
+        self,
+        search_projection: Option<&'a str>,
+    ) -> InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            Option<&'a str>,
+            CreatedAt,
+            ContextParent,
+        ),
+    > {
+        let (
+            attachments,
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            (),
+            created_at,
+            context_parent,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        InsertMessageBuilder {
+            fields: (
+                attachments,
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, SearchProjection, ContextParent>
+    InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            (),
+            ContextParent,
+        ),
+    >
+{
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            Option<i64>,
+            ContextParent,
+        ),
+    > {
+        let (
+            attachments,
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            (),
+            context_parent,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        InsertMessageBuilder {
+            fields: (
+                attachments,
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, SearchProjection, CreatedAt>
+    InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            (),
+        ),
+    >
+{
+    pub fn context_parent(
+        self,
+        context_parent: Option<i64>,
+    ) -> InsertMessageBuilder<
+        'a,
+        (
+            Attachments,
+            Id,
+            ConversationId,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            Option<i64>,
+        ),
+    > {
+        let (
+            attachments,
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            (),
+        ) = self.fields;
+        let _phantom = self._phantom;
+        InsertMessageBuilder {
+            fields: (
+                attachments,
+                id,
+                conversation_id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
             ),
             _phantom,
         }
@@ -2463,28 +2310,37 @@ impl<'a>
             &'a str,
             &'a str,
             &'a str,
-            &'a str,
             i64,
+            &'a str,
+            &'a str,
+            Option<&'a str>,
             Option<i64>,
-            i64,
-            i64,
-            &'a str,
+            Option<i64>,
         ),
     >
 {
     pub fn build(self) -> InsertMessage<'a> {
-        let (group_id, node_id, id, conversation_id, ordinal, parent, searchable, user, record) =
-            self.fields;
-        InsertMessage {
-            group_id,
-            node_id,
+        let (
+            attachments,
             id,
             conversation_id,
             ordinal,
-            parent,
-            searchable,
-            user,
-            record,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+        ) = self.fields;
+        InsertMessage {
+            attachments,
+            id,
+            conversation_id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
         }
     }
 }
@@ -2495,14 +2351,10 @@ impl DeleteThreadMessagesRow {
     }
 }
 pub struct DeleteThreadMessages<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     conversation_id: &'a str,
 }
 impl<'a> DeleteThreadMessages<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM messages
-WHERE group_id = ?1 AND node_id = ?2
-  AND conversation_id = ?3";
+    pub const QUERY: &'static str = r"DELETE FROM messages WHERE conversation_id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2518,68 +2370,38 @@ impl<'a> DeleteThreadMessages<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.conversation_id)
+        (self.conversation_id,)
     }
 }
 impl<'a> DeleteThreadMessages<'a> {
-    pub const fn builder() -> DeleteThreadMessagesBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> DeleteThreadMessagesBuilder<'a, ((),)> {
         DeleteThreadMessagesBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteThreadMessagesBuilder<'a, Fields = ((), (), ())> {
+pub struct DeleteThreadMessagesBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, ConversationId> DeleteThreadMessagesBuilder<'a, ((), NodeId, ConversationId)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> DeleteThreadMessagesBuilder<'a, (&'a str, NodeId, ConversationId)> {
-        let ((), node_id, conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        DeleteThreadMessagesBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, ConversationId> DeleteThreadMessagesBuilder<'a, (GroupId, (), ConversationId)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> DeleteThreadMessagesBuilder<'a, (GroupId, &'a str, ConversationId)> {
-        let (group_id, (), conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        DeleteThreadMessagesBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> DeleteThreadMessagesBuilder<'a, (GroupId, NodeId, ())> {
+impl<'a> DeleteThreadMessagesBuilder<'a, ((),)> {
     pub fn conversation_id(
         self,
         conversation_id: &'a str,
-    ) -> DeleteThreadMessagesBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
+    ) -> DeleteThreadMessagesBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         DeleteThreadMessagesBuilder {
-            fields: (group_id, node_id, conversation_id),
+            fields: (conversation_id,),
             _phantom,
         }
     }
 }
-impl<'a> DeleteThreadMessagesBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> DeleteThreadMessagesBuilder<'a, (&'a str,)> {
     pub fn build(self) -> DeleteThreadMessages<'a> {
-        let (group_id, node_id, conversation_id) = self.fields;
-        DeleteThreadMessages {
-            group_id,
-            node_id,
-            conversation_id,
-        }
+        let (conversation_id,) = self.fields;
+        DeleteThreadMessages { conversation_id }
     }
 }
 pub struct DeleteNodeMessagesRow {}
@@ -2588,17 +2410,14 @@ impl DeleteNodeMessagesRow {
         Ok(Self {})
     }
 }
-pub struct DeleteNodeMessages<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> DeleteNodeMessages<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM messages WHERE group_id = ?1 AND node_id = ?2";
+pub struct DeleteNodeMessages;
+impl DeleteNodeMessages {
+    pub const QUERY: &'static str = r"DELETE FROM messages";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteNodeMessages<'a> {
+impl DeleteNodeMessages {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -2609,45 +2428,25 @@ impl<'a> DeleteNodeMessages<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> DeleteNodeMessages<'a> {
-    pub const fn builder() -> DeleteNodeMessagesBuilder<'a, ((), ())> {
+impl DeleteNodeMessages {
+    pub const fn builder() -> DeleteNodeMessagesBuilder<'static, ()> {
         DeleteNodeMessagesBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteNodeMessagesBuilder<'a, Fields = ((), ())> {
+pub struct DeleteNodeMessagesBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> DeleteNodeMessagesBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> DeleteNodeMessagesBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        DeleteNodeMessagesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> DeleteNodeMessagesBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> DeleteNodeMessagesBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        DeleteNodeMessagesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> DeleteNodeMessagesBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> DeleteNodeMessages<'a> {
-        let (group_id, node_id) = self.fields;
-        DeleteNodeMessages { group_id, node_id }
+impl<'a> DeleteNodeMessagesBuilder<'a, ()> {
+    pub fn build(self) -> DeleteNodeMessages {
+        let () = self.fields;
+        DeleteNodeMessages {}
     }
 }
 pub struct MissingParentRow {
@@ -2659,17 +2458,13 @@ impl MissingParentRow {
     }
 }
 pub struct MissingParent<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     conversation_id: &'a str,
 }
 impl<'a> MissingParent<'a> {
     pub const QUERY: &'static str = r"SELECT m.id FROM messages m
-WHERE m.group_id = ?1 AND m.node_id = ?2
-  AND m.conversation_id = ?3 AND m.parent IS NOT NULL
+WHERE m.conversation_id = ?1 AND m.context_parent >= 0
   AND NOT EXISTS(SELECT 1 FROM messages p
-      WHERE p.group_id = m.group_id AND p.node_id = m.node_id
-        AND p.conversation_id = m.conversation_id AND p.ordinal = m.parent)
+      WHERE p.conversation_id = m.conversation_id AND p.ordinal = m.context_parent)
 LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -2696,94 +2491,71 @@ impl<'a> MissingParent<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.conversation_id)
+        (self.conversation_id,)
     }
 }
 impl<'a> MissingParent<'a> {
-    pub const fn builder() -> MissingParentBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> MissingParentBuilder<'a, ((),)> {
         MissingParentBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct MissingParentBuilder<'a, Fields = ((), (), ())> {
+pub struct MissingParentBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, ConversationId> MissingParentBuilder<'a, ((), NodeId, ConversationId)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> MissingParentBuilder<'a, (&'a str, NodeId, ConversationId)> {
-        let ((), node_id, conversation_id) = self.fields;
+impl<'a> MissingParentBuilder<'a, ((),)> {
+    pub fn conversation_id(self, conversation_id: &'a str) -> MissingParentBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         MissingParentBuilder {
-            fields: (group_id, node_id, conversation_id),
+            fields: (conversation_id,),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, ConversationId> MissingParentBuilder<'a, (GroupId, (), ConversationId)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> MissingParentBuilder<'a, (GroupId, &'a str, ConversationId)> {
-        let (group_id, (), conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        MissingParentBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> MissingParentBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn conversation_id(
-        self,
-        conversation_id: &'a str,
-    ) -> MissingParentBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        MissingParentBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> MissingParentBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> MissingParentBuilder<'a, (&'a str,)> {
     pub fn build(self) -> MissingParent<'a> {
-        let (group_id, node_id, conversation_id) = self.fields;
-        MissingParent {
-            group_id,
-            node_id,
-            conversation_id,
-        }
+        let (conversation_id,) = self.fields;
+        MissingParent { conversation_id }
     }
 }
 pub struct NodeSourcesRow {
-    pub key: String,
-    pub record: String,
+    pub provider: String,
+    pub source_key: String,
+    pub size_bytes: i64,
+    pub modified_ns: i64,
+    pub fingerprint: String,
+    pub interpretation_version: i64,
+    pub conversation_id: Option<String>,
+    pub ready: i64,
 }
 impl NodeSourcesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            key: row.get(0)?,
-            record: row.get(1)?,
+            provider: row.get(0)?,
+            source_key: row.get(1)?,
+            size_bytes: row.get(2)?,
+            modified_ns: row.get(3)?,
+            fingerprint: row.get(4)?,
+            interpretation_version: row.get(5)?,
+            conversation_id: row.get(6)?,
+            ready: row.get(7)?,
         })
     }
 }
-pub struct NodeSources<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> NodeSources<'a> {
-    pub const QUERY: &'static str = r"SELECT key, record FROM sources
-WHERE group_id = ?1 AND node_id = ?2 ORDER BY key";
+pub struct NodeSources;
+impl NodeSources {
+    pub const QUERY: &'static str = r"SELECT provider, source_key, size_bytes, modified_ns, fingerprint, interpretation_version,
+    conversation_id, ready
+FROM source_checkpoints ORDER BY provider, source_key";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> NodeSources<'a> {
+impl NodeSources {
     pub fn query_many(
         &self,
         client: &impl RusqliteClient,
@@ -2799,67 +2571,58 @@ impl<'a> NodeSources<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> NodeSources<'a> {
-    pub const fn builder() -> NodeSourcesBuilder<'a, ((), ())> {
+impl NodeSources {
+    pub const fn builder() -> NodeSourcesBuilder<'static, ()> {
         NodeSourcesBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NodeSourcesBuilder<'a, Fields = ((), ())> {
+pub struct NodeSourcesBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> NodeSourcesBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> NodeSourcesBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        NodeSourcesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> NodeSourcesBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> NodeSourcesBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        NodeSourcesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> NodeSourcesBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> NodeSources<'a> {
-        let (group_id, node_id) = self.fields;
-        NodeSources { group_id, node_id }
+impl<'a> NodeSourcesBuilder<'a, ()> {
+    pub fn build(self) -> NodeSources {
+        let () = self.fields;
+        NodeSources {}
     }
 }
 pub struct ProviderSourcesRow {
-    pub key: String,
-    pub record: String,
+    pub provider: String,
+    pub source_key: String,
+    pub size_bytes: i64,
+    pub modified_ns: i64,
+    pub fingerprint: String,
+    pub interpretation_version: i64,
+    pub conversation_id: Option<String>,
+    pub ready: i64,
 }
 impl ProviderSourcesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            key: row.get(0)?,
-            record: row.get(1)?,
+            provider: row.get(0)?,
+            source_key: row.get(1)?,
+            size_bytes: row.get(2)?,
+            modified_ns: row.get(3)?,
+            fingerprint: row.get(4)?,
+            interpretation_version: row.get(5)?,
+            conversation_id: row.get(6)?,
+            ready: row.get(7)?,
         })
     }
 }
 pub struct ProviderSources<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     provider: &'a str,
 }
 impl<'a> ProviderSources<'a> {
-    pub const QUERY: &'static str = r"SELECT key, record FROM sources
-WHERE group_id = ?1 AND node_id = ?2 AND provider = ?3";
+    pub const QUERY: &'static str = r"SELECT provider, source_key, size_bytes, modified_ns, fingerprint, interpretation_version,
+    conversation_id, ready
+FROM source_checkpoints WHERE provider = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2880,68 +2643,35 @@ impl<'a> ProviderSources<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.provider)
+        (self.provider,)
     }
 }
 impl<'a> ProviderSources<'a> {
-    pub const fn builder() -> ProviderSourcesBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> ProviderSourcesBuilder<'a, ((),)> {
         ProviderSourcesBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ProviderSourcesBuilder<'a, Fields = ((), (), ())> {
+pub struct ProviderSourcesBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Provider> ProviderSourcesBuilder<'a, ((), NodeId, Provider)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> ProviderSourcesBuilder<'a, (&'a str, NodeId, Provider)> {
-        let ((), node_id, provider) = self.fields;
+impl<'a> ProviderSourcesBuilder<'a, ((),)> {
+    pub fn provider(self, provider: &'a str) -> ProviderSourcesBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         ProviderSourcesBuilder {
-            fields: (group_id, node_id, provider),
+            fields: (provider,),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Provider> ProviderSourcesBuilder<'a, (GroupId, (), Provider)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> ProviderSourcesBuilder<'a, (GroupId, &'a str, Provider)> {
-        let (group_id, (), provider) = self.fields;
-        let _phantom = self._phantom;
-        ProviderSourcesBuilder {
-            fields: (group_id, node_id, provider),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> ProviderSourcesBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn provider(
-        self,
-        provider: &'a str,
-    ) -> ProviderSourcesBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        ProviderSourcesBuilder {
-            fields: (group_id, node_id, provider),
-            _phantom,
-        }
-    }
-}
-impl<'a> ProviderSourcesBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> ProviderSourcesBuilder<'a, (&'a str,)> {
     pub fn build(self) -> ProviderSources<'a> {
-        let (group_id, node_id, provider) = self.fields;
-        ProviderSources {
-            group_id,
-            node_id,
-            provider,
-        }
+        let (provider,) = self.fields;
+        ProviderSources { provider }
     }
 }
 pub struct UpsertSourceRow {}
@@ -2951,21 +2681,28 @@ impl UpsertSourceRow {
     }
 }
 pub struct UpsertSource<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-    key: &'a str,
     provider: &'a str,
-    conversation_id: Option<&'a str>,
+    source_key: &'a str,
+    size_bytes: i64,
+    modified_ns: i64,
+    fingerprint: &'a str,
     interpretation_version: i64,
-    record: &'a str,
+    conversation_id: Option<&'a str>,
+    ready: i64,
 }
 impl<'a> UpsertSource<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO sources(group_id, node_id, key, provider, conversation_id, interpretation_version, record)
-VALUES (?1, ?2, ?3, ?4,
-        ?5, ?6, ?7)
-ON CONFLICT(group_id, node_id, key) DO UPDATE SET
-    provider = excluded.provider, conversation_id = excluded.conversation_id,
-    interpretation_version = excluded.interpretation_version, record = excluded.record";
+    pub const QUERY: &'static str = r"INSERT INTO source_checkpoints(
+    provider, source_key, source_path, size_bytes, modified_ns, fingerprint,
+    interpretation_version, conversation_id, ready
+) VALUES (
+    ?1, ?2, '', ?3, ?4,
+    ?5, ?6, ?7,
+    ?8
+)
+ON CONFLICT(provider, source_key) DO UPDATE SET
+    size_bytes = excluded.size_bytes, modified_ns = excluded.modified_ns,
+    fingerprint = excluded.fingerprint, interpretation_version = excluded.interpretation_version,
+    conversation_id = excluded.conversation_id, ready = excluded.ready";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2982,177 +2719,50 @@ impl<'a> UpsertSource<'a> {
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
-            self.group_id,
-            self.node_id,
-            self.key,
             self.provider,
-            self.conversation_id,
+            self.source_key,
+            self.size_bytes,
+            self.modified_ns,
+            self.fingerprint,
             self.interpretation_version,
-            self.record,
+            self.conversation_id,
+            self.ready,
         )
     }
 }
 impl<'a> UpsertSource<'a> {
-    pub const fn builder() -> UpsertSourceBuilder<'a, ((), (), (), (), (), (), ())> {
+    pub const fn builder() -> UpsertSourceBuilder<'a, ((), (), (), (), (), (), (), ())> {
         UpsertSourceBuilder {
-            fields: ((), (), (), (), (), (), ()),
+            fields: ((), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertSourceBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
+pub struct UpsertSourceBuilder<'a, Fields = ((), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Key, Provider, ConversationId, InterpretationVersion, Record>
+impl<
+    'a,
+    SourceKey,
+    SizeBytes,
+    ModifiedNs,
+    Fingerprint,
+    InterpretationVersion,
+    ConversationId,
+    Ready,
+>
     UpsertSourceBuilder<
         'a,
         (
             (),
-            NodeId,
-            Key,
-            Provider,
-            ConversationId,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
             InterpretationVersion,
-            Record,
-        ),
-    >
-{
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> UpsertSourceBuilder<
-        'a,
-        (
-            &'a str,
-            NodeId,
-            Key,
-            Provider,
             ConversationId,
-            InterpretationVersion,
-            Record,
-        ),
-    > {
-        let ((), node_id, key, provider, conversation_id, interpretation_version, record) =
-            self.fields;
-        let _phantom = self._phantom;
-        UpsertSourceBuilder {
-            fields: (
-                group_id,
-                node_id,
-                key,
-                provider,
-                conversation_id,
-                interpretation_version,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, Key, Provider, ConversationId, InterpretationVersion, Record>
-    UpsertSourceBuilder<
-        'a,
-        (
-            GroupId,
-            (),
-            Key,
-            Provider,
-            ConversationId,
-            InterpretationVersion,
-            Record,
-        ),
-    >
-{
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> UpsertSourceBuilder<
-        'a,
-        (
-            GroupId,
-            &'a str,
-            Key,
-            Provider,
-            ConversationId,
-            InterpretationVersion,
-            Record,
-        ),
-    > {
-        let (group_id, (), key, provider, conversation_id, interpretation_version, record) =
-            self.fields;
-        let _phantom = self._phantom;
-        UpsertSourceBuilder {
-            fields: (
-                group_id,
-                node_id,
-                key,
-                provider,
-                conversation_id,
-                interpretation_version,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Provider, ConversationId, InterpretationVersion, Record>
-    UpsertSourceBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            (),
-            Provider,
-            ConversationId,
-            InterpretationVersion,
-            Record,
-        ),
-    >
-{
-    pub fn key(
-        self,
-        key: &'a str,
-    ) -> UpsertSourceBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            &'a str,
-            Provider,
-            ConversationId,
-            InterpretationVersion,
-            Record,
-        ),
-    > {
-        let (group_id, node_id, (), provider, conversation_id, interpretation_version, record) =
-            self.fields;
-        let _phantom = self._phantom;
-        UpsertSourceBuilder {
-            fields: (
-                group_id,
-                node_id,
-                key,
-                provider,
-                conversation_id,
-                interpretation_version,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Key, ConversationId, InterpretationVersion, Record>
-    UpsertSourceBuilder<
-        'a,
-        (
-            GroupId,
-            NodeId,
-            Key,
-            (),
-            ConversationId,
-            InterpretationVersion,
-            Record,
+            Ready,
         ),
     >
 {
@@ -3162,43 +2772,339 @@ impl<'a, GroupId, NodeId, Key, ConversationId, InterpretationVersion, Record>
     ) -> UpsertSourceBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
-            Key,
             &'a str,
-            ConversationId,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
             InterpretationVersion,
-            Record,
+            ConversationId,
+            Ready,
         ),
     > {
-        let (group_id, node_id, key, (), conversation_id, interpretation_version, record) =
-            self.fields;
+        let (
+            (),
+            source_key,
+            size_bytes,
+            modified_ns,
+            fingerprint,
+            interpretation_version,
+            conversation_id,
+            ready,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertSourceBuilder {
             fields: (
-                group_id,
-                node_id,
-                key,
                 provider,
-                conversation_id,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
                 interpretation_version,
-                record,
+                conversation_id,
+                ready,
             ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Key, Provider, InterpretationVersion, Record>
+impl<'a, Provider, SizeBytes, ModifiedNs, Fingerprint, InterpretationVersion, ConversationId, Ready>
     UpsertSourceBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
-            Key,
             Provider,
             (),
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
             InterpretationVersion,
-            Record,
+            ConversationId,
+            Ready,
+        ),
+    >
+{
+    pub fn source_key(
+        self,
+        source_key: &'a str,
+    ) -> UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            &'a str,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
+            InterpretationVersion,
+            ConversationId,
+            Ready,
+        ),
+    > {
+        let (
+            provider,
+            (),
+            size_bytes,
+            modified_ns,
+            fingerprint,
+            interpretation_version,
+            conversation_id,
+            ready,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertSourceBuilder {
+            fields: (
+                provider,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
+                interpretation_version,
+                conversation_id,
+                ready,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Provider, SourceKey, ModifiedNs, Fingerprint, InterpretationVersion, ConversationId, Ready>
+    UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            (),
+            ModifiedNs,
+            Fingerprint,
+            InterpretationVersion,
+            ConversationId,
+            Ready,
+        ),
+    >
+{
+    pub fn size_bytes(
+        self,
+        size_bytes: i64,
+    ) -> UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            i64,
+            ModifiedNs,
+            Fingerprint,
+            InterpretationVersion,
+            ConversationId,
+            Ready,
+        ),
+    > {
+        let (
+            provider,
+            source_key,
+            (),
+            modified_ns,
+            fingerprint,
+            interpretation_version,
+            conversation_id,
+            ready,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertSourceBuilder {
+            fields: (
+                provider,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
+                interpretation_version,
+                conversation_id,
+                ready,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Provider, SourceKey, SizeBytes, Fingerprint, InterpretationVersion, ConversationId, Ready>
+    UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            SizeBytes,
+            (),
+            Fingerprint,
+            InterpretationVersion,
+            ConversationId,
+            Ready,
+        ),
+    >
+{
+    pub fn modified_ns(
+        self,
+        modified_ns: i64,
+    ) -> UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            SizeBytes,
+            i64,
+            Fingerprint,
+            InterpretationVersion,
+            ConversationId,
+            Ready,
+        ),
+    > {
+        let (
+            provider,
+            source_key,
+            size_bytes,
+            (),
+            fingerprint,
+            interpretation_version,
+            conversation_id,
+            ready,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertSourceBuilder {
+            fields: (
+                provider,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
+                interpretation_version,
+                conversation_id,
+                ready,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Provider, SourceKey, SizeBytes, ModifiedNs, InterpretationVersion, ConversationId, Ready>
+    UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            (),
+            InterpretationVersion,
+            ConversationId,
+            Ready,
+        ),
+    >
+{
+    pub fn fingerprint(
+        self,
+        fingerprint: &'a str,
+    ) -> UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            &'a str,
+            InterpretationVersion,
+            ConversationId,
+            Ready,
+        ),
+    > {
+        let (
+            provider,
+            source_key,
+            size_bytes,
+            modified_ns,
+            (),
+            interpretation_version,
+            conversation_id,
+            ready,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertSourceBuilder {
+            fields: (
+                provider,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
+                interpretation_version,
+                conversation_id,
+                ready,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Provider, SourceKey, SizeBytes, ModifiedNs, Fingerprint, ConversationId, Ready>
+    UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
+            (),
+            ConversationId,
+            Ready,
+        ),
+    >
+{
+    pub fn interpretation_version(
+        self,
+        interpretation_version: i64,
+    ) -> UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
+            i64,
+            ConversationId,
+            Ready,
+        ),
+    > {
+        let (
+            provider,
+            source_key,
+            size_bytes,
+            modified_ns,
+            fingerprint,
+            (),
+            conversation_id,
+            ready,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertSourceBuilder {
+            fields: (
+                provider,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
+                interpretation_version,
+                conversation_id,
+                ready,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Provider, SourceKey, SizeBytes, ModifiedNs, Fingerprint, InterpretationVersion, Ready>
+    UpsertSourceBuilder<
+        'a,
+        (
+            Provider,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
+            InterpretationVersion,
+            (),
+            Ready,
         ),
     >
 {
@@ -3208,96 +3114,103 @@ impl<'a, GroupId, NodeId, Key, Provider, InterpretationVersion, Record>
     ) -> UpsertSourceBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
-            Key,
             Provider,
-            Option<&'a str>,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
             InterpretationVersion,
-            Record,
+            Option<&'a str>,
+            Ready,
         ),
     > {
-        let (group_id, node_id, key, provider, (), interpretation_version, record) = self.fields;
+        let (
+            provider,
+            source_key,
+            size_bytes,
+            modified_ns,
+            fingerprint,
+            interpretation_version,
+            (),
+            ready,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertSourceBuilder {
             fields: (
-                group_id,
-                node_id,
-                key,
                 provider,
-                conversation_id,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
                 interpretation_version,
-                record,
+                conversation_id,
+                ready,
             ),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Key, Provider, ConversationId, Record>
-    UpsertSourceBuilder<'a, (GroupId, NodeId, Key, Provider, ConversationId, (), Record)>
-{
-    pub fn interpretation_version(
-        self,
-        interpretation_version: i64,
-    ) -> UpsertSourceBuilder<'a, (GroupId, NodeId, Key, Provider, ConversationId, i64, Record)>
-    {
-        let (group_id, node_id, key, provider, conversation_id, (), record) = self.fields;
-        let _phantom = self._phantom;
-        UpsertSourceBuilder {
-            fields: (
-                group_id,
-                node_id,
-                key,
-                provider,
-                conversation_id,
-                interpretation_version,
-                record,
-            ),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, Key, Provider, ConversationId, InterpretationVersion>
+impl<
+    'a,
+    Provider,
+    SourceKey,
+    SizeBytes,
+    ModifiedNs,
+    Fingerprint,
+    InterpretationVersion,
+    ConversationId,
+>
     UpsertSourceBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
-            Key,
             Provider,
-            ConversationId,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
             InterpretationVersion,
+            ConversationId,
             (),
         ),
     >
 {
-    pub fn record(
+    pub fn ready(
         self,
-        record: &'a str,
+        ready: i64,
     ) -> UpsertSourceBuilder<
         'a,
         (
-            GroupId,
-            NodeId,
-            Key,
             Provider,
-            ConversationId,
+            SourceKey,
+            SizeBytes,
+            ModifiedNs,
+            Fingerprint,
             InterpretationVersion,
-            &'a str,
+            ConversationId,
+            i64,
         ),
     > {
-        let (group_id, node_id, key, provider, conversation_id, interpretation_version, ()) =
-            self.fields;
+        let (
+            provider,
+            source_key,
+            size_bytes,
+            modified_ns,
+            fingerprint,
+            interpretation_version,
+            conversation_id,
+            (),
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertSourceBuilder {
             fields: (
-                group_id,
-                node_id,
-                key,
                 provider,
-                conversation_id,
+                source_key,
+                size_bytes,
+                modified_ns,
+                fingerprint,
                 interpretation_version,
-                record,
+                conversation_id,
+                ready,
             ),
             _phantom,
         }
@@ -3309,25 +3222,35 @@ impl<'a>
         (
             &'a str,
             &'a str,
-            &'a str,
-            &'a str,
-            Option<&'a str>,
+            i64,
             i64,
             &'a str,
+            i64,
+            Option<&'a str>,
+            i64,
         ),
     >
 {
     pub fn build(self) -> UpsertSource<'a> {
-        let (group_id, node_id, key, provider, conversation_id, interpretation_version, record) =
-            self.fields;
-        UpsertSource {
-            group_id,
-            node_id,
-            key,
+        let (
             provider,
-            conversation_id,
+            source_key,
+            size_bytes,
+            modified_ns,
+            fingerprint,
             interpretation_version,
-            record,
+            conversation_id,
+            ready,
+        ) = self.fields;
+        UpsertSource {
+            provider,
+            source_key,
+            size_bytes,
+            modified_ns,
+            fingerprint,
+            interpretation_version,
+            conversation_id,
+            ready,
         }
     }
 }
@@ -3338,13 +3261,12 @@ impl DeleteSourceRow {
     }
 }
 pub struct DeleteSource<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-    key: &'a str,
+    provider: &'a str,
+    source_key: &'a str,
 }
 impl<'a> DeleteSource<'a> {
-    pub const QUERY: &'static str =
-        r"DELETE FROM sources WHERE group_id = ?1 AND node_id = ?2 AND key = ?3";
+    pub const QUERY: &'static str = r"DELETE FROM source_checkpoints
+WHERE provider = ?1 AND source_key = ?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3360,58 +3282,47 @@ impl<'a> DeleteSource<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.key)
+        (self.provider, self.source_key)
     }
 }
 impl<'a> DeleteSource<'a> {
-    pub const fn builder() -> DeleteSourceBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> DeleteSourceBuilder<'a, ((), ())> {
         DeleteSourceBuilder {
-            fields: ((), (), ()),
+            fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteSourceBuilder<'a, Fields = ((), (), ())> {
+pub struct DeleteSourceBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Key> DeleteSourceBuilder<'a, ((), NodeId, Key)> {
-    pub fn group_id(self, group_id: &'a str) -> DeleteSourceBuilder<'a, (&'a str, NodeId, Key)> {
-        let ((), node_id, key) = self.fields;
+impl<'a, SourceKey> DeleteSourceBuilder<'a, ((), SourceKey)> {
+    pub fn provider(self, provider: &'a str) -> DeleteSourceBuilder<'a, (&'a str, SourceKey)> {
+        let ((), source_key) = self.fields;
         let _phantom = self._phantom;
         DeleteSourceBuilder {
-            fields: (group_id, node_id, key),
+            fields: (provider, source_key),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Key> DeleteSourceBuilder<'a, (GroupId, (), Key)> {
-    pub fn node_id(self, node_id: &'a str) -> DeleteSourceBuilder<'a, (GroupId, &'a str, Key)> {
-        let (group_id, (), key) = self.fields;
+impl<'a, Provider> DeleteSourceBuilder<'a, (Provider, ())> {
+    pub fn source_key(self, source_key: &'a str) -> DeleteSourceBuilder<'a, (Provider, &'a str)> {
+        let (provider, ()) = self.fields;
         let _phantom = self._phantom;
         DeleteSourceBuilder {
-            fields: (group_id, node_id, key),
+            fields: (provider, source_key),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId> DeleteSourceBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn key(self, key: &'a str) -> DeleteSourceBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        DeleteSourceBuilder {
-            fields: (group_id, node_id, key),
-            _phantom,
-        }
-    }
-}
-impl<'a> DeleteSourceBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> DeleteSourceBuilder<'a, (&'a str, &'a str)> {
     pub fn build(self) -> DeleteSource<'a> {
-        let (group_id, node_id, key) = self.fields;
+        let (provider, source_key) = self.fields;
         DeleteSource {
-            group_id,
-            node_id,
-            key,
+            provider,
+            source_key,
         }
     }
 }
@@ -3421,17 +3332,14 @@ impl DeleteNodeSourcesRow {
         Ok(Self {})
     }
 }
-pub struct DeleteNodeSources<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> DeleteNodeSources<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM sources WHERE group_id = ?1 AND node_id = ?2";
+pub struct DeleteNodeSources;
+impl DeleteNodeSources {
+    pub const QUERY: &'static str = r"DELETE FROM source_checkpoints";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteNodeSources<'a> {
+impl DeleteNodeSources {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -3442,64 +3350,42 @@ impl<'a> DeleteNodeSources<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> DeleteNodeSources<'a> {
-    pub const fn builder() -> DeleteNodeSourcesBuilder<'a, ((), ())> {
+impl DeleteNodeSources {
+    pub const fn builder() -> DeleteNodeSourcesBuilder<'static, ()> {
         DeleteNodeSourcesBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteNodeSourcesBuilder<'a, Fields = ((), ())> {
+pub struct DeleteNodeSourcesBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> DeleteNodeSourcesBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> DeleteNodeSourcesBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        DeleteNodeSourcesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> DeleteNodeSourcesBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> DeleteNodeSourcesBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        DeleteNodeSourcesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> DeleteNodeSourcesBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> DeleteNodeSources<'a> {
-        let (group_id, node_id) = self.fields;
-        DeleteNodeSources { group_id, node_id }
+impl<'a> DeleteNodeSourcesBuilder<'a, ()> {
+    pub fn build(self) -> DeleteNodeSources {
+        let () = self.fields;
+        DeleteNodeSources {}
     }
 }
 pub struct SourceReferenceRow {
-    pub key: String,
+    pub source_key: String,
 }
 impl SourceReferenceRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        Ok(Self { key: row.get(0)? })
+        Ok(Self {
+            source_key: row.get(0)?,
+        })
     }
 }
 pub struct SourceReference<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     conversation_id: Option<&'a str>,
 }
 impl<'a> SourceReference<'a> {
-    pub const QUERY: &'static str = r"SELECT key FROM sources
-WHERE group_id = ?1 AND node_id = ?2
-  AND conversation_id = ?3
+    pub const QUERY: &'static str = r"SELECT source_key FROM source_checkpoints WHERE conversation_id = ?1
 LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -3526,68 +3412,38 @@ impl<'a> SourceReference<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.conversation_id)
+        (self.conversation_id,)
     }
 }
 impl<'a> SourceReference<'a> {
-    pub const fn builder() -> SourceReferenceBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> SourceReferenceBuilder<'a, ((),)> {
         SourceReferenceBuilder {
-            fields: ((), (), ()),
+            fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct SourceReferenceBuilder<'a, Fields = ((), (), ())> {
+pub struct SourceReferenceBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, ConversationId> SourceReferenceBuilder<'a, ((), NodeId, ConversationId)> {
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> SourceReferenceBuilder<'a, (&'a str, NodeId, ConversationId)> {
-        let ((), node_id, conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        SourceReferenceBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, ConversationId> SourceReferenceBuilder<'a, (GroupId, (), ConversationId)> {
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> SourceReferenceBuilder<'a, (GroupId, &'a str, ConversationId)> {
-        let (group_id, (), conversation_id) = self.fields;
-        let _phantom = self._phantom;
-        SourceReferenceBuilder {
-            fields: (group_id, node_id, conversation_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId> SourceReferenceBuilder<'a, (GroupId, NodeId, ())> {
+impl<'a> SourceReferenceBuilder<'a, ((),)> {
     pub fn conversation_id(
         self,
         conversation_id: Option<&'a str>,
-    ) -> SourceReferenceBuilder<'a, (GroupId, NodeId, Option<&'a str>)> {
-        let (group_id, node_id, ()) = self.fields;
+    ) -> SourceReferenceBuilder<'a, (Option<&'a str>,)> {
+        let ((),) = self.fields;
         let _phantom = self._phantom;
         SourceReferenceBuilder {
-            fields: (group_id, node_id, conversation_id),
+            fields: (conversation_id,),
             _phantom,
         }
     }
 }
-impl<'a> SourceReferenceBuilder<'a, (&'a str, &'a str, Option<&'a str>)> {
+impl<'a> SourceReferenceBuilder<'a, (Option<&'a str>,)> {
     pub fn build(self) -> SourceReference<'a> {
-        let (group_id, node_id, conversation_id) = self.fields;
-        SourceReference {
-            group_id,
-            node_id,
-            conversation_id,
-        }
+        let (conversation_id,) = self.fields;
+        SourceReference { conversation_id }
     }
 }
 pub struct CoverageGapsRow {
@@ -3603,19 +3459,16 @@ impl CoverageGapsRow {
     }
 }
 pub struct CoverageGaps<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
     provider: &'a str,
     interpretation_version: i64,
 }
 impl<'a> CoverageGaps<'a> {
     pub const QUERY: &'static str = r"SELECT
-    CAST(EXISTS(SELECT 1 FROM sources s WHERE s.group_id = ?1 AND s.node_id = ?2
-        AND s.provider = ?3 AND s.interpretation_version <> ?4) AS INTEGER) AS stale,
-    CAST(EXISTS(SELECT 1 FROM conversations c WHERE c.group_id = ?1 AND c.node_id = ?2
-        AND c.provider = ?3 AND NOT EXISTS(SELECT 1 FROM sources r
-            WHERE r.group_id = c.group_id AND r.node_id = c.node_id AND r.provider = c.provider
-              AND r.conversation_id = c.id)) AS INTEGER) AS unmapped";
+    CAST(EXISTS(SELECT 1 FROM source_checkpoints s WHERE s.provider = ?1
+        AND s.interpretation_version <> ?2) AS INTEGER) AS stale,
+    CAST(EXISTS(SELECT 1 FROM conversations c WHERE c.provider = ?1
+        AND NOT EXISTS(SELECT 1 FROM source_checkpoints r
+            WHERE r.provider = c.provider AND r.conversation_id = c.id)) AS INTEGER) AS unmapped";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3641,119 +3494,77 @@ impl<'a> CoverageGaps<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (
-            self.group_id,
-            self.node_id,
-            self.provider,
-            self.interpretation_version,
-        )
+        (self.provider, self.interpretation_version)
     }
 }
 impl<'a> CoverageGaps<'a> {
-    pub const fn builder() -> CoverageGapsBuilder<'a, ((), (), (), ())> {
+    pub const fn builder() -> CoverageGapsBuilder<'a, ((), ())> {
         CoverageGapsBuilder {
-            fields: ((), (), (), ()),
+            fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct CoverageGapsBuilder<'a, Fields = ((), (), (), ())> {
+pub struct CoverageGapsBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Provider, InterpretationVersion>
-    CoverageGapsBuilder<'a, ((), NodeId, Provider, InterpretationVersion)>
-{
-    pub fn group_id(
-        self,
-        group_id: &'a str,
-    ) -> CoverageGapsBuilder<'a, (&'a str, NodeId, Provider, InterpretationVersion)> {
-        let ((), node_id, provider, interpretation_version) = self.fields;
-        let _phantom = self._phantom;
-        CoverageGapsBuilder {
-            fields: (group_id, node_id, provider, interpretation_version),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, Provider, InterpretationVersion>
-    CoverageGapsBuilder<'a, (GroupId, (), Provider, InterpretationVersion)>
-{
-    pub fn node_id(
-        self,
-        node_id: &'a str,
-    ) -> CoverageGapsBuilder<'a, (GroupId, &'a str, Provider, InterpretationVersion)> {
-        let (group_id, (), provider, interpretation_version) = self.fields;
-        let _phantom = self._phantom;
-        CoverageGapsBuilder {
-            fields: (group_id, node_id, provider, interpretation_version),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId, NodeId, InterpretationVersion>
-    CoverageGapsBuilder<'a, (GroupId, NodeId, (), InterpretationVersion)>
-{
+impl<'a, InterpretationVersion> CoverageGapsBuilder<'a, ((), InterpretationVersion)> {
     pub fn provider(
         self,
         provider: &'a str,
-    ) -> CoverageGapsBuilder<'a, (GroupId, NodeId, &'a str, InterpretationVersion)> {
-        let (group_id, node_id, (), interpretation_version) = self.fields;
+    ) -> CoverageGapsBuilder<'a, (&'a str, InterpretationVersion)> {
+        let ((), interpretation_version) = self.fields;
         let _phantom = self._phantom;
         CoverageGapsBuilder {
-            fields: (group_id, node_id, provider, interpretation_version),
+            fields: (provider, interpretation_version),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Provider> CoverageGapsBuilder<'a, (GroupId, NodeId, Provider, ())> {
+impl<'a, Provider> CoverageGapsBuilder<'a, (Provider, ())> {
     pub fn interpretation_version(
         self,
         interpretation_version: i64,
-    ) -> CoverageGapsBuilder<'a, (GroupId, NodeId, Provider, i64)> {
-        let (group_id, node_id, provider, ()) = self.fields;
+    ) -> CoverageGapsBuilder<'a, (Provider, i64)> {
+        let (provider, ()) = self.fields;
         let _phantom = self._phantom;
         CoverageGapsBuilder {
-            fields: (group_id, node_id, provider, interpretation_version),
+            fields: (provider, interpretation_version),
             _phantom,
         }
     }
 }
-impl<'a> CoverageGapsBuilder<'a, (&'a str, &'a str, &'a str, i64)> {
+impl<'a> CoverageGapsBuilder<'a, (&'a str, i64)> {
     pub fn build(self) -> CoverageGaps<'a> {
-        let (group_id, node_id, provider, interpretation_version) = self.fields;
+        let (provider, interpretation_version) = self.fields;
         CoverageGaps {
-            group_id,
-            node_id,
             provider,
             interpretation_version,
         }
     }
 }
 pub struct NodeTombstonesRow {
-    pub key: String,
-    pub record: String,
+    pub provider: String,
+    pub conversation_id: String,
 }
 impl NodeTombstonesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
-            key: row.get(0)?,
-            record: row.get(1)?,
+            provider: row.get(0)?,
+            conversation_id: row.get(1)?,
         })
     }
 }
-pub struct NodeTombstones<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-}
-impl<'a> NodeTombstones<'a> {
-    pub const QUERY: &'static str = r"SELECT key, record FROM tombstones
-WHERE group_id = ?1 AND node_id = ?2 ORDER BY key";
+pub struct NodeTombstones;
+impl NodeTombstones {
+    pub const QUERY: &'static str =
+        r"SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> NodeTombstones<'a> {
+impl NodeTombstones {
     pub fn query_many(
         &self,
         client: &impl RusqliteClient,
@@ -3769,63 +3580,44 @@ impl<'a> NodeTombstones<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id)
+        ()
     }
 }
-impl<'a> NodeTombstones<'a> {
-    pub const fn builder() -> NodeTombstonesBuilder<'a, ((), ())> {
+impl NodeTombstones {
+    pub const fn builder() -> NodeTombstonesBuilder<'static, ()> {
         NodeTombstonesBuilder {
-            fields: ((), ()),
+            fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct NodeTombstonesBuilder<'a, Fields = ((), ())> {
+pub struct NodeTombstonesBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId> NodeTombstonesBuilder<'a, ((), NodeId)> {
-    pub fn group_id(self, group_id: &'a str) -> NodeTombstonesBuilder<'a, (&'a str, NodeId)> {
-        let ((), node_id) = self.fields;
-        let _phantom = self._phantom;
-        NodeTombstonesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a, GroupId> NodeTombstonesBuilder<'a, (GroupId, ())> {
-    pub fn node_id(self, node_id: &'a str) -> NodeTombstonesBuilder<'a, (GroupId, &'a str)> {
-        let (group_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        NodeTombstonesBuilder {
-            fields: (group_id, node_id),
-            _phantom,
-        }
-    }
-}
-impl<'a> NodeTombstonesBuilder<'a, (&'a str, &'a str)> {
-    pub fn build(self) -> NodeTombstones<'a> {
-        let (group_id, node_id) = self.fields;
-        NodeTombstones { group_id, node_id }
+impl<'a> NodeTombstonesBuilder<'a, ()> {
+    pub fn build(self) -> NodeTombstones {
+        let () = self.fields;
+        NodeTombstones {}
     }
 }
 pub struct TombstonedRow {
-    pub key: String,
+    pub conversation_id: String,
 }
 impl TombstonedRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        Ok(Self { key: row.get(0)? })
+        Ok(Self {
+            conversation_id: row.get(0)?,
+        })
     }
 }
 pub struct Tombstoned<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-    key: &'a str,
+    provider: &'a str,
+    conversation_id: &'a str,
 }
 impl<'a> Tombstoned<'a> {
-    pub const QUERY: &'static str = r"SELECT key FROM tombstones
-WHERE group_id = ?1 AND node_id = ?2 AND key = ?3";
+    pub const QUERY: &'static str = r"SELECT conversation_id FROM tombstones
+WHERE provider = ?1 AND conversation_id = ?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3851,58 +3643,50 @@ impl<'a> Tombstoned<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.key)
+        (self.provider, self.conversation_id)
     }
 }
 impl<'a> Tombstoned<'a> {
-    pub const fn builder() -> TombstonedBuilder<'a, ((), (), ())> {
+    pub const fn builder() -> TombstonedBuilder<'a, ((), ())> {
         TombstonedBuilder {
-            fields: ((), (), ()),
+            fields: ((), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct TombstonedBuilder<'a, Fields = ((), (), ())> {
+pub struct TombstonedBuilder<'a, Fields = ((), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Key> TombstonedBuilder<'a, ((), NodeId, Key)> {
-    pub fn group_id(self, group_id: &'a str) -> TombstonedBuilder<'a, (&'a str, NodeId, Key)> {
-        let ((), node_id, key) = self.fields;
+impl<'a, ConversationId> TombstonedBuilder<'a, ((), ConversationId)> {
+    pub fn provider(self, provider: &'a str) -> TombstonedBuilder<'a, (&'a str, ConversationId)> {
+        let ((), conversation_id) = self.fields;
         let _phantom = self._phantom;
         TombstonedBuilder {
-            fields: (group_id, node_id, key),
+            fields: (provider, conversation_id),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Key> TombstonedBuilder<'a, (GroupId, (), Key)> {
-    pub fn node_id(self, node_id: &'a str) -> TombstonedBuilder<'a, (GroupId, &'a str, Key)> {
-        let (group_id, (), key) = self.fields;
+impl<'a, Provider> TombstonedBuilder<'a, (Provider, ())> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> TombstonedBuilder<'a, (Provider, &'a str)> {
+        let (provider, ()) = self.fields;
         let _phantom = self._phantom;
         TombstonedBuilder {
-            fields: (group_id, node_id, key),
+            fields: (provider, conversation_id),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId> TombstonedBuilder<'a, (GroupId, NodeId, ())> {
-    pub fn key(self, key: &'a str) -> TombstonedBuilder<'a, (GroupId, NodeId, &'a str)> {
-        let (group_id, node_id, ()) = self.fields;
-        let _phantom = self._phantom;
-        TombstonedBuilder {
-            fields: (group_id, node_id, key),
-            _phantom,
-        }
-    }
-}
-impl<'a> TombstonedBuilder<'a, (&'a str, &'a str, &'a str)> {
+impl<'a> TombstonedBuilder<'a, (&'a str, &'a str)> {
     pub fn build(self) -> Tombstoned<'a> {
-        let (group_id, node_id, key) = self.fields;
+        let (provider, conversation_id) = self.fields;
         Tombstoned {
-            group_id,
-            node_id,
-            key,
+            provider,
+            conversation_id,
         }
     }
 }
@@ -3913,15 +3697,14 @@ impl UpsertTombstoneRow {
     }
 }
 pub struct UpsertTombstone<'a> {
-    group_id: &'a str,
-    node_id: &'a str,
-    key: &'a str,
-    record: &'a str,
+    provider: &'a str,
+    conversation_id: &'a str,
+    forgotten_at: i64,
 }
 impl<'a> UpsertTombstone<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO tombstones(group_id, node_id, key, record)
-VALUES (?1, ?2, ?3, ?4)
-ON CONFLICT(group_id, node_id, key) DO UPDATE SET record = excluded.record";
+    pub const QUERY: &'static str = r"INSERT INTO tombstones(provider, conversation_id, forgotten_at)
+VALUES (?1, ?2, ?3)
+ON CONFLICT(provider, conversation_id) DO NOTHING";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -3937,81 +3720,69 @@ impl<'a> UpsertTombstone<'a> {
         client.prepare(self.query_str())
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
-        (self.group_id, self.node_id, self.key, self.record)
+        (self.provider, self.conversation_id, self.forgotten_at)
     }
 }
 impl<'a> UpsertTombstone<'a> {
-    pub const fn builder() -> UpsertTombstoneBuilder<'a, ((), (), (), ())> {
+    pub const fn builder() -> UpsertTombstoneBuilder<'a, ((), (), ())> {
         UpsertTombstoneBuilder {
-            fields: ((), (), (), ()),
+            fields: ((), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertTombstoneBuilder<'a, Fields = ((), (), (), ())> {
+pub struct UpsertTombstoneBuilder<'a, Fields = ((), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, NodeId, Key, Record> UpsertTombstoneBuilder<'a, ((), NodeId, Key, Record)> {
-    pub fn group_id(
+impl<'a, ConversationId, ForgottenAt>
+    UpsertTombstoneBuilder<'a, ((), ConversationId, ForgottenAt)>
+{
+    pub fn provider(
         self,
-        group_id: &'a str,
-    ) -> UpsertTombstoneBuilder<'a, (&'a str, NodeId, Key, Record)> {
-        let ((), node_id, key, record) = self.fields;
+        provider: &'a str,
+    ) -> UpsertTombstoneBuilder<'a, (&'a str, ConversationId, ForgottenAt)> {
+        let ((), conversation_id, forgotten_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTombstoneBuilder {
-            fields: (group_id, node_id, key, record),
+            fields: (provider, conversation_id, forgotten_at),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, Key, Record> UpsertTombstoneBuilder<'a, (GroupId, (), Key, Record)> {
-    pub fn node_id(
+impl<'a, Provider, ForgottenAt> UpsertTombstoneBuilder<'a, (Provider, (), ForgottenAt)> {
+    pub fn conversation_id(
         self,
-        node_id: &'a str,
-    ) -> UpsertTombstoneBuilder<'a, (GroupId, &'a str, Key, Record)> {
-        let (group_id, (), key, record) = self.fields;
+        conversation_id: &'a str,
+    ) -> UpsertTombstoneBuilder<'a, (Provider, &'a str, ForgottenAt)> {
+        let (provider, (), forgotten_at) = self.fields;
         let _phantom = self._phantom;
         UpsertTombstoneBuilder {
-            fields: (group_id, node_id, key, record),
+            fields: (provider, conversation_id, forgotten_at),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Record> UpsertTombstoneBuilder<'a, (GroupId, NodeId, (), Record)> {
-    pub fn key(
+impl<'a, Provider, ConversationId> UpsertTombstoneBuilder<'a, (Provider, ConversationId, ())> {
+    pub fn forgotten_at(
         self,
-        key: &'a str,
-    ) -> UpsertTombstoneBuilder<'a, (GroupId, NodeId, &'a str, Record)> {
-        let (group_id, node_id, (), record) = self.fields;
+        forgotten_at: i64,
+    ) -> UpsertTombstoneBuilder<'a, (Provider, ConversationId, i64)> {
+        let (provider, conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
         UpsertTombstoneBuilder {
-            fields: (group_id, node_id, key, record),
+            fields: (provider, conversation_id, forgotten_at),
             _phantom,
         }
     }
 }
-impl<'a, GroupId, NodeId, Key> UpsertTombstoneBuilder<'a, (GroupId, NodeId, Key, ())> {
-    pub fn record(
-        self,
-        record: &'a str,
-    ) -> UpsertTombstoneBuilder<'a, (GroupId, NodeId, Key, &'a str)> {
-        let (group_id, node_id, key, ()) = self.fields;
-        let _phantom = self._phantom;
-        UpsertTombstoneBuilder {
-            fields: (group_id, node_id, key, record),
-            _phantom,
-        }
-    }
-}
-impl<'a> UpsertTombstoneBuilder<'a, (&'a str, &'a str, &'a str, &'a str)> {
+impl<'a> UpsertTombstoneBuilder<'a, (&'a str, &'a str, i64)> {
     pub fn build(self) -> UpsertTombstone<'a> {
-        let (group_id, node_id, key, record) = self.fields;
+        let (provider, conversation_id, forgotten_at) = self.fields;
         UpsertTombstone {
-            group_id,
-            node_id,
-            key,
-            record,
+            provider,
+            conversation_id,
+            forgotten_at,
         }
     }
 }

@@ -47,7 +47,7 @@ impl Fixture {
         .unwrap();
         store.select_gold(&identity, false).await.unwrap();
         let directory = tempfile::tempdir().unwrap();
-        let silver = SilverStore::open(&directory.path().join("silver.sqlite3")).unwrap();
+        let silver = SilverStore::open(&directory.path().join("silver"), [&identity]).unwrap();
         Self {
             server: Server::new(silver.clone(), store.clone(), 64 * 1024 * 1024),
             store,
@@ -80,10 +80,9 @@ impl Fixture {
 
     /// The node's retained silver, serialized, for before/after comparison.
     fn retained(&self) -> Vec<u8> {
-        let connection = self.silver.connect().unwrap();
+        let connection = self.silver.connect(&self.identity).unwrap();
         let mut output = Vec::new();
-        crate::shared::silver_store::read::export(&connection, &self.identity, &mut output)
-            .unwrap();
+        crate::shared::silver_store::read::export(&connection, &mut output).unwrap();
         output
     }
 

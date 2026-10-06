@@ -57,11 +57,7 @@ fn unfiltered(fixture: &Fixture) {
 }
 
 fn local_witness(fixture: &Fixture) -> Vec<String> {
-    let connection = rusqlite::Connection::open_with_flags(
-        &fixture.database,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .unwrap();
+    let connection = open_index(&fixture.database);
     [
         "SELECT json_object('id',id,'provider',provider,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM conversations ORDER BY id",
         "SELECT json_object('id',id,'conversation',conversation_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM messages ORDER BY id",
@@ -128,7 +124,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     assert_eq!(search_scores(&fixture), scores);
     std::fs::remove_file(fixture.codex.join("session.jsonl")).unwrap();
     std::fs::remove_file(fixture.directory.path().join("claude/session.jsonl")).unwrap();
-    let connection = rusqlite::Connection::open(&fixture.database).unwrap();
+    let connection = open_index(&fixture.database);
     let id: String = connection
         .query_row(
             "SELECT id FROM conversations WHERE provider='codex'",

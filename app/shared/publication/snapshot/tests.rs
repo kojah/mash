@@ -15,8 +15,10 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         })
         .unwrap();
     storage.acknowledge_publication("journal", base).unwrap();
-    let connection = rusqlite::Connection::open(&database).unwrap();
-    connection.execute_batch("PRAGMA foreign_keys=ON; UPDATE conversations SET title='changed' WHERE id='a'; DELETE FROM conversations WHERE id='b';").unwrap();
+    crate::storage::test_support::write(
+        &database,
+        "UPDATE conversations SET title='changed' WHERE id='a'; DELETE FROM conversations WHERE id='b';",
+    );
     let target = Target {
         schema_version: 1,
         build: crate::gold::config::Build::default(),

@@ -52,6 +52,7 @@ enum Command {
     /// Discover and index supported local histories.
     Index {
         /// Build local retrieval state from certified stored silver, offline.
+        /// With --full, discard all local gold and replay it from silver.
         #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history", "rebuild_shared_gold"])]
         rebuild_local_gold: bool,
         /// Rebuild this node's shared retrieval state from retained shared silver.

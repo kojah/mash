@@ -28,6 +28,7 @@ fn check_searchable_index_migration(version: i64) {
          DROP INDEX messages_searchable_identity;",
         )
         .unwrap();
+    crate::storage::test_support::combine_gold(&writer.connection, &path);
     writer
         .connection
         .pragma_update(None, "user_version", version)
@@ -122,7 +123,7 @@ fn version_forty_removes_retired_provider_caches_and_preserves_supported_vectors
         "{supported}, 'gemini-cli', 'windsurf', 'cline', 'aider', 'hermes', 'openclaw', 'pi'"
     );
     connection
-        .execute_batch(&include_str!("../schema.sql").replace(supported, &legacy))
+        .execute_batch(&crate::storage::schema::combined().replace(supported, &legacy))
         .unwrap();
     for provider in [
         "codex",
@@ -252,6 +253,7 @@ fn identity_migration_preserves_vectors_and_checkpoints_but_requires_certificati
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
+        crate::storage::test_support::combine_gold(&storage.connection, &path);
         storage
             .connection
             .pragma_update(None, "user_version", 32)
@@ -366,6 +368,7 @@ fn legacy_readiness_backfills_do_not_override_projection_refresh() {
              INSERT INTO message_embeddings VALUES('message','fixture',1,127.0,x'7f');
              UPDATE derived_state SET search_dirty=0,semantic_ready_generation='fixture';"
         ).unwrap();
+        crate::storage::test_support::combine_gold(&storage.connection, &path);
         storage
             .connection
             .pragma_update(None, "user_version", version)
@@ -388,7 +391,7 @@ fn provider_schema_migration(version: i64) {
     let connection = Connection::open(&path).unwrap();
     // Both native predecessors have the same message layout; provider checks
     // differ. Verify old and immediately preceding schema migrations.
-    let mut schema = include_str!("../schema.sql").to_owned();
+    let mut schema = crate::storage::schema::combined();
     if version < 29 {
         schema = schema.replace(", 'antigravity'", "");
     }
@@ -476,7 +479,7 @@ fn version_eighteen_migration_preserves_history_and_rescans_sources_once() {
          );"
     ).unwrap();
     connection
-        .execute_batch(include_str!("../schema.sql"))
+        .execute_batch(&crate::storage::schema::combined())
         .unwrap();
     connection.execute_batch(
         "INSERT INTO conversations(id,provider,source_path,project,repository)
@@ -584,6 +587,7 @@ fn metadata_upgrade_preserves_history_and_vectors_and_requests_source_rescan() {
         )
         .unwrap();
     storage.commit_writer().unwrap();
+    crate::storage::test_support::combine_gold(&storage.connection, &path);
     storage.connection.execute_batch("ALTER TABLE conversations DROP COLUMN project; ALTER TABLE conversations DROP COLUMN repository; PRAGMA user_version=14;").unwrap();
     drop(storage);
     let storage = Storage::open(&path).unwrap();
@@ -632,6 +636,7 @@ fn search_text_upgrade_rescans_sources_without_discarding_history_or_vectors() {
         )
         .unwrap();
     storage.commit_writer().unwrap();
+    crate::storage::test_support::combine_gold(&storage.connection, &path);
     storage
         .connection
         .execute_batch("PRAGMA user_version=16")

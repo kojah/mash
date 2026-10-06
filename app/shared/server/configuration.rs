@@ -19,8 +19,9 @@ struct AuthorizedNode {
 #[serde(deny_unknown_fields)]
 pub(super) struct Configuration {
     pub(super) attachments_dir: Option<std::path::PathBuf>,
-    /// Shared silver system of record; defaults to the platform data directory.
-    silver_database: Option<std::path::PathBuf>,
+    /// Shared silver system of record, one database per configured node;
+    /// defaults to `shared-silver` in the platform data directory.
+    silver_dir: Option<std::path::PathBuf>,
     version: u32,
     #[serde(default)]
     pub(super) gold: Gold,
@@ -118,16 +119,16 @@ fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8787))
 }
 impl Configuration {
-    pub(super) fn silver_database(&self) -> Result<std::path::PathBuf, AppError> {
-        match &self.silver_database {
+    pub(super) fn silver_dir(&self) -> Result<std::path::PathBuf, AppError> {
+        match &self.silver_dir {
             Some(path) if path.is_absolute() => Ok(path.clone()),
             Some(_) => Err(AppError::configuration(
-                "silver_database must be an absolute path",
+                "silver_dir must be an absolute path",
             )),
             None => Ok(directories::ProjectDirs::from("dev", "jamesqo", "mash")
                 .ok_or_else(|| AppError::configuration("platform data directory is unavailable"))?
                 .data_local_dir()
-                .join("shared-silver.sqlite3")),
+                .join("shared-silver")),
         }
     }
 
@@ -155,7 +156,7 @@ pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
     config.gold.query.vector_search.validate()?;
-    config.silver_database()?;
+    config.silver_dir()?;
     for (group, policy) in &config.gold.query.groups {
         crate::config::validate_identifier(group, "group_id")?;
         policy.validate()?;

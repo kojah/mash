@@ -53,12 +53,12 @@ impl Server {
                 }
             })
             .collect();
-        let silver = root.join("silver.sqlite3").to_str().unwrap().to_owned();
+        let silver = root.join("silver").to_str().unwrap().to_owned();
         let mut config = toml::toml! {
             version = 1
             listen = "127.0.0.1:0"
             qdrant_url_env = "MASH_TEST_QDRANT_URL"
-            silver_database = silver
+            silver_dir = silver
             nodes = (credentials)
         };
         config.insert(
@@ -155,12 +155,12 @@ fn server_rejects_unknown_gold_recipe_and_fields_before_backend_access() {
 }
 
 #[test]
-fn server_rejects_relative_silver_database_before_backend_access() {
-    let config = format!("version=1\nsilver_database='relative/silver.sqlite3'\n{STARTUP_NODE}");
+fn server_rejects_relative_silver_dir_before_backend_access() {
+    let config = format!("version=1\nsilver_dir='relative/silver'\n{STARTUP_NODE}");
     assert_startup_rejected(
         config.as_bytes(),
         &[("MASH_STARTUP_TOKEN_A", STARTUP_TOKEN)],
-        "silver_database must be an absolute path",
+        "silver_dir must be an absolute path",
     );
 }
 

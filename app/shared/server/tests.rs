@@ -595,7 +595,8 @@ impl Service {
         }
         let store = if available {
             let silver = super::super::silver_store::SilverStore::open(
-                &directory.path().join("silver.sqlite3"),
+                &directory.path().join("silver"),
+                identities.values(),
             )
             .unwrap();
             Store::new(silver, gold, max_node_bytes as u64)

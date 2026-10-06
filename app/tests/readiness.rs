@@ -247,7 +247,7 @@ fn exact_status_uses_lexical_certification_without_models_or_dense_coverage() {
     );
     assert!(complete["recommended_action"].is_null());
     assert_eq!(std::fs::read(&fixture.database).unwrap(), before);
-    let connection = Connection::open(&fixture.database).unwrap();
+    let connection = open_index(&fixture.database);
     connection
         .execute_batch("UPDATE derived_state SET search_dirty=1 WHERE singleton=1")
         .unwrap();

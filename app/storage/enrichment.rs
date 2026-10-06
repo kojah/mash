@@ -29,7 +29,7 @@ impl Storage {
     ) -> Result<bool, AppError> {
         let rows = generated::SourceEnrichment::builder()
             .provider(provider.as_str())
-            .source_key(key)
+            .source_key(Some(key))
             .build()
             .query_many(&self.connection)
             .map_err(AppError::database)?;

@@ -62,6 +62,7 @@ fn claude_schema_upgrade_replays_real_legacy_ids_and_preserves_unrelated_vectors
         storage.commit_writer().unwrap();
         drop(storage);
         let connection = rusqlite::Connection::open(&database).unwrap();
+        crate::storage::test_support::combine_gold(&connection, &database);
         connection
             .execute_batch("DROP TABLE claude_source_messages; DROP TABLE claude_sources;")
             .unwrap();

@@ -284,8 +284,8 @@ impl Api {
     ) -> (Self, Vec<serde_json::Value>) {
         // Shared silver lives beside the config and survives database restarts.
         let config = format!(
-            "version=1\nlisten='127.0.0.1:0'\nqdrant_url_env='MASH_RESTART_URL'\nsilver_database={silver:?}\n[[nodes]]\ngroup_id='restart-main'\nnode_id='first'\ntoken_env='MASH_RESTART_FIRST'\n[[nodes]]\ngroup_id='restart-main'\nnode_id='second'\ntoken_env='MASH_RESTART_SECOND'\n[[nodes]]\ngroup_id='restart-other'\nnode_id='first'\ntoken_env='MASH_RESTART_OTHER'\n",
-            silver = root.join("shared-silver.sqlite3").to_str().unwrap()
+            "version=1\nlisten='127.0.0.1:0'\nqdrant_url_env='MASH_RESTART_URL'\nsilver_dir={silver:?}\n[[nodes]]\ngroup_id='restart-main'\nnode_id='first'\ntoken_env='MASH_RESTART_FIRST'\n[[nodes]]\ngroup_id='restart-main'\nnode_id='second'\ntoken_env='MASH_RESTART_SECOND'\n[[nodes]]\ngroup_id='restart-other'\nnode_id='first'\ntoken_env='MASH_RESTART_OTHER'\n",
+            silver = root.join("shared-silver").to_str().unwrap()
         );
         let path = root.join("server.toml");
         std::fs::write(&path, config).unwrap();

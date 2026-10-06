@@ -13,7 +13,7 @@ fn qdrant_shared_gold_cli_rebuild_uses_retained_silver_without_local_or_provider
     let initial = fixture.json(&["index", "--all-history"], true);
     assert_eq!(initial["shared"]["state"], "published");
     let local = fixture.json(&["status"], true);
-    let connection = Connection::open(&fixture.database).unwrap();
+    let connection = open_index(&fixture.database);
     snapshot_local(&connection);
     let shared = fixture.remote_node("split");
     std::fs::remove_dir_all(&fixture.codex).unwrap();

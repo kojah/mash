@@ -1,21 +1,19 @@
-//! Shared silver: the server's SQLite system of record for published node history.
-//! Gold (vectors, search documents and their readiness) lives only in Qdrant and
-//! can be rebuilt from these rows.
+//! Shared silver: the server's system of record for published node history.
+//! Each node's history is its own SQLite database using the one silver schema
+//! that every local index also uses. Gold (vectors, search documents and their
+//! readiness) lives only in Qdrant and can be rebuilt from these databases.
 use super::protocol::{Checkpoint, ConversationRecord, MessageRecord, ScanReport, Tombstone};
 use super::server::Identity;
 use super::{silver_coverage::Coverage, silver_revision::State};
 use crate::{AppError, provider::Provider, storage::Counts};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 pub(super) mod apply;
 pub(super) mod read;
 pub(super) use apply::Applied;
-
-const SCHEMA_VERSION: i64 = 1;
-const SCHEMA: &str = include_str!("silver_store/schema.sql");
 
 // sqlc-gen-rust emits an unused row parameter for :exec result models.
 #[allow(dead_code, unused_variables, clippy::all, clippy::pedantic)]
@@ -23,7 +21,7 @@ const SCHEMA: &str = include_str!("silver_store/schema.sql");
 mod generated;
 use generated as sql;
 
-/// Silver state of one node's publications; the upload counter and its token.
+/// Server-only publication head of one node, kept in its `shared_head` row.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Head {
@@ -39,11 +37,13 @@ pub(super) struct Head {
     pub(super) last_updated_at: Option<String>,
 }
 
-/// One SQLite file; WAL readers run concurrently with the single writer.
+/// One silver database per configured node under a root directory:
+/// `<root>/<group_id>/<node_id>.sqlite3`. WAL readers run concurrently with
+/// the node's single writer.
 #[derive(Clone)]
 pub(super) struct SilverStore {
-    path: PathBuf,
-    writer: Arc<Mutex<()>>,
+    root: PathBuf,
+    groups: BTreeMap<String, Vec<String>>,
 }
 
 fn database(error: rusqlite::Error) -> AppError {
@@ -73,68 +73,82 @@ fn decode<T: serde::de::DeserializeOwned>(json: &str) -> Result<T, AppError> {
     serde_json::from_str(json).map_err(|_| AppError::database_data("invalid shared silver row"))
 }
 
+fn provider(name: &str) -> Result<Provider, AppError> {
+    name.parse()
+        .map_err(|_| AppError::database_data("invalid shared silver provider"))
+}
+
 impl SilverStore {
-    /// Create or open the server database; only the API process writes it.
-    pub(super) fn open(path: &Path) -> Result<Self, AppError> {
-        if !path.is_absolute() {
+    /// Create or open every configured node's database; only the API process
+    /// writes them.
+    pub(super) fn open<'a>(
+        root: &Path,
+        identities: impl IntoIterator<Item = &'a Identity>,
+    ) -> Result<Self, AppError> {
+        if !root.is_absolute() {
             return Err(AppError::configuration(
-                "silver_database must be an absolute path",
+                "silver_dir must be an absolute path",
             ));
         }
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(AppError::io)?;
+        let mut store = Self {
+            root: root.to_path_buf(),
+            groups: BTreeMap::new(),
+        };
+        for identity in identities {
+            store
+                .groups
+                .entry(identity.group_id.clone())
+                .or_default()
+                .push(identity.node_id.clone());
+            drop(store.connect(identity)?);
         }
-        let connection = Connection::open(path).map_err(database)?;
-        connection
-            .execute_batch("PRAGMA journal_mode = WAL;")
-            .map_err(database)?;
-        let version: i64 = connection
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .map_err(database)?;
-        if version > SCHEMA_VERSION {
-            return Err(AppError::schema(
-                "shared silver database is newer than this version of mash",
-            ));
+        for nodes in store.groups.values_mut() {
+            nodes.sort();
+            nodes.dedup();
         }
-        if version < SCHEMA_VERSION {
-            connection.execute_batch(SCHEMA).map_err(database)?;
-            connection
-                .pragma_update(None, "user_version", SCHEMA_VERSION)
-                .map_err(database)?;
-        }
-        Ok(Self {
-            path: path.to_path_buf(),
-            writer: Arc::default(),
-        })
+        Ok(store)
     }
 
     /// Test-only store whose every access fails, like an unreachable backend.
     #[cfg(test)]
     pub(super) fn unavailable() -> Self {
         Self {
-            path: PathBuf::from("/proc/mash-unavailable/silver.sqlite3"),
-            writer: Arc::default(),
+            root: PathBuf::from("/proc/mash-unavailable/silver"),
+            groups: BTreeMap::new(),
         }
     }
 
-    pub(super) fn connect(&self) -> Result<Connection, AppError> {
-        let connection = Connection::open(&self.path).map_err(database)?;
+    fn path(&self, identity: &Identity) -> PathBuf {
+        self.root
+            .join(&identity.group_id)
+            .join(format!("{}.sqlite3", identity.node_id))
+    }
+
+    /// Configured nodes of one group, in identity order.
+    pub(super) fn nodes(&self, group: &str) -> &[String] {
+        self.groups.get(group).map_or(&[], Vec::as_slice)
+    }
+
+    pub(super) fn connect(&self, identity: &Identity) -> Result<Connection, AppError> {
+        let path = self.path(identity);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(AppError::io)?;
+        }
+        let connection = Connection::open(&path).map_err(database)?;
         connection
             .busy_timeout(std::time::Duration::from_secs(30))
             .map_err(database)?;
+        crate::storage::schema::initialize_silver(&connection)?;
         Ok(connection)
     }
 
-    /// Serialize this process's writes; SQLite also locks across processes.
+    /// One transaction on a node's database; SQLite serializes its writers.
     pub(super) fn write<T>(
         &self,
+        identity: &Identity,
         work: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T, AppError>,
     ) -> Result<T, AppError> {
-        let _writer = self
-            .writer
-            .lock()
-            .map_err(|_| AppError::internal("shared silver writer is poisoned"))?;
-        let mut connection = self.connect()?;
+        let mut connection = self.connect(identity)?;
         let transaction = connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(database)?;
@@ -142,47 +156,39 @@ impl SilverStore {
         transaction.commit().map_err(database)?;
         Ok(result)
     }
+
+    /// Heads of the group's nodes that have published.
+    pub(super) fn heads(&self, group: &str) -> Result<BTreeMap<String, Head>, AppError> {
+        let mut heads = BTreeMap::new();
+        for node in self.nodes(group) {
+            if let Some(head) = head(&self.connect(&node_identity(group, node))?)? {
+                heads.insert(node.clone(), head);
+            }
+        }
+        Ok(heads)
+    }
 }
 
-fn scope(identity: &Identity) -> (&str, &str) {
-    (&identity.group_id, &identity.node_id)
+/// Addressing identity of another node in the caller's group.
+pub(super) fn node_identity(group: &str, node: &str) -> Identity {
+    Identity {
+        group_id: group.to_owned(),
+        node_id: node.to_owned(),
+        generation: String::new(),
+        dimensions: 0,
+    }
 }
 
-pub(super) fn head(connection: &Connection, identity: &Identity) -> Result<Option<Head>, AppError> {
-    let (group, node) = scope(identity);
-    sql::Head::builder()
-        .group_id(group)
-        .node_id(node)
-        .build()
+pub(super) fn head(connection: &Connection) -> Result<Option<Head>, AppError> {
+    sql::Head
         .query_opt(connection)
         .map_err(database)?
         .map(|row| decode(&row.head))
         .transpose()
 }
 
-pub(super) fn heads(
-    connection: &Connection,
-    group: &str,
-) -> Result<std::collections::BTreeMap<String, Head>, AppError> {
-    sql::Heads::builder()
-        .group_id(group)
-        .build()
-        .query_many(connection)
-        .map_err(database)?
-        .into_iter()
-        .map(|row| Ok((row.node_id, decode(&row.head)?)))
-        .collect()
-}
-
-pub(super) fn put_head(
-    connection: &Connection,
-    identity: &Identity,
-    head: &Head,
-) -> Result<(), AppError> {
-    let (group, node) = scope(identity);
+pub(super) fn put_head(connection: &Connection, head: &Head) -> Result<(), AppError> {
     sql::PutHead::builder()
-        .group_id(group)
-        .node_id(node)
         .head(&encode(head)?)
         .build()
         .execute(connection)
@@ -191,14 +197,8 @@ pub(super) fn put_head(
 }
 
 /// Silver counts. Embedding coverage belongs to gold and is reported separately.
-pub(super) fn counts(connection: &Connection, identity: &Identity) -> Result<Counts, AppError> {
-    let (group, node) = scope(identity);
-    let row = sql::Counts::builder()
-        .group_id(group)
-        .node_id(node)
-        .build()
-        .query_one(connection)
-        .map_err(database)?;
+pub(super) fn counts(connection: &Connection) -> Result<Counts, AppError> {
+    let row = sql::Counts.query_one(connection).map_err(database)?;
     let count = |value: i64| u64::try_from(value).map_err(|_| AppError::database_data("count"));
     Ok(Counts {
         conversations: count(row.conversations)?,
@@ -209,145 +209,170 @@ pub(super) fn counts(connection: &Connection, identity: &Identity) -> Result<Cou
     })
 }
 
+/// Typed silver columns back into the published record. This must be lossless:
+/// thread fingerprints and silver revisions are computed from these records.
+macro_rules! conversation_record {
+    ($row:expr) => {{
+        let row = $row;
+        Ok::<_, $crate::AppError>($crate::shared::protocol::ConversationRecord {
+            enrichment: row
+                .enrichment
+                .as_deref()
+                .map($crate::shared::silver_store::decode::<$crate::silver::enrichment::Evidence>)
+                .transpose()?,
+            id: row.id,
+            provider: $crate::shared::silver_store::provider(&row.provider)?,
+            title: row.title,
+            project: row.project,
+            repository: row.repository,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }};
+}
+
+macro_rules! message_record {
+    ($row:expr) => {{
+        let row = $row;
+        Ok::<_, $crate::AppError>($crate::shared::protocol::MessageRecord {
+            attachments: $crate::shared::silver_store::decode(&row.attachments)?,
+            id: row.id,
+            conversation_id: row.conversation_id,
+            ordinal: row.ordinal,
+            context: $crate::message_context::MessageContext::from_parent(row.context_parent)?,
+            role: $crate::role::Role::from(row.role),
+            content: row.content,
+            projection: row.search_projection.unwrap_or_default(),
+            created_at: row.created_at,
+            generation: None,
+            vector: None,
+        })
+    }};
+}
+
+macro_rules! checkpoint {
+    ($row:expr) => {{
+        let row = $row;
+        Ok::<_, $crate::AppError>($crate::shared::protocol::Checkpoint {
+            provider: $crate::shared::silver_store::provider(&row.provider)?,
+            path_hash: row.source_key,
+            size_bytes: row.size_bytes,
+            modified_ns: row.modified_ns,
+            fingerprint: row.fingerprint,
+            interpretation_version: u32::try_from(row.interpretation_version)
+                .map_err(|_| $crate::AppError::database_data("invalid interpretation version"))?,
+            conversation_id: row.conversation_id,
+            ready: row.ready != 0,
+        })
+    }};
+}
+use {checkpoint, message_record};
+
 pub(super) fn conversation(
     connection: &Connection,
-    identity: &Identity,
     id: &str,
 ) -> Result<Option<ConversationRecord>, AppError> {
-    let (group, node) = scope(identity);
     sql::Conversation::builder()
-        .group_id(group)
-        .node_id(node)
         .id(id)
         .build()
         .query_opt(connection)
         .map_err(database)?
-        .map(|row| decode(&row.record))
+        .map(|row| conversation_record!(row))
         .transpose()
+}
+
+pub(super) fn conversations(connection: &Connection) -> Result<Vec<ConversationRecord>, AppError> {
+    sql::NodeConversations
+        .query_many(connection)
+        .map_err(database)?
+        .into_iter()
+        .map(|row| conversation_record!(row))
+        .collect()
 }
 
 /// One thread's silver messages in ordinal order. Vectors are never stored.
 pub(super) fn thread_messages(
     connection: &Connection,
-    identity: &Identity,
     id: &str,
 ) -> Result<Vec<MessageRecord>, AppError> {
-    let (group, node) = scope(identity);
     sql::ThreadMessages::builder()
-        .group_id(group)
-        .node_id(node)
         .conversation_id(id)
         .build()
         .query_many(connection)
         .map_err(database)?
         .into_iter()
-        .map(|row| decode(&row.record))
+        .map(|row| message_record!(row))
         .collect()
 }
 
 pub(super) fn message(
     connection: &Connection,
-    identity: &Identity,
     id: &str,
 ) -> Result<Option<MessageRecord>, AppError> {
-    let (group, node) = scope(identity);
     sql::Message::builder()
-        .group_id(group)
-        .node_id(node)
         .id(id)
         .build()
         .query_opt(connection)
         .map_err(database)?
-        .map(|row| decode(&row.record))
+        .map(|row| message_record!(row))
         .transpose()
 }
 
-pub(super) fn sources(
-    connection: &Connection,
-    identity: &Identity,
-) -> Result<Vec<Checkpoint>, AppError> {
-    let (group, node) = scope(identity);
-    sql::NodeSources::builder()
-        .group_id(group)
-        .node_id(node)
-        .build()
+pub(super) fn sources(connection: &Connection) -> Result<Vec<Checkpoint>, AppError> {
+    sql::NodeSources
         .query_many(connection)
         .map_err(database)?
         .into_iter()
-        .map(|row| decode(&row.record))
+        .map(|row| checkpoint!(row))
         .collect()
 }
 
-pub(super) fn tombstones(
-    connection: &Connection,
-    identity: &Identity,
-) -> Result<Vec<Tombstone>, AppError> {
-    let (group, node) = scope(identity);
-    sql::NodeTombstones::builder()
-        .group_id(group)
-        .node_id(node)
-        .build()
+pub(super) fn tombstones(connection: &Connection) -> Result<Vec<Tombstone>, AppError> {
+    sql::NodeTombstones
         .query_many(connection)
         .map_err(database)?
         .into_iter()
-        .map(|row| decode(&row.record))
+        .map(|row| {
+            Ok(Tombstone {
+                provider: provider(&row.provider)?,
+                conversation_id: row.conversation_id,
+            })
+        })
         .collect()
 }
 
 /// Thread dependency fingerprints, the reuse identity offered to publishers.
-pub(super) fn fingerprints(
-    connection: &Connection,
-    identity: &Identity,
-) -> Result<std::collections::BTreeMap<String, String>, AppError> {
-    let (group, node) = scope(identity);
-    Ok(sql::Fingerprints::builder()
-        .group_id(group)
-        .node_id(node)
-        .build()
+pub(super) fn fingerprints(connection: &Connection) -> Result<BTreeMap<String, String>, AppError> {
+    Ok(sql::Fingerprints
         .query_many(connection)
         .map_err(database)?
         .into_iter()
-        .map(|row| (row.id, row.fingerprint))
+        .map(|row| (row.id, row.thread_fingerprint.unwrap_or_default()))
         .collect())
 }
 
 /// Messages eligible for dense vectors under this recipe.
 pub(super) fn dense_messages(
     connection: &Connection,
-    identity: &Identity,
     build: &crate::gold::config::Build,
 ) -> Result<u64, AppError> {
-    counts(connection, identity)?
+    counts(connection)?
         .expected_dense(build)
         .ok_or_else(|| AppError::database_data("invalid shared silver counts"))
 }
 
-pub(super) fn providers(
-    connection: &Connection,
-    identity: &Identity,
-) -> Result<Vec<Provider>, AppError> {
-    let (group, node) = scope(identity);
-    sql::Providers::builder()
-        .group_id(group)
-        .node_id(node)
-        .build()
+pub(super) fn providers(connection: &Connection) -> Result<Vec<Provider>, AppError> {
+    sql::Providers
         .query_many(connection)
         .map_err(database)?
         .into_iter()
-        .map(|row| row.provider.parse())
+        .map(|row| provider(&row.provider))
         .collect()
 }
 
 /// Whether provider scan evidence covers every retained thread with current sources.
-pub(super) fn coverage_gaps(
-    connection: &Connection,
-    identity: &Identity,
-    provider: Provider,
-) -> Result<bool, AppError> {
-    let (group, node) = scope(identity);
+pub(super) fn coverage_gaps(connection: &Connection, provider: Provider) -> Result<bool, AppError> {
     let row = sql::CoverageGaps::builder()
-        .group_id(group)
-        .node_id(node)
         .provider(provider.as_str())
         .interpretation_version(i64::from(
             crate::silver::certificate::INTERPRETATION_VERSION,

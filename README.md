@@ -167,7 +167,16 @@ error recommending `mash index`, before loading inference models or contacting
 the shared search service. An explicitly completed empty index is valid.
 
 Local indexing separates durable canonical ingestion (silver) from rebuilding
-retrieval views (gold), reusing the existing stored history. See the
+retrieval views (gold), reusing the existing stored history. They are two SQLite
+files: `mash.sqlite3` holds silver and the paired `mash.gold.sqlite3` beside it
+holds embeddings, the full-text index and readiness. Silver uses the same schema
+as each node's history on the shared server. Gold never holds history that
+silver lacks: if it is deleted, damaged or belongs to another silver database,
+mash replaces it with empty, unready gold. `mash index --rebuild-local-gold`
+rebuilds it from stored silver offline, reusing valid vectors; add `--full` to
+discard all local gold and replay it from silver. The first open by this version
+moves an existing single-file index's gold into the new file without
+re-embedding. See the
 [history pipeline](docs/history-pipeline.md) for layer ownership, storage schemas
 and recovery behavior.
 
@@ -1019,9 +1028,11 @@ recall tradeoffs before choosing approximate retrieval.
 Configure `qdrant_url_env` on the HTTP service. Nodes continue using the same
 API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
 required; older versions are rejected before creating collections. Shared
-silver is a SQLite database on the API host, `silver_database` (absolute path;
-default `shared-silver.sqlite3` in the platform data directory). Back it up:
-Qdrant can be rebuilt from it, but not the reverse. Filtered HNSW vector retrieval is the default, with
+silver lives on the API host under `silver_dir` (absolute path; default
+`shared-silver` in the platform data directory), one SQLite database per
+configured node at `<silver_dir>/<group_id>/<node_id>.sqlite3`, using the same
+silver schema as local indexes. Back it up: Qdrant can be rebuilt from it, but
+not the reverse. Filtered HNSW vector retrieval is the default, with
 `ef_runtime = 200`; exact vector retrieval remains an explicit option.
 
 ```toml
@@ -1030,7 +1041,7 @@ listen = "127.0.0.1:8787"
 qdrant_url_env = "MASH_QDRANT_URL"
 # Optional for an authenticated Qdrant service:
 # qdrant_api_key_env = "MASH_QDRANT_API_KEY"
-# silver_database = "/var/lib/mash/shared-silver.sqlite3"
+# silver_dir = "/var/lib/mash/shared-silver"
 max_upload_mib = 64
 qdrant_memory = "durable" # Default: pinned HNSW/sparse indexes, cached dense vectors, cold payloads.
 

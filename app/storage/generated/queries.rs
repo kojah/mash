@@ -3545,7 +3545,7 @@ impl SourceEnrichmentRow {
 }
 pub struct SourceEnrichment<'a> {
     provider: &'a str,
-    source_key: &'a str,
+    source_key: Option<&'a str>,
 }
 impl<'a> SourceEnrichment<'a> {
     pub const QUERY: &'static str = r"SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at FROM conversations AS c
@@ -3599,8 +3599,8 @@ impl<'a, SourceKey> SourceEnrichmentBuilder<'a, ((), SourceKey)> {
 impl<'a, Provider> SourceEnrichmentBuilder<'a, (Provider, ())> {
     pub fn source_key(
         self,
-        source_key: &'a str,
-    ) -> SourceEnrichmentBuilder<'a, (Provider, &'a str)> {
+        source_key: Option<&'a str>,
+    ) -> SourceEnrichmentBuilder<'a, (Provider, Option<&'a str>)> {
         let (provider, ()) = self.fields;
         let _phantom = self._phantom;
         SourceEnrichmentBuilder {
@@ -3609,7 +3609,7 @@ impl<'a, Provider> SourceEnrichmentBuilder<'a, (Provider, ())> {
         }
     }
 }
-impl<'a> SourceEnrichmentBuilder<'a, (&'a str, &'a str)> {
+impl<'a> SourceEnrichmentBuilder<'a, (&'a str, Option<&'a str>)> {
     pub fn build(self) -> SourceEnrichment<'a> {
         let (provider, source_key) = self.fields;
         SourceEnrichment {

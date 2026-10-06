@@ -22,7 +22,6 @@ pub(super) fn update(
     reports: &BTreeMap<Provider, ScanReport>,
     dirty: &HashSet<Provider>,
     silver: &rusqlite::Connection,
-    identity: &super::server::Identity,
     revision: i64,
     snapshot: bool,
 ) -> Result<Vec<Coverage>, AppError> {
@@ -45,7 +44,7 @@ pub(super) fn update(
         );
     }
     for coverage in retained.values_mut() {
-        coverage.completeness = completeness(silver, identity, &coverage.scan)?;
+        coverage.completeness = completeness(silver, &coverage.scan)?;
     }
     Ok(retained.into_values().collect())
 }
@@ -53,7 +52,6 @@ pub(super) fn update(
 /// Complete when every retained thread of the provider is mapped by a current source.
 fn completeness(
     silver: &rusqlite::Connection,
-    identity: &super::server::Identity,
     scan: &ScanReport,
 ) -> Result<Completeness, AppError> {
     if scan.interpretation_version != INTERPRETATION_VERSION {
@@ -62,7 +60,7 @@ fn completeness(
     if !scan.authoritative {
         return Ok(Completeness::Incomplete);
     }
-    let gaps = super::silver_store::coverage_gaps(silver, identity, scan.provider)?;
+    let gaps = super::silver_store::coverage_gaps(silver, scan.provider)?;
     Ok(if gaps {
         Completeness::Unverified
     } else {

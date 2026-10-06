@@ -9,9 +9,14 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
+- Keep one silver schema (`app/storage/silver.sql`) for local indexes and for
+  each node's shared silver database on the server. Local gold is a separate,
+  paired SQLite database; neither gold store may hold history that silver lacks,
+  and both must stay replayable from silver (`index --rebuild-local-gold --full`,
+  `serve --replay-gold`).
 - Use an authenticated Axum HTTP API for one shared index per configured node
-  group. Shared silver is a server-side SQLite database (no gold tables); shared
-  gold is Qdrant and must stay rebuildable from silver (`serve --replay-gold`).
+  group. Shared silver is server-side SQLite (no gold tables); shared gold is
+  Qdrant.
   Commit silver before synchronizing gold; do not build transaction, staging or
   versioning machinery on top of Qdrant. Require a local SQLite index; support local-only or
   both indexing with independent provider allowlists. Keep local operations

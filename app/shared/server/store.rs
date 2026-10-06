@@ -50,8 +50,9 @@ pub(super) async fn initialize(
                 .map_err(|_| AppError::configuration(format!("set {name} to the Qdrant API key")))
         })
         .transpose()?;
-    let path = config.silver_database()?;
-    let silver = crate::blocking(move || SilverStore::open(&path)).await?;
+    let root = config.silver_dir()?;
+    let configured = identities.values().cloned().collect::<Vec<_>>();
+    let silver = crate::blocking(move || SilverStore::open(&root, &configured)).await?;
     let gold = qdrant_index::Store::connect(
         &url,
         key.as_deref(),
@@ -130,18 +131,25 @@ impl Store {
         Ok(lock.lock_owned().await)
     }
 
+    /// Read one node's silver on a blocking worker.
     async fn read<T: Send + 'static>(
         &self,
+        identity: &Identity,
         work: impl FnOnce(&rusqlite::Connection) -> Result<T, AppError> + Send + 'static,
     ) -> Result<T, AppError> {
         let silver = self.silver.clone();
-        crate::blocking(move || work(&silver.connect()?)).await
+        let identity = identity.clone();
+        crate::blocking(move || work(&silver.connect(&identity)?)).await
+    }
+
+    async fn heads(&self, group: &str) -> Result<BTreeMap<String, Head>, AppError> {
+        let silver = self.silver.clone();
+        let group = group.to_owned();
+        crate::blocking(move || silver.heads(&group)).await
     }
 
     async fn head(&self, identity: &Identity) -> Result<Option<Head>, AppError> {
-        let identity = identity.clone();
-        self.read(move |connection| silver_store::head(connection, &identity))
-            .await
+        self.read(identity, silver_store::head).await
     }
 
     pub(in crate::shared) async fn capabilities(
@@ -152,10 +160,7 @@ impl Store {
     }
 
     pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
-        let scope = identity.clone();
-        let mut counts = self
-            .read(move |connection| silver_store::counts(connection, &scope))
-            .await?;
+        let mut counts = self.read(identity, silver_store::counts).await?;
         counts.embeddings = self
             .gold
             .node_gold(identity)
@@ -198,13 +203,12 @@ impl Store {
         &self,
         identity: &Identity,
     ) -> Result<protocol::NodeState, AppError> {
-        let scope = identity.clone();
         let (head, sources, tombstones) = self
-            .read(move |connection| {
+            .read(identity, |connection| {
                 Ok((
-                    silver_store::head(connection, &scope)?,
-                    silver_store::sources(connection, &scope)?,
-                    silver_store::tombstones(connection, &scope)?,
+                    silver_store::head(connection)?,
+                    silver_store::sources(connection)?,
+                    silver_store::tombstones(connection)?,
                 ))
             })
             .await?;
@@ -259,20 +263,14 @@ impl Store {
         identity: &Identity,
     ) -> Result<Freshness, AppError> {
         let group_gold = self.gold.gold_configuration(identity).await?;
-        let group = identity.group_id.clone();
-        let heads = self
-            .read(move |connection| silver_store::heads(connection, &group))
-            .await?;
+        let heads = self.heads(&identity.group_id).await?;
         let mut nodes = Vec::new();
         for (node_id, head) in heads {
             let node = Identity {
                 node_id: node_id.clone(),
                 ..identity.clone()
             };
-            let scope = node.clone();
-            let mut counts = self
-                .read(move |connection| silver_store::counts(connection, &scope))
-                .await?;
+            let mut counts = self.read(&node, silver_store::counts).await?;
             let gold = self.gold.node_gold(&node).await?;
             let silver = head.silver_revision.as_ref();
             let lexical_current = gold
@@ -339,12 +337,11 @@ impl Store {
         identity: &Identity,
         permit: OwnedSemaphorePermit,
     ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
-        let scope = identity.clone();
         let (head, fingerprints) = self
-            .read(move |connection| {
+            .read(identity, |connection| {
                 Ok((
-                    silver_store::head(connection, &scope)?,
-                    silver_store::fingerprints(connection, &scope)?,
+                    silver_store::head(connection)?,
+                    silver_store::fingerprints(connection)?,
                 ))
             })
             .await?;
@@ -382,11 +379,11 @@ impl Store {
     ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
         let scope = identity.clone();
         let build = self.gold.build().clone();
-        self.read(move |connection| {
-            let head = silver_store::head(connection, &scope)?.ok_or_else(|| {
+        self.read(identity, move |connection| {
+            let head = silver_store::head(connection)?.ok_or_else(|| {
                 crate::shared::validation::conflict("shared silver has not been indexed")
             })?;
-            if !certified(connection, &scope, &head)? {
+            if !certified(connection, &head)? {
                 return Err(crate::shared::validation::conflict(
                     "gold rebuild requires complete, current shared silver",
                 ));
@@ -410,7 +407,7 @@ impl Store {
             let io = |_| AppError::internal("write retained shared silver");
             std::io::Write::write_all(&mut output, &header[..header.len() - 1]).map_err(io)?;
             std::io::Write::write_all(&mut output, b",\"history\":").map_err(io)?;
-            silver_store::read::export(connection, &scope, &mut output)?;
+            silver_store::read::export(connection, &mut output)?;
             std::io::Write::write_all(&mut output, b"}").map_err(io)?;
             std::io::Write::flush(&mut output).map_err(io)?;
             drop(output);
@@ -428,10 +425,7 @@ impl Store {
         dense: bool,
         exclude_self: bool,
     ) -> Result<BTreeSet<String>, AppError> {
-        let group = identity.group_id.clone();
-        let heads = self
-            .read(move |connection| silver_store::heads(connection, &group))
-            .await?;
+        let heads = self.heads(&identity.group_id).await?;
         let mut active = BTreeSet::new();
         for node_id in heads.into_keys() {
             if exclude_self && node_id == identity.node_id {
@@ -479,17 +473,19 @@ impl Store {
         input: crate::thread_catalog::Request,
     ) -> Result<crate::thread_catalog::Page, AppError> {
         let mut collector = crate::thread_catalog::Collector::new(input.clone())?;
-        let group = identity.group_id.clone();
-        let caller = identity.node_id.clone();
-        let threads = self
-            .read(move |connection| {
-                let nodes = silver_store::heads(connection, &group)?
-                    .into_keys()
-                    .filter(|node| input.admits_node(node, &caller))
-                    .collect::<Vec<_>>();
-                silver_store::read::threads(connection, &group, &nodes)
-            })
-            .await?;
+        let mut threads = Vec::new();
+        for node in self.heads(&identity.group_id).await?.into_keys() {
+            if !input.admits_node(&node, &identity.node_id) {
+                continue;
+            }
+            let scope = silver_store::node_identity(&identity.group_id, &node);
+            threads.extend(
+                self.read(&scope, move |connection| {
+                    silver_store::read::threads(connection, &node)
+                })
+                .await?,
+            );
+        }
         for thread in threads {
             let row = thread.conversation;
             collector.push(crate::thread_catalog::Thread {
@@ -511,9 +507,7 @@ impl Store {
 
     /// Fail before streaming when shared silver is unreachable.
     pub(in crate::shared) async fn available(&self, identity: &Identity) -> Result<(), AppError> {
-        let group = identity.group_id.clone();
-        self.read(move |connection| silver_store::heads(connection, &group).map(|_| ()))
-            .await
+        self.head(identity).await.map(|_| ())
     }
 
     pub(in crate::shared) async fn view(
@@ -522,17 +516,22 @@ impl Store {
         input: protocol::View,
     ) -> Result<Vec<crate::storage::Message>, AppError> {
         crate::shared::validation::valid_id(&input.node_id)?;
-        let node = Identity {
-            node_id: input.node_id.clone(),
-            ..identity.clone()
-        };
+        // Node IDs from requests address files; only configured nodes exist.
+        if !self
+            .silver
+            .nodes(&identity.group_id)
+            .contains(&input.node_id)
+        {
+            return Ok(Vec::new());
+        }
+        let node = silver_store::node_identity(&identity.group_id, &input.node_id);
         let projection = matches!(
             input.content,
             crate::storage::MessageContent::SearchProjection
         );
-        self.read(move |connection| {
+        self.read(&node, move |connection| {
             Ok(
-                silver_store::read::view(connection, &node, &input.id, input.context)?
+                silver_store::read::view(connection, &input.id, input.context)?
                     .into_iter()
                     .map(|record| silver_store::read::message(record, projection))
                     .collect(),
@@ -543,11 +542,7 @@ impl Store {
 }
 
 /// Certified when the source certificate or complete provider scans cover all silver.
-fn certified(
-    connection: &rusqlite::Connection,
-    identity: &Identity,
-    head: &Head,
-) -> Result<bool, AppError> {
+fn certified(connection: &rusqlite::Connection, head: &Head) -> Result<bool, AppError> {
     use crate::silver::certificate::{Completeness, INTERPRETATION_VERSION};
     if let Some(source) = &head.source_silver {
         return Ok(source.is_complete() && source.interpretation_version == INTERPRETATION_VERSION);
@@ -564,7 +559,7 @@ fn certified(
     if covered.is_empty() {
         return Ok(false);
     }
-    let providers = silver_store::providers(connection, identity)?;
+    let providers = silver_store::providers(connection)?;
     Ok(providers.iter().all(|provider| covered.contains(provider)))
 }
 

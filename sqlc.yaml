@@ -6,7 +6,9 @@ plugins:
       sha256: f434350fd09a485a3c9e94df4808c2d58f7f817937ed2e0654e9180eb96aa9ff
 sql:
   - engine: sqlite
-    schema: app/storage/schema.sql
+    schema:
+      - app/storage/silver.sql
+      - app/storage/gold.sql
     queries: queries/sqlite/index.sql
     codegen:
       - plugin: rust
@@ -15,7 +17,7 @@ sql:
           db_crate: rusqlite
           output: queries.rs
   - engine: sqlite
-    schema: app/shared/silver_store/schema.sql
+    schema: app/storage/silver.sql
     queries: queries/sqlite/shared.sql
     codegen:
       - plugin: rust

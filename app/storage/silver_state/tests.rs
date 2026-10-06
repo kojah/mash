@@ -180,13 +180,17 @@ fn genuine_previous_schema_migration_preserves_history_and_requires_interpretati
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("history.sqlite3");
     let connection = rusqlite::Connection::open(&path).unwrap();
-    let schema = include_str!("../schema.sql");
-    let previous = &schema[schema
-        .find("CREATE TABLE IF NOT EXISTS shared_publication")
-        .unwrap()..];
-    let previous = previous.replace("    interpretation_version INTEGER NOT NULL DEFAULT 0 CHECK (interpretation_version >= 0),\n", "");
+    let previous = crate::storage::schema::combined().replace("    interpretation_version INTEGER NOT NULL DEFAULT 0 CHECK (interpretation_version >= 0),\n", "");
     let previous = previous.replace("    semantic_ready_generation TEXT,\n    resume_generation TEXT,\n    resume_silver_revision INTEGER,\n    resume_interpretation_version INTEGER\n", "    semantic_ready_generation TEXT\n");
     connection.execute_batch(&previous).unwrap();
+    // Version 35 predates these tables.
+    connection
+        .execute_batch(
+            "DROP TABLE gold_manifest; DROP TABLE lexical_manifest;
+             DROP TABLE conversation_enrichment; DROP TABLE silver_state;
+             DROP TABLE silver_scans; DROP TABLE silver_rejections;",
+        )
+        .unwrap();
     connection.execute_batch("PRAGMA user_version=35;
         INSERT INTO conversations(id,provider,source_path,source_key,title) VALUES('thread','codex','/source','file:/source','original title');
         INSERT INTO messages(id,conversation_id,ordinal,role,content,search_projection,context_parent) VALUES('message','thread',0,'user','canonical text','visible text',-1);

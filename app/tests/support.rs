@@ -45,7 +45,7 @@ pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) 
         models.to_str().unwrap(),
         "index",
     ]);
-    let connection = Connection::open(path).expect("readiness database");
+    let connection = open_index(path);
     connection.execute_batch(
         "UPDATE derived_state SET search_dirty=0,semantic_ready_generation=NULL WHERE singleton=1;
          INSERT INTO conversations(id,provider,source_path,source_key)
@@ -131,7 +131,7 @@ impl NodeFixture {
     }
 
     pub(super) fn complete_index(&self) {
-        let connection = Connection::open(&self.database).unwrap();
+        let connection = open_index(&self.database);
         // Synthetic rows inserted after empty-index setup need explicit silver
         // evidence and a manifest revision as well as the vector-ready marker.
         connection.execute_batch(
@@ -154,7 +154,7 @@ impl NodeFixture {
     }
 
     pub(super) fn insert_embedding(&self) {
-        let connection = Connection::open(&self.database).expect("ready database");
+        let connection = open_index(&self.database);
         let generation = current_embedding_generation();
         connection
             .execute(
@@ -178,4 +178,65 @@ impl NodeFixture {
             )
             .expect("packed semantic chunk");
     }
+}
+
+/// The gold database mash pairs with a local silver database.
+pub(super) fn gold_path(silver: &Path) -> std::path::PathBuf {
+    let name = silver.file_name().unwrap().to_string_lossy().into_owned();
+    silver.with_file_name(name.strip_suffix(".sqlite3").map_or_else(
+        || format!("{name}.gold"),
+        |stem| format!("{stem}.gold.sqlite3"),
+    ))
+}
+
+/// Local silver with its paired gold attached, as mash writers see it.
+pub(super) fn open_index(path: &Path) -> Connection {
+    let connection = Connection::open(path).expect("local silver");
+    connection
+        .execute(
+            "ATTACH DATABASE ?1 AS gold",
+            [gold_path(path).to_str().unwrap()],
+        )
+        .expect("local gold");
+    connection
+}
+
+/// Recreate the single-file layout predating schema 46 so a test can fake an
+/// older version; the next open upgrades and splits it again.
+pub(super) fn combine_gold(connection: &Connection) {
+    for table in [
+        "silver_pairing",
+        "gold_manifest",
+        "lexical_manifest",
+        "derived_state",
+        "message_embeddings",
+        "pending_embeddings",
+        "semantic_chunks",
+        "message_fts",
+    ] {
+        let sql: String = connection
+            .query_row(
+                "SELECT sql FROM gold.sqlite_master WHERE name = ?1",
+                [table],
+                |row| row.get(0),
+            )
+            .expect("gold table definition");
+        connection.execute_batch(&sql).expect("combined gold table");
+        let (target, columns) = if table == "message_fts" {
+            (
+                "message_fts(rowid, content, message_id, conversation_id)",
+                "rowid, content, message_id, conversation_id",
+            )
+        } else {
+            (table, "*")
+        };
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO main.{target} SELECT {columns} FROM gold.{table}"
+            ))
+            .expect("combined gold rows");
+    }
+    connection
+        .execute_batch("PRAGMA user_version = 45")
+        .expect("combined version");
 }

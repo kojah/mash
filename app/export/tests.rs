@@ -48,7 +48,7 @@ fn portable_records_reject_corrupt_structure_even_with_a_matching_file_digest() 
 fn fixture(root: &Path) -> (PathBuf, Connection) {
     let path = root.join("history # ü.sqlite3");
     drop(Storage::open(&path).unwrap());
-    let connection = Connection::open(&path).unwrap();
+    let connection = crate::storage::test_support::connect(&path);
     connection.execute_batch(
         "PRAGMA foreign_keys=ON;
          INSERT INTO conversations(id,provider,source_path,source_key,source_session,title,project,repository,source_fingerprint,created_at,updated_at)
@@ -60,7 +60,7 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          INSERT INTO claude_sources VALUES('branch','/missing/branch','thread','Branch title','/other-project',NULL);
          INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at)
          VALUES('branch','branch-message',NULL,'assistant','branch evidence','visible branch',15);
-         INSERT INTO source_checkpoints VALUES('codex','/missing/session','file:/missing/session',99,123,'checkpoint-hash',2);
+         INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns,fingerprint,interpretation_version) VALUES('codex','/missing/session','file:/missing/session',99,123,'checkpoint-hash',2);
          INSERT INTO silver_scans VALUES('codex',2,1);
          INSERT INTO attachment_policy VALUES(1,'policy-fingerprint');
          INSERT INTO shared_forgets VALUES('shared','forgotten-thread');

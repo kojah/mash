@@ -194,6 +194,10 @@ fn index(
     let mut storage = Storage::open_writer(database_path)?;
     if rebuild_local_gold {
         require_certified_silver(&storage)?;
+        if full {
+            // Replay: nothing from existing gold is reused.
+            storage.discard_gold()?;
+        }
     }
     if full || storage.derived_search_is_dirty()? {
         storage.defer_search_updates()?;

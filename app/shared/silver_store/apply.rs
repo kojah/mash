@@ -1,5 +1,7 @@
 //! Apply one validated node upload to shared silver inside a single transaction.
-use super::{Head, Identity, database, decode, encode, head, key, now, put_head, sql, token};
+use super::{
+    Head, Identity, checkpoint, database, encode, head, now, provider, put_head, sql, token,
+};
 use crate::shared::protocol::{
     self, Batch, ConversationRecord, Event, MessageRecord, ScanReport, Start, Tombstone,
 };
@@ -120,29 +122,20 @@ fn start(previous: Option<&Head>, expected: &str, input: &Start) -> Result<(i64,
 }
 
 impl Upload<'_> {
-    fn scope(&self) -> (&str, &str) {
-        (&self.identity.group_id, &self.identity.node_id)
-    }
-
     fn provider(&self, id: &str) -> Result<Option<Provider>, AppError> {
-        let (group, node) = self.scope();
         sql::ConversationProvider::builder()
-            .group_id(group)
-            .node_id(node)
             .id(id)
             .build()
             .query_opt(self.tx)
             .map_err(database)?
-            .map(|row| row.provider.parse())
+            .map(|row| provider(&row.provider))
             .transpose()
     }
 
     fn tombstoned(&self, provider: Provider, id: &str) -> Result<bool, AppError> {
-        let (group, node) = self.scope();
         Ok(sql::Tombstoned::builder()
-            .group_id(group)
-            .node_id(node)
-            .key(&key(provider, id))
+            .provider(provider.as_str())
+            .conversation_id(id)
             .build()
             .query_opt(self.tx)
             .map_err(database)?
@@ -151,17 +144,12 @@ impl Upload<'_> {
 
     /// Remove one thread; returns removed messages and threads.
     fn remove(&mut self, id: &str) -> Result<(u64, u64), AppError> {
-        let (group, node) = self.scope();
         let messages = sql::DeleteThreadMessages::builder()
-            .group_id(group)
-            .node_id(node)
             .conversation_id(id)
             .build()
             .execute(self.tx)
             .map_err(database)?;
         let threads = sql::DeleteConversation::builder()
-            .group_id(group)
-            .node_id(node)
             .id(id)
             .build()
             .execute(self.tx)
@@ -174,12 +162,14 @@ impl Upload<'_> {
     }
 
     fn tombstone(&mut self, record: &Tombstone) -> Result<(), AppError> {
-        let (group, node) = self.scope();
+        let forgotten_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| AppError::internal("system clock precedes Unix epoch"))?
+            .as_millis();
         sql::UpsertTombstone::builder()
-            .group_id(group)
-            .node_id(node)
-            .key(&key(record.provider, &record.conversation_id))
-            .record(&encode(record)?)
+            .provider(record.provider.as_str())
+            .conversation_id(&record.conversation_id)
+            .forgotten_at(i64::try_from(forgotten_at).unwrap_or(i64::MAX))
             .build()
             .execute(self.tx)
             .map_err(database)?;
@@ -212,16 +202,25 @@ impl Upload<'_> {
         if self.tombstoned(record.provider, &record.id)? {
             return Ok(());
         }
-        let (group, node) = self.scope();
         sql::InsertConversation::builder()
-            .group_id(group)
-            .node_id(node)
             .id(&record.id)
             .provider(record.provider.as_str())
-            .record(&encode(&record)?)
+            .title(record.title.as_deref())
+            .created_at(record.created_at)
+            .updated_at(record.updated_at)
+            .project(record.project.as_deref())
+            .repository(record.repository.as_deref())
             .build()
             .execute(self.tx)
             .map_err(database)?;
+        if let Some(evidence) = &record.enrichment {
+            sql::InsertEnrichment::builder()
+                .conversation_id(&record.id)
+                .evidence(&encode(evidence)?)
+                .build()
+                .execute(self.tx)
+                .map_err(database)?;
+        }
         self.applied.deleted.remove(&record.id);
         self.applied.supplied.insert(record.id);
         self.applied.changed = true;
@@ -254,23 +253,16 @@ impl Upload<'_> {
         // Vectors are gold; silver keeps the canonical record only.
         record.vector = None;
         record.generation = None;
-        let (group, node) = self.scope();
-        let searchable = !record.projection.is_empty();
         let inserted = sql::InsertMessage::builder()
-            .group_id(group)
-            .node_id(node)
+            .attachments(&encode(&record.attachments)?)
             .id(&record.id)
             .conversation_id(&record.conversation_id)
             .ordinal(record.ordinal)
-            .parent(match record.context {
-                crate::message_context::MessageContext::Parent { ordinal } => Some(ordinal),
-                _ => None,
-            })
-            .searchable(i64::from(searchable))
-            .user(i64::from(
-                searchable && record.role == crate::role::Role::User,
-            ))
-            .record(&encode(&record)?)
+            .role(record.role.as_str())
+            .content(&record.content)
+            .search_projection(Some(&record.projection))
+            .created_at(record.created_at)
+            .context_parent(record.context.parent())
             .build()
             .execute(self.tx);
         match inserted {
@@ -291,15 +283,15 @@ impl Upload<'_> {
     }
 
     fn source(&mut self, checkpoint: &protocol::Checkpoint) -> Result<(), AppError> {
-        let (group, node) = self.scope();
         sql::UpsertSource::builder()
-            .group_id(group)
-            .node_id(node)
-            .key(&key(checkpoint.provider, &checkpoint.path_hash))
             .provider(checkpoint.provider.as_str())
-            .conversation_id(checkpoint.conversation_id.as_deref())
+            .source_key(&checkpoint.path_hash)
+            .size_bytes(checkpoint.size_bytes)
+            .modified_ns(checkpoint.modified_ns)
+            .fingerprint(&checkpoint.fingerprint)
             .interpretation_version(i64::from(checkpoint.interpretation_version))
-            .record(&encode(checkpoint)?)
+            .conversation_id(checkpoint.conversation_id.as_deref())
+            .ready(i64::from(checkpoint.ready))
             .build()
             .execute(self.tx)
             .map_err(database)?;
@@ -312,37 +304,28 @@ impl Upload<'_> {
         cutoff: Option<i64>,
         observed: Option<&HashSet<String>>,
     ) -> Result<(), AppError> {
-        let (group, node) = (
-            self.identity.group_id.clone(),
-            self.identity.node_id.clone(),
-        );
         let rows = sql::ProviderSources::builder()
-            .group_id(&group)
-            .node_id(&node)
             .provider(provider.as_str())
             .build()
             .query_many(self.tx)
             .map_err(database)?;
         let mut missing = Vec::new();
         for row in rows {
-            let source: protocol::Checkpoint = decode(&row.record)?;
+            let source: protocol::Checkpoint = checkpoint!(row)?;
             if observed.is_none_or(|seen| !seen.contains(&source.path_hash))
                 && cutoff.is_none_or(|c| source.modified_ns >= c)
             {
-                missing.extend(source.conversation_id);
                 sql::DeleteSource::builder()
-                    .group_id(&group)
-                    .node_id(&node)
-                    .key(&row.key)
+                    .provider(source.provider.as_str())
+                    .source_key(&source.path_hash)
                     .build()
                     .execute(self.tx)
                     .map_err(database)?;
+                missing.extend(source.conversation_id);
             }
         }
         for id in missing {
             let referenced = sql::SourceReference::builder()
-                .group_id(&group)
-                .node_id(&node)
                 .conversation_id(Some(&id))
                 .build()
                 .query_opt(self.tx)
@@ -390,21 +373,18 @@ impl Upload<'_> {
 
     /// Recompute dependency fingerprints for threads written by this upload.
     fn fingerprint(&self, id: &str) -> Result<String, AppError> {
-        let conversation = super::conversation(self.tx, self.identity, id)?
+        let conversation = super::conversation(self.tx, id)?
             .ok_or_else(|| AppError::internal("fingerprinted thread is missing"))?;
         let mut fingerprint = Fingerprint::new(&conversation)?;
-        for message in super::thread_messages(self.tx, self.identity, id)? {
+        for message in super::thread_messages(self.tx, id)? {
             fingerprint.push(&message)?;
         }
         Ok(fingerprint.finish())
     }
 
     fn missing_parents(&self) -> Result<bool, AppError> {
-        let (group, node) = self.scope();
         for id in &self.applied.supplied {
             let missing = sql::MissingParent::builder()
-                .group_id(group)
-                .node_id(node)
                 .conversation_id(id)
                 .build()
                 .query_opt(self.tx)
@@ -420,14 +400,14 @@ impl Upload<'_> {
     fn canonical(&self) -> Result<String, AppError> {
         let mut hasher = blake3::Hasher::new();
         hasher.update(b"mash-shared-silver-v2\0");
-        for (id, fingerprint) in super::fingerprints(self.tx, self.identity)? {
+        for (id, fingerprint) in super::fingerprints(self.tx)? {
             for part in [id.as_str(), fingerprint.as_str()] {
                 hasher.update(&(part.len() as u64).to_le_bytes());
                 hasher.update(part.as_bytes());
             }
         }
         hasher.update(b"\0tombstones\0");
-        for tombstone in super::tombstones(self.tx, self.identity)? {
+        for tombstone in super::tombstones(self.tx)? {
             let encoded = encode(&tombstone)?;
             hasher.update(&(encoded.len() as u64).to_le_bytes());
             hasher.update(encoded.as_bytes());
@@ -448,7 +428,7 @@ pub(in crate::shared) fn apply(
     build: &Build,
     gold: &GoldView,
 ) -> Result<Applied, AppError> {
-    let previous = head(tx, identity)?;
+    let previous = head(tx)?;
     let expected = previous.as_ref().map_or("", |h| h.version.as_str());
     let (input, lines) = first_line(file)?;
     let (revision, same_revision) = start(previous.as_ref(), expected, &input)?;
@@ -508,26 +488,10 @@ pub(in crate::shared) fn apply(
             upload.applied.changed |= upload.forget(id)?;
         }
         if input.snapshot {
-            let (group, node) = (identity.group_id.as_str(), identity.node_id.as_str());
-            let existing = super::fingerprints(tx, identity)?;
-            sql::DeleteNodeMessages::builder()
-                .group_id(group)
-                .node_id(node)
-                .build()
-                .execute(tx)
-                .map_err(database)?;
-            sql::DeleteNodeConversations::builder()
-                .group_id(group)
-                .node_id(node)
-                .build()
-                .execute(tx)
-                .map_err(database)?;
-            sql::DeleteNodeSources::builder()
-                .group_id(group)
-                .node_id(node)
-                .build()
-                .execute(tx)
-                .map_err(database)?;
+            let existing = super::fingerprints(tx)?;
+            sql::DeleteNodeMessages.execute(tx).map_err(database)?;
+            sql::DeleteNodeConversations.execute(tx).map_err(database)?;
+            sql::DeleteNodeSources.execute(tx).map_err(database)?;
             upload.applied.deleted.extend(existing.into_keys());
             upload.applied.changed = true;
         }
@@ -650,7 +614,7 @@ pub(in crate::shared) fn apply(
         // A resent revision changes no silver; it only records that the node synced.
         let mut applied = upload.applied;
         applied.head.last_synced_at = Some(now());
-        put_head(tx, identity, &applied.head)?;
+        put_head(tx, &applied.head)?;
         return Ok(applied);
     }
     if upload.missing_parents()? {
@@ -660,9 +624,7 @@ pub(in crate::shared) fn apply(
     for id in &supplied {
         let fingerprint = upload.fingerprint(id)?;
         sql::SetFingerprint::builder()
-            .fingerprint(&fingerprint)
-            .group_id(&identity.group_id)
-            .node_id(&identity.node_id)
+            .fingerprint(Some(&fingerprint))
             .id(id)
             .build()
             .execute(tx)
@@ -697,7 +659,6 @@ pub(in crate::shared) fn apply(
         &scans,
         &dirty,
         tx,
-        identity,
         revision,
         input.snapshot,
     )?;
@@ -714,7 +675,7 @@ pub(in crate::shared) fn apply(
     if applied.changed {
         applied.head.last_updated_at = Some(now);
     }
-    put_head(tx, identity, &applied.head)?;
+    put_head(tx, &applied.head)?;
     Ok(applied)
 }
 
@@ -730,7 +691,7 @@ pub(in crate::shared) fn forget(
     if ids.len() > 10000 {
         return Err(AppError::usage("too many forget identities"));
     }
-    let mut previous = head(tx, identity)?;
+    let mut previous = head(tx)?;
     let accepted = previous.as_ref().map_or(0, |h| h.revision);
     if previous.as_ref().is_some_and(|h| h.instance != instance)
         || revision.is_some_and(|r| r <= accepted)
@@ -787,6 +748,6 @@ pub(in crate::shared) fn forget(
     if forgotten {
         applied.head.last_updated_at = Some(now());
     }
-    put_head(tx, identity, &applied.head)?;
+    put_head(tx, &applied.head)?;
     Ok((forgotten, applied.head, applied.deleted))
 }

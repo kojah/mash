@@ -48,6 +48,9 @@ impl Storage {
                 "index requires an explicit rebuild; run `mash index`",
             ));
         }
+        if version >= SCHEMA_VERSION {
+            super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
+        }
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
             connection,
@@ -95,6 +98,7 @@ impl Storage {
                 exact_semantic_coverage: false,
             });
         }
+        super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
         let storage = Self {
             attachments_config: crate::attachments::Configuration::default(),
             connection,

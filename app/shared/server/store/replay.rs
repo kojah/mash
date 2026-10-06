@@ -26,9 +26,10 @@ impl Store {
         embeddings: Option<&crate::semantic::remote::Configuration>,
     ) -> Result<Replayed, AppError> {
         let _node = self.lock(identity).await?;
-        let scope = identity.clone();
         let fingerprints = self
-            .read(move |connection| silver_store::fingerprints(connection, &scope))
+            .read(identity, |connection| {
+                silver_store::fingerprints(connection)
+            })
             .await?;
         self.gold.delete_node_documents(identity).await?;
         let mut node = NodeGold::empty(&self.gold, identity);
@@ -44,14 +45,13 @@ impl Store {
             embeddings: 0,
         };
         for (id, fingerprint) in &fingerprints {
-            let scope = identity.clone();
             let thread = id.clone();
             let (conversation, messages) = self
-                .read(move |connection| {
+                .read(identity, move |connection| {
                     Ok((
-                        silver_store::conversation(connection, &scope, &thread)?
+                        silver_store::conversation(connection, &thread)?
                             .ok_or_else(|| AppError::internal("silver thread disappeared"))?,
-                        silver_store::thread_messages(connection, &scope, &thread)?,
+                        silver_store::thread_messages(connection, &thread)?,
                     ))
                 })
                 .await?;
