@@ -287,11 +287,7 @@ fn assert_gold_recipe_switches(config: &Path, database: &Path, models: &str) {
         }
     }
     std::fs::write(config, &build_config).unwrap();
-    let connection = open_index(database);
-    combine_gold(&connection);
-    connection
-        .execute_batch("DROP TABLE gold_manifest; PRAGMA user_version=36;")
-        .unwrap();
+    combine_gold(&open_index(database));
     let migrated = run_json(&[
         "--config",
         config.to_str().unwrap(),

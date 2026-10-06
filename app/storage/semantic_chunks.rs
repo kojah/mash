@@ -15,42 +15,6 @@ struct PackedSemanticChunk {
     vectors: Vec<u8>,
 }
 
-pub(super) fn rebuild_all_semantic_chunks(connection: &Connection) -> Result<(), AppError> {
-    connection
-        .execute("DELETE FROM semantic_chunks", [])
-        .map_err(AppError::database)?;
-    let generation = connection
-        .query_row(
-            "SELECT semantic_ready_generation FROM derived_state WHERE singleton = 1",
-            [],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .map_err(AppError::database)?;
-    let Some(generation) = generation else {
-        return Ok(());
-    };
-    let mut statement = connection
-        .prepare(
-            "SELECT DISTINCT (m.rowid - 1) / ?2
-               FROM message_embeddings e
-               JOIN messages m ON m.id = e.message_id
-              WHERE e.generation = ?1
-                AND COALESCE(m.search_projection, m.content) <> ''
-              ORDER BY 1",
-        )
-        .map_err(AppError::database)?;
-    let chunk_ids = statement
-        .query_map(params![generation, SEMANTIC_CHUNK_ROWS], |row| row.get(0))
-        .map_err(AppError::database)?
-        .collect::<Result<Vec<i64>, _>>()
-        .map_err(AppError::database)?;
-    drop(statement);
-    for chunk_id in chunk_ids {
-        rebuild_semantic_chunk(connection, chunk_id, Some(&generation))?;
-    }
-    Ok(())
-}
-
 pub(super) fn rebuild_semantic_chunk(
     connection: &Connection,
     chunk_id: i64,

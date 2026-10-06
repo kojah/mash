@@ -23,10 +23,10 @@ impl Storage {
         Self::open_readonly(path, SCHEMA_VERSION)
     }
 
-    /// Read-only preflight accepts the existing certified silver schema before
-    /// the explicit gold command adds its manifest table under the writer lock.
+    /// Read-only preflight accepts the last single-file schema, which the
+    /// explicit gold command then splits under the writer lock.
     pub(crate) fn open_certified_silver(path: &Path) -> Result<Self, AppError> {
-        Self::open_readonly(path, 36)
+        Self::open_readonly(path, super::schema::COMBINED_VERSION)
     }
 
     fn open_readonly(path: &Path, minimum_schema: i64) -> Result<Self, AppError> {

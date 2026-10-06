@@ -48,43 +48,6 @@ fn lexical_publication_survives_forget_without_a_dense_manifest() {
 }
 
 #[test]
-fn schema_upgrade_never_invents_lexical_publication_and_explicit_rebuild_recovers() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("old.sqlite3");
-    let mut writer = Storage::open_writer(&path).unwrap();
-    writer
-        .replace_conversation(&conversation("unchanged silver"))
-        .unwrap();
-    certify(&mut writer);
-    writer.commit_writer().unwrap();
-    let certificate = writer.silver_certificate().unwrap();
-    let messages = writer.view("message-1", 0).unwrap();
-    drop(writer);
-    let connection = Connection::open(&path).unwrap();
-    crate::storage::test_support::combine_gold(&connection, &path);
-    connection
-        .execute_batch("DROP TABLE lexical_manifest; PRAGMA user_version=38")
-        .unwrap();
-    drop(connection);
-    let before = std::fs::read(&path).unwrap();
-    assert!(Storage::open_lexical(&path).is_err());
-    assert_eq!(std::fs::read(&path).unwrap(), before);
-    let mut writer = Storage::open_writer(&path).unwrap();
-    assert!(writer.lexical_manifest().unwrap().is_none());
-    assert_eq!(writer.silver_certificate().unwrap(), certificate);
-    writer.refresh_derived_search_state().unwrap();
-    writer.publish_lexical_manifest().unwrap();
-    writer.commit_writer().unwrap();
-    drop(writer);
-    let reader = Storage::open_lexical(&path).unwrap();
-    assert_eq!(reader.silver_certificate().unwrap(), certificate);
-    assert_eq!(
-        serde_json::to_vec(&reader.view("message-1", 0).unwrap()).unwrap(),
-        serde_json::to_vec(&messages).unwrap()
-    );
-}
-
-#[test]
 fn exact_lexical_filters_literal_decoys_before_limit_and_never_reads_hidden_text() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("exact.sqlite3");

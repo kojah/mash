@@ -5,60 +5,6 @@ use crate::silver::{
 };
 
 #[test]
-fn previous_schema_migration_preserves_history_and_explicit_replay_restores_evidence() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("silver.sqlite3");
-    let thread = crate::storage::tests::conversation_with_messages(&[("message", "session")]);
-    let stamp = SourceStamp::file(10, 20);
-    let mut storage = Storage::open_writer(&path).unwrap();
-    storage.replace_conversation(&thread).unwrap();
-    storage
-        .record_source_checkpoint(thread.provider, &thread.source, &stamp)
-        .unwrap();
-    let before = storage.silver_certificate().unwrap();
-    let history = storage.view("message", 5).unwrap();
-    storage.commit_writer().unwrap();
-    drop(storage);
-    let connection = rusqlite::Connection::open(&path).unwrap();
-    connection
-        .execute_batch("DROP TABLE conversation_enrichment; PRAGMA user_version=37;")
-        .unwrap();
-    drop(connection);
-    let mut storage = Storage::open_writer(&path).unwrap();
-    assert_eq!(storage.silver_certificate().unwrap(), before);
-    assert_eq!(
-        serde_json::to_vec(&storage.view("message", 5).unwrap()).unwrap(),
-        serde_json::to_vec(&history).unwrap()
-    );
-    assert!(
-        storage
-            .conversation_enrichment(&thread.id)
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        !storage
-            .source_checkpoint_matches(thread.provider, &thread.source, &stamp)
-            .unwrap()
-    );
-    // Identical history can still require evidence repair after migration.
-    assert!(storage.replace_conversation(&thread).unwrap().unchanged);
-    assert!(
-        storage
-            .source_checkpoint_matches(thread.provider, &thread.source, &stamp)
-            .unwrap()
-    );
-    assert!(
-        storage
-            .conversation_enrichment(&thread.id)
-            .unwrap()
-            .unwrap()
-            .is_current()
-    );
-    assert!(storage.silver_certificate().unwrap().revision > before.revision);
-}
-
-#[test]
 fn native_history_retains_traceable_title_and_project_evidence_across_restart() {
     let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("sessions");
