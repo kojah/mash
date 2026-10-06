@@ -8,7 +8,7 @@ import numpy as np
 
 from build_input_followup import Built
 from corpus import Role
-from followup_inputs import Variant, prepare
+from followup_inputs import AnswerScope, Variant, prepare
 from study_artifacts import separate_units
 from test_turns import thread, tokenizer
 from turn_artifact import Artifact
@@ -32,7 +32,14 @@ class WindowPoints(unittest.TestCase):
         inputs = tuple(
             item
             for index in range(len(turns))
-            for item in prepare(source, turns, index, Variant.CONTEXT_MEAN, tokenizer())
+            for item in prepare(
+                source,
+                turns,
+                index,
+                Variant.CONTEXT_MEAN,
+                tokenizer(),
+                AnswerScope.LAST,
+            )
         )
         built = Built(
             thread_index=0,

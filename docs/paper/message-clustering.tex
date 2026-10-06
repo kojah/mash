@@ -1340,6 +1340,52 @@ are plausible explanations for limited gains, not established causal findings.
 External-frequency weighting, component removal and modified attention remain
 untested; no further trial or production change follows automatically.
 
+\section{Correcting incomplete assistant coverage}
+We freeze a two-trial comparison restoring all current-turn assistant segments
+in the pooled and structural views. Model, singleton inference, context selection,
+heading boundaries, smoothing (.10/four), BIRCH radius .60/cutoff .75 and membership
+union remain fixed. The 160 development histories contain 3,396 turns and 930
+decisive pairs; 121 ambiguous judgments are excluded. Confirmation remains sealed.
+The last-segment control reproduces all prior singleton uniform point matrices,
+owners and predictions exactly. It must not be confused with older partly batched
+baseline results. Source-character checks establish complete selected-answer
+coverage in both corrected views; represented assistant segments increase from
+3,350 to 15,975, and pairs with omitted evidence quotes decrease from 312 to zero.
+
+\begin{center}
+\begin{tabular}{lrrrrrrr}
+Scope & TP & FP & FN & TN & P & R & F1\\\hline
+All, last & 528 & 99 & 89 & 214 & .8421 & .8558 & .8489\\
+All, complete & 543 & 102 & 74 & 211 & .8419 & .8801 & .8605\\
+Long, last & 231 & 53 & 83 & 190 & .8134 & .7357 & .7726\\
+Long, complete & 246 & 58 & 68 & 185 & .8092 & .7834 & .7961\\
+\end{tabular}
+\end{center}
+
+Paired thread-bootstrap intervals (2,000 resamples) for F1 gain are
+[-.00123, .02647] overall and [.00141, .04990] for long histories. Overall gain
+remains uncertain; the long-history interval is positive on this development
+benchmark. Long related pairs recover 20 misses and introduce five new misses.
+For 144 long related pairs separated by at least four positions, misses decrease
+from 67 to 57 (recall .5347 to .6042). Long false positives increase from 53 to 58.
+Both configurations still fail the .85 precision acceptance gate. Completeness
+fixes the input contract and partially improves long-range recall, rather than
+establishing production acceptance or explaining every error.
+
+Pooled input windows increase from 8,231 to 9,534 and structural points from
+19,950 to 34,105. Summed input tokens increase from 3.87M to 5.40M; the variants
+encode 8,213 and 18,269 new distinct cache entries, respectively. Summed build
+times are 460.25 and 995.02 seconds; summed fit times are 4.05 and 7.21 seconds.
+Total construction takes 24:29.81 with peak RSS 1,060,528 KiB; scoring including
+quote audits/bootstrap takes 59.17 seconds with peak RSS 1,059,608 KiB.
+Shared-host filesystem contention limits timing interpretation. The running build
+keeps its original eight-vector cache transactions; the later 128-vector durable
+checkpoint optimization does not alter this run. Six original builder sources
+are archived with verified contract hashes. Twelve fresh singleton probes from
+four histories reproduce newly included cached vectors exactly. The earlier
+full-answer window trial used a different representation pipeline and does not
+replace this controlled comparison. No denoising, new labels or tuning are added.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt

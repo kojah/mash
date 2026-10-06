@@ -8,6 +8,7 @@ from tokenizers import Tokenizer
 
 from corpus import Record, Role, Thread
 from followup_inputs import (
+    AnswerScope,
     Input,
     Text,
     concat,
@@ -166,6 +167,7 @@ def prepare_structured(
     current: int,
     mode: Mode,
     tokenizer: Tokenizer,
+    answer_scope: AnswerScope = AnswerScope.ALL,
 ) -> tuple[Prepared, ...]:
     turn = turns[current]
     parent, context_id = context_prefix(thread, turns, current, tokenizer)
@@ -173,8 +175,10 @@ def prepare_structured(
         index for index in turn.answers if thread.messages[index].projection.strip()
     )
     selected = tuple((Role.USER, lean_prompt(thread, index)) for index in turn.prompts)
-    if answers:
-        selected += ((Role.ASSISTANT, source_text(thread, answers[-1])),)
+    selected_answers = answers[-1:] if answer_scope == AnswerScope.LAST else answers
+    selected += tuple(
+        (Role.ASSISTANT, source_text(thread, i)) for i in selected_answers
+    )
     result = []
     for role, text in selected:
         parsed = blocks(text.text)

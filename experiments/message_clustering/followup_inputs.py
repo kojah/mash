@@ -23,6 +23,11 @@ class Variant(StrEnum):
     CONTEXT_TARGET = "context_current_prompt"
 
 
+class AnswerScope(StrEnum):
+    ALL = "all"
+    LAST = "last"
+
+
 class Reply(Record):
     questionItemId: str
     answer: str
@@ -178,21 +183,34 @@ def windows(
     budget: int,
     overlap: int = 32,
     first_only: bool = False,
+    preserve_edges: bool = False,
 ) -> tuple[Text, ...]:
     """Same budget/retokenization rule as turns.windows, with nonzero source origins."""
     if budget <= overlap or overlap < 0:
         raise ValueError("window budget must exceed overlap")
     offsets = tokenizer.encode(text.text, add_special_tokens=False).offsets
+    if not offsets:
+        return (text,) if preserve_edges and text.text.strip() else ()
+
+    def piece(start: int, stop: int) -> Text:
+        left = 0 if preserve_edges and start == 0 else offsets[start][0]
+        right = (
+            len(text.text)
+            if preserve_edges and stop == len(offsets)
+            else offsets[stop - 1][1]
+        )
+        return text.slice(left, right)
+
     result = []
     start = 0
     while start < len(offsets):
         stop = min(start + budget, len(offsets))
-        part = text.slice(offsets[start][0], offsets[stop - 1][1])
+        part = piece(start, stop)
         while len(tokenizer.encode(part.text, add_special_tokens=False).ids) > budget:
             stop -= 1
             if stop <= start:
                 raise ValueError("source token cannot fit budget")
-            part = text.slice(offsets[start][0], offsets[stop - 1][1])
+            part = piece(start, stop)
         result.append(part)
         if first_only or stop == len(offsets):
             break
@@ -253,6 +271,7 @@ def prepare(
     current: int,
     variant: Variant,
     tokenizer: Tokenizer,
+    answer_scope: AnswerScope = AnswerScope.ALL,
 ) -> tuple[Input, ...]:
     if variant == Variant.RAW:
         raise ValueError("raw control must use frozen original matrices")
@@ -261,9 +280,10 @@ def prepare(
     answer_indices = tuple(
         index for index in turn.answers if thread.messages[index].projection.strip()
     )
-    answer = (
-        source_text(thread, answer_indices[-1]) if answer_indices else Text(text="")
+    selected_answers = (
+        answer_indices[-1:] if answer_scope == AnswerScope.LAST else answer_indices
     )
+    answer = concat(tuple(source_text(thread, i) for i in selected_answers))
     prefix, context_id = (
         (Text(text=""), None)
         if variant == Variant.LEAN
@@ -275,7 +295,12 @@ def prepare(
         (Role.USER, prompt, 506 - prefix_tokens if prefix.text else 510),
         (Role.ASSISTANT, answer, 510),
     ):
-        for part in windows(tokenizer, text, budget):
+        for part in windows(
+            tokenizer,
+            text,
+            budget,
+            preserve_edges=answer_scope == AnswerScope.ALL and role == Role.ASSISTANT,
+        ):
             included = prefix if role == Role.USER else Text(text="")
             content = concat((included, part), separator="")
             target = (

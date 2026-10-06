@@ -12,7 +12,7 @@ import orjson
 
 from clustering import VectorMatrix, normalized_vectors
 from corpus import Record, Role
-from followup_inputs import Input, Variant, prepare
+from followup_inputs import AnswerScope, Input, Variant, prepare
 from local_encoder import Encoder
 from study_artifacts import View
 from turn_artifact import SelectedText, Store, generation
@@ -120,7 +120,12 @@ def main(
                         for index, turn in enumerate(all_turns)
                         if turn.prompts
                         for item in prepare(
-                            thread, all_turns, index, variant, encoder.tokenizer
+                            thread,
+                            all_turns,
+                            index,
+                            variant,
+                            encoder.tokenizer,
+                            AnswerScope.LAST,
                         )
                     )
 

@@ -5,7 +5,7 @@ from tokenizers import Tokenizer
 from analyze_input_followup import validate_input_sources
 from build_structure_followup import check_coverage
 from corpus import Record, Role, Thread
-from followup_inputs import Input, Text, concat, lean_prompt, windows
+from followup_inputs import AnswerScope, Input, Text, concat, lean_prompt, windows
 from local_encoder import Selection
 from structure_chunks import Kind, Prepared, bounded, tokens
 from turns import Turn
@@ -115,7 +115,11 @@ def condition(
     frozen = tuple(result)
     validate(frozen, owners, thread, turns)
     check_coverage(
-        tuple(u.input for u in original), tuple(u.body for u in frozen), thread, turns
+        tuple(u.input for u in original),
+        tuple(u.body for u in frozen),
+        thread,
+        turns,
+        AnswerScope.LAST,
     )
     return frozen
 

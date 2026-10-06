@@ -6,6 +6,7 @@ from corpus import Role
 from followup_inputs import (
     CLOSE_REPLY,
     OPEN_REPLY,
+    AnswerScope,
     Variant,
     ancestor,
     lean_prompt,
@@ -84,7 +85,7 @@ class FollowupInputs(unittest.TestCase):
             turns = extract(changed)
             self.assertIsNone(ancestor(changed, turns, 1))
 
-    def test_context_windows_preserve_current_tokens_and_select_only_last_answer(self):
+    def test_context_windows_preserve_current_tokens_and_all_answer_segments(self):
         source = thread(
             (Role.USER, Role.ASSISTANT, Role.USER, Role.ASSISTANT, Role.ASSISTANT),
             (
@@ -123,13 +124,22 @@ class FollowupInputs(unittest.TestCase):
                         else:
                             self.assertLessEqual(located.end, item.target.start)
             else:
-                self.assertEqual(item.content.text, "final selected segment")
+                self.assertIn("intermediate update", item.content.text)
+                self.assertIn("final selected segment", item.content.text)
         self.assertTrue(
             all(
                 i in covered
                 for i, c in enumerate(source.messages[2].projection)
                 if not c.isspace()
             )
+        )
+
+        legacy = prepare(
+            source, turns, 1, Variant.CONTEXT_TARGET, tokenizer(), AnswerScope.LAST
+        )
+        self.assertEqual(
+            [i.content.text for i in legacy if i.role == Role.ASSISTANT],
+            ["final selected segment"],
         )
 
 

@@ -4,7 +4,7 @@ import unittest
 
 from build_structure_followup import check_coverage
 from corpus import Role
-from followup_inputs import Input, Variant, prepare, source_text
+from followup_inputs import AnswerScope, Input, Variant, prepare, source_text
 from test_turns import thread, tokenizer
 from turns import extract
 
@@ -39,7 +39,9 @@ class CoverageContracts(unittest.TestCase):
             ("Question", "Intermediate answer", "Final answer"),
         )
         turns = extract(source)
-        original = prepare(source, turns, 0, Variant.CONTEXT_MEAN, tokenizer())
+        original = prepare(
+            source, turns, 0, Variant.CONTEXT_MEAN, tokenizer(), AnswerScope.LAST
+        )
         added = Input(
             turn_id=turns[0].id,
             role=Role.ASSISTANT,
@@ -47,7 +49,28 @@ class CoverageContracts(unittest.TestCase):
             tokens=2,
         )
         with self.assertRaises(ValueError):
-            check_coverage(original, original + (added,), source, turns)
+            check_coverage(
+                original, original + (added,), source, turns, AnswerScope.LAST
+            )
+
+    def test_default_coverage_requires_earlier_explanation_code_and_final_status(self):
+        source = thread(
+            (Role.USER, Role.ASSISTANT, Role.ASSISTANT, Role.ASSISTANT),
+            (
+                "Explain the index",
+                "Detailed explanation",
+                "```rust\nlet index = build();\n```",
+                "Done",
+            ),
+        )
+        turns = extract(source)
+        complete = prepare(source, turns, 0, Variant.CONTEXT_MEAN, tokenizer())
+        check_coverage(complete, complete, source, turns)
+        legacy = prepare(
+            source, turns, 0, Variant.CONTEXT_MEAN, tokenizer(), AnswerScope.LAST
+        )
+        with self.assertRaises(ValueError):
+            check_coverage(legacy, legacy, source, turns)
 
 
 if __name__ == "__main__":

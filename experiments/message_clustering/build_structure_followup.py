@@ -12,7 +12,14 @@ import orjson
 from analyze_input_followup import validate_input_sources
 from build_input_followup import Built, import_cache
 from corpus import Record, Thread
-from followup_inputs import Input, Variant, lean_prompt, prepare, source_text
+from followup_inputs import (
+    AnswerScope,
+    Input,
+    Variant,
+    lean_prompt,
+    prepare,
+    source_text,
+)
 from local_encoder import Encoder
 from structure_chunks import Mode, Prepared, prepare_structured
 from turn_artifact import Store
@@ -51,6 +58,7 @@ def check_coverage(
     current: tuple[Input, ...],
     thread: Thread,
     turns: tuple[Turn, ...],
+    answer_scope: AnswerScope = AnswerScope.ALL,
 ) -> None:
     """Preserve selected sources, including markers omitted by old token offsets."""
     for turn in turns:
@@ -62,8 +70,8 @@ def check_coverage(
             for source in turn.answers
             if thread.messages[source].projection.strip()
         )
-        if answers:
-            selected += (source_text(thread, answers[-1]),)
+        selected_answers = answers[-1:] if answer_scope == AnswerScope.LAST else answers
+        selected += tuple(source_text(thread, i) for i in selected_answers)
         for source in turn.sources:
             text = thread.messages[source].projection
             nonwhite = np.fromiter(
@@ -135,6 +143,7 @@ def main(
                     index,
                     Variant.CONTEXT_MEAN,
                     encoder.tokenizer,
+                    AnswerScope.LAST,
                 )
             )
             if control != frozen.inputs or owners != frozen.turn_ids:
@@ -146,12 +155,19 @@ def main(
                     for index, turn in enumerate(thread.turns)
                     if turn.prompts
                     for unit in prepare_structured(
-                        thread.thread, thread.turns, index, mode, encoder.tokenizer
+                        thread.thread,
+                        thread.turns,
+                        index,
+                        mode,
+                        encoder.tokenizer,
+                        AnswerScope.LAST,
                     )
                 )
                 inputs = tuple(unit.input for unit in units)
                 validate_input_sources(inputs, owners, thread.thread, thread.turns)
-                check_coverage(control, inputs, thread.thread, thread.turns)
+                check_coverage(
+                    control, inputs, thread.thread, thread.turns, AnswerScope.LAST
+                )
                 if set(owners) != {item.turn_id for item in inputs}:
                     raise ValueError(
                         "structured inputs do not cover every prompted turn"
