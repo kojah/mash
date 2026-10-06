@@ -1,6 +1,6 @@
 //! Authenticated pooled HTTP transport and typed read endpoints.
 use super::{Freshness, protocol};
-use crate::{AppError, config::SharedConfig, storage::Message};
+use crate::{AppError, config::SharedConfig, records::Message};
 use serde::Serialize;
 use std::{sync::LazyLock, time::Duration};
 use tokio::sync::{Semaphore, SemaphorePermit};
@@ -336,7 +336,7 @@ pub(crate) async fn view(
             node_id: node.to_owned(),
             id: id.to_owned(),
             context,
-            content: crate::storage::MessageContent::Canonical,
+            content: crate::records::MessageContent::Canonical,
         },
     )
     .await

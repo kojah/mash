@@ -5,7 +5,7 @@ use super::protocol::{
 use super::server::Identity;
 use super::validation::{conflict, valid_id};
 use crate::provider::Provider;
-use crate::storage::Counts;
+use crate::records::Counts;
 use crate::{AppError, semantic};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

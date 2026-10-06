@@ -1,7 +1,7 @@
 use crate::provider::Provider;
 use serde::{Deserialize, Serialize};
 
-use crate::storage::{Counts, SearchHit};
+use crate::records::{Counts, SearchHit};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -353,9 +353,9 @@ pub(super) struct View {
     pub context: u32,
     #[serde(
         default,
-        skip_serializing_if = "crate::storage::MessageContent::is_canonical"
+        skip_serializing_if = "crate::records::MessageContent::is_canonical"
     )]
-    pub content: crate::storage::MessageContent,
+    pub content: crate::records::MessageContent,
 }
 
 /// A bounded search-only batch; the explicit view API retains larger radii.
@@ -370,7 +370,7 @@ pub(super) struct Contexts {
 pub(super) enum ContextResult {
     Complete {
         index: usize,
-        messages: Vec<crate::storage::Message>,
+        messages: Vec<crate::records::Message>,
     },
     Failed {
         index: usize,

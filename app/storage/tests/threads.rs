@@ -1,5 +1,6 @@
 use super::super::generated::ListThreads;
 use super::*;
+use crate::provider::Provider;
 
 fn catalog() -> (tempfile::TempDir, Storage) {
     let directory = tempfile::tempdir().unwrap();

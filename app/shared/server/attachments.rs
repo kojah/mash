@@ -29,7 +29,7 @@ async fn known(
                 node_id: input.node_id.clone(),
                 id: input.message_id.clone(),
                 context: 0,
-                content: crate::storage::MessageContent::Canonical,
+                content: crate::records::MessageContent::Canonical,
             },
         )
         .await?;
