@@ -68,9 +68,17 @@ impl Fixture {
             generation: crate::semantic::model_space("test", 4),
             dimensions: 4,
         };
-        let store = Store::connect(&url, None, &[group], 4, 64 * 1024 * 1024, index, memory)
-            .await
-            .unwrap();
+        let store = Store::connect(
+            &url,
+            None,
+            &[group],
+            4,
+            64 * 1024 * 1024,
+            index,
+            memory.into(),
+        )
+        .await
+        .unwrap();
         store.select_gold(&identity, false).await.unwrap();
         Self {
             store,
@@ -443,7 +451,7 @@ async fn qdrant_reopen_without_activation_and_failed_upload_preserve_published_d
         8,
         64 * 1024 * 1024,
         VectorIndex::default(),
-        MemoryTier::Cached,
+        MemoryTier::Cached.into(),
     )
     .await
     .unwrap();
@@ -458,7 +466,7 @@ async fn qdrant_reopen_without_activation_and_failed_upload_preserve_published_d
         4,
         64 * 1024 * 1024,
         VectorIndex::Hnsw { ef_runtime: 200 },
-        MemoryTier::Cached,
+        MemoryTier::Cached.into(),
     )
     .await
     .unwrap();
@@ -548,7 +556,7 @@ async fn qdrant_rejects_old_server_before_writes_and_sends_key_only_to_origin() 
         4,
         1024,
         VectorIndex::default(),
-        MemoryTier::Cached,
+        MemoryTier::Cached.into(),
     )
     .await;
     let error = result

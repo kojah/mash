@@ -64,7 +64,7 @@ async fn qdrant_group_query_activation_preserves_gold_and_silver_across_processe
         4,
         64 * 1024 * 1024,
         VectorIndex::default(),
-        MemoryTier::Cached,
+        MemoryTier::Cached.into(),
     )
     .await
     .unwrap();
@@ -505,7 +505,7 @@ async fn qdrant_group_gold_bootstrap_race_selects_one_configuration_and_reopens_
         4,
         64 * 1024 * 1024,
         VectorIndex::default(),
-        MemoryTier::Cached,
+        MemoryTier::Cached.into(),
     )
     .await
     .unwrap();
@@ -528,7 +528,7 @@ async fn qdrant_group_gold_bootstrap_race_selects_one_configuration_and_reopens_
         4,
         64 * 1024 * 1024,
         VectorIndex::default(),
-        MemoryTier::Cached,
+        MemoryTier::Cached.into(),
     )
     .await
     .unwrap()

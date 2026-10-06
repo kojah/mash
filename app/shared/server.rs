@@ -376,10 +376,18 @@ pub(crate) async fn run(
     path: &Path,
     activate_gold: bool,
     activate_query: bool,
+    activate_memory: bool,
 ) -> Result<(), AppError> {
     let config = configuration::load(path).await?;
     let identities = configuration::identities(&config)?;
-    let store = store::initialize(&config, &identities, activate_gold, activate_query).await?;
+    let store = store::initialize(
+        &config,
+        &identities,
+        activate_gold,
+        activate_query,
+        activate_memory,
+    )
+    .await?;
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| AppError::configuration("could not bind HTTP listener"))?;

@@ -170,6 +170,9 @@ enum Command {
         /// Explicitly replace persisted shared group query defaults without indexing.
         #[arg(long)]
         activate_query: bool,
+        /// Explicitly apply the configured durable/cached/cold Qdrant placement.
+        #[arg(long)]
+        activate_memory: bool,
     },
 }
 
@@ -393,12 +396,14 @@ where
         server_config,
         activate_gold,
         activate_query,
+        activate_memory,
     } = cli.command
     {
         runtime.block_on(crate::shared::server::run(
             &server_config,
             activate_gold,
             activate_query,
+            activate_memory,
         ))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp { watch, debounce_ms } = cli.command {

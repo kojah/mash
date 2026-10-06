@@ -1057,7 +1057,7 @@ qdrant_url_env = "MASH_QDRANT_URL"
 # Optional for an authenticated Qdrant service:
 # qdrant_api_key_env = "MASH_QDRANT_API_KEY"
 qdrant_max_node_mib = 64
-qdrant_memory = "cached" # Or "cold" for vectors and dense/sparse indexes without prewarming.
+qdrant_memory = "durable" # Default: pinned HNSW/sparse indexes, cached dense vectors, cold payloads.
 
 [[nodes]]
 group_id = "personal"
@@ -1122,14 +1122,37 @@ Use an HTTPS origin and `qdrant_api_key_env` for hosted Qdrant. Endpoints cannot
 contain credentials, paths, queries or fragments; redirects are disabled so keys
 are not forwarded elsewhere. Qdrant credentials belong only on the HTTP server.
 Populating a new shared group requires an explicit `mash index` from each publishing node.
-`qdrant_memory` selects the Qdrant 1.19+ `cached` (default) or `cold` tier for
-dense vectors, the HNSW index and the sparse lexical index in new message
-collections. Startup validates reported placement on existing collections;
-changing the setting requires a new group and explicit reindexing. Mash does
-not automatically migrate or rebuild collections. Cold storage still uses the
-operating system's page cache, and payload indexes and snapshot publication have
-their own memory costs. Lower peak RAM and search latency need workload-specific
-measurement; see [Qdrant's storage documentation](https://qdrant.tech/documentation/manage-data/storage/).
+`qdrant_memory` selects a durable Qdrant 1.19+ storage profile. The default,
+`durable`, pins HNSW and sparse indexes in RAM, preloads dense vectors into the
+OS cache and keeps payloads cold on disk; search reads payloads only for returned
+hits. Qdrant 1.19 cannot pin dense vectors or payloads. Database files and the
+write-ahead log remain on persistent disk. Cached dense vectors can still be
+evicted under memory pressure; this is not a volatile RAM filesystem and does
+not eliminate ingestion/optimizer disk writes.
+
+The explicit `cached` profile preserves the previous placement: cached dense,
+HNSW and sparse indexes with cold payloads. `cold` uses cold placement for those
+components. Payload filter indexes retain Qdrant's own defaults. Pinning requires
+enough RAM for the indexes, and optimizer conversion can temporarily increase
+resource use.
+
+Changing a profile on an existing group requires explicit activation:
+
+```bash
+mash serve --server-config /absolute/path/to/qdrant-server.toml --activate-memory
+```
+
+Mash validates the existing vector geometry, graph settings and payload schema
+before updating placement. It preserves publications, canonical history, vectors
+and retrieval policy; no reindexing is required. Activation can be rerun after
+interruption. Subsequent starts with the selected profile omit the flag. Other
+API processes must use the same configured profile when restarted.
+
+Qdrant independently applies conversions through its optimizer, so the configured
+policy can be visible before conversion finishes. Its
+[memory-tier documentation](https://qdrant.tech/documentation/ops-configuration/memory-tiers/)
+describes residency and low-memory behavior. Lower peak RAM and search latency
+need workload-specific measurement.
 
 Each group has an isolated message collection with named cosine dense vectors
 and IDF-weighted sparse lexical vectors, plus a metadata collection for canonical

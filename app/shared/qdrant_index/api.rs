@@ -1,5 +1,5 @@
 //! Small typed REST boundary; credentials and upstream bodies never enter errors.
-use super::{AppError, MemoryTier, failure};
+use super::{AppError, MemoryPolicy, MemoryTier, PAYLOAD_MEMORY, PhysicalMemory, failure};
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
@@ -285,25 +285,33 @@ struct Hnsw {
 #[derive(Serialize, Deserialize)]
 struct Placement {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    memory: Option<MemoryTier>,
+    memory: Option<PhysicalMemory>,
     // Qdrant may still report this deprecated field; explicit memory takes precedence.
     #[serde(default, skip_serializing)]
     on_disk: Option<bool>,
 }
 
 impl Placement {
-    fn new(memory: MemoryTier) -> Self {
+    fn new(memory: PhysicalMemory) -> Self {
         Self {
             memory: Some(memory),
             on_disk: None,
         }
     }
 
-    fn matches(&self, expected: MemoryTier) -> bool {
+    fn matches(&self, expected: PhysicalMemory) -> bool {
         self.memory.unwrap_or(if self.on_disk == Some(true) {
-            MemoryTier::Cold
+            PhysicalMemory::Cold
         } else {
-            MemoryTier::Cached
+            PhysicalMemory::Cached
+        }) == expected
+    }
+
+    fn matches_sparse(&self, expected: PhysicalMemory) -> bool {
+        self.memory.unwrap_or(if self.on_disk == Some(true) {
+            PhysicalMemory::Cold
+        } else {
+            PhysicalMemory::Pinned
         }) == expected
     }
 }
@@ -315,6 +323,7 @@ struct Create {
     hnsw_config: Hnsw,
     #[serde(skip_serializing_if = "Option::is_none")]
     optimizers_config: Option<planner::Optimizers>,
+    payload: Placement,
 }
 #[derive(Deserialize)]
 struct Info {
@@ -343,6 +352,21 @@ struct Parameters {
     vectors: BTreeMap<String, DenseConfig>,
     #[serde(default)]
     sparse_vectors: Option<BTreeMap<String, SparseConfig>>,
+    #[serde(default)]
+    payload: Option<Placement>,
+    #[serde(default)]
+    on_disk_payload: Option<bool>,
+}
+impl Parameters {
+    fn payload_memory(&self) -> PhysicalMemory {
+        self.payload.as_ref().and_then(|p| p.memory).unwrap_or(
+            if self.on_disk_payload == Some(false) {
+                PhysicalMemory::Cached
+            } else {
+                PhysicalMemory::Cold
+            },
+        )
+    }
 }
 #[derive(Serialize)]
 struct PayloadIndex<'a> {
@@ -355,6 +379,36 @@ fn schema_fields(
     dimensions: Option<usize>,
     memory: MemoryTier,
 ) -> Result<&'static [(&'static str, &'static str)], AppError> {
+    schema_fields_mode(info, dimensions, memory, true)
+}
+
+fn memory_matches(info: &Info, dimensions: Option<usize>, memory: MemoryTier) -> bool {
+    info.config.params.payload_memory() == PAYLOAD_MEMORY
+        && (dimensions.is_none()
+            || (info
+                .config
+                .params
+                .vectors
+                .values()
+                .all(|v| v.placement.matches(memory.dense()))
+                && info.config.hnsw_config.placement.matches(memory.index())
+                && info.config.params.sparse_vectors.as_ref().is_some_and(|s| {
+                    s.get("lexical").is_some_and(|v| {
+                        v.index
+                            .as_ref()
+                            .map_or(memory.index() == PhysicalMemory::Pinned, |p| {
+                                p.matches_sparse(memory.index())
+                            })
+                    })
+                })))
+}
+
+fn schema_fields_mode(
+    info: &Info,
+    dimensions: Option<usize>,
+    memory: MemoryTier,
+    check_memory: bool,
+) -> Result<&'static [(&'static str, &'static str)], AppError> {
     let vectors = &info.config.params.vectors;
     let valid = if let Some(dimensions) = dimensions {
         dense_name(info, dimensions).is_some()
@@ -362,7 +416,7 @@ fn schema_fields(
             && vectors.iter().all(|(name, v)| {
                 (name == "dense" || name == &format!("dense_{}", v.size))
                     && (1..=2048).contains(&v.size)
-                    && v.placement.matches(memory)
+                    && v.placement.memory != Some(PhysicalMemory::Pinned)
                     && v.distance == "Cosine"
                     && v.quantization_config.is_none()
                     && v.hnsw_config.is_none()
@@ -370,17 +424,10 @@ fn schema_fields(
                     && v.datatype.as_deref().is_none_or(|t| t == "float32")
             })
             && info.config.params.sparse_vectors.as_ref().is_some_and(|s| {
-                s.len() == 1
-                    && s.get("lexical").is_some_and(|v| {
-                        v.modifier == "idf"
-                            && v.index
-                                .as_ref()
-                                .map_or(memory == MemoryTier::Cached, |p| p.matches(memory))
-                    })
+                s.len() == 1 && s.get("lexical").is_some_and(|v| v.modifier == "idf")
             })
             && info.config.hnsw_config.m == 16
             && info.config.hnsw_config.ef_construct == 200
-            && info.config.hnsw_config.placement.matches(memory)
             && info.config.quantization_config.is_none()
     } else {
         vectors.is_empty()
@@ -391,7 +438,7 @@ fn schema_fields(
                 .as_ref()
                 .is_none_or(BTreeMap::is_empty)
     };
-    if !valid {
+    if !valid || info.config.params.payload_memory() == PhysicalMemory::Pinned {
         return Err(AppError::configuration(
             "existing Qdrant collection has incompatible schema; choose a new group_id",
         ));
@@ -414,6 +461,22 @@ fn schema_fields(
     } else {
         &[("kind", "keyword"), ("version", "keyword")]
     };
+    for &(name, kind) in fields {
+        if info
+            .payload_schema
+            .get(name)
+            .is_some_and(|f| f.data_type != kind)
+        {
+            return Err(AppError::configuration(
+                "existing Qdrant payload index has incompatible schema; choose a new group_id",
+            ));
+        }
+    }
+    if check_memory && !memory_matches(info, dimensions, memory) {
+        return Err(AppError::configuration(
+            "existing Qdrant collection has a different memory policy; use mash serve --activate-memory to change placement without reindexing",
+        ));
+    }
     Ok(fields)
 }
 
@@ -590,8 +653,9 @@ impl Client {
         &self,
         name: &str,
         dimensions: Option<usize>,
-        memory: MemoryTier,
+        policy: MemoryPolicy,
     ) -> Result<Option<String>, AppError> {
+        let memory = policy.tier;
         let path = format!("collections/{name}");
         let exists = self
             .http
@@ -606,7 +670,7 @@ impl Client {
                     DenseConfig {
                         size,
                         distance: "Cosine".into(),
-                        placement: Placement::new(memory),
+                        placement: Placement::new(memory.dense()),
                         quantization_config: None,
                         hnsw_config: None,
                         multivector_config: None,
@@ -619,7 +683,7 @@ impl Client {
                     "lexical".into(),
                     SparseConfig {
                         modifier: "idf".into(),
-                        index: Some(Placement::new(memory)),
+                        index: Some(Placement::new(memory.index())),
                     },
                 )])
             });
@@ -630,14 +694,18 @@ impl Client {
                     m: 16,
                     ef_construct: 200,
                     full_scan_threshold: dimensions.map(|_| planner::FULL_SCAN_KIB),
-                    placement: Placement::new(memory),
+                    placement: Placement::new(memory.index()),
                 },
                 optimizers_config: dimensions.map(|_| planner::Optimizers::search_default()),
+                payload: Placement::new(PAYLOAD_MEMORY),
             };
             // A second API process may create the same collection. Always inspect it afterward.
             let _: Result<bool, _> = self.call(Method::PUT, &path, Some(&create)).await;
         } else if !exists.status().is_success() {
             return Err(failure());
+        }
+        if policy.activate {
+            self.activate_memory(&path, dimensions, memory).await?;
         }
         let info = self.prepare_dense(&path, dimensions, memory).await?;
         let fields = schema_fields(&info, dimensions, memory)?;
@@ -663,6 +731,75 @@ impl Client {
         }
         Ok(dimensions.and_then(|size| dense_name(&info, size)))
     }
+    async fn activate_memory(
+        &self,
+        path: &str,
+        dimensions: Option<usize>,
+        memory: MemoryTier,
+    ) -> Result<(), AppError> {
+        #[derive(Serialize)]
+        struct PayloadParams {
+            payload: Placement,
+        }
+        #[derive(Serialize)]
+        struct SparsePlacement {
+            index: Placement,
+        }
+        #[derive(Serialize)]
+        struct Update {
+            params: PayloadParams,
+            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+            vectors: BTreeMap<String, Placement>,
+            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+            sparse_vectors: BTreeMap<String, SparsePlacement>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            hnsw_config: Option<Placement>,
+        }
+        let info: Info = self.call(Method::GET, path, None::<&()>).await?;
+        // Validate the current dimension before adding a requested named vector.
+        let existing = dimensions
+            .map(|_| {
+                info.config
+                    .params
+                    .vectors
+                    .get("dense")
+                    .map(|v| v.size)
+                    .ok_or_else(failure)
+            })
+            .transpose()?;
+        schema_fields_mode(&info, existing, memory, false)?;
+        if memory_matches(&info, existing, memory) {
+            return Ok(());
+        }
+        let update = Update {
+            params: PayloadParams {
+                payload: Placement::new(PAYLOAD_MEMORY),
+            },
+            vectors: info
+                .config
+                .params
+                .vectors
+                .keys()
+                .map(|name| (name.clone(), Placement::new(memory.dense())))
+                .collect(),
+            sparse_vectors: if dimensions.is_some() {
+                BTreeMap::from([(
+                    "lexical".into(),
+                    SparsePlacement {
+                        index: Placement::new(memory.index()),
+                    },
+                )])
+            } else {
+                BTreeMap::new()
+            },
+            hnsw_config: dimensions.map(|_| Placement::new(memory.index())),
+        };
+        let _: bool = self.call(Method::PATCH, path, Some(&update)).await?;
+        let info: Info = self.call(Method::GET, path, None::<&()>).await?;
+        schema_fields(&info, existing, memory)?;
+        Ok(())
+    }
+
     async fn prepare_dense(
         &self,
         path: &str,
@@ -694,14 +831,14 @@ impl Client {
                 && memory == MemoryTier::Cold
                 && info.config.params.vectors[&name]
                     .placement
-                    .matches(MemoryTier::Cached)
+                    .matches(PhysicalMemory::Cached)
             {
                 info.config
                     .params
                     .vectors
                     .get_mut(&name)
                     .ok_or_else(failure)?
-                    .placement = Placement::new(memory);
+                    .placement = Placement::new(memory.dense());
                 schema_fields(&info, Some(size), memory)?;
                 self.set_dense_memory(path, name, memory).await?;
                 info = self.call(Method::GET, path, None::<&()>).await?;
@@ -752,7 +889,7 @@ impl Client {
                 Method::PATCH,
                 path,
                 Some(&Update {
-                    vectors: BTreeMap::from([(name, Placement::new(memory))]),
+                    vectors: BTreeMap::from([(name, Placement::new(memory.dense()))]),
                 }),
             )
             .await?;

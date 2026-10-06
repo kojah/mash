@@ -89,7 +89,7 @@ async fn qdrant_rejects_incompatible_physical_graph_without_resetting_or_republi
             4,
             64 * 1024 * 1024,
             policy,
-            MemoryTier::Cached,
+            MemoryTier::Cached.into(),
         )
         .await
         .err()

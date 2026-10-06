@@ -119,7 +119,7 @@ fn legacy() -> serde_json::Value {
         "config": {
             "params": {
                 "vectors": {"dense": {"size":4, "distance":"Cosine"}},
-                "sparse_vectors": {"lexical": {"modifier":"idf"}}
+                "sparse_vectors": {"lexical": {"modifier":"idf", "index":{"memory":"cached"}}}
             },
             "hnsw_config": {"m":16, "ef_construct":200, "on_disk":false}
         },
@@ -187,10 +187,41 @@ fn memory_schema_checks_each_component_and_preserves_legacy_cached_collections()
 fn explicit_memory_precedes_deprecated_on_disk_without_accepting_unknown_tiers() {
     let placement: Placement =
         serde_json::from_str(r#"{"memory":"cold","on_disk":false}"#).unwrap();
-    assert!(placement.matches(MemoryTier::Cold));
+    assert!(placement.matches(PhysicalMemory::Cold));
     let placement: Placement = serde_json::from_str(r#"{"on_disk":true}"#).unwrap();
-    assert!(placement.matches(MemoryTier::Cold));
+    assert!(placement.matches(PhysicalMemory::Cold));
     assert!(serde_json::from_str::<Placement>(r#"{"memory":"unknown"}"#).is_err());
+}
+
+#[test]
+fn durable_profile_pins_indexes_caches_dense_vectors_and_keeps_payloads_cold() {
+    assert_eq!(MemoryTier::default(), MemoryTier::Durable);
+    assert_eq!(MemoryTier::Durable.dense(), PhysicalMemory::Cached);
+    assert_eq!(MemoryTier::Durable.index(), PhysicalMemory::Pinned);
+    assert_eq!(PAYLOAD_MEMORY, PhysicalMemory::Cold);
+    let mut document = legacy();
+    document["config"]["params"]["payload"] = serde_json::json!({"memory":"cold"});
+    document["config"]["params"]["sparse_vectors"]["lexical"]["index"] =
+        serde_json::json!({"memory":"pinned"});
+    document["config"]["hnsw_config"]["memory"] = "pinned".into();
+    let info: Info = serde_json::from_value(document.clone()).unwrap();
+    assert!(schema_fields(&info, Some(4), MemoryTier::Durable).is_ok());
+    assert!(schema_fields(&info, Some(4), MemoryTier::Cached).is_err());
+    document["config"]["params"]["vectors"]["dense"]["memory"] = "pinned".into();
+    let invalid: Info = serde_json::from_value(document).unwrap();
+    assert!(schema_fields_mode(&invalid, Some(4), MemoryTier::Durable, false).is_err());
+}
+
+#[test]
+fn memory_activation_preflight_rejects_foreign_vector_and_payload_schemas() {
+    let mut document = legacy();
+    document["payload_schema"]["node_id"] = serde_json::json!({"data_type":"integer"});
+    let info: Info = serde_json::from_value(document).unwrap();
+    assert!(schema_fields_mode(&info, Some(4), MemoryTier::Durable, false).is_err());
+    let mut document = legacy();
+    document["config"]["params"]["vectors"]["dense"]["distance"] = "Dot".into();
+    let info: Info = serde_json::from_value(document).unwrap();
+    assert!(schema_fields_mode(&info, Some(4), MemoryTier::Durable, false).is_err());
 }
 
 #[test]

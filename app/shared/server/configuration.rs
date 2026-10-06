@@ -209,6 +209,22 @@ pub(super) async fn load(path: &Path) -> Result<Configuration, AppError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn durable_memory_is_default_and_profiles_are_strict() {
+        let default: super::Configuration = toml::from_str("version=1\nnodes=[]").unwrap();
+        assert_eq!(
+            default.qdrant_memory,
+            super::qdrant_index::MemoryTier::Durable
+        );
+        for profile in ["durable", "cached", "cold"] {
+            let text = format!("version=1\nnodes=[]\nqdrant_memory='{profile}'");
+            assert!(toml::from_str::<super::Configuration>(&text).is_ok());
+        }
+        for profile in ["ram", "pinned", "disk"] {
+            let text = format!("version=1\nnodes=[]\nqdrant_memory='{profile}'");
+            assert!(toml::from_str::<super::Configuration>(&text).is_err());
+        }
+    }
     use super::*;
 
     #[test]

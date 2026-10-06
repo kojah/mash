@@ -10,6 +10,7 @@ pub(super) async fn initialize(
     identities: &HashMap<blake3::Hash, Identity>,
     activate_gold: bool,
     activate_query: bool,
+    activate_memory: bool,
 ) -> Result<Store, AppError> {
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
     let groups = groups.into_iter().collect::<Vec<_>>();
@@ -42,7 +43,10 @@ pub(super) async fn initialize(
                 AppError::configuration("Qdrant snapshot limit exceeds platform capacity")
             })?,
         config.gold.query.vector_search,
-        config.qdrant_memory,
+        crate::shared::qdrant_index::MemoryPolicy {
+            tier: config.qdrant_memory,
+            activate: activate_memory,
+        },
     )
     .await?
     .with_snapshot_budget(budget)

@@ -43,7 +43,7 @@ async fn qdrant_freshness_revokes_source_certificate_after_forget() {
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_dimension_switch_preserves_silver_lexical_and_restart_recovery() {
-    for memory in [MemoryTier::Cached, MemoryTier::Cold] {
+    for memory in [MemoryTier::Cached, MemoryTier::Cold, MemoryTier::Durable] {
         dimension_switch(memory).await;
     }
 }
@@ -82,7 +82,7 @@ async fn dimension_switch(memory: MemoryTier) {
             8,
             64 * 1024 * 1024,
             VectorIndex::default(),
-            memory,
+            memory.into(),
         )
     };
     let prepared = connect().await.unwrap();

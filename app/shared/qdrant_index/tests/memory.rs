@@ -18,6 +18,7 @@ struct Config {
 struct Parameters {
     vectors: Dense,
     sparse_vectors: Sparse,
+    payload: Placement,
 }
 #[derive(Deserialize)]
 struct Dense {
@@ -33,7 +34,7 @@ struct SparseIndex {
 }
 #[derive(Deserialize)]
 struct Placement {
-    memory: MemoryTier,
+    memory: PhysicalMemory,
 }
 
 async fn reopen(
@@ -48,7 +49,7 @@ async fn reopen(
         4,
         64 * 1024 * 1024,
         index,
-        memory,
+        memory.into(),
     )
     .await
 }
@@ -69,9 +70,69 @@ async fn assert_policy(fixture: &Fixture, memory: MemoryTier) {
         .await
         .unwrap();
     let config = response.result.config;
-    assert_eq!(config.params.vectors.dense.memory, memory);
-    assert_eq!(config.params.sparse_vectors.lexical.index.memory, memory);
-    assert_eq!(config.hnsw_config.memory, memory);
+    assert_eq!(config.params.vectors.dense.memory, memory.dense());
+    assert_eq!(
+        config.params.sparse_vectors.lexical.index.memory,
+        memory.index()
+    );
+    assert_eq!(config.hnsw_config.memory, memory.index());
+    assert_eq!(config.params.payload.memory, PAYLOAD_MEMORY);
+}
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
+async fn durable_memory_activation_preserves_publications_and_is_idempotent() {
+    let fixture = Fixture::with_memory(VectorIndex::default(), MemoryTier::Cached).await;
+    fixture
+        .store
+        .index(&fixture.identity, fixture.file(1, "original"))
+        .await
+        .unwrap();
+    let before =
+        serde_json::to_vec(&fixture.store.freshness(&fixture.identity).await.unwrap()).unwrap();
+    assert!(
+        reopen(&fixture, VectorIndex::default(), MemoryTier::Durable)
+            .await
+            .is_err()
+    );
+    for _ in 0..2 {
+        let upgraded = Store::connect(
+            &fixture.url,
+            None,
+            std::slice::from_ref(&fixture.identity.group_id),
+            4,
+            64 * 1024 * 1024,
+            VectorIndex::default(),
+            MemoryPolicy {
+                tier: MemoryTier::Durable,
+                activate: true,
+            },
+        )
+        .await
+        .unwrap();
+        assert_policy(&fixture, MemoryTier::Durable).await;
+        assert_eq!(
+            before,
+            serde_json::to_vec(&upgraded.freshness(&fixture.identity).await.unwrap()).unwrap()
+        );
+        assert_eq!(
+            upgraded.status(&fixture.identity).await.unwrap().messages,
+            2
+        );
+        assert_filters_and_context(&fixture).await;
+    }
+    let reopened = reopen(&fixture, VectorIndex::default(), MemoryTier::Durable)
+        .await
+        .unwrap();
+    reopened
+        .index(&fixture.identity, fixture.file(2, "changed"))
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened.status(&fixture.identity).await.unwrap().messages,
+        2
+    );
+    fixture.cleanup().await;
 }
 
 async fn assert_filters_and_context(fixture: &Fixture) {
@@ -116,7 +177,7 @@ async fn assert_filters_and_context(fixture: &Fixture) {
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
 async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch_and_forget() {
-    for memory in [MemoryTier::Cached, MemoryTier::Cold] {
+    for memory in [MemoryTier::Cached, MemoryTier::Cold, MemoryTier::Durable] {
         for index in [VectorIndex::Exact {}, VectorIndex::Hnsw { ef_runtime: 200 }] {
             let fixture = Fixture::with_memory(index, memory).await;
             fixture
@@ -151,7 +212,7 @@ async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch
             );
             let opposite = match memory {
                 MemoryTier::Cached => MemoryTier::Cold,
-                MemoryTier::Cold => MemoryTier::Cached,
+                MemoryTier::Cold | MemoryTier::Durable => MemoryTier::Cached,
             };
             let error = reopen(&fixture, index, opposite).await.err().unwrap();
             assert!(matches!(error.error.kind, crate::ErrorKind::Configuration));

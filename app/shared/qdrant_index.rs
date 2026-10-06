@@ -20,8 +20,51 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 pub(super) enum MemoryTier {
     #[default]
+    Durable,
     Cached,
     Cold,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum PhysicalMemory {
+    Cached,
+    Cold,
+    Pinned,
+}
+
+/// Payloads are read only for returned hits; every profile keeps them cold on disk.
+const PAYLOAD_MEMORY: PhysicalMemory = PhysicalMemory::Cold;
+
+impl MemoryTier {
+    fn dense(self) -> PhysicalMemory {
+        if self == Self::Cold {
+            PhysicalMemory::Cold
+        } else {
+            PhysicalMemory::Cached
+        }
+    }
+    fn index(self) -> PhysicalMemory {
+        if self == Self::Durable {
+            PhysicalMemory::Pinned
+        } else {
+            self.dense()
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub(super) struct MemoryPolicy {
+    pub(super) tier: MemoryTier,
+    pub(super) activate: bool,
+}
+impl From<MemoryTier> for MemoryPolicy {
+    fn from(tier: MemoryTier) -> Self {
+        Self {
+            tier,
+            activate: false,
+        }
+    }
 }
 
 pub(super) use crate::gold::vector::Search as VectorIndex;
@@ -213,14 +256,14 @@ impl Store {
         dimensions: usize,
         max_node_bytes: usize,
         vector_index: VectorIndex,
-        memory: MemoryTier,
+        memory: MemoryPolicy,
     ) -> Result<Self, AppError> {
         vector_index.validate()?;
         let api = api::Client::new(url, key, max_node_bytes)?;
         api.verify_version().await?;
         let mut dense_names = std::collections::BTreeMap::new();
         for group in groups {
-            api.initialize(&collection(group, true), None, MemoryTier::Cached)
+            api.initialize(&collection(group, true), None, memory)
                 .await?;
             let name = api
                 .initialize(&collection(group, false), Some(dimensions), memory)
