@@ -173,6 +173,9 @@ enum Command {
         /// Explicitly apply the configured durable/cached/cold Qdrant placement.
         #[arg(long)]
         activate_memory: bool,
+        /// Rebuild all shared gold from shared silver before serving.
+        #[arg(long)]
+        replay_gold: bool,
     },
 }
 
@@ -397,13 +400,18 @@ where
         activate_gold,
         activate_query,
         activate_memory,
+        replay_gold,
     } = cli.command
     {
+        let models = cli.models_dir.unwrap_or_else(default_models_path);
         runtime.block_on(crate::shared::server::run(
             &server_config,
-            activate_gold,
-            activate_query,
-            activate_memory,
+            crate::shared::server::Activation {
+                gold: activate_gold,
+                query: activate_query,
+                memory: activate_memory,
+            },
+            replay_gold.then_some(models.as_path()),
         ))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp { watch, debounce_ms } = cli.command {

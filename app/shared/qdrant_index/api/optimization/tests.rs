@@ -196,11 +196,8 @@ async fn readiness_probe_scans_published_vectors_without_message_payloads() {
                     assert_eq!(input.limit, if *count == 0 { 1 } else { 200 });
                     assert!(!input.with_payload);
                     assert_eq!(input.filter.must.len(), 1);
-                    assert_eq!(input.filter.must[0].key, "version");
-                    assert_eq!(
-                        input.filter.must[0].r#match.any,
-                        ["published-version", "other-node-version"]
-                    );
+                    assert_eq!(input.filter.must[0].key, "node_id");
+                    assert_eq!(input.filter.must[0].r#match.any, ["node", "other-node"]);
                     *count += 1;
                     r#"{"status":"ok","result":{"points":[{"id":"point","score":0.5}]}}"#
                 },
@@ -220,7 +217,7 @@ async fn readiness_probe_scans_published_vectors_without_message_payloads() {
             "test",
             "dense",
             4,
-            &["published-version".into(), "other-node-version".into()],
+            &["node".into(), "other-node".into()],
             VectorIndex::Hnsw { ef_runtime: 80 },
         )
         .await

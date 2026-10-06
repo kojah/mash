@@ -52,7 +52,7 @@ impl Client {
         name: &str,
         using: &str,
         dimensions: usize,
-        versions: &[String],
+        nodes: &[String],
         policy: VectorIndex,
     ) -> Result<(), AppError> {
         let mut vector = vec![0.0; dimensions];
@@ -64,7 +64,7 @@ impl Client {
             query: super::QueryVector::Dense(vector),
             using: using.into(),
             filter: super::Filter {
-                must: vec![super::matches("version", versions.to_vec())],
+                must: vec![super::matches("node_id", nodes.to_vec())],
                 ..super::Filter::default()
             },
             params: super::Params {

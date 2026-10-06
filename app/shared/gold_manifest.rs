@@ -1,4 +1,4 @@
-//! Durable build evidence attached to the single published node revision.
+//! Gold build evidence reported for one node's current silver revision.
 use super::silver_revision::State;
 use crate::gold::config::Build;
 use serde::{Deserialize, Serialize};
@@ -11,21 +11,6 @@ pub(super) struct Manifest {
     pub(super) build: Build,
     pub(super) model_generation: String,
     pub(super) silver: State,
-}
-
-pub(super) fn publication(
-    source_build: Option<&Build>,
-    checked: bool,
-    previous: Option<&super::snapshot::Head>,
-    identity: &super::server::Identity,
-    silver: &State,
-) -> Option<Manifest> {
-    let build = if checked {
-        source_build.cloned()
-    } else {
-        previous.and_then(|h| h.gold_manifest.as_ref().map(|m| m.build.clone()))
-    };
-    build.map(|build| Manifest::new(build, identity.generation.clone(), silver.clone()))
 }
 
 impl Manifest {

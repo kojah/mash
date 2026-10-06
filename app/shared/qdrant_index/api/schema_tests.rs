@@ -78,14 +78,18 @@ async fn awaited_mutations_outlive_read_deadlines_without_replaying_requests() {
                     vector: Vectors::default(),
                     payload: (),
                 }],
-                update_filter: None,
-                update_mode: None,
             },
         )
         .await
         .unwrap();
     client
-        .delete_versions("test", &["old".into()])
+        .delete_filtered(
+            "test",
+            Filter {
+                must: vec![matches("node_id", vec!["old".into()])],
+                ..Filter::default()
+            },
+        )
         .await
         .unwrap();
     assert!(
@@ -101,17 +105,6 @@ async fn awaited_mutations_outlive_read_deadlines_without_replaying_requests() {
     );
     server.abort();
     let _ = server.await;
-}
-
-#[test]
-fn ordinal_matches_preserve_integers_above_float_precision() {
-    let condition = integers("message.ordinal", vec![9_007_199_254_740_993, i64::MAX]);
-    let value = serde_json::to_value(condition).unwrap();
-    assert_eq!(
-        value["match"]["any"][0].as_i64(),
-        Some(9_007_199_254_740_993)
-    );
-    assert_eq!(value["match"]["any"][1].as_i64(), Some(i64::MAX));
 }
 
 fn legacy() -> serde_json::Value {

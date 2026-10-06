@@ -1,5 +1,9 @@
 # Qdrant publication recovery and staging retention
 
+> Superseded on 2026-10-06: shared silver moved to SQLite and Qdrant now holds
+> only rebuildable gold. See [shared storage](shared-storage.md). The staging
+> and conditional-publication behavior below no longer exists.
+
 An ambiguous publication error now retains the candidate's immutable staging
 data until completion is known. An immediate read of the old node head is not
 proof that the pending conditional update cannot publish later.

@@ -20,7 +20,6 @@ mod restart;
 mod selections;
 mod silver_revision;
 mod silver_scans;
-mod snapshot_budget;
 mod source_silver;
 mod threads;
 
@@ -330,6 +329,7 @@ async fn remote_space_contract(service: Service) {
 
 struct Service {
     _attachments: tempfile::TempDir,
+    _silver: tempfile::TempDir,
     url: String,
     group: String,
     task: tokio::task::JoinHandle<()>,
@@ -534,22 +534,6 @@ impl Service {
         max_node_bytes: usize,
         first_token: &str,
     ) -> Self {
-        Self::with_budget(
-            available,
-            dimensions,
-            max_node_bytes,
-            first_token,
-            crate::shared::snapshot_budget::Budget::default(),
-        )
-        .await
-    }
-    async fn with_budget(
-        available: bool,
-        dimensions: usize,
-        max_node_bytes: usize,
-        first_token: &str,
-        budget: crate::shared::snapshot_budget::Budget,
-    ) -> Self {
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
         } else {
@@ -560,22 +544,21 @@ impl Service {
             "api-{}",
             directory.path().file_name().unwrap().to_string_lossy()
         );
-        let store = if available {
-            Store::connect(
+        let gold = if available {
+            super::super::qdrant_index::Store::connect(
                 &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
                 None,
                 &[group.clone(), format!("{group}-other")],
                 dimensions,
-                max_node_bytes,
+                64 * 1024 * 1024,
                 super::super::qdrant_index::VectorIndex::default(),
                 super::super::qdrant_index::MemoryPolicy::default(),
             )
             .await
             .unwrap()
         } else {
-            Store::unavailable()
-        }
-        .with_snapshot_budget(budget);
+            super::super::qdrant_index::Store::unavailable()
+        };
         let identities = Arc::new(HashMap::from([
             (
                 blake3::hash(first_token.as_bytes()),
@@ -607,9 +590,18 @@ impl Service {
         ]));
         if available {
             for identity in identities.values() {
-                store.select_gold(identity, false).await.unwrap();
+                gold.select_gold(identity, false).await.unwrap();
             }
         }
+        let store = if available {
+            let silver = super::super::silver_store::SilverStore::open(
+                &directory.path().join("silver.sqlite3"),
+            )
+            .unwrap();
+            Store::new(silver, gold, max_node_bytes as u64)
+        } else {
+            Store::unavailable()
+        };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let uploads = Arc::new(tokio::sync::Semaphore::new(4));
@@ -625,6 +617,7 @@ impl Service {
         });
         Self {
             _attachments: attachments,
+            _silver: directory,
             url,
             group,
             task,
@@ -667,7 +660,7 @@ impl Service {
             for suffix in ["state", "messages"] {
                 reqwest::Client::new()
                     .delete(format!(
-                        "{}/collections/mash_q_{}_{suffix}",
+                        "{}/collections/mash_gold_{}_{suffix}",
                         std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
                         blake3::hash(group.as_bytes()).to_hex()
                     ))

@@ -1,13 +1,8 @@
-//! Dependency-checked reuse of shared gold, without another canonical body copy.
-use super::{
-    protocol::{self, ConversationRecord, MessageRecord},
-    server::Identity,
-    snapshot::{Data, Head, Loaded},
-    validation::conflict,
-};
-use crate::{AppError, gold::config::Build};
+//! Publication plans and the silver dependency fingerprint used for gold reuse.
+use super::protocol::{ConversationRecord, MessageRecord};
+use crate::{AppError, gold::config::Build, message_context::MessageContext, role::Role};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::io::Write;
 
 const SCHEMA_VERSION: u32 = 1;
@@ -39,35 +34,22 @@ impl Target {
     }
 
     pub(super) fn new(
-        loaded: &Loaded,
-        identity: &Identity,
         build: Build,
-    ) -> Result<Self, AppError> {
-        let threads = if build.dense_enabled() {
-            eligible(loaded, identity, &build)?
-        } else {
-            BTreeMap::new()
-        };
-        let mut target = Self::metadata(loaded.head.as_ref(), &loaded.expected, identity, build);
-        target.threads = threads;
-        Ok(target)
-    }
-
-    pub(super) fn metadata(
-        head: Option<&Head>,
-        version: &str,
-        identity: &Identity,
-        build: Build,
+        generation: String,
+        dimensions: usize,
+        version: String,
+        head: Option<(String, i64)>,
+        threads: BTreeMap<String, String>,
     ) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             build,
-            generation: identity.generation.clone(),
-            dimensions: identity.dimensions,
-            publication_version: version.to_owned(),
-            instance: head.map(|h| h.instance.clone()),
-            publication_revision: head.map_or(0, |h| h.revision),
-            threads: BTreeMap::new(),
+            generation,
+            dimensions,
+            publication_version: version,
+            instance: head.as_ref().map(|(instance, _)| instance.clone()),
+            publication_revision: head.map_or(0, |(_, revision)| revision),
+            threads,
         }
     }
 }
@@ -130,134 +112,35 @@ impl Fingerprint {
     }
 }
 
-pub(super) fn fingerprints(data: &Data) -> Result<BTreeMap<String, String>, AppError> {
-    let mut rows = Vec::with_capacity(data.messages.len());
-    for (id, message) in &data.messages {
-        if id != &message.id || !data.conversations.contains_key(&message.conversation_id) {
-            return Err(AppError::shared(
-                "invalid shared thread dependency identity",
-            ));
-        }
-        rows.push(message);
-    }
-    rows.sort_unstable_by(|a, b| {
-        (&a.conversation_id, a.ordinal, &a.id).cmp(&(&b.conversation_id, b.ordinal, &b.id))
-    });
-    let mut rows = rows.into_iter().peekable();
-    let mut hashes = BTreeMap::new();
-    for (id, conversation) in &data.conversations {
-        if id != &conversation.id {
-            return Err(AppError::shared("invalid shared conversation identity"));
-        }
-        let mut fingerprint = Fingerprint::new(conversation)?;
-        while let Some(message) = rows.next_if(|m| &m.conversation_id == id) {
-            fingerprint.push(message)?;
-        }
-        hashes.insert(id.clone(), fingerprint.finish());
-    }
-    Ok(hashes)
+#[derive(Serialize)]
+pub(in crate::shared) struct MessageRef<'a> {
+    #[serde(skip_serializing_if = "<[crate::attachments::Metadata]>::is_empty")]
+    attachments: &'a [crate::attachments::Metadata],
+    id: &'a str,
+    conversation_id: &'a str,
+    ordinal: i64,
+    #[serde(skip_serializing_if = "MessageContext::is_linear")]
+    context: MessageContext,
+    role: &'a Role,
+    content: &'a str,
+    projection: &'a str,
+    created_at: Option<i64>,
 }
 
-fn eligible(
-    loaded: &Loaded,
-    identity: &Identity,
-    build: &Build,
-) -> Result<BTreeMap<String, String>, AppError> {
-    let compatible = loaded.head.as_ref().is_some_and(|head| {
-        head.gold_manifest
-            .as_ref()
-            .is_some_and(|m| m.matches(build, &identity.generation, head.silver_revision.as_ref()))
-    });
-    if !compatible {
-        return Ok(BTreeMap::new());
-    }
-    let mut hashes = fingerprints(&loaded.data)?;
-    for message in loaded
-        .data
-        .messages
-        .values()
-        .filter(|m| build.includes_dense(&m.role, &m.projection))
-    {
-        if message.generation.as_deref() != Some(&identity.generation)
-            || message
-                .vector
-                .as_ref()
-                .is_none_or(|v| !protocol::valid_vector(v, identity.dimensions))
-        {
-            hashes.remove(&message.conversation_id);
+impl MessageRecord {
+    /// Canonical fields only; vectors and model identity are never silver.
+    pub(in crate::shared) fn silver_ref(&self) -> MessageRef<'_> {
+        MessageRef {
+            attachments: &self.attachments,
+            id: &self.id,
+            conversation_id: &self.conversation_id,
+            ordinal: self.ordinal,
+            context: self.context,
+            role: &self.role,
+            content: &self.content,
+            projection: &self.projection,
+            created_at: self.created_at,
         }
-    }
-    Ok(hashes)
-}
-
-#[derive(Default)]
-pub(super) struct Retained {
-    build: Build,
-    hashes: BTreeMap<String, String>,
-    vectors: BTreeMap<String, Vec<f64>>,
-    requests: BTreeSet<String>,
-}
-
-impl Retained {
-    pub(super) fn take(
-        loaded: &mut Loaded,
-        identity: &Identity,
-        build: &Build,
-    ) -> Result<Self, AppError> {
-        let hashes = eligible(loaded, identity, build)?;
-        let mut vectors = BTreeMap::new();
-        for message in loaded.data.messages.values_mut() {
-            if hashes.contains_key(&message.conversation_id)
-                && let Some(vector) = message.vector.take()
-            {
-                vectors.insert(message.id.clone(), vector);
-            }
-        }
-        Ok(Self {
-            build: build.clone(),
-            hashes,
-            vectors,
-            requests: BTreeSet::new(),
-        })
-    }
-
-    pub(super) fn request(&mut self, id: String, fingerprint: &str) -> Result<(), AppError> {
-        if !valid_fingerprint(fingerprint)
-            || self.hashes.get(&id).is_none_or(|hash| hash != fingerprint)
-            || !self.requests.insert(id)
-        {
-            return Err(conflict("shared gold reuse is unverified; retry indexing"));
-        }
-        Ok(())
-    }
-
-    pub(super) fn restore(mut self, data: &mut Data, identity: &Identity) -> Result<(), AppError> {
-        if self.requests.is_empty() {
-            return Ok(());
-        }
-        let incoming = fingerprints(data)?;
-        for id in &self.requests {
-            if incoming.get(id) != self.hashes.get(id) {
-                return Err(conflict("shared gold dependencies changed; retry indexing"));
-            }
-        }
-        for message in data.messages.values_mut().filter(|m| {
-            self.requests.contains(&m.conversation_id)
-                && self.build.includes_dense(&m.role, &m.projection)
-        }) {
-            if message.vector.is_some() || message.generation.is_some() {
-                return Err(AppError::usage(
-                    "reused thread also supplies gold embeddings",
-                ));
-            }
-            let vector = self
-                .vectors
-                .remove(&message.id)
-                .ok_or_else(|| conflict("missing retained shared embedding"))?;
-            message.vector = Some(vector);
-            message.generation = Some(identity.generation.clone());
-        }
-        Ok(())
     }
 }
 

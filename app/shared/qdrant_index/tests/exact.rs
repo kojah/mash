@@ -1,27 +1,6 @@
 use super::*;
 use crate::gold::readiness::State;
 
-async fn assert_artifact_states(fixture: &Fixture, corrupt: u8) {
-    let freshness = fixture.store.freshness(&fixture.identity).await.unwrap();
-    let artifacts = freshness.nodes[0].artifacts.as_ref().unwrap();
-    assert_eq!(
-        artifacts.lexical,
-        if corrupt == 0 {
-            State::Missing
-        } else {
-            State::Stale
-        }
-    );
-    assert_eq!(
-        artifacts.metadata,
-        if matches!(corrupt, 1 | 2) {
-            State::Stale
-        } else {
-            State::Ready
-        }
-    );
-}
-
 fn exact_query(fixture: &Fixture, text: &str) -> protocol::Search {
     let mut query = fixture.query();
     query.intent = crate::gold::exact::Intent::ExactMention;
@@ -31,12 +10,36 @@ fn exact_query(fixture: &Fixture, text: &str) -> protocol::Search {
     query
 }
 
-async fn head(fixture: &Fixture, head: NodeHead) {
-    fixture.replace_node(head).await;
+async fn lexical(fixture: &Fixture, server: &Server, text: &str) -> usize {
+    server
+        .search(&fixture.identity, exact_query(fixture, text))
+        .await
+        .unwrap()
+        .lexical
+        .len()
 }
 
-async fn assert_recipe_independent_lexical(fixture: &Fixture) {
-    let other_recipe = fixture
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_exact_search_follows_silver_and_survives_recipe_changes() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    assert!(
+        fixture
+            .server
+            .freshness(&fixture.identity)
+            .await
+            .unwrap()
+            .nodes
+            .is_empty()
+    );
+    fixture
+        .server
+        .index(&fixture.identity, fixture.file(1, "retained"))
+        .await
+        .unwrap();
+    assert_eq!(lexical(&fixture, &fixture.server, "retained").await, 2);
+    // Recipe changes affect dense retrieval, not lexical documents.
+    let other = fixture
         .store
         .clone()
         .with_build(crate::gold::config::Build {
@@ -47,123 +50,37 @@ async fn assert_recipe_independent_lexical(fixture: &Fixture) {
             text_preparation: crate::gold::config::TextPreparation::Preserve,
             embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
         });
-    other_recipe
+    other.select_gold(&fixture.identity, true).await.unwrap();
+    let switched = fixture.serve(other);
+    assert_eq!(lexical(&fixture, &switched, "retained").await, 2);
+    let artifacts = switched.freshness(&fixture.identity).await.unwrap().nodes[0]
+        .artifacts
+        .clone()
+        .unwrap();
+    assert_eq!(artifacts.lexical, State::Ready);
+    assert_eq!(artifacts.dense, State::Stale);
+    assert!(
+        switched
+            .search(&fixture.identity, fixture.query())
+            .await
+            .is_err(),
+        "dense search fails closed for incompatible gold"
+    );
+    fixture
+        .store
         .select_gold(&fixture.identity, true)
         .await
         .unwrap();
-    assert_eq!(
-        other_recipe
-            .search(&fixture.identity, exact_query(fixture, "retained"))
-            .await
-            .unwrap()
-            .lexical
-            .len(),
-        2
-    );
+    // Edits replace documents in place; old text is no longer searchable.
     fixture
-        .store
-        .select_gold(&fixture.identity, true)
-        .await
-        .unwrap();
-}
-
-#[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_exact_readiness_rejects_stale_artifacts_and_unpublished_staging() {
-    let fixture = Fixture::new(VectorIndex::default()).await;
-    assert!(
-        fixture
-            .store
-            .freshness(&fixture.identity)
-            .await
-            .unwrap()
-            .nodes
-            .is_empty()
-    );
-    fixture
-        .store
-        .index(&fixture.identity, fixture.file(1, "retained"))
-        .await
-        .unwrap();
-    let published = fixture.store.node(&fixture.identity).await.unwrap();
-    let mut staging = fixture.store.load(&fixture.identity).await.unwrap().data;
-    for message in staging.messages.values_mut() {
-        message.projection = "needle unpublished".into();
-    }
-    let encoded =
-        crate::shared::snapshot::Encoded::new(&staging.layers(), 64 * 1024 * 1024).unwrap();
-    fixture
-        .store
-        .stage(&fixture.identity, &staging, &encoded, "unpublished-version")
-        .await
-        .unwrap();
-    assert!(
-        fixture
-            .store
-            .search(&fixture.identity, exact_query(&fixture, "unpublished"))
-            .await
-            .unwrap()
-            .lexical
-            .is_empty()
-    );
-    // Recipe changes affect dense retrieval, not a current lexical artifact.
-    assert_recipe_independent_lexical(&fixture).await;
-    for corrupt in 0..4 {
-        let mut changed = published.clone();
-        let evidence = changed.head.as_mut().unwrap();
-        match corrupt {
-            0 => evidence.lexical_manifest = None,
-            1 => evidence.metadata_ready = false,
-            2 => evidence.catalog_ready = false,
-            _ => {
-                let silver = crate::shared::silver_revision::State::next(
-                    evidence.silver_revision.as_ref(),
-                    "a".repeat(64),
-                )
-                .unwrap();
-                evidence.lexical_manifest =
-                    Some(crate::shared::lexical_manifest::Manifest::new(silver));
-            }
-        }
-        head(&fixture, changed).await;
-        assert_artifact_states(&fixture, corrupt).await;
-        let error = fixture
-            .store
-            .search(&fixture.identity, exact_query(&fixture, "retained"))
-            .await
-            .err()
-            .unwrap();
-        assert!(error.error.message.contains("lexical artifact"));
-    }
-    head(&fixture, published.clone()).await;
-    fixture
-        .store
+        .server
         .index(&fixture.identity, fixture.file(2, "changed"))
         .await
         .unwrap();
-    let result = fixture
-        .store
-        .search(&fixture.identity, exact_query(&fixture, "changed"))
-        .await
-        .unwrap();
-    assert_eq!(result.lexical.len(), 2);
-    let current = fixture.store.node(&fixture.identity).await.unwrap();
-    let evidence = current.head.as_ref().unwrap();
-    assert!(
-        evidence
-            .lexical_manifest
-            .as_ref()
-            .unwrap()
-            .matches(evidence.silver_revision.as_ref())
-    );
-    assert!(
-        fixture
-            .store
-            .search(&fixture.identity, exact_query(&fixture, "retained"))
-            .await
-            .unwrap()
-            .lexical
-            .is_empty()
-    );
+    assert_eq!(lexical(&fixture, &fixture.server, "changed").await, 2);
+    assert_eq!(lexical(&fixture, &fixture.server, "retained").await, 0);
+    let freshness = fixture.server.freshness(&fixture.identity).await.unwrap();
+    assert!(freshness.nodes[0].lexical_current);
+    assert!(freshness.nodes[0].gold_current);
     fixture.cleanup().await;
 }

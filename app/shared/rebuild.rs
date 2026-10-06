@@ -3,9 +3,8 @@ use super::{
     client::{self, Endpoint},
     gold_rebuild::{Embedding, Event},
     protocol, publication,
-    silver_read::Retained,
+    silver_read::{Message, Retained},
     silver_revision,
-    snapshot::layers::Message,
 };
 use crate::{
     AppError,

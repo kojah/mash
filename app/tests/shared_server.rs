@@ -53,10 +53,12 @@ impl Server {
                 }
             })
             .collect();
+        let silver = root.join("silver.sqlite3").to_str().unwrap().to_owned();
         let mut config = toml::toml! {
             version = 1
             listen = "127.0.0.1:0"
             qdrant_url_env = "MASH_TEST_QDRANT_URL"
+            silver_database = silver
             nodes = (credentials)
         };
         config.insert(
@@ -153,15 +155,13 @@ fn server_rejects_unknown_gold_recipe_and_fields_before_backend_access() {
 }
 
 #[test]
-fn server_rejects_invalid_mutation_snapshot_budget_before_backend_access() {
-    for budget in [0, 65537] {
-        let config = format!("version=1\nmax_mutation_snapshot_mib={budget}\n{STARTUP_NODE}");
-        assert_startup_rejected(
-            config.as_bytes(),
-            &[("MASH_STARTUP_TOKEN_A", STARTUP_TOKEN)],
-            "max_mutation_snapshot_mib must be between 1 and 65536",
-        );
-    }
+fn server_rejects_relative_silver_database_before_backend_access() {
+    let config = format!("version=1\nsilver_database='relative/silver.sqlite3'\n{STARTUP_NODE}");
+    assert_startup_rejected(
+        config.as_bytes(),
+        &[("MASH_STARTUP_TOKEN_A", STARTUP_TOKEN)],
+        "silver_database must be an absolute path",
+    );
 }
 
 #[tokio::test]
@@ -183,7 +183,7 @@ async fn qdrant_default_server_configuration_starts_and_creates_group_collection
     let mut statuses = Vec::new();
     for kind in ["state", "messages"] {
         let collection = format!(
-            "mash_q_{}_{}",
+            "mash_gold_{}_{}",
             blake3::hash(group.as_bytes()).to_hex(),
             kind
         );
@@ -309,14 +309,8 @@ fn server_rejects_invalid_configuration_before_connecting() {
             "version = 1\nmax_concurrent_uploads = 17",
             "max_concurrent_uploads",
         ),
-        (
-            "version = 1\nqdrant_max_node_mib = 0",
-            "qdrant_max_node_mib",
-        ),
-        (
-            "version = 1\nqdrant_max_node_mib = 4097",
-            "qdrant_max_node_mib",
-        ),
+        ("version = 1\nmax_upload_mib = 0", "max_upload_mib"),
+        ("version = 1\nmax_upload_mib = 4097", "max_upload_mib"),
         (
             "version = 1\n[embeddings]\nmodel = 'test'\ndimensions = 0",
             "invalid server embedding",
@@ -434,7 +428,10 @@ pub fn cleanup_group(group: &str) {
         let origin = std::env::var("MASH_TEST_QDRANT_URL").unwrap();
         let client = reqwest::Client::new();
         for kind in ["state", "messages"] {
-            let collection = format!("mash_q_{}_{kind}", blake3::hash(group.as_bytes()).to_hex());
+            let collection = format!(
+                "mash_gold_{}_{kind}",
+                blake3::hash(group.as_bytes()).to_hex()
+            );
             client
                 .delete(format!(
                     "{}/collections/{collection}",

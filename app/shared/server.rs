@@ -15,7 +15,7 @@ mod admission;
 mod attachments;
 mod configuration;
 mod contexts;
-mod store;
+pub(super) mod store;
 mod upload;
 
 use super::protocol;
@@ -372,22 +372,37 @@ async fn index(
         .await?,
     ))
 }
+/// Explicit operator changes applied before serving.
+pub(crate) struct Activation {
+    pub(crate) gold: bool,
+    pub(crate) query: bool,
+    pub(crate) memory: bool,
+}
+
 pub(crate) async fn run(
     path: &Path,
-    activate_gold: bool,
-    activate_query: bool,
-    activate_memory: bool,
+    activation: Activation,
+    replay_models: Option<&Path>,
 ) -> Result<(), AppError> {
     let config = configuration::load(path).await?;
     let identities = configuration::identities(&config)?;
     let store = store::initialize(
         &config,
         &identities,
-        activate_gold,
-        activate_query,
-        activate_memory,
+        activation.gold,
+        activation.query,
+        activation.memory,
     )
     .await?;
+    if let Some(models) = replay_models {
+        let remote = config.embeddings.remote()?;
+        let mut nodes = identities.values().collect::<Vec<_>>();
+        nodes.sort_by(|a, b| (&a.group_id, &a.node_id).cmp(&(&b.group_id, &b.node_id)));
+        for identity in nodes {
+            let replayed = store.replay(identity, models, remote.as_ref()).await?;
+            crate::write_json(&mut std::io::stderr(), &replayed)?;
+        }
+    }
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| AppError::configuration("could not bind HTTP listener"))?;

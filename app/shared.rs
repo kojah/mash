@@ -1,6 +1,6 @@
-//! HTTP transport, publication coordination and storage adapters for both layers.
-//! Silver/gold snapshot schemas live in snapshot/layers.rs; gold builders live
-//! in gold/shared.rs. Backends atomically persist and query their declared views.
+//! HTTP transport, publication coordination and shared storage. The server keeps
+//! silver in SQLite (`silver_store`) and derived, replayable gold in Qdrant
+//! (`qdrant_index`); gold builders live in `gold/shared.rs`.
 use serde::{Deserialize, Serialize};
 
 // Full-history upload, validation and staging share one bounded request budget.
@@ -24,8 +24,7 @@ pub(crate) mod server;
 mod silver_coverage;
 mod silver_read;
 mod silver_revision;
-mod snapshot;
-mod snapshot_budget;
+mod silver_store;
 mod validation;
 
 pub(crate) use client::{freshness, list_threads, view};

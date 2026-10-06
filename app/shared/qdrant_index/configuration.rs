@@ -1,20 +1,9 @@
-//! Durable group authority. Activation is explicit; stale processes fail closed.
+//! Group gold settings. Changing them is an explicit operator activation.
 use super::{AppError, Identity, PointKind, Store, api, collection, failure, point_id};
 use crate::gold::config::Build;
-use crate::shared::validation::conflict;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
-mod catalogue;
-mod migration;
-pub(super) use catalogue::ready_nodes as catalogue_nodes;
-
-#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub(super) enum Phase {
-    Migrating,
-    Ready,
-}
+const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -25,24 +14,11 @@ pub(super) struct Configuration {
     pub(super) build: Build,
     pub(super) generation: String,
     pub(super) dimensions: usize,
-    #[serde(default = "missing_vector_search")]
     pub(super) vector_search: super::VectorIndex,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) publication: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) phase: Option<Phase>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) nodes: Option<BTreeMap<String, super::NodeHead>>,
-}
-
-// Missing fields in persisted catalogues retain their original retrieval policy.
-// New server configurations use HNSW; changing existing authority is explicit.
-fn missing_vector_search() -> super::VectorIndex {
-    super::VectorIndex::Exact {}
 }
 
 impl Configuration {
-    pub(super) fn matches(&self, store: &Store, identity: &Identity) -> bool {
+    fn matches(&self, store: &Store, identity: &Identity) -> bool {
         self.build == store.build
             && self.generation == identity.generation
             && self.dimensions == identity.dimensions
@@ -51,7 +27,9 @@ impl Configuration {
     fn validate(&self) -> Result<(), AppError> {
         self.vector_search.validate().map_err(|_| failure())?;
         if self.kind != PointKind::Configuration
-            || !valid_version(&self.version)
+            || self.schema_version != SCHEMA_VERSION
+            || self.version.len() != 64
+            || !self.version.bytes().all(|b| b.is_ascii_hexdigit())
             || self.generation.is_empty()
             || self.generation.len() > 1024
             || self.generation.chars().any(char::is_control)
@@ -59,29 +37,14 @@ impl Configuration {
         {
             return Err(failure());
         }
-        match self.schema_version {
-            1 if self.publication.is_none() && self.phase.is_none() && self.nodes.is_none() => {}
-            2 if self.publication.as_deref().is_some_and(valid_version)
-                && self.phase.is_some()
-                && self.nodes.is_some() =>
-            {
-                let nodes = self.nodes.as_ref().ok_or_else(failure)?;
-                if nodes.len() > 512 || (self.phase == Some(Phase::Migrating) && !nodes.is_empty())
-                {
-                    return Err(failure());
-                }
-                for (id, node) in nodes {
-                    catalogue::validate_node(id, node)?;
-                }
-            }
-            _ => return Err(failure()),
-        }
         Ok(())
     }
 }
 
-fn valid_version(version: &str) -> bool {
-    version.len() == 64 && version.bytes().all(|b| b.is_ascii_hexdigit())
+fn version() -> Result<String, AppError> {
+    let mut random = [0u8; 32];
+    getrandom::fill(&mut random).map_err(|_| AppError::internal("create gold identity"))?;
+    Ok(blake3::hash(&random).to_hex().to_string())
 }
 
 impl Store {
@@ -90,47 +53,7 @@ impl Store {
         self
     }
 
-    /// Select retrieval defaults and, on explicit activation, planner thresholds.
-    /// Keep build identity and node references; publishers use the same CAS.
-    pub(in crate::shared) async fn select_query(
-        &self,
-        identity: &Identity,
-        activate: bool,
-    ) -> Result<(), AppError> {
-        self.vector_index.validate()?;
-        let previous = self.active_configuration(identity).await?;
-        if previous.vector_search != self.vector_index && !activate {
-            return Err(AppError::configuration(
-                "server query defaults conflict with the persisted group policy; use --activate-query for an intentional change",
-            ));
-        }
-        self.api
-            .prepare_query(
-                &collection(&identity.group_id, false),
-                self.vector_index,
-                activate,
-            )
-            .await?;
-        if previous.vector_search == self.vector_index {
-            return Ok(());
-        }
-        let mut proposed = previous.clone();
-        proposed.vector_search = self.vector_index;
-        proposed.publication = Some(super::publish::staging_version()?);
-        let result = self
-            .replace_configuration(identity, proposed, Some(&previous))
-            .await;
-        let observed = self.active_configuration(identity).await?;
-        if observed.version == previous.version && observed.vector_search == self.vector_index {
-            return Ok(());
-        }
-        result?;
-        Err(conflict(
-            "concurrent shared query activation; retry startup",
-        ))
-    }
-
-    pub(super) async fn group_configuration(
+    async fn group_configuration(
         &self,
         identity: &Identity,
     ) -> Result<Option<Configuration>, AppError> {
@@ -157,8 +80,28 @@ impl Store {
             .transpose()
     }
 
-    /// Bootstrap once, or explicitly replace the observed group configuration.
-    /// A competing selection is never overwritten by an unconditional upsert.
+    async fn put_configuration(
+        &self,
+        identity: &Identity,
+        configuration: &Configuration,
+    ) -> Result<(), AppError> {
+        configuration.validate()?;
+        self.api
+            .upsert(
+                &collection(&identity.group_id, true),
+                &api::Upsert {
+                    points: vec![api::Point {
+                        id: point_id(&["gold-configuration"]),
+                        vector: api::Vectors::default(),
+                        payload: configuration,
+                    }],
+                },
+            )
+            .await
+    }
+
+    /// Bootstrap once, or explicitly replace the group's recipe and model space.
+    /// Replacing them makes every node's gold stale until it is republished.
     pub(in crate::shared) async fn select_gold(
         &self,
         identity: &Identity,
@@ -166,11 +109,6 @@ impl Store {
     ) -> Result<String, AppError> {
         let previous = self.group_configuration(identity).await?;
         if let Some(previous) = &previous {
-            if previous.schema_version == 1 || previous.phase == Some(Phase::Migrating) {
-                return self
-                    .migrate_catalogue(identity, previous.clone(), activate)
-                    .await;
-            }
             if previous.matches(self, identity) {
                 return Ok(previous.version.clone());
             }
@@ -182,76 +120,47 @@ impl Store {
         }
         let configuration = Configuration {
             kind: PointKind::Configuration,
-            schema_version: 2,
-            version: super::publish::staging_version()?,
+            schema_version: SCHEMA_VERSION,
+            version: version()?,
             build: self.build.clone(),
             generation: identity.generation.clone(),
             dimensions: identity.dimensions,
             vector_search: previous
                 .as_ref()
                 .map_or(self.vector_index, |p| p.vector_search),
-            publication: Some(super::publish::staging_version()?),
-            phase: Some(Phase::Ready),
-            nodes: Some(
-                previous
-                    .as_ref()
-                    .and_then(|p| p.nodes.clone())
-                    .unwrap_or_default(),
-            ),
         };
-        configuration.validate()?;
-        let result = self
-            .replace_configuration(identity, configuration, previous.as_ref())
-            .await;
-        // An HTTP failure can follow a committed write. Observe durable state;
-        // accepting the same winning configuration is safe and idempotent.
-        let current = self
-            .group_configuration(identity)
-            .await?
-            .ok_or_else(failure)?;
-        if current.matches(self, identity) && current.phase == Some(Phase::Ready) {
-            return Ok(current.version);
-        }
-        result?;
-        Err(conflict("concurrent shared gold activation; retry startup"))
+        self.put_configuration(identity, &configuration).await?;
+        Ok(configuration.version)
     }
 
-    pub(super) async fn replace_configuration(
+    /// Select retrieval defaults and, on explicit activation, planner thresholds.
+    pub(in crate::shared) async fn select_query(
         &self,
         identity: &Identity,
-        configuration: Configuration,
-        previous: Option<&Configuration>,
+        activate: bool,
     ) -> Result<(), AppError> {
-        configuration.validate()?;
-        let input = api::Upsert {
-            points: vec![api::Point {
-                id: point_id(&["gold-configuration"]),
-                vector: api::Vectors::default(),
-                payload: configuration,
-            }],
-            update_filter: previous.map(|previous| api::Filter {
-                must: if let Some(publication) = &previous.publication {
-                    vec![
-                        api::matches("version", vec![previous.version.clone()]),
-                        api::matches("publication", vec![publication.clone()]),
-                    ]
-                } else {
-                    vec![api::matches("version", vec![previous.version.clone()])]
-                },
-                ..api::Filter::default()
-            }),
-            update_mode: Some(if previous.is_some() {
-                api::UpdateMode::UpdateOnly
-            } else {
-                api::UpdateMode::InsertOnly
-            }),
-        };
+        self.vector_index.validate()?;
+        let mut configuration = self.active_configuration(identity).await?;
+        if configuration.vector_search != self.vector_index && !activate {
+            return Err(AppError::configuration(
+                "server query defaults conflict with the persisted group policy; use --activate-query for an intentional change",
+            ));
+        }
         self.api
-            .upsert(&collection(&identity.group_id, true), &input)
-            .await
+            .prepare_query(
+                &collection(&identity.group_id, false),
+                self.vector_index,
+                activate,
+            )
+            .await?;
+        if configuration.vector_search != self.vector_index {
+            configuration.vector_search = self.vector_index;
+            self.put_configuration(identity, &configuration).await?;
+        }
+        Ok(())
     }
 
-    pub(super) async fn gold_configuration(
+    pub(in crate::shared) async fn gold_configuration(
         &self,
         identity: &Identity,
     ) -> Result<crate::shared::GroupGold, AppError> {
@@ -270,53 +179,15 @@ impl Store {
         identity: &Identity,
     ) -> Result<Configuration, AppError> {
         let current = self.group_configuration(identity).await?.ok_or_else(|| {
-            conflict("shared group gold configuration is missing; restart the API")
+            crate::shared::validation::conflict(
+                "shared group gold configuration is missing; restart the API",
+            )
         })?;
         if !current.matches(self, identity) {
-            return Err(conflict(
+            return Err(crate::shared::validation::conflict(
                 "shared group gold configuration changed; restart this API with the active settings",
             ));
         }
-        if current.schema_version != 2 || current.phase != Some(Phase::Ready) {
-            return Err(conflict(
-                "shared catalogue migration is incomplete; restart with --activate-gold",
-            ));
-        }
         Ok(current)
-    }
-
-    pub(super) async fn gold_version(&self, identity: &Identity) -> Result<String, AppError> {
-        Ok(self.gold_configuration(identity).await?.version)
-    }
-
-    pub(super) async fn unchanged_gold(
-        &self,
-        identity: &Identity,
-        version: &str,
-    ) -> Result<(), AppError> {
-        if self.gold_version(identity).await? != version {
-            return Err(conflict(
-                "shared gold activation changed during publication; retry indexing",
-            ));
-        }
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn omitted_persisted_policy_requires_explicit_activation_to_adopt_hnsw() {
-        let existing: Configuration = serde_json::from_str(
-            r#"{"kind":"configuration","schema_version":1,"version":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","build":{},"generation":"test","dimensions":4}"#,
-        ).unwrap();
-        existing.validate().unwrap();
-        assert_eq!(existing.vector_search, super::super::VectorIndex::Exact {});
-        assert_eq!(
-            super::super::VectorIndex::default(),
-            super::super::VectorIndex::Hnsw { ef_runtime: 200 }
-        );
     }
 }

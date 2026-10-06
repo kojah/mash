@@ -37,23 +37,6 @@ struct Placement {
     memory: PhysicalMemory,
 }
 
-async fn reopen(
-    fixture: &Fixture,
-    index: VectorIndex,
-    memory: MemoryTier,
-) -> Result<Store, AppError> {
-    Store::connect(
-        &fixture.url,
-        None,
-        std::slice::from_ref(&fixture.identity.group_id),
-        4,
-        64 * 1024 * 1024,
-        index,
-        memory.into(),
-    )
-    .await
-}
-
 async fn assert_policy(fixture: &Fixture, memory: MemoryTier) {
     let response: Response = reqwest::Client::new()
         .get(format!(
@@ -84,14 +67,15 @@ async fn assert_policy(fixture: &Fixture, memory: MemoryTier) {
 async fn durable_memory_activation_preserves_publications_and_is_idempotent() {
     let fixture = Fixture::with_memory(VectorIndex::default(), MemoryTier::Cached).await;
     fixture
-        .store
+        .server
         .index(&fixture.identity, fixture.file(1, "original"))
         .await
         .unwrap();
     let before =
-        serde_json::to_vec(&fixture.store.freshness(&fixture.identity).await.unwrap()).unwrap();
+        serde_json::to_vec(&fixture.server.freshness(&fixture.identity).await.unwrap()).unwrap();
     assert!(
-        reopen(&fixture, VectorIndex::default(), MemoryTier::Durable)
+        fixture
+            .reopen(VectorIndex::default(), MemoryTier::Durable)
             .await
             .is_err()
     );
@@ -110,6 +94,7 @@ async fn durable_memory_activation_preserves_publications_and_is_idempotent() {
         )
         .await
         .unwrap();
+        let upgraded = fixture.serve(upgraded);
         assert_policy(&fixture, MemoryTier::Durable).await;
         assert_eq!(
             before,
@@ -121,7 +106,8 @@ async fn durable_memory_activation_preserves_publications_and_is_idempotent() {
         );
         assert_filters_and_context(&fixture).await;
     }
-    let reopened = reopen(&fixture, VectorIndex::default(), MemoryTier::Durable)
+    let reopened = fixture
+        .reopen(VectorIndex::default(), MemoryTier::Durable)
         .await
         .unwrap();
     reopened
@@ -146,7 +132,7 @@ async fn assert_filters_and_context(fixture: &Fixture) {
             crate::search_filter::Filter::Provider(vec![provider]),
         ]));
         let results = fixture
-            .store
+            .server
             .search(&fixture.identity, query)
             .await
             .unwrap();
@@ -154,7 +140,7 @@ async fn assert_filters_and_context(fixture: &Fixture) {
         assert_eq!(results.semantic.len(), expected);
     }
     let context = fixture
-        .store
+        .server
         .view(
             &fixture.identity,
             protocol::View {
@@ -181,20 +167,20 @@ async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch
         for index in [VectorIndex::Exact {}, VectorIndex::Hnsw { ef_runtime: 200 }] {
             let fixture = Fixture::with_memory(index, memory).await;
             fixture
-                .store
+                .server
                 .index(&fixture.identity, fixture.file(1, "original"))
                 .await
                 .unwrap();
             assert_policy(&fixture, memory).await;
             assert_filters_and_context(&fixture).await;
             let freshness =
-                serde_json::to_vec(&fixture.store.freshness(&fixture.identity).await.unwrap())
+                serde_json::to_vec(&fixture.server.freshness(&fixture.identity).await.unwrap())
                     .unwrap();
             let alternate_query = match index {
                 VectorIndex::Exact {} => VectorIndex::Hnsw { ef_runtime: 80 },
                 VectorIndex::Hnsw { .. } => VectorIndex::Exact {},
             };
-            let alternate = reopen(&fixture, alternate_query, memory).await.unwrap();
+            let alternate = fixture.reopen(alternate_query, memory).await.unwrap();
             let hits = alternate
                 .search(&fixture.identity, fixture.query())
                 .await
@@ -205,7 +191,7 @@ async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch
                 freshness,
                 serde_json::to_vec(&alternate.freshness(&fixture.identity).await.unwrap()).unwrap()
             );
-            let reopened = reopen(&fixture, index, memory).await.unwrap();
+            let reopened = fixture.reopen(index, memory).await.unwrap();
             assert_eq!(
                 reopened.status(&fixture.identity).await.unwrap().messages,
                 2
@@ -214,7 +200,7 @@ async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch
                 MemoryTier::Cached => MemoryTier::Cold,
                 MemoryTier::Cold | MemoryTier::Durable => MemoryTier::Cached,
             };
-            let error = reopen(&fixture, index, opposite).await.err().unwrap();
+            let error = fixture.reopen(index, opposite).await.err().unwrap();
             assert!(matches!(error.error.kind, crate::ErrorKind::Configuration));
             assert_policy(&fixture, memory).await;
             let results = fixture.search().await;
@@ -228,7 +214,7 @@ async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch
             );
             assert_eq!(
                 fixture
-                    .store
+                    .server
                     .state(&fixture.identity)
                     .await
                     .unwrap()

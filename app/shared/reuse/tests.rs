@@ -1,191 +1,58 @@
 use super::*;
 
-fn fixture() -> (Loaded, Identity, Build) {
-    let identity = Identity {
-        group_id: "group".into(),
-        node_id: "node".into(),
-        generation: "model".into(),
-        dimensions: 2,
-    };
-    let build = Build {
-        max_embedding_chars: None,
-        representations: crate::gold::config::Representations::LexicalAndDense,
-        dense_content: crate::gold::config::DenseContent::AllVisible,
-        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-        text_preparation: crate::gold::config::TextPreparation::Preserve,
-        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-    };
-    let silver = crate::shared::silver_revision::State::next(None, "a".repeat(64)).unwrap();
-    let manifest =
-        crate::shared::gold_manifest::Manifest::new(build.clone(), "model".into(), silver.clone());
-    let head: Head = serde_json::from_value(serde_json::json!({
-        "gold_manifest":manifest,"silver_revision":silver,"instance":"instance",
-        "generation":"model","revision":1,"version":"head",
-        "counts":{"conversations":1,"messages":2,"searchable_messages":1,"embeddings":1},
-        "last_synced_at":null,"last_updated_at":null
-    }))
+fn thread() -> (ConversationRecord, Vec<MessageRecord>) {
+    let conversation = serde_json::from_value(serde_json::json!(
+        {"id":"thread","provider":"codex","title":"Topic","project":null,"repository":null,"created_at":1,"updated_at":2}
+    ))
     .unwrap();
-    let data: Data = serde_json::from_value(serde_json::json!({
-        "conversations":{"thread":{"id":"thread","provider":"codex","title":"Topic","project":null,"repository":null,"created_at":1,"updated_at":2}},
-        "messages":{
-            "z-visible":{"id":"z-visible","conversation_id":"thread","ordinal":0,"role":"user","content":"raw source","projection":"visible dialogue","created_at":1,"generation":"model","vector":[127.0,0.0]},
-            "a-hidden":{"id":"a-hidden","conversation_id":"thread","ordinal":1,"role":"tool","content":"hidden evidence","projection":"","created_at":2,"generation":null,"vector":null}
-        },"sources":{},"tombstones":{}
-    })).unwrap();
-    (
-        Loaded {
-            head: Some(head),
-            expected: "head".into(),
-            data,
-        },
-        identity,
-        build,
-    )
+    let messages = serde_json::from_value(serde_json::json!([
+        {"id":"z-visible","conversation_id":"thread","ordinal":0,"role":"user","content":"raw source","projection":"visible dialogue","created_at":1,"generation":"model","vector":[127.0,0.0]},
+        {"id":"a-hidden","conversation_id":"thread","ordinal":1,"role":"tool","content":"hidden evidence","projection":"","created_at":2,"generation":null,"vector":null}
+    ]))
+    .unwrap();
+    (conversation, messages)
 }
 
-#[test]
-fn parent_unit_reuse_requires_the_whole_thread_and_same_unit_recipe() {
-    for change_edge in [false, true] {
-        let (mut loaded, identity, mut build) = fixture();
-        build.retrieval_unit = crate::gold::config::RetrievalUnit::ParentAndMessage;
-        let child = loaded.data.messages.get_mut("a-hidden").unwrap();
-        child.role = crate::role::Role::User;
-        child.projection = "child".into();
-        child.context = crate::message_context::MessageContext::Parent { ordinal: 0 };
-        child.vector = Some(vec![0.0, 127.0]);
-        child.generation = Some("model".into());
-        let head = loaded.head.as_mut().unwrap();
-        head.counts.searchable_messages = 2;
-        head.counts.embeddings = 2;
-        head.gold_manifest = Some(crate::shared::gold_manifest::Manifest::new(
-            build.clone(),
-            "model".into(),
-            head.silver_revision.clone().unwrap(),
-        ));
-        let target = Target::new(&loaded, &identity, build.clone()).unwrap();
-        assert_eq!(target.threads.len(), 1);
-        let mut different = build.clone();
-        different.retrieval_unit = crate::gold::config::RetrievalUnit::Message;
-        assert!(
-            Target::new(&loaded, &identity, different)
-                .unwrap()
-                .threads
-                .is_empty()
-        );
-        let mut retained = Retained::take(&mut loaded, &identity, &build).unwrap();
-        for message in loaded.data.messages.values_mut() {
-            message.generation = None;
-        }
-        retained
-            .request("thread".into(), &target.threads["thread"])
-            .unwrap();
-        if change_edge {
-            loaded.data.messages.get_mut("a-hidden").unwrap().context =
-                crate::message_context::MessageContext::Root;
-        } else {
-            loaded
-                .data
-                .messages
-                .get_mut("z-visible")
-                .unwrap()
-                .projection = "edited parent".into();
-        }
-        assert!(retained.restore(&mut loaded.data, &identity).is_err());
+fn digest(
+    conversation: &ConversationRecord,
+    messages: &[MessageRecord],
+) -> Result<String, AppError> {
+    let mut fingerprint = Fingerprint::new(conversation)?;
+    for message in messages {
+        fingerprint.push(message)?;
     }
-}
-
-#[test]
-fn users_only_reuse_retains_assistant_history_without_requiring_its_vector() {
-    let (mut loaded, identity, mut build) = fixture();
-    build.dense_content = crate::gold::config::DenseContent::UserMessages;
-    let assistant = loaded.data.messages.get_mut("a-hidden").unwrap();
-    assistant.role = crate::role::Role::Assistant;
-    assistant.projection = "assistant dialogue".into();
-    let head = loaded.head.as_mut().unwrap();
-    head.counts.searchable_messages = 2;
-    head.counts.searchable_user_messages = Some(1);
-    head.gold_manifest = Some(crate::shared::gold_manifest::Manifest::new(
-        build.clone(),
-        "model".into(),
-        head.silver_revision.clone().unwrap(),
-    ));
-    let before = loaded.data.canonical_fingerprint().unwrap();
-    let target = Target::new(&loaded, &identity, build.clone()).unwrap();
-    assert!(target.threads.contains_key("thread"));
-    let mut retained = Retained::take(&mut loaded, &identity, &build).unwrap();
-    loaded
-        .data
-        .messages
-        .get_mut("z-visible")
-        .unwrap()
-        .generation = None;
-    retained
-        .request("thread".into(), &target.threads["thread"])
-        .unwrap();
-    retained.restore(&mut loaded.data, &identity).unwrap();
-    assert!(loaded.data.messages["z-visible"].vector.is_some());
-    assert!(loaded.data.messages["a-hidden"].vector.is_none());
-    assert_eq!(loaded.data.canonical_fingerprint().unwrap(), before);
+    Ok(fingerprint.finish())
 }
 
 #[test]
 fn dependency_digest_ignores_gold_but_covers_all_silver_and_has_stable_order() {
-    let (mut loaded, _, _) = fixture();
-    let before = fingerprints(&loaded.data).unwrap();
-    let visible = loaded.data.messages.get_mut("z-visible").unwrap();
-    visible.vector = Some(vec![0.0, -127.0]);
-    visible.generation = Some("another model".into());
-    assert_eq!(fingerprints(&loaded.data).unwrap(), before);
-    let mut streaming = Fingerprint::new(&loaded.data.conversations["thread"]).unwrap();
-    streaming.push(&loaded.data.messages["z-visible"]).unwrap();
-    streaming.push(&loaded.data.messages["a-hidden"]).unwrap();
-    assert_eq!(streaming.finish(), before["thread"]);
+    let (conversation, mut messages) = thread();
+    let before = digest(&conversation, &messages).unwrap();
+    messages[0].vector = Some(vec![0.0, -127.0]);
+    messages[0].generation = Some("another model".into());
+    assert_eq!(digest(&conversation, &messages).unwrap(), before);
+    let reversed = [messages[1].clone(), messages[0].clone()];
+    assert!(
+        digest(&conversation, &reversed).is_err(),
+        "ordinals must ascend"
+    );
     for defect in 0..7 {
-        let (mut changed, _, _) = fixture();
+        let (mut conversation, mut messages) = thread();
         match defect {
-            0 => {
-                changed.data.conversations.get_mut("thread").unwrap().title =
-                    Some("other title".into());
-            }
-            1 => changed
-                .data
-                .messages
-                .get_mut("z-visible")
-                .unwrap()
-                .content
-                .push('!'),
-            2 => changed
-                .data
-                .messages
-                .get_mut("z-visible")
-                .unwrap()
-                .projection
-                .push('!'),
-            3 => changed
-                .data
-                .messages
-                .get_mut("a-hidden")
-                .unwrap()
-                .content
-                .push('!'),
+            0 => conversation.title = Some("other title".into()),
+            1 => messages[0].content.push('!'),
+            2 => messages[0].projection.push('!'),
+            3 => messages[1].content.push('!'),
             4 => {
-                changed.data.messages.get_mut("a-hidden").unwrap().context =
-                    crate::message_context::MessageContext::Parent { ordinal: 0 };
+                messages[1].context = crate::message_context::MessageContext::Parent { ordinal: 0 };
             }
-            5 => {
-                changed
-                    .data
-                    .conversations
-                    .get_mut("thread")
-                    .unwrap()
-                    .repository = Some("repo".into());
-            }
+            5 => conversation.repository = Some("repo".into()),
             _ => {
-                changed.data.messages.remove("a-hidden");
+                messages.pop();
             }
         }
         assert_ne!(
-            fingerprints(&changed.data).unwrap(),
+            digest(&conversation, &messages).unwrap(),
             before,
             "defect {defect}"
         );
@@ -193,119 +60,17 @@ fn dependency_digest_ignores_gold_but_covers_all_silver_and_has_stable_order() {
 }
 
 #[test]
-fn reuse_requires_current_evidence_and_restores_only_unchanged_complete_threads() {
-    let (mut loaded, identity, build) = fixture();
-    let target = Target::new(&loaded, &identity, build.clone()).unwrap();
+fn publication_plans_validate_thread_fingerprints() {
+    let mut target = Target::new(
+        Build::default(),
+        "model".into(),
+        2,
+        "version".into(),
+        Some(("instance".into(), 3)),
+        BTreeMap::from([("thread".into(), "a".repeat(64))]),
+    );
     target.validate().unwrap();
-    let mut retained = Retained::take(&mut loaded, &identity, &build).unwrap();
-    assert!(loaded.data.messages["z-visible"].vector.is_none());
-    for message in loaded.data.messages.values_mut() {
-        message.generation = None;
-    }
-    retained
-        .request("thread".into(), &target.threads["thread"])
-        .unwrap();
-    assert!(
-        retained
-            .request("thread".into(), &target.threads["thread"])
-            .is_err()
-    );
-    retained.restore(&mut loaded.data, &identity).unwrap();
-    assert_eq!(
-        loaded.data.messages["z-visible"].vector,
-        Some(vec![127.0, 0.0])
-    );
-    assert_eq!(
-        loaded.data.messages["z-visible"].generation.as_deref(),
-        Some("model")
-    );
-    assert!(loaded.data.messages["a-hidden"].vector.is_none());
-    assert!(loaded.data.messages["a-hidden"].generation.is_none());
-
-    for defect in 0..4 {
-        let (mut changed, identity, build) = fixture();
-        match defect {
-            0 => {
-                changed
-                    .head
-                    .as_mut()
-                    .unwrap()
-                    .gold_manifest
-                    .as_mut()
-                    .unwrap()
-                    .schema_version += 1;
-            }
-            1 => {
-                changed
-                    .head
-                    .as_mut()
-                    .unwrap()
-                    .gold_manifest
-                    .as_mut()
-                    .unwrap()
-                    .build = Build::default();
-            }
-            2 => changed.data.messages.get_mut("z-visible").unwrap().vector = None,
-            _ => {
-                changed
-                    .data
-                    .messages
-                    .get_mut("z-visible")
-                    .unwrap()
-                    .generation = Some("other-model".into());
-            }
-        }
-        assert_eq!(
-            Target::new(&changed, &identity, build)
-                .unwrap()
-                .threads
-                .len(),
-            0,
-            "defect {defect}"
-        );
-    }
-}
-
-#[test]
-fn forged_changed_and_ambiguous_reuse_fail_closed() {
-    for defect in 0..5 {
-        let (mut loaded, identity, build) = fixture();
-        let target = Target::new(&loaded, &identity, build.clone()).unwrap();
-        let mut retained = Retained::take(&mut loaded, &identity, &build).unwrap();
-        for message in loaded.data.messages.values_mut() {
-            message.generation = None;
-        }
-        if defect == 0 {
-            assert!(
-                retained
-                    .request("unknown".into(), &target.threads["thread"])
-                    .is_err()
-            );
-            continue;
-        }
-        retained
-            .request("thread".into(), &target.threads["thread"])
-            .unwrap();
-        match defect {
-            1 => loaded
-                .data
-                .messages
-                .get_mut("a-hidden")
-                .unwrap()
-                .content
-                .push('!'),
-            2 => {
-                loaded.data.conversations.get_mut("thread").unwrap().title = Some("Changed".into());
-            }
-            3 => loaded.data.messages.get_mut("z-visible").unwrap().vector = Some(vec![127.0, 0.0]),
-            _ => {
-                loaded.data.conversations.clear();
-                loaded.data.messages.clear();
-            }
-        }
-        assert!(
-            retained.restore(&mut loaded.data, &identity).is_err(),
-            "defect {defect}"
-        );
-    }
+    assert_eq!(target.publication_revision, 3);
+    target.threads.insert("other".into(), "not-a-digest".into());
+    assert!(target.validate().is_err());
 }

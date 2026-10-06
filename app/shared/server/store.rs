@@ -1,9 +1,29 @@
-//! Shared service initialization for the sole Qdrant backend.
+//! Shared service storage: SQLite silver is the system of record; Qdrant gold is
+//! derived from it and can be rebuilt by replaying silver.
 use super::Identity;
 use super::configuration::{Configuration, env_name};
 use crate::AppError;
-pub(super) use crate::shared::qdrant_index::Store;
-use std::collections::{HashMap, HashSet};
+use crate::shared::qdrant_index::{self, NodeGold};
+use crate::shared::silver_store::{self, Head, SilverStore};
+use crate::shared::{Freshness, NodeFreshness, protocol};
+use crate::storage::Counts;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
+use tokio::sync::OwnedSemaphorePermit;
+
+mod replay;
+mod sync;
+
+/// Serializes publications per node while other nodes proceed.
+type NodeLock = Arc<tokio::sync::Mutex<()>>;
+
+#[derive(Clone)]
+pub(in crate::shared) struct Store {
+    silver: SilverStore,
+    gold: qdrant_index::Store,
+    max_upload_bytes: u64,
+    nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
+}
 
 pub(super) async fn initialize(
     config: &Configuration,
@@ -14,7 +34,6 @@ pub(super) async fn initialize(
 ) -> Result<Store, AppError> {
     let groups: HashSet<_> = identities.values().map(|id| id.group_id.clone()).collect();
     let groups = groups.into_iter().collect::<Vec<_>>();
-    let budget = crate::shared::snapshot_budget::Budget::new(config.max_mutation_snapshot_mib)?;
     let name = config
         .qdrant_url_env
         .as_ref()
@@ -31,30 +50,26 @@ pub(super) async fn initialize(
                 .map_err(|_| AppError::configuration(format!("set {name} to the Qdrant API key")))
         })
         .transpose()?;
-    let store = Store::connect(
+    let path = config.silver_database()?;
+    let silver = crate::blocking(move || SilverStore::open(&path)).await?;
+    let gold = qdrant_index::Store::connect(
         &url,
         key.as_deref(),
         &groups,
         config.embeddings.dimensions,
-        config
-            .qdrant_max_node_mib
-            .checked_mul(1024 * 1024)
-            .ok_or_else(|| {
-                AppError::configuration("Qdrant snapshot limit exceeds platform capacity")
-            })?,
+        RESPONSE_BYTES,
         config.gold.query.vector_search,
-        crate::shared::qdrant_index::MemoryPolicy {
+        qdrant_index::MemoryPolicy {
             tier: config.qdrant_memory,
             activate: activate_memory,
         },
     )
     .await?
-    .with_snapshot_budget(budget)
     .with_build(config.gold.build.clone());
     let mut selected = HashSet::new();
     for identity in identities.values() {
         if selected.insert(&identity.group_id) {
-            let group_store = store.clone().with_query(
+            let group_store = gold.clone().with_query(
                 config
                     .gold
                     .query
@@ -67,5 +82,501 @@ pub(super) async fn initialize(
             group_store.select_query(identity, activate_query).await?;
         }
     }
-    Ok(store)
+    Ok(Store::new(silver, gold, config.max_upload_bytes()?))
+}
+
+/// Bound on one Qdrant response; documents are read a page at a time.
+const RESPONSE_BYTES: usize = 64 * 1024 * 1024;
+
+impl Store {
+    pub(in crate::shared) fn new(
+        silver: SilverStore,
+        gold: qdrant_index::Store,
+        max_upload_bytes: u64,
+    ) -> Self {
+        Self {
+            silver,
+            gold,
+            max_upload_bytes,
+            nodes: Arc::default(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::shared) fn unavailable() -> Self {
+        Self::new(
+            SilverStore::unavailable(),
+            qdrant_index::Store::unavailable(),
+            64 * 1024 * 1024,
+        )
+    }
+
+    pub(in crate::shared) fn max_node_bytes(&self) -> u64 {
+        self.max_upload_bytes
+    }
+
+    /// One publication per node at a time within this process.
+    async fn lock(
+        &self,
+        identity: &Identity,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, AppError> {
+        let lock = self
+            .nodes
+            .lock()
+            .map_err(|_| AppError::internal("shared node locks are poisoned"))?
+            .entry((identity.group_id.clone(), identity.node_id.clone()))
+            .or_default()
+            .clone();
+        Ok(lock.lock_owned().await)
+    }
+
+    async fn read<T: Send + 'static>(
+        &self,
+        work: impl FnOnce(&rusqlite::Connection) -> Result<T, AppError> + Send + 'static,
+    ) -> Result<T, AppError> {
+        let silver = self.silver.clone();
+        crate::blocking(move || work(&silver.connect()?)).await
+    }
+
+    async fn head(&self, identity: &Identity) -> Result<Option<Head>, AppError> {
+        let identity = identity.clone();
+        self.read(move |connection| silver_store::head(connection, &identity))
+            .await
+    }
+
+    pub(in crate::shared) async fn capabilities(
+        &self,
+        identity: &Identity,
+    ) -> Result<crate::gold::config::Build, AppError> {
+        Ok(self.gold.gold_configuration(identity).await?.build)
+    }
+
+    pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
+        let scope = identity.clone();
+        let mut counts = self
+            .read(move |connection| silver_store::counts(connection, &scope))
+            .await?;
+        counts.embeddings = self
+            .gold
+            .node_gold(identity)
+            .await?
+            .filter(|gold| gold.compatible(&self.gold, identity))
+            .map_or(0, |gold| gold.embeddings());
+        Ok(counts)
+    }
+
+    /// Gold usable for this node: built with the group recipe and model space.
+    async fn compatible_gold(&self, identity: &Identity) -> Result<Option<NodeGold>, AppError> {
+        Ok(self
+            .gold
+            .node_gold(identity)
+            .await?
+            .filter(|gold| gold.compatible(&self.gold, identity)))
+    }
+
+    /// Fingerprints of threads whose complete, current gold a snapshot may reuse.
+    fn reusable(
+        gold: Option<&NodeGold>,
+        current: bool,
+        fingerprints: &BTreeMap<String, String>,
+    ) -> BTreeMap<String, String> {
+        let Some(gold) = gold.filter(|_| current) else {
+            return BTreeMap::new();
+        };
+        fingerprints
+            .iter()
+            .filter(|(id, fingerprint)| {
+                gold.threads
+                    .get(*id)
+                    .is_some_and(|thread| thread.complete && &thread.fingerprint == *fingerprint)
+            })
+            .map(|(id, fingerprint)| (id.clone(), fingerprint.clone()))
+            .collect()
+    }
+
+    pub(in crate::shared) async fn state(
+        &self,
+        identity: &Identity,
+    ) -> Result<protocol::NodeState, AppError> {
+        let scope = identity.clone();
+        let (head, sources, tombstones) = self
+            .read(move |connection| {
+                Ok((
+                    silver_store::head(connection, &scope)?,
+                    silver_store::sources(connection, &scope)?,
+                    silver_store::tombstones(connection, &scope)?,
+                ))
+            })
+            .await?;
+        // A process with superseded gold settings must not steer node publication.
+        self.gold.gold_configuration(identity).await?;
+        let build = self.gold.build().clone();
+        let gold = self.compatible_gold(identity).await?;
+        let current = gold.as_ref().is_some_and(|gold| {
+            gold.current(
+                &self.gold,
+                identity,
+                head.as_ref().and_then(|h| h.silver_revision.as_ref()),
+            )
+        });
+        let sources = sources
+            .into_iter()
+            .map(|mut source| {
+                source.ready = current
+                    && build.dense_enabled()
+                    && source.interpretation_version
+                        == crate::silver::certificate::INTERPRETATION_VERSION
+                    && source.conversation_id.as_ref().is_none_or(|id| {
+                        gold.as_ref()
+                            .and_then(|gold| gold.threads.get(id))
+                            .is_some_and(|thread| thread.complete)
+                    });
+                source
+            })
+            .collect();
+        Ok(protocol::NodeState {
+            publication_version: head
+                .as_ref()
+                .map_or_else(String::new, |h| h.version.clone()),
+            gold_build: build,
+            silver_coverage: head
+                .as_ref()
+                .map_or_else(Vec::new, |h| h.silver_coverage.clone()),
+            silver_revision: head.as_ref().and_then(|h| h.silver_revision.clone()),
+            silver_scans: head
+                .as_ref()
+                .map_or_else(Vec::new, |h| h.silver_scans.clone()),
+            source_silver: head.as_ref().and_then(|h| h.source_silver.clone()),
+            instance: head.as_ref().map(|h| h.instance.clone()),
+            revision: head.as_ref().map_or(0, |h| h.revision),
+            sources,
+            tombstones,
+        })
+    }
+
+    pub(in crate::shared) async fn freshness(
+        &self,
+        identity: &Identity,
+    ) -> Result<Freshness, AppError> {
+        let group_gold = self.gold.gold_configuration(identity).await?;
+        let group = identity.group_id.clone();
+        let heads = self
+            .read(move |connection| silver_store::heads(connection, &group))
+            .await?;
+        let mut nodes = Vec::new();
+        for (node_id, head) in heads {
+            let node = Identity {
+                node_id: node_id.clone(),
+                ..identity.clone()
+            };
+            let scope = node.clone();
+            let mut counts = self
+                .read(move |connection| silver_store::counts(connection, &scope))
+                .await?;
+            let gold = self.gold.node_gold(&node).await?;
+            let silver = head.silver_revision.as_ref();
+            let lexical_current = gold
+                .as_ref()
+                .is_some_and(|g| silver.is_some() && g.silver.as_ref() == silver);
+            let gold_current = gold
+                .as_ref()
+                .is_some_and(|g| g.current(&self.gold, &node, silver));
+            counts.embeddings = gold
+                .as_ref()
+                .filter(|g| g.compatible(&self.gold, &node))
+                .map_or(0, NodeGold::embeddings);
+            let build = self.gold.build();
+            nodes.push(NodeFreshness {
+                artifacts: Some(crate::gold::readiness::Artifacts {
+                    metadata: crate::gold::readiness::State::publication(true, true),
+                    lexical: crate::gold::readiness::State::publication(
+                        gold.is_some(),
+                        lexical_current,
+                    ),
+                    dense: if build.dense_enabled() {
+                        crate::gold::readiness::State::publication(gold.is_some(), gold_current)
+                    } else {
+                        crate::gold::readiness::State::Disabled
+                    },
+                }),
+                lexical_manifest: lexical_current
+                    .then(|| silver.cloned())
+                    .flatten()
+                    .map(crate::shared::lexical_manifest::Manifest::new),
+                lexical_current,
+                gold_manifest: gold_current
+                    .then(|| silver.cloned())
+                    .flatten()
+                    .map(|silver| {
+                        crate::shared::gold_manifest::Manifest::new(
+                            build.clone(),
+                            node.generation.clone(),
+                            silver,
+                        )
+                    }),
+                gold_current,
+                silver_coverage: head.silver_coverage.clone(),
+                silver_revision: head.silver_revision.clone(),
+                source_silver: head.source_silver.clone(),
+                node_id,
+                revision: head.revision,
+                last_synced_at: head.last_synced_at.clone(),
+                last_updated_at: head.last_updated_at.clone(),
+                conversations: i64::try_from(counts.conversations).unwrap_or(i64::MAX),
+                messages: i64::try_from(counts.messages).unwrap_or(i64::MAX),
+            });
+        }
+        Ok(Freshness {
+            group_id: identity.group_id.clone(),
+            unpublished_nodes: None,
+            group_gold: Some(Box::new(group_gold)),
+            nodes,
+        })
+    }
+
+    pub(in crate::shared) async fn publication_plan(
+        &self,
+        identity: &Identity,
+        permit: OwnedSemaphorePermit,
+    ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
+        let scope = identity.clone();
+        let (head, fingerprints) = self
+            .read(move |connection| {
+                Ok((
+                    silver_store::head(connection, &scope)?,
+                    silver_store::fingerprints(connection, &scope)?,
+                ))
+            })
+            .await?;
+        let build = self.gold.build().clone();
+        let threads = if build.dense_enabled() && build != crate::gold::config::Build::default() {
+            let gold = self.compatible_gold(identity).await?;
+            let current = gold.as_ref().is_some_and(|gold| {
+                gold.current(
+                    &self.gold,
+                    identity,
+                    head.as_ref().and_then(|h| h.silver_revision.as_ref()),
+                )
+            });
+            Self::reusable(gold.as_ref(), current, &fingerprints)
+        } else {
+            BTreeMap::new()
+        };
+        let target = crate::shared::reuse::Target::new(
+            build,
+            identity.generation.clone(),
+            identity.dimensions,
+            head.as_ref()
+                .map_or_else(String::new, |h| h.version.clone()),
+            head.map(|h| (h.instance, h.revision)),
+            threads,
+        );
+        crate::blocking(move || spool(&target, permit)).await
+    }
+
+    /// Retained certified silver for rebuilding this node's gold elsewhere.
+    pub(in crate::shared) async fn silver(
+        &self,
+        identity: &Identity,
+        permit: OwnedSemaphorePermit,
+    ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
+        let scope = identity.clone();
+        let build = self.gold.build().clone();
+        self.read(move |connection| {
+            let head = silver_store::head(connection, &scope)?.ok_or_else(|| {
+                crate::shared::validation::conflict("shared silver has not been indexed")
+            })?;
+            if !certified(connection, &scope, &head)? {
+                return Err(crate::shared::validation::conflict(
+                    "gold rebuild requires complete, current shared silver",
+                ));
+            }
+            let silver = head.silver_revision.as_ref().ok_or_else(|| {
+                crate::shared::validation::conflict(
+                    "shared silver identity is unverified; run explicit indexing",
+                )
+            })?;
+            silver.validate()?;
+            let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
+            let mut output = std::io::BufWriter::with_capacity(64 * 1024, file.as_file_mut());
+            let header = serde_json::to_vec(&crate::shared::silver_read::Header {
+                build: &build,
+                publication_revision: head.revision,
+                silver,
+                generation: &scope.generation,
+                dimensions: scope.dimensions,
+            })
+            .map_err(|_| AppError::internal("serialize retained shared silver"))?;
+            let io = |_| AppError::internal("write retained shared silver");
+            std::io::Write::write_all(&mut output, &header[..header.len() - 1]).map_err(io)?;
+            std::io::Write::write_all(&mut output, b",\"history\":").map_err(io)?;
+            silver_store::read::export(connection, &scope, &mut output)?;
+            std::io::Write::write_all(&mut output, b"}").map_err(io)?;
+            std::io::Write::flush(&mut output).map_err(io)?;
+            drop(output);
+            Ok((file, permit))
+        })
+        .await
+    }
+
+    /// Searchable nodes. Lexical documents survive recipe and model changes;
+    /// related-discussion search fails closed while any searched node's dense
+    /// gold is incompatible, instead of silently omitting that node.
+    async fn searchable_nodes(
+        &self,
+        identity: &Identity,
+        dense: bool,
+        exclude_self: bool,
+    ) -> Result<BTreeSet<String>, AppError> {
+        let group = identity.group_id.clone();
+        let heads = self
+            .read(move |connection| silver_store::heads(connection, &group))
+            .await?;
+        let mut active = BTreeSet::new();
+        for node_id in heads.into_keys() {
+            if exclude_self && node_id == identity.node_id {
+                continue;
+            }
+            let node = Identity {
+                node_id: node_id.clone(),
+                ..identity.clone()
+            };
+            let Some(gold) = self.gold.node_gold(&node).await? else {
+                continue;
+            };
+            if dense && !gold.searchable(&self.gold, &node) {
+                return Err(AppError::shared(
+                    "shared gold is stale, incomplete or incompatible; run mash index --rebuild-shared-gold on publishing nodes",
+                ));
+            }
+            active.insert(node_id);
+        }
+        Ok(active)
+    }
+
+    pub(in crate::shared) async fn search(
+        &self,
+        identity: &Identity,
+        input: protocol::Search,
+    ) -> Result<protocol::Candidates, AppError> {
+        qdrant_index::validate_search(&input, identity)?;
+        self.gold.gold_configuration(identity).await?;
+        let exact = input.intent == crate::gold::exact::Intent::ExactMention;
+        let active = self
+            .searchable_nodes(identity, !exact, input.exclude_self)
+            .await?;
+        if active.is_empty() && exact && !input.exclude_self {
+            return Err(AppError::shared(
+                "shared lexical index has not been initialized; run mash index",
+            ));
+        }
+        self.gold.search(identity, input, &active).await
+    }
+
+    pub(in crate::shared) async fn list_threads(
+        &self,
+        identity: &Identity,
+        input: crate::thread_catalog::Request,
+    ) -> Result<crate::thread_catalog::Page, AppError> {
+        let mut collector = crate::thread_catalog::Collector::new(input.clone())?;
+        let group = identity.group_id.clone();
+        let caller = identity.node_id.clone();
+        let threads = self
+            .read(move |connection| {
+                let nodes = silver_store::heads(connection, &group)?
+                    .into_keys()
+                    .filter(|node| input.admits_node(node, &caller))
+                    .collect::<Vec<_>>();
+                silver_store::read::threads(connection, &group, &nodes)
+            })
+            .await?;
+        for thread in threads {
+            let row = thread.conversation;
+            collector.push(crate::thread_catalog::Thread {
+                conversation_id: row.id.clone(),
+                provider: row.provider,
+                node_id: thread.node_id,
+                metadata: crate::search_results::ThreadMetadata {
+                    enrichment: row.enrichment,
+                    title: row.title,
+                    project: row.project,
+                    repository: row.repository,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+            });
+        }
+        Ok(collector.finish())
+    }
+
+    /// Fail before streaming when shared silver is unreachable.
+    pub(in crate::shared) async fn available(&self, identity: &Identity) -> Result<(), AppError> {
+        let group = identity.group_id.clone();
+        self.read(move |connection| silver_store::heads(connection, &group).map(|_| ()))
+            .await
+    }
+
+    pub(in crate::shared) async fn view(
+        &self,
+        identity: &Identity,
+        input: protocol::View,
+    ) -> Result<Vec<crate::storage::Message>, AppError> {
+        crate::shared::validation::valid_id(&input.node_id)?;
+        let node = Identity {
+            node_id: input.node_id.clone(),
+            ..identity.clone()
+        };
+        let projection = matches!(
+            input.content,
+            crate::storage::MessageContent::SearchProjection
+        );
+        self.read(move |connection| {
+            Ok(
+                silver_store::read::view(connection, &node, &input.id, input.context)?
+                    .into_iter()
+                    .map(|record| silver_store::read::message(record, projection))
+                    .collect(),
+            )
+        })
+        .await
+    }
+}
+
+/// Certified when the source certificate or complete provider scans cover all silver.
+fn certified(
+    connection: &rusqlite::Connection,
+    identity: &Identity,
+    head: &Head,
+) -> Result<bool, AppError> {
+    use crate::silver::certificate::{Completeness, INTERPRETATION_VERSION};
+    if let Some(source) = &head.source_silver {
+        return Ok(source.is_complete() && source.interpretation_version == INTERPRETATION_VERSION);
+    }
+    let covered: HashSet<_> = head
+        .silver_coverage
+        .iter()
+        .filter(|c| {
+            c.completeness == Completeness::Complete
+                && c.scan.interpretation_version == INTERPRETATION_VERSION
+        })
+        .map(|c| c.scan.provider)
+        .collect();
+    if covered.is_empty() {
+        return Ok(false);
+    }
+    let providers = silver_store::providers(connection, identity)?;
+    Ok(providers.iter().all(|provider| covered.contains(provider)))
+}
+
+fn spool(
+    target: &crate::shared::reuse::Target,
+    permit: OwnedSemaphorePermit,
+) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
+    let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
+    let mut output = std::io::BufWriter::with_capacity(64 * 1024, file.as_file_mut());
+    serde_json::to_writer(&mut output, target)
+        .map_err(|_| AppError::internal("serialize shared publication plan"))?;
+    std::io::Write::flush(&mut output).map_err(AppError::io)?;
+    drop(output);
+    Ok((file, permit))
 }

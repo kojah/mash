@@ -9,8 +9,11 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
 
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
-- Use an authenticated Axum HTTP API backed solely by Qdrant for one shared index
-  per configured node group. Require a local SQLite index; support local-only or
+- Use an authenticated Axum HTTP API for one shared index per configured node
+  group. Shared silver is a server-side SQLite database (no gold tables); shared
+  gold is Qdrant and must stay rebuildable from silver (`serve --replay-gold`).
+  Commit silver before synchronizing gold; do not build transaction, staging or
+  versioning machinery on top of Qdrant. Require a local SQLite index; support local-only or
   both indexing with independent provider allowlists. Keep local operations
   offline-capable. Only the HTTP service accesses Qdrant. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
@@ -20,10 +23,9 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
   cosine search, RRF, and bounded local reranking. Support Voyage and the
   OpenAI-compatible embeddings API without provider traits or registries.
 - Qdrant uses the existing reqwest client and typed REST models, named dense/sparse
-  vectors, and conditional group-catalogue publication on Qdrant 1.19+. Default to
-  HNSW vector retrieval with ef_runtime=200; permit explicit exact search.
-  Keep immutable staging invisible, enforce
-  revisions across API processes, and fail closed on incompatible existing schemas.
+  vectors on Qdrant 1.19+. Default to HNSW vector retrieval with ef_runtime=200;
+  permit explicit exact search. Never report uncertified gold as current, and
+  fail closed on incompatible existing schemas or superseded gold settings.
 - Do not add provider traits, registries, installed daemons, compatibility
   shims, alternate output modes, a TUI, or analytics. Portable silver export/import
   is supported; exclude deployment credentials, models and provider files.

@@ -272,26 +272,45 @@ struct Listening {
 }
 impl Api {
     pub(super) fn start(database: &Database, root: &std::path::Path) -> Self {
-        let config = "version=1\nlisten='127.0.0.1:0'\nqdrant_url_env='MASH_RESTART_URL'\n[[nodes]]\ngroup_id='restart-main'\nnode_id='first'\ntoken_env='MASH_RESTART_FIRST'\n[[nodes]]\ngroup_id='restart-main'\nnode_id='second'\ntoken_env='MASH_RESTART_SECOND'\n[[nodes]]\ngroup_id='restart-other'\nnode_id='first'\ntoken_env='MASH_RESTART_OTHER'\n";
+        Self::launch(database, root, None).0
+    }
+
+    /// Start the API, optionally replaying gold from silver first; returns the
+    /// JSON reports printed before the readiness line.
+    pub(super) fn launch(
+        database: &Database,
+        root: &std::path::Path,
+        replay_models: Option<&std::path::Path>,
+    ) -> (Self, Vec<serde_json::Value>) {
+        // Shared silver lives beside the config and survives database restarts.
+        let config = format!(
+            "version=1\nlisten='127.0.0.1:0'\nqdrant_url_env='MASH_RESTART_URL'\nsilver_database={silver:?}\n[[nodes]]\ngroup_id='restart-main'\nnode_id='first'\ntoken_env='MASH_RESTART_FIRST'\n[[nodes]]\ngroup_id='restart-main'\nnode_id='second'\ntoken_env='MASH_RESTART_SECOND'\n[[nodes]]\ngroup_id='restart-other'\nnode_id='first'\ntoken_env='MASH_RESTART_OTHER'\n",
+            silver = root.join("shared-silver.sqlite3").to_str().unwrap()
+        );
         let path = root.join("server.toml");
         std::fs::write(&path, config).unwrap();
-        let child = std::process::Command::new(
+        let mut command = std::process::Command::new(
             std::env::var_os("MASH_TEST_SERVER_BINARY")
                 .expect("set MASH_TEST_SERVER_BINARY to the built mash binary"),
-        )
-        .arg("serve")
-        .arg("--server-config")
-        .arg(path)
-        .env("MASH_RESTART_URL", database.endpoint())
-        .env("MASH_RESTART_FIRST", super::FIRST)
-        .env("MASH_RESTART_SECOND", super::SECOND)
-        .env("MASH_RESTART_OTHER", super::OTHER)
-        .env_remove("MASH_TRACE")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+        );
+        if let Some(models) = replay_models {
+            command.arg("--models-dir").arg(models);
+        }
+        command.arg("serve").arg("--server-config").arg(path);
+        if replay_models.is_some() {
+            command.arg("--replay-gold");
+        }
+        let child = command
+            .env("MASH_RESTART_URL", database.endpoint())
+            .env("MASH_RESTART_FIRST", super::FIRST)
+            .env("MASH_RESTART_SECOND", super::SECOND)
+            .env("MASH_RESTART_OTHER", super::OTHER)
+            .env_remove("MASH_TRACE")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
         let mut api = Self {
             child,
             url: String::new(),
@@ -303,19 +322,27 @@ impl Api {
         let stderr = api.child.stderr.take().unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let mut line = String::new();
-            std::io::BufReader::new(stderr)
-                .read_line(&mut line)
-                .unwrap();
-            let _ = sender.send(line);
+            let mut stderr = std::io::BufReader::new(stderr);
+            loop {
+                let mut line = String::new();
+                if stderr.read_line(&mut line).unwrap() == 0 || sender.send(line).is_err() {
+                    break;
+                }
+            }
         });
-        let line = receiver
-            .recv_timeout(Duration::from_secs(30))
-            .expect("API readiness");
-        let listening: Listening =
-            serde_json::from_str(&line).unwrap_or_else(|e| panic!("API startup: {e}: {line}"));
-        api.url = format!("http://{}", listening.listening);
-        api
+        let mut reports = Vec::new();
+        loop {
+            let line = receiver
+                .recv_timeout(Duration::from_secs(120))
+                .expect("API readiness");
+            if let Ok(listening) = serde_json::from_str::<Listening>(&line) {
+                api.url = format!("http://{}", listening.listening);
+                return (api, reports);
+            }
+            reports.push(
+                serde_json::from_str(&line).unwrap_or_else(|e| panic!("API startup: {e}: {line}")),
+            );
+        }
     }
 
     pub(super) async fn post<T: Serialize>(

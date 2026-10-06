@@ -2,21 +2,20 @@ use super::*;
 use std::collections::BTreeMap;
 
 fn row(thread: &str, ordinal: i64) -> Message {
-    Message {
-        attachments: Vec::new(),
-        id: format!("{thread}-{ordinal}"),
-        conversation_id: thread.into(),
-        ordinal,
-        context: crate::message_context::MessageContext::Linear,
-        role: crate::role::Role::User,
-        content: format!("canonical {ordinal}"),
-        projection: if ordinal % 4 == 0 {
+    serde_json::from_value(serde_json::json!({
+        "id": format!("{thread}-{ordinal}"),
+        "conversation_id": thread,
+        "ordinal": ordinal,
+        "role": "user",
+        "content": format!("canonical {ordinal}"),
+        "projection": if ordinal % 4 == 0 {
             String::new()
         } else {
             format!("visible {ordinal}")
         },
-        created_at: None,
-    }
+        "created_at": null,
+    }))
+    .unwrap()
 }
 
 fn conversations() -> BTreeMap<String, protocol::ConversationRecord> {

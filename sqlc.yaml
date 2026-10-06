@@ -14,3 +14,12 @@ sql:
         options:
           db_crate: rusqlite
           output: queries.rs
+  - engine: sqlite
+    schema: app/shared/silver_store/schema.sql
+    queries: queries/sqlite/shared.sql
+    codegen:
+      - plugin: rust
+        out: app/shared/silver_store/generated
+        options:
+          db_crate: rusqlite
+          output: queries.rs

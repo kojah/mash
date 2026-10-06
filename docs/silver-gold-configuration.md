@@ -12,6 +12,11 @@ incomplete judgments from irrelevant results. Independent real-session review,
 evidence quality and complete build/query costs remain required; synthetic
 protocol and regression tests do not settle retrieval quality.
 
+> Shared storage changed on 2026-10-06: shared silver is a server SQLite
+> database and Qdrant holds only rebuildable gold. Statements below about Qdrant
+> heads, staging, catalogue CAS or Qdrant-retained silver describe the earlier
+> design; see [shared storage](shared-storage.md).
+
 ## Shared artifact publication states
 
 `status --shared` and MCP `status` with `shared=true` include

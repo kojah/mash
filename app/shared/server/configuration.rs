@@ -19,6 +19,8 @@ struct AuthorizedNode {
 #[serde(deny_unknown_fields)]
 pub(super) struct Configuration {
     pub(super) attachments_dir: Option<std::path::PathBuf>,
+    /// Shared silver system of record; defaults to the platform data directory.
+    silver_database: Option<std::path::PathBuf>,
     version: u32,
     #[serde(default)]
     pub(super) gold: Gold,
@@ -28,14 +30,12 @@ pub(super) struct Configuration {
     pub(super) listen: SocketAddr,
     pub(super) qdrant_url_env: Option<String>,
     pub(super) qdrant_api_key_env: Option<String>,
-    #[serde(default = "default_node_mib")]
-    pub(super) qdrant_max_node_mib: usize,
+    #[serde(default = "default_upload_mib")]
+    max_upload_mib: u64,
     #[serde(default)]
     pub(super) qdrant_memory: qdrant_index::MemoryTier,
     #[serde(default = "default_uploads")]
     pub(super) max_concurrent_uploads: usize,
-    #[serde(default = "default_snapshot_budget")]
-    pub(super) max_mutation_snapshot_mib: usize,
     nodes: Vec<AuthorizedNode>,
 }
 #[derive(Default, Deserialize)]
@@ -52,33 +52,92 @@ pub(super) struct Query {
     /// Complete query defaults for named groups; other groups inherit `vector_search`.
     pub(super) groups: HashMap<String, qdrant_index::VectorIndex>,
 }
+/// The group's embedding space. Nodes embed for publication; the server embeds
+/// only to replay gold from silver, locally or through the configured endpoint.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct EmbeddingSpace {
     model: String,
     pub(super) dimensions: usize,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    api: crate::semantic::remote::Api,
+    #[serde(default)]
+    token_env: Option<String>,
+    #[serde(default)]
+    request_dimensions: bool,
 }
 impl Default for EmbeddingSpace {
     fn default() -> Self {
         Self {
             model: "sentence-transformers/all-MiniLM-L6-v2".into(),
             dimensions: 384,
+            url: None,
+            api: crate::semantic::remote::Api::default(),
+            token_env: None,
+            request_dimensions: false,
         }
     }
 }
+impl EmbeddingSpace {
+    /// The HTTP embedding endpoint for replay; `None` selects installed local models.
+    pub(super) fn remote(
+        &self,
+    ) -> Result<Option<crate::semantic::remote::Configuration>, AppError> {
+        let Some(url) = &self.url else {
+            if crate::semantic::model_space(&self.model, self.dimensions)
+                != crate::semantic::SHARED_EMBEDDING_GENERATION
+            {
+                return Err(AppError::configuration(
+                    "replaying a remote embedding space requires embeddings.url",
+                ));
+            }
+            return Ok(None);
+        };
+        let config = crate::semantic::remote::Configuration {
+            url: url.clone(),
+            model: self.model.clone(),
+            dimensions: self.dimensions,
+            api: self.api,
+            token_env: self.token_env.clone(),
+            request_dimensions: self.request_dimensions,
+        };
+        config.validate()?;
+        Ok(Some(config))
+    }
+}
 
-fn default_node_mib() -> usize {
+fn default_upload_mib() -> u64 {
     64
 }
 fn default_uploads() -> usize {
     4
 }
-fn default_snapshot_budget() -> usize {
-    crate::shared::snapshot_budget::DEFAULT_MIB
-}
 fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8787))
 }
+impl Configuration {
+    pub(super) fn silver_database(&self) -> Result<std::path::PathBuf, AppError> {
+        match &self.silver_database {
+            Some(path) if path.is_absolute() => Ok(path.clone()),
+            Some(_) => Err(AppError::configuration(
+                "silver_database must be an absolute path",
+            )),
+            None => Ok(directories::ProjectDirs::from("dev", "jamesqo", "mash")
+                .ok_or_else(|| AppError::configuration("platform data directory is unavailable"))?
+                .data_local_dir()
+                .join("shared-silver.sqlite3")),
+        }
+    }
+
+    pub(super) fn max_upload_bytes(&self) -> Result<u64, AppError> {
+        self.max_upload_mib
+            .checked_mul(1024 * 1024)
+            .ok_or_else(|| AppError::configuration("max_upload_mib exceeds platform capacity"))
+    }
+}
+
 pub(super) fn env_name(name: &str) -> Result<(), AppError> {
     if name.is_empty()
         || !name
@@ -96,6 +155,7 @@ pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
     config.gold.query.vector_search.validate()?;
+    config.silver_database()?;
     for (group, policy) in &config.gold.query.groups {
         crate::config::validate_identifier(group, "group_id")?;
         policy.validate()?;
@@ -105,7 +165,6 @@ pub(super) fn identities(
             ));
         }
     }
-    crate::shared::snapshot_budget::Budget::validate(config.max_mutation_snapshot_mib)?;
     if config
         .attachments_dir
         .as_ref()
@@ -115,9 +174,9 @@ pub(super) fn identities(
             "attachments_dir must be an absolute path",
         ));
     }
-    if !(1..=4096).contains(&config.qdrant_max_node_mib) {
+    if !(1..=4096).contains(&config.max_upload_mib) {
         return Err(AppError::configuration(
-            "qdrant_max_node_mib must be between 1 and 4096",
+            "max_upload_mib must be between 1 and 4096",
         ));
     }
     if !(1..=16).contains(&config.max_concurrent_uploads) {

@@ -14,7 +14,8 @@ SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
 cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
-The service uses Qdrant as its sole shared storage backend. Local SQLite is required for offline search.
+The service keeps shared silver (published canonical history) in SQLite and derived
+shared gold (search documents and vectors) in Qdrant. Local SQLite is required for offline search.
 
 Mash masks recognizable credentials in CLI/MCP search results, thread metadata,
 and `view` output, shared HTTP read responses and outgoing publications, and text
@@ -354,12 +355,6 @@ safe error kinds, and HTTP status codes. CLI JSON and MCP messages remain on
 stdout. Only mash's own trace targets are enabled; dependency logs are excluded.
 Trace fields omit query/history text, paths, filters, credentials, and vectors.
 Existing indexing progress events can also appear on stderr.
-
-Qdrant publication spans separate snapshot, catalog and document staging from
-the conditional head write, head verification and cleanup. The publication
-outcome distinguishes observed success, unresolved writes, conflicts, staging
-failure and verification failure. Cleanup reports whether a deletion failed;
-trace fields contain no node/group IDs, backend URLs or staging versions.
 
 Index traces separate discovery and checkpoint filtering, parser admission waits,
 parsing retries, queue sends, application, embedding planning and wave reads,
@@ -815,11 +810,10 @@ mash list-threads --provider codex --title-contains cbioportal --limit 10
 mash search 'database migration' --unit messages --provider codex --conversation THREAD_ID
 ```
 
-The HTTP service uses [Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env`;
-there is no backend selector. PostgreSQL/Redis settings are rejected. An existing
-Qdrant configuration must omit `backend = "qdrant"` before upgrading.
-See the [Qdrant-only transition](docs/qdrant-only-transition.md) for validation
-and the separate live-data migration work.
+The HTTP service stores shared silver in SQLite and shared gold in
+[Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env`; there is no backend
+selector. PostgreSQL/Redis settings are rejected. See [shared storage](docs/shared-storage.md)
+for the publication sequence, recovery and cutover from Qdrant-only servers.
 
 Each node has a different randomly generated token (at least 32 printable ASCII
 bytes), supplied through its configured `shared.token_env`. Server group membership
@@ -835,10 +829,10 @@ credentials. Search carries a query embedding and returns candidates for node-si
 fusion and reranking. The HTTP server needs no model assets. Interrupted or invalid
 uploads leave the visible revision and freshness unchanged. Uploads are bounded
 by 128 records per batch, 8 MiB per event, 8 GiB per request, and the configured
-`qdrant_max_node_mib` (64 MiB default). Ordinary JSON requests are limited to 64 KiB.
+`max_upload_mib` (64 MiB default, range 1–4,096). Ordinary JSON requests are limited to 64 KiB.
 Node/revision checks reject stale uploads; full snapshot retries are idempotent.
 
-Set `max_concurrent_uploads` (default 4, range 1–16) to bound concurrent staging
+Set `max_concurrent_uploads` (default 4, range 1–16) to bound concurrent publication
 work; large histories should use 1. The same capacity also covers `forget`
 mutations. A complete upload or accepted forget operation
 keeps its slot until the work succeeds or fails, including if the requester
@@ -847,41 +841,26 @@ existing node/revision checks. Busy mutations return a retryable HTTP 503;
 search and metadata reads do not consume mutation slots. This bounds the number
 of mutations, not their total RAM.
 
-Qdrant uses `max_mutation_snapshot_mib` (default 1,024, range
-1–65,536) to admit snapshot work by size. Each mutation reserves the sum of its
-existing canonical snapshot and incoming upload bytes, rounded up to MiB, with
-a minimum of one MiB. `forget` reserves the existing snapshot size. Reservations
-are shared across all configured nodes/groups in one API process and remain held
-through decoding, planning and publication. Busy capacity returns a retryable
-503. A mutation larger than the entire budget returns a nonretryable 400 naming
-the setting to increase; the active revision stays unchanged. Uploads and stored
-chunks may already have been privately spooled before this check, but typed
-snapshot decoding has not started.
+Shared silver is the source of truth. A publication is validated and committed
+to the silver SQLite database in one transaction, and only then synchronized into
+Qdrant: documents are replaced in place per message and the node's gold record
+is certified for the new silver revision when every thread is written. Until
+then the node's gold is reported stale and excluded from dense search; there is
+no Qdrant staging or conditional head protocol. A node that sees stale gold
+resends a complete snapshot, which repairs gold without changing silver.
+Thread lists, `view` and context reads come from shared silver.
 
-This setting measures serialized inputs, **not RSS**. Allow additional RAM for
-decoded objects, readers, allocator caches, transport buffers and database staging;
-multiple API processes have separate budgets. Raising a node's payload cap may
-also require raising this budget, especially for full replacements that count
-both the old snapshot and new upload. The [two-node admission comparison](benchmarks/2026-10-01-shared-snapshot-budget.md)
-records the memory/throughput tradeoff and successful retries on a real corpus.
-The `reserve_snapshot_work` trace span reports work MiB, limit MiB and
-accepted/busy/oversized outcome without payloads or node identifiers.
-
-The [large-replacement overlap measurement](benchmarks/2026-10-01-shared-publication-concurrency.md)
-records candidate-search latency and API/database memory with one mutation slot;
-it does not validate four simultaneous large publications or a 2-GiB database budget.
-Qdrant context reads use projected thread ancestry before fetching selected
-message bodies; the [long-thread context comparison](benchmarks/2026-10-01-qdrant-context-projection.md)
-records the measured memory/latency change and remaining thread-size costs.
-Staging changed revisions uses extra memory and writes,
-and the service loads canonical node data when applying changes; unchanged data
-can reuse the existing stage. These are deliberate limits on the initial
-backend. Benchmark actual search latency, update cost, memory use, and retrieval
+If Qdrant data is lost or damaged, start the service with `--replay-gold` to
+rebuild every configured node's documents and vectors from shared silver before
+serving. Replay embeds with the server's configured `[embeddings]` model space:
+a remote endpoint when `url` is set, otherwise local model assets from
+`--models-dir`. Nodes can instead republish with `mash index --rebuild-shared-gold`.
+Benchmark actual search latency, update cost, memory use, and retrieval
 quality for a group. See [the measured comparison](benchmarks/2026-09-30-shared-index.md).
 
 In both mode without destination filters, local indexing commits first. Changes
 mark a durable local publication revision;
-a changed node stages its complete snapshot in Qdrant and atomically advances its head. Raw tool outputs are uploaded
+the service commits a changed node's upload to shared silver and then synchronizes its gold. Raw tool outputs are uploaded
 for context but remain excluded from search. Unchanged revisions are acknowledged
 without replacing shared records. A failed upload returns local success with
 `shared.state: "pending"`; subsequent `index` runs retry even with no new history.
@@ -896,7 +875,7 @@ accepted revisions.
 
 With per-index filters in both mode, SQLite ingests only the local allowlist and
 the shared publication coordinator independently ingests the shared allowlist from the original history
-files. Qdrant stores the shared source checkpoints. Local work still commits
+files. Shared silver stores the source checkpoints. Local work still commits
 first and shared failures return pending; retry with `index` while retaining the
 original shared history files. Shared forget intents are durably queued in SQLite
 when offline and applied before the next shared ingestion. A successful forget
@@ -915,9 +894,9 @@ context has a one-second total budget, preserving completed responses and using
 available message evidence for the rest. Transport failures appear in shared
 search status; combined search retains local results. Bulk publication and
 retained-history operations have a separate thirty-minute budget, covering
-upload, validation and staging. The service uses the same bulk budget. A timed-out
+upload, validation and gold synchronization. The service uses the same bulk budget. A timed-out
 or disconnected requester does not cancel an already admitted mutation: it keeps
-its capacity until completion, and staged data remains invisible until publication.
+its capacity until completion, and gold is not reported current until synchronization completes.
 
 Search defaults to `unit = "threads"` in CLI and MCP. Each thread result includes
 its conversation ID, provider, representative node, available title/project/repository
@@ -1028,17 +1007,10 @@ Other platforms retain atomic activation without these Unix flush barriers.
 For unfiltered both mode, full snapshot replacement favors correctness and
 simplicity over upload throughput. Large histories incur a full transfer on each changed revision, and
 exact retrieval scores the matching shared vectors. Qdrant also supports opt-in HNSW.
-Qdrant serializes canonical publication JSON to private temporary
-files on blocking workers and stream bounded chunks from those files. This
-avoids keeping a second full serialized snapshot in API memory. Temporary disk
-must hold the incoming upload and canonical JSON
-until publication finishes. The validated canonical data still resides in
-memory. Stored canonical snapshots are also received into
-private, checksummed files and decoded on blocking workers, avoiding a full
-input JSON buffer during replacement or retry. Temporary disk must accommodate
-these reads too. Backend staging and validated data have additional costs;
-the configured node snapshot limit is not a process RAM budget. Account for
-concurrent uploads when provisioning the API and database.
+The API spools each upload to a private temporary file and applies it to shared
+silver in one SQLite transaction; temporary disk must hold concurrent uploads.
+Gold synchronization then reads the committed upload and writes Qdrant documents
+per thread. Account for concurrent uploads when provisioning the API.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
 recall tradeoffs before choosing approximate retrieval.
 
@@ -1046,8 +1018,10 @@ recall tradeoffs before choosing approximate retrieval.
 
 Configure `qdrant_url_env` on the HTTP service. Nodes continue using the same
 API URL, bearer token, CLI and MCP tools. Qdrant **1.19+ in the 1.x series** is
-required for conditional node publication; older versions are rejected before
-creating collections. Filtered HNSW vector retrieval is the default, with
+required; older versions are rejected before creating collections. Shared
+silver is a SQLite database on the API host, `silver_database` (absolute path;
+default `shared-silver.sqlite3` in the platform data directory). Back it up:
+Qdrant can be rebuilt from it, but not the reverse. Filtered HNSW vector retrieval is the default, with
 `ef_runtime = 200`; exact vector retrieval remains an explicit option.
 
 ```toml
@@ -1056,7 +1030,8 @@ listen = "127.0.0.1:8787"
 qdrant_url_env = "MASH_QDRANT_URL"
 # Optional for an authenticated Qdrant service:
 # qdrant_api_key_env = "MASH_QDRANT_API_KEY"
-qdrant_max_node_mib = 64
+# silver_database = "/var/lib/mash/shared-silver.sqlite3"
+max_upload_mib = 64
 qdrant_memory = "durable" # Default: pinned HNSW/sparse indexes, cached dense vectors, cold payloads.
 
 [[nodes]]
@@ -1155,8 +1130,9 @@ describes residency and low-memory behavior. Lower peak RAM and search latency
 need workload-specific measurement.
 
 Each group has an isolated message collection with named cosine dense vectors
-and IDF-weighted sparse lexical vectors, plus a metadata collection for canonical
-snapshots, checkpoints, tombstones, and thread catalogs. Lexical retrieval uses
+and IDF-weighted sparse lexical vectors, plus a state collection for the group's
+gold configuration and each node's gold certificate. Canonical history,
+checkpoints, tombstones and thread catalogs live in shared silver. Lexical retrieval uses
 lowercase alphanumeric tokens, hashed sparse term IDs, saturated term frequency,
 and a fixed 256-token length reference; exact token predicates prevent hash
 collisions from producing false lexical matches. This is a backend-specific
@@ -1168,16 +1144,12 @@ Quantization is disabled. Foreign vector fields, incompatible vector settings,
 or payload index types are rejected without deleting data. Dimension-specific
 fields are prepared without changing the original vector space.
 
-Uploads stage immutable versions and atomically update a group catalogue with
-expected configuration, catalogue and node versions. Activation updates that same
-point, fencing delayed publications. Competing stale writers receive a conflict;
-different-node updates may retry metadata publication up to three times. Reads only admit active versions
-and verify their heads before returning. Canonical snapshots are checksummed and
-chunked; thread listing reads metadata without message bodies or vectors. The
-64 MiB limit applies to incoming uploads and each canonical node snapshot and is
-configurable. Keep Qdrant storage persistent and backed up. Obsolete versions are
-removed after publication; failed cleanup or a server crash can leave hidden
-staging data on disk, which does not appear in search results.
+Each node's gold record names the silver revision it was certified against.
+Publication clears the certificate, replaces changed documents in place, deletes
+removed threads, and then recertifies; a crash between those steps leaves gold
+stale rather than wrong-and-current. Activation replaces the group configuration
+point; API processes with superseded settings fail closed. The 64 MiB upload
+limit is configurable. Keep the silver database on persistent, backed-up storage.
 
 ## Remote embeddings
 
@@ -1291,9 +1263,8 @@ timestamps:
 - `last_updated_at`: last committed data update or deletion. A check with no
   changed data preserves this timestamp.
 
-The API records these timestamps in the atomically published Qdrant node head.
-It captures server time after staging, before conditional publication; this
-excludes bulk staging time but is not an exact database commit timestamp.
+The API records these timestamps in the node's shared silver head, inside the
+SQLite transaction that applies the upload.
 Failed uploads leave them unchanged. They describe received
 index data, not the newest source message's timestamp or proof that a node is
 currently online. Older nodes can have null timestamps until they publish with

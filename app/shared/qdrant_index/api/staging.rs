@@ -57,8 +57,6 @@ impl StagingBatch {
         }
         let input = UpsertSlice {
             points: &self.points,
-            update_filter: None,
-            update_mode: None,
         };
         let result: Operation = client
             .call(

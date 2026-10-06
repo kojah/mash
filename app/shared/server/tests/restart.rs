@@ -450,3 +450,95 @@ async fn shared_backend_persisted_restart_contract() {
         started.elapsed()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires Docker, cached Qdrant image, MASH_TEST_SERVER_BINARY and MASH_TEST_MODELS_DIR"]
+async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
+    let database = Database::start();
+    database.ready().await;
+    let root = tempfile::tempdir().unwrap();
+    let api = Api::start(&database, root.path());
+    publish(&api, FIRST, 1, false).await;
+    publish(&api, SECOND, 1, true).await;
+    publish(&api, FIRST, 2, false).await;
+    let states = [
+        api.get::<protocol::NodeState>("state", FIRST).await,
+        api.get::<protocol::NodeState>("state", SECOND).await,
+    ];
+    drop(api);
+    // No Qdrant backup: the database and its volume are gone for good.
+    database.destroy();
+    let fresh = Database::start();
+    fresh.ready().await;
+    let lost = Api::start(&fresh, root.path());
+    let freshness: crate::shared::Freshness = lost.get("freshness", FIRST).await;
+    assert!(freshness.nodes.iter().all(|node| !node.gold_current));
+    drop(lost);
+    let models = std::path::PathBuf::from(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap());
+    let (api, reports) = Api::launch(&fresh, root.path(), Some(&models));
+    let mut replayed = reports
+        .iter()
+        .filter(|report| report.get("threads").is_some())
+        .map(|report| {
+            (
+                report["group_id"].as_str().unwrap().to_owned(),
+                report["node_id"].as_str().unwrap().to_owned(),
+                report["messages"].as_u64().unwrap(),
+                report["embeddings"].as_u64().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    replayed.sort();
+    assert_eq!(
+        replayed,
+        [
+            ("restart-main".into(), "first".into(), 3, 2),
+            ("restart-main".into(), "second".into(), 1, 1),
+            ("restart-other".into(), "first".into(), 0, 0),
+        ],
+        "one replay report per configured node: {reports:?}"
+    );
+    for (token, state) in [FIRST, SECOND].into_iter().zip(states) {
+        let replayed = api.get::<protocol::NodeState>("state", token).await;
+        assert_eq!(replayed.revision, state.revision);
+        assert_eq!(replayed.silver_revision, state.silver_revision);
+        assert_eq!(replayed.source_silver, state.source_silver);
+    }
+    for (token, (conversations, messages, searchable, embeddings)) in
+        [(FIRST, (2, 3, 2, 2)), (SECOND, (1, 1, 1, 1))]
+    {
+        let counts: crate::storage::Counts = api.get("status", token).await;
+        assert_eq!(
+            (
+                counts.conversations,
+                counts.messages,
+                counts.searchable_messages,
+                counts.embeddings
+            ),
+            (conversations, messages, searchable, embeddings)
+        );
+    }
+    let freshness: crate::shared::Freshness = api.get("freshness", FIRST).await;
+    assert_eq!(freshness.nodes.len(), 2);
+    assert!(
+        freshness
+            .nodes
+            .iter()
+            .all(|node| node.gold_current && node.lexical_current)
+    );
+    let mut input = query(crate::search_results::SearchUnit::Messages);
+    input.filter = Some(Filter::All(vec![
+        Filter::Node(vec!["first".into()]),
+        Filter::Provider(vec![Provider::Codex]),
+    ]));
+    let result: protocol::Candidates = api.post_json("search", FIRST, &input).await;
+    assert_eq!(result.lexical.len(), 1);
+    assert_eq!(result.semantic.len(), 1, "replayed vectors are searchable");
+    publish(&api, FIRST, 3, false).await;
+    assert!(
+        api.get::<crate::shared::Freshness>("freshness", FIRST)
+            .await
+            .nodes[0]
+            .gold_current
+    );
+}

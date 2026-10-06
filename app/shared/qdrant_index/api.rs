@@ -121,24 +121,10 @@ pub(super) struct Sparse {
 #[derive(Serialize)]
 pub(super) struct Upsert<P> {
     pub points: Vec<Point<P>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub update_filter: Option<Filter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub update_mode: Option<UpdateMode>,
 }
 #[derive(Serialize)]
 struct UpsertSlice<'a, P> {
     points: &'a [P],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    update_filter: Option<&'a Filter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    update_mode: Option<&'a UpdateMode>,
-}
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) enum UpdateMode {
-    InsertOnly,
-    UpdateOnly,
 }
 #[derive(Clone, Default, Serialize)]
 pub(super) struct Filter {
@@ -153,23 +139,12 @@ pub(super) struct Filter {
 #[serde(untagged)]
 pub(super) enum Condition {
     Match { key: String, r#match: Match },
-    IntegerMatch { key: String, r#match: IntegerMatch },
     Range { key: String, range: Range },
     Nested(Filter),
 }
 #[derive(Clone, Serialize)]
 pub(super) struct Match {
     pub any: Vec<String>,
-}
-#[derive(Clone, Serialize)]
-pub(super) struct IntegerMatch {
-    pub any: Vec<i64>,
-}
-pub(super) fn integers(key: &str, any: Vec<i64>) -> Condition {
-    Condition::IntegerMatch {
-        key: key.into(),
-        r#match: IntegerMatch { any },
-    }
 }
 #[derive(Clone, Default, Serialize)]
 pub(super) struct Range {
@@ -229,7 +204,6 @@ struct Scroll {
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
 enum Payload {
-    All(bool),
     Fields(&'static [&'static str]),
 }
 #[derive(Deserialize)]
@@ -935,8 +909,6 @@ impl Client {
     ) -> Result<(), AppError> {
         let body = UpsertSlice {
             points: &input.points[start..end],
-            update_filter: input.update_filter.as_ref(),
-            update_mode: input.update_mode.as_ref(),
         };
         let op: Operation = self
             .call(
@@ -977,25 +949,6 @@ impl Client {
         )
         .await
     }
-    pub(super) async fn scroll<P: DeserializeOwned>(
-        &self,
-        name: &str,
-        filter: Filter,
-    ) -> Result<Vec<Record<P>>, AppError> {
-        self.scroll_selected(name, filter, Payload::All(true), 100)
-            .await
-    }
-    pub(super) async fn scroll_fields<P: DeserializeOwned>(
-        &self,
-        name: &str,
-        filter: Filter,
-        fields: &'static [&'static str],
-    ) -> Result<Vec<Record<P>>, AppError> {
-        // Context outlines contain only identities and topology, not message bodies.
-        // Larger pages avoid serial round trips for long, parent-linked threads.
-        self.scroll_selected(name, filter, Payload::Fields(fields), 1000)
-            .await
-    }
     #[tracing::instrument(name = "qdrant_native_scroll_page", skip_all, fields(limit))]
     pub(super) async fn scroll_page<P: DeserializeOwned>(
         &self,
@@ -1026,45 +979,6 @@ impl Client {
         }
         Ok(reply)
     }
-    #[tracing::instrument(name = "qdrant_native_scroll", skip_all, fields(limit))]
-    async fn scroll_selected<P: DeserializeOwned>(
-        &self,
-        name: &str,
-        filter: Filter,
-        payload: Payload,
-        limit: usize,
-    ) -> Result<Vec<Record<P>>, AppError> {
-        let mut output = Vec::new();
-        let mut offset = None;
-        loop {
-            let reply: ScrollResult<P> = self
-                .call(
-                    Method::POST,
-                    &format!("collections/{name}/points/scroll?consistency=all"),
-                    Some(&Scroll {
-                        filter: filter.clone(),
-                        limit,
-                        with_payload: payload.clone(),
-                        with_vector: false,
-                        offset: offset.clone(),
-                    }),
-                )
-                .await?;
-            if reply.points.len() > limit
-                || (reply.next_page_offset.is_some() && reply.points.is_empty())
-            {
-                return Err(failure());
-            }
-            output.extend(reply.points);
-            if reply.next_page_offset.is_none() {
-                return Ok(output);
-            }
-            if reply.next_page_offset == offset {
-                return Err(failure());
-            }
-            offset = reply.next_page_offset;
-        }
-    }
     #[tracing::instrument(name = "qdrant_native_query", skip_all, fields(limit = input.limit, exact = input.params.exact, dense = matches!(&input.query, QueryVector::Dense(_))))]
     pub(super) async fn query<P: DeserializeOwned>(
         &self,
@@ -1083,26 +997,13 @@ impl Client {
         }
         Ok(result.points)
     }
-    #[cfg(test)]
-    pub(super) async fn delete_version(&self, name: &str, version: &str) -> Result<(), AppError> {
-        self.delete_versions(name, &[version.to_owned()]).await
-    }
-    #[tracing::instrument(name = "qdrant_native_delete", skip_all, fields(versions = versions.len()))]
-    pub(super) async fn delete_versions(
-        &self,
-        name: &str,
-        versions: &[String],
-    ) -> Result<(), AppError> {
+    #[tracing::instrument(name = "qdrant_native_delete", skip_all)]
+    pub(super) async fn delete_filtered(&self, name: &str, filter: Filter) -> Result<(), AppError> {
         let op: Operation = self
             .call(
                 Method::POST,
                 &format!("collections/{name}/points/delete?wait=true&ordering=strong"),
-                Some(&Delete {
-                    filter: Filter {
-                        must: vec![matches("version", versions.to_vec())],
-                        ..Filter::default()
-                    },
-                }),
+                Some(&Delete { filter }),
             )
             .await?;
         if op.status != OperationStatus::Completed {

@@ -300,7 +300,7 @@ pub(super) struct Indexed {
     pub purged_conversations: u64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Search {
     #[serde(

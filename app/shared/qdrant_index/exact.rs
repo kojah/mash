@@ -1,16 +1,15 @@
 //! Bounded literal scanning of immutable lexical documents, without vectors.
-use super::{AppError, Identity, NodeHead, Store, api, collection, failure, point_id, tokens};
+use super::{AppError, Identity, Store, api, collection, document_id, failure, tokens};
 use crate::{
     gold::exact::{self, Literal},
     shared::protocol,
     storage::SearchHit,
 };
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 const MAX_CANDIDATES: usize = 10_000;
 const FIELDS: &[&str] = &[
-    "version",
     "node_id",
     "provider",
     "role",
@@ -39,7 +38,6 @@ struct Message {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
-    version: String,
     node_id: String,
     provider: crate::provider::Provider,
     role: crate::role::Role,
@@ -52,16 +50,11 @@ struct Document {
     message: Message,
 }
 
-fn hit(
-    point: api::Record<Document>,
-    active: &BTreeMap<&String, &NodeHead>,
-) -> Result<SearchHit, AppError> {
+fn hit(point: api::Record<Document>, active: &BTreeSet<String>) -> Result<SearchHit, AppError> {
     let d = point.payload;
     let m = d.message;
-    if point.id != point_id(&["message", &d.version, &m.id])
-        || active
-            .get(&d.node_id)
-            .is_none_or(|h| h.thread_version(&m.conversation_id) != Some(d.version.as_str()))
+    if point.id != document_id(&d.node_id, &m.id)
+        || !active.contains(&d.node_id)
         || d.conversation_id != m.conversation_id
         || d.conversation.id != m.conversation_id
         || d.provider != d.conversation.provider
@@ -103,34 +96,17 @@ impl Store {
         &self,
         identity: &Identity,
         input: protocol::Search,
+        active: &BTreeSet<String>,
     ) -> Result<protocol::Candidates, AppError> {
         let literal = Literal::new(&input.query)?;
         if let Some(filter) = &input.filter {
             filter.validate()?;
         }
-        let heads = self.heads(identity).await?;
-        if heads.is_empty() {
-            return Err(AppError::shared(
-                "shared lexical index has not been initialized; run mash index",
-            ));
-        }
-        let active: BTreeMap<_, _> = heads
+        let active = active
             .iter()
-            .filter(|(n, _)| !input.exclude_self || **n != identity.node_id)
-            .collect();
-        if active.values().any(|node| {
-            node.head.as_ref().is_none_or(|h| {
-                !h.metadata_ready
-                    || !h.catalog_ready
-                    || h.lexical_manifest
-                        .as_ref()
-                        .is_none_or(|m| !m.matches(h.silver_revision.as_ref()))
-            })
-        }) {
-            return Err(AppError::shared(
-                "shared lexical artifact is stale or unverified; run mash index on publishing nodes",
-            ));
-        }
+            .filter(|node| !input.exclude_self || **node != identity.node_id)
+            .cloned()
+            .collect::<BTreeSet<_>>();
         let mut filter = super::read::search_filter(&input, &active)?;
         for word in tokens(&input.query).into_iter().collect::<BTreeSet<_>>() {
             filter.must.push(api::matches("tokens", vec![word]));
@@ -175,7 +151,6 @@ impl Store {
                 offset = page.next_page_offset;
             }
         }
-        self.stable_heads(identity, &heads).await?;
         Ok(protocol::Candidates {
             lexical: hits,
             semantic: vec![],

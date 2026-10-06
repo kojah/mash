@@ -1,532 +1,43 @@
+//! Recipe, model-space and pinning contracts of shared publication.
 use super::*;
 use crate::gold::readiness::{Artifacts, State};
+use crate::shared::gold_rebuild::{Embedding, Event as GoldEvent};
 
-#[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_freshness_revokes_source_certificate_after_forget() {
-    let fixture = Fixture::new(VectorIndex::default()).await;
-    fixture
-        .store
-        .index(&fixture.identity, certified_source_upload(&fixture))
-        .await
-        .unwrap();
-    let before = fixture.store.freshness(&fixture.identity).await.unwrap();
-    assert!(
-        before.nodes[0]
-            .source_silver
-            .as_ref()
-            .unwrap()
-            .is_complete()
-    );
-    fixture
-        .store
-        .forget(
-            &fixture.identity,
-            protocol::Forget {
-                instance: "instance".into(),
-                revision: Some(2),
-                ids: vec!["thread".into()],
-            },
-        )
-        .await
-        .unwrap();
-    let after = fixture.store.freshness(&fixture.identity).await.unwrap();
-    assert!(after.nodes[0].source_silver.is_none());
-    assert_ne!(
-        before.nodes[0].silver_revision,
-        after.nodes[0].silver_revision
-    );
-    assert_eq!(after.nodes[0].revision, 2);
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_dimension_switch_preserves_silver_lexical_and_restart_recovery() {
-    for memory in [MemoryTier::Cached, MemoryTier::Cold, MemoryTier::Durable] {
-        dimension_switch(memory).await;
-    }
-}
-
-async fn dimension_switch(memory: MemoryTier) {
-    let mut fixture = Fixture::with_memory(VectorIndex::default(), memory).await;
-    fixture
-        .store
-        .index(&fixture.identity, certified_source_upload(&fixture))
-        .await
-        .unwrap();
-    let original = fixture.store.load(&fixture.identity).await.unwrap();
-    let old_store = fixture.store.clone();
-    let old_identity = fixture.identity.clone();
-    let old_query = fixture.query();
-    if memory == MemoryTier::Cold {
-        // Simulate termination between named-field creation and placement setup.
-        reqwest::Client::new()
-            .put(format!(
-                "{}/collections/{}/vectors/dense_8?wait=true",
-                fixture.url,
-                collection(&fixture.identity.group_id, false)
-            ))
-            .json(&serde_json::json!({"dense":{"size":8,"distance":"Cosine"}}))
-            .send()
-            .await
-            .unwrap()
-            .error_for_status()
-            .unwrap();
-    }
-    let connect = || {
-        Store::connect(
-            &fixture.url,
-            None,
-            std::slice::from_ref(&fixture.identity.group_id),
-            8,
-            64 * 1024 * 1024,
-            VectorIndex::default(),
-            memory.into(),
-        )
-    };
-    let prepared = connect().await.unwrap();
-    let mut next = fixture.identity.clone();
-    next.dimensions = 8;
-    next.generation = crate::semantic::model_space("alternate-test", 8);
-    assert!(prepared.select_gold(&next, false).await.is_err());
-    assert!(
-        !old_store
-            .search(&old_identity, fixture.query())
-            .await
-            .unwrap()
-            .semantic
-            .is_empty()
-    );
-    // Restart after preparation. It must reuse the field without activating it.
-    fixture.store = connect().await.unwrap();
-    fixture.identity = next;
-    fixture
-        .store
-        .select_gold(&fixture.identity, true)
-        .await
-        .unwrap();
-    let freshness = fixture.store.freshness(&fixture.identity).await.unwrap();
-    assert!(freshness.nodes[0].lexical_current);
-    assert!(!freshness.nodes[0].gold_current);
-    assert_source_certificate(&freshness.nodes[0], &original);
-    assert_eq!(
-        freshness.nodes[0].artifacts,
-        Some(crate::gold::readiness::Artifacts {
-            metadata: crate::gold::readiness::State::Ready,
-            lexical: crate::gold::readiness::State::Ready,
-            dense: crate::gold::readiness::State::Stale,
-        })
-    );
-    assert!(old_store.search(&old_identity, old_query).await.is_err());
-    assert!(
-        old_store
-            .index(&old_identity, certified_source_upload(&fixture))
-            .await
-            .is_err()
-    );
-    let mut exact = fixture.query();
-    exact.intent = crate::gold::exact::Intent::ExactMention;
-    exact.vector.clear();
-    exact.generation.clear();
-    assert_eq!(
-        fixture
-            .store
-            .search(&fixture.identity, exact)
-            .await
-            .unwrap()
-            .lexical
-            .len(),
-        2
-    );
-    assert!(
-        fixture
-            .store
-            .search(&fixture.identity, fixture.query())
-            .await
-            .is_err()
-    );
-    dimension_roundtrip(&mut fixture, old_store, old_identity, &original).await;
-    fixture.cleanup().await;
-}
-
-fn assert_source_certificate(node: &crate::shared::NodeFreshness, original: &Loaded) {
-    assert_eq!(
-        node.source_silver,
-        original.head.as_ref().unwrap().source_silver
-    );
-}
-
-async fn dimension_roundtrip(
-    fixture: &mut Fixture,
-    old_store: Store,
-    old_identity: Identity,
-    original: &Loaded,
-) {
-    use crate::shared::gold_rebuild::Embedding;
-    let silver = serde_json::to_vec(&original.data.silver()).unwrap();
-    let fingerprint = original.data.canonical_fingerprint().unwrap();
-    for dimensions in [8, 4] {
-        if dimensions == 4 {
-            fixture.store = old_store.clone();
-            fixture.identity = old_identity.clone();
-        }
-        let vectors = original
-            .data
-            .messages
-            .values()
-            .map(|m| {
-                let mut vector = m.vector.clone().unwrap();
-                vector.resize(dimensions, 0.0);
-                Embedding {
-                    message_id: m.id.clone(),
-                    vector,
-                }
-            })
-            .collect::<Vec<_>>();
-        assert_artifact_switch(
-            fixture,
-            original,
-            &vectors,
-            &fingerprint,
-            crate::gold::config::Build::default(),
-        )
-        .await;
-        let after = fixture.store.load(&fixture.identity).await.unwrap();
-        assert_eq!(serde_json::to_vec(&after.data.silver()).unwrap(), silver);
-        let before = original.head.as_ref().unwrap();
-        let after = after.head.unwrap();
-        assert_eq!(after.revision, before.revision);
-        assert_eq!(after.instance, before.instance);
-        assert_eq!(after.silver_revision, before.silver_revision);
-        assert_eq!(after.source_silver, before.source_silver);
-        assert_eq!(after.last_synced_at, before.last_synced_at);
-        assert_eq!(after.last_updated_at, before.last_updated_at);
-    }
-}
-
-#[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_model_generation_switch_preserves_silver_and_requires_rebuilding_gold() {
-    use crate::shared::gold_rebuild::Embedding;
-    let mut fixture = Fixture::new(VectorIndex::default()).await;
-    fixture
-        .store
-        .index(&fixture.identity, certified_source_upload(&fixture))
-        .await
-        .unwrap();
-    let original = fixture.store.load(&fixture.identity).await.unwrap();
-    let silver = serde_json::to_vec(&original.data.silver()).unwrap();
-    let fingerprint = original.data.canonical_fingerprint().unwrap();
-    let original_head = original.head.as_ref().unwrap();
-    let old_identity = fixture.identity.clone();
-    let old_query = fixture.query();
-    let old_version = fixture.store.gold_version(&old_identity).await.unwrap();
-    // Frozen vectors isolate publication/model identity from inference quality.
-    // This contract changes model generation while keeping dimensionality fixed.
-    let vectors = original
-        .data
-        .messages
-        .values()
-        .map(|m| Embedding {
-            message_id: m.id.clone(),
-            vector: m.vector.clone().unwrap(),
-        })
-        .collect::<Vec<_>>();
-    fixture.identity.generation = crate::semantic::model_space("alternate-test", 4);
-    assert!(
-        fixture
-            .store
-            .select_gold(&fixture.identity, false)
-            .await
-            .is_err()
-    );
-    assert_eq!(
-        fixture.store.gold_version(&old_identity).await.unwrap(),
-        old_version
-    );
-    fixture
-        .store
-        .select_gold(&fixture.identity, true)
-        .await
-        .unwrap();
-    let stale = fixture.store.freshness(&fixture.identity).await.unwrap();
-    assert!(stale.nodes[0].lexical_current);
-    assert!(!stale.nodes[0].gold_current);
-    assert!(
-        fixture
-            .store
-            .search(&fixture.identity, fixture.query())
-            .await
-            .is_err()
-    );
-    assert!(
-        fixture
-            .store
-            .search(&old_identity, old_query)
-            .await
-            .is_err()
-    );
-    let mut exact = fixture.query();
-    exact.intent = crate::gold::exact::Intent::ExactMention;
-    exact.vector.clear();
-    exact.generation.clear();
-    assert_eq!(
-        fixture
-            .store
-            .search(&fixture.identity, exact)
-            .await
-            .unwrap()
-            .lexical
-            .len(),
-        2
-    );
-
-    for identity in [fixture.identity.clone(), old_identity] {
-        fixture.identity = identity;
-        assert_artifact_switch(
-            &fixture,
-            &original,
-            &vectors,
-            &fingerprint,
-            crate::gold::config::Build::default(),
-        )
-        .await;
-        let after = fixture.store.load(&fixture.identity).await.unwrap();
-        assert_eq!(serde_json::to_vec(&after.data.silver()).unwrap(), silver);
-        let head = after.head.unwrap();
-        assert_eq!(head.revision, original_head.revision);
-        assert_eq!(head.instance, original_head.instance);
-        assert_eq!(head.silver_revision, original_head.silver_revision);
-        assert_eq!(head.source_silver, original_head.source_silver);
-        assert_eq!(head.last_synced_at, original_head.last_synced_at);
-        assert_eq!(head.last_updated_at, original_head.last_updated_at);
-        assert!(
-            after
-                .data
-                .messages
-                .values()
-                .all(|m| m.generation.as_deref() == Some(fixture.identity.generation.as_str()))
-        );
-    }
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
-    use crate::gold::config::{Build, Representations};
-    use crate::shared::gold_rebuild::Embedding;
-    let fixture = Fixture::new(VectorIndex::default()).await;
-    let source = certified_source_upload(&fixture);
-    let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
+fn events(file: &tempfile::NamedTempFile) -> Vec<Event> {
+    serde_json::Deserializer::from_reader(file.reopen().unwrap())
         .into_iter::<Event>()
         .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    for event in &mut events {
-        if let Event::Batch(Batch::Messages { records }) = event {
-            records[1].role = crate::role::Role::Assistant;
-        }
-    }
-    let mut source = tempfile::NamedTempFile::new().unwrap();
-    for event in events {
-        crate::shared::write_event(source.as_file_mut(), &event).unwrap();
-    }
-    fixture
-        .store
-        .index(&fixture.identity, source)
-        .await
-        .unwrap();
-    let original = fixture.store.load(&fixture.identity).await.unwrap();
-    let fingerprint = original.data.canonical_fingerprint().unwrap();
-    let vectors = original
-        .data
-        .messages
-        .values()
-        .filter(|m| !m.projection.is_empty())
-        .map(|m| Embedding {
-            message_id: m.id.clone(),
-            vector: m.vector.clone().unwrap(),
-        })
-        .collect::<Vec<_>>();
-    for recipe in [
-        Build {
-            representations: Representations::LexicalOnly,
-            ..Default::default()
-        },
-        Build::default(),
-        Build {
-            dense_content: crate::gold::config::DenseContent::AllVisible,
-            text_preparation: crate::gold::config::TextPreparation::CollapseWhitespace,
-            ..Default::default()
-        },
-        Build {
-            dense_content: crate::gold::config::DenseContent::UserMessages,
-            ..Default::default()
-        },
-        Build {
-            retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
-            ..Default::default()
-        },
-        Build::default(),
-    ] {
-        assert_artifact_switch(&fixture, &original, &vectors, &fingerprint, recipe).await;
-    }
-    fixture.cleanup().await;
+        .unwrap()
 }
 
-async fn assert_artifact_switch(
-    fixture: &Fixture,
-    original: &Loaded,
-    vectors: &[crate::shared::gold_rebuild::Embedding],
-    fingerprint: &str,
-    recipe: crate::gold::config::Build,
-) {
-    use crate::shared::gold_rebuild::{Embedding, Event as GoldEvent};
-    let store = fixture.store.clone().with_build(recipe.clone());
-    store.select_gold(&fixture.identity, true).await.unwrap();
-    let loaded = store.load(&fixture.identity).await.unwrap();
-    let head = loaded.head.as_ref().unwrap();
+fn write(events: Vec<Event>) -> tempfile::NamedTempFile {
     let mut file = tempfile::NamedTempFile::new().unwrap();
-    serde_json::to_writer(
-        file.as_file_mut(),
-        &GoldEvent::Start {
-            publication_revision: head.revision,
-            silver: head.silver_revision.clone().unwrap(),
-            generation: fixture.identity.generation.clone(),
-            build: recipe.clone(),
-        },
-    )
-    .unwrap();
-    writeln!(file).unwrap();
-    if recipe.users_only() {
-        assert_excluded_vectors_rejected(&store, fixture, head, &file, vectors, fingerprint).await;
+    for event in events {
+        crate::shared::write_event(file.as_file_mut(), &event).unwrap();
     }
-    if recipe.dense_enabled() {
-        let records = vectors
-            .iter()
-            .filter(|v| {
-                let message = &original.data.messages[&v.message_id];
-                recipe.includes_dense(&message.role, &message.projection)
-            })
-            .map(|v| Embedding {
-                message_id: v.message_id.clone(),
-                vector: v.vector.clone(),
-            })
-            .collect();
-        serde_json::to_writer(file.as_file_mut(), &GoldEvent::Embeddings { records }).unwrap();
-        writeln!(file).unwrap();
-    }
-    serde_json::to_writer(file.as_file_mut(), &GoldEvent::Finish).unwrap();
-    writeln!(file).unwrap();
-    let indexed = store.rebuild_gold(&fixture.identity, file).await.unwrap();
-    assert_eq!(
-        indexed.counts.embeddings,
-        indexed.counts.expected_dense(&recipe).unwrap()
-    );
-    let loaded = store.load(&fixture.identity).await.unwrap();
-    assert_eq!(loaded.data.canonical_fingerprint().unwrap(), fingerprint);
-    if recipe.users_only() {
-        assert_eq!(indexed.counts.embeddings, 1);
-        assert_eq!(indexed.counts.searchable_user_messages, Some(1));
-        assert!(loaded.data.messages["message-1"].vector.is_none());
-        assert!(loaded.data.messages["message-0"].vector.is_some());
-        assert!(
-            store
-                .state(&fixture.identity)
-                .await
-                .unwrap()
-                .sources
-                .iter()
-                .all(|s| s.ready)
-        );
-    }
-    assert_eq!(store.capabilities(&fixture.identity).await.unwrap(), recipe);
-    let freshness = store.freshness(&fixture.identity).await.unwrap();
-    assert!(freshness.nodes[0].gold_current);
-    assert_source_certificate(&freshness.nodes[0], original);
-    assert_eq!(
-        freshness.nodes[0].artifacts,
-        Some(Artifacts {
-            metadata: State::Ready,
-            lexical: State::Ready,
-            dense: if recipe.dense_enabled() {
-                State::Ready
-            } else {
-                State::Disabled
-            },
-        })
-    );
-    let mut exact = fixture.query();
-    exact.intent = crate::gold::exact::Intent::ExactMention;
-    exact.vector.clear();
-    assert!(
-        !store
-            .search(&fixture.identity, exact)
-            .await
-            .unwrap()
-            .lexical
-            .is_empty()
-    );
-    let searched = store.search(&fixture.identity, fixture.query()).await;
-    assert_eq!(
-        searched.is_ok(),
-        recipe.dense_enabled(),
-        "recipe {recipe:?}: {searched:?}"
-    );
+    file
 }
 
-async fn assert_excluded_vectors_rejected(
-    store: &Store,
-    fixture: &Fixture,
-    head: &Head,
-    file: &tempfile::NamedTempFile,
-    vectors: &[crate::shared::gold_rebuild::Embedding],
-    fingerprint: &str,
-) {
-    use crate::shared::gold_rebuild::{Embedding, Event as GoldEvent};
-    let mut rejected = tempfile::NamedTempFile::new().unwrap();
-    std::io::copy(&mut file.reopen().unwrap(), rejected.as_file_mut()).unwrap();
-    serde_json::to_writer(
-        rejected.as_file_mut(),
-        &GoldEvent::Embeddings {
-            records: vectors
-                .iter()
-                .map(|v| Embedding {
-                    message_id: v.message_id.clone(),
-                    vector: v.vector.clone(),
-                })
-                .collect(),
-        },
-    )
-    .unwrap();
-    writeln!(rejected).unwrap();
-    serde_json::to_writer(rejected.as_file_mut(), &GoldEvent::Finish).unwrap();
-    writeln!(rejected).unwrap();
-    assert!(
-        store
-            .rebuild_gold(&fixture.identity, rejected)
-            .await
-            .is_err()
-    );
-    let unchanged = store.load(&fixture.identity).await.unwrap();
-    assert_eq!(unchanged.head.as_ref().unwrap().revision, head.revision);
-    assert_eq!(unchanged.data.canonical_fingerprint().unwrap(), fingerprint);
+fn titled() -> crate::gold::config::Build {
+    crate::gold::config::Build {
+        max_embedding_chars: None,
+        representations: crate::gold::config::Representations::LexicalAndDense,
+        dense_content: crate::gold::config::DenseContent::AllVisible,
+        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
+        text_preparation: crate::gold::config::TextPreparation::Preserve,
+        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+    }
 }
 
 fn certified_source_upload(fixture: &Fixture) -> tempfile::NamedTempFile {
-    let source = source_upload(
+    let mut events = events(&source_upload(
         fixture,
         1,
         Some(crate::gold::config::Build::default()),
         true,
         false,
         false,
-    );
-    let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
-        .into_iter::<Event>()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
+    ));
     let Event::Start(start) = &mut events[0] else {
         panic!("start");
     };
@@ -536,11 +47,7 @@ fn certified_source_upload(fixture: &Fixture) -> tempfile::NamedTempFile {
         completeness: crate::silver::certificate::Completeness::Complete,
         rejected_sources: 0,
     });
-    let mut source = tempfile::NamedTempFile::new().unwrap();
-    for event in events {
-        crate::shared::write_event(source.as_file_mut(), &event).unwrap();
-    }
-    source
+    write(events)
 }
 
 fn source_upload(
@@ -551,11 +58,7 @@ fn source_upload(
     include_other: bool,
     empty: bool,
 ) -> tempfile::NamedTempFile {
-    let source = fixture.file(revision, "recipe");
-    let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
-        .into_iter::<Event>()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
+    let mut events = events(&fixture.file(revision, "recipe"));
     let Event::Start(start) = &mut events[0] else {
         panic!("start")
     };
@@ -588,11 +91,386 @@ fn source_upload(
             }
         }
     }
+    write(events)
+}
+
+async fn plan(server: &Server, identity: &Identity) -> crate::shared::reuse::Target {
+    let permit = std::sync::Arc::new(tokio::sync::Semaphore::new(1))
+        .acquire_owned()
+        .await
+        .unwrap();
+    let (file, _) = server.publication_plan(identity, permit).await.unwrap();
+    serde_json::from_reader(file.reopen().unwrap()).unwrap()
+}
+
+/// A gold-only replacement of every dense-eligible message under `recipe`.
+fn gold_upload(
+    generation: &str,
+    state: &protocol::NodeState,
+    recipe: &crate::gold::config::Build,
+    vectors: Vec<Embedding>,
+) -> tempfile::NamedTempFile {
     let mut file = tempfile::NamedTempFile::new().unwrap();
+    let mut events = vec![GoldEvent::Start {
+        publication_revision: state.revision,
+        silver: state.silver_revision.clone().unwrap(),
+        generation: generation.to_owned(),
+        build: recipe.clone(),
+    }];
+    if !vectors.is_empty() {
+        events.push(GoldEvent::Embeddings { records: vectors });
+    }
+    events.push(GoldEvent::Finish);
     for event in events {
-        crate::shared::write_event(file.as_file_mut(), &event).unwrap();
+        serde_json::to_writer(file.as_file_mut(), &event).unwrap();
+        writeln!(file).unwrap();
     }
     file
+}
+
+fn vectors(fixture: &Fixture, dimensions: usize, users_only: bool) -> Vec<Embedding> {
+    fixture
+        .messages("recipe")
+        .into_iter()
+        .filter(|m| !users_only || m.role == crate::role::Role::User)
+        .map(|m| {
+            let mut vector = m.vector.unwrap();
+            vector.resize(dimensions, 0.0);
+            Embedding {
+                message_id: m.id,
+                vector,
+            }
+        })
+        .collect()
+}
+
+fn exact(fixture: &Fixture) -> protocol::Search {
+    let mut exact = fixture.query();
+    exact.intent = crate::gold::exact::Intent::ExactMention;
+    exact.vector.clear();
+    exact.generation.clear();
+    exact
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_freshness_revokes_source_certificate_after_forget() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .server
+        .index(&fixture.identity, certified_source_upload(&fixture))
+        .await
+        .unwrap();
+    let before = fixture.server.freshness(&fixture.identity).await.unwrap();
+    assert!(
+        before.nodes[0]
+            .source_silver
+            .as_ref()
+            .unwrap()
+            .is_complete()
+    );
+    fixture
+        .server
+        .forget(
+            &fixture.identity,
+            protocol::Forget {
+                instance: "instance".into(),
+                revision: Some(2),
+                ids: vec!["thread".into()],
+            },
+        )
+        .await
+        .unwrap();
+    let after = fixture.server.freshness(&fixture.identity).await.unwrap();
+    assert!(after.nodes[0].source_silver.is_none());
+    assert_ne!(
+        before.nodes[0].silver_revision,
+        after.nodes[0].silver_revision
+    );
+    assert_eq!(after.nodes[0].revision, 2);
+    assert!(fixture.search().await.documents.is_empty());
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+#[allow(clippy::too_many_lines)]
+async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuilding_gold() {
+    for memory in [MemoryTier::Cached, MemoryTier::Cold, MemoryTier::Durable] {
+        let fixture = Fixture::with_memory(VectorIndex::default(), memory).await;
+        fixture
+            .server
+            .index(&fixture.identity, certified_source_upload(&fixture))
+            .await
+            .unwrap();
+        let silver = fixture.retained();
+        let original = fixture.server.state(&fixture.identity).await.unwrap();
+        if memory == MemoryTier::Cold {
+            // Simulate termination between named-field creation and placement setup.
+            reqwest::Client::new()
+                .put(format!(
+                    "{}/collections/{}/vectors/dense_8?wait=true",
+                    fixture.url,
+                    collection(&fixture.identity.group_id, false)
+                ))
+                .json(&serde_json::json!({"dense":{"size":8,"distance":"Cosine"}}))
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap();
+        }
+        let wide = Store::connect(
+            &fixture.url,
+            None,
+            std::slice::from_ref(&fixture.identity.group_id),
+            8,
+            64 * 1024 * 1024,
+            VectorIndex::default(),
+            memory.into(),
+        )
+        .await
+        .unwrap();
+        let mut next = fixture.identity.clone();
+        next.dimensions = 8;
+        next.generation = crate::semantic::model_space("alternate-test", 8);
+        assert!(wide.select_gold(&next, false).await.is_err());
+        fixture.search().await;
+        wide.select_gold(&next, true).await.unwrap();
+        let switched = fixture.serve(wide);
+        let freshness = switched.freshness(&next).await.unwrap();
+        assert!(freshness.nodes[0].lexical_current);
+        assert!(!freshness.nodes[0].gold_current);
+        assert_eq!(freshness.nodes[0].source_silver, original.source_silver);
+        assert_eq!(
+            freshness.nodes[0].artifacts,
+            Some(Artifacts {
+                metadata: State::Ready,
+                lexical: State::Ready,
+                dense: State::Stale,
+            })
+        );
+        assert!(
+            fixture
+                .server
+                .search(&fixture.identity, fixture.query())
+                .await
+                .is_err()
+        );
+        assert!(
+            fixture
+                .server
+                .index(&fixture.identity, certified_source_upload(&fixture))
+                .await
+                .is_err(),
+            "a process with the replaced settings fails closed"
+        );
+        assert_eq!(
+            switched
+                .search(&next, exact(&fixture))
+                .await
+                .unwrap()
+                .lexical
+                .len(),
+            2
+        );
+        let mut wide_query = fixture.query();
+        wide_query.generation.clone_from(&next.generation);
+        wide_query.vector.resize(8, 0.0);
+        assert!(switched.search(&next, wide_query.clone()).await.is_err());
+        let state = switched.state(&next).await.unwrap();
+        let mut gold = vectors(&fixture, 8, false);
+        for embedding in &mut gold {
+            embedding.vector.resize(8, 0.0);
+        }
+        switched
+            .rebuild_gold(
+                &next,
+                gold_upload(
+                    &next.generation,
+                    &state,
+                    &crate::gold::config::Build::default(),
+                    gold,
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            switched
+                .search(&next, wide_query)
+                .await
+                .unwrap()
+                .semantic
+                .len(),
+            2
+        );
+        let after = switched.state(&next).await.unwrap();
+        assert_eq!(after.revision, original.revision);
+        assert_eq!(after.silver_revision, original.silver_revision);
+        assert_ne!(after.publication_version, original.publication_version);
+        assert_eq!(fixture.retained(), silver);
+        // Switching back needs another explicit gold rebuild at the original width.
+        fixture
+            .store
+            .select_gold(&fixture.identity, true)
+            .await
+            .unwrap();
+        assert!(
+            fixture
+                .server
+                .search(&fixture.identity, fixture.query())
+                .await
+                .is_err()
+        );
+        let state = fixture.server.state(&fixture.identity).await.unwrap();
+        fixture
+            .server
+            .rebuild_gold(
+                &fixture.identity,
+                gold_upload(
+                    &fixture.identity.generation,
+                    &state,
+                    &crate::gold::config::Build::default(),
+                    vectors(&fixture, 4, false),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(fixture.search().await.semantic.len(), 2);
+        assert_eq!(fixture.retained(), silver);
+        fixture.cleanup().await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+#[allow(clippy::too_many_lines)]
+async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
+    use crate::gold::config::{Build, Representations};
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let mut events = events(&certified_source_upload(&fixture));
+    for event in &mut events {
+        if let Event::Batch(Batch::Messages { records }) = event {
+            records[1].role = crate::role::Role::Assistant;
+        }
+    }
+    fixture
+        .server
+        .index(&fixture.identity, write(events))
+        .await
+        .unwrap();
+    let silver = fixture.retained();
+    let original = fixture.server.state(&fixture.identity).await.unwrap();
+    for recipe in [
+        Build {
+            representations: Representations::LexicalOnly,
+            ..Default::default()
+        },
+        Build::default(),
+        Build {
+            dense_content: crate::gold::config::DenseContent::AllVisible,
+            text_preparation: crate::gold::config::TextPreparation::CollapseWhitespace,
+            ..Default::default()
+        },
+        Build {
+            dense_content: crate::gold::config::DenseContent::UserMessages,
+            ..Default::default()
+        },
+        Build {
+            retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+            ..Default::default()
+        },
+        Build::default(),
+    ] {
+        let gold = fixture.store.clone().with_build(recipe.clone());
+        gold.select_gold(&fixture.identity, true).await.unwrap();
+        let server = fixture.serve(gold);
+        let state = server.state(&fixture.identity).await.unwrap();
+        if recipe.users_only() {
+            let rejected = server
+                .rebuild_gold(
+                    &fixture.identity,
+                    gold_upload(
+                        &fixture.identity.generation,
+                        &state,
+                        &recipe,
+                        vectors(&fixture, 4, false),
+                    ),
+                )
+                .await;
+            assert!(rejected.is_err(), "excluded vectors are rejected");
+            assert_eq!(fixture.retained(), silver);
+        }
+        let supplied = if recipe.dense_enabled() {
+            // The upload above made the second message an assistant reply.
+            let mut supplied = vectors(&fixture, 4, false);
+            if recipe.users_only() {
+                supplied.remove(1);
+            }
+            supplied
+        } else {
+            Vec::new()
+        };
+        let indexed = server
+            .rebuild_gold(
+                &fixture.identity,
+                gold_upload(&fixture.identity.generation, &state, &recipe, supplied),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            indexed.counts.embeddings,
+            indexed.counts.expected_dense(&recipe).unwrap()
+        );
+        assert_eq!(fixture.retained(), silver);
+        if recipe.users_only() {
+            assert_eq!(indexed.counts.embeddings, 1);
+            assert_eq!(indexed.counts.searchable_user_messages, Some(1));
+            assert!(
+                server
+                    .state(&fixture.identity)
+                    .await
+                    .unwrap()
+                    .sources
+                    .iter()
+                    .all(|s| s.ready)
+            );
+        }
+        assert_eq!(
+            server.capabilities(&fixture.identity).await.unwrap(),
+            recipe
+        );
+        let freshness = server.freshness(&fixture.identity).await.unwrap();
+        assert!(freshness.nodes[0].gold_current);
+        assert_eq!(freshness.nodes[0].source_silver, original.source_silver);
+        assert_eq!(
+            freshness.nodes[0].artifacts,
+            Some(Artifacts {
+                metadata: State::Ready,
+                lexical: State::Ready,
+                dense: if recipe.dense_enabled() {
+                    State::Ready
+                } else {
+                    State::Disabled
+                },
+            })
+        );
+        assert!(
+            !server
+                .search(&fixture.identity, exact(&fixture))
+                .await
+                .unwrap()
+                .lexical
+                .is_empty()
+        );
+        let searched = server.search(&fixture.identity, fixture.query()).await;
+        assert_eq!(
+            searched.is_ok(),
+            recipe.dense_enabled(),
+            "recipe {recipe:?}: {searched:?}"
+        );
+    }
+    fixture.cleanup().await;
 }
 
 fn reuse_upload(
@@ -600,18 +478,14 @@ fn reuse_upload(
     target: &crate::shared::reuse::Target,
     defect: Option<usize>,
 ) -> tempfile::NamedTempFile {
-    let source = source_upload(
+    let mut events = events(&source_upload(
         fixture,
         target.publication_revision + 1,
         Some(target.build.clone()),
         true,
         false,
         false,
-    );
-    let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
-        .into_iter::<Event>()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
+    ));
     let Event::Start(start) = &mut events[0] else {
         panic!("start")
     };
@@ -659,6 +533,7 @@ fn reuse_upload(
         Some(5) => {
             if let Event::Batch(Batch::Messages { records }) = &mut events[2] {
                 records[0].vector = Some(vec![127.0, 0.0, 0.0, 0.0]);
+                records[0].generation = Some(fixture.identity.generation.clone());
             }
         }
         Some(6) => {
@@ -688,41 +563,31 @@ fn reuse_upload(
         }
         _ => {}
     }
-    let mut file = tempfile::NamedTempFile::new().unwrap();
-    for event in events {
-        crate::shared::write_event(file.as_file_mut(), &event).unwrap();
-    }
-    file
+    write(events)
 }
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams() {
     let fixture = Fixture::new(VectorIndex::default()).await;
-    let build = crate::gold::config::Build {
-        max_embedding_chars: None,
-        representations: crate::gold::config::Representations::LexicalAndDense,
-        dense_content: crate::gold::config::DenseContent::AllVisible,
-        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-        text_preparation: crate::gold::config::TextPreparation::Preserve,
-        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-    };
-    let store = fixture.store.clone().with_build(build.clone());
-    store.select_gold(&fixture.identity, true).await.unwrap();
-    store
+    let build = titled();
+    let gold = fixture.store.clone().with_build(build.clone());
+    gold.select_gold(&fixture.identity, true).await.unwrap();
+    let server = fixture.serve(gold);
+    server
         .index(
             &fixture.identity,
             source_upload(&fixture, 1, Some(build), true, false, false),
         )
         .await
         .unwrap();
-    let loaded = store.load(&fixture.identity).await.unwrap();
-    let before = store.state(&fixture.identity).await.unwrap();
-    let target =
-        crate::shared::reuse::Target::new(&loaded, &fixture.identity, store.build.clone()).unwrap();
+    let silver = fixture.retained();
+    let before = server.state(&fixture.identity).await.unwrap();
+    let target = plan(&server, &fixture.identity).await;
+    assert!(target.threads.contains_key("thread"));
     for defect in 0..10 {
         assert!(
-            store
+            server
                 .index(
                     &fixture.identity,
                     reuse_upload(&fixture, &target, Some(defect))
@@ -731,28 +596,26 @@ async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams(
                 .is_err(),
             "defect {defect}"
         );
-        assert_eq!(store.state(&fixture.identity).await.unwrap(), before);
+        assert_eq!(server.state(&fixture.identity).await.unwrap(), before);
     }
-    store
+    server
         .index(&fixture.identity, reuse_upload(&fixture, &target, None))
         .await
         .unwrap();
-    let after = store.load(&fixture.identity).await.unwrap();
+    assert_eq!(fixture.retained(), silver);
+    let after = server.state(&fixture.identity).await.unwrap();
+    assert_eq!(after.silver_revision, before.silver_revision);
+    // The reused thread kept its dense documents without resent vectors.
     assert_eq!(
-        after.data.canonical_fingerprint().unwrap(),
-        loaded.data.canonical_fingerprint().unwrap()
+        server
+            .search(&fixture.identity, fixture.query())
+            .await
+            .unwrap()
+            .semantic
+            .len(),
+        2
     );
-    assert_eq!(
-        after.head.as_ref().unwrap().silver_revision,
-        loaded.head.as_ref().unwrap().silver_revision
-    );
-    for (id, message) in loaded.data.messages {
-        assert_eq!(after.data.messages[&id].vector, message.vector);
-    }
-    store
-        .search(&fixture.identity, fixture.query())
-        .await
-        .unwrap();
+    assert!(server.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
     fixture.cleanup().await;
 }
 
@@ -761,30 +624,28 @@ async fn qdrant_snapshot_reuse_validates_dependencies_pins_and_complete_streams(
 async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged_silver() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
-        .store
+        .server
         .index(
             &fixture.identity,
             source_upload(&fixture, 1, None, true, false, false),
         )
         .await
         .unwrap();
-    let before = fixture.store.state(&fixture.identity).await.unwrap();
-    let build = crate::gold::config::Build {
-        max_embedding_chars: Some(256_u32.try_into().unwrap()),
-        representations: crate::gold::config::Representations::LexicalAndDense,
-        dense_content: crate::gold::config::DenseContent::AllVisible,
-        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-        text_preparation: crate::gold::config::TextPreparation::Preserve,
-        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-    };
-    let store = fixture.store.clone().with_build(build.clone());
-    store.select_gold(&fixture.identity, true).await.unwrap();
+    let before = fixture.server.state(&fixture.identity).await.unwrap();
+    let mut build = titled();
+    build.max_embedding_chars = Some(256_u32.try_into().unwrap());
+    let gold = fixture.store.clone().with_build(build.clone());
+    gold.select_gold(&fixture.identity, true).await.unwrap();
+    let server = fixture.serve(gold);
     for changed in [true, false] {
-        let file = source_upload(&fixture, 1, Some(build.clone()), true, false, false);
-        let mut events = serde_json::Deserializer::from_reader(file.reopen().unwrap())
-            .into_iter::<Event>()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+        let mut events = events(&source_upload(
+            &fixture,
+            1,
+            Some(build.clone()),
+            true,
+            false,
+            false,
+        ));
         let Event::Start(start) = &mut events[0] else {
             panic!("start")
         };
@@ -792,22 +653,18 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
         if changed && let Event::Batch(Batch::Conversations { records }) = &mut events[1] {
             records[0].title = Some("canonical change".into());
         }
-        let mut outgoing = tempfile::NamedTempFile::new().unwrap();
-        for event in events {
-            crate::shared::write_event(outgoing.as_file_mut(), &event).unwrap();
-        }
-        let result = store.index(&fixture.identity, outgoing).await;
+        let result = server.index(&fixture.identity, write(events)).await;
         if changed {
             assert!(result.is_err());
         } else {
             result.unwrap();
         }
     }
-    let after = store.state(&fixture.identity).await.unwrap();
+    let after = server.state(&fixture.identity).await.unwrap();
     assert_eq!(after.revision, before.revision);
     assert_eq!(after.silver_revision, before.silver_revision);
     assert_eq!(after.gold_build, build);
-    store
+    server
         .search(&fixture.identity, fixture.query())
         .await
         .unwrap();
@@ -819,29 +676,23 @@ async fn qdrant_pinned_recipe_refresh_at_same_source_revision_requires_unchanged
 async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vectors() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
-        .store
+        .server
         .index(
             &fixture.identity,
             source_upload(&fixture, 1, None, true, true, false),
         )
         .await
         .unwrap();
-    let title = crate::gold::config::Build {
-        max_embedding_chars: None,
-        representations: crate::gold::config::Representations::LexicalAndDense,
-        dense_content: crate::gold::config::DenseContent::AllVisible,
-        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-        text_preparation: crate::gold::config::TextPreparation::Preserve,
-        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-    };
-    let store = fixture.store.clone().with_build(title.clone());
-    store.select_gold(&fixture.identity, true).await.unwrap();
+    let title = titled();
+    let gold = fixture.store.clone().with_build(title.clone());
+    gold.select_gold(&fixture.identity, true).await.unwrap();
+    let server = fixture.serve(gold);
     assert_eq!(
-        store.state(&fixture.identity).await.unwrap().gold_build,
+        server.state(&fixture.identity).await.unwrap().gold_build,
         title
     );
-    let before = store.node(&fixture.identity).await.unwrap().version;
-    let error = store
+    let before = server.state(&fixture.identity).await.unwrap();
+    let error = server
         .index(
             &fixture.identity,
             source_upload(
@@ -857,62 +708,49 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
         .err()
         .unwrap();
     assert!(error.error.message.contains("recipe changed"));
-    assert_eq!(store.node(&fixture.identity).await.unwrap().version, before);
+    assert_eq!(server.state(&fixture.identity).await.unwrap(), before);
     // Only one of two retained threads was replaced: no mixed-recipe certificate.
-    store
+    server
         .index(
             &fixture.identity,
             source_upload(&fixture, 2, Some(title.clone()), false, false, false),
         )
         .await
         .unwrap();
-    assert!(
-        store
-            .node(&fixture.identity)
-            .await
-            .unwrap()
-            .head
-            .unwrap()
-            .gold_manifest
-            .is_none()
-    );
+    assert!(!server.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
     for policy in [None, Some(VectorIndex::Hnsw { ef_runtime: 80 })] {
         let mut query = fixture.query();
         query.vector_policy = policy;
-        assert!(store.search(&fixture.identity, query).await.is_err());
+        assert!(server.search(&fixture.identity, query).await.is_err());
     }
     // A complete replacement recovers readiness; a later no-op preserves it.
-    store
+    server
         .index(
             &fixture.identity,
             source_upload(&fixture, 3, Some(title.clone()), true, true, false),
         )
         .await
         .unwrap();
-    store
+    server
         .search(&fixture.identity, fixture.query())
         .await
         .unwrap();
-    let canonical = store
+    let canonical = server
         .state(&fixture.identity)
         .await
         .unwrap()
         .silver_revision;
-    store
+    server
         .index(
             &fixture.identity,
             source_upload(&fixture, 4, Some(title.clone()), false, false, true),
         )
         .await
         .unwrap();
-    let current = store.node(&fixture.identity).await.unwrap().head.unwrap();
-    assert_eq!(current.silver_revision, canonical);
-    assert!(current.gold_manifest.unwrap().matches(
-        &title,
-        &fixture.identity.generation,
-        canonical.as_ref()
-    ));
-    store
+    let freshness = server.freshness(&fixture.identity).await.unwrap();
+    assert_eq!(freshness.nodes[0].silver_revision, canonical);
+    assert!(freshness.nodes[0].gold_current);
+    server
         .search(&fixture.identity, fixture.query())
         .await
         .unwrap();
@@ -923,52 +761,40 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_publication_version_pins_bootstrap_and_fresh_source_retries() {
     let fixture = Fixture::new(VectorIndex::default()).await;
-    let initial = fixture.store.state(&fixture.identity).await.unwrap();
+    let initial = fixture.server.state(&fixture.identity).await.unwrap();
     assert_eq!(initial.publication_version, "");
     let pinned = |revision: i64, version: &str| {
-        let source = fixture.file(revision, "pin");
-        let mut events = serde_json::Deserializer::from_reader(source.reopen().unwrap())
-            .into_iter::<Event>()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+        let mut events = events(&fixture.file(revision, "pin"));
         let Event::Start(start) = &mut events[0] else {
             panic!("start")
         };
         start.expected_version = Some(version.into());
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        for event in events {
-            crate::shared::write_event(file.as_file_mut(), &event).unwrap();
-        }
-        file
+        write(events)
     };
     fixture
-        .store
+        .server
         .index(&fixture.identity, pinned(1, ""))
         .await
         .unwrap();
-    let accepted = fixture.store.state(&fixture.identity).await.unwrap();
+    let accepted = fixture.server.state(&fixture.identity).await.unwrap();
     assert_ne!(accepted.publication_version, "");
-    assert_eq!(
-        fixture.store.node(&fixture.identity).await.unwrap().version,
-        accepted.publication_version
-    );
     let error = fixture
-        .store
+        .server
         .index(&fixture.identity, pinned(2, ""))
         .await
         .err()
         .unwrap();
     assert_eq!(error.error.kind, crate::ErrorKind::Conflict);
     assert_eq!(
-        fixture.store.state(&fixture.identity).await.unwrap(),
+        fixture.server.state(&fixture.identity).await.unwrap(),
         accepted
     );
     fixture
-        .store
+        .server
         .index(&fixture.identity, pinned(2, &accepted.publication_version))
         .await
         .unwrap();
-    let retried = fixture.store.state(&fixture.identity).await.unwrap();
+    let retried = fixture.server.state(&fixture.identity).await.unwrap();
     assert_eq!(retried.revision, 2);
     assert_ne!(retried.publication_version, accepted.publication_version);
     assert_eq!(retried.silver_revision, accepted.silver_revision);
@@ -979,39 +805,29 @@ async fn qdrant_publication_version_pins_bootstrap_and_fresh_source_retries() {
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current() {
     let fixture = Fixture::new(VectorIndex::default()).await;
-    let title = crate::gold::config::Build {
-        max_embedding_chars: None,
-        representations: crate::gold::config::Representations::LexicalAndDense,
-        dense_content: crate::gold::config::DenseContent::AllVisible,
-        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-        text_preparation: crate::gold::config::TextPreparation::Preserve,
-        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-    };
-    let store = fixture.store.clone().with_build(title.clone());
-    store.select_gold(&fixture.identity, true).await.unwrap();
+    let title = titled();
+    let gold = fixture.store.clone().with_build(title.clone());
+    gold.select_gold(&fixture.identity, true).await.unwrap();
+    let server = fixture.serve(gold);
     for _ in 0..2 {
-        store
+        server
             .index(
                 &fixture.identity,
                 source_upload(&fixture, 1, Some(title.clone()), true, false, true),
             )
             .await
             .unwrap();
-        let head = store.node(&fixture.identity).await.unwrap().head.unwrap();
-        assert!(head.gold_manifest.unwrap().matches(
-            &title,
-            &fixture.identity.generation,
-            head.silver_revision.as_ref()
-        ));
+        let freshness = server.freshness(&fixture.identity).await.unwrap();
+        assert!(freshness.nodes[0].gold_current);
         assert_eq!(
-            store.freshness(&fixture.identity).await.unwrap().nodes[0].artifacts,
+            freshness.nodes[0].artifacts,
             Some(Artifacts {
                 metadata: State::Ready,
                 lexical: State::Ready,
                 dense: State::Ready
             })
         );
-        let result = store
+        let result = server
             .search(&fixture.identity, fixture.query())
             .await
             .unwrap();

@@ -284,7 +284,7 @@ async fn retained(service: &Service) -> Value {
         assert!(source.get("ready").is_none());
     }
     assert_eq!(
-        decoded.history.messages["searchable"].content,
+        data["history"]["messages"]["searchable"]["content"],
         "hello shared history"
     );
     data

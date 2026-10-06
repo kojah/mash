@@ -46,16 +46,15 @@ async fn topology(fixture: &Fixture) -> Topology {
 async fn qdrant_rejects_incompatible_physical_graph_without_resetting_or_republishing_history() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
-        .store
+        .server
         .index(
             &fixture.identity,
             fixture.file(1, "physical graph evidence"),
         )
         .await
         .unwrap();
-    let before =
-        serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap();
-    let state = fixture.store.state(&fixture.identity).await.unwrap();
+    let before = fixture.retained();
+    let state = fixture.server.state(&fixture.identity).await.unwrap();
     assert_eq!(
         topology(&fixture).await,
         Topology {
@@ -96,11 +95,11 @@ async fn qdrant_rejects_incompatible_physical_graph_without_resetting_or_republi
         .unwrap();
         assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
         assert_eq!(topology(&fixture).await, update.hnsw_config);
-        assert_eq!(fixture.store.state(&fixture.identity).await.unwrap(), state);
         assert_eq!(
-            serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap(),
-            before
+            fixture.server.state(&fixture.identity).await.unwrap(),
+            state
         );
+        assert_eq!(fixture.retained(), before);
     }
     fixture.cleanup().await;
 }
@@ -165,7 +164,7 @@ async fn qdrant_hnsw_planner_activation_preserves_publications_and_canonical_his
     let fixture = Fixture::new(VectorIndex::default()).await;
     assert_eq!(planner(&fixture).await, Planner::new(10, 1024));
     fixture
-        .store
+        .server
         .index(
             &fixture.identity,
             fixture.file(1, "retained planner evidence"),
@@ -180,8 +179,7 @@ async fn qdrant_hnsw_planner_activation_preserves_publications_and_canonical_his
             .unwrap(),
     )
     .unwrap();
-    let silver =
-        serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap();
+    let silver = fixture.retained();
     reqwest::Client::new()
         .patch(format!(
             "{}/collections/{}",
@@ -224,10 +222,7 @@ async fn qdrant_hnsw_planner_activation_preserves_publications_and_canonical_his
         .unwrap(),
         before,
     );
-    assert_eq!(
-        serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap(),
-        silver,
-    );
+    assert_eq!(fixture.retained(), silver,);
     assert_eq!(fixture.search().await.semantic.len(), 2);
     fixture.cleanup().await;
 }

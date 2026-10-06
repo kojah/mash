@@ -9,7 +9,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures_util::{StreamExt, stream};
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
 // Multiple concurrent searches must not multiply the eight-read budget.
 static READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(8);
@@ -37,25 +37,18 @@ pub(super) async fn read(
             return Err(AppError::usage("invalid search context batch").into());
         }
     }
-    let heads = Arc::new(app.store.context_heads(&identity).await?);
+    app.store.available(&identity).await?;
     let pending = stream::iter(input.anchors.into_iter().enumerate())
         .map(move |(index, input)| {
             let store = app.store.clone();
-            let heads = Arc::clone(&heads);
-            let identity = Identity {
-                node_id: input.node_id.clone(),
-                ..identity.clone()
-            };
+            let identity = identity.clone();
             async move {
                 let result = async {
                     let _permit = READS
                         .acquire()
                         .await
                         .map_err(|_| AppError::shared("shared context admission is unavailable"))?;
-                    match heads.get(&identity.node_id) {
-                        Some(head) => store.view_at(&identity, input, head.clone()).await,
-                        None => store.view(&identity, input).await,
-                    }
+                    store.view(&identity, input).await
                 }
                 .await;
                 let result = match result {
@@ -75,7 +68,7 @@ pub(super) async fn read(
             }
         })
         .buffer_unordered(8);
-    // Dropping the response stream cancels its pending Qdrant futures; there
+    // Dropping the response stream cancels its pending silver reads; there
     // are no detached tasks and at most eight active context reads.
     Ok((
         [(header::CONTENT_TYPE, "application/x-ndjson")],
