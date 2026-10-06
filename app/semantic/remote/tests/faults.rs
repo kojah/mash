@@ -70,8 +70,10 @@ async fn fault_server(fault: Fault) -> (Configuration, tokio::task::JoinHandle<(
         listener.local_addr().unwrap()
     ));
     let task = tokio::spawn(async move {
+        // Indexing may spend time on SQLite/filesystem setup before connecting.
+        // Bound the HTTP exchange; nextest bounds the complete indexing test.
+        let (mut stream, _) = listener.accept().await.unwrap();
         tokio::time::timeout(Duration::from_secs(5), async {
-            let (mut stream, _) = listener.accept().await.unwrap();
             read_request(&mut stream).await;
             match fault {
                 Fault::Oversized => {
