@@ -72,3 +72,37 @@ History counts, canonical message views and ranked hits now live in the
 storage-independent `records` module. Qdrant transport/persistence and HTTP
 handlers use those types directly. The old local SQLite runtime remains until
 the canonical ingestion and application operations above have been ported.
+
+## Canonical Qdrant persistence component
+
+`shared/qdrant_index/canonical` stores validated canonical JSON Lines in immutable
+Qdrant chunks and uses a conditional head update as the visibility boundary.
+Its reader never initializes a missing namespace. Staging is batched by encoded
+size, includes checksums, and handles UTF-8 boundaries. Captured revisions remain
+readable across newer publications. Unchanged data can reuse the active revision;
+concurrent writers cannot overwrite the winning pointer. The head records its
+publication preparation time and contains no gold readiness claim.
+
+The portable validator now checks identities, ownership, message/source
+references, ordinals, scan/checkpoint interpretation, completeness and retained
+file counts without a SQL database. CLI/MCP import uses that same validation.
+
+This component is not yet the local CLI/MCP storage path. The existing SQLite
+ingestion, projection and query code still needs replacing. Ordinary ingestion
+also needs source/thread delta publication and bounded reclamation; the initial
+full-archive transfer API alone is not the completed watch/index pipeline.
+
+An isolated disk-backed Qdrant 1.19.1 round trip transferred the Xenia archive:
+1,026,902,224 bytes, 817 threads and 345,451 canonical messages, in 3,918 chunks.
+Publishing took 61.874 seconds and reading back took 28.814 seconds. The complete
+test took 129.56 seconds including file copying, independent validation and
+cleanup. Recovered bytes, relationships, completeness/revision and retained-file
+counts matched. This is canonical transfer, not search latency or ingestion with
+embeddings. Private results are in `canonical-qdrant-corpus-4.log` under the
+2026-10-06 performance artifacts directory.
+
+The real corpus caught two setup/transport defects: collection creation could
+outlive the client's interactive read deadline, and fixed byte cuts could split
+a UTF-8 character. Schema writes now use the awaited bulk-write deadline; reads
+retain their bounded deadline. Canonical staging uses the existing UTF-8-safe
+chunk reader, with a four-byte boundary regression case.

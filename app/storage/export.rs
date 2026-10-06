@@ -1,11 +1,7 @@
 //! Export canonical records through one read snapshot during the storage cutover.
 use super::Storage;
 use crate::AppError;
-use std::{
-    collections::BTreeMap,
-    io::{BufRead, Read, Write},
-    path::Path,
-};
+use std::{collections::BTreeMap, io::Write, path::Path};
 mod records;
 
 pub(crate) struct Snapshot {
@@ -47,38 +43,18 @@ pub(crate) fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppEr
 }
 
 pub(crate) fn restore(source: &Path, destination: &Path) -> Result<(), AppError> {
-    use crate::silver::archive::Record;
-    const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
     let target = Storage::open(destination)?;
     let transaction = target
         .connection
         .unchecked_transaction()
         .map_err(AppError::database)?;
-    let mut reader = std::io::BufReader::new(std::fs::File::open(source).map_err(AppError::io)?);
-    let mut line = Vec::new();
-    let mut state_seen = false;
-    loop {
-        line.clear();
-        let bytes = (&mut reader)
-            .take(MAX_RECORD_BYTES + 1)
-            .read_until(b'\n', &mut line)
-            .map_err(AppError::io)?;
-        if bytes == 0 {
-            break;
-        }
-        if bytes as u64 > MAX_RECORD_BYTES || line.last() != Some(&b'\n') || state_seen {
-            return Err(AppError::usage(
-                "invalid or oversized canonical archive record",
-            ));
-        }
-        let record: Record = serde_json::from_slice(&line)
-            .map_err(|_| AppError::usage("invalid canonical archive record"))?;
-        state_seen = matches!(record, Record::State { .. });
-        records::insert(&target, record)?;
+    let mut reader = crate::silver::archive::Reader::new(std::io::BufReader::new(
+        std::fs::File::open(source).map_err(AppError::io)?,
+    ));
+    for record in reader.by_ref() {
+        records::insert(&target, record?)?;
     }
-    if !state_seen {
-        return Err(AppError::usage("incomplete canonical archive"));
-    }
+    reader.finish()?;
     transaction.execute_batch("UPDATE shared_publication SET revision=1,acknowledged=0,target=''; DELETE FROM shared_changes; UPDATE shared_change_state SET floor=1;").map_err(AppError::database)?;
     transaction.commit().map_err(AppError::database)?;
     target

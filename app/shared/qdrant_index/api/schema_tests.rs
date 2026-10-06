@@ -50,6 +50,13 @@ async fn awaited_mutations_outlive_read_deadlines_without_replaying_requests() {
     };
     let router = Router::new()
         .route(
+            "/collections/test",
+            put(|| async {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                r#"{"status":"ok","result":true}"#
+            }),
+        )
+        .route(
             "/collections/test/points",
             put(mutation.clone()).post(|| async {
                 tokio::time::sleep(Duration::from_millis(200)).await;
@@ -69,6 +76,14 @@ async fn awaited_mutations_outlive_read_deadlines_without_replaying_requests() {
         max_response: 1024,
     };
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let created: bool = client
+        .call(Method::PUT, "collections/test", None::<&()>)
+        .await
+        .unwrap();
+    assert!(
+        created,
+        "collection creation outlives the interactive read timeout"
+    );
     client
         .upsert(
             "test",

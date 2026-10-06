@@ -1,6 +1,11 @@
 //! Qdrant storage adapter: layered silver/gold revisions and gold query documents.
 //! Message points are denormalized gold views; state chunks retain silver history.
 mod api;
+#[allow(
+    dead_code,
+    reason = "local canonical persistence is wired into the core in the next cutover step"
+)]
+pub(super) mod canonical;
 mod configuration;
 mod context;
 mod exact;

@@ -149,6 +149,21 @@ pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppErr
     let stage = builder.tempdir_in(parent).map_err(AppError::io)?;
     let input = stage.path().join("input.jsonl");
     copy_checked(&directory.join(DATABASE), &input, &manifest.records)?;
+    let verified = crate::silver::archive::inspect(std::io::BufReader::new(
+        fs::File::open(&input).map_err(AppError::io)?,
+    ))?;
+    if verified.bytes != manifest.records.bytes
+        || verified.digest != manifest.records.blake3
+        || verified.silver != manifest.silver
+        || verified.counts.conversations != manifest.counts.conversations
+        || verified.counts.messages != manifest.counts.messages
+        || verified.attachment_files != manifest.counts.attachment_files
+        || verified.attachment_bytes != manifest.counts.attachment_bytes
+    {
+        return Err(AppError::usage(
+            "export manifest does not match canonical records",
+        ));
+    }
     let output = stage.path().join("imported.sqlite3");
     drop(crate::scratch::sqlite(&output)?);
     storage::export::restore(&input, &output)?;

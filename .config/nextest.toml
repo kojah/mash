@@ -29,3 +29,12 @@ status-level = "all"
 final-status-level = "all"
 retries = 0
 slow-timeout = { period = "60s", terminate-after = 2 }
+
+[[profile.default.overrides]]
+# Explicit private-corpus transfer validates gigabytes of canonical records.
+filter = 'test(=shared::qdrant_index::canonical::tests::canonical_qdrant_real_archive_roundtrip)'
+slow-timeout = { period = "60s", terminate-after = 10 }
+
+[[profile.ci.overrides]]
+filter = 'test(=shared::qdrant_index::canonical::tests::canonical_qdrant_real_archive_roundtrip)'
+slow-timeout = { period = "60s", terminate-after = 10 }

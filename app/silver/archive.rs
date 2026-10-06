@@ -3,6 +3,10 @@ use crate::{
     attachments::Metadata, message_context::MessageContext, provider::Provider, role::Role,
 };
 use serde::{Deserialize, Serialize};
+mod reader;
+mod validation;
+pub(crate) use reader::Reader;
+pub(crate) use validation::{Summary, inspect};
 
 pub(crate) const VERSION: u32 = 1;
 

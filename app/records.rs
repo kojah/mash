@@ -2,7 +2,7 @@
 use crate::provider::Provider;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct Counts {
     pub(crate) conversations: u64,
     pub(crate) messages: u64,
