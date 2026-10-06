@@ -1262,6 +1262,84 @@ Repeated-development, unadjusted bootstrap intervals are exploratory rather
 than confirmatory significance tests. No new trials, confirmation run or
 production changes follow automatically from this study.
 
+\section{Thread-local token downweighting study}
+Following the low-coverage greeting-only result, we freeze a separate four-trial
+development experiment. SIF uses inverse unigram-frequency weights, originally
+with static word vectors and common-component removal~\cite{sif}. Our adaptation
+uses contextual MiniLM states and excludes component removal; it is not a
+replication of original SIF. We compare uniform pooling, a fixed conservative
+function-word list (weight .25), own-thread message-document IDF (floor .25), and
+own-thread unigram SIF-style weights $\max(.10,.001/(.001+p(w)))$.
+Each original message contributes once to statistics. Both roles and both
+representation views receive the policy. Code, identifiers, negations and
+special tokens retain full weight. One singleton forward pass supplies all
+policies; attention and source text remain unchanged. Context-whole role pooling,
+structural chunk boundaries, uniform proximity smoothing and BIRCH parameters
+remain fixed. A fresh uniform singleton control separates weighting effects from
+historical quantized batching drift. No other history influences a thread.
+
+The registered comparison reuses the 160 development histories and original
+judgments, with paired thread-bootstrap intervals and existing quality gates;
+confirmation remains sealed. It is exploratory. A separate message retrieval
+pilot uses the earlier light/heavy synthetic and reviewed-source corpora, comparing
+uniform versus fixed function weighting on documents and queries. Reviewed
+requests previously had perfect source ranks, so this pilot checks regressions
+but cannot establish broad retrieval improvement. Corpus, model, code, protocol
+and result hashes and runtime measurements accompany private artifacts.
+
+Before turn scoring, edge-case review found that curly-apostrophe negations could
+be split into eligible pieces. Two incomplete builds were retained unscored;
+the clean rebuild protects both apostrophe forms and contracted \texttt{n't}.
+All 160 artifact checks, 12 real pooling-parity probes, 24 stored-vector probes,
+48 inference-order isolation comparisons and eight membership-isolation checks
+pass. The corrected contract SHA256 prefix is \texttt{f5c3ccafdabb}.
+
+\begin{center}
+\begin{tabular}{lrrrrrr}
+\hline
+Pooling & P & R & F1 & Long P & Long R & Long F1\\
+\hline
+Uniform & .8421 & .8558 & .8489 & .8134 & .7357 & .7726\\
+Function words & .8491 & .8574 & .8532 & .8262 & .7420 & .7819\\
+Thread IDF & .8462 & .8558 & .8509 & .8175 & .7420 & .7780\\
+Thread SIF-style & .8429 & .8606 & .8516 & .8123 & .7580 & .7842\\
+\hline
+\end{tabular}
+\end{center}
+All four fixed Optuna trials complete. Delta F1 versus uniform is +.004351 for
+function weights (paired 95\% interval $[-.002080,.010709]$), +.002052 for IDF
+($[-.005041,.008978]$), and +.002769 for SIF-style
+($[-.004570,.010275]$). Long delta-F1 intervals also include zero. These reused
+development comparisons are unadjusted and exploratory, not confirmatory
+null-hypothesis tests. No policy meets the precision and positive-lower-bound
+gates. Function weighting removes five net false positives and adds one net true
+positive; SIF-style gains .022293 long recall but adds two long false positives.
+Respectively 25, 29 and 37 judged predictions change, including ambiguous pairs.
+The fresh uniform control is .005743 below the historical .854618 F1 baseline:
+both roles and views are now re-inferred as singleton inputs rather than partly
+reusing old batched vectors. Do not attribute this shared regime effect to weights.
+
+The clean build uses 24,057 distinct per-history inputs and 3,400,461 tokens.
+Function weights affect 421,741 positions and IDF/SIF 1,340,793 each. Among 23,346
+final pooled/chunk points, 21,245/21,914/21,914 change; mean cosine to uniform is
+.998064/.997248/.994053. The intervention is active and broad, although usually
+small geometrically. Clean build wall time is 6:52.66, observed history p95 9.86
+seconds, peak RSS 1,057,512 KiB. Four-trial scoring takes 1:03.36, with grouping
+p95 .126--.153 seconds/history. Shared-host timings exclude discarded builds and
+do not establish isolated production throughput; RSS includes loaded corpus,
+reports and model state.
+
+The corrected message pilot changes 24/25/114 document vectors for light/heavy/
+reviewed corpora, and 3/7/10 top-five orderings. All target ranks remain unchanged.
+MRR stays .9643/.9444/1.0, recall@5 stays 1.0, and first-rank counts stay
+20/21, 19/21 and 17/17. No input is truncated. These source-finding labels and
+the real-request ceiling limit interpretation; full hybrid search is untested.
+Retain the frozen baseline and production inputs. Contextual information mixing,
+small perturbations and frequency measuring repetition rather than irrelevance
+are plausible explanations for limited gains, not established causal findings.
+External-frequency weighting, component removal and modified attention remain
+untested; no further trial or production change follows automatically.
+
 \section{Limitations and reproducibility}
 Only two providers, agent-authored judgments, a structural support proxy,
 and one timing host limit interpretation. Earlier studies used sparse excerpt
@@ -1309,5 +1387,8 @@ Grafting. KDD, 2019. \url{https://arxiv.org/abs/2001.00076}
 \url{https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2}
 \bibitem{jinareranker} Jina AI. jina-reranker-v1-turbo-en model card.
 \url{https://huggingface.co/jinaai/jina-reranker-v1-turbo-en}
+\bibitem{sif} S. Arora, Y. Liang and T. Ma.
+A Simple but Tough-to-Beat Baseline for Sentence Embeddings. ICLR, 2017.
+Author implementation: \url{https://github.com/PrincetonML/SIF}
 \end{thebibliography}
 \end{document}

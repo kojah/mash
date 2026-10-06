@@ -57,7 +57,9 @@ def selection_mask(
     return selected
 
 
-def pool_vectors(hidden: NDArray[np.float32], mask: NDArray[np.int64]) -> VectorMatrix:
+def pool_vectors(
+    hidden: NDArray[np.float32], mask: NDArray[np.int64] | NDArray[np.float32]
+) -> VectorMatrix:
     """The original f32 mean/L2/i8 codec, shared by whole and targeted pooling."""
     if hidden.ndim != 3 or hidden.shape[:2] != mask.shape:
         raise ValueError("hidden states and pooling mask shapes differ")
@@ -117,6 +119,18 @@ class Encoder:
             raise ValueError("each input needs a pooling selection")
         if not texts:
             return np.empty((0, 384), dtype=np.float64)
+        encoded, mask, hidden = self.states(texts)
+        pooling = selection_mask(texts, encoded, mask, selections)
+        if downweighted is not None:
+            pooling = weight_mask(texts, encoded, pooling, downweighted)
+        return pool_vectors(hidden, pooling)
+
+    def states(
+        self, texts: tuple[str, ...]
+    ) -> tuple[tuple[Encoding, ...], NDArray[np.int64], NDArray[np.float32]]:
+        """Expose one forward pass for label-free pooling ablations only."""
+        if not texts:
+            raise ValueError("hidden-state inference needs nonempty inputs")
         encoded = tuple(self.tokenizer.encode_batch(list(texts)))
         width = max(len(item.ids) for item in encoded)
         if width > 512:
@@ -135,10 +149,7 @@ class Encoder:
             )[0],
             dtype=np.float32,
         )
-        pooling = selection_mask(texts, encoded, mask, selections)
-        if downweighted is not None:
-            pooling = weight_mask(texts, encoded, pooling, downweighted)
-        return pool_vectors(hidden, pooling)
+        return encoded, mask, hidden
 
 
 def weight_mask(
