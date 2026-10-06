@@ -266,3 +266,10 @@ Completed checkpoints remain reusable. This reduces small commits under disk
 contention without weakening SQLite durability or changing cache identities.
 Already-running experiments retain their loaded implementation; frozen studies
 must preserve their pinned builder source when resuming.
+
+The current frozen turn-clustering baseline is **complete-answer-v1**, selected
+on 2026-10-06. See [the freeze contract](../../docs/turn-clustering-baseline.md)
+and [pinned manifest](../../docs/turn-clustering-baseline.toml). Preserve its
+all-answer coverage, structural chunks, original proximity smoothing and fixed
+BIRCH/union settings. Further changes are separate candidates; do not retune this
+baseline against its development labels. Confirmation remains sealed.
