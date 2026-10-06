@@ -30,7 +30,7 @@ pub(super) async fn read(
         if anchor.context > 2
             || !matches!(
                 anchor.content,
-                crate::records::MessageContent::SearchProjection
+                crate::storage::MessageContent::SearchProjection
             )
             || !seen.insert((&anchor.node_id, &anchor.id))
         {

@@ -60,7 +60,7 @@ fn next_batch(messages: &mut std::iter::Peekable<std::vec::IntoIter<Message>>) -
 pub(crate) struct Rebuilt {
     build: crate::gold::config::Build,
     rebuild_shared_gold: bool,
-    counts: crate::records::Counts,
+    counts: crate::storage::Counts,
     silver: silver_revision::State,
     publication_revision: i64,
     generation: String,

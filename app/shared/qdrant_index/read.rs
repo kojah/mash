@@ -5,8 +5,8 @@ use super::{
     failure, point_id, sparse, tokens,
 };
 use crate::gold::readiness::{Artifacts, State};
-use crate::records::{Counts, Message, SearchHit};
 use crate::shared::{Freshness, NodeFreshness, protocol, validation::valid_id};
+use crate::storage::{Counts, Message, SearchHit};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn validate_search(input: &protocol::Search, identity: &Identity) -> Result<(), AppError> {

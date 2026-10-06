@@ -4,7 +4,6 @@
 // Silver canonical history and the vocabulary used by native adapters.
 mod message_context;
 mod provider;
-mod records;
 mod role;
 mod silver;
 

@@ -1,65 +1,45 @@
-//! Export canonical records through one read snapshot during the storage cutover.
-use super::Storage;
+//! Copy silver through a single SQLite read snapshot, without copying gold pages.
+use super::{Storage, schema::SCHEMA_VERSION};
 use crate::AppError;
-use std::{collections::BTreeMap, io::Write, path::Path};
-mod records;
+use std::{collections::BTreeMap, path::Path};
 
-pub(crate) struct Snapshot {
-    pub(crate) silver: crate::silver::certificate::Certificate,
-    pub(crate) counts: crate::records::Counts,
-    pub(crate) files: BTreeMap<String, u64>,
+pub(crate) const fn schema_version() -> i64 {
+    SCHEMA_VERSION
 }
 
-pub(crate) fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppError> {
-    let history = Storage::open_catalog(source)?;
-    let _transaction = history
-        .connection
-        .unchecked_transaction()
-        .map_err(AppError::database)?;
-    let snapshot = Snapshot {
-        silver: history.silver_certificate()?,
-        counts: history.counts()?,
-        files: attachments(&history)?,
-    };
-    let mut temporary = tempfile::NamedTempFile::new_in(
-        destination
-            .parent()
-            .ok_or_else(|| AppError::usage("invalid archive destination"))?,
-    )
-    .map_err(AppError::io)?;
-    let mut output = std::io::BufWriter::with_capacity(64 * 1024, temporary.as_file_mut());
-    records::visit(&history, &mut |record| {
-        serde_json::to_writer(&mut output, &record)
-            .map_err(|_| AppError::internal("serialize canonical archive"))?;
-        output.write_all(b"\n").map_err(AppError::io)
-    })?;
-    output.flush().map_err(AppError::io)?;
-    drop(output);
-    temporary.as_file().sync_all().map_err(AppError::io)?;
-    temporary
-        .persist_noclobber(destination)
-        .map_err(|error| AppError::io(error.error))?;
-    Ok(snapshot)
-}
-
-pub(crate) fn restore(source: &Path, destination: &Path) -> Result<(), AppError> {
+pub(crate) fn copy(source: &Path, destination: &Path) -> Result<(), AppError> {
+    // Preflight is read-only; export never initializes/migrates the source.
+    let _source = Storage::open_catalog(source)?;
+    let source = std::fs::canonicalize(source).map_err(AppError::io)?;
+    let mut uri = reqwest::Url::from_file_path(source)
+        .map_err(|()| AppError::usage("invalid export source path"))?;
+    uri.query_pairs_mut().append_pair("mode", "ro");
     let target = Storage::open(destination)?;
+    target
+        .connection
+        .execute("ATTACH DATABASE ?1 AS history", [uri.as_str()])
+        .map_err(AppError::database)?;
     let transaction = target
         .connection
         .unchecked_transaction()
         .map_err(AppError::database)?;
-    let mut reader = crate::silver::archive::Reader::new(std::io::BufReader::new(
-        std::fs::File::open(source).map_err(AppError::io)?,
-    ));
-    for record in reader.by_ref() {
-        records::insert(&target, record?)?;
+    let version: i64 = transaction
+        .query_row("PRAGMA history.user_version", [], |row| row.get(0))
+        .map_err(AppError::database)?;
+    if version != SCHEMA_VERSION {
+        return Err(AppError::schema(
+            "export source schema changed; retry with a compatible Mash build",
+        ));
     }
-    reader.finish()?;
-    transaction.execute_batch("UPDATE shared_publication SET revision=1,acknowledged=0,target=''; DELETE FROM shared_changes; UPDATE shared_change_state SET floor=1;").map_err(AppError::database)?;
+    transaction
+        .execute_batch(include_str!("export.sql"))
+        .map_err(AppError::database)?;
     transaction.commit().map_err(AppError::database)?;
     target
         .connection
-        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")
+        .execute_batch(
+            "DETACH DATABASE history; PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;",
+        )
         .map_err(AppError::database)?;
     validate(&target)?;
     Ok(())

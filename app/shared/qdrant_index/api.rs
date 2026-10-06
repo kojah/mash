@@ -431,35 +431,6 @@ fn dense_name(info: &Info, dimensions: usize) -> Option<String> {
 }
 
 impl Client {
-    /// Read-only local preflight. Missing collections never trigger setup.
-    pub(super) async fn metadata_exists(&self, name: &str) -> Result<bool, AppError> {
-        let path = format!("collections/{name}");
-        let response = self
-            .http
-            .get(self.url.join(&path).map_err(|_| failure())?)
-            .send()
-            .await
-            .map_err(|_| failure())?;
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(false);
-        }
-        if !response.status().is_success() {
-            return Err(failure());
-        }
-        let info: Info = self.call(Method::GET, &path, None::<&()>).await?;
-        let fields = schema_fields(&info, None, MemoryTier::default())?;
-        if fields.iter().any(|(name, kind)| {
-            info.payload_schema
-                .get(*name)
-                .is_none_or(|field| field.data_type != *kind)
-        }) {
-            return Err(AppError::configuration(
-                "local Qdrant metadata schema is incomplete or incompatible; run explicit indexing",
-            ));
-        }
-        Ok(true)
-    }
-
     pub(super) async fn verify_version(&self) -> Result<(), AppError> {
         let response = self
             .http
@@ -568,14 +539,13 @@ impl Client {
         let request = {
             let span = tracing::info_span!("qdrant_encode_request");
             let _entered = span.enter();
-            let schema_write = matches!(method, Method::PUT | Method::PATCH | Method::DELETE);
             let mut request = self
                 .http
                 .request(method, self.url.join(path).map_err(|_| failure())?);
             // Awaited writes can exceed the interactive database deadline while
             // Qdrant indexes large batches. Keep reads bounded and do not replay
             // ambiguous mutations; publication verification owns their recovery.
-            if schema_write || path.ends_with("?wait=true&ordering=strong") {
+            if path.ends_with("?wait=true&ordering=strong") {
                 request = request.timeout(crate::shared::BULK_TIMEOUT);
             }
             if let Some(body) = body {

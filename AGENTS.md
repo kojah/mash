@@ -7,23 +7,17 @@ Node and server configuration is strict TOML only. Do not add JSON compatibility
 Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view`, `status`,
 `forget`, `export`, `import`, `models install`, `mcp`, and `serve`.
 
-- Target Qdrant-only Mash storage for local and shared silver, gold, metadata and
-  checkpoints. Remove the Mash SQLite backend and its SQL codegen/build machinery;
-  do not retain SQLite staging, caches or fallback storage. Preserve existing
-  canonical data through explicit portable exports during the cutover.
-- Provider-owned SQLite histories remain read-only input formats. Rusqlite may
-  serve those native ingestion adapters; Mash must not create its own database.
+- Use Rusqlite as the sole SQLite library.
+- Use SQLite FTS5 for local lexical search.
 - Use an authenticated Axum HTTP API backed solely by Qdrant for one shared index
-  per configured node group. Require a local Qdrant store; support local-only or
+  per configured node group. Require a local SQLite index; support local-only or
   both indexing with independent provider allowlists. Keep local operations
-  offline-capable against a locally running Qdrant instance. Only the HTTP service
-  accesses shared Qdrant; local core operations may access their local Qdrant
-  directly. Never restore SSH query fan-out.
+  offline-capable. Only the HTTP service accesses Qdrant. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
   Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;
   MCP must not construct CLI arguments or call CLI handlers.
 - Keep concrete local FastEmbed and remote HTTP embedding options with exact
-  cosine/HNSW search, RRF, and bounded local reranking. Support Voyage and the
+  cosine search, RRF, and bounded local reranking. Support Voyage and the
   OpenAI-compatible embeddings API without provider traits or registries.
 - Qdrant uses the existing reqwest client and typed REST models, named dense/sparse
   vectors, and conditional group-catalogue publication on Qdrant 1.19+. Default to
@@ -64,8 +58,8 @@ Refresh the graph after material source changes with `index_repository`.
 ## Implementation style
 
 Prefer concrete functions and structs. External input returns typed JSON errors
-and never panics. Await Qdrant/HTTP I/O and model-work boundaries. Keep provider
-SQLite readers, parsing, and local inference on blocking workers; bound model work and serialize
+and never panics. Await shared HTTP I/O and model-work boundaries. Keep Rusqlite,
+parsing, and local inference on blocking workers; bound model work and serialize
 MCP mutations while permitting read concurrency. Add a dependency only when it
 is smaller and clearer than a local implementation of the required behavior.
 

@@ -2,8 +2,8 @@
 use super::{AppError, Identity, NodeHead, Store, api, collection, failure, point_id, tokens};
 use crate::{
     gold::exact::{self, Literal},
-    records::SearchHit,
     shared::protocol,
+    storage::SearchHit,
 };
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};

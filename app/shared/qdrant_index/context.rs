@@ -1,8 +1,8 @@
 //! Select native context from projected thread topology before fetching bodies.
 use super::{AppError, Document, NodeHead, api, failure, point_id};
 use crate::message_context::MessageContext;
-use crate::records::Message;
 use crate::shared::protocol;
+use crate::storage::Message;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(test)]
@@ -281,8 +281,8 @@ impl Selection {
                     ordinal: m.ordinal,
                     role: m.role,
                     content: match input.content {
-                        crate::records::MessageContent::Canonical => m.content,
-                        crate::records::MessageContent::SearchProjection => m.projection,
+                        crate::storage::MessageContent::Canonical => m.content,
+                        crate::storage::MessageContent::SearchProjection => m.projection,
                     },
                     created_at: m.created_at,
                 },

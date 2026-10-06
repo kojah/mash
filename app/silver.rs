@@ -8,7 +8,6 @@ use std::time::{Duration, Instant, SystemTime};
 
 mod admission;
 mod antigravity;
-pub(crate) mod archive;
 #[cfg(test)]
 mod benchmarks;
 pub(crate) mod certificate;

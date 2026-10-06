@@ -209,7 +209,7 @@ fn unpublished_nodes(
 async fn status(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
-) -> Result<Json<crate::records::Counts>, ApiError> {
+) -> Result<Json<crate::storage::Counts>, ApiError> {
     Ok(Json(app.store.status(&id).await?))
 }
 async fn state(
@@ -323,7 +323,7 @@ async fn view(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
     input: Result<Json<protocol::View>, JsonRejection>,
-) -> Result<Json<Vec<crate::records::Message>>, ApiError> {
+) -> Result<Json<Vec<crate::storage::Message>>, ApiError> {
     let input = json(input)?;
     if input.context > 1000 || input.id.is_empty() || input.id.len() > 4096 {
         return Err(AppError::usage("invalid view request").into());
