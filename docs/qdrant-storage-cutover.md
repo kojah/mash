@@ -44,8 +44,9 @@ the current local runtime has completed the cutover.
    migrations, build hooks and backend-specific tests are removed only after
    corresponding behavior has native persistence coverage.
 7. Existing node data is exported and verified before deployment retires the old
-   backend. The current export contains a SQLite silver database, so a new
-   canonical archive writer and verified conversion are part of the cutover.
+   backend. Version 2 exports contain typed canonical JSON Lines, including
+   source/branch evidence; their writer currently reads the SQLite runtime.
+   Import must be moved from its current SQLite destination to Qdrant.
    Existing databases are not automatically deleted.
 
 ## Evidence required for completion

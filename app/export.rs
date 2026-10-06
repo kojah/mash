@@ -12,8 +12,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const FORMAT_VERSION: u32 = 1;
-const DATABASE: &str = "silver.sqlite3";
+const FORMAT_VERSION: u32 = 2;
+const DATABASE: &str = "silver.jsonl";
 const MANIFEST: &str = "manifest.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -37,12 +37,12 @@ struct HistoryCounts {
 struct Manifest {
     format: Format,
     format_version: u32,
-    schema_version: i64,
+    record_schema_version: u32,
     created_at: String,
     source_node: Option<String>,
     silver: Certificate,
     counts: HistoryCounts,
-    database: FileDigest,
+    records: FileDigest,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -80,30 +80,26 @@ pub(crate) fn write(
     directory: &Path,
     source_node: Option<String>,
 ) -> Result<Exported, AppError> {
-    let _source = Storage::open_catalog(database)?;
     let mut output = OutputDirectory::create(directory)?;
     let snapshot = directory.join(DATABASE);
-    drop(crate::scratch::sqlite(&snapshot)?);
-    storage::export::copy(database, &snapshot)?;
-    let history = Storage::open_catalog(&snapshot)?;
-    let files = storage::export::attachments(&history)?;
+    let captured = storage::export::write(database, &snapshot)?;
+    let files = captured.files;
     let blobs = directory.join("attachments");
     let _blob_dir = OutputDirectory::create(&blobs)?.keep();
     copy_attachments(&attachments::directory(database), &blobs, &files)?;
     sync_directory(&blobs)?;
-    let silver = history.silver_certificate()?;
-    let counts = counts(&history, &files)?;
-    drop(history);
+    let silver = captured.silver;
+    let counts = history_counts(&captured.counts, &files)?;
     let manifest = Manifest {
         format: Format::LocalSilver,
         format_version: FORMAT_VERSION,
-        schema_version: storage::export::schema_version(),
+        record_schema_version: crate::silver::archive::VERSION,
         created_at: chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
             .to_rfc3339(),
         source_node,
         silver: silver.clone(),
         counts: counts.clone(),
-        database: digest(&snapshot)?,
+        records: digest(&snapshot)?,
     };
     // The completion marker is written last; interrupted exports cannot import.
     let json = serde_json::to_vec_pretty(&manifest)
@@ -127,7 +123,7 @@ pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppErr
         serde_json::from_slice(&read_limited(&directory.join(MANIFEST), 64 * 1024)?)
             .map_err(|_| AppError::usage("invalid or incomplete export manifest"))?;
     if manifest.format_version != FORMAT_VERSION
-        || manifest.schema_version != storage::export::schema_version()
+        || manifest.record_schema_version != crate::silver::archive::VERSION
     {
         return Err(AppError::schema(
             "unsupported export format/schema; use a compatible Mash build",
@@ -151,9 +147,12 @@ pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppErr
         builder.permissions(fs::Permissions::from_mode(0o700));
     }
     let stage = builder.tempdir_in(parent).map_err(AppError::io)?;
-    let input = stage.path().join("input.sqlite3");
-    copy_checked(&directory.join(DATABASE), &input, &manifest.database)?;
-    let history = Storage::open_catalog(&input)?;
+    let input = stage.path().join("input.jsonl");
+    copy_checked(&directory.join(DATABASE), &input, &manifest.records)?;
+    let output = stage.path().join("imported.sqlite3");
+    drop(crate::scratch::sqlite(&output)?);
+    storage::export::restore(&input, &output)?;
+    let history = Storage::open_catalog(&output)?;
     storage::export::validate(&history)?;
     let files = storage::export::attachments(&history)?;
     if history.silver_certificate()? != manifest.silver
@@ -164,10 +163,6 @@ pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppErr
         ));
     }
     drop(history);
-    // Recreate the trusted schema rather than installing SQL from the archive.
-    let output = stage.path().join("imported.sqlite3");
-    drop(crate::scratch::sqlite(&output)?);
-    storage::export::copy(&input, &output)?;
     let mut blob_output = OutputDirectory::create(&blobs)?;
     copy_attachments(&directory.join("attachments"), &blobs, &files)?;
     sync_directory(&blobs)?;
@@ -199,6 +194,13 @@ pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppErr
 
 fn counts(storage: &Storage, files: &BTreeMap<String, u64>) -> Result<HistoryCounts, AppError> {
     let counts = storage.counts()?;
+    history_counts(&counts, files)
+}
+
+fn history_counts(
+    counts: &crate::records::Counts,
+    files: &BTreeMap<String, u64>,
+) -> Result<HistoryCounts, AppError> {
     Ok(HistoryCounts {
         conversations: counts.conversations,
         messages: counts.messages,

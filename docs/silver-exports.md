@@ -52,20 +52,20 @@ with `rebuild_local_gold=true` and `search` with `local=true`. No provider inges
 is involved. Importing into or merging with an existing local history database
 is intentionally outside this first version.
 
-## Format version 1
+## Format version 2
 
 An export is a directory:
 
 ```text
 manifest.json
-silver.sqlite3
+silver.jsonl
 attachments/<BLAKE3 digest>
 ```
 
 The typed JSON manifest records format/schema versions, creation time, optional
-configured source node, silver completeness/revision, counts, database byte size
-and BLAKE3 checksum. This is archive metadata, not node configuration. The
-database contains canonical messages, interpreted dialogue, context links,
+configured source node, silver completeness/revision, counts, record-file byte size
+and BLAKE3 checksum. This is archive metadata, not node configuration. Typed
+JSON Lines records contain canonical messages, interpreted dialogue, context links,
 threads, enrichment, provider-native Claude branch evidence, source identities,
 checkpoints, scan/rejection state, tombstones and pending shared deletion intent.
 Attachment files are deduplicated by digest and verified against retained
@@ -73,12 +73,15 @@ metadata. Unretained or external attachments remain metadata only; exports do
 not read their provider paths. Missing or corrupt *retained* files fail export
 creation instead of silently losing data.
 
-Silver tables are copied in one SQLite transaction, including committed WAL
-data, while other connections may continue indexing. Gold tables exist as empty
-schema infrastructure; embedding, FTS, semantic-chunk, readiness and cache data
-are not copied. Models, node/server configuration, environment credentials and
-raw provider files are not included. Copying is streamed through SQLite; attachment copies and
-checksumming use bounded buffers. The format is uncompressed and can be archived
+The current local backend reads silver in one SQLite transaction, including
+committed WAL data, while other connections may continue indexing. Export files
+contain no SQLite database or storage-engine row IDs. Embeddings, FTS,
+semantic-chunk, readiness and cache data are excluded. Models, node/server
+configuration, environment credentials and raw provider files are not included.
+Record serialization, attachment copies and checksumming are streamed with bounded
+buffers. The portable record schema is independent of the local storage schema.
+Import rejects unknown records/fields, invalid contexts and incomplete record streams.
+The format is uncompressed and can be archived
 with standard tools after completion.
 
 The manifest is installed last as the completion marker. An interrupted export
@@ -103,7 +106,30 @@ are created with mode 0700 and files with mode 0600; Windows inherits the parent
 directory's access controls. Checksums detect corruption, not malicious
 replacement. Encryption and trusted storage are handled outside this format.
 
-## Real-data verification (2026-10-05)
+Version 1 SQLite archives are not accepted by the version 2 importer. Export
+existing local data again with this build before the Qdrant-only cutover. Local
+runtime/import storage remains SQLite until that cutover is complete; the command
+examples above describe the current runtime, not the intended final backend.
+
+## Version 2 real-data verification (2026-10-06)
+
+The Xenia history exported 817 threads, 345,451 messages and 65 retained files
+(12,887,017 attachment bytes). Its silver certificate remained complete at
+revision 731,893 and interpretation version 2. Import into an isolated fresh
+local store preserved those counts and the certificate, and correctly reported
+that gold still needed rebuilding. Re-export produced a byte-for-byte identical
+`silver.jsonl` (1,026,902,224 bytes); all retained files also matched byte-for-byte.
+This verifies the portable record conversion, including source/branch evidence,
+without reading provider histories or running inference. The test still used the
+SQLite local runtime and does not prove the Qdrant destination is implemented.
+
+Validation passed 640 default Rust/CLI/MCP tests, strict Clippy, formatting and
+doctests. Corruption fixtures also reject unknown fields/record kinds, duplicates,
+missing completion state and trailing records even with a matching archive-file
+checksum. Private artifacts are under
+`/home/james/scratch/mash-artifacts/search-performance-20261006/canonical-roundtrip`.
+
+## Historical version 1 real-data verification (2026-10-05)
 
 Release `bc0dd6d` corrected attachment collection for Claude branch evidence.
 Canonical message rows store typed attachment metadata; native Claude rows

@@ -1,6 +1,50 @@
 use super::*;
 use rusqlite::{Connection, types::Value};
 
+#[test]
+fn portable_records_reject_corrupt_structure_even_with_a_matching_file_digest() {
+    for fault in [
+        "unknown_field",
+        "unknown_record",
+        "missing_state",
+        "after_state",
+        "duplicate",
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let (database, _writer) = fixture(root.path());
+        let exported = root.path().join("export");
+        write(&database, &exported, None).unwrap();
+        let path = exported.join(DATABASE);
+        let original = fs::read_to_string(&path).unwrap();
+        assert!(!original.starts_with("SQLite format"));
+        assert!(!original.contains("storage_id"));
+        let mut lines = original.lines().map(str::to_owned).collect::<Vec<_>>();
+        match fault {
+            "unknown_field" => lines[0].insert_str(1, "\"embedding\":[1,0],"),
+            "unknown_record" => lines[0] = "{\"record\":\"invented\"}".into(),
+            "missing_state" => {
+                lines.pop();
+            }
+            "after_state" => lines.push(lines[0].clone()),
+            "duplicate" => lines.insert(0, lines[0].clone()),
+            _ => unreachable!(),
+        }
+        fs::write(&path, format!("{}\n", lines.join("\n"))).unwrap();
+        let mut manifest: Manifest =
+            serde_json::from_slice(&fs::read(exported.join(MANIFEST)).unwrap()).unwrap();
+        manifest.records = digest(&path).unwrap();
+        fs::write(
+            exported.join(MANIFEST),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let destination = root.path().join("new.sqlite3");
+        assert!(load(&exported, &destination).is_err(), "{fault}");
+        assert!(!destination.exists(), "{fault}");
+        assert!(!attachments::directory(&destination).exists(), "{fault}");
+    }
+}
+
 fn fixture(root: &Path) -> (PathBuf, Connection) {
     let path = root.join("history # ü.sqlite3");
     drop(Storage::open(&path).unwrap());
@@ -11,7 +55,7 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          VALUES('thread','codex','/missing/session','file:/missing/session',NULL,'Useful thread','/project','https://example.test/repo','source-hash',10,20);
          INSERT INTO messages(id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at,fingerprint)
          VALUES('message','thread',0,'user','Canonical evidence','visible evidence',-1,11,'message-hash');
-         INSERT INTO conversation_enrichment VALUES('thread','{}');
+         INSERT INTO conversation_enrichment VALUES('thread','{\"version\":1,\"title\":null,\"project\":null,\"repository\":null}');
          INSERT INTO tombstones VALUES('codex','forgotten-thread',30);
          INSERT INTO claude_sources VALUES('branch','/missing/branch','thread','Branch title','/other-project',NULL);
          INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at)
@@ -155,7 +199,6 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_gol
         "silver_rejections",
         "shared_forgets",
         "attachment_policy",
-        "sqlite_sequence",
     ] {
         assert_eq!(rows(&writer, table), rows(&imported, table), "{table}");
     }
@@ -323,7 +366,7 @@ fn missing_retained_files_fail_export_without_leaving_a_completed_archive() {
 }
 
 #[test]
-fn empty_history_preserves_message_identity_sequence_and_unverified_state() {
+fn empty_history_preserves_unverified_state_without_storage_engine_sequences() {
     let root = tempfile::tempdir().unwrap();
     let (database, connection) = fixture(root.path());
     connection
@@ -336,10 +379,10 @@ fn empty_history_preserves_message_identity_sequence_and_unverified_state() {
     assert!(matches!(result.recommended_action, NextStep::RepairSilver));
     assert_eq!(result.counts.messages, 0);
     let imported = Connection::open(target).unwrap();
-    assert_eq!(
-        rows(&connection, "sqlite_sequence"),
-        rows(&imported, "sqlite_sequence")
-    );
+    assert_eq!(rows(&imported, "messages").len(), 0);
+    let text = fs::read_to_string(export.join(DATABASE)).unwrap();
+    assert!(!text.contains("sqlite_sequence"));
+    assert!(!text.contains("storage_id"));
 }
 
 #[cfg(unix)]
