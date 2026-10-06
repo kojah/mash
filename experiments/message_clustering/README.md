@@ -329,3 +329,12 @@ Keep vectors, receipts and per-thread predictions in private research storage.
 See [the aggregate results](../../docs/voyage-calibration-results.md) and
 [the LaTeX supplement](../../docs/paper/voyage-calibration.tex) for the completed
 comparison, implementation audit, calibration settings and limitations.
+
+The [model-capacity rerun](../../docs/voyage-model-capacity-protocol.md) uses
+`run_model_capacity.py` with an explicit `--baseline` manifest, model-specific
+tokenizers in the private output directory, configurable `--dimensions` and
+`--input-tokens`, and model/dimension/task/tokenizer-aware vector caches.
+See [the rerun results](../../docs/voyage-model-capacity-results.md). The local
+Python encoder reads dimensions/context/padding from installed metadata, and
+tracking summaries require a baseline ID. Historical inference remains pinned
+to its original revisions; do not resume a frozen contract with changed source.

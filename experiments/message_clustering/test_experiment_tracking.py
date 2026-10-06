@@ -15,6 +15,7 @@ class TrackingContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             summary = Summary(
+                baseline="explicit-reference",
                 treatment="first80",
                 metrics={"overall.f1": 0.8},
                 provenance={"contract_sha256": "fixed"},
@@ -40,3 +41,9 @@ class TrackingContracts(unittest.TestCase):
                 with tracked_run(root, "test", "failure", {}) as (_, failed_id):
                     raise ValueError("injected failure")
             self.assertEqual(restored.get_run(failed_id).info.status, "FAILED")
+
+    def test_baseline_cannot_silently_default_to_a_model(self) -> None:
+        with self.assertRaises(ValueError):
+            Summary.model_validate(
+                {"treatment": "candidate", "metrics": {}, "provenance": {}}
+            )

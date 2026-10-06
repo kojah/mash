@@ -236,7 +236,7 @@ pub(super) fn quantize_vector(vector: &[f32]) -> QuantizedVector {
         .collect();
     QuantizedVector {
         values,
-        norm: exactly_representable_f32(norm_squared).sqrt(),
+        norm: dot_to_f32(norm_squared).sqrt(),
     }
 }
 
@@ -254,7 +254,7 @@ pub(super) fn quantized_cosine(left: &QuantizedVector, right: &[u8], right_norm:
         .zip(right)
         .map(|(&left, &right)| i32::from(left.cast_signed()) * i32::from(right.cast_signed()))
         .sum::<i32>();
-    (exactly_representable_f32(product) / denominator).clamp(-1.0, 1.0)
+    (dot_to_f32(product) / denominator).clamp(-1.0, 1.0)
 }
 
 fn quantize_component(value: f32, scale: f32) -> i8 {
@@ -266,10 +266,10 @@ fn quantize_component(value: f32, scale: f32) -> i8 {
     }
 }
 
-fn exactly_representable_f32(value: i32) -> f32 {
-    // A 384-dimensional signed-byte dot product is bounded by 6,193,536,
-    // below f32's exact-integer limit of 2^24.
-    debug_assert!(value.unsigned_abs() <= 1 << f32::MANTISSA_DIGITS);
+fn dot_to_f32(value: i32) -> f32 {
+    // Larger configured embedding spaces can exceed f32's exact-integer range.
+    // Cosine scores are f32 approximations; rounding here must not panic merely
+    // because a valid model has more dimensions than the original local model.
     #[allow(clippy::cast_precision_loss)]
     {
         value as f32

@@ -9,6 +9,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import orjson
@@ -17,6 +18,9 @@ from pydantic import ConfigDict
 from clustering import VectorMatrix, normalized_vectors
 from corpus import Record
 from local_encoder import pool_vectors
+
+if TYPE_CHECKING:
+    from model_capacity import Capacity, TokenBudget
 
 
 class Model(StrEnum):
@@ -66,13 +70,16 @@ class Receipt(Record):
     cost: float
     response_id: str | None
     seconds: float
+    dimensions: int = 1024
 
 
 def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def decode(response: Response, count: int, model: Model) -> VectorMatrix:
+def decode(
+    response: Response, count: int, model: Model, dimensions: int = 1024
+) -> VectorMatrix:
     """Honor response indices rather than assuming response-array order."""
     if response.model not in (model.value, model.value.split("/", 1)[1]):
         raise ValueError("unexpected embedding response model")
@@ -80,7 +87,7 @@ def decode(response: Response, count: int, model: Model) -> VectorMatrix:
     if tuple(item.index for item in items) != tuple(range(count)):
         raise ValueError("missing or repeated embedding response index")
     vectors = np.array([item.embedding for item in items], dtype=np.float64)
-    if vectors.shape != (count, 1024) or not np.isfinite(vectors).all():
+    if vectors.shape != (count, dimensions) or not np.isfinite(vectors).all():
         raise ValueError("invalid raw embedding shape or values")
     normalized_vectors(vectors)  # Also reject zero vectors before caching.
     return vectors
@@ -94,12 +101,16 @@ def codec(vectors: VectorMatrix) -> VectorMatrix:
 
 
 def request(
-    texts: tuple[str, ...], model: Model, key: str
+    texts: tuple[str, ...], model: Model, key: str, dimensions: int = 1024
 ) -> tuple[VectorMatrix, Receipt]:
     started = time.perf_counter()
     operation = urllib.request.Request(
         "https://openrouter.ai/api/v1/embeddings",
-        data=orjson.dumps(Request(model=model, input=texts).model_dump(mode="json")),
+        data=orjson.dumps(
+            Request(model=model, input=texts, dimensions=dimensions).model_dump(
+                mode="json"
+            )
+        ),
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
         method="POST",
     )
@@ -118,11 +129,12 @@ def request(
                     "embedding transport failure: charges unknown"
                 ) from None
             time.sleep(2**attempt)
-    vectors = decode(response, len(texts), model)
+    vectors = decode(response, len(texts), model, dimensions)
     # Conservative fallback: both listed models are <=$0.12/M at registration.
     cost = response.usage.cost
     if cost is None:
-        cost = response.usage.total_tokens * 0.12 / 1_000_000
+        price = 0.06 if model == Model.GENERAL else 0.12
+        cost = response.usage.total_tokens * price / 1_000_000
     if cost < 0 or not np.isfinite(cost) or response.usage.total_tokens < 0:
         raise ValueError("invalid API usage receipt")
     return vectors, Receipt(
@@ -133,6 +145,7 @@ def request(
         cost=cost,
         response_id=response.id,
         seconds=time.perf_counter() - started,
+        dimensions=dimensions,
     )
 
 
@@ -186,9 +199,16 @@ def batches(texts: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
 
 
 def build_cache(
-    root: Path, texts: tuple[str, ...], model: Model, key_path: Path
+    root: Path,
+    texts: tuple[str, ...],
+    model: Model,
+    key_path: Path,
+    budget: "TokenBudget | None" = None,
 ) -> None:
     """Resume only missing texts; commit buffered raw floats after each request pair."""
+    capacity = budget.capacity if budget else None
+    space = cache_space(model, capacity)
+    dimensions = capacity.dimensions if capacity else 1024
     key = key_path.read_text().strip().split("=", 1)[1]
     receipts_path = root / "receipts.jsonl"
     receipts = tuple(
@@ -205,26 +225,31 @@ def build_cache(
         )
         present = {
             row[0]
-            for row in db.execute("SELECT hash FROM vectors WHERE model=?", (model,))
+            for row in db.execute("SELECT hash FROM vectors WHERE model=?", (space,))
         }
         missing = tuple(
             text
             for text in dict.fromkeys(texts)
             if digest(text.encode()) not in present
         )
-        work = batches(missing)
+        work = budget.batches(missing) if budget else batches(missing)
         with ThreadPoolExecutor(max_workers=2) as executor:
             for offset in range(0, len(work), 2):
                 group = work[offset : offset + 2]
                 estimated = (
-                    sum(len(text.encode()) for batch in group for text in batch)
+                    sum(
+                        budget.count(text) if budget else len(text.encode())
+                        for batch in group
+                        for text in batch
+                    )
                     * 0.12
                     / 1_000_000
                 )
                 if spent + estimated > 3:
                     raise ValueError("registered $3 API charge cap reached")
                 futures = [
-                    executor.submit(request, batch, model, key) for batch in group
+                    executor.submit(request, batch, model, key, dimensions)
+                    for batch in group
                 ]
                 for batch, future in zip(group, futures, strict=True):
                     vectors, receipt = future.result()
@@ -238,7 +263,7 @@ def build_cache(
                             "INSERT OR IGNORE INTO vectors VALUES (?,?,?)",
                             (
                                 (
-                                    model,
+                                    space,
                                     digest(text.encode()),
                                     vector.astype("<f8").tobytes(),
                                 )
@@ -252,13 +277,32 @@ def build_cache(
                 )
 
 
-def read_cache(root: Path, model: Model) -> dict[str, VectorMatrix]:
+def cache_space(model: Model, capacity: "Capacity | None" = None) -> str:
+    if capacity is None:
+        return model.value
+    if capacity.model != model:
+        raise ValueError("capacity belongs to another model")
+    from model_capacity import vector_space
+
+    return digest(orjson.dumps(vector_space(capacity).model_dump(mode="json")))
+
+
+def read_cache(
+    root: Path, model: Model, capacity: "Capacity | None" = None
+) -> dict[str, VectorMatrix]:
     with sqlite3.connect(
         (root / "raw-vectors.sqlite").resolve().as_uri() + "?mode=ro", uri=True
     ) as db:
-        return {
+        result = {
             identity: np.frombuffer(blob, dtype="<f8").copy()[None, :]
             for identity, blob in db.execute(
-                "SELECT hash,vector FROM vectors WHERE model=?", (model,)
+                "SELECT hash,vector FROM vectors WHERE model=?",
+                (cache_space(model, capacity),),
             )
         }
+    dimensions = capacity.dimensions if capacity else 1024
+    if any(
+        v.shape != (1, dimensions) or not np.isfinite(v).all() for v in result.values()
+    ):
+        raise ValueError("cached vectors do not match model capabilities")
+    return result

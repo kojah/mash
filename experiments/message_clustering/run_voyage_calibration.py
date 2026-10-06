@@ -598,6 +598,7 @@ def main(
                         client,
                         run_id,
                         Summary(
+                            baseline="complete-answer-v1",
                             treatment=arm,
                             metrics={
                                 "calibration.f1": counts.f1,
@@ -643,6 +644,7 @@ def main(
                         client,
                         run_id,
                         Summary(
+                            baseline="complete-answer-v1",
                             treatment=result.arm,
                             metrics=metrics(result),
                             provenance={"contract_sha256": digest(raw)},

@@ -181,7 +181,7 @@ class Store:
                 ]
             )
             if requests
-            else np.empty((0, 384))
+            else encoder.encode(())
         )
         return matrix, len(pending)
 

@@ -159,7 +159,12 @@ def main(
             log_summary(
                 client,
                 run_id,
-                Summary(treatment=arm.value, metrics=values, provenance=pinned),
+                Summary(
+                    baseline="complete-answer-v1",
+                    treatment=arm.value,
+                    metrics=values,
+                    provenance=pinned,
+                ),
             )
             client.log_artifact(
                 run_id,

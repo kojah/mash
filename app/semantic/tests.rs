@@ -20,6 +20,15 @@ fn reranking_is_bounded_to_ten_documents() {
 }
 
 #[test]
+fn quantized_cosine_supports_large_model_dimensions() {
+    let positive = quantize_vector(&vec![1.0; 2048]);
+    let negative = quantize_vector(&vec![-1.0; 2048]);
+    assert!(positive.norm.is_finite());
+    assert!((quantized_cosine(&positive, &positive.values, positive.norm) - 1.0).abs() < 1e-6);
+    assert!((quantized_cosine(&positive, &negative.values, negative.norm) + 1.0).abs() < 1e-6);
+}
+
+#[test]
 fn embedding_plan_groups_identical_text_and_sorts_message_ids() {
     let groups = plan_embedding_groups(vec![
         SearchableMessage {

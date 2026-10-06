@@ -1,0 +1,65 @@
+\section{Model-dependent capacity rerun}
+Following the joint-turn baseline freeze, we remove model-capacity assumptions
+from the experimental construction and transport path. Validated model records
+specify dimensions, input, context and batch token budgets, and tokenizer identity.
+Local ONNX metadata determines hidden size, context and padding; remote response
+shape validation and cache identity use requested dimensions. The generic tracking
+record requires an explicit baseline ID. A production cosine assertion tied to
+small signed-byte vectors is replaced with a dimension-independent f32 conversion.
+
+The registered rerun compares Voyage 4 and Voyage Code 4 at 1024/2048 dimensions,
+using either the original 28,000-byte structural budget or a 31,992-token budget
+below their documented 32,000-token limit. Pinned model-specific public tokenizers
+are used without truncation. Only 14 turns change segmentation, and the maximum
+full-turn length is 24,544 tokens. Exact compatible cached raw 1024-dimensional
+vectors are reused; larger-dimensional vectors require new inference. Cache keys
+separate model, dimensions, task and tokenizer, with exact-text hashes.
+
+All 156 histories are now development data. We retain the former 104/52 subdivision
+and leave original confirmation sealed. Eight arms receive identical 48-trial
+Optuna budgets, selecting settings only on the 104-history subdivision. The table
+reports outcomes on the 52-history consumed-development subdivision, percentages.
+\begin{center}\scriptsize
+\begin{tabular}{ll l rrrr}
+\toprule
+Model & Dim. & Budget & Precision & Recall & F1 & Distant recall\\
+\midrule
+voyage-code-4 & 1024 & legacy bytes & 80.61 & 81.87 & 81.23 & 61.11 \\
+voyage-code-4 & 1024 & model tokens & 82.68 & 76.68 & 79.57 & 44.44 \\
+voyage-code-4 & 2048 & legacy bytes & 75.21 & 92.75 & 83.06 & 81.48 \\
+voyage-code-4 & 2048 & model tokens & 75.21 & 92.75 & 83.06 & 81.48 \\
+voyage-4 & 1024 & legacy bytes & 83.66 & 87.56 & 85.57 & 70.37 \\
+voyage-4 & 1024 & model tokens & 83.66 & 87.56 & 85.57 & 70.37 \\
+voyage-4 & 2048 & legacy bytes & 81.19 & 84.97 & 83.04 & 66.67 \\
+voyage-4 & 2048 & model tokens & 81.28 & 85.49 & 83.33 & 66.67 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The companion Markdown report includes frozen-setting ablations and paired
+intervals from 2,000 paired thread resamples against voyage4-joint-v1. All F1-gain
+intervals show no positive gain excluding zero. Both Code 4 1024-dimensional
+intervals are entirely negative; other non-reference intervals include zero.
+Larger dimensions increase Code 4 recall after calibration
+while adding false positives; Voyage 4 has no quality win over its frozen joint
+reference here. Larger context changes relatively few inputs and does not
+systematically improve measured outcomes. These exploratory comparisons do not
+establish equivalence, and provider repeat variability and annotation bias are
+not captured by the bootstrap. The frozen reference is not changed.
+
+Paired frozen-setting contrasts isolate one capacity change at a time.
+Code 4's 1024-to-2048 dimension comparison increases F1 by 3.00 percentage
+points, with exploratory interval [+0.60, +6.15] for either input budget.
+Voyage 4's corresponding intervals include zero and have negative point gains.
+Token-budget changes have zero point gain except a 0.29-point gain for Voyage 4
+at 2048 dimensions (interval [0.00, 1.00]). Thus larger dimensions can help an
+individual model without outperforming the selected reference. These comparisons
+remain unadjusted, reused-development and partly cached-versus-fresh-inference
+contrasts, rather than independent causal confirmation.
+
+New recorded API charges total \$0.381081.
+Verification covers model-dependent shapes, token/source preservation, cache
+separation, exact reference replay and all 384 calibration plus 16 scoring runs.
+All 1,248 matrix files are catalogued. 163 Python tests and 638 default Rust tests
+pass. Full nightly Clippy fails on compiler ICEs and unrelated existing code;
+isolated stable all-target checks pass when existing exact-float test lints are
+allowed. Executed sources and detailed private artifacts remain hash-pinned.

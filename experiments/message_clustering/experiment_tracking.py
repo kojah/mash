@@ -14,7 +14,7 @@ from run_complete_answers import Result
 
 
 class Summary(Record):
-    baseline: str = "complete-answer-v1"
+    baseline: str
     treatment: str
     confirmation: str = "sealed"
     metrics: dict[str, float]

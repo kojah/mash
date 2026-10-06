@@ -6,8 +6,9 @@ from typing import Literal
 
 import numpy as np
 import onnxruntime as ort
+import orjson
 from numpy.typing import NDArray
-from pydantic import Field
+from pydantic import ConfigDict, Field
 from tokenizers import Encoding, Tokenizer
 
 from clustering import VectorMatrix, normalized_vectors
@@ -24,6 +25,37 @@ class EncoderManifest(Record):
     max_tokens: int = 512
     pooling: Literal["masked_mean"] = "masked_mean"
     codec: Literal["symmetric_i8_away_from_zero"] = "symmetric_i8_away_from_zero"
+
+
+class ModelMetadata(Record):
+    model_config = ConfigDict(extra="ignore", frozen=True)
+    hidden_size: int = Field(gt=0)
+    max_position_embeddings: int = Field(gt=0)
+    pad_token_id: int = Field(default=0, ge=0)
+
+
+class TokenizerMetadata(Record):
+    model_config = ConfigDict(extra="ignore", frozen=True)
+    model_max_length: int | None = None
+
+
+def local_capacity(snapshot: Path) -> tuple[int, int, int]:
+    model = ModelMetadata.model_validate(
+        orjson.loads((snapshot / "config.json").read_bytes())
+    )
+    token_path = snapshot / "tokenizer_config.json"
+    tokenizer = (
+        TokenizerMetadata.model_validate_json(token_path.read_bytes())
+        if token_path.exists()
+        else TokenizerMetadata()
+    )
+    limit = min(
+        model.max_position_embeddings,
+        tokenizer.model_max_length or model.max_position_embeddings,
+    )
+    if limit <= 0:
+        raise ValueError("local model has an invalid context limit")
+    return model.hidden_size, limit, model.pad_token_id
 
 
 class Selection(Record):
@@ -82,13 +114,17 @@ class Encoder:
     def __init__(self, snapshot: Path) -> None:
         import tokenizers
 
+        self.dimensions, context, self.pad_token_id = local_capacity(snapshot)
         model = snapshot / "onnx/model_quantized.onnx"
+        if not model.exists():
+            model = snapshot / "onnx/model.onnx"
         tokenizer = snapshot / "tokenizer.json"
         self.manifest = EncoderManifest(
             model_sha256=hashlib.sha256(model.read_bytes()).hexdigest(),
             tokenizer_sha256=hashlib.sha256(tokenizer.read_bytes()).hexdigest(),
             runtime=ort.__version__,
             tokenizer_runtime=tokenizers.__version__,
+            max_tokens=context,
         )
         self.tokenizer = Tokenizer.from_file(str(tokenizer))
         self.tokenizer.no_truncation()
@@ -118,7 +154,7 @@ class Encoder:
         if len(texts) != len(selections):
             raise ValueError("each input needs a pooling selection")
         if not texts:
-            return np.empty((0, 384), dtype=np.float64)
+            return np.empty((0, self.dimensions), dtype=np.float64)
         encoded, mask, hidden = self.states(texts)
         pooling = selection_mask(texts, encoded, mask, selections)
         if downweighted is not None:
@@ -133,22 +169,26 @@ class Encoder:
             raise ValueError("hidden-state inference needs nonempty inputs")
         encoded = tuple(self.tokenizer.encode_batch(list(texts)))
         width = max(len(item.ids) for item in encoded)
-        if width > 512:
+        if width > self.manifest.max_tokens:
             raise ValueError("input exceeds explicit encoder budget")
-        ids = np.zeros((len(texts), width), dtype=np.int64)
+        ids = np.full((len(texts), width), self.pad_token_id, dtype=np.int64)
         mask = np.zeros_like(ids)
         types = np.zeros_like(ids)
         for index, item in enumerate(encoded):
             ids[index, : len(item.ids)] = item.ids
             mask[index, : len(item.ids)] = 1
             types[index, : len(item.ids)] = item.type_ids
+        available = {item.name for item in self.session.get_inputs()}
+        inputs = {"input_ids": ids, "attention_mask": mask, "token_type_ids": types}
         hidden = np.asarray(
             self.session.run(
                 ["last_hidden_state"],
-                {"input_ids": ids, "attention_mask": mask, "token_type_ids": types},
+                {name: value for name, value in inputs.items() if name in available},
             )[0],
             dtype=np.float32,
         )
+        if hidden.shape != (len(texts), width, self.dimensions):
+            raise ValueError("model hidden-state shape differs from its metadata")
         return encoded, mask, hidden
 
 

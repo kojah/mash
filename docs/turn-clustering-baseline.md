@@ -63,10 +63,10 @@ explicit frozen choices, rather than claims that they are optimal for Voyage.
 
 Historical Python encoder/build scripts still intentionally pin MiniLM assets,
 384 dimensions and a 512-token context, and historical comparison helpers still
-pin complete-answer-v1. The MLflow `Summary` default also names that old control:
-future experiments using this reference must explicitly set
-`baseline="voyage4-joint-v1"`. Do not rewrite historical runs/defaults to relabel
-their actual controls.
+pin complete-answer-v1. MLflow `Summary` now requires an explicit baseline ID:
+future experiments using this reference set `baseline="voyage4-joint-v1"`.
+Historical public runners explicitly name their original control; stored runs
+are not rewritten or relabeled.
 
 Production local ONNX/Core ML loading remains MiniLM-specific. Production remote
 embedding configuration supports model names and dimensions, including Voyage;
