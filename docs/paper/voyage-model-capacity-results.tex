@@ -6,6 +6,9 @@ Local ONNX metadata determines hidden size, context and padding; remote response
 shape validation and cache identity use requested dimensions. The generic tracking
 record requires an explicit baseline ID. A production cosine assertion tied to
 small signed-byte vectors is replaced with a dimension-independent f32 conversion.
+Production remote configuration derives dimensions from recognized model names
+instead of assuming the local encoder's width; unknown/custom models require an
+explicit dimension setting and explicit settings override known defaults.
 
 The registered rerun compares Voyage 4 and Voyage Code 4 at 1024/2048 dimensions,
 using either the original 28,000-byte structural budget or a 31,992-token budget
@@ -59,7 +62,10 @@ contrasts, rather than independent causal confirmation.
 New recorded API charges total \$0.381081.
 Verification covers model-dependent shapes, token/source preservation, cache
 separation, exact reference replay and all 384 calibration plus 16 scoring runs.
-All 1,248 matrix files are catalogued. 163 Python tests and 638 default Rust tests
-pass. Full nightly Clippy fails on compiler ICEs and unrelated existing code;
+All 1,248 matrix files are catalogued. 163 Python tests and the initial full run
+of 638 default Rust tests pass. Subsequent model-default and status regressions
+pass; wider reruns encounter unrelated export and HTTP-fixture timeouts under
+filesystem contention. Stable library Clippy passes after the configuration change.
+Full nightly Clippy fails on compiler ICEs and unrelated existing code;
 isolated stable all-target checks pass when existing exact-float test lints are
 allowed. Executed sources and detailed private artifacts remain hash-pinned.

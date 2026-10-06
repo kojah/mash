@@ -244,7 +244,7 @@ mod tests {
         let models = root.path().join("missing-models");
         let database = root.path().join("missing.sqlite3");
         for (ranking, available) in [("fusion", true), ("contextual-rerank", false)] {
-            std::fs::write(&config, format!("version=1\nproviders={{}}\n[embeddings]\nurl='http://127.0.0.1:1/v1/embeddings'\nmodel='test'\n[gold.query]\nranking='{ranking}'\n")).unwrap();
+            std::fs::write(&config, format!("version=1\nproviders={{}}\n[embeddings]\nurl='http://127.0.0.1:1/v1/embeddings'\nmodel='test'\ndimensions=384\n[gold.query]\nranking='{ranking}'\n")).unwrap();
             let configuration = crate::config::load(Some(&config)).unwrap();
             let status = local_status(&database, &models, &configuration).unwrap();
             assert!(!status.models_installed);

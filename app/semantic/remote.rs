@@ -35,12 +35,11 @@ enum InputType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "WireConfiguration")]
 pub(crate) struct Configuration {
     /// The complete OpenAI-compatible embeddings endpoint, including its path.
     pub(crate) url: String,
     pub(crate) model: String,
-    #[serde(default = "default_dimensions")]
     pub(crate) dimensions: usize,
     #[serde(default)]
     pub(crate) api: Api,
@@ -50,8 +49,64 @@ pub(crate) struct Configuration {
     pub(crate) request_dimensions: bool,
 }
 
-fn default_dimensions() -> usize {
-    384
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireConfiguration {
+    url: String,
+    model: String,
+    dimensions: Option<usize>,
+    #[serde(default)]
+    api: Api,
+    token_env: Option<String>,
+    #[serde(default)]
+    request_dimensions: bool,
+}
+
+impl TryFrom<WireConfiguration> for Configuration {
+    type Error = &'static str;
+
+    fn try_from(raw: WireConfiguration) -> Result<Self, Self::Error> {
+        // Unknown/custom endpoints must declare their vector space; assuming the
+        // local encoder's width can silently select an incompatible index.
+        let dimensions = raw
+            .dimensions
+            .or_else(
+                || match raw.model.strip_prefix("voyageai/").unwrap_or(&raw.model) {
+                    "voyage-4" | "voyage-code-4" | "voyage-4-large" | "voyage-4-lite" => Some(1024),
+                    "all-MiniLM-L6-v2" | "sentence-transformers/all-MiniLM-L6-v2" => Some(384),
+                    _ => None,
+                },
+            )
+            .ok_or("embeddings.dimensions is required for an unknown/custom model")?;
+        Ok(Self {
+            url: raw.url,
+            model: raw.model,
+            dimensions,
+            api: raw.api,
+            token_env: raw.token_env,
+            request_dimensions: raw.request_dimensions,
+        })
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn dimensions_follow_model_instead_of_local_encoder_default() {
+    for model in ["voyage-4", "voyageai/voyage-code-4"] {
+        let config: Configuration = toml::from_str(&format!(
+            "url='https://example.com/embeddings'\nmodel='{model}'\n"
+        ))
+        .unwrap();
+        assert_eq!(config.dimensions, 1024);
+    }
+    let explicit: Configuration =
+        toml::from_str("url='https://example.com/embeddings'\nmodel='custom'\ndimensions=2048\n")
+            .unwrap();
+    assert_eq!(explicit.dimensions, 2048);
+    assert!(
+        toml::from_str::<Configuration>("url='https://example.com/embeddings'\nmodel='custom'\n")
+            .is_err()
+    );
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
