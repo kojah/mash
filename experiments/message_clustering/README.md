@@ -338,3 +338,18 @@ See [the rerun results](../../docs/voyage-model-capacity-results.md). The local
 Python encoder reads dimensions/context/padding from installed metadata, and
 tracking summaries require a baseline ID. Historical inference remains pinned
 to its original revisions; do not resume a frozen contract with changed source.
+
+The [learned-affinity prototype](../../docs/learned-turn-affinity-protocol.md)
+uses `uv run python run_learned_affinity.py --root PRIVATE_RESEARCH_ROOT
+--output NEW_PRIVATE_STUDY --protocol REGISTERED_PROTOCOL`. It reuses the
+model-capacity matrices, runs 64 thread-grouped calibration trials, freezes one
+setting and evaluates once. It is supervised research, with no inference API
+calls or production changes. It emits actual overlapping graph groups and
+checks their pair decisions against the learned affinities. See the
+[results](../../docs/learned-turn-affinity-results.md) and
+[candidate manifest](../../docs/learned-turn-affinity-candidate.toml).
+
+Logistic candidates also export typed `linear-model.json` with feature names,
+coefficients and bias, independent of sklearn/pickle loading. Fitted sklearn
+objects remain private, version-sensitive artifacts; never load an externally
+supplied pickle. The portable scorer is regression-tested against sklearn.

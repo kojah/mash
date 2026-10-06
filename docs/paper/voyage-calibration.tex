@@ -105,6 +105,8 @@ Remote model weights cannot be pinned, and repeated API calls may expose
 provider drift. Calibration/holdout division cannot undo earlier inspection
 of this development corpus. Human-reviewed, independently held-out evaluation
 is still required before strong quality claims.
+\input{docs/paper/high-recall-clustering-results.tex}
+\input{docs/paper/learned-turn-affinity-results.tex}
 \begin{thebibliography}{9}
 \bibitem{minilm} Sentence Transformers. all-MiniLM-L6-v2 model card.
 \url{https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2}
@@ -116,6 +118,11 @@ is still required before strong quality claims.
 Optimization Framework. KDD, 2019. \url{https://arxiv.org/abs/1907.10902}
 \bibitem{mlflow} MLflow. Tracking APIs.
 \url{https://mlflow.org/docs/latest/ml/tracking/tracking-api/}
+\bibitem{kummerfeldAffinity} J. K. Kummerfeld et al. A Large-Scale Corpus for
+Conversation Disentanglement. ACL, 2019. \url{https://aclanthology.org/P19-1374/}
+\bibitem{sklearnAffinity} Scikit-learn. Logistic regression and histogram
+gradient boosting API documentation.
+\url{https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html}
+\url{https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html}
 \end{thebibliography}
-\input{docs/paper/high-recall-clustering-results.tex}
 \end{document}

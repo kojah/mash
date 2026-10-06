@@ -2,6 +2,8 @@
 
 Target: precision >82%, recall >90%, distant-turn recall >80%, simultaneously. None of the calibration-selected candidates below meets all targets on the 52-thread reused development evaluation subset.
 
+A later [supervised affinity candidate](learned-turn-affinity-results.md) clears the three point-estimate targets. The negative results below remain part of the experimental record; the candidate has separate generalization and grouping-quality limitations.
+
 | Sweep | Calibration P | Calibration R | Calibration distant R | Evaluation P | Evaluation R | Evaluation distant R | Evaluation F1 |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Code 4 2048 BIRCH, 256 trials | 81.47% | 92.42% | 82.14% | 77.83% | 89.12% | 77.78% | 83.09% |
