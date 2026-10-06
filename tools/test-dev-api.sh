@@ -15,6 +15,7 @@ cleanup() {
 }
 trap cleanup EXIT
 cat > "$scratch/serve" <<'SERVER'
+printf '%s\n' "$@" > "$TEST_API_ARGUMENTS"
 while :; do sleep 0.1; done
 SERVER
 cat > "$scratch/bin/curl" <<'CURL'
@@ -39,6 +40,7 @@ CURL
 chmod 755 "$scratch/bin/curl"
 printf '%s\n' 'TEST_API_TOKEN=test-only-token' > "$scratch/environment"
 export TEST_API_POINTER="$scratch/pointer.json"
+export TEST_API_ARGUMENTS="$scratch/arguments"
 export PATH="$scratch/bin:$PATH"
 cd "$scratch"
 bash serve --server-config fixture.toml &
@@ -67,7 +69,8 @@ bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POIN
 export TEST_API_ALWAYS_READY=1
 previous_pid=$new_pid
 bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml "$scratch/environment" \
-    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
+    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --activate-query >/dev/null
+rg -qx -- --activate-query "$TEST_API_ARGUMENTS"
 [[ "$(jq -r .pid "$TEST_API_POINTER")" != "$previous_pid" ]]
 [[ "$(jq -r .previous_pid "$TEST_API_POINTER")" == "$previous_pid" ]]
 [[ "$(jq -r .source_commit "$TEST_API_POINTER")" == "$(git -C "$repository" rev-parse HEAD)" ]]

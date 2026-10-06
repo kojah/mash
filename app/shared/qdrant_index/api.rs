@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 use tracing::Instrument;
 mod optimization;
+mod planner;
 #[cfg(test)]
 mod schema_tests;
 mod staging;
@@ -275,6 +276,8 @@ struct SparseConfig {
 struct Hnsw {
     m: usize,
     ef_construct: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    full_scan_threshold: Option<usize>,
     #[serde(flatten)]
     placement: Placement,
 }
@@ -310,6 +313,8 @@ struct Create {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     sparse_vectors: BTreeMap<String, SparseConfig>,
     hnsw_config: Hnsw,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    optimizers_config: Option<planner::Optimizers>,
 }
 #[derive(Deserialize)]
 struct Info {
@@ -328,6 +333,8 @@ struct Instance {
 struct CollectionSettings {
     params: Parameters,
     hnsw_config: Hnsw,
+    #[serde(default, rename = "optimizer_config")]
+    optimizers_config: planner::Optimizers,
     #[serde(default)]
     quantization_config: Option<serde::de::IgnoredAny>,
 }
@@ -622,8 +629,10 @@ impl Client {
                 hnsw_config: Hnsw {
                     m: 16,
                     ef_construct: 200,
+                    full_scan_threshold: dimensions.map(|_| planner::FULL_SCAN_KIB),
                     placement: Placement::new(memory),
                 },
+                optimizers_config: dimensions.map(|_| planner::Optimizers::search_default()),
             };
             // A second API process may create the same collection. Always inspect it afterward.
             let _: Result<bool, _> = self.call(Method::PUT, &path, Some(&create)).await;

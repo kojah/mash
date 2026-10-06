@@ -104,3 +104,130 @@ async fn qdrant_rejects_incompatible_physical_graph_without_resetting_or_republi
     }
     fixture.cleanup().await;
 }
+
+#[derive(Deserialize)]
+struct PlannerResponse {
+    result: PlannerInfo,
+}
+#[derive(Deserialize)]
+struct PlannerInfo {
+    config: Planner,
+}
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+struct Planner {
+    hnsw_config: ScanThreshold,
+    #[serde(rename(deserialize = "optimizer_config"))]
+    optimizers_config: IndexThreshold,
+}
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+struct ScanThreshold {
+    full_scan_threshold: usize,
+}
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+struct IndexThreshold {
+    indexing_threshold: usize,
+}
+impl Planner {
+    fn new(scan: usize, indexing: usize) -> Self {
+        Self {
+            hnsw_config: ScanThreshold {
+                full_scan_threshold: scan,
+            },
+            optimizers_config: IndexThreshold {
+                indexing_threshold: indexing,
+            },
+        }
+    }
+}
+
+async fn planner(fixture: &Fixture) -> Planner {
+    reqwest::Client::new()
+        .get(format!(
+            "{}/collections/{}",
+            fixture.url,
+            collection(&fixture.identity.group_id, false)
+        ))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json::<PlannerResponse>()
+        .await
+        .unwrap()
+        .result
+        .config
+}
+
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_hnsw_planner_activation_preserves_publications_and_canonical_history() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    assert_eq!(planner(&fixture).await, Planner::new(10, 1024));
+    fixture
+        .store
+        .index(
+            &fixture.identity,
+            fixture.file(1, "retained planner evidence"),
+        )
+        .await
+        .unwrap();
+    let before = serde_json::to_vec(
+        &fixture
+            .store
+            .active_configuration(&fixture.identity)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let silver =
+        serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap();
+    reqwest::Client::new()
+        .patch(format!(
+            "{}/collections/{}",
+            fixture.url,
+            collection(&fixture.identity.group_id, false)
+        ))
+        .json(&Planner::new(10_000, 10_000))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    assert!(
+        fixture
+            .store
+            .select_query(&fixture.identity, false)
+            .await
+            .is_err()
+    );
+    assert_eq!(planner(&fixture).await, Planner::new(10_000, 10_000));
+    fixture
+        .store
+        .select_query(&fixture.identity, true)
+        .await
+        .unwrap();
+    assert_eq!(planner(&fixture).await, Planner::new(10, 1024));
+    fixture
+        .store
+        .select_query(&fixture.identity, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_vec(
+            &fixture
+                .store
+                .active_configuration(&fixture.identity)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
+        before,
+    );
+    assert_eq!(
+        serde_json::to_vec(&fixture.store.load(&fixture.identity).await.unwrap().data).unwrap(),
+        silver,
+    );
+    assert_eq!(fixture.search().await.semantic.len(), 2);
+    fixture.cleanup().await;
+}

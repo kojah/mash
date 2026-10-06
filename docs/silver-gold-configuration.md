@@ -695,8 +695,8 @@ algorithm = "hnsw"
 ef_runtime = 80
 ```
 
-This selects Qdrant query parameters against the existing physical collection;
-it is not an index-construction recipe. It is excluded from build manifests,
+This selects Qdrant query parameters against the existing physical collection.
+It is excluded from build manifests,
 model generations and group build activation. Each group's selected policy is
 persisted alongside its catalogue. Start with `serve --activate-query` to
 intentionally replace an existing query default; a conflicting startup without
@@ -711,10 +711,24 @@ or database access. All API handles read the persisted policy for each hybrid
 search, so a running handle configured with an older query default observes the
 selected policy without restarting. Status exposes `group_gold.vector_search`.
 Older catalogue records without this field have the explicit exact default;
-use intentional query activation to adopt the new HNSW default without rebuilding.
+use intentional query activation to adopt HNSW without recomputing embeddings.
+
+`exact=false` allows approximate search; Qdrant still selects its execution path.
+New message collections explicitly set `full_scan_threshold = 10` KiB (the
+backend minimum) and `indexing_threshold = 1024` KiB, rather than inheriting
+10,000 KiB defaults that can scan every filtered segment. Existing HNSW groups
+with larger scan thresholds, larger indexing thresholds, or disabled indexing
+require `serve --activate-query`. That activation updates only those thresholds,
+preserving stricter existing settings, graph topology, memory placement, silver,
+embeddings, and node publications. Qdrant may rebuild existing graphs once in the
+background; startup schedules the change without waiting for the optimizer.
+Check native optimizer progress before claiming the migration is complete.
+Small unindexed tails and filters selecting only a handful of vectors can still
+use bounded scans. Explicit exact requests continue to scan exhaustively.
+Native search telemetry, rather than the request flag alone, verifies HNSW use.
 
 Query activation preserves the gold version, build/model identity and immutable
-node references. It changes only policy and the catalogue CAS publication token,
+node references. A changed policy updates the catalogue CAS publication token,
 so delayed writers cannot restore an old policy. Later node publications and
 gold build activations preserve that policy. Selection is atomic per group;
 startup across multiple groups is not one transaction. The additional authority

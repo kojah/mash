@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ $# == 7 ]] || { echo 'usage: restart-dev-api.sh ARTIFACT CONFIG ENV POINTER API_URL TOKEN_ENV LOG_ROOT' >&2; exit 2; }
+[[ $# == 7 || ( $# == 8 && $8 == --activate-query ) ]] || {
+    echo 'usage: restart-dev-api.sh ARTIFACT CONFIG ENV POINTER API_URL TOKEN_ENV LOG_ROOT [--activate-query]' >&2
+    exit 2
+}
 source "$(dirname "$0")/dev-api-common.sh"
 artifact=$1 config=$2 environment=$3 pointer=$4 base=$5 token_name=$6 root=$7
+activate_query=${8:-}
 load_api_environment "$environment" "$token_name"
 verify_api_process "$pointer"
 old_pid=$(pointer_pid "$pointer")
@@ -23,7 +27,9 @@ committed=false
 start_api() {
     # Detach the API session from the short-lived deployment/MCP process group.
     # nohup alone does not protect it from process-group cleanup on disconnect.
-    nohup setsid "$1" serve --server-config "$config" </dev/null >"$2" 2>&1 &
+    local flags=()
+    [[ ${3:-} == --activate-query ]] && flags+=(--activate-query)
+    nohup setsid "$1" serve --server-config "$config" "${flags[@]}" </dev/null >"$2" 2>&1 &
     new_pid=$!
 }
 
@@ -60,7 +66,7 @@ rollback() {
 trap rollback EXIT
 kill -TERM "$old_pid"
 wait_exit "$old_pid" || { echo 'Previous API did not stop; no replacement started.' >&2; exit 1; }
-start_api "$binary" "$scratch/api.log"
+start_api "$binary" "$scratch/api.log" "$activate_query"
 ready=false
 for ((attempt=0; attempt<60; attempt++)); do
     kill -0 "$new_pid" 2>/dev/null || break

@@ -90,8 +90,8 @@ impl Store {
         self
     }
 
-    /// Change only the persisted retrieval default. Keep the build identity and
-    /// immutable node references; concurrent publishers participate in the same CAS.
+    /// Select retrieval defaults and, on explicit activation, planner thresholds.
+    /// Keep build identity and node references; publishers use the same CAS.
     pub(in crate::shared) async fn select_query(
         &self,
         identity: &Identity,
@@ -99,13 +99,20 @@ impl Store {
     ) -> Result<(), AppError> {
         self.vector_index.validate()?;
         let previous = self.active_configuration(identity).await?;
-        if previous.vector_search == self.vector_index {
-            return Ok(());
-        }
-        if !activate {
+        if previous.vector_search != self.vector_index && !activate {
             return Err(AppError::configuration(
                 "server query defaults conflict with the persisted group policy; use --activate-query for an intentional change",
             ));
+        }
+        self.api
+            .prepare_query(
+                &collection(&identity.group_id, false),
+                self.vector_index,
+                activate,
+            )
+            .await?;
+        if previous.vector_search == self.vector_index {
+            return Ok(());
         }
         let mut proposed = previous.clone();
         proposed.vector_search = self.vector_index;

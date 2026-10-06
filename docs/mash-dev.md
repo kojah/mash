@@ -59,6 +59,11 @@ pointer atomically after checks. A failed candidate restarts the previous binary
 and updates its PID. It neither installs a system service nor changes Qdrant data
 or server configuration. Stop publications during this storage-layout rollout;
 rollback to an older API is unsafe once upgraded nodes publish a newer layout.
+For an intentional shared query/planner migration, append `--activate-query` to
+the configured `restart-dev-api.sh` command. It reaches only the candidate API;
+rollback starts the previous binary without reapplying activation. Backend graph
+rebuilds can continue after HTTP readiness succeeds, so inspect optimizer
+progress and actual native search paths separately before measuring completion.
 `tools/check-dev-api.sh` supplies the corresponding read-only prerequisite.
 
 ## Schema changes
