@@ -137,12 +137,17 @@ class Store:
             else:
                 missing[key] = request
         pending = tuple(missing.items())
-        # Inference isolation does not require an fsync for every vector.
-        batch_size = 8
-        for start in range(0, len(pending), batch_size):
-            batch = pending[start : start + batch_size]
-            inference_batches = (
-                tuple((item,) for item in batch) if singleton else (batch,)
+        # Separate durable checkpoints from model batching: quantized outputs can
+        # depend on batch companions. Preserve the original eight-input batches
+        # (or singleton calls), but commit up to 128 vectors at a time. A failed
+        # checkpoint is recomputed on restart; already committed vectors survive.
+        transaction_size = 128
+        inference_size = 1 if singleton else 8
+        for start in range(0, len(pending), transaction_size):
+            batch = pending[start : start + transaction_size]
+            inference_batches = tuple(
+                batch[offset : offset + inference_size]
+                for offset in range(0, len(batch), inference_size)
             )
             matrices = []
             for inference in inference_batches:
@@ -165,7 +170,7 @@ class Store:
                         (*key, blob),
                     )
                     found[key] = blob
-            progress(min(start + batch_size, len(pending)), len(pending))
+            progress(min(start + transaction_size, len(pending)), len(pending))
         matrix = (
             np.stack(
                 [

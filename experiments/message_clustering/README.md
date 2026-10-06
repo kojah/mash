@@ -256,3 +256,13 @@ fixed configurations it refits prefixes ending at each pair's later turn while
 holding vectors/order fixed. It reports decision changes separately from
 pairwise cosine discrimination. It does not tune thresholds, select a method
 or inspect confirmation judgments.
+
+The experimental vector cache checkpoints up to 128 new vectors per durable
+SQLite transaction. Inference still uses single inputs when requested, or the
+original batches of eight; transaction size must not change model batching
+because quantized outputs can depend on batch companions. Failed transactions
+roll back completely and may require recomputing up to 128 vectors on restart.
+Completed checkpoints remain reusable. This reduces small commits under disk
+contention without weakening SQLite durability or changing cache identities.
+Already-running experiments retain their loaded implementation; frozen studies
+must preserve their pinned builder source when resuming.
