@@ -20,6 +20,11 @@ fn source_certificate(revision: i64) -> crate::silver::certificate::Certificate 
         rejected_sources: 0,
     }
 }
+fn stored_vector() -> Vec<f64> {
+    let mut vector = vector();
+    vector[1] = 127.0;
+    vector
+}
 fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     let providers = if second {
         vec![Provider::Opencode]
@@ -65,7 +70,8 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
             },
             created_at: Some(1_700_000_000_000),
             generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
-            vector: Some(vector()),
+            // Off the query axis, so restarts must preserve these exact vectors.
+            vector: Some(stored_vector()),
         })
         .collect();
     if !second {
@@ -184,43 +190,6 @@ async fn verify_search(api: &Api) {
     assert!(result.semantic.iter().all(|hit| hit.id != "retired"));
 }
 
-async fn rebuild_gold(api: &Api) {
-    use crate::shared::gold_rebuild::{Embedding, Event as Gold};
-    let mut before: protocol::NodeState = api.get("state", FIRST).await;
-    let records = ["anchor", "claude"]
-        .into_iter()
-        .map(|message_id| {
-            let mut vector = vector();
-            vector[1] = 127.0;
-            Embedding {
-                message_id: message_id.into(),
-                vector,
-            }
-        })
-        .collect();
-    let events = [
-        Gold::Start {
-            build: crate::gold::config::Build::default(),
-            publication_revision: before.revision,
-            silver: before.silver_revision.clone().unwrap(),
-            generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
-        },
-        Gold::Embeddings { records },
-        Gold::Finish,
-    ];
-    api.upload_stream("gold", FIRST, &events)
-        .await
-        .error_for_status()
-        .unwrap();
-    let after: protocol::NodeState = api.get("state", FIRST).await;
-    assert_ne!(after.publication_version, before.publication_version);
-    before
-        .publication_version
-        .clone_from(&after.publication_version);
-    assert_eq!(after, before);
-    verify_gold(api).await;
-}
-
 async fn verify_gold(api: &Api) {
     let mut input = query(crate::search_results::SearchUnit::Messages);
     input.filter = Some(Filter::All(vec![
@@ -232,7 +201,7 @@ async fn verify_gold(api: &Api) {
     let score = result.semantic[0].semantic_score.unwrap();
     assert!(
         (0.70..0.72).contains(&score),
-        "rebuilt vector must survive restart: {score}"
+        "published vector must survive restart: {score}"
     );
     input.intent = crate::gold::exact::Intent::ExactMention;
     input.generation.clear();
@@ -342,7 +311,6 @@ async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guar
     publish(&api, FIRST, 1, false).await;
     publish(&api, SECOND, 1, true).await;
     publish(&api, FIRST, 2, false).await;
-    rebuild_gold(&api).await;
     let before = verify(&api, 2).await;
     let states = [
         api.get::<protocol::NodeState>("state", FIRST).await,
@@ -373,7 +341,6 @@ async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guar
     );
     assert_eq!(verify(&api, 2).await, before);
     publish(&api, FIRST, 3, false).await;
-    rebuild_gold(&api).await;
     verify(&api, 3).await;
     verify_gold(&api).await;
 }
@@ -389,7 +356,6 @@ async fn shared_backend_persisted_restart_contract() {
     publish(&api, FIRST, 1, false).await;
     publish(&api, SECOND, 1, true).await;
     publish(&api, FIRST, 2, false).await;
-    rebuild_gold(&api).await;
     let before = verify(&api, 2).await;
     drop(api);
     database.restart().await;
@@ -400,7 +366,6 @@ async fn shared_backend_persisted_restart_contract() {
     assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
     assert_eq!(verify(&api, 2).await, before, "stale update changed Qdrant");
     publish(&api, FIRST, 3, false).await;
-    rebuild_gold(&api).await;
     let before_crash = verify(&api, 3).await;
     // Keep the API alive during the database crash, then replace it too.
     // SIGKILL bypasses database shutdown flushing but preserves host storage.

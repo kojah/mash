@@ -17,22 +17,6 @@ impl Server {
     pub fn with_recipe(root: &Path, group: &str, nodes: &[&str], recipe: &str) -> Self {
         Self::start(root, group, nodes, recipe, true, None)
     }
-    pub fn with_embedding_space(
-        root: &Path,
-        group: &str,
-        nodes: &[&str],
-        model: &str,
-        dimensions: usize,
-    ) -> Self {
-        Self::start(
-            root,
-            group,
-            nodes,
-            "dialogue",
-            true,
-            Some((model, dimensions)),
-        )
-    }
     fn start(
         root: &Path,
         group: &str,

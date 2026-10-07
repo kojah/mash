@@ -27,18 +27,14 @@ pub(crate) enum IndexMode {
     #[default]
     ProviderFiles,
     LocalGold,
-    SharedGold,
 }
 
 impl IndexMode {
-    pub(crate) fn from_rebuild_flags(local: bool, shared: bool) -> Result<Self, crate::AppError> {
-        match (local, shared) {
-            (false, false) => Ok(Self::ProviderFiles),
-            (true, false) => Ok(Self::LocalGold),
-            (false, true) => Ok(Self::SharedGold),
-            (true, true) => Err(crate::AppError::usage(
-                "local and shared gold rebuilds are mutually exclusive",
-            )),
+    pub(crate) const fn from_rebuild_flag(local_gold: bool) -> Self {
+        if local_gold {
+            Self::LocalGold
+        } else {
+            Self::ProviderFiles
         }
     }
 }
@@ -116,7 +112,6 @@ pub(crate) enum Operation {
 #[serde(untagged)]
 pub(crate) enum Response {
     Index(IndexResponse),
-    SharedGoldRebuild(shared::Rebuilt),
     ListThreads(super::threads::Response),
     Search(SearchResponse),
     View(ViewResponse),

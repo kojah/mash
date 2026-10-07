@@ -275,17 +275,6 @@ async fn real_mash_refresh_progress_rebuild_and_deploy_without_ingestion() {
         true
     );
     assert!(!root.join("missing-models").exists());
-    let id = runner
-        .start(
-            vec!["one".into()],
-            Operation::Refresh(RefreshMode::SharedGold),
-        )
-        .await
-        .unwrap()
-        .id;
-    let job = finished(&runner, id).await;
-    assert!(job.state == State::Failed);
-    assert_eq!(job.nodes["one"].results[0].is_error, Some(true));
     let before = std::fs::read(&database).unwrap();
     let id = runner
         .start(vec!["one".into(), "two".into()], Operation::Deploy)

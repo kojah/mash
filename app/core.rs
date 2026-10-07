@@ -218,11 +218,6 @@ async fn dispatch(
         } => threads::run(configuration, database, *input, local, shared, diagnostics)
             .await
             .map(Response::ListThreads),
-        Operation::Index(request) if request.mode == IndexMode::SharedGold => {
-            indexing::rebuild_shared(configuration, database, models, request)
-                .await
-                .map(Response::SharedGoldRebuild)
-        }
         Operation::Index(request) => indexing::run(configuration, database, models, request)
             .await
             .map(Response::Index),

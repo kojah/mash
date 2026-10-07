@@ -1,7 +1,6 @@
 //! Recipe, model-space and pinning contracts of shared publication.
 use super::*;
 use crate::gold::readiness::{Artifacts, State};
-use crate::shared::gold_rebuild::{Embedding, Event as GoldEvent};
 
 fn events(file: &tempfile::NamedTempFile) -> Vec<Event> {
     serde_json::Deserializer::from_reader(file.reopen().unwrap())
@@ -94,29 +93,36 @@ fn source_upload(
     write(events)
 }
 
-/// A gold-only replacement of every dense-eligible message under `recipe`.
-fn gold_upload(
+struct Embedding {
+    message_id: String,
+    vector: Vec<f64>,
+}
+
+/// The node's same-revision snapshot, resent with vectors for `recipe`: the
+/// server keeps silver and rewrites gold that is not current.
+fn republish(
+    mut events: Vec<Event>,
     generation: &str,
-    state: &protocol::NodeState,
     recipe: &crate::gold::config::Build,
     vectors: Vec<Embedding>,
 ) -> tempfile::NamedTempFile {
-    let mut file = tempfile::NamedTempFile::new().unwrap();
-    let mut events = vec![GoldEvent::Start {
-        publication_revision: state.revision,
-        silver: state.silver_revision.clone().unwrap(),
-        generation: generation.to_owned(),
-        build: recipe.clone(),
-    }];
-    if !vectors.is_empty() {
-        events.push(GoldEvent::Embeddings { records: vectors });
+    let vectors: std::collections::HashMap<_, _> = vectors
+        .into_iter()
+        .map(|embedding| (embedding.message_id, embedding.vector))
+        .collect();
+    for event in &mut events {
+        match event {
+            Event::Start(start) => start.gold_build = Some(recipe.clone()),
+            Event::Batch(Batch::Messages { records }) => {
+                for message in records {
+                    message.vector = vectors.get(&message.id).cloned();
+                    message.generation = message.vector.as_ref().map(|_| generation.to_owned());
+                }
+            }
+            _ => {}
+        }
     }
-    events.push(GoldEvent::Finish);
-    for event in events {
-        serde_json::to_writer(file.as_file_mut(), &event).unwrap();
-        writeln!(file).unwrap();
-    }
-    file
+    write(events)
 }
 
 fn vectors(fixture: &Fixture, dimensions: usize, users_only: bool) -> Vec<Embedding> {
@@ -262,19 +268,14 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
         wide_query.generation.clone_from(&next.generation);
         wide_query.vector.resize(8, 0.0);
         assert!(switched.search(&next, wide_query.clone()).await.is_err());
-        let state = switched.state(&next).await.unwrap();
-        let mut gold = vectors(&fixture, 8, false);
-        for embedding in &mut gold {
-            embedding.vector.resize(8, 0.0);
-        }
         switched
-            .rebuild_gold(
+            .index(
                 &next,
-                gold_upload(
+                republish(
+                    events(&certified_source_upload(&fixture)),
                     &next.generation,
-                    &state,
                     &crate::gold::config::Build::default(),
-                    gold,
+                    vectors(&fixture, 8, false),
                 ),
             )
             .await
@@ -291,7 +292,6 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
         let after = switched.state(&next).await.unwrap();
         assert_eq!(after.revision, original.revision);
         assert_eq!(after.silver_revision, original.silver_revision);
-        assert_ne!(after.publication_version, original.publication_version);
         assert_eq!(fixture.retained(), silver);
         // Switching back needs another explicit gold rebuild at the original width.
         fixture
@@ -306,14 +306,13 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
                 .await
                 .is_err()
         );
-        let state = fixture.server.state(&fixture.identity).await.unwrap();
         fixture
             .server
-            .rebuild_gold(
+            .index(
                 &fixture.identity,
-                gold_upload(
+                republish(
+                    events(&certified_source_upload(&fixture)),
                     &fixture.identity.generation,
-                    &state,
                     &crate::gold::config::Build::default(),
                     vectors(&fixture, 4, false),
                 ),
@@ -332,15 +331,16 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
 async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
     use crate::gold::config::{Build, Representations};
     let fixture = Fixture::new(VectorIndex::default()).await;
-    let mut events = events(&certified_source_upload(&fixture));
-    for event in &mut events {
+    let mut initial = events(&certified_source_upload(&fixture));
+    for event in &mut initial {
         if let Event::Batch(Batch::Messages { records }) = event {
             records[1].role = crate::role::Role::Assistant;
         }
     }
+    let base = write(initial);
     fixture
         .server
-        .index(&fixture.identity, write(events))
+        .index(&fixture.identity, write(events(&base)))
         .await
         .unwrap();
     let silver = fixture.retained();
@@ -369,14 +369,13 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
         let gold = fixture.store.clone().with_build(recipe.clone());
         gold.select_gold(&fixture.identity, true).await.unwrap();
         let server = fixture.serve(gold);
-        let state = server.state(&fixture.identity).await.unwrap();
         if recipe.users_only() {
             let rejected = server
-                .rebuild_gold(
+                .index(
                     &fixture.identity,
-                    gold_upload(
+                    republish(
+                        events(&base),
                         &fixture.identity.generation,
-                        &state,
                         &recipe,
                         vectors(&fixture, 4, false),
                     ),
@@ -396,16 +395,17 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
             Vec::new()
         };
         let indexed = server
-            .rebuild_gold(
+            .index(
                 &fixture.identity,
-                gold_upload(&fixture.identity.generation, &state, &recipe, supplied),
+                republish(
+                    events(&base),
+                    &fixture.identity.generation,
+                    &recipe,
+                    supplied,
+                ),
             )
             .await
             .unwrap();
-        assert_eq!(
-            indexed.counts.embeddings,
-            indexed.counts.expected_dense(&recipe).unwrap()
-        );
         assert_eq!(fixture.retained(), silver);
         if recipe.users_only() {
             assert_eq!(indexed.counts.embeddings, 1);

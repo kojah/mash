@@ -124,9 +124,6 @@ struct Index {
     /// Rebuild only local gold from certified stored silver, without provider reads or shared publication.
     #[serde(default)]
     rebuild_local_gold: bool,
-    /// Rebuild only this node's shared gold from retained shared silver, without provider or local index writes.
-    #[serde(default)]
-    rebuild_shared_gold: bool,
     #[serde(default)]
     full: bool,
     #[serde(default)]
@@ -427,20 +424,14 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly refresh/index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Subsequent searches read the refreshed index without restarting MCP. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads (with full, all local gold is discarded and replayed from silver); or rebuild_shared_gold to rebuild this node's shared retrieval state from retained shared silver, requiring local SQLite and matching embedding settings. Both rebuild modes are incompatible with each other and provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
+        description = "Explicitly refresh/index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Subsequent searches read the refreshed index without restarting MCP. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads (with full, all local gold is discarded and replayed from silver). The rebuild is incompatible with provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
     async fn index(
         &self,
         Parameters(request): Parameters<Index>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> CallToolResult {
-        let mode = match core::IndexMode::from_rebuild_flags(
-            request.rebuild_local_gold,
-            request.rebuild_shared_gold,
-        ) {
-            Ok(mode) => mode,
-            Err(error) => return tool_result(Err(error)),
-        };
+        let mode = core::IndexMode::from_rebuild_flag(request.rebuild_local_gold);
         self.execute_with_progress(
             Operation::Index(IndexRequest {
                 mode,

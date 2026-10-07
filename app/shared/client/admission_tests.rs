@@ -64,7 +64,12 @@ async fn admission_deadline_expires_without_sending_or_exposing_request_metadata
 async fn exhausted_bulk_admission_does_not_delay_interactive_reads() {
     static CAPACITY: Admission = Admission::new(1, 0);
     let server = server().await;
-    assert!(Endpoint::Silver.capacity(&CAPACITY).try_acquire().is_err());
+    assert!(
+        Endpoint::PublicationPlan
+            .capacity(&CAPACITY)
+            .try_acquire()
+            .is_err()
+    );
     let result = tokio::time::timeout(
         Duration::from_secs(1),
         response_admitted::<bool>(

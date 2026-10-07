@@ -121,9 +121,7 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
     }
     request.extensions_mut().insert(identity.clone());
     let timeout = match request.uri().path() {
-        "/v1/index" | "/v1/gold" | "/v1/state" | "/v1/silver" | "/v1/publication-plan" => {
-            super::BULK_TIMEOUT
-        }
+        "/v1/index" | "/v1/state" | "/v1/publication-plan" => super::BULK_TIMEOUT,
         _ => Duration::from_secs(600),
     };
     tokio::time::timeout(timeout, next.run(request))
@@ -142,7 +140,6 @@ fn router(app: App) -> Router {
         .route("/v1/status", get(status))
         .route("/v1/state", get(state))
         .route("/v1/capabilities", get(capabilities))
-        .route("/v1/silver", get(retained_silver))
         .route("/v1/publication-plan", get(publication_plan))
         .route("/v1/search", post(search))
         .route("/v1/threads", post(list_threads))
@@ -155,7 +152,6 @@ fn router(app: App) -> Router {
             post(attachments::upload).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
         .route("/v1/index", post(index))
-        .route("/v1/gold", post(rebuild_gold))
         .method_not_allowed_fallback(|| async {
             ApiError(
                 StatusCode::METHOD_NOT_ALLOWED,
@@ -220,15 +216,6 @@ async fn capabilities(
     Extension(id): Extension<Identity>,
 ) -> Result<Json<crate::gold::config::Build>, ApiError> {
     Ok(Json(app.store.capabilities(&id).await?))
-}
-
-async fn retained_silver(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-) -> Result<Response, ApiError> {
-    let permit = admission::reserve(&app.uploads)?;
-    let (file, permit) = app.store.silver(&id, permit).await?;
-    stream_snapshot(file, permit)
 }
 
 async fn publication_plan(
@@ -404,29 +391,6 @@ pub(crate) async fn run(
         })
         .await
         .map_err(|_| AppError::internal("HTTP server failed"))
-}
-
-async fn rebuild_gold(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-    request: Request,
-) -> Result<Json<protocol::Indexed>, ApiError> {
-    let permit = admission::reserve(&app.uploads)?;
-    if request
-        .headers()
-        .get("content-type")
-        .and_then(|h| h.to_str().ok())
-        != Some("application/x-ndjson")
-    {
-        return Err(AppError::usage("gold uploads require application/x-ndjson").into());
-    }
-    let file = spool(request.into_body(), app.store.max_node_bytes()).await?;
-    Ok(Json(
-        Box::pin(admission::run(permit, async move {
-            app.store.rebuild_gold(&id, file).await
-        }))
-        .await?,
-    ))
 }
 
 #[cfg(test)]

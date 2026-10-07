@@ -85,7 +85,6 @@ async fn mutation_posts_and_authorization_failures_are_never_replayed() {
     for (endpoint, status) in [
         (Endpoint::Index, StatusCode::SERVICE_UNAVAILABLE),
         (Endpoint::Index, StatusCode::CONFLICT),
-        (Endpoint::Gold, StatusCode::CONFLICT),
         (Endpoint::Search, StatusCode::SERVICE_UNAVAILABLE),
         (Endpoint::Search, StatusCode::UNAUTHORIZED),
         (Endpoint::PublicationPlan, StatusCode::UNAUTHORIZED),

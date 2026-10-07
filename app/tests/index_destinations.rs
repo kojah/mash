@@ -1,6 +1,4 @@
 use super::*;
-mod model_switch;
-mod rebuild;
 mod recipe;
 
 struct Fixture {

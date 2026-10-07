@@ -477,24 +477,6 @@ mod tests {
             recipe.generation("model"),
             Build::default().generation("model")
         );
-        let counts = crate::storage::Counts {
-            searchable_messages: 5,
-            searchable_user_messages: Some(2),
-            ..Default::default()
-        };
-        assert_eq!(counts.expected_dense(&recipe), Some(2));
-        assert_eq!(counts.expected_dense(&Build::default()), Some(5));
-        let unknown = crate::storage::Counts {
-            searchable_messages: 5,
-            ..Default::default()
-        };
-        assert_eq!(unknown.expected_dense(&recipe), None);
-        let invalid = crate::storage::Counts {
-            searchable_messages: 5,
-            searchable_user_messages: Some(6),
-            ..Default::default()
-        };
-        assert_eq!(invalid.expected_dense(&recipe), None);
         assert!(toml::from_str::<Build>("dense_content='assistant'").is_err());
         assert!(toml::from_str::<Build>("dense_content=true").is_err());
     }

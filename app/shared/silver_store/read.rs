@@ -1,8 +1,11 @@
 //! Silver reads: thread metadata, canonical views and retained-history export.
-use super::{conversations, database, encode, message_record, sql, tombstones};
+use super::{conversations, database, message_record, sql};
+#[cfg(test)]
+use super::{encode, tombstones};
 use crate::shared::protocol::{ConversationRecord, MessageRecord};
 use crate::{AppError, message_context::MessageContext, storage::Message};
 use rusqlite::Connection;
+#[cfg(test)]
 use std::io::Write;
 
 /// One published thread's catalogue row.
@@ -122,12 +125,14 @@ pub(in crate::shared) fn message(record: MessageRecord, projection: bool) -> Mes
     }
 }
 
+#[cfg(test)]
 /// Writes one JSON object member per row without collecting the node in memory.
 struct Members<'a, W: Write> {
     output: &'a mut W,
     first: bool,
 }
 
+#[cfg(test)]
 impl<W: Write> Members<'_, W> {
     fn push(&mut self, key: &str, value: &str) -> Result<(), AppError> {
         let io = |_| AppError::internal("write retained shared silver");
@@ -141,6 +146,7 @@ impl<W: Write> Members<'_, W> {
     }
 }
 
+#[cfg(test)]
 fn section<'a, W: Write>(
     output: &'a mut W,
     name: &str,
@@ -156,6 +162,7 @@ fn section<'a, W: Write>(
     })
 }
 
+#[cfg(test)]
 /// Stream the retained history wire format: conversations, messages and tombstones.
 pub(in crate::shared) fn export(
     connection: &Connection,

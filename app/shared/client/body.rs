@@ -31,7 +31,7 @@ pub(super) async fn read<T: DeserializeOwned + Send + 'static>(
     } else {
         PREVIEW_BYTES
     };
-    if matches!(endpoint, Endpoint::Silver | Endpoint::PublicationPlan)
+    if matches!(endpoint, Endpoint::PublicationPlan)
         || response
             .content_length()
             .is_some_and(|bytes| bytes > preview_limit as u64)

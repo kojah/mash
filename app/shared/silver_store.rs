@@ -68,6 +68,7 @@ fn database(error: rusqlite::Error) -> AppError {
     AppError::database(error)
 }
 
+#[cfg(test)]
 pub(super) fn key(provider: Provider, id: &str) -> String {
     format!("{provider}\0{id}")
 }
@@ -309,19 +310,6 @@ pub(super) fn thread_messages(
         .collect()
 }
 
-pub(super) fn message(
-    connection: &Connection,
-    id: &str,
-) -> Result<Option<MessageRecord>, AppError> {
-    sql::Message::builder()
-        .id(id)
-        .build()
-        .query_opt(connection)
-        .map_err(database)?
-        .map(|row| message_record!(row))
-        .transpose()
-}
-
 pub(super) fn tombstones(connection: &Connection) -> Result<Vec<Tombstone>, AppError> {
     sql::NodeTombstones
         .query_many(connection)
@@ -344,16 +332,6 @@ pub(super) fn fingerprints(connection: &Connection) -> Result<BTreeMap<String, S
         .into_iter()
         .map(|row| (row.id, row.thread_fingerprint.unwrap_or_default()))
         .collect())
-}
-
-/// Messages eligible for dense vectors under this recipe.
-pub(super) fn dense_messages(
-    connection: &Connection,
-    build: &crate::gold::config::Build,
-) -> Result<u64, AppError> {
-    counts(connection)?
-        .expected_dense(build)
-        .ok_or_else(|| AppError::database_data("invalid shared silver counts"))
 }
 
 #[cfg(test)]

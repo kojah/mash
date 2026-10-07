@@ -198,7 +198,8 @@ impl Upload<'_> {
         Ok(())
     }
 
-    fn message(&mut self, mut record: MessageRecord) -> Result<(), AppError> {
+    /// Reject records gold could not use under this recipe and model space.
+    fn check_message(&self, record: &MessageRecord) -> Result<(), AppError> {
         valid_id(&record.id)?;
         valid_id(&record.conversation_id)?;
         crate::attachments::validate_metadata(&record.attachments)?;
@@ -215,6 +216,11 @@ impl Upload<'_> {
         {
             return Err(AppError::usage("invalid message embedding or ordinal"));
         }
+        Ok(())
+    }
+
+    fn message(&mut self, mut record: MessageRecord) -> Result<(), AppError> {
+        self.check_message(&record)?;
         if self.provider(&record.conversation_id)?.is_none() {
             return Ok(());
         }
@@ -374,6 +380,12 @@ pub(in crate::shared) fn apply(
             return Err(AppError::usage("duplicate index start"));
         }
         if duplicate {
+            // Silver is unchanged, but gold synchronization reads these vectors.
+            if let Event::Batch(Batch::Messages { records }) = &event {
+                for record in records {
+                    upload.check_message(record)?;
+                }
+            }
             continue;
         }
         match event {

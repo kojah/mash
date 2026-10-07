@@ -296,51 +296,6 @@ impl Store {
         crate::blocking(move || spool(&target, permit)).await
     }
 
-    /// Retained certified silver for rebuilding this node's gold elsewhere.
-    pub(in crate::shared) async fn silver(
-        &self,
-        identity: &Identity,
-        permit: OwnedSemaphorePermit,
-    ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
-        let scope = identity.clone();
-        let build = self.gold.build().clone();
-        self.read(identity, move |connection| {
-            let head = silver_store::head(connection)?.ok_or_else(|| {
-                crate::shared::validation::conflict("shared silver has not been indexed")
-            })?;
-            if !certified(&head) {
-                return Err(crate::shared::validation::conflict(
-                    "gold rebuild requires complete, current shared silver",
-                ));
-            }
-            let silver = head.silver_revision.as_ref().ok_or_else(|| {
-                crate::shared::validation::conflict(
-                    "shared silver identity is unverified; run explicit indexing",
-                )
-            })?;
-            silver.validate()?;
-            let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
-            let mut output = std::io::BufWriter::with_capacity(64 * 1024, file.as_file_mut());
-            let header = serde_json::to_vec(&crate::shared::silver_read::Header {
-                build: &build,
-                publication_revision: head.revision,
-                silver,
-                generation: &scope.generation,
-                dimensions: scope.dimensions,
-            })
-            .map_err(|_| AppError::internal("serialize retained shared silver"))?;
-            let io = |_| AppError::internal("write retained shared silver");
-            std::io::Write::write_all(&mut output, &header[..header.len() - 1]).map_err(io)?;
-            std::io::Write::write_all(&mut output, b",\"history\":").map_err(io)?;
-            silver_store::read::export(connection, &mut output)?;
-            std::io::Write::write_all(&mut output, b"}").map_err(io)?;
-            std::io::Write::flush(&mut output).map_err(io)?;
-            drop(output);
-            Ok((file, permit))
-        })
-        .await
-    }
-
     /// Searchable nodes. Lexical documents survive recipe and model changes;
     /// related-discussion search fails closed while any searched node's dense
     /// gold is incompatible, instead of silently omitting that node.
@@ -365,7 +320,7 @@ impl Store {
             };
             if dense && !gold.searchable(&self.gold, &node) {
                 return Err(AppError::shared(
-                    "shared gold is stale, incomplete or incompatible; run mash index --rebuild-shared-gold on publishing nodes",
+                    "shared gold is stale, incomplete or incompatible; republish from nodes or restart the API with --replay-gold",
                 ));
             }
             active.insert(node_id);
@@ -464,14 +419,6 @@ impl Store {
         })
         .await
     }
-}
-
-/// Certified when the node's source certificate is complete and current.
-fn certified(head: &Head) -> bool {
-    head.source_silver.as_ref().is_some_and(|source| {
-        source.is_complete()
-            && source.interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION
-    })
 }
 
 fn spool(

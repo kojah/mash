@@ -8,7 +8,7 @@ It exposes three project development tools:
 | Tool | Behavior |
 | --- | --- |
 | `deploy(nodes)` | Run configured validation/build steps once per build key, install selected nodes, then call each installed Mash MCP's `status`. Never calls `index`. |
-| `refresh_index(nodes, mode)` | Call each node's existing MCP `index`, then `status`. Modes: `sync`, `local-gold`, `shared-gold`. |
+| `refresh_index(nodes, mode)` | Call each node's existing MCP `index`, then `status`. Modes: `sync`, `local-gold`. Shared gold is replayed on the API host with `serve --replay-gold`. |
 | `deployment_status(job_id)` | Poll per-node phase, latest MCP progress notification (including counts/ETA metadata), result and error. Without an ID, specify nodes for fresh read-only readiness checks. |
 
 Jobs return promptly and run sequentially, including shared publications. Only

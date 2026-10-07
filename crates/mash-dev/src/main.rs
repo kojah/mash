@@ -25,8 +25,6 @@ enum RefreshMode {
     Sync,
     /// Rebuild local search data from certified silver.
     LocalGold,
-    /// Rebuild shared search data from certified shared silver.
-    SharedGold,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]

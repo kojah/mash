@@ -27,7 +27,7 @@ Read the typed status fields rather than deciding from the release commit alone.
 | Query models are unavailable | Use explicit `models install` or fix the selected inference configuration. Indexing cannot repair missing assets. |
 | Source interpretation, provider policy or privacy migration changed | Run explicit ingestion. Retained old metadata is not evidence of a completed migration. |
 | Local gold is stale but certified current silver is retained | Use `index --rebuild-local-gold` when its certificate allows it. |
-| Shared gold alone changed and current shared silver is certified | Use `index --rebuild-shared-gold` instead of scanning provider files again. |
+| Shared gold alone changed | Restart the API with `serve --replay-gold`; nodes need no action. |
 | Publication is pending or this node is absent from shared freshness | Run explicit indexing/synchronization once the API is available. |
 | Node/API is offline | Record the pending deployment/publication; preserve local search and the staged artifact for retry. |
 

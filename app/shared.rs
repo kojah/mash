@@ -11,16 +11,13 @@ pub(crate) mod attachments;
 mod client;
 mod exact;
 mod gold_manifest;
-mod gold_rebuild;
 mod lexical_manifest;
 pub(crate) mod protocol;
 mod publication;
 mod qdrant_index;
-mod rebuild;
 mod retrieval;
 mod reuse;
 pub(crate) mod server;
-mod silver_read;
 mod silver_revision;
 mod silver_store;
 mod validation;
@@ -31,7 +28,6 @@ pub(crate) use publication::Inference;
 #[cfg(test)]
 pub(crate) use publication::write_event;
 pub(crate) use publication::{publish, status};
-pub(crate) use rebuild::{Rebuilt, rebuild_gold};
 pub(crate) use retrieval::{SearchOutcome, require_dense, search};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]

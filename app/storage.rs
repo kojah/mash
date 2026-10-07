@@ -75,19 +75,6 @@ pub(crate) struct Counts {
     pub(crate) embeddings: u64,
 }
 
-impl Counts {
-    pub(crate) fn expected_dense(&self, build: &crate::gold::config::Build) -> Option<u64> {
-        if !build.dense_enabled() {
-            Some(0)
-        } else if build.users_only() {
-            self.searchable_user_messages
-                .filter(|users| *users <= self.searchable_messages)
-        } else {
-            Some(self.searchable_messages)
-        }
-    }
-}
-
 pub(crate) struct StatusSnapshot {
     pub(crate) lexical: Option<crate::gold::lexical_manifest::Manifest>,
     pub(crate) gold: Option<crate::gold::manifest::Manifest>,

@@ -106,9 +106,6 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     let edited = fixture.json(&["index", "--all-history"], true);
     assert_eq!(edited["shared"]["state"], "published");
     assert_eq!(edited["shared"]["preparation"]["model_inferences"], 1);
-    let scores = search_scores(&fixture);
-    fixture.json(&["index", "--rebuild-shared-gold"], true);
-    assert_eq!(search_scores(&fixture), scores);
     std::fs::remove_file(fixture.codex.join("session.jsonl")).unwrap();
     std::fs::remove_file(fixture.directory.path().join("claude/session.jsonl")).unwrap();
     let connection = open_index(&fixture.database);
@@ -165,13 +162,6 @@ fn qdrant_group_recipe_is_preserved_across_edits_noops_and_deletions() {
         before["silver_revision"]
     );
     assert_eq!(search_scores(&fixture), scores);
-    let rebuilt = fixture.json(&["index", "--rebuild-shared-gold"], true);
-    assert_eq!(rebuilt["model_inferences"], 2);
-    assert_eq!(
-        search_scores(&fixture),
-        scores,
-        "incremental and retained-silver builders disagree"
-    );
     write_source(&fixture, "canonical updated topic about compilation");
     let changed = fixture.json(&["index", "--all-history"], true);
     assert_eq!(changed["shared"]["state"], "published");
@@ -179,15 +169,11 @@ fn qdrant_group_recipe_is_preserved_across_edits_noops_and_deletions() {
     assert_ne!(after["silver_revision"], before["silver_revision"]);
     let edited_scores = search_scores(&fixture);
     assert_ne!(edited_scores, scores);
-    fixture.json(&["index", "--rebuild-shared-gold"], true);
-    assert_eq!(search_scores(&fixture), edited_scores);
     enable_claude(&fixture, "canonical Claude updated topic about retrieval");
     fixture.json(&["index", "--all-history"], true);
     assert_current(&fixture, 2);
     let claude_scores = search_scores(&fixture);
     assert_ne!(claude_scores, edited_scores);
-    fixture.json(&["index", "--rebuild-shared-gold"], true);
-    assert_eq!(search_scores(&fixture), claude_scores);
     std::fs::remove_file(fixture.codex.join("session.jsonl")).unwrap();
     std::fs::remove_file(fixture.directory.path().join("claude/session.jsonl")).unwrap();
     let deleted = fixture.json(&["index", "--all-history"], true);

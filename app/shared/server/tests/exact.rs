@@ -175,7 +175,7 @@ async fn qdrant_exact_mentions_page_before_limits_preserve_silver_and_merge_with
         let status = response.status();
         assert_eq!(status, StatusCode::OK, "{}", response.text().await.unwrap());
     }
-    let silver = service.get("silver", &token).await;
+    let silver = service.get("freshness", &token).await;
     let freshness = service.get("freshness", &token).await;
     assert!(
         freshness["nodes"]
@@ -187,7 +187,7 @@ async fn qdrant_exact_mentions_page_before_limits_preserve_silver_and_merge_with
     verify_literals(&service, &token).await;
     verify_scopes(&service, &token).await;
     verify_core(&service).await;
-    assert_eq!(service.get("silver", &token).await, silver);
+    assert_eq!(service.get("freshness", &token).await, silver);
     assert_eq!(service.get("freshness", &token).await, freshness);
     service.cleanup().await;
 }

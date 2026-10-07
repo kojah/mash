@@ -850,7 +850,8 @@ If Qdrant data is lost or damaged, start the service with `--replay-gold` to
 rebuild every configured node's documents and vectors from shared silver before
 serving. Replay embeds with the server's configured `[embeddings]` model space:
 a remote endpoint when `url` is set, otherwise local model assets from
-`--models-dir`. Nodes can instead republish with `mash index --rebuild-shared-gold`.
+`--models-dir`. Replay is the only shared gold rebuild; nodes never re-embed
+shared history.
 Benchmark actual search latency, update cost, memory use, and retrieval
 quality for a group. See [the measured comparison](benchmarks/2026-09-30-shared-index.md).
 
@@ -1072,15 +1073,15 @@ mash serve --server-config /absolute/path/to/qdrant-server.toml
 
 Shared gold settings are persisted per group. Startup with conflicting build/model
 settings fails. To deliberately replace the selected settings, update the server
-TOML and start with `--activate-gold`; rebuild each contributing node with
-`mash index --rebuild-shared-gold`. Old API settings fail closed, and dense search
+TOML and start with `--activate-gold --replay-gold`, which re-embeds every node's
+shared silver on the API host. Old API settings fail closed, and dense search
 requires compatible manifests across the group. This preserves canonical history
 but interrupts dense search during replacement. See
 [the activation contract](docs/silver-gold-configuration.md#durable-shared-group-configuration)
 for publication races and remaining lifecycle gates.
 Embedding dimension changes retain the same group and canonical history. Mash
 prepares an additional named dense field in the existing collection, then the
-same `--activate-gold` and source-free rebuild workflow selects and populates it.
+same `--activate-gold --replay-gold` workflow selects and populates it.
 The original dense field and lexical data are retained. Preparation alone does
 not activate the new model; dense search requires current manifests after the
 switch, while compatible metadata and lexical queries remain available.
