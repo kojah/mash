@@ -4,12 +4,15 @@ CODEGEN ?= 0
 CARGO_ARGS ?=
 COVERAGE_OUTPUT ?= target/llvm-cov/coverage.json
 
-.PHONY: build generate-queries check-generated coverage
-build:
+.PHONY: build check-skills generate-queries check-generated coverage
+build: check-skills
 ifeq ($(CODEGEN),1)
 	$(MAKE) generate-queries
 endif
 	cargo build-clif $(CARGO_ARGS)
+
+check-skills:
+	cargo test-clif --locked --lib -E 'test(history_skill_)' --no-tests fail
 
 generate-queries:
 	bash queries/generate.sh

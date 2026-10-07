@@ -14,7 +14,8 @@ error are not transport failures; changing transport does not repair the index.
 ## Find the conversation and inspect evidence
 
 When a message refers to an attachment, use `list_attachments` with its `message_id`,
-then `get_attachment` with a returned `attachment_id` when the file is relevant.
+then `get_attachment` with the same `message_id` and a returned `attachment_id`
+when the file is relevant.
 For shared evidence, pass the same publishing node ID in `shared` to both tools;
 omit it for local evidence. Check availability first: shared metadata does not
 prove bytes were uploaded. Retrieval returns native image content or an embedded
@@ -40,17 +41,44 @@ a path mentioned in prose. The CLI has no attachment retrieval subcommand.
 - Drill into promising threads with `unit: "messages"` and
   `conversation: ["RETURNED_THREAD_ID"]`. Retain applicable provider, node,
   project/repository and time filters. Use actual returned IDs.
-- Use `view` with the returned `message_id` and a bounded `context`, such as 2,
+- Use `view` with the returned message ID in its `id` argument and a bounded `context`, such as 2,
   when a reply needs surrounding dialogue. Omit `shared` for local evidence,
   even when it contains a `node_id`. For evidence retrieved from the shared
   index, pass its publishing node ID as `shared`; never substitute `shared: true`.
   A node ID alone does not establish that the message was published. If origin
   is ambiguous, use the known local node's local lookup first.
 
-Search example (MCP arguments):
+MCP examples (replace placeholder IDs with returned IDs). The fence's `mcp:`
+label identifies the tool for the build-time contract check:
 
-```json
+```json mcp:search
 {"query":"why we chose Qdrant","intent":"related-discussion","unit":"threads","limit":5}
+```
+
+```json mcp:list_threads
+{"title_contains":"branding","sort":"updated_at","direction":"desc","limit":5}
+```
+
+```json mcp:search
+{"query":"Qdrant","intent":"exact-mention","unit":"messages","conversation":["RETURNED_THREAD_ID"],"limit":10}
+```
+
+```json mcp:view
+{"id":"RETURNED_MESSAGE_ID","context":2}
+```
+
+```json mcp:view
+{"id":"RETURNED_MESSAGE_ID","context":2,"shared":"PUBLISHING_NODE_ID"}
+```
+
+Attachment tools use `message_id`; `view` uses `id`:
+
+```json mcp:list_attachments
+{"message_id":"RETURNED_MESSAGE_ID"}
+```
+
+```json mcp:get_attachment
+{"message_id":"RETURNED_MESSAGE_ID","attachment_id":"RETURNED_ATTACHMENT_ID"}
 ```
 
 Combined local/shared search is normal when both are configured and ready.
@@ -94,7 +122,7 @@ models and credentials consistent with MCP. Global `--config`, `--db` and
 `--models-dir` options precede the subcommand. Parse the JSON output and check
 reported errors/partial coverage just as with MCP.
 
-```bash
+```bash cli
 mash list-threads --title-contains 'branding' --sort updated-at --direction desc --limit 5
 mash search 'why we chose Qdrant' --intent related-discussion --unit threads --limit 5
 mash search 'Qdrant' --intent exact-mention --unit messages --conversation THREAD_ID --limit 10

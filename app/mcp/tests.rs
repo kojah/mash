@@ -10,6 +10,7 @@ mod incomplete;
 mod rebuild;
 mod redaction;
 mod selections;
+mod skill;
 mod threads;
 mod watching;
 

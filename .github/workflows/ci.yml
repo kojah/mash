@@ -79,6 +79,8 @@ jobs:
       - name: Verify generated SQLite queries
         run: make check-generated
       - run: cargo clippy --all-targets -- -D warnings
+      - name: Verify history skill examples against Rust contracts
+        run: cargo nextest run --profile ci --locked --lib -E 'test(history_skill_)' --no-tests fail
       - run: cargo nextest run --profile ci
       - name: Configure explicit test model directory
         run: echo "MASH_TEST_MODELS_DIR=$RUNNER_TEMP/mash-test-models" >> "$GITHUB_ENV"
