@@ -1,8 +1,7 @@
-//! Publication plans and the silver dependency fingerprint used for gold reuse.
+//! Publication plans and the silver dependency fingerprint of each thread.
 use super::protocol::{ConversationRecord, MessageRecord};
 use crate::{AppError, gold::config::Build, message_context::MessageContext, role::Role};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::io::Write;
 
 const SCHEMA_VERSION: u32 = 1;
@@ -17,7 +16,6 @@ pub(super) struct Target {
     pub(super) publication_version: String,
     pub(super) instance: Option<String>,
     pub(super) publication_revision: i64,
-    pub(super) threads: BTreeMap<String, String>,
 }
 
 impl Target {
@@ -26,7 +24,6 @@ impl Target {
             || self.publication_revision < 0
             || self.dimensions == 0
             || self.dimensions > 2048
-            || self.threads.values().any(|hash| !valid_fingerprint(hash))
         {
             return Err(AppError::shared("invalid shared publication plan"));
         }
@@ -39,7 +36,6 @@ impl Target {
         dimensions: usize,
         version: String,
         head: Option<(String, i64)>,
-        threads: BTreeMap<String, String>,
     ) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -49,13 +45,8 @@ impl Target {
             publication_version: version,
             instance: head.as_ref().map(|(instance, _)| instance.clone()),
             publication_revision: head.map_or(0, |(_, revision)| revision),
-            threads,
         }
     }
-}
-
-fn valid_fingerprint(hash: &str) -> bool {
-    hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// One thread's ordered canonical dependency stream. No vectors, model identity,

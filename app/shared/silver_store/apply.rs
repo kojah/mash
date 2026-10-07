@@ -7,17 +7,8 @@ use crate::shared::reuse::Fingerprint;
 use crate::shared::validation::{conflict, valid_id};
 use crate::{AppError, gold::config::Build, provider::Provider};
 use rusqlite::Transaction;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::io::BufRead;
-
-/// Gold facts the publication protocol depends on, read from Qdrant beforehand.
-#[derive(Default)]
-pub(in crate::shared) struct GoldView {
-    /// Recipe of current, complete gold for the retained silver revision.
-    pub(in crate::shared) build: Option<Build>,
-    /// Thread fingerprints whose complete gold may be reused by a snapshot.
-    pub(in crate::shared) reusable: BTreeMap<String, String>,
-}
 
 #[derive(Debug)]
 pub(in crate::shared) struct Applied {
@@ -30,8 +21,6 @@ pub(in crate::shared) struct Applied {
     pub(in crate::shared) purged: u64,
     /// Threads whose messages and vectors this upload supplies.
     pub(in crate::shared) supplied: BTreeSet<String>,
-    /// Unchanged snapshot threads whose existing gold is retained.
-    pub(in crate::shared) reused: BTreeSet<String>,
     /// Threads removed from silver; their gold documents are obsolete.
     pub(in crate::shared) deleted: BTreeSet<String>,
 }
@@ -41,7 +30,6 @@ struct Upload<'a> {
     identity: &'a Identity,
     build: &'a Build,
     applied: Applied,
-    vectors: HashSet<String>,
 }
 
 fn first_line(
@@ -64,32 +52,17 @@ fn first_line(
     Ok((input, lines))
 }
 
-/// Validate pins and revision ordering; returns the accepted revision and
-/// whether this is a snapshot of the already-accepted revision.
-fn start(previous: Option<&Head>, expected: &str, input: &Start) -> Result<(i64, bool), AppError> {
+/// Validate revision ordering; returns the accepted revision and whether this
+/// is a snapshot of the already-accepted revision.
+fn start(previous: Option<&Head>, input: &Start) -> Result<(i64, bool), AppError> {
     input.validate_source_silver()?;
     valid_id(&input.instance)?;
     if input.revision.is_some_and(|r| r < 1)
         || input.base_revision.is_some_and(|r| r < 0)
-        || input
-            .expected_version
-            .as_ref()
-            .is_some_and(|v| v.len() > 4096)
         || input.forgets.len() > 10000
-        || (input.reuse_gold
-            && (!input.snapshot || input.expected_version.is_none() || input.gold_build.is_none()))
         || (input.snapshot && (input.base_revision.is_some() || !input.forgets.is_empty()))
     {
         return Err(AppError::usage("invalid index metadata"));
-    }
-    if input
-        .expected_version
-        .as_ref()
-        .is_some_and(|version| version != expected)
-    {
-        return Err(conflict(
-            "shared publication changed while preparing upload; retry indexing",
-        ));
     }
     if previous.is_some_and(|h| h.instance != input.instance) {
         return Err(conflict(
@@ -245,9 +218,6 @@ impl Upload<'_> {
         if self.provider(&record.conversation_id)?.is_none() {
             return Ok(());
         }
-        if record.vector.is_some() || record.generation.is_some() {
-            self.vectors.insert(record.conversation_id.clone());
-        }
         // Vectors are gold; silver keeps the canonical record only.
         record.vector = None;
         record.generation = None;
@@ -335,12 +305,12 @@ pub(in crate::shared) fn apply(
     identity: &Identity,
     file: &tempfile::NamedTempFile,
     build: &Build,
-    gold: &GoldView,
 ) -> Result<Applied, AppError> {
     let previous = head(tx)?;
-    let expected = previous.as_ref().map_or("", |h| h.version.as_str());
     let (input, lines) = first_line(file)?;
-    let (revision, same_revision) = start(previous.as_ref(), expected, &input)?;
+    // A resent revision changes no silver; gold synchronization still runs
+    // when gold is stale, including after a group recipe change.
+    let (revision, duplicate) = start(previous.as_ref(), &input)?;
     if input
         .gold_build
         .as_ref()
@@ -348,13 +318,6 @@ pub(in crate::shared) fn apply(
     {
         return Err(conflict("shared gold recipe changed; retry indexing"));
     }
-    let requested = input.gold_build.clone().unwrap_or_default();
-    // A same-revision snapshot under a new recipe refreshes gold, never silver.
-    let gold_refresh = same_revision
-        && input.expected_version.is_some()
-        && input.gold_build.is_some()
-        && gold.build.as_ref() != Some(&requested);
-    let duplicate = same_revision && !gold_refresh;
     let mut upload = Upload {
         tx,
         identity,
@@ -375,12 +338,9 @@ pub(in crate::shared) fn apply(
             removed: 0,
             purged: 0,
             supplied: BTreeSet::new(),
-            reused: BTreeSet::new(),
             deleted: BTreeSet::new(),
         },
-        vectors: HashSet::new(),
     };
-    let before = gold_refresh.then(|| upload.canonical()).transpose()?;
     if !duplicate {
         upload
             .applied
@@ -398,7 +358,6 @@ pub(in crate::shared) fn apply(
             upload.applied.changed = true;
         }
     }
-    let mut requests = BTreeSet::new();
     let mut finished = false;
     for line in lines {
         if finished {
@@ -445,20 +404,6 @@ pub(in crate::shared) fn apply(
                     }
                 }
             }
-            Event::ReuseGold {
-                conversation_id,
-                fingerprint,
-            } if input.reuse_gold => {
-                valid_id(&conversation_id)?;
-                if gold
-                    .reusable
-                    .get(&conversation_id)
-                    .is_none_or(|hash| hash != &fingerprint)
-                    || !requests.insert(conversation_id)
-                {
-                    return Err(conflict("shared gold reuse is unverified; retry indexing"));
-                }
-            }
             Event::Remove { id } if !input.snapshot => {
                 valid_id(&id)?;
                 let (m, c) = upload.remove(&id)?;
@@ -495,28 +440,6 @@ pub(in crate::shared) fn apply(
             .build()
             .execute(tx)
             .map_err(database)?;
-        if requests.contains(id) {
-            if gold.reusable.get(id) != Some(&fingerprint) {
-                return Err(conflict("shared gold dependencies changed; retry indexing"));
-            }
-            if upload.vectors.contains(id) {
-                return Err(AppError::usage(
-                    "reused thread also supplies gold embeddings",
-                ));
-            }
-        }
-    }
-    if requests.iter().any(|id| !supplied.contains(id)) {
-        return Err(conflict("shared gold dependencies changed; retry indexing"));
-    }
-    upload.applied.reused = requests;
-    if let Some(before) = before {
-        if upload.canonical()? != before {
-            return Err(conflict(
-                "gold refresh cannot change silver at the same source revision",
-            ));
-        }
-        upload.applied.changed = false;
     }
     let canonical = upload.canonical()?;
     let mut applied = upload.applied;

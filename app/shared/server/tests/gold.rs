@@ -185,10 +185,8 @@ async fn qdrant_gold_only_rebuild_preserves_silver_and_rejects_invalid_replaceme
     assert_eq!(service.get("freshness", FIRST).await, freshness);
     assert_eq!(best(&service).await, "opposite");
     assert_eq!(retained(&service).await, canonical_read);
-    assert_source_uploads_reject_old_gold_version(&service, &before).await;
     // The next SQLite snapshot revision still publishes its canonical edit.
     canonical[0]["revision"] = json!(3);
-    canonical[0]["expected_version"] = json!(state(&service).await.publication_version);
     canonical[1]["records"][0]["title"] = json!("new canonical title");
     service
         .upload(FIRST, &canonical)
@@ -204,35 +202,6 @@ async fn qdrant_gold_only_rebuild_preserves_silver_and_rejects_invalid_replaceme
         before.silver_revision
     );
     service.cleanup().await;
-}
-
-async fn assert_source_uploads_reject_old_gold_version(service: &Service, before: &NodeState) {
-    let current = state(service).await;
-    for (snapshot_mode, revision) in [(true, 2), (true, 3), (false, 3)] {
-        let mut source = snapshot(revision);
-        source[0]["expected_version"] = json!(before.publication_version);
-        source[0]["snapshot"] = json!(snapshot_mode);
-        if !snapshot_mode {
-            source[0]["base_revision"] = json!(before.revision);
-        }
-        assert_eq!(
-            service.upload(FIRST, &source).await.status(),
-            StatusCode::CONFLICT
-        );
-        assert_eq!(state(service).await, current);
-        assert_eq!(best(service).await, "opposite");
-    }
-    // A fresh handshake allows an idempotent retry without replacing the rebuilt
-    // vectors with those carried by the duplicate source snapshot.
-    let mut retry = snapshot(before.revision);
-    retry[0]["expected_version"] = json!(current.publication_version);
-    service
-        .upload(FIRST, &retry)
-        .await
-        .error_for_status()
-        .unwrap();
-    assert_eq!(best(service).await, "opposite");
-    assert_eq!(state(service).await.silver_revision, before.silver_revision);
 }
 
 async fn assert_rejected_replacements(service: &Service, events: &[Value], before: &NodeState) {

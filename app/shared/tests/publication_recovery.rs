@@ -98,7 +98,6 @@ async fn lost_ack_recovers_only_with_stable_source_and_current_artifacts() {
             publication_version: "head".into(),
             instance: None,
             publication_revision: 0,
-            threads: std::collections::BTreeMap::new(),
         };
         storage
             .with_publication_snapshot(|snapshot| {

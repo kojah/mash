@@ -179,26 +179,6 @@ impl Store {
             .filter(|gold| gold.compatible(&self.gold, identity)))
     }
 
-    /// Fingerprints of threads whose complete, current gold a snapshot may reuse.
-    fn reusable(
-        gold: Option<&NodeGold>,
-        current: bool,
-        fingerprints: &BTreeMap<String, String>,
-    ) -> BTreeMap<String, String> {
-        let Some(gold) = gold.filter(|_| current) else {
-            return BTreeMap::new();
-        };
-        fingerprints
-            .iter()
-            .filter(|(id, fingerprint)| {
-                gold.threads
-                    .get(*id)
-                    .is_some_and(|thread| thread.complete && &thread.fingerprint == *fingerprint)
-            })
-            .map(|(id, fingerprint)| (id.clone(), fingerprint.clone()))
-            .collect()
-    }
-
     pub(in crate::shared) async fn state(
         &self,
         identity: &Identity,
@@ -304,36 +284,14 @@ impl Store {
         identity: &Identity,
         permit: OwnedSemaphorePermit,
     ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
-        let (head, fingerprints) = self
-            .read(identity, |connection| {
-                Ok((
-                    silver_store::head(connection)?,
-                    silver_store::fingerprints(connection)?,
-                ))
-            })
-            .await?;
-        let build = self.gold.build().clone();
-        let threads = if build.dense_enabled() && build != crate::gold::config::Build::default() {
-            let gold = self.compatible_gold(identity).await?;
-            let current = gold.as_ref().is_some_and(|gold| {
-                gold.current(
-                    &self.gold,
-                    identity,
-                    head.as_ref().and_then(|h| h.silver_revision.as_ref()),
-                )
-            });
-            Self::reusable(gold.as_ref(), current, &fingerprints)
-        } else {
-            BTreeMap::new()
-        };
+        let head = self.head(identity).await?;
         let target = crate::shared::reuse::Target::new(
-            build,
+            self.gold.build().clone(),
             identity.generation.clone(),
             identity.dimensions,
             head.as_ref()
                 .map_or_else(String::new, |h| h.version.clone()),
             head.map(|h| (h.instance, h.revision)),
-            threads,
         );
         crate::blocking(move || spool(&target, permit)).await
     }

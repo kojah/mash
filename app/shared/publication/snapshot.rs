@@ -2,7 +2,7 @@
 use super::{Inference, SnapshotWork, write_event};
 use crate::shared::{
     protocol::{Batch, BatchKind, ConversationRecord, Event, MessageRecord, Start},
-    reuse::{Fingerprint, Target},
+    reuse::Target,
 };
 use crate::{AppError, gold::shared as gold, storage::Storage};
 use std::{
@@ -36,36 +36,24 @@ struct Source {
     file: tempfile::NamedTempFile,
     revision: i64,
     conversations: BTreeMap<String, ConversationRecord>,
-    hashes: BTreeMap<String, String>,
     visible: u64,
-    incremental: bool,
 }
 
-fn capture(
-    path: &Path,
-    target: &Target,
-    reuse_gold: bool,
-    allow_delta: bool,
-) -> Result<Source, AppError> {
+fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, AppError> {
     crate::progress::during(crate::progress::Phase::SharedSnapshot, || {
         let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
         let mut writer = std::io::BufWriter::with_capacity(256 * 1024, file.as_file_mut());
         let mut conversations = BTreeMap::new();
-        let mut hashes = BTreeMap::new();
-        let mut active: Option<(String, Fingerprint)> = None;
         let mut visible = 0;
-        let mut incremental = false;
         let revision = Storage::open_catalog(path)?.with_publication_snapshot(|snapshot| {
             validate_owner(snapshot, target)?;
             let base = snapshot
                 .delta_base(target.instance.as_deref(), target.publication_revision)?
                 .filter(|_| allow_delta);
-            incremental = base.is_some();
+            let incremental = base.is_some();
             write_event(
                 &mut writer,
                 &Event::Start(Start {
-                    reuse_gold: reuse_gold && !incremental,
-                    expected_version: Some(target.publication_version.clone()),
                     gold_build: Some(target.build.clone()),
                     source_silver: Some(snapshot.source_silver.clone()),
                     instance: snapshot.instance.clone(),
@@ -87,10 +75,6 @@ fn capture(
                 crate::redaction::batch(&mut batch);
                 if let Batch::Conversations { records } = &batch {
                     for conversation in records {
-                        hashes.insert(
-                            conversation.id.clone(),
-                            Fingerprint::new(conversation)?.finish(),
-                        );
                         conversations.insert(conversation.id.clone(), conversation.clone());
                     }
                 }
@@ -100,30 +84,13 @@ fn capture(
                 crate::redaction::batch(&mut batch);
                 if let Batch::Messages { records } = &mut batch {
                     for message in records {
-                        if active
-                            .as_ref()
-                            .is_none_or(|(id, _)| id != &message.conversation_id)
-                        {
-                            if let Some((id, fingerprint)) = active.take() {
-                                hashes.insert(id, fingerprint.finish());
-                            }
-                            let conversation =
-                                conversations.get(&message.conversation_id).ok_or_else(|| {
-                                    AppError::database_data("snapshot message has no thread")
-                                })?;
-                            active =
-                                Some((conversation.id.clone(), Fingerprint::new(conversation)?));
-                        }
-                        if let Some((_, fingerprint)) = &mut active {
-                            fingerprint.push(message)?;
-                        }
                         visible += u64::from(
                             target
                                 .build
                                 .includes_dense(&message.role, &message.projection),
                         );
                         // Local gold has a different recipe. Only canonical rows enter
-                        // this temporary stream; shared reuse/preparation follows below.
+                        // this temporary stream; shared embedding follows below.
                         message.vector = None;
                         message.generation = None;
                     }
@@ -132,18 +99,13 @@ fn capture(
             })?;
             write_event(&mut writer, &Event::Finish)
         })?;
-        if let Some((id, fingerprint)) = active {
-            hashes.insert(id, fingerprint.finish());
-        }
         writer.flush().map_err(AppError::io)?;
         drop(writer);
         Ok(Source {
             file,
             revision,
             conversations,
-            hashes,
             visible,
-            incremental,
         })
     })
 }
@@ -298,7 +260,6 @@ fn capture_metadata(target: &Target) -> Target {
         publication_version: target.publication_version.clone(),
         instance: target.instance.clone(),
         publication_revision: target.publication_revision,
-        threads: BTreeMap::new(),
     }
 }
 
@@ -311,19 +272,11 @@ pub(super) async fn prepare(
 ) -> Result<(tempfile::NamedTempFile, i64, SnapshotWork), AppError> {
     let path = path.to_path_buf();
     let metadata = capture_metadata(target);
-    let reuse_gold = !target.threads.is_empty();
-    let source =
-        crate::blocking(move || capture(&path, &metadata, reuse_gold, allow_delta)).await?;
-    let reusable: BTreeMap<_, _> = source
-        .hashes
-        .into_iter()
-        .filter(|(id, hash)| !source.incremental && target.threads.get(id) == Some(hash))
-        .collect();
+    let source = crate::blocking(move || capture(&path, &metadata, allow_delta)).await?;
     let input = source.file.reopen().map_err(AppError::io)?;
     let mut reader = crate::blocking(move || Reader::new(input)).await?;
     let mut build = gold::Build::default();
     let mut pool = None;
-    let mut reused_embeddings = 0;
     let mut estimate = crate::progress::Estimate::new();
     let total_vectors = target.build.expected_embeddings(source.visible);
     loop {
@@ -332,14 +285,10 @@ pub(super) async fn prepare(
         if batch.is_empty() {
             break;
         }
-        let reusable_thread = reusable.contains_key(&batch[0].conversation_id);
         let visible = batch
             .iter()
-            .filter(|m| target.build.includes_dense(&m.role, &m.projection))
-            .count();
-        if reusable_thread {
-            reused_embeddings += visible as u64;
-        } else if visible > 0 && target.build.dense_enabled() {
+            .any(|m| target.build.includes_dense(&m.role, &m.projection));
+        if visible && target.build.dense_enabled() {
             let title = source
                 .conversations
                 .get(&batch[0].conversation_id)
@@ -366,7 +315,7 @@ pub(super) async fn prepare(
             Ok(reader)
         })
         .await?;
-        let processed = reused_embeddings + build.embeddings.model_inferences;
+        let processed = build.embeddings.model_inferences;
         let elapsed = crate::progress::milliseconds(started);
         crate::progress::emit(&crate::progress::Event {
             stored_vectors: Some(processed),
@@ -378,25 +327,13 @@ pub(super) async fn prepare(
             )
         });
     }
-    let reused_threads = reusable.len() as u64;
     let file = crate::blocking(move || {
-        for (conversation_id, fingerprint) in reusable {
-            write_event(
-                reader.output.as_file_mut(),
-                &Event::ReuseGold {
-                    conversation_id,
-                    fingerprint,
-                },
-            )?;
-        }
         write_event(reader.output.as_file_mut(), &Event::Finish)?;
         reader.output.as_file_mut().flush().map_err(AppError::io)?;
         Ok(reader.output)
     })
     .await?;
     let preparation = SnapshotWork {
-        reused_threads,
-        reused_embeddings,
         forwarded_embeddings: 0,
         model_inferences: build.embeddings.model_inferences,
         model_load_milliseconds: build.model_load_milliseconds,

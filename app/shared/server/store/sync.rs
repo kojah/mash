@@ -4,7 +4,7 @@ use super::{Identity, Store, certified};
 use crate::AppError;
 use crate::shared::protocol::{self, Batch, ConversationRecord, Event, Indexed, MessageRecord};
 use crate::shared::qdrant_index::{GoldThread, NodeGold};
-use crate::shared::silver_store::{self, Applied, apply::GoldView};
+use crate::shared::silver_store::{self, Applied};
 use crate::shared::validation::conflict;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::BufRead;
@@ -35,21 +35,12 @@ impl Store {
         let current = gold
             .as_ref()
             .is_some_and(|g| g.current(&self.gold, identity, silver_revision.as_ref()));
-        let fingerprints = self
-            .read(identity, |connection| {
-                silver_store::fingerprints(connection)
-            })
-            .await?;
-        let view = GoldView {
-            build: current.then(|| self.gold.build().clone()),
-            reusable: Self::reusable(gold.as_ref(), current, &fingerprints),
-        };
         let silver = self.silver.clone();
         let scope = identity.clone();
         let build = self.gold.build().clone();
         let (applied, file) = crate::blocking(move || {
             let applied = silver.write(&scope, |tx| {
-                silver_store::apply::apply(tx, &scope, &file, &build, &view)
+                silver_store::apply::apply(tx, &scope, &file, &build)
             })?;
             Ok((applied, file))
         })
@@ -96,11 +87,7 @@ impl Store {
         let supplied: BTreeSet<String> = if applied.duplicate {
             fingerprints.keys().cloned().collect()
         } else {
-            applied
-                .supplied
-                .difference(&applied.reused)
-                .cloned()
-                .collect()
+            applied.supplied.clone()
         };
         let written = self.write_upload(identity, file, &supplied).await?;
         for id in &supplied {

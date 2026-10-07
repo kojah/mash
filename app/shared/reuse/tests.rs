@@ -58,19 +58,3 @@ fn dependency_digest_ignores_gold_but_covers_all_silver_and_has_stable_order() {
         );
     }
 }
-
-#[test]
-fn publication_plans_validate_thread_fingerprints() {
-    let mut target = Target::new(
-        Build::default(),
-        "model".into(),
-        2,
-        "version".into(),
-        Some(("instance".into(), 3)),
-        BTreeMap::from([("thread".into(), "a".repeat(64))]),
-    );
-    target.validate().unwrap();
-    assert_eq!(target.publication_revision, 3);
-    target.threads.insert("other".into(), "not-a-digest".into());
-    assert!(target.validate().is_err());
-}

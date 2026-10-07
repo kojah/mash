@@ -27,10 +27,8 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         publication_version: "pinned".into(),
         instance: Some(instance),
         publication_revision: base,
-        threads: BTreeMap::new(),
     };
-    let source = capture(&database, &target, true, true).unwrap();
-    assert!(source.incremental);
+    let source = capture(&database, &target, true).unwrap();
     assert_eq!(source.conversations.keys().collect::<Vec<_>>(), vec!["a"]);
     let events: Vec<Event> = std::fs::read_to_string(source.file.path())
         .unwrap()
@@ -40,7 +38,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
     let Event::Start(start) = &events[0] else {
         panic!("expected start")
     };
-    assert!(!start.snapshot && !start.reuse_gold);
+    assert!(!start.snapshot);
     assert_eq!(start.base_revision, Some(base));
     assert!(
         events
@@ -58,7 +56,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
 }
 
 #[test]
-fn redacted_snapshot_fingerprints_match_uploaded_dependencies() {
+fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
     let root = tempfile::tempdir().unwrap();
     let database = seed(root.path());
     let connection = rusqlite::Connection::open(&database).unwrap();
@@ -77,34 +75,10 @@ fn redacted_snapshot_fingerprints_match_uploaded_dependencies() {
         publication_version: "pinned".into(),
         instance: None,
         publication_revision: 0,
-        threads: BTreeMap::new(),
     };
-    let source = capture(&database, &target, false, false).unwrap();
+    let source = capture(&database, &target, false).unwrap();
     let stream = std::fs::read_to_string(source.file.path()).unwrap();
     assert!(!stream.contains("hunter2") && !stream.contains("rosebud"));
-    let mut fingerprints = BTreeMap::new();
-    for line in stream.lines() {
-        match serde_json::from_str::<Event>(line).unwrap() {
-            Event::Batch(Batch::Conversations { records }) => {
-                for c in records {
-                    fingerprints.insert(c.id.clone(), Fingerprint::new(&c).unwrap());
-                }
-            }
-            Event::Batch(Batch::Messages { records }) => {
-                for m in records {
-                    fingerprints
-                        .get_mut(&m.conversation_id)
-                        .unwrap()
-                        .push(&m)
-                        .unwrap();
-                }
-            }
-            _ => {}
-        }
-    }
-    for (id, fingerprint) in fingerprints {
-        assert_eq!(source.hashes[&id], fingerprint.finish());
-    }
     let canonical: String = connection
         .query_row("SELECT content FROM messages WHERE id='a-100'", [], |row| {
             row.get(0)
@@ -169,9 +143,8 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
         publication_version: "pinned".into(),
         instance: None,
         publication_revision: 0,
-        threads: BTreeMap::new(),
     };
-    let source = capture(&database, &target, false, false).unwrap();
+    let source = capture(&database, &target, false).unwrap();
     let mut reader = Reader::new(source.file.reopen().unwrap()).unwrap();
     let mut inputs = BTreeMap::new();
     let mut sizes = Vec::new();
@@ -213,107 +186,4 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
             .unwrap(),
         silver
     );
-}
-
-#[tokio::test]
-async fn stored_silver_reuse_needs_no_sources_or_models_and_preserves_thread_batch_boundaries() {
-    let directory = tempfile::tempdir().unwrap();
-    let database = seed(directory.path());
-    let silver = Storage::open_catalog(&database)
-        .unwrap()
-        .silver_certificate()
-        .unwrap();
-    let mut target = Target {
-        schema_version: 1,
-        build: crate::gold::config::Build {
-            max_embedding_chars: None,
-            representations: crate::gold::config::Representations::LexicalAndDense,
-            dense_content: crate::gold::config::DenseContent::AllVisible,
-            retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-            text_preparation: crate::gold::config::TextPreparation::Preserve,
-            embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
-        },
-        generation: "unavailable-model".into(),
-        dimensions: 2,
-        publication_version: "pinned-head".into(),
-        instance: None,
-        publication_revision: 0,
-        threads: BTreeMap::new(),
-    };
-    target.threads = capture(&database, &target, true, false).unwrap().hashes;
-    let (file, _, preparation) = prepare(&database, &target, None, Instant::now(), false)
-        .await
-        .unwrap();
-    assert_eq!(preparation.model_inferences, 0);
-    assert_eq!(preparation.reused_embeddings, 29);
-    assert_eq!(preparation.reused_threads, 2);
-    let events = serde_json::Deserializer::from_reader(file.reopen().unwrap())
-        .into_iter::<Event>()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    let batches = events
-        .iter()
-        .filter_map(|event| match event {
-            Event::Batch(Batch::Messages { records }) => Some(records),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        batches.iter().map(|batch| batch.len()).collect::<Vec<_>>(),
-        [32, 5, 2]
-    );
-    assert_eq!(batches[0][0].ordinal, 0);
-    assert_eq!(batches[1][0].ordinal, 32);
-    assert_eq!(batches[2][0].conversation_id, "b");
-    assert!(
-        batches
-            .iter()
-            .flat_map(|batch| batch.iter())
-            .all(|message| message.vector.is_none() && message.generation.is_none())
-    );
-    assert_eq!(
-        events
-            .iter()
-            .filter(|event| matches!(event, Event::ReuseGold { .. }))
-            .count(),
-        2
-    );
-    assert_eq!(
-        Storage::open_catalog(&database)
-            .unwrap()
-            .silver_certificate()
-            .unwrap(),
-        silver
-    );
-    target.threads.clear();
-    assert!(
-        prepare(&database, &target, None, Instant::now(), false)
-            .await
-            .err()
-            .unwrap()
-            .error
-            .message
-            .contains("run mash index")
-    );
-    assert_eq!(
-        Storage::open_catalog(&database)
-            .unwrap()
-            .silver_certificate()
-            .unwrap(),
-        silver
-    );
-    let error = prepare(
-        &database,
-        &target,
-        Some(Inference {
-            models_dir: &directory.path().join("missing-models"),
-            embeddings: None,
-        }),
-        Instant::now(),
-        false,
-    )
-    .await
-    .err()
-    .unwrap();
-    assert_eq!(error.error.kind, crate::ErrorKind::Configuration);
 }

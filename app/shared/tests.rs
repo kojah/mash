@@ -210,7 +210,6 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
             publication_version: String::new(),
             instance: None,
             publication_revision: 0,
-            threads: std::collections::BTreeMap::new(),
         })
     }
 

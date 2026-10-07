@@ -13,8 +13,6 @@ pub(crate) struct Inference<'a> {
 
 #[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
 pub(crate) struct SnapshotWork {
-    reused_threads: u64,
-    reused_embeddings: u64,
     forwarded_embeddings: u64,
     pub(super) model_inferences: u64,
     model_load_milliseconds: u64,
@@ -204,8 +202,6 @@ async fn publish_result(
                 write_event(
                     &mut writer,
                     &Event::Start(Start {
-                        reuse_gold: false,
-                        expected_version: Some(target.publication_version.clone()),
                         gold_build: Some(target.build.clone()),
                         source_silver: Some(snapshot.source_silver.clone()),
                         instance: snapshot.instance.clone(),
@@ -249,8 +245,6 @@ async fn publish_result(
     })
     .await?;
     let preparation = SnapshotWork {
-        reused_threads: 0,
-        reused_embeddings: 0,
         forwarded_embeddings,
         model_inferences: 0,
         model_load_milliseconds: 0,

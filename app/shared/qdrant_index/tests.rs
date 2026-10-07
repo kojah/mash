@@ -143,8 +143,6 @@ impl Fixture {
 
     fn start(revision: i64) -> Start {
         Start {
-            reuse_gold: false,
-            expected_version: None,
             gold_build: None,
             source_silver: None,
             instance: "instance".into(),

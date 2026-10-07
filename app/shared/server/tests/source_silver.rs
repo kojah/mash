@@ -67,18 +67,11 @@ async fn contract(service: Service) {
     );
     assert_eq!(state(&service).await.source_silver, Some(certificate()));
 
-    // A routed delta cannot claim a certificate for a full local snapshot.
+    // A delta without a certificate revokes the node's certificate.
     let mut delta = events[0].clone();
     delta["snapshot"] = json!(false);
     delta["revision"] = json!(3);
     delta["base_revision"] = json!(2);
-    assert_eq!(
-        service
-            .upload(FIRST, &[delta.clone(), json!({"type":"finish"})])
-            .await
-            .status(),
-        StatusCode::BAD_REQUEST
-    );
     delta.as_object_mut().unwrap().remove("source_silver");
     assert_eq!(
         service
