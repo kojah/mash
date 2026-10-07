@@ -1,6 +1,6 @@
 //! Read-only canonical views and local/shared readiness inspection.
 use super::models::{ArtifactState, LocalArtifacts, ModelAvailability, StatusResponse};
-use super::{SearchMode, ViewResponse, publication_config, required_shared, routed_both};
+use super::{SearchMode, ViewResponse, publication_config, required_shared};
 use crate::AppError;
 use crate::config::ResolvedConfig;
 use crate::semantic::{self, Models};
@@ -125,11 +125,7 @@ fn local_status(
                 crate::Action::ModelsInstall
             }),
             configuration: configuration.status(),
-            shared: if routed_both(configuration) {
-                Some(shared::Publication::pending())
-            } else {
-                publication_config(configuration).map(|_| shared::Publication::pending())
-            },
+            shared: publication_config(configuration).map(|_| shared::Publication::pending()),
             shared_index: None,
         });
     }
@@ -189,11 +185,7 @@ fn local_status(
             Some(crate::Action::Index)
         },
         configuration: configuration.status(),
-        shared: if routed_both(configuration) {
-            Some(shared::routed_status(database_path, configuration)?)
-        } else {
-            shared::status(database_path, publication_config(configuration))?
-        },
+        shared: shared::status(database_path, publication_config(configuration))?,
         shared_index: None,
     })
 }

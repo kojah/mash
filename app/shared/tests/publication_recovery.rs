@@ -39,7 +39,6 @@ fn current_node(target: &reuse::Target) -> NodeFreshness {
             silver.clone(),
         )),
         gold_current: true,
-        silver_coverage: vec![],
         silver_revision: Some(silver),
         node_id: "local-node".into(),
         revision: target.publication_revision,

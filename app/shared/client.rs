@@ -36,7 +36,6 @@ pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppErr
 pub(super) enum Endpoint {
     Capabilities,
     Freshness,
-    State,
     Silver,
     PublicationPlan,
     Gold,
@@ -45,7 +44,6 @@ pub(super) enum Endpoint {
     View,
     Contexts,
     Index,
-    Forget,
     Attachments,
     Attachment,
     AttachmentUpload,
@@ -55,12 +53,10 @@ impl Endpoint {
     const fn bulk(self) -> bool {
         matches!(
             self,
-            Self::State
-                | Self::Silver
+            Self::Silver
                 | Self::PublicationPlan
                 | Self::Gold
                 | Self::Index
-                | Self::Forget
                 | Self::AttachmentUpload
         )
     }
@@ -76,7 +72,6 @@ impl Endpoint {
         match self {
             Self::Capabilities => "capabilities",
             Self::Freshness => "freshness",
-            Self::State => "state",
             Self::Silver => "silver",
             Self::PublicationPlan => "publication-plan",
             Self::Gold => "gold",
@@ -85,7 +80,6 @@ impl Endpoint {
             Self::View => "view",
             Self::Contexts => "contexts",
             Self::Index => "index",
-            Self::Forget => "forget",
             Self::Attachments => "attachments",
             Self::Attachment => "attachment",
             Self::AttachmentUpload => "attachment-upload",

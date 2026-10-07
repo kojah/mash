@@ -3,7 +3,7 @@ use super::*;
 use crate::shared::protocol::{Candidates, Search, View};
 use crate::{
     provider::Provider,
-    silver::{DirectScan, IndexOptions, direct_scans},
+    silver::{discovered_sources, parse_test_source},
 };
 use serde::Deserialize;
 
@@ -34,18 +34,12 @@ fn native_publication() -> (Vec<Value>, Vec<String>) {
             )
             .unwrap();
     }
-    let options = IndexOptions {
-        providers: [(Provider::Cursor, vec![path])].into(),
-        since_days: None,
-        roots_are_authoritative: true,
-    };
-    let scan = direct_scans(&options).unwrap().remove(0);
-    let source = &scan.sources[0];
-    let conversation = DirectScan::parse_source(Provider::Cursor, source, &source.stamp().unwrap())
-        .unwrap()
+    let roots = vec![path.clone()];
+    let sources = discovered_sources(Provider::Cursor, &roots);
+    let source = &sources[0];
+    let conversation = parse_test_source(Provider::Cursor, source)
         .conversation
         .unwrap();
-    scan.verify().unwrap();
     super::native::publication(conversation)
 }
 

@@ -38,10 +38,12 @@ pub(crate) use antigravity::tests::write as write_antigravity_fixture;
 
 #[cfg(test)]
 use discovery::source_stamp;
-pub(crate) use discovery::{DirectScan, SourceStamp, direct_scans, source_stamp_for};
 use discovery::{
     Discovery, cutoff_modified_ns, discover_history_files, verify_authoritative_discovery,
 };
+pub(crate) use discovery::{SourceStamp, source_stamp_for};
+#[cfg(test)]
+pub(crate) use discovery::{discovered_sources, parse_test_source};
 pub(crate) use discovery::{validate_output_path, watch_roots};
 pub(crate) use source::{HistorySource, SourceIdentity};
 

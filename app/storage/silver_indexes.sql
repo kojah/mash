@@ -10,8 +10,6 @@ CREATE INDEX IF NOT EXISTS messages_searchable_metadata
     WHERE COALESCE(search_projection, content) <> '';
 CREATE INDEX IF NOT EXISTS messages_searchable_identity ON messages(id, role)
     WHERE COALESCE(search_projection, content) <> '';
-CREATE INDEX IF NOT EXISTS source_checkpoints_conversation
-    ON source_checkpoints(conversation_id) WHERE conversation_id IS NOT NULL;
 -- Gold writes and scan bookkeeping do not change the canonical revision.
 CREATE TRIGGER IF NOT EXISTS silver_conversations_INSERT AFTER INSERT ON conversations BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;

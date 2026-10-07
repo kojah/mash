@@ -168,6 +168,15 @@ impl Fixture {
         ])
     }
 
+    /// A delta publication that only forgets threads.
+    fn forget(revision: i64, ids: &[&str]) -> tempfile::NamedTempFile {
+        let mut start = Self::start(revision);
+        start.snapshot = false;
+        start.base_revision = Some(revision - 1);
+        start.forgets = ids.iter().map(|id| (*id).to_owned()).collect();
+        Self::upload(&[Event::Start(start), Event::Finish])
+    }
+
     fn query(&self) -> protocol::Search {
         let mut vector = vec![0.0; self.identity.dimensions];
         vector[0] = 127.0;

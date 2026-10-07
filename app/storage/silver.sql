@@ -53,8 +53,7 @@ CREATE TABLE IF NOT EXISTS tombstones (
     forgotten_at INTEGER NOT NULL,
     PRIMARY KEY (provider, conversation_id)
 );
--- Provider replay checkpoints. The server keys published checkpoints by path
--- hash, leaves source_path empty and records the owning thread and readiness.
+-- Provider replay checkpoints; local only.
 CREATE TABLE IF NOT EXISTS source_checkpoints (
     provider TEXT NOT NULL,
     source_key TEXT NOT NULL,
@@ -63,8 +62,6 @@ CREATE TABLE IF NOT EXISTS source_checkpoints (
     modified_ns INTEGER NOT NULL,
     fingerprint TEXT NOT NULL DEFAULT '',
     interpretation_version INTEGER NOT NULL DEFAULT 0 CHECK (interpretation_version >= 0),
-    conversation_id TEXT,
-    ready INTEGER NOT NULL DEFAULT 1 CHECK (ready IN (0, 1)),
     PRIMARY KEY (provider, source_key)
 );
 -- Ingestion evidence.
@@ -121,10 +118,6 @@ CREATE TABLE IF NOT EXISTS shared_publication (
 );
 INSERT OR IGNORE INTO shared_publication(singleton, instance)
 VALUES (1, lower(hex(randomblob(16))));
-CREATE TABLE IF NOT EXISTS shared_forgets (
-    scope TEXT NOT NULL, conversation_id TEXT NOT NULL,
-    PRIMARY KEY(scope, conversation_id)
-);
 CREATE TABLE IF NOT EXISTS shared_changes (
     conversation_id TEXT PRIMARY KEY,
     revision INTEGER NOT NULL

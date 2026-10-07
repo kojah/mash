@@ -19,7 +19,7 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
   Qdrant.
   Commit silver before synchronizing gold; do not build transaction, staging or
   versioning machinery on top of Qdrant. Require a local SQLite index; support local-only or
-  both indexing with independent provider allowlists. Keep local operations
+  both indexing, where shared publishes exactly the local index. Keep local operations
   offline-capable. Only the HTTP service accesses Qdrant. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
   Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;

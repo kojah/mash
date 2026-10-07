@@ -1,8 +1,7 @@
-//! Explicit indexing, per-index routing, progress and watcher selection.
+//! Explicit indexing, publication, progress and watcher selection.
 use super::models::IndexResponse;
 use super::{
     IndexRequest, Operation, Request, SearchMode, default_models_path, publication_config,
-    routed_both,
 };
 use crate::AppError;
 use crate::config::{self, ResolvedConfig};
@@ -40,11 +39,8 @@ pub(super) async fn run(
         request.all_history,
     )?;
     let started = Instant::now();
-    let mut local_options = options.clone();
+    let local_options = options.clone();
     let _progress = crate::progress::Session;
-    let mut shared_options = options.clone();
-    config::IndexFilter::apply(configuration.local_filter.as_ref(), &mut local_options);
-    config::IndexFilter::apply(configuration.shared_filter.as_ref(), &mut shared_options);
     let db = database.to_path_buf();
     let root = models.to_path_buf();
     let embeddings = configuration.embeddings.clone();
@@ -63,11 +59,7 @@ pub(super) async fn run(
         )
     })
     .await?;
-    if routed_both(configuration) {
-        result.shared = Some(
-            shared::publish_routed(database, configuration, models, &shared_options, full).await,
-        );
-    } else if let Some(config) = publication_config(configuration) {
+    if let Some(config) = publication_config(configuration) {
         result.shared = Some(
             shared::publish(
                 database,
@@ -359,20 +351,7 @@ pub(crate) fn watch_targets(request: &Request) -> Result<crate::watch::Targets, 
         return Err(AppError::usage("watch cannot rebuild only gold"));
     }
     let options = resolve_index_options(&configuration, provider, *since_days, *all_history)?;
-    let mut roots = Vec::new();
-    for (enabled, filter) in [
-        (true, &configuration.local_filter),
-        (
-            configuration.destination != config::IndexDestination::Local,
-            &configuration.shared_filter,
-        ),
-    ] {
-        if enabled {
-            let mut selected = options.clone();
-            config::IndexFilter::apply(filter.as_ref(), &mut selected);
-            roots.extend(history::watch_roots(&selected));
-        }
-    }
+    let mut roots = history::watch_roots(&options);
     roots.sort();
     roots.dedup();
     let models = request

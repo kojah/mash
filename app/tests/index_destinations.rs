@@ -60,7 +60,7 @@ impl Fixture {
             claude-code = {roots = [(self.directory.path().join("claude").to_str().unwrap().to_owned())]},
             codex = {roots = [(self.codex.to_str().unwrap())]}
             }
-            index = {destination = (destination),local = {providers = (if destination == "local" {vec!["claude-code"]} else {vec!["claude-code", "codex"]})},shared = {providers = ["codex"]}}
+            index = {destination = (destination)}
             shared = {group_id = (self.group.as_str()),node_id = (node),api_url = (self.server.as_ref().map_or("http://127.0.0.1:9",|s|s.url.as_str())),token_env = "MASH_TEST_ROUTING_TOKEN"}
         }).unwrap()).unwrap();
     }
@@ -113,26 +113,6 @@ impl Fixture {
             .unwrap()
             .clone()
     }
-    fn assert_claude_scan(&self, node: &str) {
-        let state: Value = tokio::runtime::Runtime::new().unwrap().block_on(async {
-            reqwest::Client::new()
-                .get(format!("{}/v1/state", self.server.as_ref().unwrap().url))
-                .bearer_auth(shared_server::token(node))
-                .send()
-                .await
-                .unwrap()
-                .error_for_status()
-                .unwrap()
-                .json()
-                .await
-                .unwrap()
-        });
-        assert_eq!(state["silver_scans"].as_array().unwrap().len(), 1);
-        assert_eq!(state["silver_scans"][0]["provider"], "claude-code");
-        assert_eq!(state["silver_scans"][0]["authoritative"], true);
-        assert!(state["silver_scans"][0]["cutoff"].is_null());
-    }
-
     fn cleanup(&self) {
         shared_server::cleanup_group(&self.group);
     }
@@ -141,30 +121,20 @@ impl Fixture {
 #[test]
 #[ignore = "requires disposable Qdrant and explicitly installed MASH_TEST_MODELS_DIR"]
 fn claude_copy_reconciliation_qdrant_snapshot() {
-    claude_copy_reconciliation(false);
+    claude_copy_reconciliation();
 }
 
-#[test]
-#[ignore = "requires disposable Qdrant and explicitly installed MASH_TEST_MODELS_DIR"]
-fn claude_copy_reconciliation_qdrant_routed() {
-    claude_copy_reconciliation(true);
-}
-
-fn assert_ready_node(node: &Value, messages: u64, routed: bool) {
+fn assert_ready_node(node: &Value, messages: u64) {
     assert_eq!(node["messages"], messages);
     assert_eq!(node["artifacts"]["metadata"], "ready");
     assert_eq!(node["artifacts"]["lexical"], "ready");
     assert_eq!(node["artifacts"]["dense"], "ready");
-    if routed {
-        assert!(node.get("source_silver").is_none());
-    } else {
-        assert_eq!(node["source_silver"]["completeness"], "complete");
-        assert_eq!(node["source_silver"]["interpretation_version"], 2);
-        assert_eq!(node["source_silver"]["rejected_sources"], 0);
-    }
+    assert_eq!(node["source_silver"]["completeness"], "complete");
+    assert_eq!(node["source_silver"]["interpretation_version"], 2);
+    assert_eq!(node["source_silver"]["rejected_sources"], 0);
 }
 
-fn claude_copy_reconciliation(routed: bool) {
+fn claude_copy_reconciliation() {
     let mut fixture = Fixture::new();
     fixture.models = std::env::var("MASH_TEST_MODELS_DIR").unwrap().into();
     let root = fixture.directory.path().join("claude");
@@ -195,11 +165,7 @@ fn claude_copy_reconciliation(routed: bool) {
     };
     write(&a, None);
     write(&b, None);
-    let index_config = if routed {
-        toml::toml! {destination = "both" shared = {providers = ["claude-code"]}}
-    } else {
-        toml::toml! {destination = "both"}
-    };
+    let index_config = toml::toml! {destination = "both"};
     std::fs::write(&fixture.config, toml::to_string(&toml::toml! {
                 version = 1
                 providers = {claude-code = {roots = [(root.to_str().unwrap())]}}
@@ -217,10 +183,7 @@ fn claude_copy_reconciliation(routed: bool) {
             .iter()
             .find(|node| node["node_id"] == "split")
             .unwrap();
-        assert_ready_node(node, messages, routed);
-        if routed {
-            fixture.assert_claude_scan("split");
-        }
+        assert_ready_node(node, messages);
         let connection = rusqlite::Connection::open(&fixture.database).unwrap();
         let rows = connection
             .prepare("SELECT id,content FROM messages ORDER BY ordinal")
@@ -268,19 +231,12 @@ fn claude_copy_reconciliation(routed: bool) {
 }
 
 #[test]
-fn local_destination_filters_before_scanning_and_never_publishes() {
+fn local_destination_never_publishes() {
     let fixture = Fixture::new();
     fixture.configure("local", "local");
-    std::fs::remove_file(fixture.codex.join("session.jsonl")).unwrap();
-    std::fs::remove_dir(&fixture.codex).unwrap();
     let response = fixture.json(&["index"], false);
-    assert_eq!(response["indexed_conversations"], 1);
+    assert_eq!(response["indexed_conversations"], 2);
     assert!(response.get("shared").is_none());
-    let connection = Connection::open(&fixture.database).unwrap();
-    let provider: String = connection
-        .query_row("SELECT provider FROM conversations", [], |r| r.get(0))
-        .unwrap();
-    assert_eq!(provider, "claude-code");
     assert!(fixture.json(&["status"], false).get("shared").is_none());
 }
 
@@ -311,79 +267,6 @@ fn shared_only_configuration_is_rejected_before_opening_sqlite() {
 
 #[test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant"]
-fn qdrant_publication_routes_providers_independently_and_retries_shared_forgets() {
-    let fixture = Fixture::new();
-    fixture.configure("both", "split");
-    assert_eq!(
-        fixture.json(&["index"], false)["shared"]["state"],
-        "pending"
-    );
-    assert_eq!(
-        fixture.json(&["index"], true)["shared"]["state"],
-        "published"
-    );
-    assert_eq!(
-        fixture.json(&["status"], true)["shared"]["state"],
-        "published"
-    );
-    let connection = Connection::open(&fixture.database).unwrap();
-    let providers: Vec<String> = connection
-        .prepare("SELECT provider FROM conversations ORDER BY provider")
-        .unwrap()
-        .query_map([], |r| r.get(0))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
-    assert_eq!(providers, ["claude-code", "codex"]);
-    assert_eq!(fixture.remote_node("split")["conversations"], 1);
-    assert_eq!(fixture.remote_node("split")["messages"], 1);
-    let id: String = connection
-        .query_row(
-            "SELECT id FROM messages WHERE conversation_id='codex-session'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    let remote = fixture.json(&["view", &id, "--shared", "split", "--context", "0"], true);
-    assert_eq!(remote["messages"][0]["content"], "shared Codex output");
-    let threads = fixture.json(&["list-threads", "--shared"], true);
-    assert_eq!(threads["threads"].as_array().unwrap().len(), 1);
-    assert_eq!(threads["threads"][0]["provider"], "codex");
-    assert_eq!(
-        fixture.json(&["forget", "codex-session"], false)["shared"]["state"],
-        "pending"
-    );
-    assert_eq!(
-        fixture.json(&["view", &id, "--shared", "split"], true)["messages"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
-    );
-    assert_eq!(
-        fixture.json(&["index"], true)["shared"]["state"],
-        "published"
-    );
-    assert_eq!(fixture.remote_node("split")["conversations"], 0);
-    assert_eq!(
-        fixture.json(&["index", "--full"], true)["shared"]["state"],
-        "published"
-    );
-    assert_eq!(
-        fixture.remote_node("split")["conversations"],
-        0,
-        "persistent tombstone prevents reupload"
-    );
-    assert_eq!(
-        fixture.json(&["status"], false)["conversations"],
-        1,
-        "local provider remains"
-    );
-    fixture.cleanup();
-}
-
-#[test]
-#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant"]
 fn qdrant_publication_forget_before_initial_delivery_is_durable() {
     let fixture = Fixture::new();
     fixture.configure("both", "first-delivery");
@@ -399,9 +282,10 @@ fn qdrant_publication_forget_before_initial_delivery_is_durable() {
         fixture.json(&["index"], true)["shared"]["state"],
         "published"
     );
+    // Only the Claude thread remains; the forgotten Codex thread never arrives.
     assert_eq!(
         fixture.remote_node("first-delivery")["conversations"],
-        0,
+        1,
         "forget before first upload is durable"
     );
     fixture.cleanup();

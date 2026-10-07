@@ -10,8 +10,8 @@ fn missing_corrupt_oversized_and_malformed_blobs_preserve_previous_index() {
     index(&mut storage, &options(&path)).unwrap();
     storage.commit_writer().unwrap();
     drop(storage);
-    let scan = direct_scans(&options(&path)).unwrap();
-    let source = &scan[0].sources[0];
+    let sources = crate::silver::discovered_sources(Provider::Cursor, std::slice::from_ref(&path));
+    let source = &sources[0];
     let stamp = source.stamp().unwrap();
     let root = root(&connection);
     let target = hex::encode(&root.messages[2]);

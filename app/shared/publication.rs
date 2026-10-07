@@ -1,7 +1,7 @@
-//! Durable publication state, routing ownership and streaming uploads.
+//! Durable publication state and streaming uploads.
 use super::client::{Endpoint, request, response};
 use super::protocol::{self, Event, Start};
-use super::{Publication, PublicationState, routed};
+use super::{Publication, PublicationState};
 use crate::{AppError, config::SharedConfig, storage::Storage};
 use std::{io::Write, path::Path, time::Duration};
 mod snapshot;
@@ -148,129 +148,6 @@ pub(crate) async fn publish(
             error: Some(error.error.message),
         },
     }
-}
-
-fn routed_target(configuration: &crate::config::ResolvedConfig) -> Result<String, AppError> {
-    let config = configuration.shared.as_ref().ok_or_else(|| {
-        AppError::configuration("shared destination requires shared configuration")
-    })?;
-    let filters = serde_json::to_vec(&(&configuration.local_filter, &configuration.shared_filter))
-        .map_err(|_| AppError::internal("serialize routing settings"))?;
-    Ok(format!(
-        "{}:{}",
-        target(config),
-        blake3::hash(&filters).to_hex()
-    ))
-}
-
-fn routed_scope(config: &SharedConfig) -> String {
-    blake3::hash(format!("{}\0{}", config.group_id, config.node_id).as_bytes())
-        .to_hex()
-        .to_string()
-}
-
-pub(crate) fn routed_status(
-    path: &Path,
-    configuration: &crate::config::ResolvedConfig,
-) -> Result<Publication, AppError> {
-    let Ok(target) = routed_target(configuration) else {
-        return Ok(Publication::pending());
-    };
-    if !path.is_file() || Storage::publication_is_pending(path, &target)? {
-        Ok(Publication::pending())
-    } else {
-        Ok(Publication::published())
-    }
-}
-
-pub(crate) async fn publish_routed(
-    path: &Path,
-    configuration: &crate::config::ResolvedConfig,
-    models_dir: &Path,
-    options: &crate::silver::IndexOptions,
-    full: bool,
-) -> Publication {
-    let attempt = async {
-        let config = configuration.shared.as_ref().ok_or_else(|| {
-            AppError::configuration("shared destination requires shared configuration")
-        })?;
-        let scope = routed_scope(config);
-        let db = path.to_path_buf();
-        let target = routed_target(configuration)?;
-        let key = target.clone();
-        let (owner, policy_changed) = crate::blocking(move || {
-            let storage = Storage::open_existing(&db)?;
-            let changed = !storage.publication_target_matches(&key)?;
-            Ok((storage.routed_owner(&scope)?, changed))
-        })
-        .await?;
-        routed::index(
-            config,
-            path,
-            models_dir,
-            configuration.embeddings.as_ref(),
-            options,
-            full || policy_changed,
-            &owner,
-        )
-        .await?;
-        let db = path.to_path_buf();
-        crate::blocking(move || {
-            Storage::open_existing(&db)?.acknowledge_routed(&target, &owner, true)
-        })
-        .await?;
-        Ok::<_, AppError>(())
-    }
-    .await;
-    match attempt {
-        Ok(()) => Publication::published(),
-        Err(error) => Publication {
-            preparation: None,
-            state: PublicationState::Pending,
-            error: Some(error.error.message),
-        },
-    }
-}
-
-pub(crate) async fn forget_routed(
-    path: &Path,
-    configuration: &crate::config::ResolvedConfig,
-    id: &str,
-) -> Result<(Publication, bool), AppError> {
-    let config = configuration.shared.as_ref().ok_or_else(|| {
-        AppError::configuration("shared destination requires shared configuration")
-    })?;
-    let scope = routed_scope(config);
-    let db = path.to_path_buf();
-    let id = id.to_owned();
-    let owner = crate::blocking(move || {
-        let storage = Storage::open_existing(&db)?;
-        storage.queue_shared_forget(&scope, &id)?;
-        storage.routed_owner(&scope)
-    })
-    .await?;
-    let attempt = async {
-        let target = routed_target(configuration)?;
-        let forgotten = routed::flush_forgets(config, &owner).await?;
-        let db = path.to_path_buf();
-        crate::blocking(move || {
-            Storage::open_existing(&db)?.acknowledge_routed(&target, &owner, false)
-        })
-        .await?;
-        Ok::<_, AppError>(forgotten)
-    }
-    .await;
-    Ok(match attempt {
-        Ok(forgotten) => (Publication::published(), forgotten),
-        Err(error) => (
-            Publication {
-                preparation: None,
-                state: PublicationState::Pending,
-                error: Some(error.error.message),
-            },
-            false,
-        ),
-    })
 }
 
 #[allow(

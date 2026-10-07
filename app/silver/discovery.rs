@@ -1,6 +1,6 @@
 //! Discover histories, apply age horizons, and verify authoritative scans.
 use super::source::Dependency;
-use super::{HistorySource, IndexOptions, ParsedFile, SourceIdentity};
+use super::{HistorySource, IndexOptions, SourceIdentity};
 use crate::AppError;
 use crate::provider::Provider;
 use std::collections::BTreeSet;
@@ -362,66 +362,23 @@ pub(super) fn cutoff_modified_ns(
 }
 
 // Shared routing reuses discovery and concrete parsers without opening the local index.
-#[derive(Clone)]
-pub(crate) struct DirectScan {
-    pub(crate) provider: Provider,
-    roots: Vec<PathBuf>,
-    pub(crate) sources: Vec<HistorySource>,
-    pub(crate) complete: bool,
-    authoritative: bool,
-    pub(crate) cutoff: Option<i64>,
-}
-
-impl DirectScan {
-    pub(crate) fn parse_source_with_retries(
-        provider: Provider,
-        source: &HistorySource,
-        mut stamp: SourceStamp,
-    ) -> Result<(ParsedFile, SourceStamp), AppError> {
-        let parsed = super::parse_source_with_retries(source, &mut stamp, provider.parser())?;
-        Ok((parsed, stamp))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn parse_source(
-        provider: Provider,
-        source: &HistorySource,
-        stamp: &SourceStamp,
-    ) -> Result<ParsedFile, AppError> {
-        super::parse_stable_source(source, &mut stamp.clone(), provider.parser())
-    }
-
-    pub(crate) fn verify(&self) -> Result<(), AppError> {
-        if self.authoritative {
-            let observed = source_layout(&self.sources);
-            verify_authoritative_discovery(self.provider, &self.roots, &observed)?;
-        }
-        Ok(())
-    }
-}
-
-pub(crate) fn direct_scans(options: &IndexOptions) -> Result<Vec<DirectScan>, AppError> {
-    let cutoff = cutoff_modified_ns(SystemTime::now(), options.since_days)?;
-    options
-        .providers
-        .iter()
-        .map(|(&provider, roots)| {
-            let discovery =
-                discover_history_files(provider, roots, options.roots_are_authoritative)?;
-            Ok(DirectScan {
-                provider,
-                roots: roots.clone(),
-                sources: discovery.sources,
-                complete: discovery.complete,
-                authoritative: options.roots_are_authoritative,
-                cutoff,
-            })
-        })
-        .collect()
-}
-
 fn is_jsonl(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extension.eq_ignore_ascii_case("jsonl"))
+}
+
+/// Discover one provider's sources under authoritative roots, for tests.
+#[cfg(test)]
+pub(crate) fn discovered_sources(provider: Provider, roots: &[PathBuf]) -> Vec<HistorySource> {
+    discover_history_files(provider, roots, true)
+        .expect("test discovery")
+        .sources
+}
+
+/// Parse one discovered source as indexing would, for tests.
+#[cfg(test)]
+pub(crate) fn parse_test_source(provider: Provider, source: &HistorySource) -> super::ParsedFile {
+    let mut stamp = source.stamp().expect("test source stamp");
+    super::parse_stable_source(source, &mut stamp, provider.parser()).expect("test parse")
 }

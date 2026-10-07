@@ -107,15 +107,11 @@ needs its build manifest/configuration contract and shared propagation before it
 can safely replace projections across arbitrary restarts.
 
 Local SQLite is required. Configuration supports local-only or local plus shared
-indexing, with per-index provider allowlists. Every provider forwarded to the
-shared index must also be included locally. Shared publication is optional;
-local search remains available while disconnected from the shared service.
+indexing; shared publishes exactly the local index. Shared publication is
+optional; local search remains available while disconnected from the shared service.
 
-Routed shared publication in `app/shared/routed.rs` discovers and reconciles
-sources on the node, calling silver adapters and canonical provenance storage.
-Its gold
-materializer lives in `app/gold/shared.rs` and receives interpreted silver
-conversations plus model configuration, without provider roots or checkpoints.
+Publication reads the node's silver and, when the group recipe differs from the
+local one, embeds with `app/gold/shared.rs`.
 It emits bounded message batches with embeddings into the private upload spool.
 The shared server persists canonical records and vectors together and maintains
 the backend's retrieval indexes. Publication coordination supports both layers;

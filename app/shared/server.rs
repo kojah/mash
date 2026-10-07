@@ -121,12 +121,9 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
     }
     request.extensions_mut().insert(identity.clone());
     let timeout = match request.uri().path() {
-        "/v1/index"
-        | "/v1/gold"
-        | "/v1/forget"
-        | "/v1/state"
-        | "/v1/silver"
-        | "/v1/publication-plan" => super::BULK_TIMEOUT,
+        "/v1/index" | "/v1/gold" | "/v1/state" | "/v1/silver" | "/v1/publication-plan" => {
+            super::BULK_TIMEOUT
+        }
         _ => Duration::from_secs(600),
     };
     tokio::time::timeout(timeout, next.run(request))
@@ -157,7 +154,6 @@ fn router(app: App) -> Router {
             "/v1/attachment-upload",
             post(attachments::upload).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
-        .route("/v1/forget", post(forget))
         .route("/v1/index", post(index))
         .route("/v1/gold", post(rebuild_gold))
         .method_not_allowed_fallback(|| async {
@@ -334,20 +330,6 @@ async fn view(
         crate::redaction::attachments(&mut message.attachments);
     }
     Ok(Json(messages))
-}
-async fn forget(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-    input: Result<Json<protocol::Forget>, JsonRejection>,
-) -> Result<Json<protocol::Forgotten>, ApiError> {
-    let input = json(input)?;
-    let permit = admission::reserve(&app.uploads)?;
-    Ok(Json(
-        Box::pin(admission::run(permit, async move {
-            app.store.forget(&id, input).await
-        }))
-        .await?,
-    ))
 }
 async fn index(
     State(app): State<App>,

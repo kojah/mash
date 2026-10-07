@@ -16,7 +16,11 @@ fn corrupt_native_updates_preserve_prior_checkpoint_and_search() {
             .len(),
         9
     );
-    let checkpoint = direct_scans(&opts).unwrap().remove(0).sources.remove(0);
+    let checkpoint = crate::silver::discovered_sources(
+        Provider::Antigravity,
+        &opts.providers[&Provider::Antigravity],
+    )
+    .remove(0);
     let stamp = checkpoint.stamp().unwrap();
     drop(storage);
     let writer = Connection::open(&path).unwrap();

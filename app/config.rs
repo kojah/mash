@@ -27,24 +27,6 @@ pub(crate) struct ResolvedConfig {
     pub(crate) providers: ProviderRoots,
     pub(crate) since_days: Option<u32>,
     pub(crate) destination: IndexDestination,
-    pub(crate) local_filter: Option<IndexFilter>,
-    pub(crate) shared_filter: Option<IndexFilter>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct IndexFilter {
-    pub(crate) providers: Vec<Provider>,
-}
-
-impl IndexFilter {
-    pub(crate) fn apply(filter: Option<&Self>, options: &mut crate::silver::IndexOptions) {
-        if let Some(filter) = filter {
-            options
-                .providers
-                .retain(|provider, _| filter.providers.contains(provider));
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -85,10 +67,6 @@ struct ProviderStatus {
 struct IndexStatus {
     since_days: Option<u32>,
     destination: IndexDestination,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    local: Option<IndexFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    shared: Option<IndexFilter>,
 }
 
 impl ResolvedConfig {
@@ -115,8 +93,6 @@ impl ResolvedConfig {
             index: IndexStatus {
                 since_days: self.since_days,
                 destination: self.destination,
-                local: self.local_filter.clone(),
-                shared: self.shared_filter.clone(),
             },
         }
     }

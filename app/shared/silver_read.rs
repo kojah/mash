@@ -1,7 +1,7 @@
 //! Retained shared-silver wire format for rebuilding gold without bronze.
-use super::protocol::{Checkpoint, ConversationRecord};
+use super::protocol::ConversationRecord;
 use super::silver_revision;
-use crate::{message_context::MessageContext, provider::Provider, role::Role};
+use crate::{message_context::MessageContext, role::Role};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -31,9 +31,6 @@ pub(super) struct Header<'a> {
 pub(super) struct Silver {
     pub(super) conversations: BTreeMap<String, ConversationRecord>,
     pub(super) messages: BTreeMap<String, Message>,
-    // Provenance is retained for consumers; gold rebuilds read only bodies.
-    #[serde(rename = "sources")]
-    _sources: serde::de::IgnoredAny,
     #[serde(rename = "tombstones")]
     _tombstones: serde::de::IgnoredAny,
 }
@@ -54,31 +51,4 @@ pub(super) struct Message {
     pub(super) projection: String,
     #[serde(rename = "created_at")]
     _created_at: serde::de::IgnoredAny,
-}
-
-/// Source facts survive model changes; live readiness belongs to gold.
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Facts {
-    provider: Provider,
-    path_hash: String,
-    size_bytes: i64,
-    modified_ns: i64,
-    fingerprint: String,
-    interpretation_version: u32,
-    conversation_id: Option<String>,
-}
-
-impl From<Checkpoint> for Facts {
-    fn from(source: Checkpoint) -> Self {
-        Self {
-            provider: source.provider,
-            path_hash: source.path_hash,
-            size_bytes: source.size_bytes,
-            modified_ns: source.modified_ns,
-            fingerprint: source.fingerprint,
-            interpretation_version: source.interpretation_version,
-            conversation_id: source.conversation_id,
-        }
-    }
 }

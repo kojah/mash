@@ -108,25 +108,8 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
         start.snapshot = false;
         start.base_revision = Some(0);
         start.source_silver = None;
-        events.insert(
-            events.len() - 1,
-            Event::Reconcile {
-                provider: Provider::Opencode,
-                cutoff: None,
-            },
-        );
-        events.insert(events.len() - 1, Event::Scan(scan_report()));
     }
     events
-}
-
-fn scan_report() -> protocol::ScanReport {
-    protocol::ScanReport {
-        provider: Provider::Opencode,
-        interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
-        authoritative: true,
-        cutoff: None,
-    }
 }
 
 async fn publish(api: &Api, token: &str, revision: i64, second: bool) {
@@ -264,8 +247,6 @@ async fn verify_gold(api: &Api) {
 async fn verify(api: &Api, revision: i64) -> String {
     let state: protocol::NodeState = api.get("state", FIRST).await;
     assert_eq!(state.source_silver, Some(source_certificate(revision)));
-    let second: protocol::NodeState = api.get("state", SECOND).await;
-    assert_eq!(second.silver_scans, [scan_report()]);
     for (token, expected) in [
         (FIRST, (2, 3, 2, 2)),
         (SECOND, (1, 1, 1, 1)),

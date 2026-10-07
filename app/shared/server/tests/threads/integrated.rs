@@ -180,17 +180,15 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         replaced.threads[0].metadata.title.as_deref(),
         Some("New Alpha")
     );
-    let input = crate::shared::protocol::Forget {
-        instance: "snapshot-instance".into(),
-        revision: Some(3),
-        ids: vec!["a".into()],
-    };
     service
-        .request("forget", SECOND)
-        .json(&input)
-        .send()
+        .upload(
+            SECOND,
+            &[
+                json!({"type":"start","instance":"snapshot-instance","revision":3,"base_revision":2,"snapshot":false,"forgets":["a"]}),
+                json!({"type":"finish"}),
+            ],
+        )
         .await
-        .unwrap()
         .error_for_status()
         .unwrap();
     let combined = discover(paths, Request::default(), false).await;
@@ -199,11 +197,14 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         "forget on the peer preserves the local copy"
     );
     service
-        .request("forget", token)
-        .json(&input)
-        .send()
+        .upload(
+            token,
+            &[
+                json!({"type":"start","instance":"snapshot-instance","revision":2,"base_revision":1,"snapshot":false,"forgets":["a"]}),
+                json!({"type":"finish"}),
+            ],
+        )
         .await
-        .unwrap()
         .error_for_status()
         .unwrap();
     let shared = discover(paths, Request::default(), true).await;

@@ -1,5 +1,5 @@
 //! Silver reads: thread metadata, canonical views and retained-history export.
-use super::{conversations, database, encode, message_record, sources, sql, tombstones};
+use super::{conversations, database, encode, message_record, sql, tombstones};
 use crate::shared::protocol::{ConversationRecord, MessageRecord};
 use crate::{AppError, message_context::MessageContext, storage::Message};
 use rusqlite::Connection;
@@ -156,7 +156,7 @@ fn section<'a, W: Write>(
     })
 }
 
-/// Stream the retained history wire format: conversations, messages, sources and tombstones.
+/// Stream the retained history wire format: conversations, messages and tombstones.
 pub(in crate::shared) fn export(
     connection: &Connection,
     output: &mut impl Write,
@@ -176,13 +176,6 @@ pub(in crate::shared) fn export(
         members.push(&record.id, &value)?;
     }
     drop(rows);
-    let mut members = section(output, "sources", false)?;
-    for source in sources(connection)? {
-        let key = super::key(source.provider, &source.path_hash);
-        let value = serde_json::to_string(&crate::shared::silver_read::Facts::from(source))
-            .map_err(|_| AppError::internal("encode retained source"))?;
-        members.push(&key, &value)?;
-    }
     let mut members = section(output, "tombstones", false)?;
     for tombstone in tombstones(connection)? {
         let key = super::key(tombstone.provider, &tombstone.conversation_id);

@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    silver::{IndexOptions, direct_scans, index},
+    silver::{IndexOptions, index},
     storage::Storage,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};

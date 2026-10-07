@@ -73,8 +73,6 @@ fn test_configuration(
         .collect(),
         since_days,
         destination: config::IndexDestination::Local,
-        local_filter: None,
-        shared_filter: None,
     }
 }
 

@@ -9,7 +9,7 @@ by Git. `bd bootstrap` discovers the Dolt history from the Git origin.
 mash (Multi-Agent Search History) searches Claude Code, Codex, Copilot, Cursor,
 OpenCode, and Antigravity histories
 through a JSON CLI and an MCP server built with the official Rust SDK. Nodes can
-keep a local index and optionally publish to a shared service over HTTP, with independent provider allowlists.
+keep a local index and optionally publish it to a shared service over HTTP.
 SQLite FTS5, local FastEmbed embeddings, reciprocal-rank fusion, and bounded
 cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint shared index, one per
@@ -186,7 +186,7 @@ and recovery behavior.
 elapsed time, and an estimated remaining time for the current phase. Estimates
 use recent throughput and adjust as the workload changes; they are approximate,
 especially when message lengths vary. Ingestion estimates cover the current
-provider; independently routed shared embeddings estimate the current conversation.
+provider; shared-recipe embeddings estimate the current conversation.
 Model loading, search rebuilding, snapshot preparation, and server
 commit show activity with an unknown ETA until work can be measured. Shared
 uploads report bytes and an upload ETA; completion is reported only after the
@@ -353,10 +353,7 @@ thread. Nested forks follow the same rule. Unlinked transitions and interleaved
 session IDs fail rather than silently combining unrelated histories. Records
 without a UUID retain path-based fallback identity.
 
-Normal and independently routed shared publication use this same reconciliation.
-The first upgrade of older routed Claude checkpoints requires an explicit
-`mash index --all-history` when a bounded history horizon would prevent replaying
-retained contributions. Changing old path-based message IDs can require
+Shared publication uses this same reconciliation. Changing old path-based message IDs can require
 re-embedding Claude messages; unrelated providers' vectors remain intact.
 Source snapshots increase SQLite storage, especially with many physical copies.
 
@@ -631,12 +628,6 @@ roots = ["/home/james/.codex/sessions"]
 since_days = 90
 destination = "both"
 
-[index.local]
-providers = ["claude-code", "codex"]
-
-[index.shared]
-providers = ["codex"]
-
 [shared]
 group_id = "personal"
 node_id = "xenia"
@@ -644,18 +635,13 @@ api_url = "https://mash.example.net"
 token_env = "MASH_NODE_TOKEN"
 ```
 
-This example keeps both providers in SQLite and forwards only Codex to the shared service.
-SQLite is required on every node. `index.destination` accepts `local` or `both`;
+This example indexes both providers in SQLite and publishes that index to the
+shared service. SQLite is required on every node. `index.destination` accepts `local` or `both`;
 `both` requires the top-level `shared` connection settings. Without an explicit
 destination, mash selects both when shared settings exist, and local otherwise.
-The local provider allowlist must contain every provider in the shared allowlist.
-Shared-only configurations are rejected.
-
-Each destination's optional `providers` list is an allowlist of enabled providers.
-Omit a destination filter to include all enabled providers; `providers = []` sends
-none to that destination. `index --provider` further restricts these lists and
-cannot bypass them. Filters control subsequent ingestion; narrowing them does
-not automatically erase previously indexed history. Use `forget` for deletion.
+Shared-only configurations are rejected. Both mode publishes exactly the local
+index; the former per-destination `[index.local]` and `[index.shared]` provider
+filters are rejected. Disable a provider entirely to keep it off the node.
 
 Omit the top-level `shared` for a fully local installation. Search defaults to SQLite plus other nodes in the shared group when shared settings exist; otherwise it uses SQLite. Configure the same
 group ID and API URL on every member, with a distinct node ID and token for each
@@ -759,8 +745,7 @@ directory applies to the whole session. Unavailable metadata remains unknown,
 so a positive filter does not match it and a negated filter does. Date filters do
 not match messages without timestamps. Schema upgrades preserve history and
 embeddings and invalidate local ingestion checkpoints, allowing the next
-`mash index` to capture metadata from source files. Independently routed shared
-ingestion also refreshes its source checkpoints when upgrading metadata support.
+`mash index` to capture metadata from source files.
 
 ## Shared index
 
@@ -884,13 +869,6 @@ In local/both modes, node identity is tied to the local database instance; a
 recreated database must use a new node ID. Stale snapshots cannot replace newer
 accepted revisions.
 
-With per-index filters in both mode, SQLite ingests only the local allowlist and
-the shared publication coordinator independently ingests the shared allowlist from the original history
-files. Shared silver stores the source checkpoints. Local work still commits
-first and shared failures return pending; retry with `index` while retaining the
-original shared history files. Shared forget intents are durably queued in SQLite
-when offline and applied before the next shared ingestion. A successful forget
-can leave index status pending until `index` catches up other changes.
 
 Default search queries SQLite and shared records belonging to other nodes. The
 shared service excludes the authenticated node before candidate limits and
@@ -1225,8 +1203,7 @@ running. It indexes once at startup, then waits for one second of quiet after
 history changes before refreshing. Set `--debounce-ms 500` to change that delay
 (50–60000 ms). Continuous writes trigger a pass within ten seconds, or the
 configured delay if longer. Passes run sequentially; changes during indexing
-queue another pass. Existing provider, age, destination, and per-index allowlist
-settings still apply. `--full` cannot be combined with `--watch`.
+queue another pass. Existing provider, age and destination settings still apply. `--full` cannot be combined with `--watch`.
 
 The watcher uses native `notify` filesystem events, ignores file reads and
 unrelated files, and notices JSONL creation, modification, replacement, and
@@ -1438,8 +1415,6 @@ modules are grouped by responsibility:
   publication coordinator.
 - `app/semantic/` and `app/search_*`: gold model execution, embedding batches,
   Core ML, remote embeddings, hybrid retrieval and query/ranking policies.
-- `app/shared/routed.rs`: HTTP publication coordination for per-index provider
-  routing; source interpretation stays in silver and materialization in gold.
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
   defines persisted silver history and gold embeddings within one atomic revision.
 - `app/shared/qdrant_index/`: typed REST, conditional publication, and dense/sparse retrieval.
@@ -1606,7 +1581,7 @@ Every push to `main` first runs CI, including generated-query checks, linting,
 and SQLite, real embedding/reranking/hybrid-search, and Qdrant tests.
 CI explicitly installs and smoke-tests local models on cache misses; model assets
 are cached by platform, dependency lockfile and installation implementation.
-The shared-storage gate includes normal and routed Claude-copy reconciliation.
+The shared-storage gate includes Claude-copy reconciliation.
 Only a successful run can build and
 deploy the Linux x86-64 and Apple Silicon binaries from that same commit.
 Deployments are serialized; a superseded commit is skipped after acquiring

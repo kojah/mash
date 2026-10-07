@@ -9,27 +9,6 @@ use crate::AppError;
 use crate::provider::Provider;
 use crate::silver::{Conversation, NormalizedMessage, SourceIdentity, claude};
 
-pub(crate) struct ClaudeSourceRef {
-    pub(crate) source: SourceIdentity,
-    pub(crate) conversation_id: String,
-}
-
-pub(super) fn claude_references(
-    connection: &rusqlite::Connection,
-) -> Result<Vec<ClaudeSourceRef>, AppError> {
-    sql::ClaudeSourceReferences
-        .query_many(connection)
-        .map_err(AppError::database)
-        .map(|rows| {
-            rows.into_iter()
-                .map(|row| ClaudeSourceRef {
-                    source: SourceIdentity::file(row.source_path),
-                    conversation_id: row.conversation_id,
-                })
-                .collect()
-        })
-}
-
 pub(super) fn claude_thread(
     connection: &rusqlite::Connection,
     id: &str,

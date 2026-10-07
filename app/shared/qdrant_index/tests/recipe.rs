@@ -171,14 +171,7 @@ async fn qdrant_freshness_revokes_source_certificate_after_forget() {
     );
     fixture
         .server
-        .forget(
-            &fixture.identity,
-            protocol::Forget {
-                instance: "instance".into(),
-                revision: Some(2),
-                ids: vec!["thread".into()],
-            },
-        )
+        .index(&fixture.identity, Fixture::forget(2, &["thread"]))
         .await
         .unwrap();
     let after = fixture.server.freshness(&fixture.identity).await.unwrap();
@@ -426,15 +419,6 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
         if recipe.users_only() {
             assert_eq!(indexed.counts.embeddings, 1);
             assert_eq!(indexed.counts.searchable_user_messages, Some(1));
-            assert!(
-                server
-                    .state(&fixture.identity)
-                    .await
-                    .unwrap()
-                    .sources
-                    .iter()
-                    .all(|s| s.ready)
-            );
         }
         assert_eq!(
             server.capabilities(&fixture.identity).await.unwrap(),

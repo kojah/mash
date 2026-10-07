@@ -222,14 +222,7 @@ async fn cached_and_cold_indexes_preserve_search_and_data_across_reopen_mismatch
                 1
             );
             reopened
-                .forget(
-                    &fixture.identity,
-                    protocol::Forget {
-                        instance: "instance".into(),
-                        revision: Some(2),
-                        ids: vec!["thread".into()],
-                    },
-                )
+                .index(&fixture.identity, Fixture::forget(2, &["thread"]))
                 .await
                 .unwrap();
             assert!(fixture.search().await.documents.is_empty());

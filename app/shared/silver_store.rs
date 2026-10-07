@@ -2,9 +2,9 @@
 //! Each node's history is its own SQLite database using the one silver schema
 //! that every local index also uses. Gold (vectors, search documents and their
 //! readiness) lives only in Qdrant and can be rebuilt from these databases.
-use super::protocol::{Checkpoint, ConversationRecord, MessageRecord, ScanReport, Tombstone};
+use super::protocol::{ConversationRecord, MessageRecord, Tombstone};
 use super::server::Identity;
-use super::{silver_coverage::Coverage, silver_revision::State};
+use super::silver_revision::State;
 use crate::{AppError, provider::Provider, storage::Counts};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -22,8 +22,8 @@ mod generated;
 use generated as sql;
 
 /// Server-only publication head of one node, kept in its `shared_head` row.
+/// Fields of retired protocol features are ignored when read back.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub(super) struct Head {
     pub(super) instance: String,
     pub(super) revision: i64,
@@ -31,8 +31,6 @@ pub(super) struct Head {
     pub(super) version: String,
     pub(super) silver_revision: Option<State>,
     pub(super) source_silver: Option<crate::silver::certificate::Certificate>,
-    pub(super) silver_coverage: Vec<Coverage>,
-    pub(super) silver_scans: Vec<ScanReport>,
     pub(super) last_synced_at: Option<String>,
     pub(super) last_updated_at: Option<String>,
 }
@@ -272,23 +270,7 @@ macro_rules! message_record {
     }};
 }
 
-macro_rules! checkpoint {
-    ($row:expr) => {{
-        let row = $row;
-        Ok::<_, $crate::AppError>($crate::shared::protocol::Checkpoint {
-            provider: $crate::shared::silver_store::provider(&row.provider)?,
-            path_hash: row.source_key,
-            size_bytes: row.size_bytes,
-            modified_ns: row.modified_ns,
-            fingerprint: row.fingerprint,
-            interpretation_version: u32::try_from(row.interpretation_version)
-                .map_err(|_| $crate::AppError::database_data("invalid interpretation version"))?,
-            conversation_id: row.conversation_id,
-            ready: row.ready != 0,
-        })
-    }};
-}
-use {checkpoint, message_record};
+use message_record;
 
 pub(super) fn conversation(
     connection: &Connection,
@@ -340,15 +322,6 @@ pub(super) fn message(
         .transpose()
 }
 
-pub(super) fn sources(connection: &Connection) -> Result<Vec<Checkpoint>, AppError> {
-    sql::NodeSources
-        .query_many(connection)
-        .map_err(database)?
-        .into_iter()
-        .map(|row| checkpoint!(row))
-        .collect()
-}
-
 pub(super) fn tombstones(connection: &Connection) -> Result<Vec<Tombstone>, AppError> {
     sql::NodeTombstones
         .query_many(connection)
@@ -381,28 +354,6 @@ pub(super) fn dense_messages(
     counts(connection)?
         .expected_dense(build)
         .ok_or_else(|| AppError::database_data("invalid shared silver counts"))
-}
-
-pub(super) fn providers(connection: &Connection) -> Result<Vec<Provider>, AppError> {
-    sql::Providers
-        .query_many(connection)
-        .map_err(database)?
-        .into_iter()
-        .map(|row| provider(&row.provider))
-        .collect()
-}
-
-/// Whether provider scan evidence covers every retained thread with current sources.
-pub(super) fn coverage_gaps(connection: &Connection, provider: Provider) -> Result<bool, AppError> {
-    let row = sql::CoverageGaps::builder()
-        .provider(provider.as_str())
-        .interpretation_version(i64::from(
-            crate::silver::certificate::INTERPRETATION_VERSION,
-        ))
-        .build()
-        .query_one(connection)
-        .map_err(database)?;
-    Ok(row.stale != 0 || row.unmapped != 0)
 }
 
 #[cfg(test)]

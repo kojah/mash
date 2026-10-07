@@ -1,6 +1,6 @@
 use super::*;
 use crate::silver::NormalizedMessage;
-use crate::silver::{IndexOptions, direct_scans, index};
+use crate::silver::{IndexOptions, discovered_sources, index};
 use crate::storage::Storage;
 use models::{Bubble, Kind};
 use rusqlite::{Connection, params};
@@ -180,10 +180,7 @@ fn logical_composers_are_discovered_independently_and_schema_detection_is_explic
     root.composer_id = "second".into();
     root.full_conversation_headers_only.clear();
     write(&connection, "composerData:second", &root);
-    let sources = direct_scans(&options(dir.path()))
-        .unwrap()
-        .remove(0)
-        .sources;
+    let sources = discovered_sources(Provider::Cursor, &[dir.path().into()]);
     assert_eq!(sources.len(), 2);
     assert_ne!(sources[0].identity.key(), sources[1].identity.key());
     assert!(

@@ -19,9 +19,7 @@ mod qdrant_index;
 mod rebuild;
 mod retrieval;
 mod reuse;
-mod routed;
 pub(crate) mod server;
-mod silver_coverage;
 mod silver_read;
 mod silver_revision;
 mod silver_store;
@@ -30,8 +28,9 @@ mod validation;
 pub(crate) use client::{freshness, list_threads, view};
 pub(crate) use exact::search as search_exact;
 pub(crate) use publication::Inference;
+#[cfg(test)]
 pub(crate) use publication::write_event;
-pub(crate) use publication::{forget_routed, publish, publish_routed, routed_status, status};
+pub(crate) use publication::{publish, status};
 pub(crate) use rebuild::{Rebuilt, rebuild_gold};
 pub(crate) use retrieval::{SearchOutcome, require_dense, search};
 
@@ -111,8 +110,6 @@ struct NodeFreshness {
     gold_manifest: Option<gold_manifest::Manifest>,
     #[serde(default)]
     gold_current: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    silver_coverage: Vec<silver_coverage::Coverage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     silver_revision: Option<silver_revision::State>,
     /// Retained source-node certificate, not the server-owned canonical revision.

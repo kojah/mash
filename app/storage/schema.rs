@@ -216,7 +216,7 @@ fn drop_combined_gold(connection: &Connection) -> Result<(), AppError> {
         .unchecked_transaction()
         .map_err(AppError::database)?;
     let mut statements = String::new();
-    for table in GOLD_TABLES {
+    for table in GOLD_TABLES.iter().chain(&["shared_forgets"]) {
         write!(statements, "DROP TABLE IF EXISTS main.{table};")
             .map_err(|_| AppError::internal("format gold split"))?;
     }
@@ -270,18 +270,6 @@ fn drop_combined_gold(connection: &Connection) -> Result<(), AppError> {
              ALTER TABLE conversations_next RENAME TO conversations;",
         )
         .map_err(AppError::database)?;
-    add_column_if_missing(
-        &transaction,
-        "source_checkpoints",
-        "conversation_id",
-        "TEXT",
-    )?;
-    add_column_if_missing(
-        &transaction,
-        "source_checkpoints",
-        "ready",
-        "INTEGER NOT NULL DEFAULT 1 CHECK (ready IN (0, 1))",
-    )?;
     transaction
         .execute_batch(SILVER)
         .map_err(AppError::database)?;
@@ -482,28 +470,4 @@ fn backfill_pending_embeddings(connection: &Connection) -> Result<(), AppError> 
                 AND e.message_id IS NULL;",
         )
         .map_err(AppError::database)
-}
-
-fn add_column_if_missing(
-    connection: &Connection,
-    table: &str,
-    column: &str,
-    declaration: &str,
-) -> Result<(), AppError> {
-    let mut statement = connection
-        .prepare(&format!("PRAGMA table_info({table})"))
-        .map_err(AppError::database)?;
-    let names = statement
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(AppError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(AppError::database)?;
-    if !names.iter().any(|name| name == column) {
-        connection
-            .execute_batch(&format!(
-                "ALTER TABLE {table} ADD COLUMN {column} {declaration}"
-            ))
-            .map_err(AppError::database)?;
-    }
-    Ok(())
 }

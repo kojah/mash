@@ -286,19 +286,11 @@ fn required_shared(configuration: &ResolvedConfig) -> Result<&config::SharedConf
         .ok_or_else(|| AppError::configuration("shared destination requires shared configuration"))
 }
 
+/// Both mode publishes exactly the local index.
 fn publication_config(configuration: &ResolvedConfig) -> Option<&config::SharedConfig> {
-    if configuration.destination == config::IndexDestination::Both && !routed_both(configuration) {
-        configuration.shared.as_ref()
-    } else {
-        None
-    }
-}
-
-fn routed_both(configuration: &ResolvedConfig) -> bool {
-    configuration.destination == config::IndexDestination::Both
-        && (configuration.local_filter.is_some()
-            || configuration.shared_filter.is_some()
-            || configuration.gold.build != crate::gold::config::Build::default())
+    (configuration.destination == config::IndexDestination::Both)
+        .then_some(configuration.shared.as_ref())
+        .flatten()
 }
 
 pub(crate) fn default_database_path() -> PathBuf {

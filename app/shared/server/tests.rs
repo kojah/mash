@@ -19,7 +19,6 @@ mod relevance;
 mod restart;
 mod selections;
 mod silver_revision;
-mod silver_scans;
 mod source_silver;
 mod threads;
 
@@ -144,126 +143,6 @@ async fn provider_contract(service: Service) {
         assert_eq!(result[0].content, "providerneedle canonical history");
     }
     selections::verify_thread_provider_scopes(&service, &vector).await;
-    verify_delayed_provider_publication_stays_forgotten(&service, &vector).await;
-    service.cleanup().await;
-}
-
-async fn verify_delayed_provider_publication_stays_forgotten(service: &Service, vector: &[f64]) {
-    use crate::shared::protocol::{Forget, Forgotten, Indexed};
-    let input = Forget {
-        instance: "provider-contract".into(),
-        revision: Some(1),
-        ids: crate::provider::Provider::ALL
-            .iter()
-            .map(|provider| provider.as_str().to_owned())
-            .collect(),
-    };
-    let forgotten: Forgotten = service
-        .request("forget", SECOND)
-        .json(&input)
-        .send()
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(!forgotten.forgotten);
-    let indexed: Indexed = service
-        .upload(SECOND, &provider_snapshot(vector, 2))
-        .await
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(indexed.counts.messages, 0);
-    assert_eq!(indexed.counts.conversations, 0);
-}
-
-async fn wal_checkpoint_contract(service: Service) {
-    use crate::shared::protocol::{Checkpoint, Event, NodeState, Start};
-    let hash = blake3::hash(b"database-session-alpha").to_hex().to_string();
-    let fingerprint = blake3::hash(b"database-and-wal-stamp").to_hex().to_string();
-    let source = Checkpoint {
-        provider: crate::provider::Provider::Opencode,
-        path_hash: hash.clone(),
-        size_bytes: 8192,
-        modified_ns: 200,
-        fingerprint: fingerprint.clone(),
-        interpretation_version: crate::silver::certificate::INTERPRETATION_VERSION,
-        conversation_id: None,
-        ready: true,
-    };
-    let events = [
-        Event::Start(Start {
-            reuse_gold: false,
-            expected_version: None,
-            gold_build: None,
-            source_silver: None,
-            instance: "native-session-test".into(),
-            revision: None,
-            base_revision: Some(0),
-            snapshot: false,
-            forgets: Vec::new(),
-        }),
-        Event::Source(source),
-        Event::Finish,
-    ]
-    .into_iter()
-    .map(|event| serde_json::to_value(event).unwrap())
-    .collect::<Vec<_>>();
-    service
-        .upload(FIRST, &events)
-        .await
-        .error_for_status()
-        .unwrap();
-    let state: NodeState = serde_json::from_value(service.get("state", FIRST).await).unwrap();
-    assert_eq!(state.sources.len(), 1);
-    assert_eq!(
-        state.sources[0].provider,
-        crate::provider::Provider::Opencode
-    );
-    assert_eq!(state.sources[0].path_hash, hash);
-    assert_eq!(state.sources[0].fingerprint, fingerprint);
-    assert_eq!(state.sources[0].modified_ns, 200);
-    assert!(state.sources[0].ready);
-    let current = crate::silver::certificate::INTERPRETATION_VERSION;
-    for version in [0, current + 1, current] {
-        let state: NodeState = serde_json::from_value(service.get("state", FIRST).await).unwrap();
-        let mut source = state.sources[0].clone();
-        source.interpretation_version = version;
-        // Client readiness is not authoritative: the server checks the version.
-        source.ready = true;
-        let events = [
-            Event::Start(Start {
-                reuse_gold: false,
-                expected_version: None,
-                gold_build: None,
-                source_silver: None,
-                instance: "native-session-test".into(),
-                revision: None,
-                base_revision: Some(state.revision),
-                snapshot: false,
-                forgets: Vec::new(),
-            }),
-            Event::Source(source),
-            Event::Finish,
-        ]
-        .into_iter()
-        .map(|event| serde_json::to_value(event).unwrap())
-        .collect::<Vec<_>>();
-        service
-            .upload(FIRST, &events)
-            .await
-            .error_for_status()
-            .unwrap();
-        let state: NodeState = serde_json::from_value(service.get("state", FIRST).await).unwrap();
-        assert_eq!(state.sources[0].interpretation_version, version);
-        assert_eq!(state.sources[0].ready, version == current);
-        assert_eq!(state.sources[0].fingerprint, fingerprint);
-    }
     service.cleanup().await;
 }
 
@@ -510,11 +389,6 @@ async fn qdrant_publication_excludes_own_node_before_candidate_limit_and_readine
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
 async fn qdrant_round_trips_every_supported_provider_with_filters() {
     provider_contract(Service::qdrant(384).await).await;
-}
-#[tokio::test]
-#[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
-async fn qdrant_round_trips_native_session_wal_fingerprints() {
-    wal_checkpoint_contract(Service::qdrant(384).await).await;
 }
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL pointing to disposable Qdrant 1.19+"]
@@ -891,12 +765,16 @@ async fn http_storage_contract(service: Service) {
         service.upload(FIRST, &events).await.status(),
         StatusCode::CONFLICT
     );
+    // Forgets travel in the next publication's start event.
     let deleted = service
-        .request("forget", FIRST)
-        .json(&json!({"instance":"snapshot-instance","revision":3,"ids":["conversation"]}))
-        .send()
-        .await
-        .unwrap();
+        .upload(
+            FIRST,
+            &[
+                json!({"type":"start","instance":"snapshot-instance","revision":3,"base_revision":2,"snapshot":false,"forgets":["conversation"]}),
+                json!({"type":"finish"}),
+            ],
+        )
+        .await;
     assert_eq!(deleted.status(), StatusCode::OK);
     assert_eq!(service.get("status", FIRST).await["messages"], 0);
     assert_eq!(service.get("status", SECOND).await["messages"], 3);

@@ -1,15 +1,13 @@
 //! Apply one validated node upload to shared silver inside a single transaction.
-use super::{
-    Head, Identity, checkpoint, database, encode, head, now, provider, put_head, sql, token,
-};
+use super::{Head, Identity, database, encode, head, now, provider, put_head, sql, token};
 use crate::shared::protocol::{
-    self, Batch, ConversationRecord, Event, MessageRecord, ScanReport, Start, Tombstone,
+    self, Batch, ConversationRecord, Event, MessageRecord, Start, Tombstone,
 };
 use crate::shared::reuse::Fingerprint;
 use crate::shared::validation::{conflict, valid_id};
 use crate::{AppError, gold::config::Build, provider::Provider};
 use rusqlite::Transaction;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::BufRead;
 
 /// Gold facts the publication protocol depends on, read from Qdrant beforehand.
@@ -282,95 +280,6 @@ impl Upload<'_> {
         Ok(())
     }
 
-    fn source(&mut self, checkpoint: &protocol::Checkpoint) -> Result<(), AppError> {
-        sql::UpsertSource::builder()
-            .provider(checkpoint.provider.as_str())
-            .source_key(&checkpoint.path_hash)
-            .size_bytes(checkpoint.size_bytes)
-            .modified_ns(checkpoint.modified_ns)
-            .fingerprint(&checkpoint.fingerprint)
-            .interpretation_version(i64::from(checkpoint.interpretation_version))
-            .conversation_id(checkpoint.conversation_id.as_deref())
-            .ready(i64::from(checkpoint.ready))
-            .build()
-            .execute(self.tx)
-            .map_err(database)?;
-        Ok(())
-    }
-
-    fn reconcile(
-        &mut self,
-        provider: Provider,
-        cutoff: Option<i64>,
-        observed: Option<&HashSet<String>>,
-    ) -> Result<(), AppError> {
-        let rows = sql::ProviderSources::builder()
-            .provider(provider.as_str())
-            .build()
-            .query_many(self.tx)
-            .map_err(database)?;
-        let mut missing = Vec::new();
-        for row in rows {
-            let source: protocol::Checkpoint = checkpoint!(row)?;
-            if observed.is_none_or(|seen| !seen.contains(&source.path_hash))
-                && cutoff.is_none_or(|c| source.modified_ns >= c)
-            {
-                sql::DeleteSource::builder()
-                    .provider(source.provider.as_str())
-                    .source_key(&source.path_hash)
-                    .build()
-                    .execute(self.tx)
-                    .map_err(database)?;
-                missing.extend(source.conversation_id);
-            }
-        }
-        for id in missing {
-            let referenced = sql::SourceReference::builder()
-                .conversation_id(Some(&id))
-                .build()
-                .query_opt(self.tx)
-                .map_err(database)?
-                .is_some();
-            if !referenced {
-                let (m, c) = self.remove(&id)?;
-                self.applied.removed += m;
-                self.applied.purged += c;
-                self.applied.changed |= c > 0;
-            }
-        }
-        Ok(())
-    }
-
-    fn affected(&self, event: &Event) -> Result<Vec<Provider>, AppError> {
-        let thread = |id: &str| self.provider(id);
-        Ok(match event {
-            Event::Batch(Batch::Conversations { records }) => {
-                let mut providers = Vec::new();
-                for record in records {
-                    providers.push(record.provider);
-                    providers.extend(thread(&record.id)?);
-                }
-                providers
-            }
-            Event::Batch(Batch::Messages { records }) => {
-                let mut providers = Vec::new();
-                for record in records {
-                    providers.extend(thread(&record.conversation_id)?);
-                }
-                providers
-            }
-            Event::Batch(Batch::Tombstones { records }) => {
-                records.iter().map(|t| t.provider).collect()
-            }
-            Event::Source(source) => vec![source.provider],
-            Event::Seen { provider, .. } | Event::Reconcile { provider, .. } => vec![*provider],
-            Event::Remove { id } => thread(id)?.into_iter().collect(),
-            Event::Start(_) | Event::Scan(_) | Event::ReuseGold { .. } | Event::Finish => {
-                Vec::new()
-            }
-        })
-    }
-
     /// Recompute dependency fingerprints for threads written by this upload.
     fn fingerprint(&self, id: &str) -> Result<String, AppError> {
         let conversation = super::conversation(self.tx, id)?
@@ -457,8 +366,6 @@ pub(in crate::shared) fn apply(
                 version: String::new(),
                 silver_revision: None,
                 source_silver: None,
-                silver_coverage: Vec::new(),
-                silver_scans: Vec::new(),
                 last_synced_at: None,
                 last_updated_at: None,
             }),
@@ -474,7 +381,6 @@ pub(in crate::shared) fn apply(
         vectors: HashSet::new(),
     };
     let before = gold_refresh.then(|| upload.canonical()).transpose()?;
-    let mut dirty = HashSet::new();
     if !duplicate {
         upload
             .applied
@@ -482,23 +388,16 @@ pub(in crate::shared) fn apply(
             .source_silver
             .clone_from(&input.source_silver);
         for id in &input.forgets {
-            if let Some(provider) = upload.provider(id)? {
-                dirty.insert(provider);
-            }
             upload.applied.changed |= upload.forget(id)?;
         }
         if input.snapshot {
             let existing = super::fingerprints(tx)?;
             sql::DeleteNodeMessages.execute(tx).map_err(database)?;
             sql::DeleteNodeConversations.execute(tx).map_err(database)?;
-            sql::DeleteNodeSources.execute(tx).map_err(database)?;
             upload.applied.deleted.extend(existing.into_keys());
             upload.applied.changed = true;
         }
     }
-    let mut seen: HashMap<Provider, HashSet<String>> = HashMap::new();
-    let mut reconciled = HashMap::new();
-    let mut scans = BTreeMap::new();
     let mut requests = BTreeSet::new();
     let mut finished = false;
     for line in lines {
@@ -518,11 +417,6 @@ pub(in crate::shared) fn apply(
         if duplicate {
             continue;
         }
-        let affected = upload.affected(&event)?;
-        if affected.iter().any(|provider| scans.contains_key(provider)) {
-            return Err(AppError::usage("provider data after silver scan report"));
-        }
-        dirty.extend(affected);
         match event {
             Event::Batch(batch) => {
                 if batch.len() > 128 {
@@ -565,40 +459,12 @@ pub(in crate::shared) fn apply(
                     return Err(conflict("shared gold reuse is unverified; retry indexing"));
                 }
             }
-            Event::Source(source) if !input.snapshot => {
-                valid_id(&source.path_hash)?;
-                if source.size_bytes < 0
-                    || reconciled.contains_key(&source.provider)
-                    || scans.contains_key(&source.provider)
-                {
-                    return Err(AppError::usage("invalid source checkpoint"));
-                }
-                upload.source(&source)?;
-            }
-            Event::Seen { provider, hashes } if !input.snapshot => {
-                if hashes.len() > 128
-                    || reconciled.contains_key(&provider)
-                    || scans.contains_key(&provider)
-                {
-                    return Err(AppError::usage("invalid observed sources"));
-                }
-                seen.entry(provider).or_default().extend(hashes);
-            }
-            Event::Reconcile { provider, cutoff } if !input.snapshot => {
-                if scans.contains_key(&provider) || reconciled.insert(provider, cutoff).is_some() {
-                    return Err(AppError::usage("duplicate reconciliation"));
-                }
-                upload.reconcile(provider, cutoff, seen.get(&provider))?;
-            }
             Event::Remove { id } if !input.snapshot => {
                 valid_id(&id)?;
                 let (m, c) = upload.remove(&id)?;
                 upload.applied.removed += m;
                 upload.applied.purged += c;
                 upload.applied.changed |= c > 0;
-            }
-            Event::Scan(report) if !input.snapshot => {
-                protocol::record_scan(&mut scans, report, &reconciled)?;
             }
             _ => {
                 return Err(AppError::usage(
@@ -654,17 +520,7 @@ pub(in crate::shared) fn apply(
     }
     let canonical = upload.canonical()?;
     let mut applied = upload.applied;
-    let coverage = crate::shared::silver_coverage::update(
-        &applied.head.silver_coverage,
-        &scans,
-        &dirty,
-        tx,
-        revision,
-        input.snapshot,
-    )?;
     let now = now();
-    applied.head.silver_coverage = coverage;
-    applied.head.silver_scans = scans.into_values().collect::<Vec<ScanReport>>();
     applied.head.silver_revision = Some(crate::shared::silver_revision::State::next(
         applied.head.silver_revision.as_ref(),
         canonical,
@@ -677,77 +533,4 @@ pub(in crate::shared) fn apply(
     }
     put_head(tx, &applied.head)?;
     Ok(applied)
-}
-
-/// Tombstone threads directly, outside a source upload.
-pub(in crate::shared) fn forget(
-    tx: &Transaction<'_>,
-    identity: &Identity,
-    instance: &str,
-    revision: Option<i64>,
-    ids: &[String],
-) -> Result<(bool, Head, BTreeSet<String>), AppError> {
-    valid_id(instance)?;
-    if ids.len() > 10000 {
-        return Err(AppError::usage("too many forget identities"));
-    }
-    let mut previous = head(tx)?;
-    let accepted = previous.as_ref().map_or(0, |h| h.revision);
-    if previous.as_ref().is_some_and(|h| h.instance != instance)
-        || revision.is_some_and(|r| r <= accepted)
-    {
-        return Err(conflict("node identity or revision conflict"));
-    }
-    let mut upload = Upload {
-        tx,
-        identity,
-        build: &Build::default(),
-        applied: Applied {
-            head: previous.take().unwrap_or(Head {
-                instance: instance.to_owned(),
-                revision: 0,
-                version: String::new(),
-                silver_revision: None,
-                source_silver: None,
-                silver_coverage: Vec::new(),
-                silver_scans: Vec::new(),
-                last_synced_at: None,
-                last_updated_at: None,
-            }),
-            revision: 0,
-            duplicate: false,
-            changed: false,
-            removed: 0,
-            purged: 0,
-            supplied: BTreeSet::new(),
-            reused: BTreeSet::new(),
-            deleted: BTreeSet::new(),
-        },
-        vectors: HashSet::new(),
-    };
-    let mut forgotten = false;
-    for id in ids {
-        forgotten |= upload.forget(id)?;
-    }
-    let canonical = upload.canonical()?;
-    let mut applied = upload.applied;
-    applied.head.revision = revision.unwrap_or(
-        accepted
-            .checked_add(1)
-            .ok_or_else(|| conflict("node revision exhausted"))?,
-    );
-    // Direct forgets do not certify a provider scan.
-    applied.head.source_silver = None;
-    applied.head.silver_scans.clear();
-    applied.head.silver_coverage.clear();
-    applied.head.silver_revision = Some(crate::shared::silver_revision::State::next(
-        applied.head.silver_revision.as_ref(),
-        canonical,
-    )?);
-    applied.head.version = token()?;
-    if forgotten {
-        applied.head.last_updated_at = Some(now());
-    }
-    put_head(tx, &applied.head)?;
-    Ok((forgotten, applied.head, applied.deleted))
 }

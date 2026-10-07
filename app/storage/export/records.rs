@@ -156,13 +156,6 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT * FROM shared_forgets ORDER BY scope,conversation_id",
-        |row| Ok::<_, AppError>(Record::SharedForget {
-            scope: get(row, "scope")?,
-            conversation_id: get(row, "conversation_id")?,
-        })
-    );
-    table!(
         "SELECT revision,interpretation_version FROM silver_state WHERE singleton=1",
         |row| Ok::<_, AppError>(Record::State {
             revision: u64::try_from(get::<i64>(row, "revision")?)
@@ -386,16 +379,6 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             execute!(
                 "INSERT INTO attachment_policy(singleton,fingerprint) VALUES(1,?1)",
                 fingerprint
-            );
-        }
-        Record::SharedForget {
-            scope,
-            conversation_id,
-        } => {
-            execute!(
-                "INSERT INTO shared_forgets(scope,conversation_id) VALUES(?1,?2)",
-                scope,
-                conversation_id
             );
         }
     }

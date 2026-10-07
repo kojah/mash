@@ -89,16 +89,6 @@ pub(crate) enum Event {
         conversation_id: String,
         fingerprint: String,
     },
-    Source(Checkpoint),
-    Scan(ScanReport),
-    Seen {
-        provider: Provider,
-        hashes: Vec<String>,
-    },
-    Reconcile {
-        provider: Provider,
-        cutoff: Option<i64>,
-    },
     Remove {
         id: String,
     },
@@ -221,50 +211,6 @@ pub(crate) struct MessageRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Checkpoint {
-    pub provider: Provider,
-    pub path_hash: String,
-    pub size_bytes: i64,
-    pub modified_ns: i64,
-    #[serde(default)]
-    pub fingerprint: String,
-    /// Missing versions are unverified; old checkpoints must be replayed.
-    #[serde(default)]
-    pub interpretation_version: u32,
-    pub conversation_id: Option<String>,
-    #[serde(default)]
-    pub ready: bool,
-}
-
-/// Node-supplied discovery evidence for one provider in an acknowledged upload.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ScanReport {
-    pub provider: Provider,
-    pub interpretation_version: u32,
-    pub authoritative: bool,
-    pub cutoff: Option<i64>,
-}
-
-pub(super) fn record_scan(
-    reports: &mut std::collections::BTreeMap<Provider, ScanReport>,
-    report: ScanReport,
-    reconciled: &std::collections::HashMap<Provider, Option<i64>>,
-) -> Result<(), crate::AppError> {
-    let reconciliation = reconciled.get(&report.provider);
-    if report.interpretation_version != crate::silver::certificate::INTERPRETATION_VERSION
-        || reports.contains_key(&report.provider)
-        || (report.authoritative && reconciliation != Some(&report.cutoff))
-        || (!report.authoritative && reconciliation.is_some())
-    {
-        return Err(crate::AppError::usage("invalid silver scan report"));
-    }
-    reports.insert(report.provider, report);
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub(crate) struct Tombstone {
     pub provider: Provider,
     pub conversation_id: String,
@@ -278,17 +224,12 @@ pub(super) struct NodeState {
     pub publication_version: String,
     #[serde(default)]
     pub gold_build: crate::gold::config::Build,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub silver_coverage: Vec<super::silver_coverage::Coverage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub silver_revision: Option<super::silver_revision::State>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub silver_scans: Vec<ScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_silver: Option<crate::silver::certificate::Certificate>,
     pub instance: Option<String>,
     pub revision: i64,
-    pub sources: Vec<Checkpoint>,
     pub tombstones: Vec<Tombstone>,
 }
 
@@ -384,19 +325,6 @@ impl ContextResult {
             Self::Complete { index, .. } | Self::Failed { index, .. } => *index,
         }
     }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Forget {
-    pub instance: String,
-    pub revision: Option<i64>,
-    pub ids: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub(super) struct Forgotten {
-    pub forgotten: bool,
 }
 
 pub(super) fn default_generation() -> String {

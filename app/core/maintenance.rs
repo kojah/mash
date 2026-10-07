@@ -1,6 +1,6 @@
 //! Explicit model installation and local/shared forgetting.
 use super::models::{ForgetResponse, ModelsInstallResponse};
-use super::{publication_config, routed_both};
+use super::publication_config;
 use crate::AppError;
 use crate::config::ResolvedConfig;
 use crate::semantic::{self, Models};
@@ -17,11 +17,7 @@ pub(super) async fn forget(
     let db = database.to_path_buf();
     let local_id = id.clone();
     let mut result = crate::blocking(move || local_forget(&db, local_id)).await?;
-    if routed_both(configuration) {
-        let (publication, forgotten) = shared::forget_routed(database, configuration, &id).await?;
-        result.forgotten |= forgotten;
-        result.shared = Some(publication);
-    } else if let Some(config) = publication_config(configuration) {
+    if let Some(config) = publication_config(configuration) {
         result.shared = Some(shared::publish(database, config, None).await);
     }
     Ok(result)

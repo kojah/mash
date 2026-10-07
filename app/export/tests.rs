@@ -63,7 +63,6 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns,fingerprint,interpretation_version) VALUES('codex','/missing/session','file:/missing/session',99,123,'checkpoint-hash',2);
          INSERT INTO silver_scans VALUES('codex',2,1);
          INSERT INTO attachment_policy VALUES(1,'policy-fingerprint');
-         INSERT INTO shared_forgets VALUES('shared','forgotten-thread');
          INSERT INTO message_embeddings VALUES('message','old-model',1,1,X'01');
          UPDATE gold_manifest SET manifest='{}';
          UPDATE lexical_manifest SET manifest='{}';
@@ -197,7 +196,6 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_gol
         "silver_state",
         "silver_scans",
         "silver_rejections",
-        "shared_forgets",
         "attachment_policy",
     ] {
         assert_eq!(rows(&writer, table), rows(&imported, table), "{table}");

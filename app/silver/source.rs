@@ -75,14 +75,6 @@ impl SourceIdentity {
             }
         }
     }
-
-    pub(crate) fn publication_hash(&self) -> String {
-        let identity = match self.session {
-            None => format!("search-text-v6:{}", self.path.to_string_lossy()),
-            Some(_) => format!("search-text-v6-session:{}", self.key()),
-        };
-        blake3::hash(identity.as_bytes()).to_hex().to_string()
-    }
 }
 
 #[cfg(test)]
@@ -104,8 +96,6 @@ mod tests {
         assert_eq!(first.key(), first.clone().key());
         assert_ne!(first.key(), second.key());
         assert_ne!(first.key(), file.key());
-        assert_ne!(first.publication_hash(), file.publication_hash());
-        assert_ne!(first.publication_hash(), second.publication_hash());
         let other_database = SourceIdentity {
             path: "/tmp/other.db".into(),
             ..first.clone()

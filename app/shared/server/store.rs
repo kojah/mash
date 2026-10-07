@@ -203,57 +203,25 @@ impl Store {
         &self,
         identity: &Identity,
     ) -> Result<protocol::NodeState, AppError> {
-        let (head, sources, tombstones) = self
+        let (head, tombstones) = self
             .read(identity, |connection| {
                 Ok((
                     silver_store::head(connection)?,
-                    silver_store::sources(connection)?,
                     silver_store::tombstones(connection)?,
                 ))
             })
             .await?;
         // A process with superseded gold settings must not steer node publication.
         self.gold.gold_configuration(identity).await?;
-        let build = self.gold.build().clone();
-        let gold = self.compatible_gold(identity).await?;
-        let current = gold.as_ref().is_some_and(|gold| {
-            gold.current(
-                &self.gold,
-                identity,
-                head.as_ref().and_then(|h| h.silver_revision.as_ref()),
-            )
-        });
-        let sources = sources
-            .into_iter()
-            .map(|mut source| {
-                source.ready = current
-                    && build.dense_enabled()
-                    && source.interpretation_version
-                        == crate::silver::certificate::INTERPRETATION_VERSION
-                    && source.conversation_id.as_ref().is_none_or(|id| {
-                        gold.as_ref()
-                            .and_then(|gold| gold.threads.get(id))
-                            .is_some_and(|thread| thread.complete)
-                    });
-                source
-            })
-            .collect();
         Ok(protocol::NodeState {
             publication_version: head
                 .as_ref()
                 .map_or_else(String::new, |h| h.version.clone()),
-            gold_build: build,
-            silver_coverage: head
-                .as_ref()
-                .map_or_else(Vec::new, |h| h.silver_coverage.clone()),
+            gold_build: self.gold.build().clone(),
             silver_revision: head.as_ref().and_then(|h| h.silver_revision.clone()),
-            silver_scans: head
-                .as_ref()
-                .map_or_else(Vec::new, |h| h.silver_scans.clone()),
             source_silver: head.as_ref().and_then(|h| h.source_silver.clone()),
             instance: head.as_ref().map(|h| h.instance.clone()),
             revision: head.as_ref().map_or(0, |h| h.revision),
-            sources,
             tombstones,
         })
     }
@@ -313,7 +281,6 @@ impl Store {
                         )
                     }),
                 gold_current,
-                silver_coverage: head.silver_coverage.clone(),
                 silver_revision: head.silver_revision.clone(),
                 source_silver: head.source_silver.clone(),
                 node_id,
@@ -383,7 +350,7 @@ impl Store {
             let head = silver_store::head(connection)?.ok_or_else(|| {
                 crate::shared::validation::conflict("shared silver has not been indexed")
             })?;
-            if !certified(connection, &head)? {
+            if !certified(&head) {
                 return Err(crate::shared::validation::conflict(
                     "gold rebuild requires complete, current shared silver",
                 ));
@@ -541,26 +508,12 @@ impl Store {
     }
 }
 
-/// Certified when the source certificate or complete provider scans cover all silver.
-fn certified(connection: &rusqlite::Connection, head: &Head) -> Result<bool, AppError> {
-    use crate::silver::certificate::{Completeness, INTERPRETATION_VERSION};
-    if let Some(source) = &head.source_silver {
-        return Ok(source.is_complete() && source.interpretation_version == INTERPRETATION_VERSION);
-    }
-    let covered: HashSet<_> = head
-        .silver_coverage
-        .iter()
-        .filter(|c| {
-            c.completeness == Completeness::Complete
-                && c.scan.interpretation_version == INTERPRETATION_VERSION
-        })
-        .map(|c| c.scan.provider)
-        .collect();
-    if covered.is_empty() {
-        return Ok(false);
-    }
-    let providers = silver_store::providers(connection)?;
-    Ok(providers.iter().all(|provider| covered.contains(provider)))
+/// Certified when the node's source certificate is complete and current.
+fn certified(head: &Head) -> bool {
+    head.source_silver.as_ref().is_some_and(|source| {
+        source.is_complete()
+            && source.interpretation_version == crate::silver::certificate::INTERPRETATION_VERSION
+    })
 }
 
 fn spool(

@@ -95,11 +95,14 @@ async fn contract(service: Service) {
         StatusCode::OK
     );
     service
-        .request("forget", FIRST)
-        .json(&json!({"instance":"snapshot-instance","revision":5,"ids":["conversation"]}))
-        .send()
+        .upload(
+            FIRST,
+            &[
+                json!({"type":"start","instance":"snapshot-instance","revision":5,"base_revision":4,"snapshot":false,"forgets":["conversation"]}),
+                json!({"type":"finish"}),
+            ],
+        )
         .await
-        .unwrap()
         .error_for_status()
         .unwrap();
     assert!(state(&service).await.source_silver.is_none());

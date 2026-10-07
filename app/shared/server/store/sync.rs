@@ -2,11 +2,9 @@
 //! leaves gold marked stale; the next snapshot or a replay repairs it.
 use super::{Identity, Store, certified};
 use crate::AppError;
-use crate::shared::protocol::{
-    self, Batch, ConversationRecord, Event, Forget, Forgotten, Indexed, MessageRecord,
-};
+use crate::shared::protocol::{self, Batch, ConversationRecord, Event, Indexed, MessageRecord};
 use crate::shared::qdrant_index::{GoldThread, NodeGold};
-use crate::shared::silver_store::{self, Applied, Head, apply::GoldView};
+use crate::shared::silver_store::{self, Applied, apply::GoldView};
 use crate::shared::validation::conflict;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::BufRead;
@@ -262,7 +260,7 @@ impl Store {
                 if requested != build {
                     return Err(conflict("shared gold recipe changed; restart gold rebuild"));
                 }
-                if !certified(connection, &head)? {
+                if !certified(&head) {
                     return Err(conflict(
                         "gold rebuild requires complete, current shared silver",
                     ));
@@ -382,44 +380,5 @@ impl Store {
         }
         documents.finish(&self.gold).await?;
         self.certify(identity, gold, &fingerprints).await
-    }
-
-    pub(in crate::shared) async fn forget(
-        &self,
-        identity: &Identity,
-        input: Forget,
-    ) -> Result<Forgotten, AppError> {
-        let _node = self.lock(identity).await?;
-        self.gold.gold_configuration(identity).await?;
-        let previous: Option<Head> = self.head(identity).await?;
-        let gold = self.compatible_gold(identity).await?;
-        let was_current = gold.as_ref().is_some_and(|g| {
-            g.current(
-                &self.gold,
-                identity,
-                previous.as_ref().and_then(|h| h.silver_revision.as_ref()),
-            )
-        });
-        let silver = self.silver.clone();
-        let scope = identity.clone();
-        let (forgotten, head, deleted) = crate::blocking(move || {
-            silver.write(&scope, |tx| {
-                silver_store::apply::forget(tx, &scope, &input.instance, input.revision, &input.ids)
-            })
-        })
-        .await?;
-        if let Some(mut gold) = gold {
-            for id in &deleted {
-                self.gold.retain_documents(identity, id, Vec::new()).await?;
-                gold.threads.remove(id);
-            }
-            gold.silver = if was_current {
-                head.silver_revision
-            } else {
-                None
-            };
-            self.gold.put_node_gold(identity, &gold).await?;
-        }
-        Ok(Forgotten { forgotten })
     }
 }

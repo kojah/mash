@@ -28,36 +28,6 @@ impl Storage {
         Ok(result)
     }
 
-    pub(crate) fn link_attachments(
-        &self,
-        conversation: &mut crate::silver::Conversation,
-    ) -> Result<(), AppError> {
-        let mut has_attachments = false;
-        for message in conversation.messages.rows()? {
-            if !message?.attachments.is_empty() {
-                has_attachments = true;
-                break;
-            }
-        }
-        if !has_attachments {
-            return Ok(());
-        }
-        let mut builder = crate::silver::messages::Builder::default();
-        for message in conversation.messages.rows()? {
-            let mut message = message?.into_owned();
-            if !message.attachments.is_empty() {
-                message.attachments = self
-                    .list_attachments(&message.id)?
-                    .attachments
-                    .into_iter()
-                    .map(|metadata| crate::attachments::Source::Retained { metadata })
-                    .collect();
-            }
-            builder.push(message)?;
-        }
-        conversation.messages = builder.finish()?;
-        Ok(())
-    }
     pub(crate) fn configure_attachments(
         &mut self,
         config: attachments::Configuration,

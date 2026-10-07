@@ -88,10 +88,6 @@ pub(crate) enum Record {
     AttachmentPolicy {
         fingerprint: String,
     },
-    SharedForget {
-        scope: String,
-        conversation_id: String,
-    },
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

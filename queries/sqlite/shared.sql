@@ -32,9 +32,6 @@ SELECT provider FROM conversations WHERE id = sqlc.arg(id);
 -- name: Fingerprints :many
 SELECT id, thread_fingerprint FROM conversations ORDER BY id;
 
--- name: Providers :many
-SELECT DISTINCT provider FROM conversations;
-
 -- name: InsertConversation :exec
 INSERT INTO conversations(
     id, provider, source_path, title, created_at, updated_at, project, repository
@@ -115,49 +112,6 @@ WHERE m.conversation_id = sqlc.arg(conversation_id) AND m.context_parent >= 0
   AND NOT EXISTS(SELECT 1 FROM messages p
       WHERE p.conversation_id = m.conversation_id AND p.ordinal = m.context_parent)
 LIMIT 1;
-
--- name: NodeSources :many
-SELECT provider, source_key, size_bytes, modified_ns, fingerprint, interpretation_version,
-    conversation_id, ready
-FROM source_checkpoints ORDER BY provider, source_key;
-
--- name: ProviderSources :many
-SELECT provider, source_key, size_bytes, modified_ns, fingerprint, interpretation_version,
-    conversation_id, ready
-FROM source_checkpoints WHERE provider = sqlc.arg(provider);
-
--- name: UpsertSource :exec
-INSERT INTO source_checkpoints(
-    provider, source_key, source_path, size_bytes, modified_ns, fingerprint,
-    interpretation_version, conversation_id, ready
-) VALUES (
-    sqlc.arg(provider), sqlc.arg(source_key), '', sqlc.arg(size_bytes), sqlc.arg(modified_ns),
-    sqlc.arg(fingerprint), sqlc.arg(interpretation_version), sqlc.narg(conversation_id),
-    sqlc.arg(ready)
-)
-ON CONFLICT(provider, source_key) DO UPDATE SET
-    size_bytes = excluded.size_bytes, modified_ns = excluded.modified_ns,
-    fingerprint = excluded.fingerprint, interpretation_version = excluded.interpretation_version,
-    conversation_id = excluded.conversation_id, ready = excluded.ready;
-
--- name: DeleteSource :exec
-DELETE FROM source_checkpoints
-WHERE provider = sqlc.arg(provider) AND source_key = sqlc.arg(source_key);
-
--- name: DeleteNodeSources :exec
-DELETE FROM source_checkpoints;
-
--- name: SourceReference :one
-SELECT source_key FROM source_checkpoints WHERE conversation_id = sqlc.arg(conversation_id)
-LIMIT 1;
-
--- name: CoverageGaps :one
-SELECT
-    CAST(EXISTS(SELECT 1 FROM source_checkpoints s WHERE s.provider = sqlc.arg(provider)
-        AND s.interpretation_version <> sqlc.arg(interpretation_version)) AS INTEGER) AS stale,
-    CAST(EXISTS(SELECT 1 FROM conversations c WHERE c.provider = sqlc.arg(provider)
-        AND NOT EXISTS(SELECT 1 FROM source_checkpoints r
-            WHERE r.provider = c.provider AND r.conversation_id = c.id)) AS INTEGER) AS unmapped;
 
 -- name: NodeTombstones :many
 SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id;

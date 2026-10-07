@@ -35,7 +35,7 @@ async fn large_state_wire_memory_control() {
         }
         "adaptive" => read(
             response,
-            Endpoint::State,
+            Endpoint::Silver,
             CAPACITY.bulk.acquire().await.unwrap(),
         )
         .await
@@ -43,7 +43,7 @@ async fn large_state_wire_memory_control() {
         _ => panic!("unknown control mode"),
     };
     let elapsed = started.elapsed();
-    assert_eq!(state.sources.len(), expected);
+    assert_eq!(state.tombstones.len(), expected);
     let mut digest = Digest(blake3::Hasher::new());
     serde_json::to_writer(&mut digest, &state).unwrap();
     println!(

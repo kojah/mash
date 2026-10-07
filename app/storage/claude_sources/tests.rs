@@ -153,7 +153,11 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
     assert_eq!(storage.counts().unwrap().messages, 2);
     assert_eq!(storage.view("z-late", 0).unwrap()[0].content, "z-late text");
     assert!(storage.view("branch", 0).unwrap().is_empty());
-    assert_eq!(claude_references(&storage.connection).unwrap().len(), 1);
+    let sources: i64 = storage
+        .connection
+        .query_row("SELECT count(*) FROM claude_sources", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(sources, 1);
     // The savepoint unwinds only this replacement; repairing the bad persisted
     // contribution permits a clean retry within the same writer transaction.
     storage
@@ -166,7 +170,11 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
     storage.replace_conversation(&source).unwrap();
     storage.commit_writer().unwrap();
     assert_eq!(storage.counts().unwrap().messages, 3);
-    assert_eq!(claude_references(&storage.connection).unwrap().len(), 2);
+    let sources: i64 = storage
+        .connection
+        .query_row("SELECT count(*) FROM claude_sources", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(sources, 2);
 }
 
 mod memory;

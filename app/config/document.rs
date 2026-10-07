@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use super::{DEFAULT_SINCE_DAYS, IndexDestination, IndexFilter, MAX_SINCE_DAYS, SharedConfig};
+use super::{DEFAULT_SINCE_DAYS, IndexDestination, MAX_SINCE_DAYS, SharedConfig};
 use crate::AppError;
 use crate::provider::{Provider, ProviderRoots};
 
@@ -17,8 +17,6 @@ pub(super) struct ParsedDocument {
     pub(super) embeddings: Option<crate::semantic::remote::Configuration>,
     pub(super) gold: crate::gold::config::Configuration,
     pub(super) destination: IndexDestination,
-    pub(super) local_filter: Option<IndexFilter>,
-    pub(super) shared_filter: Option<IndexFilter>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,8 +49,6 @@ struct RawIndex {
     #[serde(default)]
     all_history: bool,
     destination: Option<IndexDestination>,
-    local: Option<IndexFilter>,
-    shared: Option<IndexFilter>,
 }
 
 pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
@@ -121,22 +117,6 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
             "both indexing destinations require shared configuration",
         ));
     }
-    for filter in [&raw.index.local, &raw.index.shared].into_iter().flatten() {
-        let mut unique = HashSet::new();
-        for provider in &filter.providers {
-            if !unique.insert(provider) {
-                return Err(AppError::configuration(
-                    "index provider filters must contain unique supported provider names",
-                ));
-            }
-            if !raw.providers.contains_key(provider) {
-                return Err(AppError::configuration(
-                    "index provider filter selects a disabled provider",
-                ));
-            }
-        }
-    }
-    validate_local_coverage(&raw, destination)?;
     Ok(ParsedDocument {
         attachments: raw.attachments,
         providers: raw
@@ -149,8 +129,6 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
         embeddings: raw.embeddings,
         gold: raw.gold,
         destination,
-        local_filter: raw.index.local,
-        shared_filter: raw.index.shared,
     })
 }
 
@@ -193,27 +171,4 @@ fn validate_roots(
         }
     }
     Ok(provider.roots)
-}
-
-fn validate_local_coverage(
-    raw: &RawDocument,
-    destination: IndexDestination,
-) -> Result<(), AppError> {
-    if destination == IndexDestination::Both
-        && let Some(local) = &raw.index.local
-    {
-        for &provider in raw.providers.keys() {
-            let forwarded = raw
-                .index
-                .shared
-                .as_ref()
-                .is_none_or(|shared| shared.providers.contains(&provider));
-            if forwarded && !local.providers.contains(&provider) {
-                return Err(AppError::configuration(
-                    "the local provider allowlist must include every provider forwarded to the shared index",
-                ));
-            }
-        }
-    }
-    Ok(())
 }

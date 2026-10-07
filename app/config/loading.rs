@@ -59,8 +59,6 @@ pub(super) fn load_from_paths(
                 providers,
                 since_days: Some(DEFAULT_SINCE_DAYS),
                 destination: IndexDestination::Local,
-                local_filter: None,
-                shared_filter: None,
             });
         }
         Err(error) => return Err(path_error("inspect", &path, &error)),
@@ -106,8 +104,6 @@ pub(super) fn load_from_paths(
         embeddings: parsed.embeddings,
         gold: parsed.gold,
         destination: parsed.destination,
-        local_filter: parsed.local_filter,
-        shared_filter: parsed.shared_filter,
     })
 }
 

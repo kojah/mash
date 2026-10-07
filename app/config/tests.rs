@@ -155,8 +155,10 @@ token_env = 'VOYAGE_API_KEY'
     assert_configuration_error(&parse_document(b"\xff").unwrap_err());
 }
 
+/// Both mode publishes exactly the local index; per-destination provider
+/// filters were retired and are rejected like any unknown setting.
 #[test]
-fn destinations_and_independent_provider_filters_are_validated() {
+fn destinations_are_validated_and_retired_provider_filters_are_rejected() {
     let shared = toml::toml! {
         group_id = "test"
         node_id = "node"
@@ -169,29 +171,12 @@ fn destinations_and_independent_provider_filters_are_validated() {
     ] {
         let document = toml::toml! {
             version = 1
-            providers = {
-            claude-code = {roots = ["/claude"]},codex = {roots = ["/codex"]}
-            }
+            providers = {codex = {roots = ["/codex"]}}
             shared = (shared.clone())
-            index = {destination = (mode),local = {providers = ["claude-code", "codex"]},shared = {providers = ["codex"]}}
+            index = {destination = (mode)}
         };
         let parsed = parse_document(&toml::to_string(&document).unwrap().into_bytes()).unwrap();
         assert_eq!(parsed.destination, expected);
-        let options = crate::silver::IndexOptions {
-            providers: parsed.providers,
-            since_days: None,
-            roots_are_authoritative: true,
-        };
-        let mut local = options.clone();
-        IndexFilter::apply(parsed.local_filter.as_ref(), &mut local);
-        assert!(local.providers.contains_key(&Provider::ClaudeCode));
-        assert!(local.providers.contains_key(&Provider::Codex));
-        let mut remote = options;
-        IndexFilter::apply(parsed.shared_filter.as_ref(), &mut remote);
-        assert!(!remote.providers.contains_key(&Provider::ClaudeCode));
-        assert!(remote.providers.contains_key(&Provider::Codex));
-        IndexFilter::apply(Some(&IndexFilter { providers: vec![] }), &mut remote);
-        assert!(remote.providers.is_empty());
     }
     for index in [
         toml::toml! {

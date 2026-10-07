@@ -700,32 +700,6 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     );
 }
 
-#[test]
-fn routed_forget_acknowledgements_preserve_newer_intents_and_pending_indexing() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("local.sqlite3");
-    let storage = seed(&path);
-    storage.queue_shared_forget("group-node", "first").unwrap();
-    let first = storage.routed_owner("group-node").unwrap();
-    storage.queue_shared_forget("group-node", "second").unwrap();
-    storage.acknowledge_routed("routed", &first, true).unwrap();
-    let pending = storage.routed_owner("group-node").unwrap();
-    assert_eq!(pending.forgets, ["first", "second"]);
-    storage
-        .acknowledge_routed("routed", &pending, false)
-        .unwrap();
-    assert!(
-        Storage::publication_is_pending(&path, "routed").unwrap(),
-        "deletion does not acknowledge other unpublished index changes"
-    );
-    let indexed = storage.routed_owner("group-node").unwrap();
-    assert_eq!(indexed.forgets, Vec::<String>::new());
-    storage
-        .acknowledge_routed("routed", &indexed, true)
-        .unwrap();
-    assert!(!Storage::publication_is_pending(&path, "routed").unwrap());
-}
-
 #[tokio::test]
 async fn publication_state_survives_failed_delivery_and_forget() {
     let dir = tempfile::tempdir().expect("temp");

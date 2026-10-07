@@ -7,15 +7,6 @@ fn write_source(fixture: &Fixture, title: &str) {
 }
 
 fn enable_claude(fixture: &Fixture, title: &str) {
-    let mut config: toml::Value =
-        toml::from_str(&std::fs::read_to_string(&fixture.config).unwrap()).unwrap();
-    config["index"]["shared"]["providers"] = toml::Value::Array(
-        ["codex", "claude-code"]
-            .into_iter()
-            .map(|value| toml::Value::String(value.into()))
-            .collect(),
-    );
-    std::fs::write(&fixture.config, toml::to_string(&config).unwrap()).unwrap();
     std::fs::write(fixture.directory.path().join("claude/session.jsonl"), format!(
         "{{\"type\":\"user\",\"sessionId\":\"claude-session\",\"uuid\":\"claude-user\",\"message\":{{\"role\":\"user\",\"content\":{title:?}}}}}\n"
     )).unwrap();
@@ -154,7 +145,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
 
 #[test]
 #[ignore = "requires disposable Qdrant and real models"]
-fn qdrant_routed_ingestion_preserves_active_recipe_across_edits_noops_and_deletions() {
+fn qdrant_group_recipe_is_preserved_across_edits_noops_and_deletions() {
     let mut fixture = Fixture::new();
     fixture.models = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();
     drop(fixture.server.take());
