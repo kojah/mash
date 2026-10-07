@@ -112,6 +112,8 @@ struct NodeFreshness {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_silver: Option<crate::silver::certificate::Certificate>,
     node_id: String,
+    /// The local database that owns this node's publications.
+    instance: String,
     revision: i64,
     last_synced_at: Option<String>,
     last_updated_at: Option<String>,

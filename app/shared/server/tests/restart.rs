@@ -211,28 +211,26 @@ async fn verify_gold(api: &Api) {
     assert!(exact.semantic.is_empty() && exact.documents.is_empty());
 }
 
+/// A published node's conversation and message counts; its gold must be current.
+async fn node_counts(api: &Api, token: &str, node: &str) -> Option<(i64, i64)> {
+    let freshness: crate::shared::Freshness = api.get("freshness", token).await;
+    let node = freshness
+        .nodes
+        .into_iter()
+        .find(|entry| entry.node_id == node)?;
+    assert!(node.gold_current && node.lexical_current);
+    Some((node.conversations, node.messages))
+}
+
 async fn verify(api: &Api, revision: i64) -> String {
     let first: crate::shared::Freshness = api.get("freshness", FIRST).await;
     assert_eq!(
         first.nodes[0].source_silver,
         Some(source_certificate(revision))
     );
-    for (token, expected) in [
-        (FIRST, (2, 3, 2, 2)),
-        (SECOND, (1, 1, 1, 1)),
-        (OTHER, (0, 0, 0, 0)),
-    ] {
-        let counts: crate::storage::Counts = api.get("status", token).await;
-        assert_eq!(
-            (
-                counts.conversations,
-                counts.messages,
-                counts.searchable_messages,
-                counts.embeddings
-            ),
-            expected
-        );
-    }
+    assert_eq!(node_counts(api, FIRST, "first").await, Some((2, 3)));
+    assert_eq!(node_counts(api, SECOND, "second").await, Some((1, 1)));
+    assert_eq!(node_counts(api, OTHER, "first").await, None);
     let input = protocol::View {
         node_id: "first".into(),
         id: "anchor".into(),
@@ -441,20 +439,8 @@ async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
         assert_eq!(replayed.silver_revision, published.silver_revision);
         assert_eq!(replayed.source_silver, published.source_silver);
     }
-    for (token, (conversations, messages, searchable, embeddings)) in
-        [(FIRST, (2, 3, 2, 2)), (SECOND, (1, 1, 1, 1))]
-    {
-        let counts: crate::storage::Counts = api.get("status", token).await;
-        assert_eq!(
-            (
-                counts.conversations,
-                counts.messages,
-                counts.searchable_messages,
-                counts.embeddings
-            ),
-            (conversations, messages, searchable, embeddings)
-        );
-    }
+    assert_eq!(node_counts(&api, FIRST, "first").await, Some((2, 3)));
+    assert_eq!(node_counts(&api, SECOND, "second").await, Some((1, 1)));
     let freshness: crate::shared::Freshness = api.get("freshness", FIRST).await;
     assert_eq!(freshness.nodes.len(), 2);
     assert!(

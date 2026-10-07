@@ -9,7 +9,6 @@ use crate::shared::{Freshness, NodeFreshness, protocol};
 use crate::storage::Counts;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::OwnedSemaphorePermit;
 
 mod replay;
 mod sync;
@@ -152,13 +151,6 @@ impl Store {
         self.read(identity, silver_store::head).await
     }
 
-    pub(in crate::shared) async fn capabilities(
-        &self,
-        identity: &Identity,
-    ) -> Result<crate::gold::config::Build, AppError> {
-        Ok(self.gold.gold_configuration(identity).await?.build)
-    }
-
     pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
         let mut counts = self.read(identity, silver_store::counts).await?;
         counts.embeddings = self
@@ -266,6 +258,7 @@ impl Store {
                 silver_revision: head.silver_revision.clone(),
                 source_silver: head.source_silver.clone(),
                 node_id,
+                instance: head.instance.clone(),
                 revision: head.revision,
                 last_synced_at: head.last_synced_at.clone(),
                 last_updated_at: head.last_updated_at.clone(),
@@ -279,23 +272,6 @@ impl Store {
             group_gold: Some(Box::new(group_gold)),
             nodes,
         })
-    }
-
-    pub(in crate::shared) async fn publication_plan(
-        &self,
-        identity: &Identity,
-        permit: OwnedSemaphorePermit,
-    ) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
-        let head = self.head(identity).await?;
-        let target = crate::shared::reuse::Target::new(
-            self.gold.build().clone(),
-            identity.generation.clone(),
-            identity.dimensions,
-            head.as_ref()
-                .map_or_else(String::new, |h| h.version.clone()),
-            head.map(|h| (h.instance, h.revision)),
-        );
-        crate::blocking(move || spool(&target, permit)).await
     }
 
     /// Searchable nodes. Lexical documents survive recipe and model changes;
@@ -421,17 +397,4 @@ impl Store {
         })
         .await
     }
-}
-
-fn spool(
-    target: &crate::shared::reuse::Target,
-    permit: OwnedSemaphorePermit,
-) -> Result<(tempfile::NamedTempFile, OwnedSemaphorePermit), AppError> {
-    let mut file = tempfile::NamedTempFile::new().map_err(AppError::io)?;
-    let mut output = std::io::BufWriter::with_capacity(64 * 1024, file.as_file_mut());
-    serde_json::to_writer(&mut output, target)
-        .map_err(|_| AppError::internal("serialize shared publication plan"))?;
-    std::io::Write::flush(&mut output).map_err(AppError::io)?;
-    drop(output);
-    Ok((file, permit))
 }

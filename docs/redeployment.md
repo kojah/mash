@@ -48,7 +48,7 @@ database on every binary update.
 The API admits a bounded number of mutations. Upload node snapshots in sequence
 during a planned fleet refresh. A newly visible publication head does not prove
 the previous writer has released its slot: reclamation can continue afterward.
-The publication-plan GET retries HTTP 503 with exponential backoff capped at
+The freshness GET that plans each publication retries HTTP 503 with exponential backoff capped at
 five seconds, within the existing 30-minute bulk request deadline. Waiting emits
 `shared-waiting` progress through the CLI and MCP sink. Authorization errors,
 conflicts and mutation POSTs are not automatically replayed.

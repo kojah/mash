@@ -120,10 +120,10 @@ async fn complete_large_state_matches_typed_records_across_header_and_chunked_mo
         );
     let service = serve(router).await;
     for (path, endpoint, gzip) in [
-        ("fixed", Endpoint::PublicationPlan, false),
+        ("fixed", Endpoint::Freshness, false),
         ("fixed", Endpoint::Freshness, false),
         ("chunked", Endpoint::Freshness, false),
-        ("fixed", Endpoint::PublicationPlan, true),
+        ("fixed", Endpoint::Freshness, true),
         ("fixed", Endpoint::Freshness, true),
         ("chunked", Endpoint::Freshness, true),
         ("fixed", Endpoint::Search, false),
@@ -187,12 +187,14 @@ async fn state_decode_starts_before_eof_and_cancellation_wakes_blocked_io() {
         get(move || {
             let receiver = receiver.lock().unwrap().take().unwrap();
             async move {
-                let frames =
-                    stream::once(async { Ok::<_, Infallible>(Bytes::from_static(b"true ")) })
-                        .chain(stream::once(async move {
-                            let _ = receiver.await;
-                            Ok(Bytes::from_static(b" "))
-                        }));
+                // Larger than the preview, so decoding streams before EOF.
+                let head = format!("true{}", " ".repeat(PREVIEW_BYTES));
+                let frames = stream::once(async { Ok::<_, Infallible>(Bytes::from(head)) }).chain(
+                    stream::once(async move {
+                        let _ = receiver.await;
+                        Ok(Bytes::from_static(b" "))
+                    }),
+                );
                 Response::new(Body::from_stream(frames))
             }
         }),
@@ -200,7 +202,7 @@ async fn state_decode_starts_before_eof_and_cancellation_wakes_blocked_io() {
     .await;
     let request = reqwest::Client::new().get(format!("{}/", service.url));
     let pending = tokio::spawn(async move {
-        response_admitted::<Prefix>(request, Endpoint::PublicationPlan, &CAPACITY).await
+        response_admitted::<Prefix>(request, Endpoint::Index, &CAPACITY).await
     });
     tokio::time::timeout(std::time::Duration::from_secs(1), started)
         .await
@@ -253,7 +255,7 @@ async fn malformed_trailing_and_truncated_state_never_return_partial_data() {
     for path in ["truncated", "trailing", "schema"] {
         let error = response_admitted::<NodeState>(
             reqwest::Client::new().get(format!("{}/{path}", service.url)),
-            Endpoint::PublicationPlan,
+            Endpoint::Freshness,
             &CAPACITY,
         )
         .await
@@ -281,7 +283,7 @@ async fn transport_failure_after_valid_json_is_not_accepted_as_complete_state() 
     .await;
     let error = response_admitted::<NodeState>(
         reqwest::Client::new().get(format!("{}/", service.url)),
-        Endpoint::PublicationPlan,
+        Endpoint::Freshness,
         &CAPACITY,
     )
     .await

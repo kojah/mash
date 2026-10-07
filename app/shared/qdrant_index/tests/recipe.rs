@@ -412,7 +412,13 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
             assert_eq!(indexed.counts.searchable_user_messages, Some(1));
         }
         assert_eq!(
-            server.capabilities(&fixture.identity).await.unwrap(),
+            server
+                .freshness(&fixture.identity)
+                .await
+                .unwrap()
+                .group_gold
+                .unwrap()
+                .build,
             recipe
         );
         let freshness = server.freshness(&fixture.identity).await.unwrap();

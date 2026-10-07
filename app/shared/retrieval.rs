@@ -34,8 +34,12 @@ pub(crate) struct SearchOutcome {
 }
 
 pub(crate) async fn require_dense(config: &SharedConfig) -> Result<(), AppError> {
-    let build: crate::gold::config::Build = get(config, Endpoint::Capabilities).await?;
-    build.require_intent(crate::gold::exact::Intent::RelatedDiscussion)
+    let freshness: super::Freshness = get(config, Endpoint::Freshness).await?;
+    freshness
+        .group_gold
+        .ok_or_else(|| AppError::shared("shared group gold settings are unavailable"))?
+        .build
+        .require_intent(crate::gold::exact::Intent::RelatedDiscussion)
 }
 
 #[tracing::instrument(name = "combined_search", skip_all)]

@@ -1,51 +1,41 @@
 //! Publication plans and the silver dependency fingerprint of each thread.
 use super::protocol::{ConversationRecord, MessageRecord};
 use crate::{AppError, gold::config::Build, message_context::MessageContext, role::Role};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::io::Write;
 
-const SCHEMA_VERSION: u32 = 1;
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+/// What a node publishes against: the group's gold settings and the node's
+/// accepted head, both read from the group's freshness.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Target {
-    pub(super) schema_version: u32,
     pub(super) build: Build,
     pub(super) generation: String,
     pub(super) dimensions: usize,
-    pub(super) publication_version: String,
     pub(super) instance: Option<String>,
     pub(super) publication_revision: i64,
 }
 
 impl Target {
-    pub(super) fn validate(&self) -> Result<(), AppError> {
-        if self.schema_version != SCHEMA_VERSION
-            || self.publication_revision < 0
-            || self.dimensions == 0
-            || self.dimensions > 2048
-        {
-            return Err(AppError::shared("invalid shared publication plan"));
-        }
-        Ok(())
-    }
-
-    pub(super) fn new(
-        build: Build,
-        generation: String,
-        dimensions: usize,
-        version: String,
-        head: Option<(String, i64)>,
-    ) -> Self {
-        Self {
-            schema_version: SCHEMA_VERSION,
-            build,
-            generation,
-            dimensions,
-            publication_version: version,
-            instance: head.as_ref().map(|(instance, _)| instance.clone()),
-            publication_revision: head.map_or(0, |(_, revision)| revision),
-        }
+    pub(super) fn from_freshness(
+        freshness: &super::Freshness,
+        config: &crate::config::SharedConfig,
+    ) -> Result<Self, AppError> {
+        let group = freshness
+            .group_gold
+            .as_ref()
+            .filter(|_| freshness.group_id == config.group_id)
+            .ok_or_else(|| AppError::shared("shared group gold settings are unavailable"))?;
+        let node = freshness
+            .nodes
+            .iter()
+            .find(|node| node.node_id == config.node_id);
+        Ok(Self {
+            build: group.build.clone(),
+            generation: group.generation.clone(),
+            dimensions: group.dimensions,
+            instance: node.map(|node| node.instance.clone()),
+            publication_revision: node.map_or(0, |node| node.revision),
+        })
     }
 }
 

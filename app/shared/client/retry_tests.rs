@@ -44,7 +44,7 @@ async fn busy_publication_negotiation_retries_and_streams_waiting_progress() {
     let (sink, mut progress) = tokio::sync::mpsc::channel(4);
     let result: Reply = crate::progress::scope(
         sink,
-        response(reqwest::Client::new().get(url), Endpoint::PublicationPlan),
+        response(reqwest::Client::new().get(url), Endpoint::Freshness),
     )
     .await
     .unwrap();
@@ -87,10 +87,10 @@ async fn mutation_posts_and_authorization_failures_are_never_replayed() {
         (Endpoint::Index, StatusCode::CONFLICT),
         (Endpoint::Search, StatusCode::SERVICE_UNAVAILABLE),
         (Endpoint::Search, StatusCode::UNAUTHORIZED),
-        (Endpoint::PublicationPlan, StatusCode::UNAUTHORIZED),
+        (Endpoint::Freshness, StatusCode::UNAUTHORIZED),
     ] {
         let (url, state, server) = fixture(status, usize::MAX).await;
-        let request = if matches!(endpoint, Endpoint::PublicationPlan) {
+        let request = if matches!(endpoint, Endpoint::Freshness) {
             reqwest::Client::new().get(url)
         } else {
             reqwest::Client::new().post(url)
@@ -111,7 +111,7 @@ async fn cancelling_busy_negotiation_releases_bulk_capacity() {
         sink,
         response_admitted::<Reply>(
             reqwest::Client::new().get(url),
-            Endpoint::PublicationPlan,
+            Endpoint::Freshness,
             &CAPACITY,
         ),
     ));

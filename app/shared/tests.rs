@@ -22,7 +22,7 @@ mod selections;
 #[test]
 fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
     let response = r#"{
-        "node_id":"node", "revision":1, "last_synced_at":null,
+        "node_id":"node", "instance":"node-instance", "revision":1, "last_synced_at":null,
         "last_updated_at":null, "conversations":0, "messages":0
     }"#;
     let node: NodeFreshness = serde_json::from_str(response).unwrap();
@@ -32,7 +32,7 @@ fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
     assert!(!encoded.contains("\"artifacts\""));
     assert!(!encoded.contains("\"source_silver\""));
     let reported = r#"{
-        "node_id":"node", "revision":1, "last_synced_at":null,
+        "node_id":"node", "instance":"node-instance", "revision":1, "last_synced_at":null,
         "last_updated_at":null, "conversations":0, "messages":0,
         "artifacts":{"metadata":"ready","lexical":"stale","dense":"disabled"}
     }"#;
@@ -56,7 +56,7 @@ fn node_freshness_preserves_unknown_artifact_states_from_older_responses() {
 #[test]
 fn freshness_source_certificate_is_typed_and_distinct_from_shared_identity() {
     let response = r#"{
-        "node_id":"node", "revision":100, "last_synced_at":null,
+        "node_id":"node", "instance":"node-instance", "revision":100, "last_synced_at":null,
         "last_updated_at":null, "conversations":0, "messages":0,
         "source_silver":{"revision":7,"interpretation_version":1,
             "completeness":"incomplete","rejected_sources":2}
@@ -201,16 +201,17 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
     use axum::{Json, Router};
     use tokio::sync::mpsc;
 
-    async fn plan() -> Json<super::reuse::Target> {
-        Json(super::reuse::Target {
-            schema_version: 1,
-            build: crate::gold::config::Build::default(),
-            generation: semantic::SHARED_EMBEDDING_GENERATION.into(),
-            dimensions: 2,
-            publication_version: String::new(),
-            instance: None,
-            publication_revision: 0,
-        })
+    async fn freshness() -> Json<serde_json::Value> {
+        Json(serde_json::json!({
+            "group_id": "test",
+            "group_gold": {
+                "version": "group",
+                "build": crate::gold::config::Build::default(),
+                "generation": semantic::SHARED_EMBEDDING_GENERATION,
+                "dimensions": 2,
+            },
+            "nodes": [],
+        }))
     }
 
     async fn capture(
@@ -238,7 +239,7 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
         axum::serve(
             listener,
             Router::new()
-                .route("/v1/publication-plan", axum::routing::get(plan))
+                .route("/v1/freshness", axum::routing::get(freshness))
                 .fallback(capture)
                 .with_state(sender),
         )

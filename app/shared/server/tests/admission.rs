@@ -18,7 +18,7 @@ async fn busy_mutations_are_rejected_without_blocking_read_routes() {
         StatusCode::UNAUTHORIZED
     );
     let response = reqwest::Client::new()
-        .get(format!("{}/v1/status", service.url))
+        .get(format!("{}/v1/freshness", service.url))
         .bearer_auth(FIRST)
         .send()
         .await

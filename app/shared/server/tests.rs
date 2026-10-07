@@ -166,7 +166,7 @@ async fn remote_space_contract(service: Service) {
         "{}",
         upload.text().await.unwrap()
     );
-    assert_eq!(service.get("status", FIRST).await["embeddings"], 2);
+    assert_eq!(service.counts(FIRST).await.embeddings, 2);
     let mut vector = vec![0.0; 1024];
     vector[0] = 127.0;
     let mut query = json!({"query":"hello", "vector":vector, "generation":generation});
@@ -213,6 +213,7 @@ struct Service {
     uploads: Arc<tokio::sync::Semaphore>,
     store: Store,
     first: Identity,
+    identities: Arc<HashMap<blake3::Hash, Identity>>,
 }
 
 async fn exclude_own_contract(service: Service) {
@@ -485,7 +486,7 @@ impl Service {
         let app = App {
             attachments_dir: Some(attachments.path().to_path_buf()),
             store: store.clone(),
-            identities,
+            identities: identities.clone(),
             uploads: uploads.clone(),
         };
         let task = tokio::spawn(async move {
@@ -500,7 +501,13 @@ impl Service {
             uploads,
             store,
             first,
+            identities,
         }
+    }
+    /// One node's silver and gold counts, read from the store directly.
+    async fn counts(&self, token: &str) -> crate::storage::Counts {
+        let identity = &self.identities[&blake3::hash(token.as_bytes())];
+        self.store.status(identity).await.unwrap()
     }
     /// The first node's publication state, read from the store directly.
     async fn state(&self) -> protocol::NodeState {
@@ -746,7 +753,7 @@ async fn http_storage_contract(service: Service) {
         StatusCode::BAD_REQUEST
     );
     assert_eq!(service.get("freshness", FIRST).await, fresh_before);
-    assert_eq!(service.get("status", FIRST).await["messages"], 3);
+    assert_eq!(service.counts(FIRST).await.messages, 3);
     let mut changed_instance = snapshot(2);
     changed_instance[0]["instance"] = json!("other-local-db");
     assert_eq!(
@@ -783,14 +790,14 @@ async fn http_storage_contract(service: Service) {
         )
         .await;
     assert_eq!(deleted.status(), StatusCode::OK);
-    assert_eq!(service.get("status", FIRST).await["messages"], 0);
-    assert_eq!(service.get("status", SECOND).await["messages"], 3);
+    assert_eq!(service.counts(FIRST).await.messages, 0);
+    assert_eq!(service.counts(SECOND).await.messages, 3);
     assert_eq!(
         service.upload(FIRST, &snapshot(4)).await.status(),
         StatusCode::OK
     );
     assert_eq!(
-        service.get("status", FIRST).await["messages"],
+        service.counts(FIRST).await.messages,
         0,
         "tombstones survive replay"
     );

@@ -34,9 +34,7 @@ pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppErr
 
 #[derive(Clone, Copy)]
 pub(super) enum Endpoint {
-    Capabilities,
     Freshness,
-    PublicationPlan,
     Search,
     Threads,
     View,
@@ -49,10 +47,7 @@ pub(super) enum Endpoint {
 
 impl Endpoint {
     const fn bulk(self) -> bool {
-        matches!(
-            self,
-            Self::PublicationPlan | Self::Index | Self::AttachmentUpload
-        )
+        matches!(self, Self::Index | Self::AttachmentUpload)
     }
 
     fn capacity(self, admission: &'static Admission) -> &'static Semaphore {
@@ -64,9 +59,7 @@ impl Endpoint {
     }
     const fn route(self) -> &'static str {
         match self {
-            Self::Capabilities => "capabilities",
             Self::Freshness => "freshness",
-            Self::PublicationPlan => "publication-plan",
             Self::Search => "search",
             Self::Threads => "threads",
             Self::View => "view",
@@ -214,7 +207,7 @@ async fn response_inner<T: serde::de::DeserializeOwned + Send + 'static>(
     // can outlive a newly visible head while the previous writer cleans up.
     // Only negotiation and the explicitly read-only search POST may be replayed.
     // A search can overlap head publication and fail its final revision check.
-    let retry = matches!(endpoint, Endpoint::PublicationPlan)
+    let retry = matches!(endpoint, Endpoint::Freshness)
         && request
             .try_clone()
             .and_then(|copy| copy.build().ok())

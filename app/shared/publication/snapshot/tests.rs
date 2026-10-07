@@ -20,11 +20,9 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         "UPDATE conversations SET title='changed' WHERE id='a'; DELETE FROM conversations WHERE id='b';",
     );
     let target = Target {
-        schema_version: 1,
         build: crate::gold::config::Build::default(),
         generation: "unused".into(),
         dimensions: 384,
-        publication_version: "pinned".into(),
         instance: Some(instance),
         publication_revision: base,
     };
@@ -68,11 +66,9 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
         )
         .unwrap();
     let target = Target {
-        schema_version: 1,
         build: crate::gold::config::Build::default(),
         generation: "unused".into(),
         dimensions: 384,
-        publication_version: "pinned".into(),
         instance: None,
         publication_revision: 0,
     };
@@ -133,14 +129,12 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
         .silver_certificate()
         .unwrap();
     let target = Target {
-        schema_version: 1,
         build: crate::gold::config::Build {
             retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
             ..Default::default()
         },
         generation: "unused-model".into(),
         dimensions: 4,
-        publication_version: "pinned".into(),
         instance: None,
         publication_revision: 0,
     };

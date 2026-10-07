@@ -250,19 +250,6 @@ async fn embed_batch(
     Ok(())
 }
 
-fn capture_metadata(target: &Target) -> Target {
-    // Serialize only the lightweight target across the blocking capture boundary.
-    Target {
-        schema_version: target.schema_version,
-        build: target.build.clone(),
-        generation: target.generation.clone(),
-        dimensions: target.dimensions,
-        publication_version: target.publication_version.clone(),
-        instance: target.instance.clone(),
-        publication_revision: target.publication_revision,
-    }
-}
-
 pub(super) async fn prepare(
     path: &Path,
     target: &Target,
@@ -271,7 +258,7 @@ pub(super) async fn prepare(
     allow_delta: bool,
 ) -> Result<(tempfile::NamedTempFile, i64, SnapshotWork), AppError> {
     let path = path.to_path_buf();
-    let metadata = capture_metadata(target);
+    let metadata = target.clone();
     let source = crate::blocking(move || capture(&path, &metadata, allow_delta)).await?;
     let input = source.file.reopen().map_err(AppError::io)?;
     let mut reader = crate::blocking(move || Reader::new(input)).await?;

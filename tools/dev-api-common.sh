@@ -39,7 +39,6 @@ verify_api_process() {
 check_api_http() {
     local base=$1 directory=$2 status
     api_get "$base" freshness "$directory/freshness.json" || return 1
-    api_get "$base" capabilities "$directory/capabilities.json" || return 1
     status=$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
         "$base/v1/freshness" --output /dev/null --write-out '%{http_code}')
     [[ "$status" == 401 ]]

@@ -6,6 +6,20 @@ use axum::{
 };
 use serde_json::{Value, json};
 
+/// A group freshness response advertising one gold build and no nodes.
+pub(crate) fn freshness(build: &Value) -> Value {
+    json!({
+        "group_id": "transport",
+        "group_gold": {
+            "version": "group",
+            "build": build,
+            "generation": "test",
+            "dimensions": 4,
+        },
+        "nodes": [],
+    })
+}
+
 pub(crate) struct Service {
     pub(crate) url: String,
     pub(crate) requests: tokio::sync::mpsc::UnboundedReceiver<Value>,
@@ -19,8 +33,13 @@ impl Service {
         let (sender, requests) = tokio::sync::mpsc::unbounded_channel();
         let router = Router::new()
             .route(
-                "/v1/capabilities",
-                get(move || async move { Json(json!({"embedding_text":"dialogue", "representations":if dense { "lexical-and-dense" } else { "lexical-only" }})) }),
+                "/v1/freshness",
+                get(move || async move {
+                    Json(freshness(&json!({
+                        "embedding_text": "dialogue",
+                        "representations": if dense { "lexical-and-dense" } else { "lexical-only" },
+                    })))
+                }),
             )
             .route(
                 "/embeddings",

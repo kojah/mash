@@ -161,10 +161,9 @@ async fn publish_result(
     let db = path.to_path_buf();
     let key = target(config);
     crate::blocking(move || Storage::open_existing(&db)?.prepare_publication_target(&key)).await?;
-    let target: super::reuse::Target =
-        super::client::get(config, Endpoint::PublicationPlan).await?;
-    target.validate()?;
-    if let Some(revision) = already_published(path, config, &target).await? {
+    let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
+    let target = super::reuse::Target::from_freshness(&freshness, config)?;
+    if let Some(revision) = already_published(path, config, &target, &freshness).await? {
         acknowledge(path, config, revision).await?;
         return Ok(SnapshotWork {
             preparation_milliseconds: crate::progress::milliseconds(started),
@@ -172,12 +171,8 @@ async fn publish_result(
         });
     }
     // Changed recipes/models require complete replacement, even with a journal.
-    let allow_delta = if target.publication_revision > 0 {
-        let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
-        published_artifacts_current(&freshness, config, &target)
-    } else {
-        false
-    };
+    let allow_delta =
+        target.publication_revision > 0 && published_artifacts_current(&freshness, config, &target);
     if target.build != crate::gold::config::Build::default() {
         let (file, revision, preparation) =
             snapshot::prepare(path, &target, inference, started, allow_delta).await?;
@@ -265,12 +260,13 @@ async fn acknowledge(path: &Path, config: &SharedConfig, revision: i64) -> Resul
 }
 
 /// Recover a lost acknowledgement without reading or uploading canonical bodies.
-/// Bracket readiness with the immutable publication head: a concurrent rebuild,
-/// forget, or replacement must fall back to the normal conditional publication.
+/// Readiness is read twice around the local check: a concurrent publication,
+/// forget or settings change falls back to a normal publication.
 async fn already_published(
     path: &Path,
     config: &SharedConfig,
     target: &super::reuse::Target,
+    freshness: &super::Freshness,
 ) -> Result<Option<i64>, AppError> {
     let db = path.to_path_buf();
     let instance = target.instance.clone();
@@ -291,14 +287,15 @@ async fn already_published(
     if !same_source {
         return Ok(None);
     }
-    let freshness: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
-    if !published_artifacts_current(&freshness, config, target) {
+    if !published_artifacts_current(freshness, config, target) {
         return Ok(None);
     }
-    let confirmed: super::reuse::Target =
-        super::client::get(config, Endpoint::PublicationPlan).await?;
-    confirmed.validate()?;
-    Ok((confirmed == *target).then_some(revision))
+    let confirmed: super::Freshness = super::client::get(config, Endpoint::Freshness).await?;
+    Ok(
+        (super::reuse::Target::from_freshness(&confirmed, config)? == *target
+            && published_artifacts_current(&confirmed, config, target))
+        .then_some(revision),
+    )
 }
 
 fn published_artifacts_current(

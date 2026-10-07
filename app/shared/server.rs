@@ -121,7 +121,7 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
     }
     request.extensions_mut().insert(identity.clone());
     let timeout = match request.uri().path() {
-        "/v1/index" | "/v1/publication-plan" => super::BULK_TIMEOUT,
+        "/v1/index" => super::BULK_TIMEOUT,
         _ => Duration::from_secs(600),
     };
     tokio::time::timeout(timeout, next.run(request))
@@ -137,9 +137,6 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
 fn router(app: App) -> Router {
     Router::new()
         .route("/v1/freshness", get(freshness))
-        .route("/v1/status", get(status))
-        .route("/v1/capabilities", get(capabilities))
-        .route("/v1/publication-plan", get(publication_plan))
         .route("/v1/search", post(search))
         .route("/v1/threads", post(list_threads))
         .route("/v1/view", post(view))
@@ -196,48 +193,6 @@ fn unpublished_nodes(
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect()
-}
-async fn status(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-) -> Result<Json<crate::storage::Counts>, ApiError> {
-    Ok(Json(app.store.status(&id).await?))
-}
-async fn capabilities(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-) -> Result<Json<crate::gold::config::Build>, ApiError> {
-    Ok(Json(app.store.capabilities(&id).await?))
-}
-
-async fn publication_plan(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-) -> Result<Response, ApiError> {
-    let permit = admission::reserve(&app.uploads)?;
-    let (file, permit) = app.store.publication_plan(&id, permit).await?;
-    stream_snapshot(file, permit)
-}
-
-fn stream_snapshot(
-    file: tempfile::NamedTempFile,
-    permit: tokio::sync::OwnedSemaphorePermit,
-) -> Result<Response, ApiError> {
-    use futures_util::StreamExt;
-    let bytes = file.as_file().metadata().map_err(AppError::io)?.len();
-    let input = tokio::fs::File::from_std(file.reopen().map_err(AppError::io)?);
-    let stream = tokio_util::io::ReaderStream::new(input).map(move |frame| {
-        let _retain = (&file, &permit);
-        frame
-    });
-    Ok((
-        [
-            ("content-type", "application/json".to_owned()),
-            ("content-length", bytes.to_string()),
-        ],
-        axum::body::Body::from_stream(stream),
-    )
-        .into_response())
 }
 async fn search(
     State(app): State<App>,

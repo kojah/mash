@@ -35,7 +35,7 @@ async fn large_state_wire_memory_control() {
         }
         "adaptive" => read(
             response,
-            Endpoint::PublicationPlan,
+            Endpoint::Freshness,
             CAPACITY.bulk.acquire().await.unwrap(),
         )
         .await

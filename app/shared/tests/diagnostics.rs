@@ -15,12 +15,15 @@ async fn shared_lexical_capabilities_reject_hybrid_before_model_admission() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let router = Router::new().route(
-        "/v1/capabilities",
+        "/v1/freshness",
         axum::routing::get(|| async {
-            Json(crate::gold::config::Build {
-                representations: crate::gold::config::Representations::LexicalOnly,
-                ..Default::default()
-            })
+            Json(crate::test_support::vector::freshness(
+                &serde_json::to_value(crate::gold::config::Build {
+                    representations: crate::gold::config::Representations::LexicalOnly,
+                    ..Default::default()
+                })
+                .unwrap(),
+            ))
         }),
     );
     let server = tokio::spawn(async move {
@@ -91,8 +94,12 @@ async fn fixture() -> Fixture {
     });
     let router = Router::new()
         .route(
-            "/v1/capabilities",
-            axum::routing::get(|| async { Json(crate::gold::config::Build::default()) }),
+            "/v1/freshness",
+            axum::routing::get(|| async {
+                Json(crate::test_support::vector::freshness(
+                    &serde_json::to_value(crate::gold::config::Build::default()).unwrap(),
+                ))
+            }),
         )
         .route(
             "/v1/search",

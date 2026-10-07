@@ -824,8 +824,9 @@ Database credentials belong on the HTTP server, supplied through environment var
 Use an HTTPS reverse proxy for remote access or HTTP on a trusted private network.
 The service binds to `127.0.0.1:8787` by default. Node clients disable redirects.
 
-The API exposes `/v1/index` (NDJSON), `/v1/state`, `/v1/status`, `/v1/freshness`,
-`/v1/search`, `/v1/threads`, `/v1/view`, and `/v1/forget`. Requests use bearer
+The API exposes `/v1/index` (NDJSON), `/v1/freshness`, `/v1/search`, `/v1/contexts`,
+`/v1/threads`, `/v1/view` and the attachment routes. Nodes plan publication from
+their `/v1/freshness` entry and forget through delta uploads. Requests use bearer
 credentials. Search carries a query embedding and returns candidates for node-side
 fusion and reranking. The HTTP server needs no model assets. Interrupted or invalid
 uploads leave the visible revision and freshness unchanged. Uploads are bounded

@@ -274,7 +274,7 @@ evidence remain separate work; a fingerprint does not prove either has shipped.
 ### Server-owned shared silver identity
 
 Qdrant publication heads persist an optional typed `silver_revision`, returned
-by `/v1/state` and in each node's `/v1/freshness` entry (also visible through
+in each node's `/v1/freshness` entry (also visible through
 CLI/MCP shared status). It contains `schema_version = 1`, a node-scoped `revision`
 and a BLAKE3 `fingerprint`. This is independent of the upload revision, the local
 source certificate's revision, and the embedding generation.
@@ -619,12 +619,12 @@ back to lexical-and-dense explicitly queues and rebuilds dense data from silver.
 Changing representations is a build change, not a per-query option.
 
 The server accepts the same `[gold.build]` setting independently of the node's
-local recipe. Nodes use the authenticated shared publication plan to prepare
+local recipe. Nodes read the group recipe from `/v1/freshness` to prepare
 the requested representation, uploading no vectors for lexical-only. Source-free
 shared gold replacement clears old vectors while retaining canonical silver;
 hybrid queries against lexical-only shared gold are rejected. Shared-only hybrid
-requests first fetch the small authenticated `/v1/capabilities` build record,
-before model admission. This adds one HTTP round trip for that mode; combined
+requests first fetch the authenticated `/v1/freshness` record for the group
+build, before model admission. This adds one HTTP round trip for that mode; combined
 search retains its existing local/shared retrieval and fallback path. The server
 checks active group authority again when querying, so stale API processes fail
 closed. Per-node freshness treats zero vectors as complete only when the active
@@ -1423,30 +1423,8 @@ replacement. Logs are `group-gold-authority-standard-final-20261003.log`,
 `group-gold-authority-qdrant-final-20261003.log` and
 `group-gold-authority-restart-20261003.log` under the external artifacts directory.
 
-Routed ingestion negotiates the server's typed `gold_build` through `/v1/state`
-and pins it in the upload start. Native and Claude materialization apply that
-recipe to embedding inputs, while retaining canonical content and interpreted
-dialogue unchanged. Changed source conversations are embedded in bounded batches;
-compatible source checkpoints can skip unchanged history. A server configured
-with a different recipe rejects the pinned upload before staging.
-
-`/v1/state` also returns `publication_version`, the immutable node-head identity
-(empty before bootstrap). Routed ingestion copies it to the typed start field
-`expected_version`. The source publication counter alone cannot protect prepared
-work against a gold-only replacement: that operation leaves the counter and
-silver revision unchanged. The server compares the observed identity before
-accepting source data, including duplicate snapshots; a mismatch returns a
-retryable conflict without staging or acknowledging the upload. An explicit
-empty pin only admits a still-absent head. The existing commit-time conditional
-head update protects changes occurring after this preparation check.
-
-The version already exists in the persisted head. For routed ingestion, exposing and pinning it adds
-small JSON fields to the existing state response and upload, with no extra
-request, inference or canonical-content copy. With the current 64-character head
-identity, compact JSON adds 89 bytes to node state and 86 bytes to the start
-record. Full-snapshot publication uses the same guard through the plan endpoint
-below. This node-version pin is separate from the durable group authority
-described above.
+Routed ingestion, its `/v1/state` negotiation and the `expected_version` pin
+were removed; full snapshots and deltas carry the source build in `Start`.
 
 The server certifies a source upload when its retained vectors already have a
 matching recipe/model manifest, or every remaining searchable conversation was
@@ -1458,10 +1436,10 @@ current recipe manifest. Local and shared recipes remain independent.
 
 ### Recipe-aware full snapshots
 
-Full-snapshot publication first requests the authenticated node-scoped
-`GET /v1/publication-plan`. Its strict typed schema includes the schema version,
-active build, model generation/dimensions, immutable head version, source
-instance/revision and eligible thread dependency fingerprints. Default dialogue
+Full-snapshot publication first reads the authenticated `GET /v1/freshness`:
+the group's active build and model generation/dimensions, and the node's
+publication instance and revision. (The dedicated publication-plan endpoint,
+its head version and thread fingerprints were removed.) Default dialogue
 publication only retrieves the small head: it does not decode or fingerprint
 shared history and continues forwarding existing local vectors unchanged, with
 zero additional inference. Negotiation adds one HTTP round trip to that path.
@@ -1586,13 +1564,6 @@ mapping. They do not contain model readiness. Snapshot and retained-silver
 serialization borrow these fields without copying whole histories. Reading an
 existing checkpoint's known `ready` field discards its claim; new snapshots omit
 it. Unknown model fields still fail strict decoding.
-
-`/v1/state` is a live transport view: its checkpoint `ready` value is derived
-from visible-message vector coverage, current model/rule versions and the
-selected recipe's published manifest. That flag can change when gold changes;
-the underlying source facts remain unchanged. Missing interpretation versions
-remain unverified and require explicit source replay. This separation does not
-change source reconciliation or provider completeness evidence.
 
 The existing 10,000-message synthetic serialization diagnostic now emits
 40,046,007 bytes, 13 fewer than its previous snapshot with one `ready = true`
