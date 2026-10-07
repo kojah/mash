@@ -82,6 +82,7 @@ opt-level = 3
 
 [lints.rust]
 unsafe_code = "forbid"
+warnings = "deny"
 
 [lints.clippy]
 all = "warn"

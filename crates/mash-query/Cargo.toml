@@ -10,6 +10,9 @@ publish = false
 url = "2.5.8"
 whatlang = "0.18.0"
 
+[lints.rust]
+warnings = "deny"
+
 [lints.clippy]
 all = "warn"
 pedantic = "warn"
