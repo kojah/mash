@@ -211,6 +211,8 @@ struct Service {
     group: String,
     task: tokio::task::JoinHandle<()>,
     uploads: Arc<tokio::sync::Semaphore>,
+    store: Store,
+    first: Identity,
 }
 
 async fn exclude_own_contract(service: Service) {
@@ -479,9 +481,10 @@ impl Service {
         let url = format!("http://{}", listener.local_addr().unwrap());
         let uploads = Arc::new(tokio::sync::Semaphore::new(4));
         let attachments = tempfile::tempdir().unwrap();
+        let first = identities[&blake3::hash(first_token.as_bytes())].clone();
         let app = App {
             attachments_dir: Some(attachments.path().to_path_buf()),
-            store,
+            store: store.clone(),
             identities,
             uploads: uploads.clone(),
         };
@@ -495,7 +498,13 @@ impl Service {
             group,
             task,
             uploads,
+            store,
+            first,
         }
+    }
+    /// The first node's publication state, read from the store directly.
+    async fn state(&self) -> protocol::NodeState {
+        self.store.state(&self.first).await.unwrap()
     }
     fn request(&self, route: &str, token: &str) -> reqwest::RequestBuilder {
         reqwest::Client::new()

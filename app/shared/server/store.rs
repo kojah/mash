@@ -179,6 +179,8 @@ impl Store {
             .filter(|gold| gold.compatible(&self.gold, identity)))
     }
 
+    /// One node's publication state, for tests.
+    #[cfg(test)]
     pub(in crate::shared) async fn state(
         &self,
         identity: &Identity,

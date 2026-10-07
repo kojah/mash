@@ -1,23 +1,18 @@
 //! Canonical revision changes independently of transport, source scans and vectors.
 use super::*;
-use crate::shared::protocol::NodeState;
-
-async fn state(service: &Service) -> NodeState {
-    serde_json::from_value(service.get("state", FIRST).await).unwrap()
-}
 
 #[tokio::test]
 #[ignore = "requires disposable Qdrant"]
 async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication() {
     let service = Service::qdrant(384).await;
-    assert!(state(&service).await.silver_revision.is_none());
+    assert!(service.state().await.silver_revision.is_none());
     let initial = snapshot(1);
     service
         .upload(FIRST, &initial)
         .await
         .error_for_status()
         .unwrap();
-    let first = state(&service).await.silver_revision.unwrap();
+    let first = service.state().await.silver_revision.unwrap();
     assert_eq!(first.revision, 1);
     assert_eq!(
         service.get("freshness", FIRST).await["nodes"][0]["silver_revision"],
@@ -33,7 +28,7 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
         .await
         .error_for_status()
         .unwrap();
-    let second = state(&service).await;
+    let second = service.state().await;
     assert_eq!(second.revision, 2);
     assert_eq!(second.silver_revision.as_ref(), Some(&first));
 
@@ -47,7 +42,7 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
         .await
         .error_for_status()
         .unwrap();
-    assert_eq!(state(&service).await.silver_revision.as_ref(), Some(&first));
+    assert_eq!(service.state().await.silver_revision.as_ref(), Some(&first));
 
     let mut edited = snapshot(4);
     edited[1]["records"][0]["title"] = json!("Edited canonical title");
@@ -55,13 +50,13 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
         service.upload(FIRST, &edited[..3]).await.status(),
         StatusCode::BAD_REQUEST
     );
-    assert_eq!(state(&service).await.silver_revision.as_ref(), Some(&first));
+    assert_eq!(service.state().await.silver_revision.as_ref(), Some(&first));
     service
         .upload(FIRST, &edited)
         .await
         .error_for_status()
         .unwrap();
-    let changed = state(&service).await.silver_revision.unwrap();
+    let changed = service.state().await.silver_revision.unwrap();
     assert_eq!(changed.revision, 2);
     assert_ne!(changed.fingerprint, first.fingerprint);
     service
@@ -70,7 +65,7 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
         .error_for_status()
         .unwrap();
     assert_eq!(
-        state(&service).await.silver_revision.as_ref(),
+        service.state().await.silver_revision.as_ref(),
         Some(&changed)
     );
     assert_eq!(
@@ -78,7 +73,7 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
         StatusCode::CONFLICT
     );
     assert_eq!(
-        state(&service).await.silver_revision.as_ref(),
+        service.state().await.silver_revision.as_ref(),
         Some(&changed)
     );
 
@@ -93,7 +88,7 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
         .await
         .error_for_status()
         .unwrap();
-    let forgotten = state(&service).await.silver_revision.unwrap();
+    let forgotten = service.state().await.silver_revision.unwrap();
     assert_eq!(forgotten.revision, 3);
     assert_ne!(forgotten.fingerprint, changed.fingerprint);
     service.cleanup().await;

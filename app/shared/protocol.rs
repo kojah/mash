@@ -196,6 +196,7 @@ pub(crate) struct Tombstone {
     pub conversation_id: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(super) struct NodeState {
     /// Changes on every committed publication, independently of the source counter.

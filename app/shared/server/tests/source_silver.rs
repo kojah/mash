@@ -16,10 +16,6 @@ fn certificate() -> Certificate {
     }
 }
 
-async fn state(service: &Service) -> protocol::NodeState {
-    serde_json::from_value(service.get("state", FIRST).await).unwrap()
-}
-
 async fn contract(service: Service) {
     let mut events = snapshot(1);
     events[0]["source_silver"] = serde_json::to_value(certificate()).unwrap();
@@ -31,19 +27,19 @@ async fn contract(service: Service) {
             .status(),
         StatusCode::BAD_REQUEST
     );
-    assert!(state(&service).await.source_silver.is_none());
+    assert!(service.state().await.source_silver.is_none());
     assert_eq!(
         service.upload(FIRST, &events).await.status(),
         StatusCode::OK
     );
-    let accepted = state(&service).await;
+    let accepted = service.state().await;
     assert_eq!(accepted.source_silver, Some(certificate()));
     assert_eq!(accepted.revision, 1); // Transport and silver revisions are distinct.
 
     let mut retry = events.clone();
     retry[0]["source_silver"]["revision"] = json!(999);
     assert_eq!(service.upload(FIRST, &retry).await.status(), StatusCode::OK);
-    assert_eq!(state(&service).await.source_silver, Some(certificate()));
+    assert_eq!(service.state().await.source_silver, Some(certificate()));
 
     let mut invalid = events.clone();
     invalid[0]["revision"] = json!(2);
@@ -52,7 +48,7 @@ async fn contract(service: Service) {
         service.upload(FIRST, &invalid).await.status(),
         StatusCode::BAD_REQUEST
     );
-    assert_eq!(state(&service).await.source_silver, Some(certificate()));
+    assert_eq!(service.state().await.source_silver, Some(certificate()));
 
     // Gold can become unavailable without changing the source interpretation evidence.
     let mut no_vectors = events.clone();
@@ -65,7 +61,7 @@ async fn contract(service: Service) {
         service.upload(FIRST, &no_vectors).await.status(),
         StatusCode::OK
     );
-    assert_eq!(state(&service).await.source_silver, Some(certificate()));
+    assert_eq!(service.state().await.source_silver, Some(certificate()));
 
     // A delta without a certificate revokes the node's certificate.
     let mut delta = events[0].clone();
@@ -80,7 +76,7 @@ async fn contract(service: Service) {
             .status(),
         StatusCode::OK
     );
-    assert!(state(&service).await.source_silver.is_none());
+    assert!(service.state().await.source_silver.is_none());
 
     events[0]["revision"] = json!(4);
     assert_eq!(
@@ -98,11 +94,11 @@ async fn contract(service: Service) {
         .await
         .error_for_status()
         .unwrap();
-    assert!(state(&service).await.source_silver.is_none());
+    assert!(service.state().await.source_silver.is_none());
     assert_eq!(
         service.upload(FIRST, &snapshot(6)).await.status(),
         StatusCode::OK
     );
-    assert!(state(&service).await.source_silver.is_none());
+    assert!(service.state().await.source_silver.is_none());
     service.cleanup().await;
 }

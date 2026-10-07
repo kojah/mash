@@ -10,7 +10,7 @@ async fn qdrant_http_vector_overrides_do_not_change_data_or_group_defaults() {
         .error_for_status()
         .unwrap();
     let before = service.get("freshness", FIRST).await;
-    let canonical = service.get("state", FIRST).await;
+    let canonical = serde_json::to_value(service.state().await).unwrap();
     let mut vector = vec![0.0; 384];
     vector[0] = 127.0;
     for policy in [
@@ -36,7 +36,10 @@ async fn qdrant_http_vector_overrides_do_not_change_data_or_group_defaults() {
             .unwrap();
         assert!(!result.semantic.is_empty());
         assert_eq!(service.get("freshness", FIRST).await, before);
-        assert_eq!(service.get("state", FIRST).await, canonical);
+        assert_eq!(
+            serde_json::to_value(service.state().await).unwrap(),
+            canonical
+        );
     }
     for (policy, status) in [
         (
@@ -76,6 +79,9 @@ async fn qdrant_http_vector_overrides_do_not_change_data_or_group_defaults() {
     );
     assert_eq!(service.request("search", FIRST).json(&json!({"query":"hello","intent":"exact-mention","vector_search":{"algorithm":"exact"}})).send().await.unwrap().status(), StatusCode::BAD_REQUEST);
     assert_eq!(service.get("freshness", FIRST).await, before);
-    assert_eq!(service.get("state", FIRST).await, canonical);
+    assert_eq!(
+        serde_json::to_value(service.state().await).unwrap(),
+        canonical
+    );
     service.cleanup().await;
 }

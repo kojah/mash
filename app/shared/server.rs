@@ -121,7 +121,7 @@ async fn authorize_inner(app: App, mut request: Request, next: Next) -> Response
     }
     request.extensions_mut().insert(identity.clone());
     let timeout = match request.uri().path() {
-        "/v1/index" | "/v1/state" | "/v1/publication-plan" => super::BULK_TIMEOUT,
+        "/v1/index" | "/v1/publication-plan" => super::BULK_TIMEOUT,
         _ => Duration::from_secs(600),
     };
     tokio::time::timeout(timeout, next.run(request))
@@ -138,7 +138,6 @@ fn router(app: App) -> Router {
     Router::new()
         .route("/v1/freshness", get(freshness))
         .route("/v1/status", get(status))
-        .route("/v1/state", get(state))
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/publication-plan", get(publication_plan))
         .route("/v1/search", post(search))
@@ -204,13 +203,6 @@ async fn status(
 ) -> Result<Json<crate::storage::Counts>, ApiError> {
     Ok(Json(app.store.status(&id).await?))
 }
-async fn state(
-    State(app): State<App>,
-    Extension(id): Extension<Identity>,
-) -> Result<Json<protocol::NodeState>, ApiError> {
-    Ok(Json(app.store.state(&id).await?))
-}
-
 async fn capabilities(
     State(app): State<App>,
     Extension(id): Extension<Identity>,

@@ -212,8 +212,11 @@ async fn verify_gold(api: &Api) {
 }
 
 async fn verify(api: &Api, revision: i64) -> String {
-    let state: protocol::NodeState = api.get("state", FIRST).await;
-    assert_eq!(state.source_silver, Some(source_certificate(revision)));
+    let first: crate::shared::Freshness = api.get("freshness", FIRST).await;
+    assert_eq!(
+        first.nodes[0].source_silver,
+        Some(source_certificate(revision))
+    );
     for (token, expected) in [
         (FIRST, (2, 3, 2, 2)),
         (SECOND, (1, 1, 1, 1)),
@@ -312,10 +315,6 @@ async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guar
     publish(&api, SECOND, 1, true).await;
     publish(&api, FIRST, 2, false).await;
     let before = verify(&api, 2).await;
-    let states = [
-        api.get::<protocol::NodeState>("state", FIRST).await,
-        api.get::<protocol::NodeState>("state", SECOND).await,
-    ];
     drop(api);
     let backups = database.backup(root.path()).await;
     assert_eq!(
@@ -332,9 +331,6 @@ async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guar
     let api = Api::start(&restored, root.path());
     assert_eq!(verify(&api, 2).await, before);
     verify_gold(&api).await;
-    for (token, state) in [FIRST, SECOND].into_iter().zip(states) {
-        assert_eq!(api.get::<protocol::NodeState>("state", token).await, state);
-    }
     assert_eq!(
         api.upload(FIRST, &snapshot(1, false)).await.status(),
         reqwest::StatusCode::CONFLICT
@@ -405,10 +401,7 @@ async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
     publish(&api, FIRST, 1, false).await;
     publish(&api, SECOND, 1, true).await;
     publish(&api, FIRST, 2, false).await;
-    let states = [
-        api.get::<protocol::NodeState>("state", FIRST).await,
-        api.get::<protocol::NodeState>("state", SECOND).await,
-    ];
+    let published: crate::shared::Freshness = api.get("freshness", FIRST).await;
     drop(api);
     // No Qdrant backup: the database and its volume are gone for good.
     database.destroy();
@@ -442,11 +435,11 @@ async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
         ],
         "one replay report per configured node: {reports:?}"
     );
-    for (token, state) in [FIRST, SECOND].into_iter().zip(states) {
-        let replayed = api.get::<protocol::NodeState>("state", token).await;
-        assert_eq!(replayed.revision, state.revision);
-        assert_eq!(replayed.silver_revision, state.silver_revision);
-        assert_eq!(replayed.source_silver, state.source_silver);
+    let replayed: crate::shared::Freshness = api.get("freshness", FIRST).await;
+    for (replayed, published) in replayed.nodes.iter().zip(&published.nodes) {
+        assert_eq!(replayed.revision, published.revision);
+        assert_eq!(replayed.silver_revision, published.silver_revision);
+        assert_eq!(replayed.source_silver, published.source_silver);
     }
     for (token, (conversations, messages, searchable, embeddings)) in
         [(FIRST, (2, 3, 2, 2)), (SECOND, (1, 1, 1, 1))]
