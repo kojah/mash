@@ -18,18 +18,8 @@ impl Storage {
         Ok(storage)
     }
 
-    /// Current metadata schema only: never initialize, migrate or require models.
+    /// Current schema only: never initialize, migrate or require models.
     pub(crate) fn open_catalog(path: &Path) -> Result<Self, AppError> {
-        Self::open_readonly(path, SCHEMA_VERSION)
-    }
-
-    /// Read-only preflight accepts the last single-file schema, which the
-    /// explicit gold command then splits under the writer lock.
-    pub(crate) fn open_certified_silver(path: &Path) -> Result<Self, AppError> {
-        Self::open_readonly(path, super::schema::COMBINED_VERSION)
-    }
-
-    fn open_readonly(path: &Path, minimum_schema: i64) -> Result<Self, AppError> {
         if !path.is_file() {
             return Err(AppError::missing_database(path));
         }
@@ -38,19 +28,15 @@ impl Storage {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(AppError::database)?;
-        if version > SCHEMA_VERSION {
-            return Err(AppError::schema(
-                "index schema is newer than this version of mash",
-            ));
-        }
-        if version < minimum_schema {
+        if version == 0 {
             return Err(AppError::search_not_ready(
                 "index requires an explicit rebuild; run `mash index`",
             ));
         }
-        if version >= SCHEMA_VERSION {
-            super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
+        if version != SCHEMA_VERSION {
+            return Err(super::schema::unsupported(version));
         }
+        super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
             connection,
@@ -76,27 +62,19 @@ impl Storage {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(AppError::database)?;
-        if version > SCHEMA_VERSION {
-            return Err(AppError::schema(format!(
-                "database schema version {version} is newer than supported version {SCHEMA_VERSION}"
-            )));
-        }
-        if version < SCHEMA_VERSION {
+        if version == 0 {
             return Ok(StatusSnapshot {
                 lexical: None,
                 gold: None,
                 silver: None,
-                counts: Counts {
-                    searchable_user_messages: None,
-                    conversations: readonly_table_count(&connection, "conversations")?,
-                    messages: readonly_table_count(&connection, "messages")?,
-                    searchable_messages: readonly_table_count(&connection, "messages")?,
-                    embeddings: readonly_table_count(&connection, "message_embeddings")?,
-                },
+                counts: Counts::default(),
                 current_embeddings: 0,
                 derived_clean: false,
                 exact_semantic_coverage: false,
             });
+        }
+        if version != SCHEMA_VERSION {
+            return Err(super::schema::unsupported(version));
         }
         super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
         let storage = Self {
@@ -368,22 +346,4 @@ pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> 
         rerank_score: None,
         node_id: None,
     })
-}
-
-fn readonly_table_count(connection: &Connection, table: &str) -> Result<u64, AppError> {
-    let exists: bool = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1)",
-            [table],
-            |row| row.get(0),
-        )
-        .map_err(AppError::database)?;
-    if !exists {
-        return Ok(0);
-    }
-    let sql = format!("SELECT count(*) FROM {table}");
-    let count: i64 = connection
-        .query_row(&sql, [], |row| row.get(0))
-        .map_err(AppError::database)?;
-    u64::try_from(count).map_err(|_| AppError::internal("negative table count"))
 }

@@ -13,8 +13,15 @@ mash --db /path/to/new-index.sqlite3 index --rebuild-local-gold
 required and does not change the configured database. Point subsequent commands
 or an MCP session at the imported path explicitly. Both operations refuse
 existing destinations; import also refuses existing SQLite sidecars and
-attachment directories. Import does not merge histories or publish to shared
-storage. Reconfigure the node's shared destination before explicitly publishing.
+attachment directories, and a gold database beside the destination. Import does
+not merge histories or publish to shared storage. A plain import starts a new
+shared identity, so the copy can never publish as the original node.
+
+`--keep-identity` (MCP `keep_identity`) restores the exported node's shared
+identity instead. It is for upgrades across a schema change, after the exporting
+database is retired; the next publication is a full snapshot. Exports carry
+that identity; exports from releases before it was added cannot be imported
+with `--keep-identity`.
 
 The same application core is exposed as MCP `export_silver(directory)` and
 `import_silver(directory, database)`. Importing does not redirect an existing

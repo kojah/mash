@@ -118,7 +118,11 @@ pub(crate) fn write(
     })
 }
 
-pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppError> {
+pub(crate) fn load(
+    directory: &Path,
+    database: &Path,
+    keep_identity: bool,
+) -> Result<Imported, AppError> {
     let manifest: Manifest =
         serde_json::from_slice(&read_limited(&directory.join(MANIFEST), 64 * 1024)?)
             .map_err(|_| AppError::usage("invalid or incomplete export manifest"))?;
@@ -137,6 +141,8 @@ pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppErr
     }
     let blobs = attachments::directory(database);
     ensure_absent(&blobs)?;
+    // Stale gold could pair with a database that keeps its identity.
+    ensure_absent(&storage::schema::gold_path(database))?;
     let parent = parent(database);
     fs::create_dir_all(parent).map_err(AppError::io)?;
     let mut builder = tempfile::Builder::new();
@@ -151,7 +157,7 @@ pub(crate) fn load(directory: &Path, database: &Path) -> Result<Imported, AppErr
     copy_checked(&directory.join(DATABASE), &input, &manifest.records)?;
     let output = stage.path().join("imported.sqlite3");
     drop(crate::scratch::sqlite(&output)?);
-    storage::export::restore(&input, &output)?;
+    storage::export::restore(&input, &output, keep_identity)?;
     let history = Storage::open_catalog(&output)?;
     storage::export::validate(&history)?;
     let files = storage::export::attachments(&history)?;

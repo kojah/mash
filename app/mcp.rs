@@ -112,6 +112,9 @@ struct ImportSilver {
     directory: String,
     /// New SQLite database path; existing databases and attachment directories are refused.
     database: String,
+    /// Continue the exporting node's shared identity; for upgrades that retire it.
+    #[serde(default)]
+    keep_identity: bool,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -483,6 +486,7 @@ impl Mash {
         self.execute(Operation::ImportSilver {
             directory: request.directory.into(),
             database: request.database.into(),
+            keep_identity: request.keep_identity,
         })
         .await
     }

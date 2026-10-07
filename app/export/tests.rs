@@ -39,7 +39,7 @@ fn portable_records_reject_corrupt_structure_even_with_a_matching_file_digest() 
         )
         .unwrap();
         let destination = root.path().join("new.sqlite3");
-        assert!(load(&exported, &destination).is_err(), "{fault}");
+        assert!(load(&exported, &destination, false).is_err(), "{fault}");
         assert!(!destination.exists(), "{fault}");
         assert!(!attachments::directory(&destination).exists(), "{fault}");
     }
@@ -110,7 +110,7 @@ fn export_keeps_retained_files_from_nonvisible_claude_branches() {
     let result = write(&database, &exported, None).unwrap();
     assert_eq!(result.counts.attachment_files, 1);
     let imported = root.path().join("imported.sqlite3");
-    load(&exported, &imported).unwrap();
+    load(&exported, &imported, false).unwrap();
     let restored = Connection::open(&imported).unwrap();
     assert_eq!(
         rows(&restored, "claude_source_messages"),
@@ -160,6 +160,41 @@ fn rows(connection: &Connection, table: &str) -> Vec<Vec<Value>> {
         .unwrap()
 }
 
+/// Upgrades export with the old release and import with the new one; the
+/// node keeps publishing as itself, starting from a full snapshot.
+#[test]
+fn upgrade_import_keeps_the_node_identity_and_refuses_stale_gold() {
+    let root = tempfile::tempdir().unwrap();
+    let (database, writer) = fixture(root.path());
+    let identity = |connection: &Connection| -> (String, i64, i64, String) {
+        connection
+            .query_row(
+                "SELECT instance,revision,acknowledged,target FROM shared_publication",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap()
+    };
+    let (instance, revision, _, _) = identity(&writer);
+    let export = root.path().join("export");
+    write(&database, &export, Some("source-node".into())).unwrap();
+    let destination = root.path().join("upgraded.sqlite3");
+    let gold = crate::storage::schema::gold_path(&destination);
+    std::fs::write(&gold, b"stale gold").unwrap();
+    assert!(load(&export, &destination, true).is_err());
+    assert!(!destination.exists());
+    std::fs::remove_file(&gold).unwrap();
+    load(&export, &destination, true).unwrap();
+    let imported = Connection::open(&destination).unwrap();
+    assert_eq!(identity(&imported), (instance, revision, 0, String::new()));
+    let floor: i64 = imported
+        .query_row("SELECT floor FROM shared_change_state", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(floor, revision);
+}
+
 #[test]
 fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_gold_or_acks() {
     let root = tempfile::tempdir().unwrap();
@@ -178,7 +213,7 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_gol
     assert_eq!(created.counts.attachment_files, 1);
     writer.execute_batch("ROLLBACK").unwrap();
     let destination = root.path().join("imported.sqlite3");
-    let result = load(&export, &destination).unwrap();
+    let result = load(&export, &destination, false).unwrap();
     assert!(!result.search_ready);
     assert!(matches!(
         result.recommended_action,
@@ -254,7 +289,7 @@ fn pending_ingestion_is_preserved_instead_of_becoming_search_ready() {
     connection.execute_batch("UPDATE silver_scans SET state=0; INSERT INTO silver_rejections VALUES('codex','bad','/missing/bad',123)").unwrap();
     let export = root.path().join("export");
     write(&database, &export, None).unwrap();
-    let result = load(&export, &root.path().join("imported.sqlite3")).unwrap();
+    let result = load(&export, &root.path().join("imported.sqlite3"), false).unwrap();
     assert!(matches!(result.recommended_action, NextStep::RepairSilver));
     assert_eq!(
         result.silver,
@@ -316,7 +351,7 @@ fn corrupted_missing_and_incompatible_exports_never_install_a_database() {
             _ => unreachable!(),
         }
         let target = root.path().join("imported.sqlite3");
-        assert!(load(&export, &target).is_err(), "{failure}");
+        assert!(load(&export, &target, false).is_err(), "{failure}");
         assert!(!target.exists());
         assert!(!attachments::directory(&target).exists());
     }
@@ -335,7 +370,7 @@ fn existing_destinations_and_sidecars_are_never_overwritten() {
         .unwrap()
         .silver_certificate()
         .unwrap();
-    assert!(load(&export, &database).is_err());
+    assert!(load(&export, &database, false).is_err());
     assert_eq!(
         before,
         Storage::open_catalog(&database)
@@ -347,7 +382,7 @@ fn existing_destinations_and_sidecars_are_never_overwritten() {
         let target = root.path().join("new.sqlite3");
         let file = root.path().join(format!("new.sqlite3{suffix}"));
         fs::write(&file, b"keep me").unwrap();
-        assert!(load(&export, &target).is_err());
+        assert!(load(&export, &target, false).is_err());
         assert_eq!(fs::read(&file).unwrap(), b"keep me");
         fs::remove_file(file).unwrap();
     }
@@ -373,7 +408,7 @@ fn empty_history_preserves_unverified_state_without_storage_engine_sequences() {
     let export = root.path().join("export");
     write(&database, &export, None).unwrap();
     let target = root.path().join("imported.sqlite3");
-    let result = load(&export, &target).unwrap();
+    let result = load(&export, &target, false).unwrap();
     assert!(matches!(result.recommended_action, NextStep::RepairSilver));
     assert_eq!(result.counts.messages, 0);
     let imported = Connection::open(target).unwrap();
@@ -395,7 +430,7 @@ fn archive_file_symlinks_are_rejected_without_creating_a_database() {
     fs::rename(&stored, &moved).unwrap();
     std::os::unix::fs::symlink(moved, stored).unwrap();
     let target = root.path().join("imported.sqlite3");
-    assert!(load(&export, &target).is_err());
+    assert!(load(&export, &target, false).is_err());
     assert!(!target.exists());
     assert!(!attachments::directory(&target).exists());
 }

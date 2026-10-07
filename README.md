@@ -47,7 +47,7 @@ mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <conversation-id>
 mash export <new-directory>
-mash import <export-directory> --into <new-database>
+mash import <export-directory> --into <new-database> [--keep-identity]
 mash models install
 mash mcp [--watch [--debounce-ms N]]
 mash serve --server-config PATH
@@ -174,11 +174,16 @@ as each node's history on the shared server. Gold never holds history that
 silver lacks: if it is deleted, damaged or belongs to another silver database,
 mash replaces it with empty, unready gold. `mash index --rebuild-local-gold`
 rebuilds it from stored silver offline, reusing valid vectors; add `--full` to
-discard all local gold and replay it from silver. The first open by this version
-moves an existing single-file index's gold into the new file without
-re-embedding. Upgrades start from that last single-file schema (45): an older
-index is rejected untouched; move it aside and re-index from provider histories,
-or export it with the release that created it. See the
+discard all local gold and replay it from silver.
+
+There are no in-place schema migrations. A release opens only its own silver
+schema and rejects any other untouched. To upgrade across a schema change,
+export with the release that wrote the index, retire its files, and import with
+the new release using `mash import --keep-identity`, which continues the node's
+shared identity; `tools/upgrade-local-index.sh` does exactly this and is a no-op
+when the schema is unchanged. Then rebuild gold with
+`mash index --rebuild-local-gold`. The shared server never migrates either: an
+empty silver directory is refilled by node publications and `--replay-gold`. See the
 [history pipeline](docs/history-pipeline.md) for layer ownership, storage schemas
 and recovery behavior.
 

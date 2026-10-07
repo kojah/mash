@@ -156,6 +156,13 @@ pub(crate) fn visit(
         })
     );
     table!(
+        "SELECT instance,revision FROM shared_publication WHERE singleton=1",
+        |row| Ok::<_, AppError>(Record::Publication {
+            instance: get(row, "instance")?,
+            revision: get(row, "revision")?,
+        })
+    );
+    table!(
         "SELECT revision,interpretation_version FROM silver_state WHERE singleton=1",
         |row| Ok::<_, AppError>(Record::State {
             revision: u64::try_from(get::<i64>(row, "revision")?)
@@ -192,6 +199,19 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
         };
     }
     match record {
+        Record::Publication { instance, revision } => {
+            if instance.len() != 32
+                || !instance.bytes().all(|b| b.is_ascii_hexdigit())
+                || revision < 1
+            {
+                return Err(AppError::usage("invalid publication identity"));
+            }
+            execute!(
+                "UPDATE shared_publication SET instance=?1,revision=?2 WHERE singleton=1",
+                instance,
+                revision
+            );
+        }
         Record::State {
             revision,
             interpretation_version,

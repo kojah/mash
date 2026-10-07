@@ -1,13 +1,12 @@
 use rusqlite::{Connection, OptionalExtension};
 use std::fmt::Write;
+
 use std::path::{Path, PathBuf};
 
 use crate::AppError;
 
-/// Silver database version. Version 46 moved gold into its own database.
+/// Silver database version; any other version is rejected, never migrated.
 pub(super) const SCHEMA_VERSION: i64 = 46;
-/// The last layout that kept silver and gold in one database file.
-pub(super) const COMBINED_VERSION: i64 = 45;
 const GOLD_VERSION: i64 = 1;
 
 /// The one silver schema, shared by local nodes and the shared server.
@@ -15,16 +14,6 @@ pub(crate) const SILVER: &str = include_str!("silver.sql");
 /// Silver indexes and triggers; they require every silver column to exist.
 pub(crate) const SILVER_INDEXES: &str = include_str!("silver_indexes.sql");
 const GOLD: &str = include_str!("gold.sql");
-const GOLD_TABLES: [&str; 8] = [
-    "silver_pairing",
-    "gold_manifest",
-    "lexical_manifest",
-    "derived_state",
-    "message_embeddings",
-    "pending_embeddings",
-    "semantic_chunks",
-    "message_fts",
-];
 
 /// Create or validate a silver database without any local gold.
 pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError> {
@@ -57,31 +46,30 @@ pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError>
     Ok(())
 }
 
-/// Open local silver and attach its paired gold database for writing. Fresh
-/// databases are created split; the last single-file schema is split once.
+/// Open local silver and attach its paired gold database for writing. There
+/// are no in-place migrations: another silver version is exported with the
+/// release that wrote it and imported into a fresh database by this one.
 pub(super) fn initialize(connection: &Connection, gold: &Path) -> Result<(), AppError> {
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(AppError::database)?;
-    if version > SCHEMA_VERSION {
-        return Err(AppError::schema(format!(
-            "database schema version {version} is newer than supported version {SCHEMA_VERSION}"
-        )));
-    }
-    if version != 0 && version < COMBINED_VERSION {
-        return Err(AppError::schema(format!(
-            "local index schema {version} is too old to upgrade; move it aside and run `mash index` to rebuild it from provider histories, or export it with the mash release that created it"
-        )));
+    if version != 0 && version != SCHEMA_VERSION {
+        return Err(unsupported(version));
     }
     connection
         .execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
         .map_err(AppError::database)?;
     if version == 0 {
         initialize_silver(connection)?;
-    } else if version == COMBINED_VERSION {
-        split_gold(connection, gold)?;
     }
     attach_gold(connection, gold, true)
+}
+
+/// The typed error for any silver schema this release does not write.
+pub(super) fn unsupported(version: i64) -> AppError {
+    AppError::schema(format!(
+        "local index schema {version} is not this release's schema {SCHEMA_VERSION}; export it with the mash release that wrote it, then `mash import --keep-identity` it with this one"
+    ))
 }
 
 /// Path of the gold database paired with a local silver database.
@@ -158,142 +146,6 @@ fn create_gold(connection: &Connection, schema: &str) -> Result<(), AppError> {
         )
         .map_err(AppError::database)?;
     Ok(())
-}
-
-/// Version 45 to 46: move every retrieval artifact into the gold database.
-/// Gold commits first; an interruption before silver commits repeats the copy.
-fn split_gold(connection: &Connection, gold: &Path) -> Result<(), AppError> {
-    remove_gold(gold)?;
-    attach(connection, gold, true)?;
-    match_silver_permissions(connection, gold)?;
-    let transaction = connection
-        .unchecked_transaction()
-        .map_err(AppError::database)?;
-    create_gold(&transaction, "gold")?;
-    transaction
-        .execute_batch(
-            "INSERT INTO gold.message_embeddings(message_id, generation, dimensions, norm, vector)
-                SELECT message_id, generation, dimensions, norm, vector FROM main.message_embeddings;
-             INSERT INTO gold.pending_embeddings(message_id)
-                SELECT message_id FROM main.pending_embeddings;
-             INSERT INTO gold.semantic_chunks(
-                chunk_id, generation, dimensions, vector_count, message_rowids, norms,
-                providers, created_ats, vectors
-             ) SELECT chunk_id, generation, dimensions, vector_count, message_rowids, norms,
-                      providers, created_ats, vectors
-                 FROM main.semantic_chunks;
-             INSERT INTO gold.message_fts(rowid, content, message_id, conversation_id)
-                SELECT rowid, content, message_id, conversation_id FROM main.message_fts;
-             UPDATE gold.gold_manifest
-                SET manifest = (SELECT manifest FROM main.gold_manifest WHERE singleton = 1);
-             UPDATE gold.lexical_manifest
-                SET manifest = (SELECT manifest FROM main.lexical_manifest WHERE singleton = 1);
-             UPDATE gold.derived_state SET
-                search_dirty = (SELECT search_dirty FROM main.derived_state WHERE singleton = 1),
-                semantic_ready_generation =
-                    (SELECT semantic_ready_generation FROM main.derived_state WHERE singleton = 1),
-                resume_generation = (SELECT resume_generation FROM main.derived_state WHERE singleton = 1),
-                resume_silver_revision =
-                    (SELECT resume_silver_revision FROM main.derived_state WHERE singleton = 1),
-                resume_interpretation_version =
-                    (SELECT resume_interpretation_version FROM main.derived_state WHERE singleton = 1);",
-        )
-        .map_err(AppError::database)?;
-    transaction.commit().map_err(AppError::database)?;
-    connection
-        .execute_batch("DETACH DATABASE gold")
-        .map_err(AppError::database)?;
-    drop_combined_gold(connection)
-}
-
-/// Second half of the split: silver drops its copies of gold and adopts the
-/// shared silver schema.
-fn drop_combined_gold(connection: &Connection) -> Result<(), AppError> {
-    connection
-        .pragma_update(None, "foreign_keys", false)
-        .map_err(AppError::database)?;
-    let transaction = connection
-        .unchecked_transaction()
-        .map_err(AppError::database)?;
-    let mut statements = String::new();
-    for table in GOLD_TABLES.iter().chain(&["shared_forgets"]) {
-        write!(statements, "DROP TABLE IF EXISTS main.{table};")
-            .map_err(|_| AppError::internal("format gold split"))?;
-    }
-    for table in [
-        "conversations",
-        "messages",
-        "message_embeddings",
-        "tombstones",
-        "conversation_enrichment",
-    ] {
-        for operation in ["INSERT", "UPDATE", "DELETE"] {
-            write!(
-                statements,
-                "DROP TRIGGER IF EXISTS shared_{table}_{operation};"
-            )
-            .map_err(|_| AppError::internal("format gold split"))?;
-        }
-    }
-    transaction
-        .execute_batch(&statements)
-        .map_err(AppError::database)?;
-    // Server silver has no provider-native identity, so the key becomes optional.
-    transaction
-        .execute_batch(
-            "CREATE TABLE conversations_next (
-                id TEXT PRIMARY KEY,
-                provider TEXT NOT NULL CHECK (
-                    provider IN (
-                        'claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity'
-                    )
-                ),
-                source_path TEXT NOT NULL,
-                title TEXT,
-                created_at INTEGER,
-                updated_at INTEGER,
-                source_fingerprint TEXT NOT NULL DEFAULT '',
-                project TEXT,
-                repository TEXT,
-                source_key TEXT,
-                source_session TEXT,
-                thread_fingerprint TEXT,
-                UNIQUE (provider, source_key)
-             );
-             INSERT INTO conversations_next(
-                id, provider, source_path, title, created_at, updated_at, source_fingerprint,
-                project, repository, source_key, source_session
-             ) SELECT id, provider, source_path, title, created_at, updated_at, source_fingerprint,
-                      project, repository, source_key, source_session
-                 FROM conversations;
-             DROP TABLE conversations;
-             ALTER TABLE conversations_next RENAME TO conversations;",
-        )
-        .map_err(AppError::database)?;
-    transaction
-        .execute_batch(SILVER)
-        .map_err(AppError::database)?;
-    transaction
-        .execute_batch(SILVER_INDEXES)
-        .map_err(AppError::database)?;
-    let violations: Option<String> = transaction
-        .query_row(
-            "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(AppError::database)?;
-    if violations.is_some() {
-        return Err(AppError::schema("silver references are inconsistent"));
-    }
-    transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
-        .map_err(AppError::database)?;
-    transaction.commit().map_err(AppError::database)?;
-    connection
-        .pragma_update(None, "foreign_keys", true)
-        .map_err(AppError::database)
 }
 
 fn attach(connection: &Connection, gold: &Path, writable: bool) -> Result<(), AppError> {

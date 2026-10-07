@@ -287,7 +287,6 @@ fn assert_gold_recipe_switches(config: &Path, database: &Path, models: &str) {
         }
     }
     std::fs::write(config, &build_config).unwrap();
-    combine_gold(&open_index(database));
     let migrated = run_json(&[
         "--config",
         config.to_str().unwrap(),

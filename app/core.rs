@@ -195,7 +195,8 @@ async fn dispatch(
         Operation::ImportSilver {
             directory,
             database,
-        } => crate::blocking(move || crate::export::load(&directory, &database))
+            keep_identity,
+        } => crate::blocking(move || crate::export::load(&directory, &database, keep_identity))
             .await
             .map(Response::ImportSilver),
         Operation::ListAttachments { message_id, shared } => {

@@ -7,8 +7,6 @@ fn qdrant_publication_retries_no_change_index_and_offline_forget_through_cli() {
     let dir = tempfile::tempdir().expect("temp");
     let database = dir.path().join("local.sqlite3");
     seed_readiness_database(&database, Some(""));
-    // Exercise the single-file to split upgrade on the first publication.
-    combine_gold(&open_index(&database));
     let models = dir.path().join("models");
     create_valid_model_marker(&models);
     let config = dir.path().join("config.toml");

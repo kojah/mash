@@ -46,7 +46,13 @@ pub(crate) fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppEr
     Ok(snapshot)
 }
 
-pub(crate) fn restore(source: &Path, destination: &Path) -> Result<(), AppError> {
+/// Restore a canonical archive. Imports start a new publication identity unless
+/// `keep_identity` continues the exporting node, whose database is retired.
+pub(crate) fn restore(
+    source: &Path,
+    destination: &Path,
+    keep_identity: bool,
+) -> Result<(), AppError> {
     use crate::silver::archive::Record;
     const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
     let target = Storage::open(destination)?;
@@ -57,6 +63,7 @@ pub(crate) fn restore(source: &Path, destination: &Path) -> Result<(), AppError>
     let mut reader = std::io::BufReader::new(std::fs::File::open(source).map_err(AppError::io)?);
     let mut line = Vec::new();
     let mut state_seen = false;
+    let mut identity_seen = false;
     loop {
         line.clear();
         let bytes = (&mut reader)
@@ -74,12 +81,29 @@ pub(crate) fn restore(source: &Path, destination: &Path) -> Result<(), AppError>
         let record: Record = serde_json::from_slice(&line)
             .map_err(|_| AppError::usage("invalid canonical archive record"))?;
         state_seen = matches!(record, Record::State { .. });
+        identity_seen |= matches!(record, Record::Publication { .. });
         records::insert(&target, record)?;
     }
     if !state_seen {
         return Err(AppError::usage("incomplete canonical archive"));
     }
-    transaction.execute_batch("UPDATE shared_publication SET revision=1,acknowledged=0,target=''; DELETE FROM shared_changes; UPDATE shared_change_state SET floor=1;").map_err(AppError::database)?;
+    if keep_identity && !identity_seen {
+        return Err(AppError::usage(
+            "export carries no publication identity to keep",
+        ));
+    }
+    // The next publication is a full snapshot: the change journal starts empty.
+    transaction
+        .execute_batch(if keep_identity {
+            "UPDATE shared_publication SET acknowledged=0,target='';
+             DELETE FROM shared_changes;
+             UPDATE shared_change_state SET floor=(SELECT revision FROM shared_publication);"
+        } else {
+            "UPDATE shared_publication SET instance=lower(hex(randomblob(16))),revision=1,acknowledged=0,target='';
+             DELETE FROM shared_changes;
+             UPDATE shared_change_state SET floor=1;"
+        })
+        .map_err(AppError::database)?;
     transaction.commit().map_err(AppError::database)?;
     target
         .connection

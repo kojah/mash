@@ -96,6 +96,8 @@ pub(crate) enum Operation {
     ImportSilver {
         directory: PathBuf,
         database: PathBuf,
+        #[serde(default)]
+        keep_identity: bool,
     },
     ListAttachments {
         message_id: String,

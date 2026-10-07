@@ -143,6 +143,10 @@ enum Command {
         directory: PathBuf,
         #[arg(long, value_name = "NEW_DATABASE")]
         into: PathBuf,
+        /// Continue the exporting node's shared identity (upgrades only; retire
+        /// the exporting database first).
+        #[arg(long)]
+        keep_identity: bool,
     },
     /// Manage semantic retrieval models.
     Models {
@@ -341,9 +345,14 @@ impl Cli {
             Command::Status { shared } => Operation::Status { shared },
             Command::Forget { id } => Operation::Forget { id },
             Command::Export { directory } => Operation::ExportSilver { directory },
-            Command::Import { directory, into } => Operation::ImportSilver {
+            Command::Import {
+                directory,
+                into,
+                keep_identity,
+            } => Operation::ImportSilver {
                 directory,
                 database: into,
+                keep_identity,
             },
             Command::Models {
                 command: ModelsCommand::Install,

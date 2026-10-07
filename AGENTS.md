@@ -14,6 +14,10 @@ Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view
   paired SQLite database; neither gold store may hold history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-gold --full`,
   `serve --replay-gold`).
+- Do not check in schema upgrade code. Each release opens only its own silver
+  and gold schemas and rejects others untouched; gold is rebuilt, shared silver
+  is republished, and local silver crosses releases only through export and
+  `import --keep-identity` (`tools/upgrade-local-index.sh`).
 - Use an authenticated Axum HTTP API for one shared index per configured node
   group. Shared silver is server-side SQLite (no gold tables); shared gold is
   Qdrant.

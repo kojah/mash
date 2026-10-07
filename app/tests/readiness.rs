@@ -302,8 +302,10 @@ fn explicit_empty_index_reports_ready_without_loading_models() {
     assert!(status["recommended_action"].is_null());
 }
 
+/// An index from another release is reported with upgrade instructions and
+/// left exactly as it was: there are no in-place migrations.
 #[test]
-fn status_reads_an_older_database_without_migrating_it() {
+fn status_reports_another_release_schema_without_touching_it() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let models = directory.path().join("models");
     create_valid_model_marker(&models);
@@ -312,39 +314,23 @@ fn status_reads_an_older_database_without_migrating_it() {
         .expect("old database")
         .execute_batch(
             "CREATE TABLE conversations (id TEXT PRIMARY KEY);
-             CREATE TABLE messages (id TEXT PRIMARY KEY);
-             CREATE TABLE message_embeddings (message_id TEXT PRIMARY KEY);
              INSERT INTO conversations VALUES ('conversation');
-             INSERT INTO messages VALUES ('message');
              PRAGMA user_version = 7;",
         )
         .expect("seed old database");
-
-    let body = run_json(&[
-        "--db",
-        database.to_str().unwrap(),
-        "--models-dir",
-        models.to_str().unwrap(),
-        "status",
-    ]);
-    assert_eq!(body["conversations"], 1);
-    assert_eq!(body["messages"], 1);
-    assert_eq!(body["ready"], false);
-    assert_eq!(body["recommended_action"], "index");
-
-    let connection = Connection::open(&database).expect("reopen old database");
-    let version: i64 = connection
-        .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .expect("schema version");
-    let projection_exists: bool = connection
-        .query_row(
-            "SELECT EXISTS(
-                SELECT 1 FROM pragma_table_info('messages') WHERE name = 'search_projection'
-             )",
-            [],
-            |row| row.get(0),
-        )
-        .expect("projection check");
-    assert_eq!(version, 7);
-    assert!(!projection_exists);
+    let before = std::fs::read(&database).unwrap();
+    let output = Command::cargo_bin("mash")
+        .expect("mash binary")
+        .args([
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models.to_str().unwrap(),
+            "status",
+        ])
+        .output()
+        .expect("run mash");
+    assert_eq!(error_kind(&output), "schema-incompatible");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--keep-identity"));
+    assert_eq!(std::fs::read(&database).unwrap(), before);
 }

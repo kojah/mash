@@ -9,6 +9,12 @@ pub(crate) const VERSION: u32 = 1;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Record {
+    /// The node's shared-publication identity, restored only by an upgrade
+    /// import that retires the exporting database.
+    Publication {
+        instance: String,
+        revision: i64,
+    },
     State {
         revision: u64,
         interpretation_version: u32,

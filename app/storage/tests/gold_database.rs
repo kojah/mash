@@ -75,28 +75,6 @@ fn silver_holds_no_gold_and_gold_holds_no_history() {
 }
 
 #[test]
-fn combined_databases_split_without_losing_vectors_or_readiness() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("index.sqlite3");
-    indexed(&path);
-    let connection = Connection::open(&path).unwrap();
-    crate::storage::test_support::combine_gold(&connection, &path);
-    drop(connection);
-    std::fs::remove_file(gold_path(&path)).unwrap();
-    let storage = Storage::open(&path).unwrap();
-    assert_eq!(storage.embedding_count("fixture").unwrap(), 1);
-    assert!(storage.semantic_generation_is_published("fixture").unwrap());
-    assert!(!storage.derived_search_is_dirty().unwrap());
-    assert_eq!(storage.search("needle", 10, None, None).unwrap().len(), 1);
-    drop(storage);
-    assert!(
-        !main_tables(&path)
-            .iter()
-            .any(|name| name == "message_embeddings")
-    );
-}
-
-#[test]
 fn missing_gold_reads_as_unready_and_writers_recreate_it_pending() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");

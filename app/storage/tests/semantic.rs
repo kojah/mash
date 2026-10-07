@@ -255,7 +255,7 @@ fn search_does_not_create_or_migrate_an_index() {
     let before = std::fs::read(&old).unwrap();
     assert_eq!(
         Storage::open_search(&old, "generation").err().unwrap().code,
-        8
+        7
     );
     assert_eq!(before, std::fs::read(old).unwrap());
 }
