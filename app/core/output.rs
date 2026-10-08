@@ -15,6 +15,8 @@ pub(crate) enum Detail {
 
 const EXCERPT_CHARS: usize = 600;
 
+pub(crate) mod text;
+
 pub(crate) fn serialize(
     response: &Response,
     detail: Detail,

@@ -298,22 +298,48 @@ fn tool_result_detailed(
     match result {
         Ok(core::Response::GetAttachment(file)) => attachment_result(file),
         Ok(value) => match core::output::serialize(&value, detail) {
-            Ok(json) if value.needs_retry() => CallToolResult::structured_error(json),
-            Ok(json) => CallToolResult::structured(json),
+            Ok(json) => match core::output::text::render(&value, detail, &json) {
+                Ok(text) => {
+                    let mut result = if value.needs_retry() {
+                        CallToolResult::structured_error(json)
+                    } else {
+                        CallToolResult::structured(json)
+                    };
+                    result.content = vec![ContentBlock::text(text)];
+                    result
+                }
+                Err(_) => CallToolResult::error(vec![ContentBlock::text(
+                    "failed to serialize tool response",
+                )]),
+            },
             Err(_) => CallToolResult::error(vec![ContentBlock::text(
                 "failed to serialize tool response",
             )]),
         },
-        Err(error) => match serde_json::to_value(&error) {
-            Ok(json) => CallToolResult::structured_error(json),
-            Err(_) => {
-                CallToolResult::error(vec![ContentBlock::text("failed to serialize tool error")])
+        Err(error) => match (
+            serde_json::to_value(&error),
+            core::output::text::error(&error),
+        ) {
+            (Ok(json), Ok(text)) => {
+                let mut result = CallToolResult::structured_error(json);
+                result.content = vec![ContentBlock::text(text)];
+                result
             }
+            _ => CallToolResult::error(vec![ContentBlock::text("failed to serialize tool error")]),
         },
     }
 }
 
 fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
+    let listing = crate::attachments::Listing {
+        message_id: file.message_id.clone(),
+        attachments: vec![file.attachment.clone()],
+    };
+    let response = core::Response::ListAttachments(listing);
+    let mut result = tool_result(Ok(response));
+    if result.is_error == Some(true) {
+        return result;
+    }
     let uri = format!(
         "mash-attachment://{}/{}",
         file.message_id, file.attachment.id
@@ -329,19 +355,8 @@ fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
             rmcp::model::ResourceContents::blob(file.data, uri).with_mime_type(media_type),
         )
     };
-    match serde_json::to_value(crate::attachments::Listing {
-        message_id: file.message_id,
-        attachments: vec![file.attachment],
-    }) {
-        Ok(json) => {
-            let mut result = CallToolResult::structured(json);
-            result.content.push(block);
-            result
-        }
-        Err(_) => CallToolResult::error(vec![ContentBlock::text(
-            "failed to serialize attachment metadata",
-        )]),
-    }
+    result.content.push(block);
+    result
 }
 
 #[tool_router]

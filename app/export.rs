@@ -25,11 +25,11 @@ struct FileDigest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct HistoryCounts {
-    conversations: u64,
-    messages: u64,
-    attachment_files: u64,
-    attachment_bytes: u64,
+pub(crate) struct HistoryCounts {
+    pub(crate) conversations: u64,
+    pub(crate) messages: u64,
+    pub(crate) attachment_files: u64,
+    pub(crate) attachment_bytes: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -53,24 +53,24 @@ enum Format {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Exported {
-    directory: PathBuf,
-    format_version: u32,
-    silver: Certificate,
-    counts: HistoryCounts,
+    pub(crate) directory: PathBuf,
+    pub(crate) format_version: u32,
+    pub(crate) silver: Certificate,
+    pub(crate) counts: HistoryCounts,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Imported {
-    database: PathBuf,
-    silver: Certificate,
-    counts: HistoryCounts,
-    search_ready: bool,
-    recommended_action: NextStep,
+    pub(crate) database: PathBuf,
+    pub(crate) silver: Certificate,
+    pub(crate) counts: HistoryCounts,
+    pub(crate) search_ready: bool,
+    pub(crate) recommended_action: NextStep,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
-enum NextStep {
+pub(crate) enum NextStep {
     RebuildLocalGold,
     RepairSilver,
 }

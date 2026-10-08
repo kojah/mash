@@ -55,6 +55,9 @@ async fn unavailable_shared_publication_is_a_retryable_mcp_result_with_pending_p
     )
     .await;
     assert_eq!(result.is_error, Some(true));
+    let text = &result.content[0].as_text().unwrap().text;
+    assert!(text.contains("retry required: true"));
+    assert!(text.contains("Shared publication: \"pending\""));
     let summary: Summary = serde_json::from_value(result.structured_content.unwrap()).unwrap();
     assert_eq!(summary.malformed_records, 0);
     let mut last = None;

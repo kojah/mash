@@ -1,6 +1,28 @@
 use super::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 
+fn assert_native_attachment(result: &CallToolResult, media_type: &str) {
+    assert!(
+        result.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .starts_with("Mash attachments")
+    );
+    if media_type == "image/png" {
+        assert!(result.content.iter().any(|c| c.as_image().is_some()));
+    } else {
+        let embedded = result.content.iter().find_map(|c| c.as_resource()).unwrap();
+        let rmcp::model::ResourceContents::BlobResourceContents { blob, .. } = &embedded.resource
+        else {
+            panic!("expected binary resource")
+        };
+        let text = String::from_utf8(STANDARD.decode(blob).unwrap()).unwrap();
+        assert!(!text.contains("hunter2"));
+        assert!(text.contains("useful notes"));
+    }
+}
+
 #[tokio::test]
 async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_after_forget() {
     let root = tempfile::tempdir().unwrap();
@@ -62,19 +84,11 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
         .await
         .unwrap();
         assert_ne!(result.is_error, Some(true), "{result:?}");
-        if record["media_type"] == "image/png" {
-            assert!(result.content.iter().any(|c| c.as_image().is_some()));
-        } else {
-            let embedded = result.content.iter().find_map(|c| c.as_resource()).unwrap();
-            let rmcp::model::ResourceContents::BlobResourceContents { blob, .. } =
-                &embedded.resource
-            else {
-                panic!("expected binary resource")
-            };
-            let text = String::from_utf8(STANDARD.decode(blob).unwrap()).unwrap();
-            assert!(!text.contains("hunter2"));
-            assert!(text.contains("useful notes"));
-        }
+        assert_eq!(
+            result.structured_content.as_ref().unwrap()["message_id"],
+            id
+        );
+        assert_native_attachment(&result, record["media_type"].as_str().unwrap());
     }
     let wrong = call(
         "get_attachment",
@@ -87,6 +101,13 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
         .await
         .unwrap();
     assert_ne!(forgotten.is_error, Some(true));
+    assert!(
+        forgotten.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .contains("forgotten: true")
+    );
     let removed = call(
         "get_attachment",
         json!({"message_id":id,"attachment_id":records[0]["id"]}),

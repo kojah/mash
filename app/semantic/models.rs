@@ -92,10 +92,10 @@ impl Drop for LoadedBackend {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct InstallSummary {
-    embedding_model: &'static str,
-    reranker_model: &'static str,
-    embedding_dimensions: usize,
-    files: usize,
+    pub(crate) embedding_model: &'static str,
+    pub(crate) reranker_model: &'static str,
+    pub(crate) embedding_dimensions: usize,
+    pub(crate) files: usize,
 }
 
 impl Models {

@@ -4,9 +4,9 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 pub(crate) struct PublicationSummary<'a> {
-    state: PublicationState,
+    pub(crate) state: PublicationState,
     #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<&'a str>,
+    pub(crate) error: Option<&'a str>,
 }
 
 impl Publication {
@@ -20,26 +20,26 @@ impl Publication {
 
 #[derive(Serialize)]
 pub(crate) struct FreshnessSummary<'a> {
-    group_id: &'a str,
+    pub(crate) group_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    unpublished_nodes: Option<&'a [String]>,
-    nodes: Vec<Member<'a>>,
+    pub(crate) unpublished_nodes: Option<&'a [String]>,
+    pub(crate) nodes: Vec<Member<'a>>,
 }
 
 #[derive(Serialize)]
-struct Member<'a> {
-    node_id: &'a str,
-    revision: i64,
-    last_synced_at: Option<&'a str>,
-    last_updated_at: Option<&'a str>,
-    conversations: i64,
-    messages: i64,
-    lexical_current: bool,
-    gold_current: bool,
+pub(crate) struct Member<'a> {
+    pub(crate) node_id: &'a str,
+    pub(crate) revision: i64,
+    pub(crate) last_synced_at: Option<&'a str>,
+    pub(crate) last_updated_at: Option<&'a str>,
+    pub(crate) conversations: i64,
+    pub(crate) messages: i64,
+    pub(crate) lexical_current: bool,
+    pub(crate) gold_current: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    artifacts: Option<&'a crate::gold::readiness::Artifacts>,
+    pub(crate) artifacts: Option<&'a crate::gold::readiness::Artifacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    source_silver: Option<&'a crate::silver::certificate::Certificate>,
+    pub(crate) source_silver: Option<&'a crate::silver::certificate::Certificate>,
 }
 
 impl Freshness {

@@ -46,15 +46,15 @@ impl Scope {
 pub(crate) struct Report {
     pub(crate) scope: Scope,
     /// False: scan success and retained rows do not prove complete provider history.
-    absence_proven: bool,
+    pub(super) absence_proven: bool,
     pub(crate) members: Vec<Member>,
     pub(crate) unavailable_nodes: Vec<String>,
-    limitations: Vec<Limitation>,
+    pub(super) limitations: Vec<Limitation>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
-enum Limitation {
+pub(super) enum Limitation {
     SourceFreshnessNotChecked,
     HistoricalScanScopeUnrecorded,
     SharedProviderScanStateUnreported,
@@ -89,11 +89,11 @@ pub(crate) struct Retained {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Scan {
-    provider: Provider,
-    configured: bool,
+    pub(super) provider: Provider,
+    pub(super) configured: bool,
     /// Completion of a recorded scan, not completeness of all historical chats.
-    state: crate::silver::certificate::Completeness,
-    rejected_sources: u64,
+    pub(super) state: crate::silver::certificate::Completeness,
+    pub(super) rejected_sources: u64,
 }
 
 pub(super) async fn local(

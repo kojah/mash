@@ -1342,7 +1342,15 @@ Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `models_install`, `list_attachments`, `get_attachment`, `export_silver`, `import_silver`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
 
-MCP `search`, `list_threads`, and `status` accept `detail: "compact"` (default)
+All MCP tools present readable text alongside the
+unchanged typed `structuredContent` JSON. Text includes copyable lookup arguments,
+source attribution and partial errors; archived excerpts are quoted as evidence.
+Clients may expose both channels, so this does not guarantee token savings.
+`view` includes complete archived message bodies. Mutation and watcher tools
+summarize their results and retry/next-action information; attachment retrieval
+also retains native MCP image/resource content. Tool errors use readable text
+and preserve typed error JSON and `isError`.
+`search`, `list_threads`, and `status` accept `detail: "compact"` (default)
 or `"extended"`. Compact search bounds message/excerpt text to 600 characters
 (plus truncation markers), removes per-stage ranking scores and enrichment
 provenance, and preserves result ordering, IDs, publishing node attribution,
@@ -1351,7 +1359,8 @@ diagnostics. Truncated text is marked with `content_truncated` or
 `snippet_truncated`; call `view` to read complete messages. Extended returns the
 existing full response, including retrieved message text, scores, provenance
 and status manifests/configuration. `view` always returns complete message
-text and accepts no detail selector. CLI output stays extended.
+text and accepts no detail selector. Extended text adds the full JSON response
+after its readable summary. CLI output stays extended JSON.
 
 `export_silver({"directory":"/path/to/new-export"})` saves local silver and
 retained attachments offline, with a typed JSON manifest and checksums.

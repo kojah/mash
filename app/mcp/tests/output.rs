@@ -1,5 +1,19 @@
 use super::*;
 
+fn presentation_bytes(response: &CallToolResult) {
+    eprintln!(
+        "MCP presentation bytes: text={}, structured={}, whole_result={}",
+        response.content[0].as_text().unwrap().text.len(),
+        response
+            .structured_content
+            .as_ref()
+            .unwrap()
+            .to_string()
+            .len(),
+        serde_json::to_vec(response).unwrap().len(),
+    );
+}
+
 #[tokio::test]
 #[allow(
     clippy::too_many_lines,
@@ -70,22 +84,47 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     };
     let compact = call("search",json!({"query":"needle","intent":"exact-mention","unit":"messages","local":true,"diagnostics":true})).await.unwrap();
     assert_ne!(compact.is_error, Some(true), "{compact:?}");
+    let readable = compact.content[0].as_text().unwrap().text.clone();
+    assert!(readable.starts_with("Mash search"));
+    assert!(readable.contains("Excerpt truncated"));
+    presentation_bytes(&compact);
+    let text_lookup: serde_json::Value = serde_json::from_str(
+        readable
+            .lines()
+            .find_map(|line| line.strip_prefix("  lookup.view: "))
+            .unwrap(),
+    )
+    .unwrap();
     let compact = compact.structured_content.unwrap();
     let hit = &compact["results"][0];
     assert_eq!(hit["content_truncated"], true);
     assert!(hit["content"].as_str().unwrap().contains("needle"));
     assert!(compact["diagnostics"].is_object());
-    let full = call("search",json!({"query":"needle","intent":"exact-mention","unit":"messages","local":true,"detail":"extended"})).await.unwrap().structured_content.unwrap();
+    let full = call("search",json!({"query":"needle","intent":"exact-mention","unit":"messages","local":true,"detail":"extended"})).await.unwrap();
+    assert!(
+        full.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .ends_with(&format!("{}\n", full.structured_content.as_ref().unwrap()))
+    );
+    let full = full.structured_content.unwrap();
     assert_eq!(hit["id"], full["results"][0]["id"]);
     assert_eq!(full["results"][0]["content"], text);
     assert!(full["results"][0].get("fusion_score").is_some());
     assert_eq!(hit["lookup"], full["results"][0]["lookup"]);
     assert!(hit["lookup"]["view"].get("shared").is_none());
-    let view = call("view", hit["lookup"]["view"].clone())
-        .await
-        .unwrap()
-        .structured_content
-        .unwrap();
+    assert_eq!(text_lookup, hit["lookup"]["view"]);
+    let view = call("view", text_lookup).await.unwrap();
+    assert!(
+        view.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .starts_with("Mash view")
+    );
+    assert!(view.content[0].as_text().unwrap().text.contains(&text));
+    let view = view.structured_content.unwrap();
     assert_eq!(view["messages"][0]["content"], text);
     let attachments = call(
         "list_attachments",
@@ -94,6 +133,13 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     .await
     .unwrap();
     assert_ne!(attachments.is_error, Some(true));
+    assert!(
+        attachments.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .starts_with("Mash attachments")
+    );
     assert_eq!(
         attachments.structured_content.unwrap()["message_id"],
         hit["id"]
@@ -118,11 +164,16 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
         .unwrap()
         .structured_content
         .unwrap();
-    let compact_list = call("list_threads", json!({"local":true}))
-        .await
-        .unwrap()
-        .structured_content
-        .unwrap();
+    let compact_list = call("list_threads", json!({"local":true})).await.unwrap();
+    assert!(
+        compact_list.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .starts_with("Mash threads")
+    );
+    presentation_bytes(&compact_list);
+    let compact_list = compact_list.structured_content.unwrap();
     assert_eq!(listed["next_offset"], compact_list["next_offset"]);
     assert_eq!(
         listed["threads"][0]["conversation_id"],
@@ -130,11 +181,16 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     );
     assert!(listed["threads"][0].get("enrichment").is_some());
     assert!(compact_list["threads"][0].get("enrichment").is_none());
-    let status = call("status", json!({}))
-        .await
-        .unwrap()
-        .structured_content
-        .unwrap();
+    let status = call("status", json!({})).await.unwrap();
+    assert!(
+        status.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .contains("local search ready")
+    );
+    presentation_bytes(&status);
+    let status = status.structured_content.unwrap();
     let full_status = call("status", json!({"detail":"extended"}))
         .await
         .unwrap()

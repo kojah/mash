@@ -429,9 +429,13 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     drop(write_guard);
     assert_ne!(status.is_error, Some(true));
     let value = serde_json::to_value(&status).expect("serialize");
-    let body: serde_json::Value =
-        serde_json::from_str(value["content"][0]["text"].as_str().expect("text"))
-            .expect("JSON status");
+    assert!(
+        value["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("Mash status")
+    );
+    let body = status.structured_content.as_ref().unwrap().clone();
     assert_eq!(body["ready"], false);
     assert_eq!(
         body["local_artifacts"],
@@ -453,9 +457,13 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
         .expect("tools/call");
     assert_eq!(result.is_error, Some(true));
     let value = serde_json::to_value(result).expect("serialize");
-    let body: serde_json::Value =
-        serde_json::from_str(value["content"][0]["text"].as_str().expect("text"))
-            .expect("typed error");
+    assert!(
+        value["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("Mash error")
+    );
+    let body = &value["structuredContent"];
     assert_eq!(
         body["error"]["kind"], "model",
         "query cannot inject CLI flags"

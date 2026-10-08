@@ -35,7 +35,7 @@ pub(crate) use retrieval::{SearchOutcome, require_dense, search};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-enum PublicationState {
+pub(crate) enum PublicationState {
     Pending,
     Published,
 }

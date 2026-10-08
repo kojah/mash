@@ -1,7 +1,7 @@
 //! One process-local watcher shared by startup flags and MCP lifecycle tools.
 use super::{Mash, WatchEvent, WatchIndex, core};
 use crate::{AppError, progress};
-use rmcp::model::CallToolResult;
+use rmcp::model::{CallToolResult, ContentBlock};
 use serde::Serialize;
 use tokio::sync::watch;
 
@@ -33,10 +33,42 @@ pub(super) struct Watcher {
 
 impl Watcher {
     pub(super) fn response(&self) -> CallToolResult {
-        match serde_json::to_value(self) {
-            Ok(value) => CallToolResult::structured(value),
-            Err(_) => super::tool_result(Err(AppError::internal("serialize watcher status"))),
+        match (serde_json::to_value(self), self.text()) {
+            (Ok(value), Ok(text)) => {
+                let mut result = CallToolResult::structured(value);
+                result.content = vec![ContentBlock::text(text)];
+                result
+            }
+            _ => super::tool_result(Err(AppError::internal("serialize watcher status"))),
         }
+    }
+
+    fn text(&self) -> Result<String, serde_json::Error> {
+        let mut text = format!(
+            "Mash watcher — {}\nIndexing: {}\nDebounce (ms): {}\nLast refresh (Unix ms): {}\n",
+            serde_json::to_string(&self.state)?,
+            self.indexing,
+            self.debounce_ms
+                .map_or_else(|| "unset".into(), |value| value.to_string()),
+            self.last_refresh_at
+                .map_or_else(|| "never".into(), |value| value.to_string()),
+        );
+        if let Some(progress) = &self.progress {
+            text.push_str("Progress: ");
+            text.push_str(&progress::display(progress));
+            text.push('\n');
+        }
+        if let Some(result) = &self.last_result {
+            let json = core::output::serialize(result, core::output::Detail::Compact)?;
+            let summary = core::output::text::render(result, core::output::Detail::Compact, &json)?;
+            text.push_str("Last indexing result:\n");
+            text.push_str(&summary);
+        }
+        if let Some(error) = &self.last_error {
+            text.push_str("Last indexing error:\n");
+            text.push_str(&core::output::text::error(error)?);
+        }
+        Ok(text)
     }
 
     fn stop(&mut self) {

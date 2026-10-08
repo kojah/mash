@@ -33,7 +33,15 @@ fn fixture(shared: bool) -> (tempfile::TempDir, Mash) {
 async fn until(server: &Mash, predicate: impl Fn(&serde_json::Value) -> bool) -> serde_json::Value {
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            let value = server.watch_status().await.structured_content.unwrap();
+            let result = server.watch_status().await;
+            assert!(
+                result.content[0]
+                    .as_text()
+                    .unwrap()
+                    .text
+                    .starts_with("Mash watcher")
+            );
+            let value = result.structured_content.unwrap();
             if predicate(&value) {
                 return value;
             }
@@ -58,6 +66,20 @@ async fn watcher_lifecycle_is_idempotent_and_stop_does_not_abort_a_pass() {
         }))
         .await;
     assert_ne!(start.is_error, Some(true));
+    assert!(
+        start.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .contains("Mash watcher — \"running\"")
+    );
+    assert!(
+        start.content[0]
+            .as_text()
+            .unwrap()
+            .text
+            .contains("Debounce (ms): 50")
+    );
     let duplicate = server
         .watch_start(Parameters(WatchStart { debounce_ms: None }))
         .await;
@@ -127,6 +149,10 @@ async fn watcher_reports_configuration_errors_and_rejects_invalid_debounce() {
     })
     .await;
     assert_eq!(stopped["last_error"]["error"]["kind"], "configuration");
+    let result = server.watch_status().await;
+    let readable = &result.content[0].as_text().unwrap().text;
+    assert!(readable.contains("Last indexing error:\nMash error"));
+    assert!(readable.contains("Retryable:"));
     assert!(!server.paths.db.as_ref().unwrap().exists());
     shutdown(&server).await;
 }
