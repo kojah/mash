@@ -321,6 +321,7 @@ fn hits(
             created_at: m.created_at,
             metadata: metadata(&d.conversation),
             lexical_score: lexical.then_some(-f64::from(point.score)),
+            lookup: None,
             lexical_match: None,
             semantic_score: (!lexical).then_some(point.score),
             fusion_score: 0.0,

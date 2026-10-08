@@ -669,6 +669,22 @@ machine's `providers` and `index` settings to the top level and optionally add
 
 ## Search filters
 
+Search evidence includes `lookup.view` and `lookup.list_attachments`: copy these
+argument objects into the corresponding MCP tool. They preserve local/shared
+origin, including this node's own data returned by a shared-only search. Both
+compact and extended results keep them.
+
+For scoped history questions, use MCP `status` with an optional `coverage`
+object containing `provider`, `node`, `after`, and `before`, or run
+`mash status --coverage --provider claude-code --node xenia --shared`.
+Coverage time selectors use message timestamps in Unix seconds; observed bounds
+are Unix milliseconds. The report separates recorded provider scan state from
+scoped retained-row counts. It never certifies absence or complete history:
+historical scan bounds and source freshness are not recorded by these facts.
+Shared aggregate certificates do not prove provider/time coverage; scoped shared
+counts and provider scan details are `null` when unreported. Shared status failures
+preserve local facts with `shared_error`.
+
 The current models support English queries. Unsupported scripts and confidently
 detected non-English queries return a usage error asking for an English query,
 before loading models or opening an index. Short names and ambiguous technical

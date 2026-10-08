@@ -14,6 +14,7 @@ fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
         created_at: None,
         metadata: ThreadMetadata::default(),
         lexical_score: None,
+        lookup: None,
         lexical_match: None,
         semantic_score: Some(0.4),
         fusion_score: 0.02,

@@ -355,6 +355,7 @@ pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> 
             updated_at: row.conversation_updated_at,
         },
         lexical_score: None,
+        lookup: None,
         lexical_match: None,
         semantic_score: None,
         fusion_score: 0.0,

@@ -4,6 +4,7 @@ use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
 mod attachments;
+mod coverage;
 mod export;
 mod fusion;
 mod incomplete;
@@ -14,6 +15,7 @@ mod selections;
 mod skill;
 mod threads;
 mod watching;
+mod workflows;
 
 #[tokio::test]
 async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver() {

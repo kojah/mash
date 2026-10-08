@@ -142,6 +142,7 @@ pub(super) async fn run(
     input: Input,
 ) -> Result<SearchResponse, AppError> {
     let vector_override = input.shared_vector_search;
+    let shared_only = input.shared;
     let policy = if input.diagnostics {
         let (limit, _) = configuration.gold.query.resolve(input.limit, input.unit);
         let fusion = resolve_fusion(
@@ -166,6 +167,15 @@ pub(super) async fn run(
         None
     };
     let mut response = run_inner(configuration, database, models, input).await?;
+    crate::search_results::lookup::attach(
+        &mut response.results,
+        configuration
+            .shared
+            .as_ref()
+            .map_or("local", |c| c.node_id.as_str()),
+        response.shared,
+        shared_only,
+    );
     if let Some((limit, fusion, scope, ranking, filter_fields)) = policy {
         response.diagnostics = Some(crate::gold::diagnostics::Diagnostics::new(
             &response, scope, limit, fusion, ranking,

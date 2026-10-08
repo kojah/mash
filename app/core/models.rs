@@ -85,6 +85,8 @@ pub(crate) enum Operation {
     },
     Status {
         shared: bool,
+        #[serde(default)]
+        coverage: Option<super::coverage::Scope>,
     },
     Forget {
         id: String,
@@ -215,6 +217,10 @@ pub(crate) struct ViewResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) coverage: Option<super::coverage::Report>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) shared_error: Option<String>,
     pub(super) local_artifacts: LocalArtifacts,
     pub(super) lexical: Option<crate::gold::lexical_manifest::Manifest>,
     pub(super) gold: Option<crate::gold::manifest::Manifest>,

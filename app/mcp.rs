@@ -32,6 +32,7 @@ struct Search {
     /// Dense shared retrieval override; omitted inherits the group's active default.
     #[serde(rename = "shared_vector_search")]
     shared_vector: Option<crate::gold::vector::Search>,
+    /// Words, a semantic question, or an exact-mention phrase/identifier; search never ingests.
     query: String,
     /// related-discussion (default) or model-free exact-mention.
     intent: Option<crate::gold::exact::Intent>,
@@ -39,9 +40,9 @@ struct Search {
     limit: Option<usize>,
     /// Threads or messages; omitted uses gold.query.unit (threads by default).
     unit: Option<crate::search_results::SearchUnit>,
-    /// Partial hybrid fusion overrides; omitted fields use current TOML defaults.
+    /// Advanced related-discussion fusion overrides; omitted fields inherit TOML. Invalid for exact-mention.
     fusion: Option<crate::gold::config::FusionOverrides>,
-    /// Hybrid ranking for this request; omitted inherits gold.query.ranking.
+    /// Advanced related-discussion ranking: fusion or contextual-rerank; omitted inherits TOML. Invalid for exact-mention.
     ranking: Option<crate::gold::config::Ranking>,
     /// Include resolved retrieval policy, source outcomes and core timing.
     #[serde(default)]
@@ -58,6 +59,9 @@ struct Search {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Status {
+    /// Optional provider/node/message-time scope. Reports retained rows and scan evidence;
+    /// unknown coverage never proves that matching conversations do not exist.
+    coverage: Option<core::coverage::Scope>,
     /// compact (default) shows readiness and freshness; extended includes manifests/configuration.
     #[serde(default)]
     detail: Detail,
@@ -86,7 +90,9 @@ struct ListThreads {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct View {
+    /// Copy lookup.view from a search hit; id is the message anchor, not the thread ID.
     id: String,
+    /// Number of adjacent messages on each side (default 0); message bodies are never truncated.
     context: Option<u32>,
     /// Publishing node ID only for evidence retrieved from the shared index.
     /// Omit for local evidence, even when it includes this machine's `node_id`.
@@ -350,7 +356,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "List attachment metadata for a message without loading file contents or models. Omit shared for local evidence, or supply the publishing node ID for shared evidence. Returns stable attachment IDs, names, MIME types, sizes, redaction status and explicit availability, including not_uploaded for shared metadata without bytes. Only captured provider attachments are discoverable; reindex older histories to capture them."
+        description = "List attachment metadata without loading contents or models. Copy lookup.list_attachments from a search result. Omit shared for local evidence, or supply the publishing node ID for shared evidence. Returns stable attachment IDs, names, MIME types, sizes, redaction status and explicit availability, including not_uploaded for shared metadata without bytes. Only captured provider attachments are discoverable; reindex older histories to capture them."
     )]
     async fn list_attachments(
         &self,
@@ -411,7 +417,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Search using current gold.query defaults; override intent, unit, limit, ranking or partial fusion settings. Ranking overrides select fusion or contextual-rerank for one request. Ranking and fusion overrides apply only to related-discussion and inherit omitted fields from TOML. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention searches a phrase or identifier without inference, locally and through the shared service. match_mode defaults to flexible (prefixes and conservative typos); strict requires exact spelling, prefix or typo selects one expansion. Whole quoted queries and numbers stay strict. Expanded hits include lexical_match source evidence; exact hits rank first in lexical retrieval. Narrow broad exact queries with metadata filters if the shared candidate or time budget is reached. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require completed current retrieval artifacts and never run ingestion. Combined shared candidate failures fall back locally with shared_error; shared-only candidate failures return an error. Later context failures retain shared evidence and mode with shared_context_error. Optional diagnostics include resolved policy and measured stages."
+        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to threads with compact evidence; use unit=messages to drill into selected conversations. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute_detailed(
@@ -435,7 +441,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read complete message text and adjacent context after discovery; never truncates message bodies. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
+        description = "Read complete message text and surrounding replies after discovery. Copy lookup.view from a search result and add context when needed; bodies are never truncated. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
     )]
     async fn view(&self, Parameters(request): Parameters<View>) -> CallToolResult {
         self.execute(Operation::View {
@@ -448,12 +454,13 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Report index/model readiness. Set shared=true to include each node's artifact publication states, last_synced_at and last_updated_at from the shared HTTP service backed by Qdrant. Artifact readiness does not certify complete provider history or installed query models."
+        description = "Report local readiness and optional shared freshness. Supply coverage with provider/node/message-time selectors for retained-row and recorded-scan facts; unknown coverage never proves absence. Set shared=true to include each node's artifact publication states, last_synced_at and last_updated_at from the shared HTTP service backed by Qdrant. Artifact readiness does not certify complete provider history or installed query models."
     )]
     async fn status(&self, Parameters(request): Parameters<Status>) -> CallToolResult {
         self.execute_detailed(
             Operation::Status {
                 shared: request.shared,
+                coverage: request.coverage,
             },
             request.detail,
         )

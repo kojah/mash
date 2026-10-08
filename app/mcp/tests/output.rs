@@ -79,12 +79,40 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     assert_eq!(hit["id"], full["results"][0]["id"]);
     assert_eq!(full["results"][0]["content"], text);
     assert!(full["results"][0].get("fusion_score").is_some());
-    let view = call("view", json!({"id":hit["id"]}))
+    assert_eq!(hit["lookup"], full["results"][0]["lookup"]);
+    assert!(hit["lookup"]["view"].get("shared").is_none());
+    let view = call("view", hit["lookup"]["view"].clone())
         .await
         .unwrap()
         .structured_content
         .unwrap();
     assert_eq!(view["messages"][0]["content"], text);
+    let attachments = call(
+        "list_attachments",
+        hit["lookup"]["list_attachments"].clone(),
+    )
+    .await
+    .unwrap();
+    assert_ne!(attachments.is_error, Some(true));
+    assert_eq!(
+        attachments.structured_content.unwrap()["message_id"],
+        hit["id"]
+    );
+    let threads = call(
+        "search",
+        json!({"query":"needle", "intent":"exact-mention", "local":true, "unit":"threads"}),
+    )
+    .await
+    .unwrap()
+    .structured_content
+    .unwrap();
+    let lookup = &threads["results"][0]["matches"][0]["lookup"];
+    assert_eq!(lookup, &hit["lookup"]);
+    let anchored = call("view", lookup["view"].clone()).await.unwrap();
+    assert_eq!(
+        anchored.structured_content.unwrap()["messages"][0]["content"],
+        text
+    );
     let listed = call("list_threads", json!({"local":true,"detail":"extended"}))
         .await
         .unwrap()

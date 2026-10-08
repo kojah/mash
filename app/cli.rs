@@ -130,6 +130,11 @@ enum Command {
     },
     /// Report canonical storage and model readiness.
     Status {
+        /// Report scoped retained-history and provider scan facts without proving completeness.
+        #[arg(long)]
+        coverage: bool,
+        #[command(flatten)]
+        scope: Box<crate::core::coverage::Scope>,
         /// Inspect per-node freshness in the shared index.
         #[arg(long)]
         shared: bool,
@@ -346,7 +351,14 @@ impl Cli {
                 context,
                 shared,
             },
-            Command::Status { shared } => Operation::Status { shared },
+            Command::Status {
+                shared,
+                coverage,
+                scope,
+            } => Operation::Status {
+                shared,
+                coverage: coverage.then_some(*scope),
+            },
             Command::Forget { id } => Operation::Forget { id },
             Command::Export { directory } => Operation::ExportSilver { directory },
             Command::Import {
@@ -623,6 +635,37 @@ mod tests {
         };
         assert_eq!(filters.match_mode, Mode::Flexible);
         assert!(Cli::try_parse_from(["mash", "search", "idemp", "--match-mode", "fuzzy"]).is_err());
+    }
+
+    #[test]
+    fn status_coverage_selectors_are_typed_and_explicit() {
+        let request = Cli::try_parse_from([
+            "mash",
+            "status",
+            "--coverage",
+            "--provider",
+            "codex",
+            "--node",
+            "peer",
+            "--after",
+            "10",
+            "--before",
+            "20",
+            "--shared",
+        ])
+        .unwrap()
+        .into_request()
+        .unwrap();
+        let Operation::Status { shared, coverage } = request.operation else {
+            panic!("status")
+        };
+        assert!(shared);
+        let scope = coverage.unwrap();
+        assert_eq!(scope.provider, [Provider::Codex]);
+        assert_eq!(scope.node, ["peer"]);
+        assert_eq!((scope.after, scope.before), (Some(10), Some(20)));
+        scope.validate().unwrap();
+        assert!(Cli::try_parse_from(["mash", "status", "--provider", "codex"]).is_err());
     }
 
     #[test]

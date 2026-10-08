@@ -129,6 +129,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
             created_at: None,
             metadata: crate::search_results::ThreadMetadata::default(),
             lexical_score: Some(1.0),
+            lookup: None,
             lexical_match: None,
             semantic_score: None,
             fusion_score: 1.0,

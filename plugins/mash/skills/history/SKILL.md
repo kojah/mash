@@ -53,7 +53,11 @@ a path mentioned in prose. The CLI has no attachment retrieval subcommand.
 - Drill into promising threads with `unit: "messages"` and
   `conversation: ["RETURNED_THREAD_ID"]`. Retain applicable provider, node,
   project/repository and time filters. Use actual returned IDs.
-- Use `view` with the returned message ID in its `id` argument and a bounded `context`, such as 2,
+- Prefer copying a search hit's `lookup.view` arguments into `view`, adding a
+  bounded `context`, such as 2, when interpreting proposals and follow-ups.
+  For attachments, copy `lookup.list_attachments`; its message argument is
+  `message_id`. These lookups preserve the index that supplied the evidence.
+  If a result lacks a lookup, use `view` with the returned message ID in its `id` argument and a bounded `context`, such as 2,
   when a reply needs surrounding dialogue. Omit `shared` for local evidence,
   even when it contains a `node_id`. For evidence retrieved from the shared
   index, pass its publishing node ID as `shared`; never substitute `shared: true`.
@@ -91,6 +95,10 @@ label identifies the tool for the build-time contract check:
 {"shared":true,"detail":"extended"}
 ```
 
+```json mcp:status
+{"shared":true,"coverage":{"provider":["claude-code"],"node":["xenia"],"after":1790812800,"before":1791417600}}
+```
+
 Attachment tools use `message_id`; `view` uses `id`:
 
 ```json mcp:list_attachments
@@ -108,6 +116,11 @@ fails because local lexical/dense artifacts are missing, stale or disabled,
 call `status` with `shared: true`. Inspect local and shared readiness separately.
 For a general history request, if the shared artifacts needed by the intent
 are ready, retry once with `shared: true`, preserving intent and every filter.
+For scoped absence or completeness questions, request `status` with `coverage`
+containing the relevant provider/node/message-time selectors. Recorded scan
+success and retained counts do not prove complete history. Check limitations,
+unavailable nodes and `shared_error`; shared provider/time coverage may be unknown.
+Never turn zero retained rows or zero search hits into a claim that no conversation occurred.
 Disclose omitted local/unpublished history. Never widen an explicit local-only
 or offline request. Metadata listing and local `view` may still work without
 search artifacts. Do not call semantic search globally unavailable based only

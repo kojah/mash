@@ -69,13 +69,28 @@ pub(super) async fn status(
     database: &Path,
     models: &Path,
     inspect_shared: bool,
+    coverage: Option<super::coverage::Scope>,
 ) -> Result<StatusResponse, AppError> {
+    if let Some(scope) = &coverage {
+        scope.validate()?;
+    }
     let db = database.to_path_buf();
     let models = models.to_path_buf();
     let config = configuration.clone();
     let mut response = crate::blocking(move || local_status(&db, &models, &config)).await?;
+    if let Some(scope) = coverage {
+        response.coverage = Some(super::coverage::local(database, configuration, scope).await?);
+    }
     if inspect_shared {
-        response.shared_index = Some(shared::freshness(required_shared(configuration)?).await?);
+        match shared::freshness(required_shared(configuration)?).await {
+            Ok(freshness) => {
+                if let Some(report) = &mut response.coverage {
+                    report.add_shared(&freshness)?;
+                }
+                response.shared_index = Some(freshness);
+            }
+            Err(error) => response.shared_error = Some(error.error.message),
+        }
     }
     Ok(response)
 }
@@ -104,6 +119,8 @@ fn local_status(
     let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
+            coverage: None,
+            shared_error: None,
             local_artifacts: local_artifacts(None, dense_enabled, false, false),
             lexical: None,
             gold: None,
@@ -151,6 +168,8 @@ fn local_status(
             .is_some_and(|(m, s)| m.matches(s, counts.searchable_messages));
     let ready = if exact { lexical_ready } else { hybrid_ready };
     Ok(StatusResponse {
+        coverage: None,
+        shared_error: None,
         local_artifacts: local_artifacts(
             Some(&snapshot),
             dense_enabled,

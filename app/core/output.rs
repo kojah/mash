@@ -57,6 +57,8 @@ fn metadata(value: &ThreadMetadata) -> ThreadMetadata {
 #[derive(Serialize)]
 struct Message<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
+    lookup: Option<&'a crate::search_results::lookup::Lookup>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     lexical_match: Option<&'a crate::gold::matching::Evidence>,
     id: &'a str,
     conversation_id: &'a str,
@@ -74,6 +76,8 @@ struct Message<'a> {
 #[derive(Serialize)]
 struct Excerpt<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
+    lookup: Option<&'a crate::search_results::lookup::Lookup>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     lexical_match: Option<&'a crate::gold::matching::Evidence>,
     message_id: &'a str,
     node_id: Option<&'a str>,
@@ -88,6 +92,7 @@ struct Excerpt<'a> {
 impl<'a> From<&'a ThreadMatch> for Excerpt<'a> {
     fn from(value: &'a ThreadMatch) -> Self {
         Self {
+            lookup: value.lookup.as_ref(),
             lexical_match: value.lexical_match.as_ref(),
             message_id: &value.message_id,
             node_id: value.node_id.as_deref(),
@@ -161,6 +166,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                 messages
                     .iter()
                     .map(|hit| Message {
+                        lookup: hit.lookup.as_ref(),
                         lexical_match: hit.lexical_match.as_ref(),
                         id: &hit.id,
                         conversation_id: &hit.conversation_id,
@@ -207,6 +213,10 @@ struct List<'a> {
 
 #[derive(Serialize)]
 struct Status<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    coverage: Option<&'a super::coverage::Report>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared_error: Option<&'a str>,
     local_artifacts: &'a LocalArtifacts,
     #[serde(skip_serializing_if = "Option::is_none")]
     silver: Option<&'a crate::silver::certificate::Certificate>,
@@ -229,6 +239,8 @@ struct Status<'a> {
 impl<'a> From<&'a StatusResponse> for Status<'a> {
     fn from(value: &'a StatusResponse) -> Self {
         Self {
+            coverage: value.coverage.as_ref(),
+            shared_error: value.shared_error.as_deref(),
             local_artifacts: &value.local_artifacts,
             silver: value.silver.as_ref(),
             ready: value.ready,

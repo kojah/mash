@@ -9,6 +9,7 @@ const BULK_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(30);
 
 pub(crate) mod attachments;
 mod client;
+mod coverage;
 mod exact;
 mod gold_manifest;
 mod lexical_manifest;

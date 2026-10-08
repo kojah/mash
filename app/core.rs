@@ -5,6 +5,7 @@ use directories::ProjectDirs;
 use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 
+pub(crate) mod coverage;
 mod indexing;
 mod inspection;
 mod maintenance;
@@ -262,9 +263,11 @@ async fn dispatch(
         } => inspection::view(configuration, database, id, context, shared)
             .await
             .map(Response::View),
-        Operation::Status { shared } => inspection::status(configuration, database, models, shared)
-            .await
-            .map(|status| Response::Status(Box::new(status))),
+        Operation::Status { shared, coverage } => {
+            inspection::status(configuration, database, models, shared, coverage)
+                .await
+                .map(|status| Response::Status(Box::new(status)))
+        }
         Operation::Forget { id } => maintenance::forget(database, configuration, id)
             .await
             .map(Response::Forget),

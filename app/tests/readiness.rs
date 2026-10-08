@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn cli_scoped_coverage_counts_canonical_rows_without_search_readiness() {
+    let fixture = NodeFixture::new();
+    fixture.seed(Some(""));
+    let body = run_json(&[
+        "--db",
+        fixture.database.to_str().unwrap(),
+        "--models-dir",
+        fixture.models.to_str().unwrap(),
+        "status",
+        "--coverage",
+        "--provider",
+        "codex",
+    ]);
+    assert_eq!(body["coverage"]["members"][0]["retained"]["messages"], 1);
+    assert_eq!(body["coverage"]["absence_proven"], false);
+    assert_eq!(body["ready"], false);
+    let empty = run_json(&[
+        "--db",
+        fixture.database.to_str().unwrap(),
+        "--models-dir",
+        fixture.models.to_str().unwrap(),
+        "status",
+        "--coverage",
+        "--provider",
+        "codex",
+        "--after",
+        "1",
+        "--before",
+        "2",
+    ]);
+    assert_eq!(empty["coverage"]["members"][0]["retained"]["messages"], 0);
+    assert_eq!(empty["coverage"]["absence_proven"], false);
+}
+
+#[test]
 fn concurrent_models_install_returns_a_retryable_error_before_changing_assets() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");

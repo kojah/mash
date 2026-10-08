@@ -85,6 +85,7 @@ fn hit(point: api::Record<Document>, active: &BTreeSet<String>) -> Result<Search
             updated_at: d.conversation.updated_at,
         },
         lexical_score: Some(0.0),
+        lookup: None,
         lexical_match: None,
         semantic_score: None,
         fusion_score: 0.0,

@@ -98,6 +98,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
             ..Default::default()
         },
         lexical_score: Some(1.0),
+        lookup: None,
         lexical_match: None,
         semantic_score: None,
         fusion_score: 0.03,

@@ -59,6 +59,7 @@ fn hit() -> SearchHit {
         copies: vec![],
         node_id: Some("peer".into()),
         lexical_score: Some(0.0),
+        lookup: None,
         lexical_match: None,
         semantic_score: None,
         rerank_score: None,
@@ -80,6 +81,9 @@ async fn assert_thread_projection(mut request: Request) {
     let anchor = &threads[0].matches[0];
     assert_eq!(anchor.node_id.as_deref(), Some("peer"));
     assert_eq!(anchor.message_id, "peer-message");
+    let lookup = anchor.lookup.as_ref().unwrap();
+    assert_eq!(lookup.view.id, "peer-message");
+    assert_eq!(lookup.view.shared.as_deref(), Some("peer"));
     assert_eq!(anchor.projection_span.start_char, 0);
     assert_eq!(
         anchor.projection_span.end_char,
