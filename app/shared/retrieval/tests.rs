@@ -15,6 +15,7 @@ fn hit(node: &str, content: &str) -> SearchHit {
         },
         copies: Vec::new(),
         lexical_score: Some(0.25),
+        lexical_match: None,
         semantic_score: Some(0.5),
         fusion_score: 0.02,
         rerank_score: None,

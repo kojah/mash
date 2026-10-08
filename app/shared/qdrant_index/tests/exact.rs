@@ -1,6 +1,110 @@
 use super::*;
 use crate::gold::readiness::State;
 
+#[tokio::test]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_flexible_lexical_search_matches_prefixes_and_typos() {
+    use crate::gold::matching::{Kind, Mode};
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    fixture
+        .server
+        .index(&fixture.identity, fixture.file(1, "idempotency redis4"))
+        .await
+        .unwrap();
+    for (text, kind) in [("idemp", Kind::Prefix), ("idempotnecy", Kind::Typo)] {
+        let mut input = exact_query(&fixture, text);
+        input.match_mode = Mode::Flexible;
+        let result = fixture
+            .server
+            .search(&fixture.identity, input)
+            .await
+            .unwrap();
+        assert_eq!(result.lexical.len(), 2, "{text}");
+        assert!(
+            result
+                .lexical
+                .iter()
+                .all(|h| h.lexical_match.as_ref().is_some_and(|e| e.kind == kind))
+        );
+        let mut input = fixture.query();
+        input.query = text.into();
+        input.match_mode = Mode::Flexible;
+        let result = fixture
+            .server
+            .search(&fixture.identity, input)
+            .await
+            .unwrap();
+        assert_eq!(result.lexical.len(), 2, "hybrid lexical {text}");
+        assert!(
+            result
+                .lexical
+                .iter()
+                .all(|h| h.lexical_match.as_ref().is_some_and(|e| e.kind == kind))
+        );
+        assert_eq!(lexical(&fixture, &fixture.server, text).await, 0);
+    }
+    for text in ["redis40", "\"idemp\""] {
+        let mut input = exact_query(&fixture, text);
+        input.match_mode = Mode::Flexible;
+        assert!(
+            fixture
+                .server
+                .search(&fixture.identity, input)
+                .await
+                .unwrap()
+                .lexical
+                .is_empty()
+        );
+    }
+    let mut input = exact_query(&fixture, "idemp");
+    input.match_mode = Mode::Flexible;
+    input.filter = Some(crate::search_filter::Filter::Conversation(vec![
+        "absent".into(),
+    ]));
+    assert!(
+        fixture
+            .server
+            .search(&fixture.identity, input)
+            .await
+            .unwrap()
+            .lexical
+            .is_empty()
+    );
+    let mut messages = fixture.messages("idempotency");
+    messages[0].content = "idemp".into();
+    messages[0].projection = "idemp".into();
+    let file = Fixture::upload(&[
+        Event::Start(Fixture::start(2)),
+        Event::Batch(Batch::Conversations {
+            records: vec![Fixture::conversation()],
+        }),
+        Event::Batch(Batch::Messages { records: messages }),
+        Event::Finish,
+    ]);
+    fixture.server.index(&fixture.identity, file).await.unwrap();
+    let mut input = fixture.query();
+    input.query = "idemp".into();
+    input.match_mode = Mode::Flexible;
+    let hits = fixture
+        .server
+        .search(&fixture.identity, input)
+        .await
+        .unwrap()
+        .lexical;
+    assert_eq!(hits[0].id, "message-0", "exact before expanded terms");
+    assert!(hits[0].lexical_match.is_none());
+    let mut input = exact_query(&fixture, "idemp");
+    input.match_mode = Mode::Flexible;
+    let hits = fixture
+        .server
+        .search(&fixture.identity, input)
+        .await
+        .unwrap()
+        .lexical;
+    assert_eq!(hits[0].id, "message-0", "exact before newer prefix");
+    fixture.cleanup().await;
+}
+
 fn exact_query(fixture: &Fixture, text: &str) -> protocol::Search {
     let mut query = fixture.query();
     query.intent = crate::gold::exact::Intent::ExactMention;

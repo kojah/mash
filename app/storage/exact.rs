@@ -4,6 +4,50 @@ use crate::{AppError, gold::exact::Literal, search_filter::Scope};
 use rusqlite::functions::FunctionFlags;
 
 impl Storage {
+    pub(crate) fn lexical_plan(
+        &self,
+        query: &str,
+        mode: crate::gold::matching::Mode,
+        scope: Option<&Scope>,
+    ) -> Result<crate::gold::matching::Plan, AppError> {
+        use crate::gold::matching::{Mode, Plan, VOCABULARY_LIMIT};
+        if mode == Mode::Strict || (query.trim().starts_with('"') && query.trim().ends_with('"')) {
+            return Plan::new(query, Mode::Strict, &[]);
+        }
+        self.connection.execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary USING fts5vocab(gold,message_fts,row);
+            CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary_instances USING fts5vocab(gold,message_fts,instance);").map_err(AppError::database)?;
+        let unfiltered = scope.is_none_or(
+            |s| matches!(&s.filter,crate::search_filter::Filter::All(parts) if parts.is_empty()),
+        );
+        let sql = if unfiltered {
+            "SELECT term FROM temp.mash_vocabulary LIMIT ?1".to_owned()
+        } else {
+            let scope = scope.expect("filtered scope");
+            format!(
+                "SELECT DISTINCT v.term FROM temp.mash_vocabulary_instances v
+                JOIN message_fts f ON f.rowid=v.doc JOIN messages m ON m.id=f.message_id
+                JOIN conversations c ON c.id=m.conversation_id WHERE ({}) LIMIT ?1",
+                scope.filter.sql(Some(&scope.node))
+            )
+        };
+        let vocabulary = self
+            .connection
+            .prepare(&sql)
+            .map_err(AppError::database)?
+            .query_map(
+                [i64::try_from(VOCABULARY_LIMIT + 1).expect("bounded vocabulary")],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(AppError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::database)?;
+        if vocabulary.len() > VOCABULARY_LIMIT {
+            return Err(AppError::usage(
+                "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict",
+            ));
+        }
+        Plan::new(query, mode, &vocabulary)
+    }
     pub(crate) fn open_lexical(path: &std::path::Path) -> Result<Self, AppError> {
         let storage = Self::open_catalog(path)?;
         let silver = storage.silver_certificate()?;
@@ -26,6 +70,12 @@ impl Storage {
         scope: &Scope,
     ) -> Result<Vec<SearchHit>, AppError> {
         let matcher = literal.clone();
+        let plan = self.lexical_plan(literal.text(), literal.mode(), Some(scope))?;
+        let fts = if literal.mode() == crate::gold::matching::Mode::Strict {
+            literal.fts_query()
+        } else {
+            plan.sqlite()
+        };
         self.connection
             .create_scalar_function(
                 "mash_literal",
@@ -34,7 +84,15 @@ impl Storage {
                 move |ctx| {
                     let role = ctx.get::<crate::role::Role>(0)?;
                     let content = ctx.get_raw(1).as_str()?;
-                    Ok(matcher.matches(&crate::silver::dialogue::visible(&role, content)))
+                    let visible = crate::silver::dialogue::visible(&role, content);
+                    Ok(matcher
+                        .evidence(&visible)
+                        .map_or(0, |evidence| match evidence.kind {
+                            crate::gold::matching::Kind::Exact => 4,
+                            crate::gold::matching::Kind::Prefix => 3,
+                            crate::gold::matching::Kind::Typo => 2,
+                            crate::gold::matching::Kind::PrefixAndTypo => 1,
+                        }))
                 },
             )
             .map_err(AppError::database)?;
@@ -52,15 +110,13 @@ impl Storage {
              LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
              WHERE message_fts MATCH ?1 AND ({predicate})
                AND mash_literal(m.role,COALESCE(m.search_projection,m.content))
-             ORDER BY m.created_at DESC,m.id LIMIT ?2"
+             ORDER BY mash_literal(m.role,COALESCE(m.search_projection,m.content)) DESC,
+                      m.created_at DESC,m.id LIMIT ?2"
             ))
             .map_err(AppError::database)?;
         let rows = statement
             .query_map(
-                rusqlite::params![
-                    literal.fts_query(),
-                    i64::try_from(limit.min(1000)).unwrap_or(1000)
-                ],
+                rusqlite::params![fts, i64::try_from(limit.min(1000)).unwrap_or(1000)],
                 |row| {
                     Ok((
                         generated::SearchHitRow::from_row(row)?,
@@ -73,6 +129,7 @@ impl Storage {
             let (row, lexical_score) = row.map_err(AppError::database)?;
             let mut hit = super::queries::search_hit(row)?;
             hit.lexical_score = Some(lexical_score);
+            crate::gold::matching::annotate(&mut hit, literal);
             Ok(hit)
         })
         .collect()

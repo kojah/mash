@@ -307,6 +307,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
             created_at: None,
             metadata: crate::search_results::ThreadMetadata::default(),
             lexical_score: None,
+            lexical_match: None,
             semantic_score: None,
             fusion_score: 0.0,
             rerank_score: None,

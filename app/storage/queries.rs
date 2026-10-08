@@ -136,7 +136,15 @@ impl Storage {
                 "search query must contain letters or numbers",
             ));
         }
-        let query = crate::search_query::sqlite(query);
+        let mode = filters.map_or(crate::gold::matching::Mode::Strict, |f| f.match_mode);
+        let plan = self.lexical_plan(query, mode, filters)?;
+        let original_query = crate::search_query::sqlite(query);
+        let expanded = plan.sqlite();
+        let query = if mode == crate::gold::matching::Mode::Strict || expanded.is_empty() {
+            original_query.clone()
+        } else {
+            format!("({original_query}) OR ({expanded})")
+        };
         let limit = i64::try_from(limit.min(1_000)).unwrap_or(1_000);
         let cutoff = cutoff_timestamp(days)?;
         let predicate = filters.map_or_else(|| "TRUE".to_owned(), |f| f.filter.sql(Some(&f.node)));
@@ -158,22 +166,28 @@ impl Storage {
                     AND (?2 IS NULL OR c.provider = ?2)
                     AND (?3 IS NULL OR m.created_at >= ?3)
                     AND ({predicate})
-                  ORDER BY lexical_score, m.id
+                  ORDER BY CASE WHEN message_fts.rowid IN
+                    (SELECT rowid FROM message_fts WHERE message_fts MATCH ?5)
+                    THEN 0 ELSE 1 END, lexical_score, m.id
                   LIMIT ?4"
             ))
             .map_err(AppError::database)?;
         let rows = statement
-            .query_map(params![query, provider, cutoff, limit], |row| {
-                Ok((
-                    sql::SearchHitRow::from_row(row)?,
-                    row.get::<_, f64>("lexical_score")?,
-                ))
-            })
+            .query_map(
+                params![query, provider, cutoff, limit, original_query],
+                |row| {
+                    Ok((
+                        sql::SearchHitRow::from_row(row)?,
+                        row.get::<_, f64>("lexical_score")?,
+                    ))
+                },
+            )
             .map_err(AppError::database)?;
         rows.map(|row| {
             let (row, score) = row.map_err(AppError::database)?;
             let mut hit = search_hit(row)?;
             hit.lexical_score = Some(score);
+            hit.lexical_match = plan.evidence(&crate::redaction::text(&hit.content), mode);
             Ok(hit)
         })
         .collect()
@@ -341,6 +355,7 @@ pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> 
             updated_at: row.conversation_updated_at,
         },
         lexical_score: None,
+        lexical_match: None,
         semantic_score: None,
         fusion_score: 0.0,
         rerank_score: None,

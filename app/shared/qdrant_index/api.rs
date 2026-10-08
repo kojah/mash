@@ -997,6 +997,50 @@ impl Client {
         }
         Ok(result.points)
     }
+
+    pub(super) async fn terms(&self, name: &str, filter: &Filter) -> Result<Vec<String>, AppError> {
+        #[derive(Serialize)]
+        struct Request<'a> {
+            key: &'static str,
+            limit: usize,
+            exact: bool,
+            filter: &'a Filter,
+        }
+        #[derive(Deserialize)]
+        struct Reply {
+            hits: Vec<Term>,
+        }
+        #[derive(Deserialize)]
+        struct Term {
+            value: String,
+            count: u64,
+        }
+        let reply: Reply = self
+            .call(
+                Method::POST,
+                &format!("collections/{name}/facet?consistency=all"),
+                Some(&Request {
+                    key: "tokens",
+                    limit: crate::gold::matching::VOCABULARY_LIMIT + 1,
+                    exact: true,
+                    filter,
+                }),
+            )
+            .await?;
+        if reply.hits.len() > crate::gold::matching::VOCABULARY_LIMIT {
+            return Err(AppError::usage(
+                "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict",
+            ));
+        }
+        if reply
+            .hits
+            .iter()
+            .any(|h| h.count == 0 || h.value.is_empty())
+        {
+            return Err(failure());
+        }
+        Ok(reply.hits.into_iter().map(|h| h.value).collect())
+    }
     #[tracing::instrument(name = "qdrant_native_delete", skip_all)]
     pub(super) async fn delete_filtered(&self, name: &str, filter: Filter) -> Result<(), AppError> {
         let op: Operation = self

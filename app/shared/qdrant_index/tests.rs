@@ -180,6 +180,7 @@ impl Fixture {
         vector[0] = 127.0;
         protocol::Search {
             intent: crate::gold::exact::Intent::RelatedDiscussion,
+            match_mode: crate::gold::matching::Mode::Strict,
             vector_policy: None,
             unit: crate::search_results::SearchUnit::Messages,
             query: "needle".into(),

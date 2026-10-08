@@ -23,7 +23,7 @@ pub(crate) async fn search(
     unit: SearchUnit,
     filters: &Scope,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
-    let literal = Literal::new(query)?;
+    let literal = Literal::with_mode(query, filters.match_mode)?;
     filters.filter.validate()?;
     let database = database.map(Path::to_path_buf);
     let exclude_self = database.is_some();
@@ -55,6 +55,7 @@ pub(crate) async fn search(
             config,
             Endpoint::Search,
             &protocol::Search {
+                match_mode: filters.match_mode,
                 intent: exact::Intent::ExactMention,
                 vector_policy: None,
                 query: query.to_owned(),
@@ -82,11 +83,14 @@ pub(crate) async fn search(
         {
             return Err(AppError::shared("invalid exact-mention response"));
         }
-        let hits = crate::search_results::eligible(candidates.lexical);
+        let mut hits = crate::search_results::eligible(candidates.lexical);
         if hits.iter().any(|hit| !literal.matches(&hit.content)) {
             return Err(AppError::shared(
                 "shared exact-mention response contains a nonliteral match",
             ));
+        }
+        for hit in &mut hits {
+            crate::gold::matching::annotate(hit, &literal);
         }
         measured.complete(None, Some(hits.len()));
         Ok(hits)

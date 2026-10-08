@@ -129,6 +129,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
             created_at: None,
             metadata: crate::search_results::ThreadMetadata::default(),
             lexical_score: Some(1.0),
+            lexical_match: None,
             semantic_score: None,
             fusion_score: 1.0,
             rerank_score: None,
@@ -177,6 +178,7 @@ async fn interactive_request_timeout_does_not_inherit_the_upload_budget() {
     let started = std::time::Instant::now();
     let query = protocol::Search {
         intent: crate::gold::exact::Intent::RelatedDiscussion,
+        match_mode: crate::gold::matching::Mode::Strict,
         vector_policy: None,
         unit: SearchUnit::Threads,
         query: "cache".into(),
@@ -672,6 +674,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     ]);
     filter.validate().unwrap();
     let scope = crate::search_filter::Scope {
+        match_mode: crate::gold::matching::Mode::Strict,
         filter,
         node: "local-node".into(),
     };

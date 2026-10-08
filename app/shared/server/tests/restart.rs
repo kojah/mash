@@ -141,6 +141,7 @@ async fn publish(api: &Api, token: &str, revision: i64, second: bool) {
 fn query(unit: crate::search_results::SearchUnit) -> protocol::Search {
     protocol::Search {
         intent: crate::gold::exact::Intent::RelatedDiscussion,
+        match_mode: crate::gold::matching::Mode::Strict,
         vector_policy: None,
         unit,
         query: "restartneedle".into(),

@@ -164,6 +164,7 @@ pub(super) async fn search_prepared(
         )
     });
     let request = protocol::Search {
+        match_mode: filters.match_mode,
         vector_policy: shared_vector_search,
         intent: crate::gold::exact::Intent::RelatedDiscussion,
         query: query.to_owned(),

@@ -85,6 +85,7 @@ fn hit(point: api::Record<Document>, active: &BTreeSet<String>) -> Result<Search
             updated_at: d.conversation.updated_at,
         },
         lexical_score: Some(0.0),
+        lexical_match: None,
         semantic_score: None,
         fusion_score: 0.0,
         rerank_score: None,
@@ -98,7 +99,7 @@ impl Store {
         input: protocol::Search,
         active: &BTreeSet<String>,
     ) -> Result<protocol::Candidates, AppError> {
-        let literal = Literal::new(&input.query)?;
+        let literal = Literal::with_mode(&input.query, input.match_mode)?;
         if let Some(filter) = &input.filter {
             filter.validate()?;
         }
@@ -108,8 +109,19 @@ impl Store {
             .cloned()
             .collect::<BTreeSet<_>>();
         let mut filter = super::read::search_filter(&input, &active)?;
-        for word in tokens(&input.query).into_iter().collect::<BTreeSet<_>>() {
-            filter.must.push(api::matches("tokens", vec![word]));
+        let vocabulary = if input.match_mode == crate::gold::matching::Mode::Strict
+            || active.is_empty()
+            || literal.mode() == crate::gold::matching::Mode::Strict
+        {
+            Vec::new()
+        } else {
+            self.api
+                .terms(&collection(&identity.group_id, false), &filter)
+                .await?
+        };
+        let plan = crate::gold::matching::Plan::new(&input.query, literal.mode(), &vocabulary)?;
+        for group in plan.groups {
+            filter.must.push(api::matches("tokens", group));
         }
         let mut offset = None;
         let mut scanned = 0;
@@ -127,12 +139,15 @@ impl Store {
                     )
                     .await?;
                 scanned += page.points.len();
-                let page_hits = page
+                let mut page_hits = page
                     .points
                     .into_iter()
                     .filter(|point| !point.payload.message.projection.is_empty())
                     .map(|point| hit(point, &active))
                     .collect::<Result<Vec<_>, _>>()?;
+                for hit in &mut page_hits {
+                    crate::gold::matching::annotate(hit, &literal);
+                }
                 hits.extend(
                     crate::search_results::eligible(page_hits)
                         .into_iter()

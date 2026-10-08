@@ -94,6 +94,7 @@ async fn provider_contract(service: Service) {
     for &provider in Provider::ALL {
         for direct in [true, false] {
             let input = Search {
+                match_mode: crate::gold::matching::Mode::Strict,
                 intent: crate::gold::exact::Intent::RelatedDiscussion,
                 vector_policy: None,
                 unit: crate::search_results::SearchUnit::Messages,

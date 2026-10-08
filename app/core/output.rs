@@ -56,6 +56,8 @@ fn metadata(value: &ThreadMetadata) -> ThreadMetadata {
 
 #[derive(Serialize)]
 struct Message<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lexical_match: Option<&'a crate::gold::matching::Evidence>,
     id: &'a str,
     conversation_id: &'a str,
     provider: crate::provider::Provider,
@@ -70,7 +72,9 @@ struct Message<'a> {
 }
 
 #[derive(Serialize)]
-struct Match<'a> {
+struct Excerpt<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lexical_match: Option<&'a crate::gold::matching::Evidence>,
     message_id: &'a str,
     node_id: Option<&'a str>,
     role: &'a crate::role::Role,
@@ -81,9 +85,10 @@ struct Match<'a> {
     copies: &'a [MessageReference],
 }
 
-impl<'a> From<&'a ThreadMatch> for Match<'a> {
+impl<'a> From<&'a ThreadMatch> for Excerpt<'a> {
     fn from(value: &'a ThreadMatch) -> Self {
         Self {
+            lexical_match: value.lexical_match.as_ref(),
             message_id: &value.message_id,
             node_id: value.node_id.as_deref(),
             role: &value.role,
@@ -107,7 +112,7 @@ struct Thread<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     score: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    matches: Vec<Match<'a>>,
+    matches: Vec<Excerpt<'a>>,
 }
 
 impl<'a> From<&'a ThreadHit> for Thread<'a> {
@@ -118,7 +123,7 @@ impl<'a> From<&'a ThreadHit> for Thread<'a> {
             node_id: value.node_id.as_deref(),
             metadata: metadata(&value.metadata),
             score: Some(value.score),
-            matches: value.matches.iter().map(Match::from).collect(),
+            matches: value.matches.iter().map(Excerpt::from).collect(),
         }
     }
 }
@@ -156,6 +161,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                 messages
                     .iter()
                     .map(|hit| Message {
+                        lexical_match: hit.lexical_match.as_ref(),
                         id: &hit.id,
                         conversation_id: &hit.conversation_id,
                         provider: hit.provider,

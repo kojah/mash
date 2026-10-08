@@ -59,6 +59,7 @@ fn hit() -> SearchHit {
         copies: vec![],
         node_id: Some("peer".into()),
         lexical_score: Some(0.0),
+        lexical_match: None,
         semantic_score: None,
         rerank_score: None,
         fusion_score: 0.0,

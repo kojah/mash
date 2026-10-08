@@ -225,7 +225,7 @@ async fn run_inner(
             .map_or("local", |c| c.node_id.as_str()),
     )?;
     if intent == crate::gold::exact::Intent::ExactMention {
-        let literal = crate::gold::exact::Literal::new(&query)?;
+        let literal = crate::gold::exact::Literal::with_mode(&query, filters.match_mode)?;
         if use_shared || (!use_local && configuration.shared.is_some()) {
             let (hits, shared_error) = shared::search_exact(
                 required_shared(configuration)?,

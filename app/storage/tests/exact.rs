@@ -14,6 +14,89 @@ fn certify(writer: &mut Storage) {
 }
 
 #[test]
+fn flexible_search_supports_prefixes_and_transpositions_on_read_only_gold() {
+    use crate::gold::matching::{Kind, Mode};
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("flexible.sqlite3");
+    let mut writer = Storage::open_writer(&path).unwrap();
+    writer
+        .replace_conversation(&conversation_with_messages(&[
+            (
+                "match",
+                "Implement idempotency for kafka consumers using redis4",
+            ),
+            ("decoy", "redis40 has unrelated consumers"),
+        ]))
+        .unwrap();
+    certify(&mut writer);
+    writer.commit_writer().unwrap();
+    drop(writer);
+    let gold = super::super::schema::gold_path(&path);
+    let before = std::fs::read(&gold).unwrap();
+    let reader = Storage::open_lexical(&path).unwrap();
+    let scope = Selection::default().resolve("local").unwrap();
+    assert_eq!(scope.match_mode, Mode::Flexible);
+    for (query, kind) in [("idemp", Kind::Prefix), ("idempotnecy", Kind::Typo)] {
+        let literal = Literal::with_mode(query, scope.match_mode).unwrap();
+        let hits = reader.search_exact(&literal, 10, &scope).unwrap();
+        assert_eq!(hits.len(), 1, "{query}");
+        assert_eq!(hits[0].lexical_match.as_ref().unwrap().kind, kind);
+        let hits = reader
+            .search_filtered(query, 10, None, None, Some(&scope))
+            .unwrap();
+        assert_eq!(hits.len(), 1, "hybrid lexical {query}");
+        assert_eq!(hits[0].lexical_match.as_ref().unwrap().kind, kind);
+        assert!(
+            reader
+                .search_exact(
+                    &Literal::with_mode(query, Mode::Strict).unwrap(),
+                    10,
+                    &scope
+                )
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let hits = reader
+        .search_exact(
+            &Literal::with_mode("redis4", Mode::Flexible).unwrap(),
+            10,
+            &scope,
+        )
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, "match");
+    assert!(
+        reader
+            .search_exact(
+                &Literal::with_mode("\"idemp\"", Mode::Flexible).unwrap(),
+                10,
+                &scope
+            )
+            .unwrap()
+            .is_empty()
+    );
+    let excluded = Selection {
+        conversation: vec!["absent".into()],
+        ..Default::default()
+    }
+    .resolve("local")
+    .unwrap();
+    assert!(
+        reader
+            .search_exact(
+                &Literal::with_mode("idemp", Mode::Flexible).unwrap(),
+                10,
+                &excluded
+            )
+            .unwrap()
+            .is_empty()
+    );
+    drop(reader);
+    assert_eq!(before, std::fs::read(gold).unwrap());
+}
+
+#[test]
 fn lexical_publication_survives_forget_without_a_dense_manifest() {
     for dirty in [false, true] {
         let root = tempfile::tempdir().unwrap();

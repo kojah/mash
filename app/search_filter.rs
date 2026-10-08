@@ -8,6 +8,8 @@ use crate::AppError;
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Selection {
+    /// flexible (default) enables prefix and typo matching; strict preserves literals.
+    pub(crate) match_mode: crate::gold::matching::Mode,
     /// Provider alternatives; omitted or empty selects all providers.
     pub(crate) provider: Vec<Provider>,
     pub(crate) days: Option<u32>,
@@ -29,6 +31,7 @@ pub(crate) struct Selection {
 
 #[derive(Clone)]
 pub(crate) struct Scope {
+    pub(crate) match_mode: crate::gold::matching::Mode,
     pub(crate) filter: Filter,
     pub(crate) node: String,
 }
@@ -110,6 +113,7 @@ impl Selection {
         let filter = Filter::All(all);
         filter.validate()?;
         Ok(Scope {
+            match_mode: self.match_mode,
             filter,
             node: node.to_owned(),
         })

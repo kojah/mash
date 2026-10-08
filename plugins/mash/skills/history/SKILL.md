@@ -44,8 +44,12 @@ a path mentioned in prose. The CLI has no attachment retrieval subcommand.
   rather than relying on the node's configured default. Start with a small limit
   such as 5 and inspect the matching messages.
 - For a literal phrase, identifier, error, or path, use `intent: "exact-mention"`.
-  This mode skips embedding/reranking inference and favors recent literal
-  matches. An incidental path mention is not evidence of a substantive discussion.
+  This mode skips embedding/reranking inference. Search defaults to
+  `match_mode: "flexible"`, supporting prefixes and conservative typo corrections.
+  Expanded hits include `lexical_match` showing the source term that matched.
+  Use `match_mode: "strict"` when the exact spelling is required; quoted queries
+  also remain strict. Numbers are never corrected or expanded.
+  An incidental path mention is not evidence of a substantive discussion.
 - Drill into promising threads with `unit: "messages"` and
   `conversation: ["RETURNED_THREAD_ID"]`. Retain applicable provider, node,
   project/repository and time filters. Use actual returned IDs.
@@ -68,7 +72,7 @@ label identifies the tool for the build-time contract check:
 ```
 
 ```json mcp:search
-{"query":"Qdrant","intent":"exact-mention","unit":"messages","conversation":["RETURNED_THREAD_ID"],"limit":10}
+{"query":"Qdrant","intent":"exact-mention","match_mode":"strict","unit":"messages","conversation":["RETURNED_THREAD_ID"],"limit":10}
 ```
 
 ```json mcp:view

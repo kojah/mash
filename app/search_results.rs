@@ -71,6 +71,8 @@ pub(crate) struct ThreadHit {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ThreadMatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) lexical_match: Option<crate::gold::matching::Evidence>,
     pub(crate) message_id: String,
     pub(crate) node_id: Option<String>,
     pub(crate) role: crate::role::Role,
@@ -322,6 +324,7 @@ fn collect_inner(
             },
         );
         thread.matches.push(ThreadMatch {
+            lexical_match: hit.lexical_match,
             message_id: hit.id,
             node_id: hit.node_id,
             role: hit.role,

@@ -189,6 +189,9 @@ enum ModelsCommand {
 
 #[derive(Debug, Clone, Default, clap::Args)]
 struct SearchArguments {
+    /// Lexical matching: flexible (prefixes and typos), strict, prefix, or typo.
+    #[arg(long, value_enum, default_value = "flexible")]
+    match_mode: crate::gold::matching::Mode,
     #[arg(long)]
     provider: Vec<Provider>,
     #[arg(long)]
@@ -229,6 +232,7 @@ impl SearchArguments {
             })
             .transpose()?;
         Ok(crate::search_filter::Selection {
+            match_mode: self.match_mode,
             provider: self.provider,
             days: self.days,
             node: self.node,
@@ -590,6 +594,35 @@ mod tests {
         assert!(
             Cli::try_parse_from(["mash", "search", "database", "--ranking", "unknown"]).is_err()
         );
+    }
+
+    #[test]
+    fn cli_lexical_matching_defaults_to_flexible_and_preserves_explicit_modes() {
+        use crate::gold::matching::Mode;
+        for (name, expected) in [
+            ("strict", Mode::Strict),
+            ("prefix", Mode::Prefix),
+            ("typo", Mode::Typo),
+            ("flexible", Mode::Flexible),
+        ] {
+            let request = Cli::try_parse_from(["mash", "search", "idemp", "--match-mode", name])
+                .unwrap()
+                .into_request()
+                .unwrap();
+            let Operation::Search { filters, .. } = request.operation else {
+                panic!("search")
+            };
+            assert_eq!(filters.match_mode, expected);
+        }
+        let request = Cli::try_parse_from(["mash", "search", "idemp"])
+            .unwrap()
+            .into_request()
+            .unwrap();
+        let Operation::Search { filters, .. } = request.operation else {
+            panic!("search")
+        };
+        assert_eq!(filters.match_mode, Mode::Flexible);
+        assert!(Cli::try_parse_from(["mash", "search", "idemp", "--match-mode", "fuzzy"]).is_err());
     }
 
     #[test]

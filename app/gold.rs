@@ -5,6 +5,7 @@ pub(crate) mod exact;
 pub(crate) mod lexical_manifest;
 pub(crate) mod local;
 pub(crate) mod manifest;
+pub(crate) mod matching;
 pub(crate) mod readiness;
 pub(crate) mod shared;
 pub(crate) mod units;

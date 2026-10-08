@@ -154,6 +154,14 @@ The manifests/catalogues follow the official
 
 Search is semantic by default. A `lexical-only` gold build supports
 `exact-mention`; semantic `related-discussion` requires `lexical-and-dense`.
+Lexical retrieval defaults to `--match-mode flexible` (`match_mode: "flexible"`
+in MCP/HTTP): prefixes of at least three characters and conservative typo
+corrections work in both SQLite and Qdrant. Use `strict`, `prefix`, or `typo`
+to select a narrower mode. Quoted whole queries retain exact spelling, and
+numbers are never expanded or corrected. Expanded results include
+`lexical_match` with the matched source term. Vocabulary expansion is scoped by
+metadata filters and bounded to 100,000 vocabulary terms, 32 query terms and eight alternatives per query
+term; a budget error asks for narrower filters or strict matching.
 Install models explicitly, then build the local index:
 
 ```bash

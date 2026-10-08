@@ -87,6 +87,8 @@ pub(crate) struct StatusSnapshot {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SearchHit {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) lexical_match: Option<crate::gold::matching::Evidence>,
     pub(crate) id: String,
     pub(crate) conversation_id: String,
     pub(crate) provider: Provider,

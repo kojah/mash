@@ -142,11 +142,73 @@ pub(super) fn search_filter(
 }
 
 impl Store {
+    /// Preserve original lexical candidates before considering expanded terms.
+    async fn lexical(
+        &self,
+        identity: &Identity,
+        input: &protocol::Search,
+        active: &BTreeSet<String>,
+        filter: &api::Filter,
+        ef: usize,
+    ) -> Result<Vec<SearchHit>, AppError> {
+        let name = collection(&identity.group_id, false);
+        let original = crate::gold::matching::Plan::new(
+            &input.query,
+            crate::gold::matching::Mode::Strict,
+            &[],
+        )?;
+        let request = |plan: &crate::gold::matching::Plan| {
+            let mut scoped = filter.clone();
+            for group in &plan.groups {
+                scoped.must.push(api::matches("tokens", group.clone()));
+            }
+            api::QueryRequest {
+                query: api::QueryVector::Sparse(sparse(&plan.sparse_text(), true)),
+                using: "lexical".into(),
+                filter: scoped,
+                params: api::Params {
+                    exact: true,
+                    hnsw_ef: ef,
+                },
+                limit: input.unit.candidate_limit(),
+                with_payload: true,
+            }
+        };
+        let original_request = request(&original);
+        let strict = self.api.query::<Document>(&name, &original_request);
+        let expand = async {
+            if input.match_mode == crate::gold::matching::Mode::Strict
+                || (input.query.trim().starts_with('"') && input.query.trim().ends_with('"'))
+            {
+                return Ok((original, Vec::new()));
+            }
+            let vocabulary = self.api.terms(&name, filter).await?;
+            let plan =
+                crate::gold::matching::Plan::new(&input.query, input.match_mode, &vocabulary)?;
+            let points = self.api.query::<Document>(&name, &request(&plan)).await?;
+            Ok::<_, AppError>((plan, points))
+        };
+        let (points, (plan, expanded)) = tokio::try_join!(strict, expand)?;
+        let mut lexical = hits(points, true, identity, active, &self.build)?;
+        let mut seen = lexical
+            .iter()
+            .map(|h| (h.node_id.clone(), h.id.clone()))
+            .collect::<BTreeSet<_>>();
+        for mut hit in hits(expanded, true, identity, active, &self.build)? {
+            if seen.insert((hit.node_id.clone(), hit.id.clone())) {
+                hit.lexical_match =
+                    plan.evidence(&crate::redaction::text(&hit.content), input.match_mode);
+                lexical.push(hit);
+            }
+        }
+        lexical.truncate(input.unit.candidate_limit());
+        Ok(lexical)
+    }
     #[tracing::instrument(name = "backend_search", skip_all, fields(backend = "qdrant"))]
     pub(in crate::shared) async fn search(
         &self,
         identity: &Identity,
-        input: protocol::Search,
+        mut input: protocol::Search,
         active: &BTreeSet<String>,
     ) -> Result<protocol::Candidates, AppError> {
         validate_search(&input, identity)?;
@@ -170,39 +232,24 @@ impl Store {
             });
         }
         let filter = search_filter(&input, &active)?;
-        let mut lexical_filter = filter.clone();
-        for word in tokens(&input.query) {
-            lexical_filter.must.push(api::matches("tokens", vec![word]));
-        }
         let (exact, ef) = match vector_policy {
             VectorIndex::Exact {} => (true, 200),
             VectorIndex::Hnsw { ef_runtime } => (false, ef_runtime),
         };
         let semantic_query = api::QueryRequest {
-            query: api::QueryVector::Dense(input.vector),
+            query: api::QueryVector::Dense(std::mem::take(&mut input.vector)),
             using: self.dense_name(identity).into(),
-            filter,
+            filter: filter.clone(),
             params: api::Params { exact, hnsw_ef: ef },
             limit: input.unit.candidate_limit(),
             with_payload: true,
         };
-        let lexical_query = api::QueryRequest {
-            query: api::QueryVector::Sparse(sparse(&input.query, true)),
-            using: "lexical".into(),
-            filter: lexical_filter,
-            params: api::Params {
-                exact: true,
-                hnsw_ef: ef,
-            },
-            limit: input.unit.candidate_limit(),
-            with_payload: true,
-        };
         let name = collection(&identity.group_id, false);
+        let lexical_query = self.lexical(identity, &input, &active, &filter, ef);
         let (lexical, semantic) = tokio::try_join!(
-            self.api.query::<Document>(&name, &lexical_query),
+            lexical_query,
             self.api.query::<Document>(&name, &semantic_query)
         )?;
-        let lexical = hits(lexical, true, identity, &active, &self.build)?;
         let semantic = hits(semantic, false, identity, &active, &self.build)?;
         let documents: BTreeMap<_, _> = lexical
             .iter()
@@ -274,6 +321,7 @@ fn hits(
             created_at: m.created_at,
             metadata: metadata(&d.conversation),
             lexical_score: lexical.then_some(-f64::from(point.score)),
+            lexical_match: None,
             semantic_score: (!lexical).then_some(point.score),
             fusion_score: 0.0,
             rerank_score: None,

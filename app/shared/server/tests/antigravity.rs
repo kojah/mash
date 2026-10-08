@@ -29,6 +29,7 @@ async fn contract(service: Service) {
         ("synthetic_scope_only_marker", 0),
     ] {
         let request = Search {
+            match_mode: crate::gold::matching::Mode::Strict,
             intent: crate::gold::exact::Intent::RelatedDiscussion,
             vector_policy: None,
             unit: crate::search_results::SearchUnit::Messages,

@@ -225,6 +225,8 @@ pub(super) struct Indexed {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Search {
+    #[serde(default)]
+    pub match_mode: crate::gold::matching::Mode,
     #[serde(
         default,
         rename = "vector_search",

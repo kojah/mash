@@ -19,6 +19,7 @@ pub(super) async fn verify_thread_provider_scopes(service: &Service, vector: &[f
         .resolve("first")
         .unwrap();
         let mut input = Search {
+            match_mode: crate::gold::matching::Mode::Strict,
             intent: crate::gold::exact::Intent::RelatedDiscussion,
             vector_policy: None,
             unit: crate::search_results::SearchUnit::Messages,

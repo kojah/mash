@@ -91,6 +91,7 @@ fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_sc
         .unwrap();
     writer.mark_semantic_index_ready("generation").unwrap();
     let scope = Scope {
+        match_mode: crate::gold::matching::Mode::Strict,
         node: "local".into(),
         filter: Filter::Any(vec![
             Filter::After(2),
@@ -135,6 +136,7 @@ fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_sc
     ids.sort();
     assert_eq!(ids, ["fallback", "recent"]);
     let excluded = Scope {
+        match_mode: crate::gold::matching::Mode::Strict,
         node: "local".into(),
         filter: Filter::Node(vec!["another-node".into()]),
     };

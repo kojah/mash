@@ -128,6 +128,7 @@ fn events(revision: i64) -> Vec<Value> {
 
 fn query(text: &str, filter: Filter, exclude_self: bool) -> Search {
     Search {
+        match_mode: crate::gold::matching::Mode::Strict,
         intent: Intent::ExactMention,
         vector_policy: None,
         unit: SearchUnit::Messages,
