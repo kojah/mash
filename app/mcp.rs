@@ -1,3 +1,4 @@
+use crate::core::output::Detail;
 use crate::core::{self, IndexRequest, Operation, Paths, Request};
 use crate::provider::Provider;
 use futures_util::FutureExt;
@@ -25,6 +26,9 @@ struct Mash {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Search {
+    /// compact (default) returns bounded excerpts; extended includes full hits and scores.
+    #[serde(default)]
+    detail: Detail,
     /// Dense shared retrieval override; omitted inherits the group's active default.
     #[serde(rename = "shared_vector_search")]
     shared_vector: Option<crate::gold::vector::Search>,
@@ -54,6 +58,9 @@ struct Search {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Status {
+    /// compact (default) shows readiness and freshness; extended includes manifests/configuration.
+    #[serde(default)]
+    detail: Detail,
     /// Query shared per-node synchronization and update timestamps.
     #[serde(default)]
     shared: bool,
@@ -62,6 +69,9 @@ struct Status {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ListThreads {
+    /// compact (default) omits enrichment provenance; extended includes all metadata.
+    #[serde(default)]
+    detail: Detail,
     #[serde(flatten)]
     input: crate::thread_catalog::Request,
     #[serde(default)]
@@ -151,6 +161,15 @@ struct WatchStart {
 }
 
 impl Mash {
+    async fn execute_detailed(&self, operation: Operation, detail: Detail) -> CallToolResult {
+        let server = self.clone();
+        tokio::spawn(async move {
+            tool_result_detailed(server.perform_response(operation).await, detail)
+        })
+        .await
+        .unwrap_or_else(|_| CallToolResult::error(vec![ContentBlock::text("tool worker failed")]))
+    }
+
     async fn execute(&self, operation: Operation) -> CallToolResult {
         self.execute_with_progress(operation, None).await
     }
@@ -263,9 +282,16 @@ impl Mash {
 }
 
 fn tool_result(result: Result<core::Response, crate::AppError>) -> CallToolResult {
+    tool_result_detailed(result, Detail::Extended)
+}
+
+fn tool_result_detailed(
+    result: Result<core::Response, crate::AppError>,
+    detail: Detail,
+) -> CallToolResult {
     match result {
         Ok(core::Response::GetAttachment(file)) => attachment_result(file),
-        Ok(value) => match serde_json::to_value(&value) {
+        Ok(value) => match core::output::serialize(&value, detail) {
             Ok(json) if value.needs_retry() => CallToolResult::structured_error(json),
             Ok(json) => CallToolResult::structured(json),
             Err(_) => CallToolResult::error(vec![ContentBlock::text(
@@ -371,12 +397,15 @@ impl Mash {
         description = "Quickly list thread metadata without models or inference. Filter by provider, node, literal title substring or thread activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned conversation_id and provider in search with unit=messages. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
     )]
     async fn list_threads(&self, Parameters(input): Parameters<ListThreads>) -> CallToolResult {
-        self.execute(Operation::ListThreads {
-            input: Box::new(input.input),
-            local: input.local,
-            shared: input.shared,
-            diagnostics: input.diagnostics,
-        })
+        self.execute_detailed(
+            Operation::ListThreads {
+                input: Box::new(input.input),
+                local: input.local,
+                shared: input.shared,
+                diagnostics: input.diagnostics,
+            },
+            input.detail,
+        )
         .await
     }
 
@@ -385,25 +414,28 @@ impl Mash {
         description = "Search using current gold.query defaults; override intent, unit, limit, ranking or partial fusion settings. Ranking overrides select fusion or contextual-rerank for one request. Ranking and fusion overrides apply only to related-discussion and inherit omitted fields from TOML. related-discussion uses hybrid local/shared retrieval and installed models. exact-mention matches one literal phrase or identifier in visible text, with ASCII case folding and punctuation preserved, without inference, locally and through the shared service. Narrow broad exact queries with metadata filters if the shared candidate or time budget is reached. Thread excerpts include message_id anchors for view; timestamps are Unix milliseconds. All modes require completed current retrieval artifacts and never run ingestion. Combined shared candidate failures fall back locally with shared_error; shared-only candidate failures return an error. Later context failures retain shared evidence and mode with shared_context_error. Optional diagnostics include resolved policy and measured stages."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
-        self.execute(Operation::Search {
-            shared_vector_search: request.shared_vector,
-            query: request.query,
-            intent: request.intent,
-            limit: request.limit,
-            unit: request.unit,
-            fusion: request.fusion.unwrap_or_default(),
-            ranking: request.ranking,
-            diagnostics: request.diagnostics,
-            filters: Box::new(request.filters),
-            shared: request.shared,
-            local: request.local,
-        })
+        self.execute_detailed(
+            Operation::Search {
+                shared_vector_search: request.shared_vector,
+                query: request.query,
+                intent: request.intent,
+                limit: request.limit,
+                unit: request.unit,
+                fusion: request.fusion.unwrap_or_default(),
+                ranking: request.ranking,
+                diagnostics: request.diagnostics,
+                filters: Box::new(request.filters),
+                shared: request.shared,
+                local: request.local,
+            },
+            request.detail,
+        )
         .await
     }
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read a message and adjacent context. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
+        description = "Read complete message text and adjacent context after discovery; never truncates message bodies. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
     )]
     async fn view(&self, Parameters(request): Parameters<View>) -> CallToolResult {
         self.execute(Operation::View {
@@ -419,9 +451,12 @@ impl Mash {
         description = "Report index/model readiness. Set shared=true to include each node's artifact publication states, last_synced_at and last_updated_at from the shared HTTP service backed by Qdrant. Artifact readiness does not certify complete provider history or installed query models."
     )]
     async fn status(&self, Parameters(request): Parameters<Status>) -> CallToolResult {
-        self.execute(Operation::Status {
-            shared: request.shared,
-        })
+        self.execute_detailed(
+            Operation::Status {
+                shared: request.shared,
+            },
+            request.detail,
+        )
         .await
     }
 

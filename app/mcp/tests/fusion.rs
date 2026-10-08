@@ -274,8 +274,7 @@ async fn real_models_mcp_thread_excerpts_preserve_projection_locations() {
     let task = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
     let client = ().serve(client_io).await.unwrap();
     let service = task.await.unwrap();
-    let args =
-        json!({"query":"cache model", "intent":"exact-mention", "unit":"threads", "local":true});
+    let args = json!({"query":"cache model", "intent":"exact-mention", "unit":"threads", "local":true,"detail":"extended"});
     let result = client
         .call_tool(
             CallToolRequestParams::new("search").with_arguments(args.as_object().unwrap().clone()),
@@ -373,7 +372,7 @@ async fn real_models_mcp_fusion_overrides_inherit_reloaded_defaults_without_inde
             configuration(root.path(), constant, lexical),
         )
         .unwrap();
-        let mut args = json!({"query":"cache model", "local":true});
+        let mut args = json!({"query":"cache model", "local":true,"detail":"extended"});
         if let Some(weight) = override_weight {
             args["fusion"] = json!({"semantic_weight":weight});
             args["diagnostics"] = json!(true);

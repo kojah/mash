@@ -12,6 +12,7 @@ mod client;
 mod exact;
 mod gold_manifest;
 mod lexical_manifest;
+mod output;
 pub(crate) mod protocol;
 mod publication;
 mod qdrant_index;
@@ -24,6 +25,7 @@ mod validation;
 
 pub(crate) use client::{freshness, list_threads, view};
 pub(crate) use exact::search as search_exact;
+pub(crate) use output::{FreshnessSummary, PublicationSummary};
 pub(crate) use publication::Inference;
 #[cfg(test)]
 pub(crate) use publication::write_event;

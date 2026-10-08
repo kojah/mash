@@ -9,6 +9,7 @@ mod indexing;
 mod inspection;
 mod maintenance;
 mod models;
+pub(crate) mod output;
 mod search;
 mod threads;
 

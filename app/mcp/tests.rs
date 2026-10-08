@@ -7,6 +7,7 @@ mod attachments;
 mod export;
 mod fusion;
 mod incomplete;
+mod output;
 mod rebuild;
 mod redaction;
 mod selections;
@@ -44,6 +45,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         server.search(Parameters(Search {
+            detail: Detail::Extended,
             query: "for".into(),
             intent: None,
             limit: Some(1),
@@ -124,6 +126,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
     for (local, shared, filter) in [(true, true, None), (true, false, Some(invalid_filter))] {
         let result = server
             .search(Parameters(Search {
+                detail: Detail::Extended,
                 query: "--models-dir=untrusted".into(),
                 intent: None,
                 limit: None,
@@ -146,6 +149,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
     }
     let result = server
         .search(Parameters(Search {
+            detail: Detail::Extended,
             query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
             intent: None,
             limit: None,
@@ -411,7 +415,10 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     let model_permit = model_work.acquire().await.expect("model permit");
     let status = tokio::time::timeout(
         std::time::Duration::from_secs(2),
-        client.call_tool(CallToolRequestParams::new("status")),
+        client.call_tool(
+            CallToolRequestParams::new("status")
+                .with_arguments(json!({"detail":"extended"}).as_object().unwrap().clone()),
+        ),
     )
     .await
     .expect("status remains responsive during a mutation and model work")

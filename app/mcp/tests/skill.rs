@@ -45,6 +45,7 @@ fn mcp(tool: &str, text: &str) -> Result<(), String> {
         "search" => arguments::<Search>(text),
         "list_threads" => arguments::<ListThreads>(text),
         "view" => arguments::<View>(text),
+        "status" => arguments::<Status>(text),
         "list_attachments" => arguments::<ListAttachments>(text),
         "get_attachment" => arguments::<GetAttachment>(text),
         _ => Err(format!("add runtime argument validation for {tool}")),

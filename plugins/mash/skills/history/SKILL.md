@@ -11,6 +11,14 @@ schemas. If Mash MCP is absent or its connection fails, use the CLI fallback
 below with the same intent, scope and filters. Empty results or an indexing/model
 error are not transport failures; changing transport does not repair the index.
 
+`search`, `list_threads`, and `status` default to `detail: "compact"`. Compact
+search returns bounded excerpts with `content_truncated` or `snippet_truncated`;
+use `view` for complete message evidence. IDs, node attribution, pagination,
+partial-source errors and requested diagnostics remain available. Set
+`detail: "extended"` for full retrieved search text, ranking scores, enrichment
+provenance, or detailed status manifests/configuration. `view` always returns
+complete message text; it has no `detail` argument. CLI output remains extended.
+
 ## Find the conversation and inspect evidence
 
 When a message refers to an attachment, use `list_attachments` with its `message_id`,
@@ -69,6 +77,14 @@ label identifies the tool for the build-time contract check:
 
 ```json mcp:view
 {"id":"RETURNED_MESSAGE_ID","context":2,"shared":"PUBLISHING_NODE_ID"}
+```
+
+```json mcp:search
+{"query":"Qdrant","intent":"exact-mention","unit":"messages","detail":"extended","limit":5}
+```
+
+```json mcp:status
+{"shared":true,"detail":"extended"}
 ```
 
 Attachment tools use `message_id`; `view` uses `id`:

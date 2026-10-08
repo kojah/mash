@@ -1318,6 +1318,17 @@ Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
 `models_install`, `list_attachments`, `get_attachment`, `export_silver`, `import_silver`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
 
+MCP `search`, `list_threads`, and `status` accept `detail: "compact"` (default)
+or `"extended"`. Compact search bounds message/excerpt text to 600 characters
+(plus truncation markers), removes per-stage ranking scores and enrichment
+provenance, and preserves result ordering, IDs, publishing node attribution,
+copy anchors, pagination, partial-source errors and explicitly requested
+diagnostics. Truncated text is marked with `content_truncated` or
+`snippet_truncated`; call `view` to read complete messages. Extended returns the
+existing full response, including retrieved message text, scores, provenance
+and status manifests/configuration. `view` always returns complete message
+text and accepts no detail selector. CLI output stays extended.
+
 `export_silver({"directory":"/path/to/new-export"})` saves local silver and
 retained attachments offline, with a typed JSON manifest and checksums.
 `import_silver({"directory":"/path/to/new-export","database":"/path/to/new.sqlite3"})`
