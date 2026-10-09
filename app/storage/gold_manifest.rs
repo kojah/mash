@@ -21,7 +21,6 @@ impl Storage {
 
     pub(crate) fn publish_lexical_manifest(&self) -> Result<(), AppError> {
         self.require_writer()?;
-        self.require_connector_gold_support()?;
         let silver = self.silver_certificate()?;
         if !silver.is_complete() || self.derived_search_is_dirty()? {
             return Err(AppError::search_not_ready(
@@ -57,7 +56,6 @@ impl Storage {
 
     pub(crate) fn publish_gold_manifest(&self, manifest: &Manifest) -> Result<(), AppError> {
         self.require_writer()?;
-        self.require_connector_gold_support()?;
         let json = serde_json::to_string(manifest)
             .map_err(|_| AppError::internal("serialize gold build manifest"))?;
         self.connection
@@ -70,7 +68,6 @@ impl Storage {
     }
 
     pub(crate) fn require_gold_build(&self, build: &Build, model: &str) -> Result<(), AppError> {
-        self.require_connector_gold_support()?;
         let silver = self.silver_certificate()?;
         if !self
             .gold_manifest()?
@@ -78,20 +75,6 @@ impl Storage {
         {
             return Err(AppError::search_not_ready(
                 "gold build configuration or silver revision is stale; run `mash index --rebuild-local-gold`",
-            ));
-        }
-        Ok(())
-    }
-
-    fn require_connector_gold_support(&self) -> Result<(), AppError> {
-        if generated::ConnectorInputs
-            .query_one(&self.connection)
-            .map_err(AppError::database)?
-            .present
-            != 0
-        {
-            return Err(AppError::search_not_ready(
-                "external connector gold projection has not completed",
             ));
         }
         Ok(())

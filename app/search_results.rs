@@ -1,5 +1,4 @@
 //! Gold: result granularity and bounded conversation ranking across transports.
-use crate::provider::Provider;
 use crate::storage::SearchHit;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
@@ -63,7 +62,8 @@ pub(crate) enum Results {
 pub(crate) struct ChatHit {
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
-    pub(crate) provider: Provider,
+    pub(crate) source: crate::source::Source,
+    pub(crate) kind: crate::source::Kind,
     pub(crate) node_id: Option<String>,
     #[serde(flatten)]
     pub(crate) metadata: ChatMetadata,
@@ -80,7 +80,10 @@ pub(crate) struct ChatMatch {
     pub(crate) lexical_match: Option<crate::gold::matching::Evidence>,
     pub(crate) message_id: String,
     pub(crate) node_id: Option<String>,
-    pub(crate) role: crate::role::Role,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) role: Option<crate::role::Role>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
     pub(crate) created_at: Option<i64>,
     pub(crate) snippet: String,
     /// Primary message's search projection; excludes display ellipses.
@@ -104,7 +107,12 @@ pub(crate) struct MessageReference {
     pub(crate) node_id: Option<String>,
 }
 
-pub(crate) type EvidenceKey = (Provider, String, crate::role::Role, blake3::Hash);
+/// Who produced the evidence: a native role or a connector author kind.
+pub(crate) type Speaker = (
+    Option<crate::role::Role>,
+    Option<crate::connectors::AuthorKind>,
+);
+pub(crate) type EvidenceKey = (crate::source::Source, String, Speaker, blake3::Hash);
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) enum HitKey {
     Message(EvidenceKey, String),
@@ -121,9 +129,9 @@ pub(crate) fn hit_key(hit: &SearchHit, unit: SearchUnit) -> HitKey {
 pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
     let text = hit.content.split_whitespace().collect::<Vec<_>>().join(" ");
     (
-        hit.provider,
+        hit.source.clone(),
         hit.conversation_id.clone(),
-        hit.role.clone(),
+        (hit.role.clone(), hit.author_kind),
         blake3::hash(text.as_bytes()),
     )
 }
@@ -132,7 +140,12 @@ pub(crate) fn evidence_key(hit: &SearchHit) -> EvidenceKey {
 pub(crate) fn eligible(hits: Vec<SearchHit>) -> Vec<SearchHit> {
     hits.into_iter()
         .filter_map(|mut hit| {
-            let clean = crate::silver::dialogue::visible(&hit.role, &hit.content);
+            // Agent-role cleanup applies to native dialogue only; connector
+            // text is already the source's own rendering.
+            let clean = match &hit.role {
+                Some(role) => crate::silver::dialogue::visible(role, &hit.content),
+                None => std::borrow::Cow::Borrowed(hit.content.as_str()),
+            };
             if clean.trim().is_empty() {
                 return None;
             }
@@ -194,7 +207,7 @@ pub(crate) fn diversify(hits: Vec<SearchHit>, unit: SearchUnit) -> Vec<SearchHit
     let mut counts = HashMap::new();
     let mut rounds: [Vec<SearchHit>; 6] = Default::default();
     for hit in hits {
-        let key = (hit.provider, hit.conversation_id.clone());
+        let key = (hit.source.clone(), hit.conversation_id.clone());
         let count = counts.entry(key).or_insert(0);
         if *count < rounds.len() {
             rounds[*count].push(hit);
@@ -240,6 +253,27 @@ pub(crate) fn collect_exact(
     collect_inner(hits, unit, limit, "", Some(literal))
 }
 
+/// A chat result seeded from its best hit; matches and score accrue later.
+fn chat_for(hit: &SearchHit) -> ChatHit {
+    ChatHit {
+        conversation_id: hit.conversation_id.clone(),
+        source: hit.source.clone(),
+        kind: hit.kind,
+        node_id: hit.node_id.clone(),
+        metadata: ChatMetadata {
+            enrichment: None,
+            title: hit
+                .metadata
+                .title
+                .clone()
+                .or_else(|| crate::silver::dialogue::title(&crate::redaction::text(&hit.content))),
+            ..hit.metadata.clone()
+        },
+        score: 0.0,
+        matches: Vec::new(),
+    }
+}
+
 fn collect_inner(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
@@ -281,22 +315,9 @@ fn collect_inner(
     {
         crate::redaction::metadata(&mut hit.metadata);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
-        let key = (hit.provider, hit.conversation_id.clone());
+        let key = (hit.source.clone(), hit.conversation_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
-            threads.push(ChatHit {
-                conversation_id: hit.conversation_id.clone(),
-                provider: hit.provider,
-                node_id: hit.node_id.clone(),
-                metadata: ChatMetadata {
-                    enrichment: None,
-                    title: hit.metadata.title.clone().or_else(|| {
-                        crate::silver::dialogue::title(&crate::redaction::text(&hit.content))
-                    }),
-                    ..hit.metadata.clone()
-                },
-                score: 0.0,
-                matches: Vec::new(),
-            });
+            threads.push(chat_for(&hit));
             (threads.len() - 1, rank)
         });
         let thread = &mut threads[index];
@@ -334,6 +355,7 @@ fn collect_inner(
             message_id: hit.id,
             node_id: hit.node_id,
             role: hit.role,
+            author_kind: hit.author_kind,
             created_at: hit.created_at,
             snippet,
             projection_span,
@@ -345,7 +367,7 @@ fn collect_inner(
     threads.sort_by(|a, b| {
         b.score
             .total_cmp(&a.score)
-            .then_with(|| a.provider.as_str().cmp(b.provider.as_str()))
+            .then_with(|| a.source.to_string().cmp(&b.source.to_string()))
             .then_with(|| a.conversation_id.cmp(&b.conversation_id))
     });
     threads.truncate(limit.min(1000));
@@ -385,7 +407,10 @@ pub(crate) fn contextual_document(
             (
                 index.abs_diff(anchor),
                 message,
-                crate::silver::dialogue::visible(&message.role, &message.content),
+                match &message.role {
+                    Some(role) => crate::silver::dialogue::visible(role, &message.content),
+                    None => std::borrow::Cow::Borrowed(message.content.as_str()),
+                },
             )
         })
         .filter(|(_, _, text)| !text.trim().is_empty())
@@ -393,7 +418,11 @@ pub(crate) fn contextual_document(
     neighbours.sort_by_key(|(distance, _, _)| *distance);
     for (_, message, text) in neighbours.into_iter().take(2) {
         document.push_str("\nNearby ");
-        document.push_str(message.role.as_str());
+        document.push_str(crate::source::speaker(
+            crate::source::Kind::Message,
+            message.role.as_ref(),
+            message.author_kind,
+        ));
         document.push_str(" message: ");
         document.push_str(&evidence_window(&text, query, 160));
     }

@@ -22,6 +22,8 @@ pub(crate) struct Selection {
     pub(crate) project: Vec<String>,
     /// Exact Git origin URL; repeat for alternatives.
     pub(crate) repository: Vec<String>,
+    /// Connector source IDs; native provider history never matches.
+    pub(crate) source: Vec<String>,
     /// Inclusive Unix timestamp in seconds.
     pub(crate) after: Option<i64>,
     /// Exclusive Unix timestamp in seconds.
@@ -47,6 +49,7 @@ pub(crate) enum Field {
     Chat,
     Project,
     Repository,
+    Source,
     After,
     Before,
 }
@@ -61,6 +64,7 @@ impl Selection {
             (!self.conversation.is_empty(), Field::Chat),
             (!self.project.is_empty(), Field::Project),
             (!self.repository.is_empty(), Field::Repository),
+            (!self.source.is_empty(), Field::Source),
             (self.after.is_some() || self.days.is_some(), Field::After),
             (self.before.is_some(), Field::Before),
         ] {
@@ -87,6 +91,7 @@ impl Selection {
             (self.conversation, Filter::Chat),
             (self.project, Filter::Project),
             (self.repository, Filter::Repository),
+            (self.source, Filter::Source),
         ] {
             if !values.is_empty() {
                 all.push(constructor(values));
@@ -134,6 +139,8 @@ pub(crate) enum Filter {
     Chat(Vec<String>),
     Project(Vec<String>),
     Repository(Vec<String>),
+    /// Connector source IDs; native provider history never matches.
+    Source(Vec<String>),
     /// Inclusive Unix timestamp in seconds.
     After(i64),
     /// Exclusive Unix timestamp in seconds.
@@ -156,6 +163,7 @@ impl Filter {
             Self::Chat(_) => Field::Chat,
             Self::Project(_) => Field::Project,
             Self::Repository(_) => Field::Repository,
+            Self::Source(_) => Field::Source,
             Self::After(_) => Field::After,
             Self::Before(_) => Field::Before,
         };
@@ -205,32 +213,46 @@ impl Filter {
 
     fn values(&self) -> Vec<&str> {
         match self {
-            Self::Node(v) | Self::Chat(v) | Self::Project(v) | Self::Repository(v) => {
-                v.iter().map(String::as_str).collect()
-            }
+            Self::Node(v)
+            | Self::Chat(v)
+            | Self::Project(v)
+            | Self::Repository(v)
+            | Self::Source(v) => v.iter().map(String::as_str).collect(),
             Self::Provider(v) => v.iter().map(|p| p.as_str()).collect(),
             Self::Role(v) => v.iter().map(crate::role::Role::as_str).collect(),
             _ => Vec::new(),
         }
     }
 
-    /// Identifiers come only from this closed enum; literals are SQL quoted.
-    /// COALESCE preserves the filter tree's Boolean semantics for absent metadata.
+    /// Native message predicates over the `m` and `c` aliases.
     pub(crate) fn sql(&self, local_node: Option<&str>) -> String {
+        self.compile(&Columns::NATIVE, local_node)
+    }
+
+    /// Connector unit predicates over the `u` alias. Connector records carry no
+    /// provider, role, project or repository, so those predicates never match.
+    pub(crate) fn connector_sql(&self, local_node: Option<&str>) -> String {
+        self.compile(&Columns::CONNECTOR, local_node)
+    }
+
+    /// Identifiers come only from these fixed column maps; literals are SQL quoted.
+    /// COALESCE preserves the filter tree's Boolean semantics for absent metadata.
+    fn compile(&self, columns: &Columns, local_node: Option<&str>) -> String {
         match self {
-            Self::All(v) => join_sql(v, " AND ", "TRUE", local_node),
-            Self::Any(v) => join_sql(v, " OR ", "FALSE", local_node),
-            Self::Not(v) => format!("(NOT {})", v.sql(local_node)),
-            Self::After(v) => format!("COALESCE(m.created_at >= {}, FALSE)", v * 1000),
-            Self::Before(v) => format!("COALESCE(m.created_at < {}, FALSE)", v * 1000),
+            Self::All(v) => join_sql(v, " AND ", "TRUE", columns, local_node),
+            Self::Any(v) => join_sql(v, " OR ", "FALSE", columns, local_node),
+            Self::Not(v) => format!("(NOT {})", v.compile(columns, local_node)),
+            Self::After(v) => format!("COALESCE({} >= {}, FALSE)", columns.created_at, v * 1000),
+            Self::Before(v) => format!("COALESCE({} < {}, FALSE)", columns.created_at, v * 1000),
             _ => {
                 let column = match self {
-                    Self::Node(_) => local_node.map_or_else(|| "m.node_id".to_owned(), quote),
-                    Self::Provider(_) => "c.provider".to_owned(),
-                    Self::Role(_) => "m.role".to_owned(),
-                    Self::Chat(_) => "m.conversation_id".to_owned(),
-                    Self::Project(_) => "c.project".to_owned(),
-                    Self::Repository(_) => "c.repository".to_owned(),
+                    Self::Node(_) => local_node.map_or_else(|| columns.node.to_owned(), quote),
+                    Self::Provider(_) => columns.provider.to_owned(),
+                    Self::Role(_) => columns.role.to_owned(),
+                    Self::Chat(_) => columns.chat.to_owned(),
+                    Self::Project(_) => columns.project.to_owned(),
+                    Self::Repository(_) => columns.repository.to_owned(),
+                    Self::Source(_) => columns.source.to_owned(),
                     _ => unreachable!(),
                 };
                 let values = self.values();
@@ -254,7 +276,48 @@ fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-fn join_sql(children: &[Filter], join: &str, empty: &str, node: Option<&str>) -> String {
+/// SQL expressions for each predicate field; `NULL` where a row has no such field.
+struct Columns {
+    node: &'static str,
+    provider: &'static str,
+    role: &'static str,
+    chat: &'static str,
+    project: &'static str,
+    repository: &'static str,
+    source: &'static str,
+    created_at: &'static str,
+}
+
+impl Columns {
+    const NATIVE: Self = Self {
+        node: "m.node_id",
+        provider: "c.provider",
+        role: "m.role",
+        chat: "m.conversation_id",
+        project: "c.project",
+        repository: "c.repository",
+        source: "NULL",
+        created_at: "m.created_at",
+    };
+    const CONNECTOR: Self = Self {
+        node: "NULL",
+        provider: "NULL",
+        role: "NULL",
+        chat: "u.chat_anchor",
+        project: "NULL",
+        repository: "NULL",
+        source: "u.source_id",
+        created_at: "u.created_at",
+    };
+}
+
+fn join_sql(
+    children: &[Filter],
+    join: &str,
+    empty: &str,
+    columns: &Columns,
+    node: Option<&str>,
+) -> String {
     if children.is_empty() {
         empty.to_owned()
     } else {
@@ -262,7 +325,7 @@ fn join_sql(children: &[Filter], join: &str, empty: &str, node: Option<&str>) ->
             "({})",
             children
                 .iter()
-                .map(|f| f.sql(node))
+                .map(|f| f.compile(columns, node))
                 .collect::<Vec<_>>()
                 .join(join)
         )

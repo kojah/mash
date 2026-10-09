@@ -6,6 +6,7 @@ mod message_context;
 mod provider;
 mod role;
 mod silver;
+mod source;
 
 // Experimental source-neutral contract for out-of-process connectors.
 pub mod connectors;

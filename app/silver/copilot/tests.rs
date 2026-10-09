@@ -499,6 +499,9 @@ async fn core_retrieves_native_copilot_prose_with_real_models() {
             panic!("chats")
         };
         assert_eq!(threads.len(), 1, "{query}");
-        assert_eq!(threads[0].provider, Provider::Copilot);
+        assert_eq!(
+            threads[0].source,
+            crate::source::Source::Provider(Provider::Copilot)
+        );
     }
 }

@@ -197,7 +197,8 @@ impl Storage {
         } else {
             self.search_updates = SearchUpdates::Immediate;
         }
-        Ok(())
+        // Connector commits bypass native invalidation; their digests decide.
+        self.sync_connector_units()
     }
 
     /// Replace all local gold with empty, unready gold; silver is untouched.
@@ -218,14 +219,6 @@ impl Storage {
     }
 
     pub(crate) fn derived_search_is_dirty(&self) -> Result<bool, AppError> {
-        if super::generated::ConnectorInputs
-            .query_one(&self.connection)
-            .map_err(AppError::database)?
-            .present
-            != 0
-        {
-            return Ok(true);
-        }
         self.connection
             .query_row(
                 "SELECT search_dirty FROM derived_state WHERE singleton = 1",
@@ -568,7 +561,10 @@ impl Storage {
         self.rebuild_fts(true)?;
         self.connection
             .execute_batch(
-                "DELETE FROM message_embeddings;
+                "DELETE FROM connector_embeddings;
+                 DELETE FROM connector_fts;
+                 DELETE FROM connector_units;
+                 DELETE FROM message_embeddings;
                  DELETE FROM semantic_chunks;
                  DELETE FROM dirty_semantic_chunks;
                  DELETE FROM pending_embeddings;

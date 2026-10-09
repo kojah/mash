@@ -293,7 +293,10 @@ async fn core_indexes_searches_and_views_native_opencode_threads() {
         panic!("chats")
     };
     assert_eq!(threads.len(), 1);
-    assert_eq!(threads[0].provider, Provider::Opencode);
+    assert_eq!(
+        threads[0].source,
+        crate::source::Source::Provider(Provider::Opencode)
+    );
     assert_eq!(
         threads[0].metadata.repository.as_deref(),
         Some("/work/repository")

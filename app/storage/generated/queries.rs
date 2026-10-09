@@ -5227,3 +5227,1512 @@ impl<'a> ConnectorAllEdgesBuilder<'a, ()> {
         ConnectorAllEdges {}
     }
 }
+pub struct ConnectorUnitDigestsRow {
+    pub anchor: String,
+    pub id: i64,
+    pub digest: Vec<u8>,
+}
+impl ConnectorUnitDigestsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            anchor: row.get(0)?,
+            id: row.get(1)?,
+            digest: row.get(2)?,
+        })
+    }
+}
+pub struct ConnectorUnitDigests;
+impl ConnectorUnitDigests {
+    pub const QUERY: &'static str = r"SELECT anchor, id, digest FROM connector_units";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorUnitDigests {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorUnitDigestsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorUnitDigestsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorUnitDigests {
+    pub const fn builder() -> ConnectorUnitDigestsBuilder<'static, ()> {
+        ConnectorUnitDigestsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorUnitDigestsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorUnitDigestsBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorUnitDigests {
+        let () = self.fields;
+        ConnectorUnitDigests {}
+    }
+}
+pub struct ConnectorSilverMessagesRow {
+    pub source_id: String,
+    pub message: String,
+    pub chat: String,
+}
+impl ConnectorSilverMessagesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_id: row.get(0)?,
+            message: row.get(1)?,
+            chat: row.get(2)?,
+        })
+    }
+}
+pub struct ConnectorSilverMessages;
+impl ConnectorSilverMessages {
+    pub const QUERY: &'static str = r"SELECT m.source_id, m.record AS message, c.record AS chat
+  FROM connector_messages m
+  JOIN connector_chats c ON c.source_id = m.source_id AND c.id = m.chat_id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorSilverMessages {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorSilverMessagesRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorSilverMessagesRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorSilverMessages {
+    pub const fn builder() -> ConnectorSilverMessagesBuilder<'static, ()> {
+        ConnectorSilverMessagesBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorSilverMessagesBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorSilverMessagesBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorSilverMessages {
+        let () = self.fields;
+        ConnectorSilverMessages {}
+    }
+}
+pub struct ConnectorSilverDocumentsRow {
+    pub source_id: String,
+    pub record: String,
+}
+impl ConnectorSilverDocumentsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_id: row.get(0)?,
+            record: row.get(1)?,
+        })
+    }
+}
+pub struct ConnectorSilverDocuments;
+impl ConnectorSilverDocuments {
+    pub const QUERY: &'static str = r"SELECT source_id, record FROM connector_documents";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorSilverDocuments {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorSilverDocumentsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorSilverDocumentsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorSilverDocuments {
+    pub const fn builder() -> ConnectorSilverDocumentsBuilder<'static, ()> {
+        ConnectorSilverDocumentsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorSilverDocumentsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorSilverDocumentsBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorSilverDocuments {
+        let () = self.fields;
+        ConnectorSilverDocuments {}
+    }
+}
+pub struct ConnectorInsertUnitRow {
+    pub id: i64,
+}
+impl ConnectorInsertUnitRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self { id: row.get(0)? })
+    }
+}
+pub struct ConnectorInsertUnit<'a> {
+    anchor: &'a str,
+    kind: &'a str,
+    source_id: &'a str,
+    record_id: &'a str,
+    chat_anchor: &'a str,
+    created_at: Option<i64>,
+    digest: &'a [u8],
+}
+impl<'a> ConnectorInsertUnit<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO connector_units(anchor, kind, source_id, record_id, chat_anchor, created_at, digest)
+VALUES (?1, ?2, ?3, ?4,
+        ?5, ?6, ?7)
+RETURNING id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorInsertUnit<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<ConnectorInsertUnitRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConnectorInsertUnitRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConnectorInsertUnitRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorInsertUnitRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.anchor,
+            self.kind,
+            self.source_id,
+            self.record_id,
+            self.chat_anchor,
+            self.created_at,
+            self.digest,
+        )
+    }
+}
+impl<'a> ConnectorInsertUnit<'a> {
+    pub const fn builder() -> ConnectorInsertUnitBuilder<'a, ((), (), (), (), (), (), ())> {
+        ConnectorInsertUnitBuilder {
+            fields: ((), (), (), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorInsertUnitBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Kind, SourceId, RecordId, ChatAnchor, CreatedAt, Digest>
+    ConnectorInsertUnitBuilder<'a, ((), Kind, SourceId, RecordId, ChatAnchor, CreatedAt, Digest)>
+{
+    pub fn anchor(
+        self,
+        anchor: &'a str,
+    ) -> ConnectorInsertUnitBuilder<
+        'a,
+        (
+            &'a str,
+            Kind,
+            SourceId,
+            RecordId,
+            ChatAnchor,
+            CreatedAt,
+            Digest,
+        ),
+    > {
+        let ((), kind, source_id, record_id, chat_anchor, created_at, digest) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorInsertUnitBuilder {
+            fields: (
+                anchor,
+                kind,
+                source_id,
+                record_id,
+                chat_anchor,
+                created_at,
+                digest,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Anchor, SourceId, RecordId, ChatAnchor, CreatedAt, Digest>
+    ConnectorInsertUnitBuilder<
+        'a,
+        (
+            Anchor,
+            (),
+            SourceId,
+            RecordId,
+            ChatAnchor,
+            CreatedAt,
+            Digest,
+        ),
+    >
+{
+    pub fn kind(
+        self,
+        kind: &'a str,
+    ) -> ConnectorInsertUnitBuilder<
+        'a,
+        (
+            Anchor,
+            &'a str,
+            SourceId,
+            RecordId,
+            ChatAnchor,
+            CreatedAt,
+            Digest,
+        ),
+    > {
+        let (anchor, (), source_id, record_id, chat_anchor, created_at, digest) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorInsertUnitBuilder {
+            fields: (
+                anchor,
+                kind,
+                source_id,
+                record_id,
+                chat_anchor,
+                created_at,
+                digest,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Anchor, Kind, RecordId, ChatAnchor, CreatedAt, Digest>
+    ConnectorInsertUnitBuilder<'a, (Anchor, Kind, (), RecordId, ChatAnchor, CreatedAt, Digest)>
+{
+    pub fn source_id(
+        self,
+        source_id: &'a str,
+    ) -> ConnectorInsertUnitBuilder<
+        'a,
+        (
+            Anchor,
+            Kind,
+            &'a str,
+            RecordId,
+            ChatAnchor,
+            CreatedAt,
+            Digest,
+        ),
+    > {
+        let (anchor, kind, (), record_id, chat_anchor, created_at, digest) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorInsertUnitBuilder {
+            fields: (
+                anchor,
+                kind,
+                source_id,
+                record_id,
+                chat_anchor,
+                created_at,
+                digest,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Anchor, Kind, SourceId, ChatAnchor, CreatedAt, Digest>
+    ConnectorInsertUnitBuilder<'a, (Anchor, Kind, SourceId, (), ChatAnchor, CreatedAt, Digest)>
+{
+    pub fn record_id(
+        self,
+        record_id: &'a str,
+    ) -> ConnectorInsertUnitBuilder<
+        'a,
+        (
+            Anchor,
+            Kind,
+            SourceId,
+            &'a str,
+            ChatAnchor,
+            CreatedAt,
+            Digest,
+        ),
+    > {
+        let (anchor, kind, source_id, (), chat_anchor, created_at, digest) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorInsertUnitBuilder {
+            fields: (
+                anchor,
+                kind,
+                source_id,
+                record_id,
+                chat_anchor,
+                created_at,
+                digest,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Anchor, Kind, SourceId, RecordId, CreatedAt, Digest>
+    ConnectorInsertUnitBuilder<'a, (Anchor, Kind, SourceId, RecordId, (), CreatedAt, Digest)>
+{
+    pub fn chat_anchor(
+        self,
+        chat_anchor: &'a str,
+    ) -> ConnectorInsertUnitBuilder<
+        'a,
+        (Anchor, Kind, SourceId, RecordId, &'a str, CreatedAt, Digest),
+    > {
+        let (anchor, kind, source_id, record_id, (), created_at, digest) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorInsertUnitBuilder {
+            fields: (
+                anchor,
+                kind,
+                source_id,
+                record_id,
+                chat_anchor,
+                created_at,
+                digest,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Anchor, Kind, SourceId, RecordId, ChatAnchor, Digest>
+    ConnectorInsertUnitBuilder<'a, (Anchor, Kind, SourceId, RecordId, ChatAnchor, (), Digest)>
+{
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> ConnectorInsertUnitBuilder<
+        'a,
+        (
+            Anchor,
+            Kind,
+            SourceId,
+            RecordId,
+            ChatAnchor,
+            Option<i64>,
+            Digest,
+        ),
+    > {
+        let (anchor, kind, source_id, record_id, chat_anchor, (), digest) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorInsertUnitBuilder {
+            fields: (
+                anchor,
+                kind,
+                source_id,
+                record_id,
+                chat_anchor,
+                created_at,
+                digest,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Anchor, Kind, SourceId, RecordId, ChatAnchor, CreatedAt>
+    ConnectorInsertUnitBuilder<'a, (Anchor, Kind, SourceId, RecordId, ChatAnchor, CreatedAt, ())>
+{
+    pub fn digest(
+        self,
+        digest: &'a [u8],
+    ) -> ConnectorInsertUnitBuilder<
+        'a,
+        (
+            Anchor,
+            Kind,
+            SourceId,
+            RecordId,
+            ChatAnchor,
+            CreatedAt,
+            &'a [u8],
+        ),
+    > {
+        let (anchor, kind, source_id, record_id, chat_anchor, created_at, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorInsertUnitBuilder {
+            fields: (
+                anchor,
+                kind,
+                source_id,
+                record_id,
+                chat_anchor,
+                created_at,
+                digest,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a>
+    ConnectorInsertUnitBuilder<
+        'a,
+        (
+            &'a str,
+            &'a str,
+            &'a str,
+            &'a str,
+            &'a str,
+            Option<i64>,
+            &'a [u8],
+        ),
+    >
+{
+    pub fn build(self) -> ConnectorInsertUnit<'a> {
+        let (anchor, kind, source_id, record_id, chat_anchor, created_at, digest) = self.fields;
+        ConnectorInsertUnit {
+            anchor,
+            kind,
+            source_id,
+            record_id,
+            chat_anchor,
+            created_at,
+            digest,
+        }
+    }
+}
+pub struct ConnectorUpdateUnitRow {}
+impl ConnectorUpdateUnitRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ConnectorUpdateUnit<'a> {
+    chat_anchor: &'a str,
+    created_at: Option<i64>,
+    digest: &'a [u8],
+    id: i64,
+}
+impl<'a> ConnectorUpdateUnit<'a> {
+    pub const QUERY: &'static str = r"UPDATE connector_units
+   SET chat_anchor = ?1, created_at = ?2, digest = ?3
+ WHERE id = ?4";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorUpdateUnit<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.chat_anchor, self.created_at, self.digest, self.id)
+    }
+}
+impl<'a> ConnectorUpdateUnit<'a> {
+    pub const fn builder() -> ConnectorUpdateUnitBuilder<'a, ((), (), (), ())> {
+        ConnectorUpdateUnitBuilder {
+            fields: ((), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorUpdateUnitBuilder<'a, Fields = ((), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, CreatedAt, Digest, Id> ConnectorUpdateUnitBuilder<'a, ((), CreatedAt, Digest, Id)> {
+    pub fn chat_anchor(
+        self,
+        chat_anchor: &'a str,
+    ) -> ConnectorUpdateUnitBuilder<'a, (&'a str, CreatedAt, Digest, Id)> {
+        let ((), created_at, digest, id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorUpdateUnitBuilder {
+            fields: (chat_anchor, created_at, digest, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ChatAnchor, Digest, Id> ConnectorUpdateUnitBuilder<'a, (ChatAnchor, (), Digest, Id)> {
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> ConnectorUpdateUnitBuilder<'a, (ChatAnchor, Option<i64>, Digest, Id)> {
+        let (chat_anchor, (), digest, id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorUpdateUnitBuilder {
+            fields: (chat_anchor, created_at, digest, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ChatAnchor, CreatedAt, Id>
+    ConnectorUpdateUnitBuilder<'a, (ChatAnchor, CreatedAt, (), Id)>
+{
+    pub fn digest(
+        self,
+        digest: &'a [u8],
+    ) -> ConnectorUpdateUnitBuilder<'a, (ChatAnchor, CreatedAt, &'a [u8], Id)> {
+        let (chat_anchor, created_at, (), id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorUpdateUnitBuilder {
+            fields: (chat_anchor, created_at, digest, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ChatAnchor, CreatedAt, Digest>
+    ConnectorUpdateUnitBuilder<'a, (ChatAnchor, CreatedAt, Digest, ())>
+{
+    pub fn id(
+        self,
+        id: i64,
+    ) -> ConnectorUpdateUnitBuilder<'a, (ChatAnchor, CreatedAt, Digest, i64)> {
+        let (chat_anchor, created_at, digest, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorUpdateUnitBuilder {
+            fields: (chat_anchor, created_at, digest, id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorUpdateUnitBuilder<'a, (&'a str, Option<i64>, &'a [u8], i64)> {
+    pub fn build(self) -> ConnectorUpdateUnit<'a> {
+        let (chat_anchor, created_at, digest, id) = self.fields;
+        ConnectorUpdateUnit {
+            chat_anchor,
+            created_at,
+            digest,
+            id,
+        }
+    }
+}
+pub struct ConnectorDeleteUnitRow {}
+impl ConnectorDeleteUnitRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ConnectorDeleteUnit {
+    id: i64,
+}
+impl ConnectorDeleteUnit {
+    pub const QUERY: &'static str = r"DELETE FROM connector_units WHERE id = ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorDeleteUnit {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl ConnectorDeleteUnit {
+    pub const fn builder() -> ConnectorDeleteUnitBuilder<'static, ((),)> {
+        ConnectorDeleteUnitBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorDeleteUnitBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorDeleteUnitBuilder<'a, ((),)> {
+    pub fn id(self, id: i64) -> ConnectorDeleteUnitBuilder<'a, (i64,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorDeleteUnitBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorDeleteUnitBuilder<'a, (i64,)> {
+    pub fn build(self) -> ConnectorDeleteUnit {
+        let (id,) = self.fields;
+        ConnectorDeleteUnit { id }
+    }
+}
+pub struct ConnectorDeleteUnitEmbeddingRow {}
+impl ConnectorDeleteUnitEmbeddingRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ConnectorDeleteUnitEmbedding {
+    unit_id: i64,
+}
+impl ConnectorDeleteUnitEmbedding {
+    pub const QUERY: &'static str = r"DELETE FROM connector_embeddings WHERE unit_id = ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorDeleteUnitEmbedding {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.unit_id,)
+    }
+}
+impl ConnectorDeleteUnitEmbedding {
+    pub const fn builder() -> ConnectorDeleteUnitEmbeddingBuilder<'static, ((),)> {
+        ConnectorDeleteUnitEmbeddingBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorDeleteUnitEmbeddingBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorDeleteUnitEmbeddingBuilder<'a, ((),)> {
+    pub fn unit_id(self, unit_id: i64) -> ConnectorDeleteUnitEmbeddingBuilder<'a, (i64,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorDeleteUnitEmbeddingBuilder {
+            fields: (unit_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorDeleteUnitEmbeddingBuilder<'a, (i64,)> {
+    pub fn build(self) -> ConnectorDeleteUnitEmbedding {
+        let (unit_id,) = self.fields;
+        ConnectorDeleteUnitEmbedding { unit_id }
+    }
+}
+pub struct ConnectorUnitRow {
+    pub anchor: String,
+    pub kind: String,
+    pub source_id: String,
+    pub record_id: String,
+    pub chat_anchor: String,
+}
+impl ConnectorUnitRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            anchor: row.get(0)?,
+            kind: row.get(1)?,
+            source_id: row.get(2)?,
+            record_id: row.get(3)?,
+            chat_anchor: row.get(4)?,
+        })
+    }
+}
+pub struct ConnectorUnit {
+    id: i64,
+}
+impl ConnectorUnit {
+    pub const QUERY: &'static str = r"SELECT anchor, kind, source_id, record_id, chat_anchor FROM connector_units WHERE id = ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorUnit {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ConnectorUnitRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConnectorUnitRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConnectorUnitRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorUnitRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl ConnectorUnit {
+    pub const fn builder() -> ConnectorUnitBuilder<'static, ((),)> {
+        ConnectorUnitBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorUnitBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorUnitBuilder<'a, ((),)> {
+    pub fn id(self, id: i64) -> ConnectorUnitBuilder<'a, (i64,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorUnitBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorUnitBuilder<'a, (i64,)> {
+    pub fn build(self) -> ConnectorUnit {
+        let (id,) = self.fields;
+        ConnectorUnit { id }
+    }
+}
+pub struct ConnectorMessageEvidenceRow {
+    pub message: String,
+    pub chat: String,
+}
+impl ConnectorMessageEvidenceRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            message: row.get(0)?,
+            chat: row.get(1)?,
+        })
+    }
+}
+pub struct ConnectorMessageEvidence<'a> {
+    source_id: &'a str,
+    id: &'a str,
+}
+impl<'a> ConnectorMessageEvidence<'a> {
+    pub const QUERY: &'static str = r"SELECT m.record AS message, c.record AS chat
+  FROM connector_messages m
+  JOIN connector_chats c ON c.source_id = m.source_id AND c.id = m.chat_id
+ WHERE m.source_id = ?1 AND m.id = ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorMessageEvidence<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<ConnectorMessageEvidenceRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConnectorMessageEvidenceRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConnectorMessageEvidenceRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorMessageEvidenceRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id, self.id)
+    }
+}
+impl<'a> ConnectorMessageEvidence<'a> {
+    pub const fn builder() -> ConnectorMessageEvidenceBuilder<'a, ((), ())> {
+        ConnectorMessageEvidenceBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorMessageEvidenceBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Id> ConnectorMessageEvidenceBuilder<'a, ((), Id)> {
+    pub fn source_id(
+        self,
+        source_id: &'a str,
+    ) -> ConnectorMessageEvidenceBuilder<'a, (&'a str, Id)> {
+        let ((), id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorMessageEvidenceBuilder {
+            fields: (source_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId> ConnectorMessageEvidenceBuilder<'a, (SourceId, ())> {
+    pub fn id(self, id: &'a str) -> ConnectorMessageEvidenceBuilder<'a, (SourceId, &'a str)> {
+        let (source_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorMessageEvidenceBuilder {
+            fields: (source_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorMessageEvidenceBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ConnectorMessageEvidence<'a> {
+        let (source_id, id) = self.fields;
+        ConnectorMessageEvidence { source_id, id }
+    }
+}
+pub struct ConnectorDocumentEvidenceRow {
+    pub record: String,
+}
+impl ConnectorDocumentEvidenceRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            record: row.get(0)?,
+        })
+    }
+}
+pub struct ConnectorDocumentEvidence<'a> {
+    source_id: &'a str,
+    id: &'a str,
+}
+impl<'a> ConnectorDocumentEvidence<'a> {
+    pub const QUERY: &'static str =
+        r"SELECT record FROM connector_documents WHERE source_id = ?1 AND id = ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorDocumentEvidence<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<ConnectorDocumentEvidenceRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConnectorDocumentEvidenceRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConnectorDocumentEvidenceRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorDocumentEvidenceRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id, self.id)
+    }
+}
+impl<'a> ConnectorDocumentEvidence<'a> {
+    pub const fn builder() -> ConnectorDocumentEvidenceBuilder<'a, ((), ())> {
+        ConnectorDocumentEvidenceBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorDocumentEvidenceBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Id> ConnectorDocumentEvidenceBuilder<'a, ((), Id)> {
+    pub fn source_id(
+        self,
+        source_id: &'a str,
+    ) -> ConnectorDocumentEvidenceBuilder<'a, (&'a str, Id)> {
+        let ((), id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorDocumentEvidenceBuilder {
+            fields: (source_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId> ConnectorDocumentEvidenceBuilder<'a, (SourceId, ())> {
+    pub fn id(self, id: &'a str) -> ConnectorDocumentEvidenceBuilder<'a, (SourceId, &'a str)> {
+        let (source_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorDocumentEvidenceBuilder {
+            fields: (source_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorDocumentEvidenceBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ConnectorDocumentEvidence<'a> {
+        let (source_id, id) = self.fields;
+        ConnectorDocumentEvidence { source_id, id }
+    }
+}
+pub struct ConnectorPendingEmbeddingsRow {
+    pub id: i64,
+    pub kind: String,
+    pub source_id: String,
+    pub record_id: String,
+}
+impl ConnectorPendingEmbeddingsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            kind: row.get(1)?,
+            source_id: row.get(2)?,
+            record_id: row.get(3)?,
+        })
+    }
+}
+pub struct ConnectorPendingEmbeddings<'a> {
+    generation: &'a str,
+    page_size: i64,
+}
+impl<'a> ConnectorPendingEmbeddings<'a> {
+    pub const QUERY: &'static str = r"SELECT u.id, u.kind, u.source_id, u.record_id
+  FROM connector_units u
+  LEFT JOIN connector_embeddings e ON e.unit_id = u.id AND e.generation = ?1
+ WHERE e.unit_id IS NULL
+ ORDER BY u.id
+ LIMIT ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorPendingEmbeddings<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorPendingEmbeddingsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorPendingEmbeddingsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.generation, self.page_size)
+    }
+}
+impl<'a> ConnectorPendingEmbeddings<'a> {
+    pub const fn builder() -> ConnectorPendingEmbeddingsBuilder<'a, ((), ())> {
+        ConnectorPendingEmbeddingsBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorPendingEmbeddingsBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, PageSize> ConnectorPendingEmbeddingsBuilder<'a, ((), PageSize)> {
+    pub fn generation(
+        self,
+        generation: &'a str,
+    ) -> ConnectorPendingEmbeddingsBuilder<'a, (&'a str, PageSize)> {
+        let ((), page_size) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPendingEmbeddingsBuilder {
+            fields: (generation, page_size),
+            _phantom,
+        }
+    }
+}
+impl<'a, Generation> ConnectorPendingEmbeddingsBuilder<'a, (Generation, ())> {
+    pub fn page_size(
+        self,
+        page_size: i64,
+    ) -> ConnectorPendingEmbeddingsBuilder<'a, (Generation, i64)> {
+        let (generation, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPendingEmbeddingsBuilder {
+            fields: (generation, page_size),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorPendingEmbeddingsBuilder<'a, (&'a str, i64)> {
+    pub fn build(self) -> ConnectorPendingEmbeddings<'a> {
+        let (generation, page_size) = self.fields;
+        ConnectorPendingEmbeddings {
+            generation,
+            page_size,
+        }
+    }
+}
+pub struct ConnectorPutEmbeddingRow {}
+impl ConnectorPutEmbeddingRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ConnectorPutEmbedding<'a> {
+    unit_id: i64,
+    generation: &'a str,
+    dimensions: i64,
+    norm: f64,
+    vector: &'a [u8],
+}
+impl<'a> ConnectorPutEmbedding<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO connector_embeddings(unit_id, generation, dimensions, norm, vector)
+VALUES (?1, ?2, ?3, ?4, ?5)
+ON CONFLICT(unit_id) DO UPDATE SET generation = excluded.generation,
+    dimensions = excluded.dimensions, norm = excluded.norm, vector = excluded.vector";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorPutEmbedding<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.unit_id,
+            self.generation,
+            self.dimensions,
+            self.norm,
+            self.vector,
+        )
+    }
+}
+impl<'a> ConnectorPutEmbedding<'a> {
+    pub const fn builder() -> ConnectorPutEmbeddingBuilder<'a, ((), (), (), (), ())> {
+        ConnectorPutEmbeddingBuilder {
+            fields: ((), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorPutEmbeddingBuilder<'a, Fields = ((), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Generation, Dimensions, Norm, Vector>
+    ConnectorPutEmbeddingBuilder<'a, ((), Generation, Dimensions, Norm, Vector)>
+{
+    pub fn unit_id(
+        self,
+        unit_id: i64,
+    ) -> ConnectorPutEmbeddingBuilder<'a, (i64, Generation, Dimensions, Norm, Vector)> {
+        let ((), generation, dimensions, norm, vector) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPutEmbeddingBuilder {
+            fields: (unit_id, generation, dimensions, norm, vector),
+            _phantom,
+        }
+    }
+}
+impl<'a, UnitId, Dimensions, Norm, Vector>
+    ConnectorPutEmbeddingBuilder<'a, (UnitId, (), Dimensions, Norm, Vector)>
+{
+    pub fn generation(
+        self,
+        generation: &'a str,
+    ) -> ConnectorPutEmbeddingBuilder<'a, (UnitId, &'a str, Dimensions, Norm, Vector)> {
+        let (unit_id, (), dimensions, norm, vector) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPutEmbeddingBuilder {
+            fields: (unit_id, generation, dimensions, norm, vector),
+            _phantom,
+        }
+    }
+}
+impl<'a, UnitId, Generation, Norm, Vector>
+    ConnectorPutEmbeddingBuilder<'a, (UnitId, Generation, (), Norm, Vector)>
+{
+    pub fn dimensions(
+        self,
+        dimensions: i64,
+    ) -> ConnectorPutEmbeddingBuilder<'a, (UnitId, Generation, i64, Norm, Vector)> {
+        let (unit_id, generation, (), norm, vector) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPutEmbeddingBuilder {
+            fields: (unit_id, generation, dimensions, norm, vector),
+            _phantom,
+        }
+    }
+}
+impl<'a, UnitId, Generation, Dimensions, Vector>
+    ConnectorPutEmbeddingBuilder<'a, (UnitId, Generation, Dimensions, (), Vector)>
+{
+    pub fn norm(
+        self,
+        norm: f64,
+    ) -> ConnectorPutEmbeddingBuilder<'a, (UnitId, Generation, Dimensions, f64, Vector)> {
+        let (unit_id, generation, dimensions, (), vector) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPutEmbeddingBuilder {
+            fields: (unit_id, generation, dimensions, norm, vector),
+            _phantom,
+        }
+    }
+}
+impl<'a, UnitId, Generation, Dimensions, Norm>
+    ConnectorPutEmbeddingBuilder<'a, (UnitId, Generation, Dimensions, Norm, ())>
+{
+    pub fn vector(
+        self,
+        vector: &'a [u8],
+    ) -> ConnectorPutEmbeddingBuilder<'a, (UnitId, Generation, Dimensions, Norm, &'a [u8])> {
+        let (unit_id, generation, dimensions, norm, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPutEmbeddingBuilder {
+            fields: (unit_id, generation, dimensions, norm, vector),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorPutEmbeddingBuilder<'a, (i64, &'a str, i64, f64, &'a [u8])> {
+    pub fn build(self) -> ConnectorPutEmbedding<'a> {
+        let (unit_id, generation, dimensions, norm, vector) = self.fields;
+        ConnectorPutEmbedding {
+            unit_id,
+            generation,
+            dimensions,
+            norm,
+            vector,
+        }
+    }
+}
+pub struct ConnectorEmbeddingsCompleteRow {
+    pub complete: i64,
+}
+impl ConnectorEmbeddingsCompleteRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            complete: row.get(0)?,
+        })
+    }
+}
+pub struct ConnectorEmbeddingsComplete<'a> {
+    generation: &'a str,
+}
+impl<'a> ConnectorEmbeddingsComplete<'a> {
+    pub const QUERY: &'static str = r"SELECT CAST(NOT EXISTS(
+    SELECT 1 FROM connector_units u
+      LEFT JOIN connector_embeddings e ON e.unit_id = u.id AND e.generation = ?1
+     WHERE e.unit_id IS NULL) AS INTEGER) AS complete";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorEmbeddingsComplete<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<ConnectorEmbeddingsCompleteRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConnectorEmbeddingsCompleteRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConnectorEmbeddingsCompleteRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorEmbeddingsCompleteRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.generation,)
+    }
+}
+impl<'a> ConnectorEmbeddingsComplete<'a> {
+    pub const fn builder() -> ConnectorEmbeddingsCompleteBuilder<'a, ((),)> {
+        ConnectorEmbeddingsCompleteBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorEmbeddingsCompleteBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorEmbeddingsCompleteBuilder<'a, ((),)> {
+    pub fn generation(
+        self,
+        generation: &'a str,
+    ) -> ConnectorEmbeddingsCompleteBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorEmbeddingsCompleteBuilder {
+            fields: (generation,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorEmbeddingsCompleteBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ConnectorEmbeddingsComplete<'a> {
+        let (generation,) = self.fields;
+        ConnectorEmbeddingsComplete { generation }
+    }
+}
+pub struct ConnectorClearEmbeddingsRow {}
+impl ConnectorClearEmbeddingsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ConnectorClearEmbeddings;
+impl ConnectorClearEmbeddings {
+    pub const QUERY: &'static str = r"DELETE FROM connector_embeddings";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorClearEmbeddings {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorClearEmbeddings {
+    pub const fn builder() -> ConnectorClearEmbeddingsBuilder<'static, ()> {
+        ConnectorClearEmbeddingsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorClearEmbeddingsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorClearEmbeddingsBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorClearEmbeddings {
+        let () = self.fields;
+        ConnectorClearEmbeddings {}
+    }
+}
+pub struct ConnectorChatMessagesRow {
+    pub id: String,
+    pub record: String,
+}
+impl ConnectorChatMessagesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            record: row.get(1)?,
+        })
+    }
+}
+pub struct ConnectorChatMessages<'a> {
+    source_id: &'a str,
+    chat_id: &'a str,
+}
+impl<'a> ConnectorChatMessages<'a> {
+    pub const QUERY: &'static str = r"SELECT id, record FROM connector_messages
+ WHERE source_id = ?1 AND chat_id = ?2
+ ORDER BY json_extract(record, '$.created_at') IS NULL, json_extract(record, '$.created_at'), id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorChatMessages<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorChatMessagesRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorChatMessagesRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id, self.chat_id)
+    }
+}
+impl<'a> ConnectorChatMessages<'a> {
+    pub const fn builder() -> ConnectorChatMessagesBuilder<'a, ((), ())> {
+        ConnectorChatMessagesBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorChatMessagesBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, ChatId> ConnectorChatMessagesBuilder<'a, ((), ChatId)> {
+    pub fn source_id(
+        self,
+        source_id: &'a str,
+    ) -> ConnectorChatMessagesBuilder<'a, (&'a str, ChatId)> {
+        let ((), chat_id) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorChatMessagesBuilder {
+            fields: (source_id, chat_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId> ConnectorChatMessagesBuilder<'a, (SourceId, ())> {
+    pub fn chat_id(
+        self,
+        chat_id: &'a str,
+    ) -> ConnectorChatMessagesBuilder<'a, (SourceId, &'a str)> {
+        let (source_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorChatMessagesBuilder {
+            fields: (source_id, chat_id),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorChatMessagesBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ConnectorChatMessages<'a> {
+        let (source_id, chat_id) = self.fields;
+        ConnectorChatMessages { source_id, chat_id }
+    }
+}
+pub struct ConnectorChatsRow {
+    pub source_id: String,
+    pub record: String,
+}
+impl ConnectorChatsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_id: row.get(0)?,
+            record: row.get(1)?,
+        })
+    }
+}
+pub struct ConnectorChats;
+impl ConnectorChats {
+    pub const QUERY: &'static str = r"SELECT source_id, record FROM connector_chats";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorChats {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorChatsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorChatsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorChats {
+    pub const fn builder() -> ConnectorChatsBuilder<'static, ()> {
+        ConnectorChatsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorChatsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorChatsBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorChats {
+        let () = self.fields;
+        ConnectorChats {}
+    }
+}

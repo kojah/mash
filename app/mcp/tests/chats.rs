@@ -168,7 +168,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     assert_ne!(result.is_error, Some(true));
     let body = result.structured_content.unwrap();
     assert_eq!(body["chats"][0]["chat_id"], "orientation");
-    assert_eq!(body["chats"][0]["provider"], "codex");
+    assert_eq!(body["chats"][0]["source"]["provider"], "codex");
     assert_eq!(body["chats"][0]["updated_at"], 3000);
     assert_eq!(body["chats"][0]["node_id"], "local");
     assert_eq!(body["next_offset"], json!(null));

@@ -125,3 +125,107 @@ fn connector_batches_conflict_with_provider_and_rebuild_options() {
         assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be used"));
     }
 }
+
+fn run(database: &Path, config: &Path, models: &Path, arguments: &[&str]) -> Value {
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .arg("--config")
+        .arg(config)
+        .arg("--db")
+        .arg(database)
+        .arg("--models-dir")
+        .arg(models)
+        .args(arguments)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{arguments:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+#[test]
+fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let config = root.join("config.toml");
+    std::fs::write(
+        &config,
+        "version=1\n[providers]\n[index]\ndestination='local'\n\
+         [gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n",
+    )
+    .unwrap();
+    let database = root.join("silver.sqlite3");
+    let models = root.join("models");
+    let input = root.join("batch.json");
+    std::fs::write(&input, serde_json::to_vec(&payload("first", 0)).unwrap()).unwrap();
+    assert!(ingest(&database, &config, &input, &models).status.success());
+    run(&database, &config, &models, &["index"]);
+    let found = run(
+        &database,
+        &config,
+        &models,
+        &[
+            "search",
+            "participants",
+            "--unit",
+            "messages",
+            "--local",
+            "--no-worker",
+        ],
+    );
+    let hit = &found["results"][0];
+    let anchor = "connector#message#github:installation#review:1";
+    assert_eq!(hit["id"], anchor);
+    assert_eq!(hit["source"]["connector"], "github:installation");
+    assert_eq!(hit["kind"], "message");
+    assert_eq!(hit["author_kind"], "human");
+    assert!(hit.get("role").is_none());
+    let documents = run(
+        &database,
+        &config,
+        &models,
+        &[
+            "search",
+            "independent",
+            "--unit",
+            "chats",
+            "--local",
+            "--no-worker",
+            "--source",
+            "github:installation",
+        ],
+    );
+    assert_eq!(documents["results"][0]["kind"], "document");
+    let native_only = run(
+        &database,
+        &config,
+        &models,
+        &[
+            "search",
+            "participants",
+            "--local",
+            "--no-worker",
+            "--provider",
+            "codex",
+        ],
+    );
+    assert_eq!(native_only["results"], serde_json::json!([]));
+    let viewed = run(&database, &config, &models, &["view", anchor]);
+    assert_eq!(
+        viewed["messages"][0]["content"],
+        "Review with two participants"
+    );
+    let chats = run(&database, &config, &models, &["list-chats", "--local"]);
+    assert_eq!(
+        chats["chats"][0]["chat_id"],
+        "connector#chat#github:installation#repo:pr:42"
+    );
+    assert_eq!(
+        chats["chats"][0]["source"]["connector"],
+        "github:installation"
+    );
+    assert!(!models.exists());
+}

@@ -183,14 +183,29 @@ impl Storage {
                 },
             )
             .map_err(AppError::database)?;
-        rows.map(|row| {
-            let (row, score) = row.map_err(AppError::database)?;
-            let mut hit = search_hit(row)?;
-            hit.lexical_score = Some(score);
-            hit.lexical_match = plan.evidence(&crate::redaction::text(&hit.content), mode);
-            Ok(hit)
-        })
-        .collect()
+        let mut hits = rows
+            .map(|row| {
+                let (row, score) = row.map_err(AppError::database)?;
+                let mut hit = search_hit(row)?;
+                hit.lexical_score = Some(score);
+                hit.lexical_match = plan.evidence(&crate::redaction::text(&hit.content), mode);
+                Ok(hit)
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+        // A provider selection names native history only.
+        if provider.is_none() {
+            let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+            let ranked = self.search_connector_lexical(&query, limit, cutoff, filters)?;
+            let ids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            let mut connector = Vec::with_capacity(ids.len());
+            for (mut hit, (_, score)) in self.connector_hits(&ids)?.into_iter().zip(ranked) {
+                hit.lexical_score = Some(score);
+                hit.lexical_match = plan.evidence(&crate::redaction::text(&hit.content), mode);
+                connector.push(hit);
+            }
+            hits = merge_lexical(hits, connector, limit);
+        }
+        Ok(hits)
     }
 
     pub(crate) fn search_hits(&self, message_rowids: &[i64]) -> Result<Vec<SearchHit>, AppError> {
@@ -220,6 +235,9 @@ impl Storage {
         message_ids
             .iter()
             .map(|message_id| {
+                if message_id.starts_with(super::connector_gold::ANCHOR_PREFIX) {
+                    return self.connector_document(message_id);
+                }
                 statement
                     .query_row([message_id], sql::SearchDocumentRow::from_row)
                     .map(|row| row.content)
@@ -238,6 +256,9 @@ impl Storage {
         context: u32,
         representation: super::MessageContent,
     ) -> Result<Vec<Message>, AppError> {
+        if id.starts_with(super::connector_gold::ANCHOR_PREFIX) {
+            return self.connector_view(id, context);
+        }
         let anchor = sql::Anchor::builder()
             .id(id)
             .build()
@@ -263,7 +284,8 @@ impl Storage {
                 attachments: Vec::new(),
                 id: row.id,
                 ordinal: row.ordinal,
-                role: row.role.into(),
+                role: Some(row.role.into()),
+                author_kind: None,
                 content: match representation {
                     super::MessageContent::Canonical => row.content,
                     super::MessageContent::SearchProjection => row.projection,
@@ -323,7 +345,8 @@ impl Storage {
                 attachments: Vec::new(),
                 id: row.id,
                 ordinal: row.ordinal,
-                role: row.role.into(),
+                role: Some(row.role.into()),
+                author_kind: None,
                 content: match representation {
                     super::MessageContent::Canonical => row.content,
                     super::MessageContent::SearchProjection => row.projection,
@@ -334,12 +357,41 @@ impl Storage {
     }
 }
 
+/// Interleave two ranked lists by BM25 (lower is better), keeping each list's
+/// own order: native results rank exact-phrase matches ahead of their scores.
+fn merge_lexical(
+    native: Vec<SearchHit>,
+    connector: Vec<SearchHit>,
+    limit: usize,
+) -> Vec<SearchHit> {
+    let score = |hit: &SearchHit| hit.lexical_score.unwrap_or(f64::INFINITY);
+    let mut merged = Vec::with_capacity(limit.min(native.len() + connector.len()));
+    let mut native = native.into_iter().peekable();
+    let mut connector = connector.into_iter().peekable();
+    while merged.len() < limit {
+        let take_native = match (native.peek(), connector.peek()) {
+            (Some(left), Some(right)) => score(left) <= score(right),
+            (Some(_), None) => true,
+            (None, Some(_)) => false,
+            (None, None) => break,
+        };
+        merged.extend(if take_native {
+            native.next()
+        } else {
+            connector.next()
+        });
+    }
+    merged
+}
+
 pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> {
     Ok(SearchHit {
         id: row.id,
         conversation_id: row.conversation_id,
-        provider: row.provider.parse()?,
-        role: row.role.into(),
+        source: crate::source::Source::Provider(row.provider.parse()?),
+        kind: crate::source::Kind::Message,
+        role: Some(row.role.into()),
+        author_kind: None,
         content: row.content,
         copies: Vec::new(),
         created_at: row.created_at,

@@ -120,8 +120,14 @@ async fn provider_contract(service: Service) {
                 .unwrap();
             assert_eq!(result.lexical.len(), 1, "lexical {provider}");
             assert_eq!(result.semantic.len(), 1, "semantic {provider}");
-            assert_eq!(result.lexical[0].provider, provider);
-            assert_eq!(result.semantic[0].provider, provider);
+            assert_eq!(
+                result.lexical[0].source,
+                crate::source::Source::Provider(provider)
+            );
+            assert_eq!(
+                result.semantic[0].source,
+                crate::source::Source::Provider(provider)
+            );
         }
         let input = View {
             node_id: "first".into(),

@@ -1,4 +1,5 @@
 use super::*;
+use crate::provider::Provider;
 
 #[test]
 fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
@@ -11,7 +12,7 @@ fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
     divergent.node_id = Some("peer-diverged".into());
     divergent.content = "changed history".into();
     let mut another_provider = hit("thread", "message");
-    another_provider.provider = Provider::ClaudeCode;
+    another_provider.source = crate::source::Source::Provider(Provider::ClaudeCode);
     let another_thread = hit("other-thread", "message");
     let rows = deduplicate(
         vec![
@@ -29,7 +30,10 @@ fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
     assert_eq!(rows[0].copies[0].node_id.as_deref(), Some("peer"));
     assert_eq!(rows[1].id, "repeated-message");
     assert_eq!(rows[2].content, "changed history");
-    assert_eq!(rows[3].provider, Provider::ClaudeCode);
+    assert_eq!(
+        rows[3].source,
+        crate::source::Source::Provider(Provider::ClaudeCode)
+    );
     assert_eq!(rows[4].conversation_id, "other-thread");
 }
 
@@ -87,8 +91,10 @@ fn hit(thread: &str, id: &str) -> SearchHit {
     SearchHit {
         id: id.into(),
         conversation_id: thread.into(),
-        provider: Provider::Codex,
-        role: crate::role::Role::User,
+        source: crate::source::Source::Provider(Provider::Codex),
+        kind: crate::source::Kind::Message,
+        role: Some(crate::role::Role::User),
+        author_kind: None,
         content: id.into(),
         copies: Vec::new(),
         created_at: Some(123),
@@ -257,7 +263,8 @@ fn contextual_evidence_uses_nearest_searchable_messages_with_a_fixed_budget() {
         attachments: Vec::new(),
         id: id.into(),
         ordinal: 0,
-        role,
+        role: Some(role),
+        author_kind: None,
         content,
         created_at: None,
     };
@@ -348,7 +355,7 @@ fn message_results_apply_exclusions_without_changing_the_view_anchor() {
     let mut mixed = hit("a", "request");
     mixed.content = "<environment_context>noise</environment_context>actual question".into();
     let mut system = hit("a", "system");
-    system.role = crate::role::Role::System;
+    system.role = Some(crate::role::Role::System);
     let Results::Messages(results) =
         collect(vec![system, mixed], SearchUnit::Messages, 20, "question")
     else {
@@ -384,7 +391,7 @@ fn candidate_diversity_prevents_one_chat_from_occupying_the_rerank_budget() {
 fn provider_identity_limits_and_message_mode_are_preserved() {
     let first = hit("same-id", "first");
     let mut second = hit("same-id", "second");
-    second.provider = Provider::ClaudeCode;
+    second.source = crate::source::Source::Provider(Provider::ClaudeCode);
     assert_eq!(threads(vec![first, second], 20).len(), 2);
     assert!(threads(vec![hit("a", "a")], 0).is_empty());
     let Results::Messages(messages) = collect(

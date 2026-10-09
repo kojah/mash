@@ -33,7 +33,8 @@ pub(crate) fn serialize(
                 .iter()
                 .map(|thread| Chat {
                     conversation_id: &thread.conversation_id,
-                    provider: thread.provider,
+                    source: &thread.source,
+                    kind: None,
                     node_id: Some(&thread.node_id),
                     metadata: metadata(&thread.metadata),
                     score: None,
@@ -65,9 +66,13 @@ struct Message<'a> {
     id: &'a str,
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
-    provider: crate::provider::Provider,
+    source: &'a crate::source::Source,
+    kind: crate::source::Kind,
     node_id: Option<&'a str>,
-    role: &'a crate::role::Role,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<&'a crate::role::Role>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_kind: Option<crate::connectors::AuthorKind>,
     created_at: Option<i64>,
     content: String,
     content_truncated: bool,
@@ -84,7 +89,10 @@ struct Excerpt<'a> {
     lexical_match: Option<&'a crate::gold::matching::Evidence>,
     message_id: &'a str,
     node_id: Option<&'a str>,
-    role: &'a crate::role::Role,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<&'a crate::role::Role>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author_kind: Option<crate::connectors::AuthorKind>,
     created_at: Option<i64>,
     snippet: String,
     snippet_truncated: bool,
@@ -99,7 +107,8 @@ impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
             lexical_match: value.lexical_match.as_ref(),
             message_id: &value.message_id,
             node_id: value.node_id.as_deref(),
-            role: &value.role,
+            role: value.role.as_ref(),
+            author_kind: value.author_kind,
             created_at: value.created_at,
             snippet: crate::search_results::evidence_window(&value.snippet, "", EXCERPT_CHARS),
             snippet_truncated: value.snippet.chars().count() > EXCERPT_CHARS
@@ -114,7 +123,10 @@ impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
 struct Chat<'a> {
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
-    provider: crate::provider::Provider,
+    source: &'a crate::source::Source,
+    /// Search results only; listed chats are never documents.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<crate::source::Kind>,
     node_id: Option<&'a str>,
     #[serde(flatten)]
     metadata: ChatMetadata,
@@ -128,7 +140,8 @@ impl<'a> From<&'a ChatHit> for Chat<'a> {
     fn from(value: &'a ChatHit) -> Self {
         Self {
             conversation_id: &value.conversation_id,
-            provider: value.provider,
+            source: &value.source,
+            kind: Some(value.kind),
             node_id: value.node_id.as_deref(),
             metadata: metadata(&value.metadata),
             score: Some(value.score),
@@ -174,9 +187,11 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                         lexical_match: hit.lexical_match.as_ref(),
                         id: &hit.id,
                         conversation_id: &hit.conversation_id,
-                        provider: hit.provider,
+                        source: &hit.source,
+                        kind: hit.kind,
                         node_id: hit.node_id.as_deref(),
-                        role: &hit.role,
+                        role: hit.role.as_ref(),
+                        author_kind: hit.author_kind,
                         created_at: hit.created_at,
                         content: crate::search_results::evidence_window(
                             &hit.content,

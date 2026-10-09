@@ -5,8 +5,10 @@ fn hit(node: &str, content: &str) -> SearchHit {
     SearchHit {
         id: "message".into(),
         conversation_id: "thread".into(),
-        provider: Provider::Codex,
-        role: Role::User,
+        source: crate::source::Source::Provider(Provider::Codex),
+        kind: crate::source::Kind::Message,
+        role: Some(Role::User),
+        author_kind: None,
         content: content.into(),
         created_at: Some(123),
         metadata: ChatMetadata {

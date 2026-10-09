@@ -38,7 +38,7 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
     ];
     let result = run_json(&arguments);
     assert_eq!(result["chats"][0]["chat_id"], "session");
-    assert_eq!(result["chats"][0]["provider"], "codex");
+    assert_eq!(result["chats"][0]["source"]["provider"], "codex");
     assert_eq!(result["chats"][0]["updated_at"], 3000);
     assert_eq!(result["next_offset"], Value::Null);
     assert_eq!(

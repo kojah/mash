@@ -43,25 +43,18 @@ pub(crate) fn hybrid_search_filtered(
         .ok_or_else(|| AppError::model("embedding model returned no query vector"))?;
     let query_vector = quantize_vector(&query_vector);
     let mut dense_stage = Guard::begin(Stage::LocalDense);
-    let semantic = tracing::info_span!("load_vectors")
-        .in_scope(|| storage.semantic_chunks_filtered(generation, provider, days, filters))?;
-    let ranked = tracing::info_span!("score_vectors")
-        .in_scope(|| rank_quantized(&query_vector, &semantic, candidate_limit));
-    if ranked.is_empty() {
-        dense_stage.complete(Some(semantic.chunks.len()), Some(0));
-        drop(dense_stage);
+    let (semantic_hits, scanned) = dense_candidates(
+        storage,
+        generation,
+        &query_vector,
+        (provider, days, filters),
+        candidate_limit,
+    )?;
+    dense_stage.complete(Some(scanned), Some(semantic_hits.len()));
+    drop(dense_stage);
+    if semantic_hits.is_empty() {
         return Ok(crate::search_results::diversify(lexical, unit));
     }
-    let message_rowids = ranked
-        .iter()
-        .map(|(message_rowid, _)| *message_rowid)
-        .collect::<Vec<_>>();
-    let mut semantic_hits = storage.search_hits(&message_rowids)?;
-    for (hit, (_, score)) in semantic_hits.iter_mut().zip(&ranked) {
-        hit.semantic_score = Some(*score);
-    }
-    dense_stage.complete(Some(semantic.chunks.len()), Some(semantic_hits.len()));
-    drop(dense_stage);
     let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
     if ranking == crate::gold::config::Ranking::Fusion {
         return Ok(crate::search_ranking::finish_fusion(fused, unit, limit));
@@ -140,19 +133,107 @@ pub(crate) fn local_candidates(
     })?;
     let vector = vector.iter().map(|v| *v as f32).collect::<Vec<_>>();
     let mut dense_stage = Guard::begin(Stage::LocalDense);
-    let chunks = storage.semantic_chunks_filtered(generation, provider, days, filters)?;
-    let ranked = rank_quantized(&quantize_vector(&vector), &chunks, candidate_limit);
-    let rowids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-    let mut semantic = storage.search_hits(&rowids)?;
-    for (hit, (_, score)) in semantic.iter_mut().zip(ranked) {
-        hit.semantic_score = Some(score);
-    }
-    dense_stage.complete(Some(chunks.chunks.len()), Some(semantic.len()));
+    let (semantic, scanned) = dense_candidates(
+        storage,
+        generation,
+        &quantize_vector(&vector),
+        (provider, days, filters),
+        candidate_limit,
+    )?;
+    dense_stage.complete(Some(scanned), Some(semantic.len()));
     drop(dense_stage);
     let fused = fuse(lexical, semantic, unit, fusion);
     let ids = fused.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>();
     let documents = storage.search_documents(&ids)?;
     Ok((fused, documents))
+}
+
+/// Native and connector vectors scored against one query, best first.
+/// Returns the hits and the number of vector chunks scanned.
+fn dense_candidates(
+    storage: &Storage,
+    generation: &str,
+    query: &QuantizedVector,
+    (provider, days, filters): (
+        Option<crate::provider::Provider>,
+        Option<u32>,
+        Option<&crate::search_filter::Scope>,
+    ),
+    limit: usize,
+) -> Result<(Vec<SearchHit>, usize), AppError> {
+    let native_chunks = tracing::info_span!("load_vectors")
+        .in_scope(|| storage.semantic_chunks_filtered(generation, provider, days, filters))?;
+    let native = tracing::info_span!("score_vectors")
+        .in_scope(|| rank_quantized(query, &native_chunks, limit));
+    let mut scanned = native_chunks.chunks.len();
+    // A provider selection names native history only.
+    let connector = if provider.is_none() {
+        let chunks = connector_chunks(
+            storage.connector_vectors(
+                generation,
+                crate::storage::cutoff_timestamp(days)?,
+                filters,
+            )?,
+            query.values.len(),
+        );
+        scanned += chunks.chunks.len();
+        rank_quantized(query, &chunks, limit)
+    } else {
+        Vec::new()
+    };
+    let mut ranked = native
+        .into_iter()
+        .map(|(id, score)| (false, id, score))
+        .chain(connector.into_iter().map(|(id, score)| (true, id, score)))
+        .collect::<Vec<_>>();
+    ranked.sort_by(|left, right| {
+        right
+            .2
+            .total_cmp(&left.2)
+            .then_with(|| (left.0, left.1).cmp(&(right.0, right.1)))
+    });
+    ranked.truncate(limit);
+    let mut hits = Vec::with_capacity(ranked.len());
+    for (connector, id, score) in ranked {
+        let mut hit = if connector {
+            storage.connector_hits(&[id])?
+        } else {
+            storage.search_hits(&[id])?
+        }
+        .pop()
+        .ok_or_else(|| AppError::database_data("semantic index references a missing record"))?;
+        hit.semantic_score = Some(score);
+        hits.push(hit);
+    }
+    Ok((hits, scanned))
+}
+
+/// One chunk of connector vectors, shaped like native chunks for shared scoring.
+fn connector_chunks(vectors: Vec<(i64, f32, Vec<u8>)>, dimensions: usize) -> SemanticChunks {
+    let mut chunk = crate::storage::SemanticChunk {
+        message_rowids: Vec::with_capacity(vectors.len()),
+        values: Vec::with_capacity(vectors.len() * dimensions),
+        norms: Vec::with_capacity(vectors.len()),
+        eligible: Vec::with_capacity(vectors.len()),
+        dimensions,
+    };
+    for (id, norm, vector) in vectors {
+        // A vector of another width belongs to a stale generation; skip it.
+        if vector.len() == dimensions {
+            chunk.message_rowids.push(id);
+            chunk.values.extend_from_slice(&vector);
+            chunk.norms.push(norm);
+            chunk.eligible.push(true);
+        }
+    }
+    SemanticChunks {
+        chunks: if chunk.message_rowids.is_empty() {
+            Vec::new()
+        } else {
+            vec![chunk]
+        },
+        dimensions,
+    }
 }
 
 pub(crate) fn fuse(

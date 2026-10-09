@@ -11,7 +11,7 @@ use crate::AppError;
 impl Storage {
     pub(crate) fn clear_dense_gold(&self) -> Result<(), AppError> {
         self.require_writer()?;
-        self.connection.execute_batch("DELETE FROM message_embeddings; DELETE FROM semantic_chunks; DELETE FROM dirty_semantic_chunks; DELETE FROM pending_embeddings; UPDATE derived_state SET semantic_ready_generation=NULL,resume_generation=NULL,resume_silver_revision=NULL,resume_interpretation_version=NULL WHERE singleton=1;")
+        self.connection.execute_batch("DELETE FROM connector_embeddings; DELETE FROM message_embeddings; DELETE FROM semantic_chunks; DELETE FROM dirty_semantic_chunks; DELETE FROM pending_embeddings; UPDATE derived_state SET semantic_ready_generation=NULL,resume_generation=NULL,resume_silver_revision=NULL,resume_interpretation_version=NULL WHERE singleton=1;")
             .map_err(AppError::database)
     }
     pub(crate) fn resume_unchanged_semantic_snapshot(
@@ -83,12 +83,7 @@ impl Storage {
     }
 
     pub(crate) fn semantic_index_is_ready(&self, generation: &str) -> Result<bool, AppError> {
-        if super::generated::ConnectorInputs
-            .query_one(&self.connection)
-            .map_err(AppError::database)?
-            .present
-            != 0
-        {
+        if !self.connector_embeddings_complete(generation)? {
             return Ok(false);
         }
         let ready_generation = self

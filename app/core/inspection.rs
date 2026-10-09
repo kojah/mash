@@ -100,7 +100,13 @@ fn local_view(database_path: &Path, id: String, context: u32) -> Result<ViewResp
     let mut messages = storage.view(&id, context)?;
     for message in &mut messages {
         message.content = crate::redaction::text(&message.content);
-        message.attachments = storage.list_attachments(&message.id)?.attachments;
+        // Connector attachments are source references, not captured files.
+        if !message
+            .id
+            .starts_with(crate::storage::connector_gold::ANCHOR_PREFIX)
+        {
+            message.attachments = storage.list_attachments(&message.id)?.attachments;
+        }
     }
     Ok(ViewResponse { id, messages })
 }

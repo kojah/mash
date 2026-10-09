@@ -39,6 +39,21 @@ class Chat:
     def decode(cls, value):
         return cls(string(value["provider"]), string(value["chat_id"]))
 
+    @classmethod
+    def from_result(cls, value):
+        # Current results tag their source; recorded captures predate it.
+        source = value.get("source")
+        if source is None:
+            return cls.decode(value)
+        if not isinstance(source, dict) or len(source) != 1:
+            raise ValueError("expected a single tagged source")
+        ((tag, name),) = source.items()
+        if tag == "provider":
+            return cls(string(name), string(value["chat_id"]))
+        if tag == "connector":
+            return cls(f"connector:{string(name)}", string(value["chat_id"]))
+        raise ValueError("unknown result source")
+
 
 def string(value):
     if not isinstance(value, str) or not value.strip():
@@ -134,7 +149,7 @@ def score(query, response):
     }
     if set(diagnostics["completed_sources"]) != expected[query.scope]:
         raise ValueError("requested sources did not all complete")
-    threads = [Chat.decode(hit) for hit in response["results"][:10]]
+    threads = [Chat.from_result(hit) for hit in response["results"][:10]]
     if len(set(threads)) != len(threads):
         raise ValueError("duplicate logical threads in the ranked top ten")
     missing = [thread for thread in threads if thread not in query.grades]

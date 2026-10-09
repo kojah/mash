@@ -352,7 +352,7 @@ impl Store {
             let row = thread.conversation;
             collector.push(crate::chat_catalog::Chat {
                 conversation_id: row.id.clone(),
-                provider: row.provider,
+                source: crate::source::Source::Provider(row.provider),
                 node_id: thread.node_id,
                 metadata: crate::search_results::ChatMetadata {
                     enrichment: row.enrichment,

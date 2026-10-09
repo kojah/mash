@@ -125,13 +125,44 @@ impl Storage {
                 },
             )
             .map_err(AppError::database)?;
-        rows.map(|row| {
-            let (row, lexical_score) = row.map_err(AppError::database)?;
-            let mut hit = super::queries::search_hit(row)?;
-            hit.lexical_score = Some(lexical_score);
+        let mut hits = rows
+            .map(|row| {
+                let (row, lexical_score) = row.map_err(AppError::database)?;
+                let mut hit = super::queries::search_hit(row)?;
+                hit.lexical_score = Some(lexical_score);
+                crate::gold::matching::annotate(&mut hit, literal);
+                Ok(hit)
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+        let limit = limit.min(1000);
+        let ranked = self.search_connector_lexical(&fts, limit, None, Some(scope))?;
+        let ids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+        for mut hit in self.connector_hits(&ids)? {
             crate::gold::matching::annotate(&mut hit, literal);
-            Ok(hit)
-        })
-        .collect()
+            if hit.lexical_match.is_some() {
+                hit.lexical_score = Some(0.0);
+                hits.push(hit);
+            }
+        }
+        // The native query's own order: match quality, then recency, then ID.
+        hits.sort_by(|left, right| {
+            quality(right)
+                .cmp(&quality(left))
+                .then_with(|| right.created_at.cmp(&left.created_at))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        hits.truncate(limit);
+        Ok(hits)
     }
+}
+
+fn quality(hit: &SearchHit) -> u8 {
+    hit.lexical_match
+        .as_ref()
+        .map_or(0, |evidence| match evidence.kind {
+            crate::gold::matching::Kind::Exact => 4,
+            crate::gold::matching::Kind::Prefix => 3,
+            crate::gold::matching::Kind::Typo => 2,
+            crate::gold::matching::Kind::PrefixAndTypo => 1,
+        })
 }

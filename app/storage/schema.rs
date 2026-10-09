@@ -7,7 +7,7 @@ use crate::AppError;
 
 /// Silver database version; any other version is rejected, never migrated.
 pub(super) const SCHEMA_VERSION: i64 = 47;
-const GOLD_VERSION: i64 = 1;
+const GOLD_VERSION: i64 = 2;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
@@ -235,6 +235,9 @@ pub(super) fn discard_gold(connection: &Connection) -> Result<(), AppError> {
              DELETE FROM gold.pending_embeddings;
              DELETE FROM gold.semantic_chunks;
              DELETE FROM gold.message_fts;
+             DELETE FROM gold.connector_embeddings;
+             DELETE FROM gold.connector_fts;
+             DELETE FROM gold.connector_units;
              UPDATE gold.gold_manifest SET manifest = NULL;
              UPDATE gold.lexical_manifest SET manifest = NULL;
              UPDATE gold.derived_state SET search_dirty = 1, semantic_ready_generation = NULL,

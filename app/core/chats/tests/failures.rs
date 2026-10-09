@@ -83,7 +83,7 @@ async fn shared_catalog_deadline_covers_all_pages_and_discards_partial_remote_re
                     for number in 0..120 {
                         collector.push(Chat {
                             conversation_id: format!("peer-{number:03}"),
-                            provider: Provider::Codex,
+                            source: crate::source::Source::Provider(Provider::Codex),
                             node_id: "peer".into(),
                             metadata: ChatMetadata {
                                 enrichment: None,

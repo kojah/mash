@@ -62,6 +62,14 @@ Shared gold's chat state also uses the new names: replay shared gold from silver
 with `mash serve --server-config PATH --replay-gold` when upgrading an existing
 server. Canonical silver is retained.
 
+Search results, chat matches and listed chats identify their origin with a tagged
+`source`: `{"provider": "codex"}` for native history or
+`{"connector": "<source_id>"}` for external connector records. Search results
+also carry `kind` (`message` or `document`). Native messages keep `role`;
+connector messages carry `author_kind` (`human`, `bot` or `unknown`) instead,
+and documents carry neither. The local gold schema is now version 2: existing
+local gold is recreated empty and rebuilt from silver by the next `mash index`.
+
 One-shot data commands emit one JSON value; watch mode emits newline-delimited
 results, and `mash mcp` serves the stdio protocol. `mash serve` runs the shared
 index HTTP API; it reports its listening address as JSON on stderr and keeps
@@ -676,6 +684,28 @@ and hidden federation workers are removed. To migrate a configuration, move this
 machine's `providers` and `index` settings to the top level and optionally add
 `shared`. Old configuration shapes are rejected rather than guessed.
 
+## External connectors
+
+Out-of-process connectors (see `sdk/python` and `connectors/`) deliver typed
+batches of chats, messages and standalone documents.
+`mash index --connector-batch PATH` commits a batch to local silver and returns a
+durable receipt with `gold_ready: false`; it loads no models. Records become
+searchable after the next `mash index` (or `index --rebuild-local-gold`), which
+indexes their text, embeds them with the configured model and recertifies local
+gold. Until then, local search reports gold as stale rather than omitting them.
+
+Connector results use namespaced anchors such as
+`connector#message#<source_id>#<id>`, `connector#document#<source_id>#<id>` and
+`connector#chat#<source_id>#<chat_id>`; pass them to `view`, `chat` filters and
+the history skill like native IDs. `view` shows a message with its chronological
+neighbours in the chat, or a document on its own. Connector attachments are
+source references, not captured files. `list-chats` includes connector chats
+unless a `provider` selection names native providers.
+
+Shared search does not cover connector records yet. A node's shared silver can
+receive them directly (`POST /v1/connector-batches`), but until the server
+projects them into Qdrant, group search fails closed while any node holds them.
+
 ## Search filters
 
 Search evidence includes `lookup.view` and `lookup.list_attachments`: copy these
@@ -701,7 +731,7 @@ terms remain searchable; language detection cannot reliably classify every short
 or mixed-language query.
 
 CLI search accepts repeatable `--provider`, `--node`, `--role`, `--chat`,
-`--project`, and `--repository`. Repeated values for one field are alternatives;
+`--project`, `--repository` and `--source`. Repeated values for one field are alternatives;
 different fields are combined with AND. `--node` filters publishing identity and
 does not connect directly to another node. A standalone local installation uses
 the node label `local`. `--days` is a rolling message-age window. `--after` is
@@ -709,7 +739,10 @@ inclusive and `--before` exclusive; both accept `YYYY-MM-DD` (UTC midnight) or
 RFC3339 timestamps with an explicit offset.
 
 MCP exposes the same selection fields: `provider`, `chat`, `node`,
-`role`, `project` and `repository` are arrays, including for a single value.
+`role`, `project`, `repository` and `source` are arrays, including for a single
+value. `provider` and `role` name native history, so they never match connector
+records; `source` names connector source IDs, so it never matches native history.
+Connector records have no project or repository.
 `after` and `before` use Unix seconds. Omitted or empty shortcut arrays impose
 no restriction; an empty list inside a structured predicate, such as
 `{"chat": []}`, matches nothing. Unknown chat IDs match nothing.
@@ -748,7 +781,7 @@ files remain TOML. Each expression contains exactly one operator:
 - `all`: AND of expressions; an empty list matches everything.
 - `any`: OR of expressions; an empty list matches nothing.
 - `not`: negation of one expression.
-- `node`, `provider`, `role`, `chat`, `project`, `repository`: lists of exact, case-sensitive values.
+- `node`, `provider`, `role`, `chat`, `project`, `repository`, `source`: lists of exact, case-sensitive values.
 - `after`, `before`: inclusive/exclusive Unix timestamps **in seconds**.
 
 An MCP request can select either repository while excluding tool messages:
@@ -802,7 +835,7 @@ restriction. Sort by `updated_at` (default), `created_at` or `title`, with
 order. Missing sort values always come last; provider, chat ID and node break
 ties deterministically.
 
-The response contains `chats` with canonical `chat_id`, provider,
+The response contains `chats` with canonical `chat_id`, `source`,
 representative `node_id`, title/project/repository and timestamps in Unix
 milliseconds, plus `next_offset`. Copies with the same provider/chat ID are
 deduplicated before paging; the best matching copy for the requested sort order

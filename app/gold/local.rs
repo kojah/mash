@@ -79,7 +79,7 @@ pub(crate) fn build(
         storage.invalidate_embedding_generation(&generation)?;
         storage.restrict_dense_queue(build)?;
     }
-    let embeddings = if !already_published && storage.has_pending_embeddings()? {
+    let mut embeddings = if !already_published && storage.has_pending_embeddings()? {
         storage.commit_and_continue_writer()?;
         let model_started = Instant::now();
         let mut embedding_pool =
@@ -105,6 +105,7 @@ pub(crate) fn build(
     } else {
         semantic::EmbeddingSummary::default()
     };
+    embed_connectors(storage, models, &generation, &mut embeddings)?;
     let embedding_milliseconds = elapsed_milliseconds(embedding_started);
     let counts = storage.counts()?;
     if !already_published && source_complete {
@@ -123,6 +124,27 @@ pub(crate) fn build(
         search_refresh_milliseconds,
         embedding_milliseconds,
     })
+}
+
+/// Connector units carry their own vectors, independent of native recipes;
+/// they count toward the index summary like native vectors.
+fn embed_connectors(
+    storage: &mut Storage,
+    models: &Models,
+    generation: &str,
+    summary: &mut semantic::EmbeddingSummary,
+) -> Result<(), AppError> {
+    if storage.connector_embeddings_complete(generation)? {
+        return Ok(());
+    }
+    storage.commit_and_continue_writer()?;
+    let mut pool = models.load_indexer()?.ok_or_else(|| {
+        AppError::model("semantic models are not installed; run `mash models install`")
+    })?;
+    let stored = semantic::embed_connector_units(storage, &mut pool, generation)?;
+    summary.stored_vectors = summary.stored_vectors.saturating_add(stored);
+    summary.model_inferences = summary.model_inferences.saturating_add(stored);
+    Ok(())
 }
 
 #[cfg(test)]

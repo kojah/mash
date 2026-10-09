@@ -198,7 +198,10 @@ async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
                 }
                 Results::Chats(threads) => {
                     assert_eq!(threads.len(), 1);
-                    assert_eq!(threads[0].provider, Provider::Codex);
+                    assert_eq!(
+                        threads[0].source,
+                        crate::source::Source::Provider(Provider::Codex)
+                    );
                     assert_eq!(
                         threads[0].metadata.project.as_deref(),
                         Some("/synthetic/mash")

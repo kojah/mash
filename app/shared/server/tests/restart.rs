@@ -166,7 +166,10 @@ async fn verify_search(api: &Api) {
         let result: protocol::Candidates = api.post_json("search", FIRST, &input).await;
         for hits in [result.lexical, result.semantic] {
             assert_eq!(hits.len(), 1);
-            assert_eq!(hits[0].provider, Provider::Codex);
+            assert_eq!(
+                hits[0].source,
+                crate::source::Source::Provider(Provider::Codex)
+            );
             assert_eq!(hits[0].conversation_id, "codex");
             assert_eq!(hits[0].node_id.as_deref(), Some("first"));
         }
@@ -175,7 +178,10 @@ async fn verify_search(api: &Api) {
         let result: protocol::Candidates = api.post_json("search", FIRST, &input).await;
         for hits in [result.lexical, result.semantic] {
             assert_eq!(hits.len(), 1);
-            assert_eq!(hits[0].provider, Provider::Opencode);
+            assert_eq!(
+                hits[0].source,
+                crate::source::Source::Provider(Provider::Opencode)
+            );
             assert_eq!(hits[0].node_id.as_deref(), Some("second"));
         }
         input.exclude_self = false;

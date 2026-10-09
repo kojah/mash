@@ -51,8 +51,10 @@ fn hit() -> SearchHit {
     SearchHit {
         id: "peer-message".into(),
         conversation_id: "peer-thread".into(),
-        provider: crate::provider::Provider::Codex,
-        role: crate::role::Role::User,
+        source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+        kind: crate::source::Kind::Message,
+        role: Some(crate::role::Role::User),
+        author_kind: None,
         content: "use voyage-code-4".into(),
         created_at: Some(1000),
         metadata: crate::search_results::ChatMetadata::default(),

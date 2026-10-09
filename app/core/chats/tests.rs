@@ -68,7 +68,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
             for number in 0..110 {
                 collector.push(Chat {
                     conversation_id: format!("thread-{number:03}"),
-                    provider: Provider::Codex,
+                    source: crate::source::Source::Provider(Provider::Codex),
                     node_id: "peer".into(),
                     metadata: ChatMetadata {
                         enrichment: None,

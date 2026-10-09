@@ -217,6 +217,41 @@ pub(crate) fn rebuild_embeddings(
     )
 }
 
+/// Embed connector units lacking a vector of this generation; returns the count.
+/// Each wave commits, so an interrupted build keeps the vectors it finished.
+pub(crate) fn embed_connector_units(
+    storage: &mut Storage,
+    pool: &mut EmbeddingPool,
+    generation: &str,
+) -> Result<u64, AppError> {
+    let mut stored = 0_u64;
+    loop {
+        let pending = storage.pending_connector_embeddings(generation, pool.wave_size())?;
+        if pending.is_empty() {
+            return Ok(stored);
+        }
+        let groups = pending
+            .iter()
+            .map(|(_, text)| EmbeddingGroup {
+                content: text.clone(),
+                message_ids: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        let vectors = pool.embed_wave(&groups)?;
+        if vectors.len() != pending.len() {
+            return Err(AppError::model(
+                "embedding model returned an unexpected result count",
+            ));
+        }
+        for ((unit, _), vector) in pending.iter().zip(vectors) {
+            let vector = quantize_vector(&vector);
+            storage.store_connector_embedding(*unit, generation, &vector.values, vector.norm)?;
+            stored += 1;
+        }
+        storage.commit_and_continue_writer()?;
+    }
+}
+
 pub(crate) fn rebuild_with_build(
     storage: &mut Storage,
     pool: &mut EmbeddingPool,

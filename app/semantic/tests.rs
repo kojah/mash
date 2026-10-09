@@ -300,8 +300,10 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
         SearchHit {
             id: id.to_owned(),
             conversation_id: "conversation".to_owned(),
-            provider: crate::provider::Provider::Codex,
-            role: crate::role::Role::User,
+            source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+            kind: crate::source::Kind::Message,
+            role: Some(crate::role::Role::User),
+            author_kind: None,
             content: id.to_owned(),
             copies: Vec::new(),
             created_at: None,

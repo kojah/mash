@@ -1,7 +1,6 @@
 //! Shared SQLite infrastructure for silver history and gold retrieval tables.
 //! Canonical mutation also invalidates dependent gold in the same transaction;
 //! gold/local owns rebuilding. See silver.sql and gold.sql for the two databases.
-use crate::provider::Provider;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -13,6 +12,7 @@ use crate::AppError;
 
 // Gold views and materialized retrieval data.
 mod catalog;
+pub(crate) mod connector_gold;
 mod coverage;
 pub(crate) mod embedding_plan;
 mod exact;
@@ -93,10 +93,17 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_match: Option<crate::gold::matching::Evidence>,
     pub(crate) id: String,
+    /// For a document, its own anchor: documents belong to no chat.
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
-    pub(crate) provider: Provider,
-    pub(crate) role: crate::role::Role,
+    pub(crate) source: crate::source::Source,
+    #[serde(default)]
+    pub(crate) kind: crate::source::Kind,
+    /// Native messages have a role; connector messages have an author kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) role: Option<crate::role::Role>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
     pub(crate) content: String,
     #[serde(default)]
     pub(crate) created_at: Option<i64>,
@@ -121,7 +128,11 @@ pub(crate) struct Message {
     pub(crate) attachments: Vec<crate::attachments::Metadata>,
     pub(crate) id: String,
     pub(crate) ordinal: i64,
-    pub(crate) role: crate::role::Role,
+    /// Native messages have a role; connector messages have an author kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) role: Option<crate::role::Role>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
     pub(crate) content: String,
     pub(crate) created_at: Option<i64>,
 }
@@ -282,7 +293,7 @@ impl Drop for Storage {
     }
 }
 
-fn cutoff_timestamp(days: Option<u32>) -> Result<Option<i64>, AppError> {
+pub(crate) fn cutoff_timestamp(days: Option<u32>) -> Result<Option<i64>, AppError> {
     let Some(days) = days else {
         return Ok(None);
     };

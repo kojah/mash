@@ -110,7 +110,7 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
         &format!(
             "\n{number}. {} · {} · node {}",
             safe(value.metadata.title.as_deref().unwrap_or("Untitled thread")),
-            value.provider,
+            safe(&value.source.to_string()),
             safe(value.node_id.unwrap_or("unspecified"))
         ),
     );
@@ -125,7 +125,7 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
             &format!(
                 "  Message: {} · {} · {} · time (Unix ms): {}",
                 safe(hit.message_id),
-                hit.role.as_str(),
+                crate::source::speaker(value.kind.unwrap_or_default(), hit.role, hit.author_kind),
                 origin(hit.node_id, hit.lookup),
                 time(hit.created_at)
             ),
@@ -174,7 +174,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
                         "\n{}. {} · {} · {}",
                         index + 1,
                         safe(hit.id),
-                        hit.provider,
+                        safe(&hit.source.to_string()),
                         origin(hit.node_id, hit.lookup)
                     ),
                 );
@@ -183,7 +183,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
                     &format!(
                         "  Chat: {} · role: {} · time (Unix ms): {}",
                         safe(hit.conversation_id),
-                        hit.role.as_str(),
+                        crate::source::speaker(hit.kind, hit.role, hit.author_kind),
                         time(hit.created_at)
                     ),
                 );
@@ -432,7 +432,8 @@ fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), se
             index + 1,
             &Chat {
                 conversation_id: &row.conversation_id,
-                provider: row.provider,
+                source: &row.source,
+                kind: None,
                 node_id: Some(&row.node_id),
                 metadata: super::metadata(&row.metadata),
                 score: None,

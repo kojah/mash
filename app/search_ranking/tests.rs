@@ -7,8 +7,10 @@ fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
     SearchHit {
         id: id.into(),
         conversation_id: thread.into(),
-        provider: Provider::Codex,
-        role: Role::User,
+        source: crate::source::Source::Provider(Provider::Codex),
+        kind: crate::source::Kind::Message,
+        role: Some(Role::User),
+        author_kind: None,
         content: content.into(),
         copies: Vec::new(),
         created_at: None,

@@ -55,3 +55,29 @@ CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
     conversation_id UNINDEXED,
     tokenize = 'unicode61'
 );
+-- Searchable units projected from connector silver (messages and documents).
+-- Connector records have no native message rowid; the anchor namespaces their
+-- source and kind, and the digest decides when text must be re-indexed.
+CREATE TABLE IF NOT EXISTS connector_units (
+    id INTEGER PRIMARY KEY,
+    anchor TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL CHECK (kind IN ('message', 'document')),
+    source_id TEXT NOT NULL,
+    record_id TEXT NOT NULL,
+    -- The chat's anchor, or a document's own anchor: documents belong to no chat.
+    chat_anchor TEXT NOT NULL,
+    created_at INTEGER,
+    digest BLOB NOT NULL
+);
+-- Rowid is connector_units.id.
+CREATE VIRTUAL TABLE IF NOT EXISTS connector_fts USING fts5(
+    content,
+    tokenize = 'unicode61'
+);
+CREATE TABLE IF NOT EXISTS connector_embeddings (
+    unit_id INTEGER PRIMARY KEY,
+    generation TEXT NOT NULL,
+    dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+    norm REAL NOT NULL,
+    vector BLOB NOT NULL
+);

@@ -98,6 +98,8 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         F::Chat(values) => ("conversation_id", values.clone()),
         F::Project(values) => ("project", values.clone()),
         F::Repository(values) => ("repository", values.clone()),
+        // Native points carry no source_id, so they never match.
+        F::Source(values) => ("source_id", values.clone()),
     };
     if field.1.is_empty() {
         api::impossible()
@@ -314,8 +316,10 @@ fn hits(
             node_id: Some(d.node_id),
             id: m.id,
             conversation_id: m.conversation_id,
-            provider: d.provider,
-            role: m.role,
+            source: crate::source::Source::Provider(d.provider),
+            kind: crate::source::Kind::Message,
+            role: Some(m.role),
+            author_kind: None,
             content: m.projection,
             copies: vec![],
             created_at: m.created_at,

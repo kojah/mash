@@ -17,8 +17,8 @@ use std::time::Duration;
 pub(crate) use embeddings::EmbeddingPool;
 
 pub(crate) use embeddings::{
-    EmbeddingProgress, EmbeddingSummary, embedding_generation, rebuild_embeddings,
-    rebuild_with_build,
+    EmbeddingProgress, EmbeddingSummary, embed_connector_units, embedding_generation,
+    rebuild_embeddings, rebuild_with_build,
 };
 pub(crate) use models::indexer;
 pub(crate) use models::indexer::LoadedIndexer;

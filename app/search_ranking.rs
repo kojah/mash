@@ -43,7 +43,7 @@ pub(crate) fn select(
     for (index, hit) in hits.iter().enumerate() {
         let next = groups.len();
         let slot = *positions
-            .entry((hit.provider, &hit.conversation_id))
+            .entry((&hit.source, &hit.conversation_id))
             .or_insert_with(|| {
                 groups.push(Vec::new());
                 next

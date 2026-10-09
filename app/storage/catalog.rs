@@ -15,8 +15,6 @@ impl Storage {
         if !request.admits_node(node, node) {
             return Ok(Vec::new());
         }
-        let providers = serde_json::to_string(&request.provider)
-            .map_err(|_| AppError::internal("serialize thread provider selection"))?;
         let sort = match request.sort {
             Sort::UpdatedAt => "updated_at",
             Sort::CreatedAt => "created_at",
@@ -24,6 +22,53 @@ impl Storage {
         };
         let size = i64::try_from(request.offset + request.limit + 1)
             .map_err(|_| AppError::usage("thread page is too large"))?;
+        let mut chats = self.native_chat_candidates(request, node, sort, size)?;
+        // A provider selection names native history only. The caller's collector
+        // applies the remaining filters, ordering and page window.
+        if request.provider.is_empty() {
+            chats.extend(self.connector_chat_candidates(node)?);
+        }
+        Ok(chats)
+    }
+
+    fn connector_chat_candidates(&self, node: &str) -> Result<Vec<Chat>, AppError> {
+        generated::ConnectorChats
+            .query_many(&self.connection)
+            .map_err(AppError::database)?
+            .into_iter()
+            .map(|row| {
+                let chat: crate::connectors::Chat = serde_json::from_str(&row.record)
+                    .map_err(|_| AppError::database_data("stored connector record is invalid"))?;
+                Ok(Chat {
+                    conversation_id: super::connector_gold::anchor(
+                        "chat",
+                        &row.source_id,
+                        chat.id.as_str(),
+                    ),
+                    source: crate::source::Source::Connector(row.source_id),
+                    node_id: node.into(),
+                    metadata: ChatMetadata {
+                        enrichment: None,
+                        title: chat.title,
+                        project: None,
+                        repository: None,
+                        created_at: chat.created_at,
+                        updated_at: chat.updated_at,
+                    },
+                })
+            })
+            .collect()
+    }
+
+    fn native_chat_candidates(
+        &self,
+        request: &Request,
+        node: &str,
+        sort: &str,
+        size: i64,
+    ) -> Result<Vec<Chat>, AppError> {
+        let providers = serde_json::to_string(&request.provider)
+            .map_err(|_| AppError::internal("serialize thread provider selection"))?;
         generated::ListChats::builder()
             .all_providers(i64::from(request.provider.is_empty()))
             .providers_json(&providers)
@@ -41,7 +86,7 @@ impl Storage {
             .map(|row| {
                 Ok(Chat {
                     conversation_id: row.id,
-                    provider: row.provider.parse()?,
+                    source: crate::source::Source::Provider(row.provider.parse()?),
                     node_id: node.into(),
                     metadata: ChatMetadata {
                         enrichment: row

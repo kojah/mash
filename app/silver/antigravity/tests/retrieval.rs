@@ -49,11 +49,14 @@ async fn core_searches_native_antigravity_messages_and_threads_with_local_models
         match result.results {
             crate::search_results::Results::Messages(messages) => {
                 assert!(!messages.is_empty());
-                assert!(messages.iter().all(|m| m.provider == Provider::Antigravity));
+                assert!(messages.iter().all(|m| m.source == crate::source::Source::Provider(Provider::Antigravity)));
             }
             crate::search_results::Results::Chats(threads) => {
                 assert_eq!(threads.len(), 1);
-                assert_eq!(threads[0].provider, Provider::Antigravity);
+                assert_eq!(
+                    threads[0].source,
+                    crate::source::Source::Provider(Provider::Antigravity)
+                );
             }
         }
     }

@@ -122,8 +122,10 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
                 format!("slow-{index}")
             },
             conversation_id: "thread".into(),
-            provider: crate::provider::Provider::Codex,
-            role: crate::role::Role::User,
+            source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+            kind: crate::source::Kind::Message,
+            role: Some(crate::role::Role::User),
+            author_kind: None,
             content: "cache the model".into(),
             copies: Vec::new(),
             created_at: None,

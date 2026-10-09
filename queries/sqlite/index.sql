@@ -220,3 +220,74 @@ SELECT CAST(EXISTS(SELECT 1 FROM connector_chats) OR EXISTS(SELECT 1 FROM connec
 
 -- name: ConnectorAllEdges :many
 SELECT source_id,id,chat_id FROM connector_messages ORDER BY source_id,chat_id,id;
+
+-- name: ConnectorUnitDigests :many
+SELECT anchor, id, digest FROM connector_units;
+
+-- name: ConnectorSilverMessages :many
+SELECT m.source_id, m.record AS message, c.record AS chat
+  FROM connector_messages m
+  JOIN connector_chats c ON c.source_id = m.source_id AND c.id = m.chat_id;
+
+-- name: ConnectorSilverDocuments :many
+SELECT source_id, record FROM connector_documents;
+
+-- name: ConnectorInsertUnit :one
+INSERT INTO connector_units(anchor, kind, source_id, record_id, chat_anchor, created_at, digest)
+VALUES (sqlc.arg(anchor), sqlc.arg(kind), sqlc.arg(source_id), sqlc.arg(record_id),
+        sqlc.arg(chat_anchor), sqlc.narg(created_at), sqlc.arg(digest))
+RETURNING id;
+
+-- name: ConnectorUpdateUnit :exec
+UPDATE connector_units
+   SET chat_anchor = sqlc.arg(chat_anchor), created_at = sqlc.narg(created_at), digest = sqlc.arg(digest)
+ WHERE id = sqlc.arg(id);
+
+-- name: ConnectorDeleteUnit :exec
+DELETE FROM connector_units WHERE id = sqlc.arg(id);
+
+-- name: ConnectorDeleteUnitEmbedding :exec
+DELETE FROM connector_embeddings WHERE unit_id = sqlc.arg(unit_id);
+
+-- name: ConnectorUnit :one
+SELECT anchor, kind, source_id, record_id, chat_anchor FROM connector_units WHERE id = sqlc.arg(id);
+
+-- name: ConnectorMessageEvidence :one
+SELECT m.record AS message, c.record AS chat
+  FROM connector_messages m
+  JOIN connector_chats c ON c.source_id = m.source_id AND c.id = m.chat_id
+ WHERE m.source_id = sqlc.arg(source_id) AND m.id = sqlc.arg(id);
+
+-- name: ConnectorDocumentEvidence :one
+SELECT record FROM connector_documents WHERE source_id = sqlc.arg(source_id) AND id = sqlc.arg(id);
+
+-- name: ConnectorPendingEmbeddings :many
+SELECT u.id, u.kind, u.source_id, u.record_id
+  FROM connector_units u
+  LEFT JOIN connector_embeddings e ON e.unit_id = u.id AND e.generation = sqlc.arg(generation)
+ WHERE e.unit_id IS NULL
+ ORDER BY u.id
+ LIMIT sqlc.arg(page_size);
+
+-- name: ConnectorPutEmbedding :exec
+INSERT INTO connector_embeddings(unit_id, generation, dimensions, norm, vector)
+VALUES (sqlc.arg(unit_id), sqlc.arg(generation), sqlc.arg(dimensions), sqlc.arg(norm), sqlc.arg(vector))
+ON CONFLICT(unit_id) DO UPDATE SET generation = excluded.generation,
+    dimensions = excluded.dimensions, norm = excluded.norm, vector = excluded.vector;
+
+-- name: ConnectorEmbeddingsComplete :one
+SELECT CAST(NOT EXISTS(
+    SELECT 1 FROM connector_units u
+      LEFT JOIN connector_embeddings e ON e.unit_id = u.id AND e.generation = sqlc.arg(generation)
+     WHERE e.unit_id IS NULL) AS INTEGER) AS complete;
+
+-- name: ConnectorClearEmbeddings :exec
+DELETE FROM connector_embeddings;
+
+-- name: ConnectorChatMessages :many
+SELECT id, record FROM connector_messages
+ WHERE source_id = sqlc.arg(source_id) AND chat_id = sqlc.arg(chat_id)
+ ORDER BY json_extract(record, '$.created_at') IS NULL, json_extract(record, '$.created_at'), id;
+
+-- name: ConnectorChats :many
+SELECT source_id, record FROM connector_chats;

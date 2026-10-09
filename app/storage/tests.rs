@@ -54,6 +54,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
 }
 
 mod chats;
+mod connectors;
 mod exact;
 mod gold_database;
 mod indexing;
