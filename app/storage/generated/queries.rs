@@ -80,7 +80,7 @@ impl<'a> CountsBuilder<'a, ()> {
         Counts {}
     }
 }
-pub struct ListThreadsRow {
+pub struct ListChatsRow {
     pub id: String,
     pub provider: String,
     pub title: Option<String>,
@@ -90,7 +90,7 @@ pub struct ListThreadsRow {
     pub updated_at: Option<i64>,
     pub enrichment: Option<String>,
 }
-impl ListThreadsRow {
+impl ListChatsRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
@@ -104,7 +104,7 @@ impl ListThreadsRow {
         })
     }
 }
-pub struct ListThreads<'a> {
+pub struct ListChats<'a> {
     page_offset: i64,
     page_size: i64,
     all_providers: i64,
@@ -115,7 +115,7 @@ pub struct ListThreads<'a> {
     sort_key: &'a str,
     descending: i64,
 }
-impl<'a> ListThreads<'a> {
+impl<'a> ListChats<'a> {
     pub const QUERY: &'static str = r"WITH scope AS (SELECT
     CAST(?3 AS INTEGER) AS all_providers,
     CAST(?4 AS TEXT) AS providers_json,
@@ -149,13 +149,10 @@ LIMIT ?2 OFFSET ?1";
         Self::QUERY
     }
 }
-impl<'a> ListThreads<'a> {
-    pub fn query_many(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Vec<ListThreadsRow>> {
+impl<'a> ListChats<'a> {
+    pub fn query_many(&self, client: &impl RusqliteClient) -> rusqlite::Result<Vec<ListChatsRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), ListThreadsRow::from_row)?
+            .query_map(self.as_params(), ListChatsRow::from_row)?
             .collect()
     }
     pub fn prepare<'conn>(
@@ -178,15 +175,15 @@ impl<'a> ListThreads<'a> {
         )
     }
 }
-impl<'a> ListThreads<'a> {
-    pub const fn builder() -> ListThreadsBuilder<'a, ((), (), (), (), (), (), (), (), ())> {
-        ListThreadsBuilder {
+impl<'a> ListChats<'a> {
+    pub const fn builder() -> ListChatsBuilder<'a, ((), (), (), (), (), (), (), (), ())> {
+        ListChatsBuilder {
             fields: ((), (), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct ListThreadsBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ())> {
+pub struct ListChatsBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
@@ -201,7 +198,7 @@ impl<
     SortKey,
     Descending,
 >
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             (),
@@ -219,7 +216,7 @@ impl<
     pub fn page_offset(
         self,
         page_offset: i64,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             i64,
@@ -245,7 +242,7 @@ impl<
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -272,7 +269,7 @@ impl<
     SortKey,
     Descending,
 >
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -290,7 +287,7 @@ impl<
     pub fn page_size(
         self,
         page_size: i64,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -316,7 +313,7 @@ impl<
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -333,7 +330,7 @@ impl<
     }
 }
 impl<'a, PageOffset, PageSize, ProvidersJson, TitleContains, AfterMs, BeforeMs, SortKey, Descending>
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -351,7 +348,7 @@ impl<'a, PageOffset, PageSize, ProvidersJson, TitleContains, AfterMs, BeforeMs, 
     pub fn all_providers(
         self,
         all_providers: i64,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -377,7 +374,7 @@ impl<'a, PageOffset, PageSize, ProvidersJson, TitleContains, AfterMs, BeforeMs, 
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -394,7 +391,7 @@ impl<'a, PageOffset, PageSize, ProvidersJson, TitleContains, AfterMs, BeforeMs, 
     }
 }
 impl<'a, PageOffset, PageSize, AllProviders, TitleContains, AfterMs, BeforeMs, SortKey, Descending>
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -412,7 +409,7 @@ impl<'a, PageOffset, PageSize, AllProviders, TitleContains, AfterMs, BeforeMs, S
     pub fn providers_json(
         self,
         providers_json: &'a str,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -438,7 +435,7 @@ impl<'a, PageOffset, PageSize, AllProviders, TitleContains, AfterMs, BeforeMs, S
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -455,7 +452,7 @@ impl<'a, PageOffset, PageSize, AllProviders, TitleContains, AfterMs, BeforeMs, S
     }
 }
 impl<'a, PageOffset, PageSize, AllProviders, ProvidersJson, AfterMs, BeforeMs, SortKey, Descending>
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -473,7 +470,7 @@ impl<'a, PageOffset, PageSize, AllProviders, ProvidersJson, AfterMs, BeforeMs, S
     pub fn title_contains(
         self,
         title_contains: Option<&'a str>,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -499,7 +496,7 @@ impl<'a, PageOffset, PageSize, AllProviders, ProvidersJson, AfterMs, BeforeMs, S
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -526,7 +523,7 @@ impl<
     SortKey,
     Descending,
 >
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -544,7 +541,7 @@ impl<
     pub fn after_ms(
         self,
         after_ms: Option<i64>,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -570,7 +567,7 @@ impl<
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -597,7 +594,7 @@ impl<
     SortKey,
     Descending,
 >
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -615,7 +612,7 @@ impl<
     pub fn before_ms(
         self,
         before_ms: Option<i64>,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -641,7 +638,7 @@ impl<
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -668,7 +665,7 @@ impl<
     BeforeMs,
     Descending,
 >
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -686,7 +683,7 @@ impl<
     pub fn sort_key(
         self,
         sort_key: &'a str,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -712,7 +709,7 @@ impl<
             descending,
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -739,7 +736,7 @@ impl<
     BeforeMs,
     SortKey,
 >
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -757,7 +754,7 @@ impl<
     pub fn descending(
         self,
         descending: i64,
-    ) -> ListThreadsBuilder<
+    ) -> ListChatsBuilder<
         'a,
         (
             PageOffset,
@@ -783,7 +780,7 @@ impl<
             (),
         ) = self.fields;
         let _phantom = self._phantom;
-        ListThreadsBuilder {
+        ListChatsBuilder {
             fields: (
                 page_offset,
                 page_size,
@@ -800,7 +797,7 @@ impl<
     }
 }
 impl<'a>
-    ListThreadsBuilder<
+    ListChatsBuilder<
         'a,
         (
             i64,
@@ -815,7 +812,7 @@ impl<'a>
         ),
     >
 {
-    pub fn build(self) -> ListThreads<'a> {
+    pub fn build(self) -> ListChats<'a> {
         let (
             page_offset,
             page_size,
@@ -827,7 +824,7 @@ impl<'a>
             sort_key,
             descending,
         ) = self.fields;
-        ListThreads {
+        ListChats {
             page_offset,
             page_size,
             all_providers,

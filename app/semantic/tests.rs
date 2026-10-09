@@ -305,7 +305,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
             content: id.to_owned(),
             copies: Vec::new(),
             created_at: None,
-            metadata: crate::search_results::ThreadMetadata::default(),
+            metadata: crate::search_results::ChatMetadata::default(),
             lexical_score: None,
             lookup: None,
             lexical_match: None,
@@ -344,7 +344,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
     let fused = fuse(
         vec![hit("a"), copy, hit("b")],
         vec![semantic_copy, hit("b")],
-        crate::search_results::SearchUnit::Threads,
+        crate::search_results::SearchUnit::Chats,
         crate::gold::config::Fusion::default(),
     );
     assert_eq!(fused.len(), 2);

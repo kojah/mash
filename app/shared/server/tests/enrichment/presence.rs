@@ -93,7 +93,7 @@ async fn qdrant_metadata_presence_rejects_contradictions_without_publication_and
             );
             assert_eq!(service.get("freshness", FIRST).await, before);
             assert_eq!(
-                metadata(&service).await.threads[0].metadata.enrichment,
+                metadata(&service).await.chats[0].metadata.enrichment,
                 Some(unknown.clone())
             );
         }
@@ -106,10 +106,7 @@ async fn qdrant_metadata_presence_rejects_contradictions_without_publication_and
         StatusCode::OK
     );
     assert_eq!(
-        metadata(&service).await.threads[0]
-            .metadata
-            .title
-            .as_deref(),
+        metadata(&service).await.chats[0].metadata.title.as_deref(),
         Some("")
     );
     // Whole legacy evidence and its additive timestamp container may be absent.
@@ -126,10 +123,7 @@ async fn qdrant_metadata_presence_rejects_contradictions_without_publication_and
     ] {
         let legacy = snapshot_with_evidence(counter, proof.clone());
         assert_eq!(publish(&service, &legacy).await.status(), StatusCode::OK);
-        assert_eq!(
-            metadata(&service).await.threads[0].metadata.enrichment,
-            proof
-        );
+        assert_eq!(metadata(&service).await.chats[0].metadata.enrichment, proof);
     }
     let mut absent = snapshot_with_evidence(5, Some(unknown));
     let record = conversation(&mut absent);
@@ -144,7 +138,7 @@ async fn qdrant_metadata_presence_rejects_contradictions_without_publication_and
         remove_value(record, field);
     }
     assert_eq!(publish(&service, &absent).await.status(), StatusCode::OK);
-    let result = metadata(&service).await.threads[0].metadata.clone();
+    let result = metadata(&service).await.chats[0].metadata.clone();
     assert!(result.title.is_none() && result.project.is_none() && result.repository.is_none());
     assert!(result.created_at.is_none() && result.updated_at.is_none());
     service.cleanup().await;

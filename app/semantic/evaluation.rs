@@ -145,7 +145,7 @@ async fn labeled_synthetic_relevance_matrix_uses_real_models_and_the_application
 pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
     let corpus = corpus();
     let mut failures = Vec::new();
-    for unit in [SearchUnit::Messages, SearchUnit::Threads] {
+    for unit in [SearchUnit::Messages, SearchUnit::Chats] {
         let mut precision = 0.0;
         let mut recall = 0.0;
         let mut reciprocal_rank = 0.0;
@@ -183,7 +183,7 @@ pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
                     .iter()
                     .map(|hit| hit.conversation_id.as_str())
                     .collect::<Vec<_>>(),
-                Results::Threads(hits) => hits
+                Results::Chats(hits) => hits
                     .iter()
                     .map(|hit| hit.conversation_id.as_str())
                     .collect::<Vec<_>>(),

@@ -41,7 +41,7 @@ fn local_unit_plan_matches_streaming_parent_resolution_and_preserves_silver() {
                 .prepare(
                     &recipe,
                     Input {
-                        thread: &thread.id,
+                        chat: &thread.id,
                         ordinal: row.ordinal,
                         context: row.context,
                         role: &row.role,
@@ -149,7 +149,7 @@ fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() 
         .map(|t| t.content)
         .collect::<Vec<_>>();
     assert_eq!(texts.len(), 2);
-    assert!(texts.iter().all(|text| text.starts_with("Thread: ")
+    assert!(texts.iter().all(|text| text.starts_with("Chat: ")
         && text.ends_with("same visible dialogue")
         && !text.contains("secret")));
 }

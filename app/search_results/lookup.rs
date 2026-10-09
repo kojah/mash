@@ -57,7 +57,7 @@ pub(crate) fn attach(
                 hit.lookup = lookup(&hit.id, hit.node_id.as_deref());
             }
         }
-        super::Results::Threads(threads) => {
+        super::Results::Chats(threads) => {
             for hit in threads.iter_mut().flat_map(|thread| &mut thread.matches) {
                 hit.lookup = lookup(&hit.message_id, hit.node_id.as_deref());
             }

@@ -15,14 +15,14 @@ pub(crate) fn parent_ordinal(context: MessageContext, ordinal: i64) -> Option<i6
 
 #[derive(Clone, Copy)]
 pub(crate) struct Input<'a> {
-    pub(crate) thread: &'a str,
+    pub(crate) chat: &'a str,
     pub(crate) ordinal: i64,
     pub(crate) context: MessageContext,
     pub(crate) role: &'a Role,
     pub(crate) projection: &'a str,
 }
 
-/// Private disk-backed parent lookup, bounded to one thread and 2048 chars/row.
+/// Private disk-backed parent lookup, bounded to one chat and 2048 chars/row.
 /// The default message recipe does not create a scratch database.
 #[derive(Default)]
 pub(crate) struct Stream {
@@ -32,7 +32,7 @@ pub(crate) struct Stream {
 struct Parents {
     connection: rusqlite::Connection,
     _directory: tempfile::TempDir,
-    thread: String,
+    chat: String,
     ordinal: i64,
 }
 
@@ -51,17 +51,17 @@ impl Parents {
         Ok(Self {
             connection,
             _directory: directory,
-            thread: String::new(),
+            chat: String::new(),
             ordinal: -1,
         })
     }
 
     fn observe(&mut self, input: &Input<'_>, build: &Build) -> Result<Option<String>, AppError> {
-        if self.thread != input.thread {
+        if self.chat != input.chat {
             self.connection
                 .execute("DELETE FROM parents", [])
                 .map_err(AppError::database)?;
-            input.thread.clone_into(&mut self.thread);
+            input.chat.clone_into(&mut self.chat);
             self.ordinal = -1;
         }
         if input.ordinal <= self.ordinal || !input.context.valid(input.ordinal) {
@@ -96,7 +96,7 @@ impl Parents {
 }
 
 impl Stream {
-    /// Call on a blocking worker, for every row in thread/ordinal order.
+    /// Call on a blocking worker, for every row in chat/ordinal order.
     pub(crate) fn prepare(
         &mut self,
         build: &Build,

@@ -271,7 +271,7 @@ fn dense_content_switches_edits_and_forget_preserve_canonical_silver_and_lexical
     assert_eq!(result.counts.embeddings, 0);
     assert!(storage.silver_certificate().unwrap().revision > silver.revision);
     let id = storage
-        .thread_candidates(&crate::thread_catalog::Request::default(), "local")
+        .chat_candidates(&crate::chat_catalog::Request::default(), "local")
         .unwrap()[0]
         .conversation_id
         .clone();

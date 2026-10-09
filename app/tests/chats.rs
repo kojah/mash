@@ -18,7 +18,7 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
         database.to_str().unwrap(),
         "--models-dir",
         models.to_str().unwrap(),
-        "list-threads",
+        "list-chats",
         "--local",
         "--diagnostics",
         "--provider",
@@ -37,9 +37,9 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
         "1",
     ];
     let result = run_json(&arguments);
-    assert_eq!(result["threads"][0]["conversation_id"], "session");
-    assert_eq!(result["threads"][0]["provider"], "codex");
-    assert_eq!(result["threads"][0]["updated_at"], 3000);
+    assert_eq!(result["chats"][0]["chat_id"], "session");
+    assert_eq!(result["chats"][0]["provider"], "codex");
+    assert_eq!(result["chats"][0]["updated_at"], 3000);
     assert_eq!(result["next_offset"], Value::Null);
     assert_eq!(
         result["diagnostics"]["selected_artifacts"],
@@ -56,7 +56,7 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
             config.to_str().unwrap(),
             "--db",
             database.to_str().unwrap(),
-            "list-threads",
+            "list-chats",
             "--local",
             "--limit",
             "0",

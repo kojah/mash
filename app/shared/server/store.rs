@@ -329,12 +329,12 @@ impl Store {
         self.gold.search(identity, input, &active).await
     }
 
-    pub(in crate::shared) async fn list_threads(
+    pub(in crate::shared) async fn list_chats(
         &self,
         identity: &Identity,
-        input: crate::thread_catalog::Request,
-    ) -> Result<crate::thread_catalog::Page, AppError> {
-        let mut collector = crate::thread_catalog::Collector::new(input.clone())?;
+        input: crate::chat_catalog::Request,
+    ) -> Result<crate::chat_catalog::Page, AppError> {
+        let mut collector = crate::chat_catalog::Collector::new(input.clone())?;
         let mut threads = Vec::new();
         for node in self.heads(&identity.group_id).await?.into_keys() {
             if !input.admits_node(&node, &identity.node_id) {
@@ -350,11 +350,11 @@ impl Store {
         }
         for thread in threads {
             let row = thread.conversation;
-            collector.push(crate::thread_catalog::Thread {
+            collector.push(crate::chat_catalog::Chat {
                 conversation_id: row.id.clone(),
                 provider: row.provider,
                 node_id: thread.node_id,
-                metadata: crate::search_results::ThreadMetadata {
+                metadata: crate::search_results::ChatMetadata {
                     enrichment: row.enrichment,
                     title: row.title,
                     project: row.project,

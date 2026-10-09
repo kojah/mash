@@ -354,7 +354,7 @@ async fn verify_core(service: &Service) {
     let before = std::fs::read(&database).unwrap();
     let config = directory.path().join("node.toml");
     std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id={:?}\nnode_id='first'\napi_url={:?}\ntoken_env='HOME'\n", service.group, service.url)).unwrap();
-    for unit in [SearchUnit::Messages, SearchUnit::Threads] {
+    for unit in [SearchUnit::Messages, SearchUnit::Chats] {
         let response = core::execute(core::Request {
             paths: core::Paths {
                 config: Some(config.clone()),
@@ -395,7 +395,7 @@ async fn verify_core(service: &Service) {
                     && h.copies.len() == 1
                     && h.copies[0].node_id.as_deref() == Some("second")));
             }
-            crate::search_results::Results::Threads(threads) => {
+            crate::search_results::Results::Chats(threads) => {
                 assert_eq!(threads.len(), 1);
                 assert_eq!(threads[0].matches.len(), 3);
                 let excerpt = &threads[0].matches[0];

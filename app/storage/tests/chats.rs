@@ -1,4 +1,4 @@
-use super::super::generated::ListThreads;
+use super::super::generated::ListChats;
 use super::*;
 
 fn catalog() -> (tempfile::TempDir, Storage) {
@@ -32,7 +32,7 @@ fn catalog() -> (tempfile::TempDir, Storage) {
 }
 
 fn page(storage: &Storage, sort: &str, descending: bool, offset: i64, size: i64) -> Vec<String> {
-    ListThreads::builder()
+    ListChats::builder()
         .all_providers(1)
         .providers_json("[]")
         .title_contains(None)
@@ -74,7 +74,7 @@ fn generated_catalog_orders_missing_values_last_and_paginates_deterministically(
 #[test]
 fn generated_catalog_intersects_provider_title_and_activity_filters_before_paging() {
     let (_directory, storage) = catalog();
-    let rows = ListThreads::builder()
+    let rows = ListChats::builder()
         .all_providers(0)
         .providers_json(r#"["codex","claude-code"]"#)
         .title_contains(Some("aLPha"))
@@ -96,7 +96,7 @@ fn generated_catalog_intersects_provider_title_and_activity_filters_before_pagin
     assert_eq!(row.repository.as_deref(), Some("repo://project"));
     assert_eq!(row.created_at, Some(1000));
     assert_eq!(row.updated_at, Some(3000));
-    let dated = ListThreads::builder()
+    let dated = ListChats::builder()
         .all_providers(1)
         .providers_json("[]")
         .title_contains(None)
@@ -128,7 +128,7 @@ fn generated_catalog_title_matching_is_literal_and_provider_lists_are_exact() {
         ("[]", "Alpha", None, None, vec![]),
         (r#"["codex"]"#, "Alpha", Some(3000), Some(3000), vec![]),
     ] {
-        let rows = ListThreads::builder()
+        let rows = ListChats::builder()
             .all_providers(0)
             .providers_json(providers)
             .title_contains(Some(title))
@@ -150,7 +150,7 @@ fn generated_catalog_title_matching_is_literal_and_provider_lists_are_exact() {
 
 #[test]
 fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows() {
-    use crate::thread_catalog::{Collector, Direction, Request, Sort};
+    use crate::chat_catalog::{Collector, Direction, Request, Sort};
     let (_directory, storage) = catalog();
     for (sort, key) in [
         (Sort::UpdatedAt, "updated_at"),
@@ -165,7 +165,7 @@ fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows()
                 limit: 2,
                 ..Default::default()
             };
-            let rows = storage.thread_candidates(&input, "laptop").unwrap();
+            let rows = storage.chat_candidates(&input, "laptop").unwrap();
             assert_eq!(rows.len(), 4);
             assert!(rows.iter().all(|row| row.node_id == "laptop"));
             let mut collector = Collector::new(input).unwrap();
@@ -176,7 +176,7 @@ fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows()
             assert_eq!(actual.next_offset, Some(3));
             assert_eq!(
                 actual
-                    .threads
+                    .chats
                     .iter()
                     .map(|row| row.conversation_id.clone())
                     .collect::<Vec<_>>(),
@@ -192,7 +192,7 @@ fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows()
         node: vec!["laptop".into()],
         ..Default::default()
     };
-    let rows = storage.thread_candidates(&request, "laptop").unwrap();
+    let rows = storage.chat_candidates(&request, "laptop").unwrap();
     assert_eq!(
         rows.iter()
             .map(|row| row.conversation_id.as_str())
@@ -211,7 +211,7 @@ fn typed_catalog_adapter_preserves_generated_order_filters_and_bounded_windows()
     ] {
         assert!(
             storage
-                .thread_candidates(&request, "laptop")
+                .chat_candidates(&request, "laptop")
                 .unwrap()
                 .is_empty()
         );

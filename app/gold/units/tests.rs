@@ -4,7 +4,7 @@ use crate::gold::config::{DenseContent, EmbeddingText, TextPreparation};
 fn text(
     stream: &mut Stream,
     build: &Build,
-    thread: &str,
+    chat: &str,
     ordinal: i64,
     context: MessageContext,
     role: &Role,
@@ -14,7 +14,7 @@ fn text(
         .prepare(
             build,
             Input {
-                thread,
+                chat,
                 ordinal,
                 context,
                 role,
@@ -142,9 +142,9 @@ fn parent_units_respect_gaps_roots_thread_boundaries_and_role_selection() {
             1,
             MessageContext::Parent { ordinal: 0 },
             &Role::User,
-            "other thread"
+            "other chat"
         ),
-        Some("other thread".into())
+        Some("other chat".into())
     );
     let users = Build {
         dense_content: DenseContent::UserMessages,
@@ -188,7 +188,7 @@ fn unit_contract_is_bounded_unicode_safe_versioned_and_strict() {
     );
     let build: Build = toml::from_str("retrieval_unit='parent-and-message'").unwrap();
     assert_ne!(default.generation("model"), build.generation("model"));
-    assert!(toml::from_str::<Build>("retrieval_unit='thread'").is_err());
+    assert!(toml::from_str::<Build>("retrieval_unit='chat'").is_err());
     assert!(toml::from_str::<Build>("retrieval_unit=true").is_err());
     assert!(
         toml::from_str::<super::super::config::Configuration>(
@@ -256,7 +256,7 @@ fn invalid_stream_order_and_edges_fail_without_default_scratch_overhead() {
                 .prepare(
                     &build,
                     Input {
-                        thread: "a",
+                        chat: "a",
                         ordinal,
                         context,
                         role: &Role::User,

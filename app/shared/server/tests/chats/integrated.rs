@@ -3,7 +3,7 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
-async fn qdrant_core_thread_catalog_dedup_replacement_delete_and_forget() {
+async fn qdrant_core_chat_catalog_dedup_replacement_delete_and_forget() {
     let token = std::env::var("PATH").unwrap();
     contract(
         Service::with_parameters(true, 384, 64 * 1024 * 1024, &token).await,
@@ -50,7 +50,7 @@ fn local_copy(path: &Path) {
 async fn discover(paths: &Paths, input: Request, shared: bool) -> Page {
     let response = core::execute(core::Request {
         paths: paths.clone(),
-        operation: Operation::ListThreads {
+        operation: Operation::ListChats {
             input: Box::new(input),
             local: false,
             shared,
@@ -59,7 +59,7 @@ async fn discover(paths: &Paths, input: Request, shared: bool) -> Page {
     })
     .await
     .unwrap();
-    let core::Response::ListThreads(response) = response else {
+    let core::Response::ListChats(response) = response else {
         panic!("thread response")
     };
     assert!(response.shared, "{:?}", response.shared_error);
@@ -80,11 +80,11 @@ async fn contract(service: Service, token: &str) {
             .unwrap();
     }
     let initial = discover(&paths, Request::default(), false).await;
-    assert_eq!(initial.threads.len(), 5);
-    assert_eq!(initial.threads[0].conversation_id, "a");
-    assert_eq!(initial.threads[0].node_id, "first");
+    assert_eq!(initial.chats.len(), 5);
+    assert_eq!(initial.chats[0].conversation_id, "a");
+    assert_eq!(initial.chats[0].node_id, "first");
     assert_eq!(
-        initial.threads[0].metadata.title.as_deref(),
+        initial.chats[0].metadata.title.as_deref(),
         Some("Local Alpha")
     );
     let own = discover(
@@ -97,7 +97,7 @@ async fn contract(service: Service, token: &str) {
     )
     .await;
     assert_eq!(
-        own.threads.len(),
+        own.chats.len(),
         1,
         "combined reads exclude this node's published copy"
     );
@@ -110,8 +110,8 @@ async fn contract(service: Service, token: &str) {
         false,
     )
     .await;
-    assert_eq!(peer.threads.len(), 5);
-    assert!(peer.threads.iter().all(|row| row.node_id == "second"));
+    assert_eq!(peer.chats.len(), 5);
+    assert!(peer.chats.iter().all(|row| row.node_id == "second"));
     replace_and_forget(&service, &paths, token).await;
     verify_client_authorization(&paths).await;
     assert!(!paths.models_dir.as_ref().unwrap().exists());
@@ -126,7 +126,7 @@ async fn verify_client_authorization(paths: &Paths) {
         text.replace("node_id = 'first'", "node_id = 'second'"),
     )
     .unwrap();
-    let operation = |shared| Operation::ListThreads {
+    let operation = |shared| Operation::ListChats {
         input: Box::default(),
         local: false,
         shared,
@@ -138,12 +138,12 @@ async fn verify_client_authorization(paths: &Paths) {
     })
     .await
     .unwrap();
-    let core::Response::ListThreads(fallback) = fallback else {
+    let core::Response::ListChats(fallback) = fallback else {
         panic!("thread response")
     };
     assert!(!fallback.shared);
     assert!(fallback.shared_error.is_some());
-    assert_eq!(fallback.page.threads.len(), 1);
+    assert_eq!(fallback.page.chats.len(), 1);
     let error = core::execute(core::Request {
         paths: paths.clone(),
         operation: operation(true),
@@ -168,16 +168,11 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .error_for_status()
         .unwrap();
     let replaced = discover(paths, Request::default(), false).await;
-    assert_eq!(replaced.threads.len(), 4);
-    assert!(
-        replaced
-            .threads
-            .iter()
-            .all(|row| row.conversation_id != "c")
-    );
-    assert_eq!(replaced.threads[0].node_id, "second");
+    assert_eq!(replaced.chats.len(), 4);
+    assert!(replaced.chats.iter().all(|row| row.conversation_id != "c"));
+    assert_eq!(replaced.chats[0].node_id, "second");
     assert_eq!(
-        replaced.threads[0].metadata.title.as_deref(),
+        replaced.chats[0].metadata.title.as_deref(),
         Some("New Alpha")
     );
     service
@@ -193,7 +188,7 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .unwrap();
     let combined = discover(paths, Request::default(), false).await;
     assert_eq!(
-        combined.threads[0].node_id, "first",
+        combined.chats[0].node_id, "first",
         "forget on the peer preserves the local copy"
     );
     service
@@ -208,12 +203,12 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
         .error_for_status()
         .unwrap();
     let shared = discover(paths, Request::default(), true).await;
-    assert_eq!(shared.threads.len(), 4);
-    assert!(shared.threads.iter().all(|row| row.conversation_id != "a"));
+    assert_eq!(shared.chats.len(), 4);
+    assert!(shared.chats.iter().all(|row| row.conversation_id != "a"));
     let combined = discover(paths, Request::default(), false).await;
     assert!(
         combined
-            .threads
+            .chats
             .iter()
             .any(|row| row.conversation_id == "a" && row.node_id == "first")
     );
@@ -230,7 +225,7 @@ async fn replace_and_forget(service: &Service, paths: &Paths, token: &str) {
     assert!(
         discover(paths, Request::default(), true)
             .await
-            .threads
+            .chats
             .iter()
             .all(|row| row.conversation_id != "a"),
         "a delayed publication cannot resurrect a tombstoned catalog entry"

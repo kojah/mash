@@ -164,7 +164,7 @@ async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
         })
         .await
         .unwrap();
-        for unit in [SearchUnit::Messages, SearchUnit::Threads] {
+        for unit in [SearchUnit::Messages, SearchUnit::Chats] {
             let Response::Search(response) = crate::core::execute(Request {
                 paths: paths.clone(),
                 operation: Operation::Search {
@@ -196,7 +196,7 @@ async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
                     assert_ne!(messages[0].id, messages[1].id);
                     messages[0].id.clone()
                 }
-                Results::Threads(threads) => {
+                Results::Chats(threads) => {
                     assert_eq!(threads.len(), 1);
                     assert_eq!(threads[0].provider, Provider::Codex);
                     assert_eq!(

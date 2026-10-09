@@ -73,7 +73,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
         Some(evidence.clone())
     );
     let threads = stored
-        .thread_candidates(&crate::thread_catalog::Request::default(), "local")
+        .chat_candidates(&crate::chat_catalog::Request::default(), "local")
         .unwrap();
     assert_eq!(threads[0].metadata.enrichment, Some(evidence.clone()));
     stored

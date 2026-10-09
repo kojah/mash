@@ -276,7 +276,7 @@ async fn core_indexes_searches_and_views_native_opencode_threads() {
             query: "cbioportal importer".into(),
             intent: None,
             limit: Some(5),
-            unit: Some(crate::search_results::SearchUnit::Threads),
+            unit: Some(crate::search_results::SearchUnit::Chats),
             filters: Box::new(crate::search_filter::Selection {
                 provider: vec![Provider::Opencode],
                 ..Default::default()
@@ -289,8 +289,8 @@ async fn core_indexes_searches_and_views_native_opencode_threads() {
     .unwrap() else {
         panic!("search response")
     };
-    let crate::search_results::Results::Threads(threads) = response.results else {
-        panic!("threads")
+    let crate::search_results::Results::Chats(threads) = response.results else {
+        panic!("chats")
     };
     assert_eq!(threads.len(), 1);
     assert_eq!(threads[0].provider, Provider::Opencode);

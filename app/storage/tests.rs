@@ -53,6 +53,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
     value
 }
 
+mod chats;
 mod exact;
 mod gold_database;
 mod indexing;
@@ -60,4 +61,3 @@ mod publication;
 mod schema;
 mod semantic;
 mod staging;
-mod threads;

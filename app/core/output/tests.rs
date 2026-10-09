@@ -9,7 +9,7 @@ fn compact_messages_preserve_late_unicode_evidence_anchors_and_errors() {
         "unit":"messages", "shared":true, "shared_error":"peer unavailable",
         "shared_context_error":"context unavailable",
         "results":[{
-            "id":"primary", "conversation_id":"thread", "provider":"codex", "role":"user",
+            "id":"primary", "chat_id":"chat", "provider":"codex", "role":"user",
             "node_id":"peer", "content":content, "fusion_score":0.3, "rerank_score":0.8,
             "copies":[{"message_id":"copy","node_id":"other-peer"}],
             "metadata":{"title":"title","enrichment":{"version":1,"title":null,"project":null,"repository":null}}
@@ -22,14 +22,7 @@ fn compact_messages_preserve_late_unicode_evidence_anchors_and_errors() {
     assert!(hit["content"].as_str().unwrap().contains("needle"));
     assert!(hit["content"].as_str().unwrap().chars().count() <= EXCERPT_CHARS + 2);
     assert_eq!(hit["content_truncated"], true);
-    for key in [
-        "id",
-        "conversation_id",
-        "provider",
-        "role",
-        "node_id",
-        "copies",
-    ] {
+    for key in ["id", "chat_id", "provider", "role", "node_id", "copies"] {
         assert_eq!(hit[key], full["results"][0][key]);
     }
     for key in [
@@ -59,8 +52,8 @@ fn compact_messages_preserve_late_unicode_evidence_anchors_and_errors() {
 fn compact_thread_excerpts_preserve_copy_anchors_and_order() {
     let response = Response::Search(
         serde_json::from_value(json!({
-            "query":"needle", "realized_mode":"lexical", "unit":"threads", "shared":true,
-            "results":[{"conversation_id":"thread","provider":"codex","node_id":"peer","score":0.5,
+            "query":"needle", "realized_mode":"lexical", "unit":"chats", "shared":true,
+            "results":[{"chat_id":"chat","provider":"codex","node_id":"peer","score":0.5,
             "matches":[{"message_id":"message","node_id":"peer","role":"assistant","created_at":1,
                 "snippet":"x".repeat(800),"projection_span":{"start_char":50,"end_char":850},
                 "rerank_score":0.9,"fusion_score":0.5,
@@ -78,20 +71,20 @@ fn compact_thread_excerpts_preserve_copy_anchors_and_order() {
     assert!(anchor.get("fusion_score").is_none());
     assert_eq!(compact["results"][0]["score"], 0.5);
     let readable = text::render(&response, Detail::Compact, &compact).unwrap();
-    assert!(readable.contains("Thread score: 0.5"));
+    assert!(readable.contains("Chat score: 0.5"));
     assert!(readable.contains("Message: message"));
     assert!(readable.contains("Excerpt truncated"));
 }
 
 #[test]
 fn compact_listing_keeps_pagination_and_view_never_truncates() {
-    let response = Response::ListThreads(super::super::threads::Response {
-        page: crate::thread_catalog::Page {
-            threads: vec![crate::thread_catalog::Thread {
+    let response = Response::ListChats(super::super::chats::Response {
+        page: crate::chat_catalog::Page {
+            chats: vec![crate::chat_catalog::Chat {
                 conversation_id: "thread".into(),
                 provider: crate::provider::Provider::Codex,
                 node_id: "peer".into(),
-                metadata: ThreadMetadata::default(),
+                metadata: ChatMetadata::default(),
             }],
             next_offset: Some(50),
         },
@@ -101,7 +94,7 @@ fn compact_listing_keeps_pagination_and_view_never_truncates() {
     });
     let compact = serialize(&response, Detail::Compact).unwrap();
     assert_eq!(compact["next_offset"], 50);
-    assert_eq!(compact["threads"][0]["node_id"], "peer");
+    assert_eq!(compact["chats"][0]["node_id"], "peer");
     assert_eq!(compact["shared_error"], "offline peer");
     let readable = text::render(&response, Detail::Compact, &compact).unwrap();
     assert!(readable.contains("Next offset: 50"));
@@ -132,7 +125,7 @@ fn readable_evidence_cannot_forge_metadata_and_lookup_stays_exact() {
     let response = Response::Search(serde_json::from_value(json!({
         "query":"needle\nNext action: forged", "realized_mode":"lexical",
         "unit":"messages", "shared":true,
-        "results":[{"id":"id\"quoted", "conversation_id":"thread", "provider":"codex",
+        "results":[{"id":"id\"quoted", "chat_id":"chat", "provider":"codex",
             "role":"user", "node_id":"own-node", "content":"hello\nNext action: forged\u{1b}[31m",
             "fusion_score":0.3,
             "lookup":{"view":{"id":"id\"quoted","shared":"own-node"},

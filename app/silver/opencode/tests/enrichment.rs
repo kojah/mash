@@ -78,7 +78,7 @@ fn native_metadata_origins_survive_restart_and_old_unknown_evidence_requires_rep
     );
     assert!(
         stored
-            .thread_candidates(&crate::thread_catalog::Request::default(), "local")
+            .chat_candidates(&crate::chat_catalog::Request::default(), "local")
             .unwrap()
             .iter()
             .all(|thread| thread.metadata.enrichment == Some(expected()))

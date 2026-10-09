@@ -5,6 +5,7 @@ use std::collections::HashSet;
 mod admission;
 mod antigravity;
 mod attachments;
+mod chats;
 mod connectors;
 mod context;
 mod contexts;
@@ -21,7 +22,6 @@ mod restart;
 mod selections;
 mod silver_revision;
 mod source_silver;
-mod threads;
 
 const FIRST: &str = "test-api-token-first-32-bytes-long";
 const SECOND: &str = "test-api-token-second-32-bytes-long";
@@ -317,7 +317,7 @@ async fn rich_filter_contract(service: Service) {
     );
     let mut vector = vec![0.0; 384];
     vector[0] = 127.0;
-    let filter = json!({"all":[{"node":["first"]},{"provider":["codex"]},{"role":["assistant"]},{"conversation":["conversation"]},{"project":["/work/alpha"]},{"repository":[repository]},{"after":2},{"before":3}]});
+    let filter = json!({"all":[{"node":["first"]},{"provider":["codex"]},{"role":["assistant"]},{"chat":["conversation"]},{"project":["/work/alpha"]},{"repository":[repository]},{"after":2},{"before":3}]});
     let query = json!({"query":"hello", "vector":vector,"filter":filter});
     let found: Value = service
         .request("search", FIRST)

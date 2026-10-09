@@ -1,7 +1,7 @@
 //! Gold metadata view: bounded thread discovery over canonical silver records.
 use crate::AppError;
 use crate::provider::Provider;
-use crate::search_results::ThreadMetadata;
+use crate::search_results::ChatMetadata;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -85,7 +85,7 @@ impl Request {
     pub(crate) fn validate(&self) -> Result<(), AppError> {
         if !(1..=100).contains(&self.limit) || self.offset > 10_000 {
             return Err(AppError::usage(
-                "thread pages require limit 1–100 and offset 0–10000",
+                "chat pages require limit 1–100 and offset 0–10000",
             ));
         }
         crate::search_filter::Filter::Provider(self.provider.clone()).validate()?;
@@ -96,7 +96,7 @@ impl Request {
                 || title.chars().any(char::is_control))
         {
             return Err(AppError::usage(
-                "thread title filters require nonempty text of at most 4096 bytes without control characters",
+                "chat title filters require nonempty text of at most 4096 bytes without control characters",
             ));
         }
         for timestamp in [self.after, self.before].into_iter().flatten() {
@@ -110,7 +110,7 @@ impl Request {
             && (self.node.is_empty() || self.node.iter().any(|value| value == node))
     }
 
-    fn matches(&self, thread: &Thread) -> bool {
+    fn matches(&self, thread: &Chat) -> bool {
         (self.provider.is_empty() || self.provider.contains(&thread.provider))
             && self.title_contains.as_ref().is_none_or(|title| {
                 thread.metadata.title.as_ref().is_some_and(|value| {
@@ -136,18 +136,19 @@ impl Request {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Thread {
+pub(crate) struct Chat {
+    #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) provider: Provider,
     pub(crate) node_id: String,
     #[serde(flatten)]
-    pub(crate) metadata: ThreadMetadata,
+    pub(crate) metadata: ChatMetadata,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Page {
-    pub(crate) threads: Vec<Thread>,
+    pub(crate) chats: Vec<Chat>,
     pub(crate) next_offset: Option<usize>,
 }
 
@@ -200,7 +201,7 @@ impl PartialOrd for Key {
 /// Retain only a bounded page window; duplicate copies choose their best sort key.
 pub(crate) struct Collector {
     request: Request,
-    rows: BTreeMap<Key, Thread>,
+    rows: BTreeMap<Key, Chat>,
     identities: HashMap<(Provider, String), Key>,
 }
 
@@ -214,7 +215,7 @@ impl Collector {
         })
     }
 
-    pub(crate) fn push(&mut self, thread: Thread) {
+    pub(crate) fn push(&mut self, thread: Chat) {
         if !self.request.matches(&thread) {
             return;
         }
@@ -254,7 +255,7 @@ impl Collector {
             && self.request.offset + self.request.limit <= 10_000)
             .then_some(self.request.offset + self.request.limit);
         Page {
-            threads: self
+            chats: self
                 .rows
                 .into_values()
                 .skip(self.request.offset)

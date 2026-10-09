@@ -274,7 +274,7 @@ async fn real_models_mcp_thread_excerpts_preserve_projection_locations() {
     let task = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
     let client = ().serve(client_io).await.unwrap();
     let service = task.await.unwrap();
-    let args = json!({"query":"cache model", "intent":"exact-mention", "unit":"threads", "local":true,"detail":"extended"});
+    let args = json!({"query":"cache model", "intent":"exact-mention", "unit":"chats", "local":true,"detail":"extended"});
     let result = client
         .call_tool(
             CallToolRequestParams::new("search").with_arguments(args.as_object().unwrap().clone()),
@@ -283,10 +283,10 @@ async fn real_models_mcp_thread_excerpts_preserve_projection_locations() {
         .unwrap();
     assert_ne!(result.is_error, Some(true), "{result:?}");
     let data = result.structured_content.unwrap();
-    let crate::search_results::Results::Threads(threads) =
+    let crate::search_results::Results::Chats(threads) =
         serde_json::from_value(data["results"].clone()).unwrap()
     else {
-        panic!("threads")
+        panic!("chats")
     };
     assert_eq!(threads.len(), 1);
     let anchor = &threads[0].matches[0];

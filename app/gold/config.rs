@@ -162,6 +162,13 @@ impl Build {
     }
 
     pub(crate) fn generation(&self, model: &str) -> String {
+        // The context title prefix is part of the embedding input. Version it
+        // independently so every title-bearing recipe rejects old vectors.
+        if self.embedding_text == EmbeddingText::TitleAndDialogue {
+            let mut base = self.clone();
+            base.embedding_text = EmbeddingText::Dialogue;
+            return format!("gold-chat-title-v2:{}", base.generation(model));
+        }
         if !self.dense_enabled() {
             return "gold-lexical-v1".into();
         }
@@ -203,7 +210,7 @@ impl Build {
         } else if self == &Self::default() {
             model.to_owned()
         } else {
-            format!("gold-title-v1:{model}")
+            format!("gold-chat-title-v2:{model}")
         }
     }
 
@@ -218,7 +225,7 @@ impl Build {
                     .max_embedding_chars
                     .map_or(256, |limit| (limit.0 as usize / 4).min(256));
                 let title: String = title.chars().take(title_limit).collect();
-                format!("Thread: {title}\n\n{dialogue}")
+                format!("Chat: {title}\n\n{dialogue}")
             }
             _ => dialogue,
         };
@@ -369,7 +376,7 @@ impl Default for Query {
     fn default() -> Self {
         Self {
             intent: super::exact::Intent::default(),
-            unit: SearchUnit::Threads,
+            unit: SearchUnit::Chats,
             limit: 20,
             fusion: Fusion::default(),
             ranking: Ranking::default(),
@@ -511,7 +518,7 @@ mod tests {
         recipe.text_preparation = TextPreparation::CollapseWhitespace;
         assert_eq!(
             recipe.prepare(" α\nβ ".into(), Some("a\tb")),
-            "Thread: a b α β"
+            "Chat: a b α β"
         );
         assert_eq!(
             recipe.prepare(" é\t".repeat(300), None).chars().count(),
@@ -540,7 +547,7 @@ mod tests {
         let prepared = limited.prepare(source, Some(&"title".repeat(100)));
         assert_eq!(prepared.chars().count(), 256);
         assert!(prepared.contains('é'));
-        assert!(prepared.starts_with("Thread: "));
+        assert!(prepared.starts_with("Chat: "));
         assert_eq!(limited.prepare(String::new(), Some("secret")), "");
         limited.max_embedding_chars = Some(512_u32.try_into().unwrap());
         assert_ne!(limited.generation("model"), identity);
@@ -559,6 +566,31 @@ mod tests {
     }
 
     #[test]
+    fn renamed_chat_title_invalidates_all_previous_title_embedding_recipes() {
+        for options in [
+            "",
+            "dense_content='user-messages'",
+            "text_preparation='collapse-whitespace'",
+            "max_embedding_chars=256",
+            "retrieval_unit='parent-and-message'",
+        ] {
+            let recipe: Build =
+                toml::from_str(&format!("embedding_text='title-and-dialogue'\n{options}")).unwrap();
+            assert!(
+                recipe
+                    .generation("model")
+                    .starts_with("gold-chat-title-v2:")
+            );
+            assert!(
+                recipe
+                    .prepare("body".into(), Some("title"))
+                    .starts_with("Chat: title")
+            );
+        }
+        assert_eq!(Build::default().generation("model"), "model");
+    }
+
+    #[test]
     fn recipes_are_strict_and_preparation_preserves_visibility_and_unicode() {
         let default: Configuration = toml::from_str("").unwrap();
         assert_eq!(default.build, Build::default());
@@ -571,7 +603,7 @@ mod tests {
         let build = config.build;
         assert_eq!(
             build.prepare("body".into(), Some(" title ")),
-            "Thread: title\n\nbody"
+            "Chat: title\n\nbody"
         );
         for title in [None, Some("  ")] {
             assert_eq!(build.prepare("body".into(), title), "body");
@@ -580,7 +612,7 @@ mod tests {
         let title = "é".repeat(300);
         assert_eq!(
             build.prepare("body".into(), Some(&title)),
-            format!("Thread: {}\n\nbody", "é".repeat(256))
+            format!("Chat: {}\n\nbody", "é".repeat(256))
         );
         for input in ["[build]\nembedding_text='invalid'", "[build]\nunknown=true"] {
             assert!(toml::from_str::<Configuration>(input).is_err());

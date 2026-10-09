@@ -55,7 +55,7 @@ fn hit() -> SearchHit {
         role: crate::role::Role::User,
         content: "use voyage-code-4".into(),
         created_at: Some(1000),
-        metadata: crate::search_results::ThreadMetadata::default(),
+        metadata: crate::search_results::ChatMetadata::default(),
         copies: vec![],
         node_id: Some("peer".into()),
         lexical_score: Some(0.0),
@@ -71,12 +71,12 @@ async fn assert_thread_projection(mut request: Request) {
     let Operation::Search { unit, .. } = &mut request.operation else {
         panic!("search")
     };
-    *unit = Some(SearchUnit::Threads);
+    *unit = Some(SearchUnit::Chats);
     let Response::Search(threads) = core::execute(request).await.unwrap() else {
         panic!("search")
     };
-    let crate::search_results::Results::Threads(threads) = threads.results else {
-        panic!("threads")
+    let crate::search_results::Results::Chats(threads) = threads.results else {
+        panic!("chats")
     };
     let anchor = &threads[0].matches[0];
     assert_eq!(anchor.node_id.as_deref(), Some("peer"));

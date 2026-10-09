@@ -1,7 +1,7 @@
 use super::*;
 use crate::provider::Provider;
 use crate::role::Role;
-use crate::search_results::ThreadMetadata;
+use crate::search_results::ChatMetadata;
 
 fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
     SearchHit {
@@ -12,7 +12,7 @@ fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
         content: content.into(),
         copies: Vec::new(),
         created_at: None,
-        metadata: ThreadMetadata::default(),
+        metadata: ChatMetadata::default(),
         lexical_score: None,
         lookup: None,
         lexical_match: None,
@@ -35,7 +35,7 @@ fn fusion_finish_preserves_order_and_thread_evidence_without_inference() {
     let messages = finish_fusion(hits(), SearchUnit::Messages, 1);
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].id, "first");
-    let threads = finish_fusion(hits(), SearchUnit::Threads, 1);
+    let threads = finish_fusion(hits(), SearchUnit::Chats, 1);
     assert_eq!(
         threads
             .iter()
@@ -73,8 +73,8 @@ fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
             "I planted carrots in my garden.",
         )
     }));
-    let hits = search_results::diversify(hits, SearchUnit::Threads);
-    let selection = select(&mut backend, query, hits, SearchUnit::Threads, 5).unwrap();
+    let hits = search_results::diversify(hits, SearchUnit::Chats);
+    let selection = select(&mut backend, query, hits, SearchUnit::Chats, 5).unwrap();
     assert!(selection.count <= 30);
     assert!(
         selection.hits[..selection.count]
@@ -90,7 +90,7 @@ fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
         query,
         selection,
         &documents,
-        SearchUnit::Threads,
+        SearchUnit::Chats,
         5,
     )
     .unwrap();

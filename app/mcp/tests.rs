@@ -4,6 +4,7 @@ use rmcp::model::CallToolRequestParams;
 use serde_json::json;
 
 mod attachments;
+mod chats;
 mod coverage;
 mod export;
 mod fusion;
@@ -13,7 +14,6 @@ mod rebuild;
 mod redaction;
 mod selections;
 mod skill;
-mod threads;
 mod watching;
 mod workflows;
 
@@ -136,7 +136,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
                 ranking: None,
                 shared_vector: None,
                 diagnostics: false,
-                unit: Some(crate::search_results::SearchUnit::Threads),
+                unit: Some(crate::search_results::SearchUnit::Chats),
                 filters: crate::search_filter::Selection {
                     provider: vec![Provider::Codex],
                     filter,
@@ -159,7 +159,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             ranking: None,
             shared_vector: None,
             diagnostics: false,
-            unit: Some(crate::search_results::SearchUnit::Threads),
+            unit: Some(crate::search_results::SearchUnit::Chats),
             filters: crate::search_filter::Selection::default(),
             local: true,
             shared: false,
@@ -316,14 +316,7 @@ async fn indexing_streams_correlated_progress_before_the_tool_result() {
 fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     let search = tools.iter().find(|tool| tool.name == "search").unwrap();
     assert!(search.input_schema["properties"].get("filter").is_some());
-    for field in [
-        "provider",
-        "conversation",
-        "node",
-        "role",
-        "project",
-        "repository",
-    ] {
+    for field in ["provider", "chat", "node", "role", "project", "repository"] {
         assert_eq!(search.input_schema["properties"][field]["type"], "array");
     }
     // Defaults come from the current node configuration, not a frozen SDK value.
@@ -340,7 +333,7 @@ fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
                 || field == "diagnostics")
     );
     let schema = serde_json::to_string(&search.input_schema).unwrap();
-    assert!(schema.contains("\"threads\"") && schema.contains("\"messages\""));
+    assert!(schema.contains("\"chats\"") && schema.contains("\"messages\""));
     assert!(
         schema.contains("rank_constant")
             && schema.contains("lexical_weight")
@@ -381,10 +374,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     let server = server.await.expect("server task");
     let tools = client.list_all_tools().await.expect("tools/list");
     assert_filter_schema(&tools);
-    let threads = tools
-        .iter()
-        .find(|tool| tool.name == "list_threads")
-        .unwrap();
+    let threads = tools.iter().find(|tool| tool.name == "list_chats").unwrap();
     let properties = &threads.input_schema["properties"];
     assert_eq!(properties["limit"]["minimum"], 1);
     assert_eq!(properties["limit"]["maximum"], 100);
@@ -403,7 +393,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
             "import_silver",
             "index",
             "list_attachments",
-            "list_threads",
+            "list_chats",
             "models_install",
             "search",
             "status",
@@ -446,7 +436,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     let args = json!({
         "query":"--models-dir=untrusted", "shared":false,
         "unit":"messages", "provider":["codex", "claude-code"],
-        "conversation":["thread-a", "thread-b"], "after":2, "before":3
+        "chat":["thread-a", "thread-b"], "after":2, "before":3
     })
     .as_object()
     .expect("object")

@@ -19,13 +19,13 @@ const QUERIES: [&str; 7] = [
 #[derive(Debug, PartialEq, Eq)]
 enum Keys {
     Messages(Vec<String>),
-    Threads(Vec<(String, Vec<String>)>),
+    Chats(Vec<(String, Vec<String>)>),
 }
 
 fn keys(results: Results) -> Keys {
     match results {
         Results::Messages(hits) => Keys::Messages(hits.into_iter().map(|hit| hit.id).collect()),
-        Results::Threads(hits) => Keys::Threads(
+        Results::Chats(hits) => Keys::Chats(
             hits.into_iter()
                 .map(|hit| {
                     (
@@ -90,13 +90,13 @@ fn benchmark_real_search_thread_budget() {
             &storage,
             &mut backend,
             QUERIES[0],
-            crate::gold::config::Options::new(5, SearchUnit::Threads),
+            crate::gold::config::Options::new(5, SearchUnit::Chats),
             (None, None),
             Some(&filters),
         )
         .unwrap();
         let mut index = 0;
-        for unit in [SearchUnit::Threads, SearchUnit::Messages] {
+        for unit in [SearchUnit::Chats, SearchUnit::Messages] {
             for query in QUERIES {
                 let start = Instant::now();
                 let hits = crate::semantic::hybrid_search_filtered(
@@ -160,15 +160,14 @@ fn benchmark_real_search_rerank_batches() {
             crate::semantic::embedding_generation(),
             query,
             &vector,
-            (None, None, SearchUnit::Threads),
+            (None, None, SearchUnit::Chats),
             Some(&filters),
             crate::gold::config::Fusion::default(),
         )
         .unwrap();
-        let hits = crate::search_results::diversify(hits, SearchUnit::Threads);
+        let hits = crate::search_results::diversify(hits, SearchUnit::Chats);
         let selection =
-            crate::search_ranking::select(&mut backend, query, hits, SearchUnit::Threads, 5)
-                .unwrap();
+            crate::search_ranking::select(&mut backend, query, hits, SearchUnit::Chats, 5).unwrap();
         let documents = selection.hits[..selection.count]
             .iter()
             .map(|hit| {

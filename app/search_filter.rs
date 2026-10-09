@@ -16,6 +16,7 @@ pub(crate) struct Selection {
     pub(crate) node: Vec<String>,
     pub(crate) role: Vec<crate::role::Role>,
     /// Canonical thread IDs from thread search; omitted or empty selects all threads.
+    #[serde(rename = "chat")]
     pub(crate) conversation: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
     pub(crate) project: Vec<String>,
@@ -43,7 +44,7 @@ pub(crate) enum Field {
     Provider,
     Node,
     Role,
-    Conversation,
+    Chat,
     Project,
     Repository,
     After,
@@ -57,7 +58,7 @@ impl Selection {
             (!self.provider.is_empty(), Field::Provider),
             (!self.node.is_empty(), Field::Node),
             (!self.role.is_empty(), Field::Role),
-            (!self.conversation.is_empty(), Field::Conversation),
+            (!self.conversation.is_empty(), Field::Chat),
             (!self.project.is_empty(), Field::Project),
             (!self.repository.is_empty(), Field::Repository),
             (self.after.is_some() || self.days.is_some(), Field::After),
@@ -83,7 +84,7 @@ impl Selection {
         }
         for (values, constructor) in [
             (self.node, Filter::Node as fn(Vec<String>) -> Filter),
-            (self.conversation, Filter::Conversation),
+            (self.conversation, Filter::Chat),
             (self.project, Filter::Project),
             (self.repository, Filter::Repository),
         ] {
@@ -130,7 +131,7 @@ pub(crate) enum Filter {
     Node(Vec<String>),
     Provider(Vec<Provider>),
     Role(Vec<crate::role::Role>),
-    Conversation(Vec<String>),
+    Chat(Vec<String>),
     Project(Vec<String>),
     Repository(Vec<String>),
     /// Inclusive Unix timestamp in seconds.
@@ -152,7 +153,7 @@ impl Filter {
             Self::Node(_) => Field::Node,
             Self::Provider(_) => Field::Provider,
             Self::Role(_) => Field::Role,
-            Self::Conversation(_) => Field::Conversation,
+            Self::Chat(_) => Field::Chat,
             Self::Project(_) => Field::Project,
             Self::Repository(_) => Field::Repository,
             Self::After(_) => Field::After,
@@ -204,7 +205,7 @@ impl Filter {
 
     fn values(&self) -> Vec<&str> {
         match self {
-            Self::Node(v) | Self::Conversation(v) | Self::Project(v) | Self::Repository(v) => {
+            Self::Node(v) | Self::Chat(v) | Self::Project(v) | Self::Repository(v) => {
                 v.iter().map(String::as_str).collect()
             }
             Self::Provider(v) => v.iter().map(|p| p.as_str()).collect(),
@@ -227,7 +228,7 @@ impl Filter {
                     Self::Node(_) => local_node.map_or_else(|| "m.node_id".to_owned(), quote),
                     Self::Provider(_) => "c.provider".to_owned(),
                     Self::Role(_) => "m.role".to_owned(),
-                    Self::Conversation(_) => "m.conversation_id".to_owned(),
+                    Self::Chat(_) => "m.conversation_id".to_owned(),
                     Self::Project(_) => "c.project".to_owned(),
                     Self::Repository(_) => "c.repository".to_owned(),
                     _ => unreachable!(),

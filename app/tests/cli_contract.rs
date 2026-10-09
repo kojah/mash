@@ -9,6 +9,7 @@ mod support;
 mod test_support;
 use support::*;
 
+mod chats;
 mod commands;
 mod configuration;
 mod connector_ingestion;
@@ -21,6 +22,5 @@ mod real_models;
 mod redaction;
 mod retrieval;
 mod shared_server;
-mod threads;
 mod vector_overrides;
 mod watch_flow;

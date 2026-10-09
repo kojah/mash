@@ -2,7 +2,7 @@
 use super::{Identity, Store};
 use crate::AppError;
 use crate::gold::shared as gold;
-use crate::shared::qdrant_index::{GoldThread, NodeGold};
+use crate::shared::qdrant_index::{GoldChat, NodeGold};
 use crate::shared::silver_store;
 use std::path::Path;
 
@@ -11,7 +11,7 @@ use std::path::Path;
 pub(in crate::shared) struct Replayed {
     pub(in crate::shared) group_id: String,
     pub(in crate::shared) node_id: String,
-    pub(in crate::shared) threads: u64,
+    pub(in crate::shared) chats: u64,
     pub(in crate::shared) messages: u64,
     pub(in crate::shared) embeddings: u64,
 }
@@ -40,19 +40,19 @@ impl Store {
         let mut replayed = Replayed {
             group_id: identity.group_id.clone(),
             node_id: identity.node_id.clone(),
-            threads: 0,
+            chats: 0,
             messages: 0,
             embeddings: 0,
         };
         let mut documents = crate::shared::qdrant_index::Documents::new(identity);
         for (id, fingerprint) in &fingerprints {
-            let thread = id.clone();
+            let chat = id.clone();
             let (conversation, messages) = self
                 .read(identity, move |connection| {
                     Ok((
-                        silver_store::conversation(connection, &thread)?
-                            .ok_or_else(|| AppError::internal("silver thread disappeared"))?,
-                        silver_store::thread_messages(connection, &thread)?,
+                        silver_store::conversation(connection, &chat)?
+                            .ok_or_else(|| AppError::internal("silver chat disappeared"))?,
+                        silver_store::thread_messages(connection, &chat)?,
                     ))
                 })
                 .await?;
@@ -71,7 +71,7 @@ impl Store {
                         prepared.push(units.prepare(
                             &plan,
                             crate::gold::units::Input {
-                                thread: &message.conversation_id,
+                                chat: &message.conversation_id,
                                 ordinal: message.ordinal,
                                 context: message.context,
                                 role: &message.role,
@@ -115,15 +115,15 @@ impl Store {
                         .await?;
                 }
             }
-            node.threads.insert(
+            node.chats.insert(
                 id.clone(),
-                GoldThread {
+                GoldChat {
                     fingerprint: fingerprint.clone(),
                     embeddings: stored,
                     complete: stored == expected,
                 },
             );
-            replayed.threads += 1;
+            replayed.chats += 1;
             replayed.embeddings += stored;
         }
         documents.finish(&self.gold).await?;

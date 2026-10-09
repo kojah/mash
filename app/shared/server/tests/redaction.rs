@@ -27,7 +27,7 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
             "contexts",
             json!({"anchors":[{"node_id":"first","id":"searchable","context":0,"content":"search-projection"}]}),
         ),
-        ("threads", json!({})),
+        ("chats", json!({})),
         (
             "search",
             json!({"query":"credentialneedle","intent":"exact-mention","unit":"messages","exclude_self":false}),

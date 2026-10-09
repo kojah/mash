@@ -40,7 +40,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
     assert_ne!(indexed.is_error, Some(true), "{indexed:?}");
     let listed = client
         .call_tool(
-            CallToolRequestParams::new("list_threads").with_arguments(
+            CallToolRequestParams::new("list_chats").with_arguments(
                 json!({"local":true,"provider":["claude-code"],"sort":"title"})
                     .as_object()
                     .unwrap()
@@ -51,11 +51,11 @@ async fn real_models_thread_discovery_and_scoped_messages() {
         .unwrap();
     assert_ne!(listed.is_error, Some(true), "{listed:?}");
     let listed = listed.structured_content.unwrap();
-    let threads = listed["threads"].as_array().unwrap();
+    let threads = listed["chats"].as_array().unwrap();
     assert_eq!(threads.len(), 2);
     let selected = threads
         .iter()
-        .find(|thread| thread["conversation_id"] == "selected")
+        .find(|thread| thread["chat_id"] == "selected")
         .unwrap();
     let database = directory.path().join("index.sqlite3");
     let before = std::fs::read(&database).unwrap();
@@ -79,7 +79,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
     let overridden = client
         .call_tool(
             CallToolRequestParams::new("search").with_arguments(
-                json!({"query":"authentication", "local":true,"unit":"threads", "limit":2})
+                json!({"query":"authentication", "local":true,"unit":"chats", "limit":2})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -88,8 +88,8 @@ async fn real_models_thread_discovery_and_scoped_messages() {
         .await
         .unwrap();
     assert_ne!(overridden.is_error, Some(true), "{overridden:?}");
-    assert_eq!(overridden.structured_content.unwrap()["unit"], "threads");
-    let found = client.call_tool(CallToolRequestParams::new("search").with_arguments(json!({"query":"authentication", "local":true,"unit":"messages","provider":[selected["provider"]],"conversation":[selected["conversation_id"]]}).as_object().unwrap().clone())).await.unwrap();
+    assert_eq!(overridden.structured_content.unwrap()["unit"], "chats");
+    let found = client.call_tool(CallToolRequestParams::new("search").with_arguments(json!({"query":"authentication", "local":true,"unit":"messages","provider":[selected["provider"]],"chat":[selected["chat_id"]]}).as_object().unwrap().clone())).await.unwrap();
     assert_ne!(found.is_error, Some(true), "{found:?}");
     let found = found.structured_content.unwrap();
     let results = found["results"].as_array().unwrap();
@@ -97,7 +97,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
     assert!(
         results
             .iter()
-            .all(|message| message["conversation_id"] == "selected")
+            .all(|message| message["chat_id"] == "selected")
     );
     assert_eq!(std::fs::read(&database).unwrap(), before);
     client.cancel().await.unwrap();
@@ -150,7 +150,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(2),
         client.call_tool(
-            CallToolRequestParams::new("list_threads").with_arguments(
+            CallToolRequestParams::new("list_chats").with_arguments(
                 json!({
                     "provider":["codex"], "title_contains":"CBIOportal", "after":2,
                     "sort":"title", "direction":"asc", "limit":1, "local":true,
@@ -167,10 +167,10 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     .unwrap();
     assert_ne!(result.is_error, Some(true));
     let body = result.structured_content.unwrap();
-    assert_eq!(body["threads"][0]["conversation_id"], "orientation");
-    assert_eq!(body["threads"][0]["provider"], "codex");
-    assert_eq!(body["threads"][0]["updated_at"], 3000);
-    assert_eq!(body["threads"][0]["node_id"], "local");
+    assert_eq!(body["chats"][0]["chat_id"], "orientation");
+    assert_eq!(body["chats"][0]["provider"], "codex");
+    assert_eq!(body["chats"][0]["updated_at"], 3000);
+    assert_eq!(body["chats"][0]["node_id"], "local");
     assert_eq!(body["next_offset"], json!(null));
     assert_eq!(
         body["diagnostics"]["selected_artifacts"],
@@ -189,7 +189,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     ] {
         let response = client
             .call_tool(
-                CallToolRequestParams::new("list_threads")
+                CallToolRequestParams::new("list_chats")
                     .with_arguments(arguments.as_object().unwrap().clone()),
             )
             .await

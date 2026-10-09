@@ -19,9 +19,9 @@ pub(in crate::shared) struct Applied {
     pub(in crate::shared) changed: bool,
     pub(in crate::shared) removed: u64,
     pub(in crate::shared) purged: u64,
-    /// Threads whose messages and vectors this upload supplies.
+    /// Chats whose messages and vectors this upload supplies.
     pub(in crate::shared) supplied: BTreeSet<String>,
-    /// Threads removed from silver; their gold documents are obsolete.
+    /// Chats removed from silver; their gold documents are obsolete.
     pub(in crate::shared) deleted: BTreeSet<String>,
 }
 

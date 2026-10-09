@@ -1,5 +1,5 @@
 use super::*;
-use crate::{provider::Provider, role::Role, search_results::ThreadMetadata};
+use crate::{provider::Provider, role::Role, search_results::ChatMetadata};
 
 fn hit(node: &str, content: &str) -> SearchHit {
     SearchHit {
@@ -9,9 +9,9 @@ fn hit(node: &str, content: &str) -> SearchHit {
         role: Role::User,
         content: content.into(),
         created_at: Some(123),
-        metadata: ThreadMetadata {
+        metadata: ChatMetadata {
             title: Some("password=\"rosebud\"".into()),
-            ..ThreadMetadata::default()
+            ..ChatMetadata::default()
         },
         copies: Vec::new(),
         lexical_score: Some(0.25),

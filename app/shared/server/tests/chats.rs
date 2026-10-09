@@ -2,10 +2,10 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires MASH_TEST_QDRANT_URL with Qdrant 1.19+"]
-async fn qdrant_thread_catalog_http_filter_sort_page_and_group_contract() {
+async fn qdrant_chat_catalog_http_filter_sort_page_and_group_contract() {
     contract(Service::qdrant(384).await).await;
 }
-use crate::thread_catalog::{Direction, Page, Request, Sort};
+use crate::chat_catalog::{Direction, Page, Request, Sort};
 
 mod integrated;
 
@@ -24,7 +24,7 @@ fn catalog_snapshot(revision: i64) -> Vec<Value> {
 
 async fn page(service: &Service, token: &str, input: &Request) -> Page {
     service
-        .request("threads", token)
+        .request("chats", token)
         .json(input)
         .send()
         .await
@@ -93,15 +93,10 @@ async fn verify_ordering_and_pages(service: &Service) {
                 result.next_offset,
                 if offset < 4 { Some(offset + 2) } else { None }
             );
-            assert!(
-                result
-                    .threads
-                    .iter()
-                    .all(|thread| thread.node_id == "first")
-            );
+            assert!(result.chats.iter().all(|thread| thread.node_id == "first"));
             ids.extend(
                 result
-                    .threads
+                    .chats
                     .into_iter()
                     .map(|thread| thread.conversation_id),
             );
@@ -126,12 +121,9 @@ async fn verify_filters(service: &Service) {
         },
     )
     .await;
-    assert_eq!(filtered.threads.len(), 2);
+    assert_eq!(filtered.chats.len(), 2);
     assert_eq!(
-        page(service, OTHER, &Request::default())
-            .await
-            .threads
-            .len(),
+        page(service, OTHER, &Request::default()).await.chats.len(),
         0
     );
     let peer = page(
@@ -143,8 +135,8 @@ async fn verify_filters(service: &Service) {
         },
     )
     .await;
-    assert_eq!(peer.threads.len(), 5);
-    assert!(peer.threads.iter().all(|thread| thread.node_id == "second"));
+    assert_eq!(peer.chats.len(), 5);
+    assert!(peer.chats.iter().all(|thread| thread.node_id == "second"));
     let nonexistent = page(
         service,
         FIRST,
@@ -154,7 +146,7 @@ async fn verify_filters(service: &Service) {
         },
     )
     .await;
-    assert_eq!(nonexistent.threads.len(), 0);
+    assert_eq!(nonexistent.chats.len(), 0);
     let literal = page(
         service,
         FIRST,
@@ -164,14 +156,14 @@ async fn verify_filters(service: &Service) {
         },
     )
     .await;
-    assert_eq!(literal.threads[0].conversation_id, "d");
+    assert_eq!(literal.chats[0].conversation_id, "d");
 }
 
 #[tokio::test]
-async fn thread_catalog_auth_and_invalid_requests_fail_before_backend_access() {
+async fn chat_catalog_auth_and_invalid_requests_fail_before_backend_access() {
     let service = Service::new(false).await;
     let unauthorized = service
-        .request("threads", "wrong")
+        .request("chats", "wrong")
         .json(&json!({}))
         .send()
         .await
@@ -185,7 +177,7 @@ async fn thread_catalog_auth_and_invalid_requests_fail_before_backend_access() {
         (json!({"after":-1}), StatusCode::BAD_REQUEST),
     ] {
         let result = service
-            .request("threads", FIRST)
+            .request("chats", FIRST)
             .json(&invalid)
             .send()
             .await

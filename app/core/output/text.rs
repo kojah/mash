@@ -1,6 +1,6 @@
 //! Human-readable MCP discovery content, rendered from the same typed views as JSON.
-use super::{Detail, Response, Search, SearchResults, Status, Thread};
-use crate::search_results::{MessageReference, ThreadMetadata, lookup::Lookup};
+use super::{Chat, Detail, Response, Search, SearchResults, Status};
+use crate::search_results::{ChatMetadata, MessageReference, lookup::Lookup};
 use serde::Serialize;
 
 mod operations;
@@ -36,7 +36,7 @@ fn warning(out: &mut String, name: &str, value: Option<&str>) {
     }
 }
 
-fn metadata(out: &mut String, value: &ThreadMetadata) {
+fn metadata(out: &mut String, value: &ChatMetadata) {
     for (name, value) in [
         ("Title", &value.title),
         ("Project", &value.project),
@@ -50,7 +50,7 @@ fn metadata(out: &mut String, value: &ThreadMetadata) {
         line(
             out,
             &format!(
-                "  Thread times (Unix ms): created={}, updated={}",
+                "  Chat times (Unix ms): created={}, updated={}",
                 time(value.created_at),
                 time(value.updated_at)
             ),
@@ -104,7 +104,7 @@ fn origin(node: Option<&str>, lookup: Option<&Lookup>) -> String {
     }
 }
 
-fn thread(out: &mut String, number: usize, value: &Thread<'_>) -> Result<(), serde_json::Error> {
+fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde_json::Error> {
     line(
         out,
         &format!(
@@ -114,10 +114,10 @@ fn thread(out: &mut String, number: usize, value: &Thread<'_>) -> Result<(), ser
             safe(value.node_id.unwrap_or("unspecified"))
         ),
     );
-    line(out, &format!("  Thread: {}", safe(value.conversation_id)));
+    line(out, &format!("  Chat: {}", safe(value.conversation_id)));
     metadata(out, &value.metadata);
     if let Some(score) = value.score {
-        line(out, &format!("  Thread score: {score}"));
+        line(out, &format!("  Chat score: {score}"));
     }
     for hit in &value.matches {
         line(
@@ -141,7 +141,7 @@ fn thread(out: &mut String, number: usize, value: &Thread<'_>) -> Result<(), ser
 
 fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error> {
     let count = match &value.results {
-        SearchResults::Threads(rows) => rows.len(),
+        SearchResults::Chats(rows) => rows.len(),
         SearchResults::Messages(rows) => rows.len(),
     };
     line(
@@ -161,7 +161,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
         );
     }
     match &value.results {
-        SearchResults::Threads(rows) => {
+        SearchResults::Chats(rows) => {
             for (index, row) in rows.iter().enumerate() {
                 thread(out, index + 1, row)?;
             }
@@ -181,7 +181,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
                 line(
                     out,
                     &format!(
-                        "  Thread: {} · role: {} · time (Unix ms): {}",
+                        "  Chat: {} · role: {} · time (Unix ms): {}",
                         safe(hit.conversation_id),
                         hit.role.as_str(),
                         time(hit.created_at)
@@ -261,7 +261,7 @@ fn status(out: &mut String, value: &Status<'_>) -> Result<(), serde_json::Error>
     line(
         out,
         &format!(
-            "Retained: {} threads, {} messages · searchable: {} · embeddings: {}",
+            "Retained: {} chats, {} messages · searchable: {} · embeddings: {}",
             value.conversations, value.messages, value.searchable_messages, value.embeddings
         ),
     );
@@ -299,7 +299,7 @@ fn freshness(
         line(
             out,
             &format!(
-                "  Node {} · revision={} · {} threads, {} messages · lexical_current={} · gold_current={}",
+                "  Node {} · revision={} · {} chats, {} messages · lexical_current={} · gold_current={}",
                 safe(node.node_id),
                 node.revision,
                 node.conversations,
@@ -328,7 +328,7 @@ pub(crate) fn render(
     let mut out = String::new();
     match response {
         Response::Search(value) => search(&mut out, &Search::from(value))?,
-        Response::ListThreads(value) => list(&mut out, value)?,
+        Response::ListChats(value) => list(&mut out, value)?,
         Response::Status(value) => status(&mut out, &Status::from(value.as_ref()))?,
         Response::View(value) => operations::view(&mut out, value)?,
         Response::Index(value) => operations::index(&mut out, value)?,
@@ -397,7 +397,7 @@ pub(crate) fn render(
     if matches!(detail, Detail::Extended)
         && matches!(
             response,
-            Response::Search(_) | Response::ListThreads(_) | Response::Status(_)
+            Response::Search(_) | Response::ListChats(_) | Response::Status(_)
         )
     {
         line(&mut out, "\nFull details (JSON):");
@@ -416,21 +416,21 @@ pub(crate) fn error(value: &crate::AppError) -> Result<String, serde_json::Error
     Ok(out)
 }
 
-fn list(out: &mut String, value: &crate::core::threads::Response) -> Result<(), serde_json::Error> {
+fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), serde_json::Error> {
     line(
         out,
         &format!(
-            "Mash threads — {} results · shared included: {}",
-            value.page.threads.len(),
+            "Mash chats — {} results · shared included: {}",
+            value.page.chats.len(),
             value.shared
         ),
     );
     warning(out, "shared listing", value.shared_error.as_deref());
-    for (index, row) in value.page.threads.iter().enumerate() {
+    for (index, row) in value.page.chats.iter().enumerate() {
         thread(
             out,
             index + 1,
-            &Thread {
+            &Chat {
                 conversation_id: &row.conversation_id,
                 provider: row.provider,
                 node_id: Some(&row.node_id),
@@ -444,13 +444,13 @@ fn list(out: &mut String, value: &crate::core::threads::Response) -> Result<(), 
     if value.page.next_offset.is_some() {
         line(
             out,
-            "Continue list_threads with the same filters/order and this offset.",
+            "Continue list_chats with the same filters/order and this offset.",
         );
     }
-    if value.page.threads.is_empty() {
+    if value.page.chats.is_empty() {
         line(
             out,
-            "No threads returned; this does not prove complete history or absence of conversations.",
+            "No chats returned; this does not prove complete history or absence of conversations.",
         );
     }
     if let Some(diagnostics) = &value.diagnostics {

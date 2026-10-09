@@ -76,7 +76,7 @@ fn hit(point: api::Record<Document>, active: &BTreeSet<String>) -> Result<Search
         content: m.projection,
         copies: vec![],
         created_at: m.created_at,
-        metadata: crate::search_results::ThreadMetadata {
+        metadata: crate::search_results::ChatMetadata {
             enrichment: d.conversation.enrichment,
             title: d.conversation.title,
             project: d.project,

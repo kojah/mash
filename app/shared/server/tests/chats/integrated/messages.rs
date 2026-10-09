@@ -198,7 +198,7 @@ async fn contract(service: Service) {
     )
     .await;
     let ids: Vec<_> = discovered
-        .threads
+        .chats
         .iter()
         .filter(|thread| ["codex", "claude-code"].contains(&thread.conversation_id.as_str()))
         .map(|thread| thread.conversation_id.clone())

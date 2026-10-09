@@ -5,6 +5,7 @@ use directories::ProjectDirs;
 use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 
+mod chats;
 mod connector_ingestion;
 pub(crate) mod coverage;
 mod indexing;
@@ -13,7 +14,6 @@ mod maintenance;
 mod models;
 pub(crate) mod output;
 mod search;
-mod threads;
 
 pub(crate) use indexing::watch_targets;
 pub(crate) use models::{
@@ -40,7 +40,7 @@ async fn execute_admitted(
     let operation = match &request.operation {
         Operation::Index(_) => "index",
         Operation::IngestConnector { .. } => "ingest_connector",
-        Operation::ListThreads { .. } => "list_threads",
+        Operation::ListChats { .. } => "list_chats",
         Operation::Search { .. } => "search",
         Operation::View { .. } => "view",
         Operation::Status { .. } => "status",
@@ -218,14 +218,14 @@ async fn dispatch(
         } => inspection::get_attachment(configuration, database, message_id, attachment_id, shared)
             .await
             .map(Response::GetAttachment),
-        Operation::ListThreads {
+        Operation::ListChats {
             input,
             local,
             shared,
             diagnostics,
-        } => threads::run(configuration, database, *input, local, shared, diagnostics)
+        } => chats::run(configuration, database, *input, local, shared, diagnostics)
             .await
-            .map(Response::ListThreads),
+            .map(Response::ListChats),
         Operation::Index(request) => indexing::run(configuration, database, models, request)
             .await
             .map(Response::Index),

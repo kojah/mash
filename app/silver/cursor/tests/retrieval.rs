@@ -34,7 +34,7 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
         .unwrap();
         for query in ["cbioportal importer", "structural variants"] {
             for unit in [
-                crate::search_results::SearchUnit::Threads,
+                crate::search_results::SearchUnit::Chats,
                 crate::search_results::SearchUnit::Messages,
             ] {
                 let Response::Search(response) = crate::core::execute(Request {
@@ -67,7 +67,7 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
                     panic!("search")
                 };
                 match response.results {
-                    crate::search_results::Results::Threads(threads) => {
+                    crate::search_results::Results::Chats(threads) => {
                         assert_eq!(threads.len(), 1);
                         assert_eq!(threads[0].provider, Provider::Cursor);
                     }

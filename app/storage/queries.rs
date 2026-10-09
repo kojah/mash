@@ -343,7 +343,7 @@ pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> 
         content: row.content,
         copies: Vec::new(),
         created_at: row.created_at,
-        metadata: crate::search_results::ThreadMetadata {
+        metadata: crate::search_results::ChatMetadata {
             enrichment: row
                 .enrichment
                 .map(|json| super::enrichment::decode(&json))

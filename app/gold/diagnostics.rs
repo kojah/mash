@@ -92,7 +92,7 @@ impl Diagnostics {
             ranking: hybrid.then_some(ranking),
             shared_vector_override: None,
             returned_results: match &response.results {
-                Results::Threads(hits) => hits.len(),
+                Results::Chats(hits) => hits.len(),
                 Results::Messages(hits) => hits.len(),
             },
             elapsed_ms: 0,

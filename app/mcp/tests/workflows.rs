@@ -95,19 +95,19 @@ async fn sdk_decision_workflow_discovers_scopes_and_reads_user_approval_in_four_
     };
     let mut responses = Vec::new();
     let threads = call(
-        "list_threads",
+        "list_chats",
         json!({"title_contains":"backend choice", "local":true, "limit":5}),
     )
     .await
     .unwrap();
     assert_ne!(threads.is_error, Some(true), "{threads:?}");
     let threads = threads.structured_content.unwrap();
-    let thread = threads["threads"][0]["conversation_id"].clone();
+    let thread = threads["chats"][0]["chat_id"].clone();
     responses.push(threads);
     let found = call(
         "search",
         json!({"query":"Qdrant", "intent":"exact-mention", "match_mode":"strict",
-        "unit":"messages", "conversation":[thread], "role":["user"], "local":true, "limit":5}),
+        "unit":"messages", "chat":[thread], "role":["user"], "local":true, "limit":5}),
     )
     .await
     .unwrap();

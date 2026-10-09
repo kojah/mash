@@ -93,10 +93,7 @@ fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_sc
     let scope = Scope {
         match_mode: crate::gold::matching::Mode::Strict,
         node: "local".into(),
-        filter: Filter::Any(vec![
-            Filter::After(2),
-            Filter::Conversation(vec!["absent".into()]),
-        ]),
+        filter: Filter::Any(vec![Filter::After(2), Filter::Chat(vec!["absent".into()])]),
     };
     let query = super::super::semantic::semantic_filter_query(&scope);
     let plans = writer

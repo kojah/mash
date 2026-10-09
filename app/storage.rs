@@ -93,6 +93,7 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lexical_match: Option<crate::gold::matching::Evidence>,
     pub(crate) id: String,
+    #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) provider: Provider,
     pub(crate) role: crate::role::Role,
@@ -100,7 +101,7 @@ pub(crate) struct SearchHit {
     #[serde(default)]
     pub(crate) created_at: Option<i64>,
     #[serde(default)]
-    pub(crate) metadata: crate::search_results::ThreadMetadata,
+    pub(crate) metadata: crate::search_results::ChatMetadata,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) copies: Vec<crate::search_results::MessageReference>,
     #[serde(skip_serializing_if = "Option::is_none")]

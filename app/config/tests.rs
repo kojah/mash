@@ -72,10 +72,7 @@ fn gold_fusion_policy_is_query_only_and_strictly_bounded() {
 fn gold_query_defaults_are_typed_bounded_and_reported_in_status() {
     use crate::search_results::SearchUnit;
     let defaults = parse_document(VALID.as_bytes()).unwrap().gold;
-    assert_eq!(
-        defaults.query.resolve(None, None),
-        (20, SearchUnit::Threads)
-    );
+    assert_eq!(defaults.query.resolve(None, None), (20, SearchUnit::Chats));
     let directory = TempDir::new().unwrap();
     let path = write_config(
         &directory,
@@ -90,12 +87,12 @@ fn gold_query_defaults_are_typed_bounded_and_reported_in_status() {
         resolved
             .gold
             .query
-            .resolve(Some(3), Some(SearchUnit::Threads)),
-        (3, SearchUnit::Threads)
+            .resolve(Some(3), Some(SearchUnit::Chats)),
+        (3, SearchUnit::Chats)
     );
     assert_eq!(
-        resolved.gold.query.resolve(None, Some(SearchUnit::Threads)),
-        (7, SearchUnit::Threads)
+        resolved.gold.query.resolve(None, Some(SearchUnit::Chats)),
+        (7, SearchUnit::Chats)
     );
     let status = serde_json::to_value(resolved.status()).unwrap();
     assert_eq!(status["gold"]["query"]["unit"], "messages");

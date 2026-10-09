@@ -1,17 +1,15 @@
-#!/usr/bin/env python3
 """Fixed synthetic release-worker tracing control, not a latency acceptance gate."""
 import argparse
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import platform
 import sqlite3
 import statistics
 import subprocess
 import time
-
+from pathlib import Path
 
 SUBJECTS = [
     'SQLite search indexes', 'PostgreSQL connection pools', 'Redis vector filters',
@@ -144,9 +142,9 @@ def run(args):
         return output, {'wall_ms': wall_ms, 'diagnostics': diagnostic}
 
     # Warmup excludes model startup; both units run in the same isolated worker.
-    warmup = [search(QUERIES[0], unit, True)[1] for unit in ['threads', 'messages']]
+    warmup = [search(QUERIES[0], unit, True)[1] for unit in ['chats', 'messages']]
     for index, query in enumerate(QUERIES):
-        units = ['threads', 'messages'] if index % 2 == 0 else ['messages', 'threads']
+        units = ['chats', 'messages'] if index % 2 == 0 else ['messages', 'chats']
         for unit in units:
             modes = [False, True] if index % 2 == 0 else [True, False]
             pair = {}
@@ -167,7 +165,7 @@ def run(args):
     if any(digest(models / path) != pin for path, pin in asset_pins.items()):
         raise ValueError('model assets changed during control')
     summaries = {}
-    for unit in ['threads', 'messages']:
+    for unit in ['chats', 'messages']:
         selected = [row for row in samples if row['unit'] == unit]
         summaries[unit] = {mode: summary([row[mode]['wall_ms'] for row in selected])
                            for mode in ['off', 'on']}

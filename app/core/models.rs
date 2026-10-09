@@ -56,8 +56,8 @@ pub(crate) enum Operation {
     IngestConnector {
         batch_file: PathBuf,
     },
-    ListThreads {
-        input: Box<crate::thread_catalog::Request>,
+    ListChats {
+        input: Box<crate::chat_catalog::Request>,
         local: bool,
         shared: bool,
         #[serde(default)]
@@ -120,7 +120,7 @@ pub(crate) enum Operation {
 pub(crate) enum Response {
     Index(IndexResponse),
     IngestConnector(crate::connectors::Receipt),
-    ListThreads(super::threads::Response),
+    ListChats(super::chats::Response),
     Search(SearchResponse),
     View(ViewResponse),
     Status(Box<StatusResponse>),

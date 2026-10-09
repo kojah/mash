@@ -1,7 +1,7 @@
 //! Typed presentation of completed responses; retrieval and ranking are unchanged.
 use super::models::{LocalArtifacts, ModelAvailability, StatusResponse};
 use super::{Response, SearchMode, SearchResponse};
-use crate::search_results::{MessageReference, Results, ThreadHit, ThreadMatch, ThreadMetadata};
+use crate::search_results::{ChatHit, ChatMatch, ChatMetadata, MessageReference, Results};
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
@@ -26,12 +26,12 @@ pub(crate) fn serialize(
     }
     match response {
         Response::Search(value) => serde_json::to_value(Search::from(value)),
-        Response::ListThreads(value) => serde_json::to_value(List {
-            threads: value
+        Response::ListChats(value) => serde_json::to_value(List {
+            chats: value
                 .page
-                .threads
+                .chats
                 .iter()
-                .map(|thread| Thread {
+                .map(|thread| Chat {
                     conversation_id: &thread.conversation_id,
                     provider: thread.provider,
                     node_id: Some(&thread.node_id),
@@ -50,7 +50,7 @@ pub(crate) fn serialize(
     }
 }
 
-fn metadata(value: &ThreadMetadata) -> ThreadMetadata {
+fn metadata(value: &ChatMetadata) -> ChatMetadata {
     let mut value = value.clone();
     value.enrichment = None;
     value
@@ -63,6 +63,7 @@ struct Message<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     lexical_match: Option<&'a crate::gold::matching::Evidence>,
     id: &'a str,
+    #[serde(rename = "chat_id")]
     conversation_id: &'a str,
     provider: crate::provider::Provider,
     node_id: Option<&'a str>,
@@ -70,7 +71,7 @@ struct Message<'a> {
     created_at: Option<i64>,
     content: String,
     content_truncated: bool,
-    metadata: ThreadMetadata,
+    metadata: ChatMetadata,
     #[serde(skip_serializing_if = "<[MessageReference]>::is_empty")]
     copies: &'a [MessageReference],
 }
@@ -91,8 +92,8 @@ struct Excerpt<'a> {
     copies: &'a [MessageReference],
 }
 
-impl<'a> From<&'a ThreadMatch> for Excerpt<'a> {
-    fn from(value: &'a ThreadMatch) -> Self {
+impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
+    fn from(value: &'a ChatMatch) -> Self {
         Self {
             lookup: value.lookup.as_ref(),
             lexical_match: value.lexical_match.as_ref(),
@@ -110,20 +111,21 @@ impl<'a> From<&'a ThreadMatch> for Excerpt<'a> {
 }
 
 #[derive(Serialize)]
-struct Thread<'a> {
+struct Chat<'a> {
+    #[serde(rename = "chat_id")]
     conversation_id: &'a str,
     provider: crate::provider::Provider,
     node_id: Option<&'a str>,
     #[serde(flatten)]
-    metadata: ThreadMetadata,
+    metadata: ChatMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     score: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     matches: Vec<Excerpt<'a>>,
 }
 
-impl<'a> From<&'a ThreadHit> for Thread<'a> {
-    fn from(value: &'a ThreadHit) -> Self {
+impl<'a> From<&'a ChatHit> for Chat<'a> {
+    fn from(value: &'a ChatHit) -> Self {
         Self {
             conversation_id: &value.conversation_id,
             provider: value.provider,
@@ -138,7 +140,7 @@ impl<'a> From<&'a ThreadHit> for Thread<'a> {
 #[derive(Serialize)]
 #[serde(untagged)]
 enum SearchResults<'a> {
-    Threads(Vec<Thread<'a>>),
+    Chats(Vec<Chat<'a>>),
     Messages(Vec<Message<'a>>),
 }
 
@@ -161,8 +163,8 @@ struct Search<'a> {
 impl<'a> From<&'a SearchResponse> for Search<'a> {
     fn from(value: &'a SearchResponse) -> Self {
         let results = match &value.results {
-            Results::Threads(threads) => {
-                SearchResults::Threads(threads.iter().map(Thread::from).collect())
+            Results::Chats(threads) => {
+                SearchResults::Chats(threads.iter().map(Chat::from).collect())
             }
             Results::Messages(messages) => SearchResults::Messages(
                 messages
@@ -204,13 +206,13 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
 
 #[derive(Serialize)]
 struct List<'a> {
-    threads: Vec<Thread<'a>>,
+    chats: Vec<Chat<'a>>,
     next_offset: Option<usize>,
     shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     shared_error: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    diagnostics: Option<&'a super::threads::Diagnostics>,
+    diagnostics: Option<&'a super::chats::Diagnostics>,
 }
 
 #[derive(Serialize)]

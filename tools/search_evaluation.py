@@ -31,13 +31,13 @@ class Split(str, Enum):
 
 
 @dataclass(frozen=True, order=True)
-class Thread:
+class Chat:
     provider: str
-    conversation_id: str
+    chat_id: str
 
     @classmethod
     def decode(cls, value):
-        return cls(string(value["provider"]), string(value["conversation_id"]))
+        return cls(string(value["provider"]), string(value["chat_id"]))
 
 
 def string(value):
@@ -54,7 +54,7 @@ class Query:
     split: Split
     intent: str
     scope: str
-    grades: dict[Thread, int]
+    grades: dict[Chat, int]
 
     @classmethod
     def decode(cls, value):
@@ -63,9 +63,9 @@ class Query:
             raise ValueError("query fields differ from the evaluation schema")
         grades = {}
         for judgment in value["judgments"]:
-            if set(judgment) != {"provider", "conversation_id", "grade"}:
+            if set(judgment) != {"provider", "chat_id", "grade"}:
                 raise ValueError("unexpected judgment fields")
-            thread = Thread.decode(judgment)
+            thread = Chat.decode(judgment)
             grade = judgment["grade"]
             if type(grade) is not int or grade not in (0, 1, 2) or thread in grades:
                 raise ValueError("duplicate thread or invalid relevance grade")
@@ -106,7 +106,7 @@ def score(query, response):
     if (
         response["query"] != query.text
         or response["intent"] != query.intent
-        or response["unit"] != "threads"
+        or response["unit"] != "chats"
     ):
         raise ValueError("capture does not match the declared query/intent/unit")
     diagnostics = response["diagnostics"]
@@ -134,7 +134,7 @@ def score(query, response):
     }
     if set(diagnostics["completed_sources"]) != expected[query.scope]:
         raise ValueError("requested sources did not all complete")
-    threads = [Thread.decode(hit) for hit in response["results"][:10]]
+    threads = [Chat.decode(hit) for hit in response["results"][:10]]
     if len(set(threads)) != len(threads):
         raise ValueError("duplicate logical threads in the ranked top ten")
     missing = [thread for thread in threads if thread not in query.grades]

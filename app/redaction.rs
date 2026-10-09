@@ -1,7 +1,7 @@
 mod detection;
 pub(crate) use detection::{projection, text};
 
-pub(crate) fn metadata(metadata: &mut crate::search_results::ThreadMetadata) {
+pub(crate) fn metadata(metadata: &mut crate::search_results::ChatMetadata) {
     let mut changed = false;
     for value in [
         &mut metadata.title,

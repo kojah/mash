@@ -9,7 +9,7 @@ use rusqlite::Connection;
 use std::io::Write;
 
 /// One published thread's catalogue row.
-pub(in crate::shared) struct Thread {
+pub(in crate::shared) struct Chat {
     pub(in crate::shared) node_id: String,
     pub(in crate::shared) conversation: ConversationRecord,
 }
@@ -18,10 +18,10 @@ pub(in crate::shared) struct Thread {
 pub(in crate::shared) fn threads(
     connection: &Connection,
     node: &str,
-) -> Result<Vec<Thread>, AppError> {
+) -> Result<Vec<Chat>, AppError> {
     Ok(conversations(connection)?
         .into_iter()
-        .map(|conversation| Thread {
+        .map(|conversation| Chat {
             node_id: node.to_owned(),
             conversation,
         })

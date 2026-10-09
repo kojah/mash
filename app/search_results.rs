@@ -22,27 +22,27 @@ pub(crate) mod lookup;
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum SearchUnit {
     #[default]
-    Threads,
+    Chats,
     Messages,
 }
 
 impl SearchUnit {
     pub(crate) const fn candidate_limit(self) -> usize {
         match self {
-            Self::Threads => 200,
+            Self::Chats => 200,
             Self::Messages => 50,
         }
     }
     pub(crate) const fn rerank_limit(self) -> usize {
         match self {
-            Self::Threads => 30,
+            Self::Chats => 30,
             Self::Messages => 10,
         }
     }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub(crate) struct ThreadMetadata {
+pub(crate) struct ChatMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) enrichment: Option<crate::silver::enrichment::Evidence>,
     pub(crate) title: Option<String>,
@@ -55,24 +55,25 @@ pub(crate) struct ThreadMetadata {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub(crate) enum Results {
-    Threads(Vec<ThreadHit>),
+    Chats(Vec<ChatHit>),
     Messages(Vec<SearchHit>),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub(crate) struct ThreadHit {
+pub(crate) struct ChatHit {
+    #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) provider: Provider,
     pub(crate) node_id: Option<String>,
     #[serde(flatten)]
-    pub(crate) metadata: ThreadMetadata,
+    pub(crate) metadata: ChatMetadata,
     pub(crate) score: f32,
     /// Up to three distinct matching excerpts, ordered by relevance.
-    pub(crate) matches: Vec<ThreadMatch>,
+    pub(crate) matches: Vec<ChatMatch>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub(crate) struct ThreadMatch {
+pub(crate) struct ChatMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -113,7 +114,7 @@ pub(crate) enum HitKey {
 pub(crate) fn hit_key(hit: &SearchHit, unit: SearchUnit) -> HitKey {
     match unit {
         SearchUnit::Messages => HitKey::Message(evidence_key(hit), hit.id.clone()),
-        SearchUnit::Threads => HitKey::Evidence(evidence_key(hit)),
+        SearchUnit::Chats => HitKey::Evidence(evidence_key(hit)),
     }
 }
 
@@ -268,7 +269,7 @@ fn collect_inner(
                 .collect(),
         );
     }
-    let mut threads = Vec::<ThreadHit>::new();
+    let mut threads = Vec::<ChatHit>::new();
     let mut groups = HashMap::new();
     for (rank, mut hit) in deduplicate(hits, unit)
         .into_iter()
@@ -282,11 +283,11 @@ fn collect_inner(
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
         let key = (hit.provider, hit.conversation_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
-            threads.push(ThreadHit {
+            threads.push(ChatHit {
                 conversation_id: hit.conversation_id.clone(),
                 provider: hit.provider,
                 node_id: hit.node_id.clone(),
-                metadata: ThreadMetadata {
+                metadata: ChatMetadata {
                     enrichment: None,
                     title: hit.metadata.title.clone().or_else(|| {
                         crate::silver::dialogue::title(&crate::redaction::text(&hit.content))
@@ -327,7 +328,7 @@ fn collect_inner(
                 )
             },
         );
-        thread.matches.push(ThreadMatch {
+        thread.matches.push(ChatMatch {
             lookup: None,
             lexical_match: hit.lexical_match,
             message_id: hit.id,
@@ -348,7 +349,7 @@ fn collect_inner(
             .then_with(|| a.conversation_id.cmp(&b.conversation_id))
     });
     threads.truncate(limit.min(1000));
-    Results::Threads(threads)
+    Results::Chats(threads)
 }
 
 /// Keep the query evidence visible to the 512-token reranker on long messages.

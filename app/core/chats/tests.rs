@@ -1,6 +1,6 @@
 use super::*;
 use crate::provider::Provider;
-use crate::search_results::ThreadMetadata;
+use crate::search_results::ChatMetadata;
 use axum::{Json, Router, routing::post};
 
 mod failures;
@@ -61,16 +61,16 @@ fn assert_combined_metadata_diagnostics(result: &Response) {
 #[tokio::test]
 async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
     let app = Router::new().route(
-        "/v1/threads",
+        "/v1/chats",
         post(|Json(input): Json<Request>| async move {
             assert!(input.exclude_self);
             let mut collector = Collector::new(input).unwrap();
             for number in 0..110 {
-                collector.push(Thread {
+                collector.push(Chat {
                     conversation_id: format!("thread-{number:03}"),
                     provider: Provider::Codex,
                     node_id: "peer".into(),
-                    metadata: ThreadMetadata {
+                    metadata: ChatMetadata {
                         enrichment: None,
                         updated_at: Some(number),
                         ..Default::default()
@@ -100,7 +100,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
     assert_eq!(
         result
             .page
-            .threads
+            .chats
             .iter()
             .map(|row| row.conversation_id.as_str())
             .collect::<Vec<_>>(),
@@ -118,7 +118,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
     assert_eq!(
         result
             .page
-            .threads
+            .chats
             .iter()
             .filter(|row| row.conversation_id == "thread-105")
             .count(),
@@ -127,7 +127,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
     assert_eq!(
         result
             .page
-            .threads
+            .chats
             .iter()
             .find(|row| row.conversation_id == "thread-105")
             .unwrap()
@@ -150,7 +150,7 @@ async fn combined_catalog_merges_before_paging_and_reports_remote_failure() {
         .unwrap();
     assert_eq!(failed.calls, 1);
     assert_eq!(failed.completed_calls, 0);
-    assert_eq!(result.page.threads.len(), 1);
+    assert_eq!(result.page.chats.len(), 1);
     assert!(
         run(&config, &database, Request::default(), false, true, false)
             .await
@@ -185,7 +185,7 @@ async fn invalid_catalog_inputs_and_local_scope_never_contact_remote_or_create_d
         .await
         .unwrap();
     assert!(result.diagnostics.is_none());
-    assert_eq!(result.page.threads.len(), 1);
+    assert_eq!(result.page.chats.len(), 1);
     assert!(!result.shared);
     assert!(result.shared_error.is_none());
     assert!(!directory.path().join("models").exists());

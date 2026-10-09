@@ -482,7 +482,7 @@ async fn core_retrieves_native_copilot_prose_with_real_models() {
                 query: query.into(),
                 intent: None,
                 limit: Some(5),
-                unit: Some(crate::search_results::SearchUnit::Threads),
+                unit: Some(crate::search_results::SearchUnit::Chats),
                 filters: Box::new(crate::search_filter::Selection {
                     provider: vec![Provider::Copilot],
                     ..Default::default()
@@ -495,8 +495,8 @@ async fn core_retrieves_native_copilot_prose_with_real_models() {
         .unwrap() else {
             panic!("search")
         };
-        let crate::search_results::Results::Threads(threads) = search.results else {
-            panic!("threads")
+        let crate::search_results::Results::Chats(threads) = search.results else {
+            panic!("chats")
         };
         assert_eq!(threads.len(), 1, "{query}");
         assert_eq!(threads[0].provider, Provider::Copilot);

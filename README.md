@@ -17,7 +17,7 @@ node group, so shared history remains searchable while source machines are offli
 The service keeps shared silver (published canonical history) in SQLite and derived
 shared gold (search documents and vectors) in Qdrant. Local SQLite is required for offline search.
 
-Mash masks recognizable credentials in CLI/MCP search results, thread metadata,
+Mash masks recognizable credentials in CLI/MCP search results, chat metadata,
 and `view` output, shared HTTP read responses and outgoing publications, and text
 sent to remote embedding APIs. Full values use `[REDACTED_SECRET]`; excerpts use
 masking characters to retain their source offsets. Original provider histories
@@ -41,17 +41,26 @@ reuse the generated projection and decoder; migrations and writes remain explici
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-gold [--full]
-mash search <query> [--unit threads|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
-mash list-threads [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
+mash search <query> [--unit chats|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
+mash list-chats [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
-mash forget <conversation-id>
+mash forget <chat-id>
 mash export <new-directory>
 mash import <export-directory> --into <new-database> [--keep-identity]
 mash models install
 mash mcp [--watch [--debounce-ms N]]
 mash serve --server-config PATH
 ```
+
+Chat discovery uses `list-chats` / MCP `list_chats`, `chats` / `messages`
+search units, `--chat` / MCP `chat` filters, and `chat_id` in search and listing
+results. Update clients and explicit `gold.query.unit` settings and reconnect
+existing MCP sessions after upgrading. Title-and-dialogue embeddings now use
+`Chat:` with a new recipe identity; rebuild affected local gold explicitly.
+Shared gold's chat state also uses the new names: replay shared gold from silver
+with `mash serve --server-config PATH --replay-gold` when upgrading an existing
+server. Canonical silver is retained.
 
 One-shot data commands emit one JSON value; watch mode emits newline-delimited
 results, and `mash mcp` serves the stdio protocol. `mash serve` runs the shared
@@ -111,7 +120,7 @@ See the [official Codex MCP configuration documentation](https://learn.chatgpt.c
 ## Codex and Claude Code history plugin
 
 `plugins/mash` packages a shared `history` skill for both clients. It prefers
-Mash MCP, falls back to the CLI when MCP is unavailable, and guides thread
+Mash MCP, falls back to the CLI when MCP is unavailable, and guides chat
 discovery, scoped message searches and evidence-backed answers about past
 decisions. It uses the existing Mash connection rather than starting a duplicate
 MCP server. The plugin requires a configured Mash executable/index; install and
@@ -333,7 +342,7 @@ Without a configuration file, mash indexes these built-in roots when present:
 
 Claude subagent transcripts share their parent's native session ID. mash uses
 the session and native `agentId` together to index each subagent as an independent
-thread, so it cannot replace the parent's history. An explicit `mash index`
+chat, so it cannot replace the parent's history. An explicit `mash index`
 upgrades older indexes and reprocesses Claude source checkpoints to repair this
 identity collision; search never performs the upgrade or indexing itself.
 The schema 32/33-to-34 upgrade preserves existing vectors and search readiness;
@@ -341,8 +350,8 @@ reprocessing changed Claude transcripts updates their derived data normally.
 
 Claude message UUIDs are scoped to their native session and agent, independent
 of the transcript's physical path. SQLite retains each physical source's
-contribution and derives one logical thread from their union. Event-only workflow
-journals do not create threads or require
+contribution and derives one logical chat from their union. Event-only workflow
+journals do not create chats or require
 a single agent identity. Agent consistency is enforced when the source contains
 retained dialogue, including identity supplied by metadata records. Matching copies
 are deduplicated; divergent branches retain their own causal context. Rewinding,
@@ -362,7 +371,7 @@ fail transactionally. The native compaction boundary remains a context root.
 Native forks may retain the original session ID on their copied history. When
 the new session's dialogue explicitly links into that history, the whole copied
 transcript belongs to the fork's native session; the original remains a separate
-thread. Nested forks follow the same rule. Unlinked transitions and interleaved
+chat. Nested forks follow the same rule. Unlinked transitions and interleaved
 session IDs fail rather than silently combining unrelated histories. Records
 without a UUID retain path-based fallback identity.
 
@@ -438,7 +447,7 @@ Live worker stage streaming and fleet overhead measurements remain planned.
 OpenCode is opt-in through `[providers.opencode]`, with `roots` pointing to
 `opencode.db` (normally `~/.local/share/opencode/opencode.db`) or its containing
 directory. It reads sessions and project metadata from native SQLite snapshots,
-including WAL changes. Each session becomes one thread. Sessions with
+including WAL changes. Each session becomes one chat. Sessions with
 `session_message` records use that history; other sessions use the native
 `message`/`part` tables. User and assistant text is searchable; reasoning, tools,
 files, shell output, compaction and synthetic/ignored text remain context only.
@@ -591,8 +600,8 @@ roots must be absolute. `index.since_days` defaults to 90. Set
 `index.all_history = true` instead for all history; these settings cannot be
 combined. CLI indexing flags override these settings.
 
-Optional `[gold.query]` settings select the default `unit` (`"threads"` or
-`"messages"`) and `limit` (1–200). Omitting them preserves threads and 20 results.
+Optional `[gold.query]` settings select the default `unit` (`"chats"` or
+`"messages"`) and `limit` (1–200). Omitting them preserves chats and 20 results.
 CLI/MCP search parameters override either setting without rebuilding the index.
 `[gold.query.fusion]` controls hybrid candidate fusion independently of gold
 builds: `rank_constant` defaults to 60 (1–1000), and `lexical_weight` and
@@ -691,7 +700,7 @@ before loading models or opening an index. Short names and ambiguous technical
 terms remain searchable; language detection cannot reliably classify every short
 or mixed-language query.
 
-CLI search accepts repeatable `--provider`, `--node`, `--role`, `--conversation`,
+CLI search accepts repeatable `--provider`, `--node`, `--role`, `--chat`,
 `--project`, and `--repository`. Repeated values for one field are alternatives;
 different fields are combined with AND. `--node` filters publishing identity and
 does not connect directly to another node. A standalone local installation uses
@@ -699,18 +708,18 @@ the node label `local`. `--days` is a rolling message-age window. `--after` is
 inclusive and `--before` exclusive; both accept `YYYY-MM-DD` (UTC midnight) or
 RFC3339 timestamps with an explicit offset.
 
-MCP exposes the same selection fields: `provider`, `conversation`, `node`,
+MCP exposes the same selection fields: `provider`, `chat`, `node`,
 `role`, `project` and `repository` are arrays, including for a single value.
 `after` and `before` use Unix seconds. Omitted or empty shortcut arrays impose
 no restriction; an empty list inside a structured predicate, such as
-`{"conversation": []}`, matches nothing. Unknown thread IDs match nothing.
-Use canonical `conversation_id` values returned by thread search to drill down
-into messages from promising threads:
+`{"chat": []}`, matches nothing. Unknown chat IDs match nothing.
+Use canonical `chat_id` values returned by chat search to drill down
+into messages from promising chats:
 
 ```bash
-mash search 'deployment' --unit threads
+mash search 'deployment' --unit chats
 mash search 'rollback procedure' --unit messages \
-  --conversation THREAD_A --conversation THREAD_B \
+  --chat THREAD_A --chat THREAD_B \
   --provider codex --provider claude-code
 ```
 
@@ -720,7 +729,7 @@ The corresponding MCP drill-down request is:
 {
   "query": "rollback procedure",
   "unit": "messages",
-  "conversation": ["THREAD_A", "THREAD_B"],
+  "chat": ["THREAD_A", "THREAD_B"],
   "provider": ["codex", "claude-code"]
 }
 ```
@@ -739,7 +748,7 @@ files remain TOML. Each expression contains exactly one operator:
 - `all`: AND of expressions; an empty list matches everything.
 - `any`: OR of expressions; an empty list matches nothing.
 - `not`: negation of one expression.
-- `node`, `provider`, `role`, `conversation`, `project`, `repository`: lists of exact, case-sensitive values.
+- `node`, `provider`, `role`, `chat`, `project`, `repository`: lists of exact, case-sensitive values.
 - `after`, `before`: inclusive/exclusive Unix timestamps **in seconds**.
 
 An MCP request can select either repository while excluding tool messages:
@@ -782,27 +791,27 @@ Nodes access the shared index through an authenticated Axum HTTP service. Only
 that service connects to Qdrant. There is one
 joint index per group, with node ownership enforced by the service.
 
-`POST /v1/threads` lists thread metadata without model inference, message bodies
+`POST /v1/chats` lists chat metadata without model inference, message bodies
 or vectors. Use the same bearer token as other shared API calls. Its typed JSON
 request accepts `provider` and `node` arrays, literal ASCII-case-insensitive
 `title_contains`, inclusive `after` and exclusive `before` activity bounds in
-Unix seconds, and `exclude_self`. Activity refers to recorded thread `updated_at`;
+Unix seconds, and `exclude_self`. Activity refers to recorded chat `updated_at`;
 unknown activity does not match a time bound. Omitted or empty arrays impose no
 restriction. Sort by `updated_at` (default), `created_at` or `title`, with
 `direction` set to `asc` or `desc` (default). Title ordering uses binary string
-order. Missing sort values always come last; provider, thread ID and node break
+order. Missing sort values always come last; provider, chat ID and node break
 ties deterministically.
 
-The response contains `threads` with canonical `conversation_id`, provider,
+The response contains `chats` with canonical `chat_id`, provider,
 representative `node_id`, title/project/repository and timestamps in Unix
-milliseconds, plus `next_offset`. Copies with the same provider/thread ID are
+milliseconds, plus `next_offset`. Copies with the same provider/chat ID are
 deduplicated before paging; the best matching copy for the requested sort order
 supplies metadata. `limit` defaults to 50 (1–100); `offset` defaults to 0
 (0–10000). Pagination stops before advertising an offset beyond 10000; narrow
 filters to browse larger collections. Pages are stable while the index is unchanged; updates between page
 requests can shift boundaries.
 
-Use `mash list-threads` or the MCP `list_threads` tool for the same metadata
+Use `mash list-chats` or the MCP `list_chats` tool for the same metadata
 discovery. These thin wrappers call the shared application core. The default
 scope combines local SQLite and other nodes in the configured shared index;
 `--local`/`local=true` stays offline, and `--shared`/`shared=true` reads only the
@@ -812,7 +821,7 @@ two-second total deadline; combined discovery returns local metadata with
 `shared_error` on failure, while shared-only discovery fails. `shared` in the
 response indicates a successful shared read.
 
-Use `list-threads --diagnostics` or MCP `list_threads` with `diagnostics=true`
+Use `list-chats --diagnostics` or MCP `list_chats` with `diagnostics=true`
 to include metadata-only artifact selection, requested/completed sources,
 shared fallback and listing/merge counts and timings. Diagnostics make no extra
 HTTP calls and require no models. `local-metadata` and `shared-metadata` measure
@@ -828,11 +837,11 @@ generation, so metadata already recorded during indexing can be inspected.
 This does not make semantic search ready. MCP sort values use `updated_at` and
 `created_at`; CLI values use `updated-at` and `created-at`.
 
-For example, orient first and then search within a returned thread:
+For example, orient first and then search within a returned chat:
 
 ```bash
-mash list-threads --provider codex --title-contains cbioportal --limit 10
-mash search 'database migration' --unit messages --provider codex --conversation THREAD_ID
+mash list-chats --provider codex --title-contains cbioportal --limit 10
+mash search 'database migration' --unit messages --provider codex --chat CHAT_ID
 ```
 
 The HTTP service stores shared silver in SQLite and shared gold in
@@ -849,7 +858,7 @@ Use an HTTPS reverse proxy for remote access or HTTP on a trusted private networ
 The service binds to `127.0.0.1:8787` by default. Node clients disable redirects.
 
 The API exposes `/v1/index` (NDJSON), `/v1/freshness`, `/v1/search`, `/v1/contexts`,
-`/v1/threads`, `/v1/view` and the attachment routes. Nodes plan publication from
+`/v1/chats`, `/v1/view` and the attachment routes. Nodes plan publication from
 their `/v1/freshness` entry and forget through delta uploads. Requests use bearer
 credentials. Search carries a query embedding and returns candidates for node-side
 fusion and reranking. The HTTP server needs no model assets. Interrupted or invalid
@@ -870,7 +879,7 @@ of mutations, not their total RAM.
 Shared silver is the source of truth. A publication is validated and committed
 to the silver SQLite database in one transaction, and only then synchronized into
 Qdrant: documents are replaced in place per message and the node's gold record
-is certified for the new silver revision when every thread is written. Until
+is certified for the new silver revision when every chat is written. Until
 then the node's gold is reported stale and excluded from dense search; there is
 no Qdrant staging or conditional head protocol. A node that sees stale gold
 resends a complete snapshot, which repairs gold without changing silver.
@@ -918,7 +927,7 @@ upload, validation and gold synchronization. The service uses the same bulk budg
 or disconnected requester does not cancel an already admitted mutation: it keeps
 its capacity until completion, and gold is not reported current until synchronization completes.
 
-Search defaults to `unit = "threads"` in CLI and MCP. Each thread result includes
+Search defaults to `unit = "chats"` in CLI and MCP. Each chat result includes
 its conversation ID, provider, representative node, available title/project/repository
 and conversation timestamps, a ranking score, and up to three distinct matching
 excerpts in relevance order. Each excerpt has a `message_id`, its own `node_id`,
@@ -941,24 +950,24 @@ and remaining relevance limitations.
 
 Thread retrieval considers up to 200 lexical and 200 semantic candidates per
 index. It keeps up to six distinct candidate messages per conversation. A first
-reranking pass evaluates up to 20 grouped thread documents, then individual
-evidence is reranked for five to ten promising threads (at most 60 messages).
+reranking pass evaluates up to 20 grouped chat documents, then individual
+evidence is reranked for five to ten promising chats (at most 60 messages).
 Each evidence document includes bounded text from its two nearest searchable
 neighbours. Threads are grouped before applying `limit`;
 their score is reciprocal rank of the best qualifying message plus a bounded
 bonus for up to two additional qualifying excerpts. The bonus is smaller than
-the gap to the next message rank, so weaker matches cannot push a thread above
+the gap to the next message rank, so weaker matches cannot push a chat above
 one with stronger primary evidence. Scores express relative relevance, not probabilities.
 Lexical matches and verified exact PR/issue references remain eligible outside
 the reranking budget. Other semantic-only
 matches qualify only after being evaluated by the reranker; unreranked neighbours
-do not fill out thread results. Raw model logits are not calibrated probabilities,
+do not fill out chat results. Raw model logits are not calibrated probabilities,
 so a negative score alone does not disqualify a semantic paraphrase. A query may
-return fewer threads than requested. Message mode applies the same evidence gate.
+return fewer chats than requested. Message mode applies the same evidence gate.
 Recency does not change ranking; use date filters to restrict history.
 Copies with the same provider and conversation ID are grouped across nodes;
 identical role and whitespace-normalized message content earns no additional credit.
-Replicas are collapsed before fusion and thread scoring; each excerpt's `copies`
+Replicas are collapsed before fusion and chat scoring; each excerpt's `copies`
 lists alternate message/node references for viewing the same evidence. Independent conversations
 with different IDs remain separate.
 
@@ -1030,7 +1039,7 @@ exact retrieval scores the matching shared vectors. Qdrant also supports opt-in 
 The API spools each upload to a private temporary file and applies it to shared
 silver in one SQLite transaction; temporary disk must hold concurrent uploads.
 Gold synchronization then reads the committed upload and writes Qdrant documents
-per thread. Account for concurrent uploads when provisioning the API.
+per chat. Account for concurrent uploads when provisioning the API.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
 recall tradeoffs before choosing approximate retrieval.
 
@@ -1155,7 +1164,7 @@ need workload-specific measurement.
 Each group has an isolated message collection with named cosine dense vectors
 and IDF-weighted sparse lexical vectors, plus a state collection for the group's
 gold configuration and each node's gold certificate. Canonical history,
-checkpoints, tombstones and thread catalogs live in shared silver. Lexical retrieval uses
+checkpoints, tombstones and chat catalogs live in shared silver. Lexical retrieval uses
 lowercase alphanumeric tokens, hashed sparse term IDs, saturated term frequency,
 and a fixed 256-token length reference; exact token predicates prevent hash
 collisions from producing false lexical matches. This is a backend-specific
@@ -1169,7 +1178,7 @@ fields are prepared without changing the original vector space.
 
 Each node's gold record names the silver revision it was certified against.
 Publication clears the certificate, replaces changed documents in place, deletes
-removed threads, and then recertifies; a crash between those steps leaves gold
+removed chats, and then recertifies; a crash between those steps leaves gold
 stale rather than wrong-and-current. Activation replaces the group configuration
 point; API processes with superseded settings fail closed. The 64 MiB upload
 limit is configurable. Keep the silver database on persistent, backed-up storage.
@@ -1306,12 +1315,12 @@ their credentials are later removed.
 ## MCP
 
 CLI and MCP are wrappers around the same typed application core in `app/core.rs`.
-The core owns indexing, search, thread listing, view, status, forgetting, silver export/import, and model installation.
+The core owns indexing, search, chat listing, view, status, forgetting, silver export/import, and model installation.
 MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
 The cached search worker and watcher also use typed core requests.
 
 `app/core/models.rs` defines those serialized requests and responses.
-Operation handlers live in `app/core/indexing.rs`, `search.rs`, `threads.rs`, `inspection.rs`
+Operation handlers live in `app/core/indexing.rs`, `search.rs`, `chats.rs`, `inspection.rs`
 and `maintenance.rs`; each returns its concrete result type. The façade resolves
 configuration and paths, dispatches the request and wraps the result once.
 Indexing owns per-index provider routing, progress and watcher target selection;
@@ -1338,7 +1347,7 @@ NDJSON streams. Configuration and credentials are validated before connecting
 to storage, and backend initialization completes before the listener opens.
 
 Run `mash mcp` as a stdio MCP server. It accepts `--config`, `--db`, and
-`--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_threads`, `view`, `status`, `index`, `forget`,
+`--models-dir`, `--watch`, and `--debounce-ms` at startup and exposes `search`, `list_chats`, `view`, `status`, `index`, `forget`,
 `models_install`, `list_attachments`, `get_attachment`, `export_silver`, `import_silver`, `watch_start`, `watch_stop`, and `watch_status`. The server uses the same operations and typed JSON errors
 as the CLI; tool failures set MCP `isError`.
 
@@ -1350,7 +1359,7 @@ Clients may expose both channels, so this does not guarantee token savings.
 summarize their results and retry/next-action information; attachment retrieval
 also retains native MCP image/resource content. Tool errors use readable text
 and preserve typed error JSON and `isError`.
-`search`, `list_threads`, and `status` accept `detail: "compact"` (default)
+`search`, `list_chats`, and `status` accept `detail: "compact"` (default)
 or `"extended"`. Compact search bounds message/excerpt text to 600 characters
 (plus truncation markers), removes per-stage ranking scores and enrichment
 provenance, and preserves result ordering, IDs, publishing node attribution,
@@ -1438,8 +1447,8 @@ Example MCP client configuration:
 
 For shared operations, provide the configured node token environment variable to
 `mash mcp` through your MCP client's environment mechanism. `search` accepts a
-`shared` boolean and a `unit` of `threads` (default) or `messages`; `view` accepts a `shared` publishing node ID. Search, view, and
-status, `list_threads`, and `watch_status` are annotated read-only. Watch start/stop
+`shared` boolean and a `unit` of `chats` (default) or `messages`; `view` accepts a `shared` publishing node ID. Search, view, and
+status, `list_chats`, and `watch_status` are annotated read-only. Watch start/stop
 control background indexing without waiting for the index mutation guard. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;
 service-side Qdrant I/O uses async HTTP. SQLite, parsing, and local FastEmbed inference run on blocking
@@ -1611,8 +1620,8 @@ MASH_TEST_SEARCH_DB=/path/to/refreshed/index.sqlite3 \
 ```
 
 These manual diagnostics open the index read-only, warm models, and emit JSON
-timings for seven queries in message and thread modes. They compare ordered
-message IDs and thread excerpt IDs against the default inference configuration;
+timings for seven queries in message and chat modes. They compare ordered
+message IDs and chat excerpt IDs against the default inference configuration;
 the batch comparison also checks scores. Ranking changes fail the diagnostic.
 Repeated settings help reveal timing noise. Measurements exclude CLI startup,
 worker transport and shared search, and do not establish relevance by themselves.

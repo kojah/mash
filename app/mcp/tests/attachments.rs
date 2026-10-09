@@ -97,9 +97,7 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
     .await
     .unwrap();
     assert_eq!(wrong.is_error, Some(true));
-    let forgotten = call("forget", json!({"conversation_id":"session"}))
-        .await
-        .unwrap();
+    let forgotten = call("forget", json!({"chat_id":"session"})).await.unwrap();
     assert_ne!(forgotten.is_error, Some(true));
     assert!(
         forgotten.content[0]

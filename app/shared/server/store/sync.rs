@@ -3,7 +3,7 @@
 use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::protocol::{Batch, ConversationRecord, Event, Indexed};
-use crate::shared::qdrant_index::{GoldThread, NodeGold};
+use crate::shared::qdrant_index::{GoldChat, NodeGold};
 use crate::shared::silver_store::{self, Applied};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::BufRead;
@@ -11,7 +11,7 @@ use std::io::BufRead;
 /// Documents written per Qdrant request.
 const DOCUMENT_BATCH: usize = 64;
 
-/// A thread being written from an upload or from silver.
+/// A chat being written from an upload or from silver.
 #[derive(Default)]
 struct Written {
     ids: Vec<String>,
@@ -55,7 +55,7 @@ impl Store {
         })
     }
 
-    /// Write gold for the threads an upload supplied, then certify the revision.
+    /// Write gold for the chats an upload supplied, then certify the revision.
     async fn sync_upload(
         &self,
         identity: &Identity,
@@ -75,14 +75,14 @@ impl Store {
         self.gold.put_node_gold(identity, &gold).await?;
         for id in &applied.deleted {
             self.gold.retain_documents(identity, id, Vec::new()).await?;
-            gold.threads.remove(id);
+            gold.chats.remove(id);
         }
         let fingerprints = self
             .read(identity, |connection| {
                 silver_store::fingerprints(connection)
             })
             .await?;
-        // A duplicate snapshot resupplies every thread with its vectors.
+        // A duplicate snapshot resupplies every chat with its vectors.
         let supplied: BTreeSet<String> = if applied.duplicate {
             fingerprints.keys().cloned().collect()
         } else {
@@ -90,28 +90,28 @@ impl Store {
         };
         let written = self.write_upload(identity, file, &supplied).await?;
         for id in &supplied {
-            let thread = written.get(id);
+            let chat = written.get(id);
             if !fresh {
-                let current = thread.map(|t| t.ids.clone()).unwrap_or_default();
+                let current = chat.map(|t| t.ids.clone()).unwrap_or_default();
                 self.gold.retain_documents(identity, id, current).await?;
             }
             let fingerprint = fingerprints
                 .get(id)
                 .cloned()
-                .ok_or_else(|| AppError::internal("supplied thread has no silver"))?;
-            gold.threads.insert(
+                .ok_or_else(|| AppError::internal("supplied chat has no silver"))?;
+            gold.chats.insert(
                 id.clone(),
-                GoldThread {
+                GoldChat {
                     fingerprint,
-                    embeddings: thread.map_or(0, |t| t.embeddings),
-                    complete: thread.is_none_or(|t| t.embeddings == t.expected),
+                    embeddings: chat.map_or(0, |t| t.embeddings),
+                    complete: chat.is_none_or(|t| t.embeddings == t.expected),
                 },
             );
         }
         self.certify(identity, gold, &fingerprints).await
     }
 
-    /// Stream the upload's messages for the selected threads into documents.
+    /// Stream the upload's messages for the selected chats into documents.
     async fn write_upload(
         &self,
         identity: &Identity,
@@ -151,13 +151,13 @@ impl Store {
                     continue;
                 }
                 if !conversations.contains_key(&id) {
-                    let thread = id.clone();
+                    let chat = id.clone();
                     let record = self
                         .read(identity, move |connection| {
-                            silver_store::conversation(connection, &thread)
+                            silver_store::conversation(connection, &chat)
                         })
                         .await?
-                        .ok_or_else(|| AppError::internal("supplied thread has no silver"))?;
+                        .ok_or_else(|| AppError::internal("supplied chat has no silver"))?;
                     conversations.insert(id.clone(), record);
                 }
                 let entry = written.entry(id.clone()).or_default();
@@ -173,7 +173,7 @@ impl Store {
         Ok(written)
     }
 
-    /// Record gold as current only when every silver thread has complete documents.
+    /// Record gold as current only when every silver chat has complete documents.
     pub(in crate::shared) async fn certify(
         &self,
         identity: &Identity,
@@ -185,15 +185,15 @@ impl Store {
                 "external connector gold projection has not completed",
             ));
         }
-        gold.threads.retain(|id, _| fingerprints.contains_key(id));
+        gold.chats.retain(|id, _| fingerprints.contains_key(id));
         let head = self.head(identity).await?;
-        let synced = gold.threads.len() == fingerprints.len()
+        let synced = gold.chats.len() == fingerprints.len()
             && fingerprints.iter().all(|(id, fingerprint)| {
-                gold.threads
+                gold.chats
                     .get(id)
                     .is_some_and(|t| &t.fingerprint == fingerprint)
             });
-        gold.certified = synced && gold.threads.values().all(|thread| thread.complete);
+        gold.certified = synced && gold.chats.values().all(|chat| chat.complete);
         gold.silver = synced
             .then(|| head.and_then(|h| h.silver_revision))
             .flatten();

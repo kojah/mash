@@ -57,7 +57,7 @@ pub(super) fn index(out: &mut String, value: &IndexResponse) -> Result<(), serde
     line(
         out,
         &format!(
-            "Indexed: {} threads, {} messages · searchable: {}",
+            "Indexed: {} chats, {} messages · searchable: {}",
             value.indexed_conversations, value.indexed_messages, value.searchable_messages
         ),
     );
@@ -118,7 +118,7 @@ fn counts(out: &mut String, value: &crate::export::HistoryCounts) {
     line(
         out,
         &format!(
-            "Silver data: {} threads, {} messages · {} attachment files, {} bytes",
+            "Silver data: {} chats, {} messages · {} attachment files, {} bytes",
             value.conversations, value.messages, value.attachment_files, value.attachment_bytes
         ),
     );

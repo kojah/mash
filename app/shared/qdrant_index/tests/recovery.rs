@@ -43,10 +43,10 @@ async fn qdrant_lost_gold_is_reported_and_a_resent_snapshot_rebuilds_it() {
     assert!(!freshness.nodes[0].gold_current);
     assert_eq!(freshness.nodes[0].silver_revision, state.silver_revision);
     let threads = server
-        .list_threads(&fixture.identity, crate::thread_catalog::Request::default())
+        .list_chats(&fixture.identity, crate::chat_catalog::Request::default())
         .await
         .unwrap();
-    assert_eq!(threads.threads.len(), 1);
+    assert_eq!(threads.chats.len(), 1);
     assert!(
         server
             .search(&fixture.identity, fixture.query())
@@ -203,7 +203,7 @@ async fn qdrant_replay_reconstructs_all_gold_from_shared_silver() {
         .replay(&fixture.identity, models.path(), Some(&remote))
         .await
         .unwrap();
-    assert_eq!(replayed.threads, 1);
+    assert_eq!(replayed.chats, 1);
     assert_eq!(replayed.messages, 2);
     assert_eq!(replayed.embeddings, 2);
     assert_eq!(fixture.retained(), silver);

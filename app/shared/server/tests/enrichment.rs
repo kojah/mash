@@ -117,10 +117,10 @@ async fn qdrant_timestamp_evidence_round_trips_and_rejects_invalid_rules_and_ids
     }
 }
 
-async fn metadata(service: &Service) -> crate::thread_catalog::Page {
+async fn metadata(service: &Service) -> crate::chat_catalog::Page {
     service
-        .request("threads", FIRST)
-        .json(&crate::thread_catalog::Request::default())
+        .request("chats", FIRST)
+        .json(&crate::chat_catalog::Request::default())
         .send()
         .await
         .unwrap()
@@ -150,7 +150,7 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
         StatusCode::OK
     );
     assert_eq!(
-        metadata(&service).await.threads[0].metadata.enrichment,
+        metadata(&service).await.chats[0].metadata.enrichment,
         Some(expected.clone())
     );
     let mut vector = vec![0.0; 384];
@@ -183,12 +183,12 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
         StatusCode::BAD_REQUEST
     );
     assert_eq!(
-        metadata(&service).await.threads[0].metadata.enrichment,
+        metadata(&service).await.chats[0].metadata.enrichment,
         Some(expected.clone())
     );
     reject_invalid_message_references(&service, &events).await;
     assert_eq!(
-        metadata(&service).await.threads[0].metadata.enrichment,
+        metadata(&service).await.chats[0].metadata.enrichment,
         Some(expected)
     );
     // Old records have no evidence; replacement must clear stale annotations.
@@ -205,7 +205,7 @@ async fn contract(service: Service, provider: crate::provider::Provider, expecte
         StatusCode::OK
     );
     assert!(
-        metadata(&service).await.threads[0]
+        metadata(&service).await.chats[0]
             .metadata
             .enrichment
             .is_none()

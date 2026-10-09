@@ -103,7 +103,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
             "attachments": {"allowed_roots": [], "share_files": false},
             "shared": null,
             "gold": {"build": {"embedding_text": "dialogue"}, "query": {
-                "intent": "related-discussion", "unit": "threads", "limit": 20,
+                "intent": "related-discussion", "unit": "chats", "limit": 20,
                 "fusion": {"rank_constant": 60, "lexical_weight": 1, "semantic_weight": 1},
                 "ranking": "contextual-rerank"
             }},

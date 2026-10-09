@@ -56,7 +56,7 @@ fn message_replicas_fuse_once_even_when_rankers_choose_different_nodes() {
 
 #[test]
 fn weak_semantic_neighbours_abstain_but_negative_logit_paraphrases_survive() {
-    for unit in [SearchUnit::Threads, SearchUnit::Messages] {
+    for unit in [SearchUnit::Chats, SearchUnit::Messages] {
         let mut useful = hit("useful", "model caching");
         useful.lexical_score = None;
         useful.semantic_score = Some(0.396);
@@ -67,7 +67,7 @@ fn weak_semantic_neighbours_abstain_but_negative_logit_paraphrases_survive() {
         weak.rerank_score = Some(-2.958);
         let results = collect(vec![weak, useful], unit, 5, "keep the model warm");
         match results {
-            Results::Threads(hits) => assert_eq!(
+            Results::Chats(hits) => assert_eq!(
                 hits.iter()
                     .map(|h| h.conversation_id.as_str())
                     .collect::<Vec<_>>(),
@@ -92,7 +92,7 @@ fn hit(thread: &str, id: &str) -> SearchHit {
         content: id.into(),
         copies: Vec::new(),
         created_at: Some(123),
-        metadata: ThreadMetadata {
+        metadata: ChatMetadata {
             enrichment: None,
             title: Some(thread.into()),
             ..Default::default()
@@ -107,16 +107,16 @@ fn hit(thread: &str, id: &str) -> SearchHit {
     }
 }
 
-fn threads(hits: Vec<SearchHit>, limit: usize) -> Vec<ThreadHit> {
-    let Results::Threads(results) = collect(hits, SearchUnit::Threads, limit, "query") else {
-        panic!("threads");
+fn threads(hits: Vec<SearchHit>, limit: usize) -> Vec<ChatHit> {
+    let Results::Chats(results) = collect(hits, SearchUnit::Chats, limit, "query") else {
+        panic!("chats");
     };
     results
 }
 
 #[test]
 fn explicit_references_cannot_be_replaced_by_nearby_issue_numbers() {
-    for unit in [SearchUnit::Threads, SearchUnit::Messages] {
+    for unit in [SearchUnit::Chats, SearchUnit::Messages] {
         let mut wrong = hit("wrong", "wrong-pr");
         wrong.content = "review PR 183".into();
         wrong.rerank_score = Some(3.0);
@@ -126,7 +126,7 @@ fn explicit_references_cannot_be_replaced_by_nearby_issue_numbers() {
         correct.lexical_score = None;
         correct.rerank_score = None;
         match collect(vec![wrong, correct], unit, 5, "PR 180") {
-            Results::Threads(results) => {
+            Results::Chats(results) => {
                 assert_eq!(results.len(), 1);
                 assert_eq!(results[0].conversation_id, "correct");
             }
@@ -301,7 +301,7 @@ fn repeated_content_and_cross_node_copies_do_not_boost_a_thread() {
     copy.content = " same\n  message ".into();
     let mut next = hit("same", "next");
     next.node_id = Some("remote-node".into());
-    let results = threads(diversify(vec![first, copy, next], SearchUnit::Threads), 20);
+    let results = threads(diversify(vec![first, copy, next], SearchUnit::Chats), 20);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].matches.len(), 2);
     assert_eq!(results[0].matches[0].node_id, None);
@@ -365,7 +365,7 @@ fn candidate_diversity_prevents_one_chat_from_occupying_the_rerank_budget() {
         .map(|i| hit("long", &format!("message-{i}")))
         .collect::<Vec<_>>();
     hits.push(hit("short", "short-match"));
-    let hits = diversify(hits, SearchUnit::Threads);
+    let hits = diversify(hits, SearchUnit::Chats);
     assert_eq!(
         hits.iter().map(|h| h.id.as_str()).collect::<Vec<_>>(),
         [
@@ -422,10 +422,10 @@ fn exact_excerpts_show_verified_literals_instead_of_earlier_partial_decoys() {
         let projection = evidence.content.clone();
         let mut wrong = hit("wrong", "wrong");
         wrong.content = decoy.into();
-        let Results::Threads(results) =
-            collect_exact(vec![wrong, evidence], SearchUnit::Threads, 2, &literal)
+        let Results::Chats(results) =
+            collect_exact(vec![wrong, evidence], SearchUnit::Chats, 2, &literal)
         else {
-            panic!("threads");
+            panic!("chats");
         };
         assert_eq!(results.len(), 1, "{query}");
         let anchor = &results[0].matches[0];
@@ -485,15 +485,10 @@ fn projection_spans_cover_empty_short_edge_and_combining_character_windows() {
 
 #[test]
 fn thread_metadata_and_view_anchors_survive_worker_serialization() {
-    let results = collect(
-        vec![hit("chat", "message")],
-        SearchUnit::Threads,
-        20,
-        "query",
-    );
+    let results = collect(vec![hit("chat", "message")], SearchUnit::Chats, 20, "query");
     let json = serde_json::to_string(&results).unwrap();
-    let Results::Threads(decoded) = serde_json::from_str(&json).unwrap() else {
-        panic!("threads");
+    let Results::Chats(decoded) = serde_json::from_str(&json).unwrap() else {
+        panic!("chats");
     };
     assert_eq!(decoded[0].metadata.title.as_deref(), Some("chat"));
     assert_eq!(decoded[0].matches[0].message_id, "message");

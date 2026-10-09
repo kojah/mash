@@ -146,7 +146,7 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     );
     let threads = call(
         "search",
-        json!({"query":"needle", "intent":"exact-mention", "local":true, "unit":"threads"}),
+        json!({"query":"needle", "intent":"exact-mention", "local":true, "unit":"chats"}),
     )
     .await
     .unwrap()
@@ -159,28 +159,28 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
         anchored.structured_content.unwrap()["messages"][0]["content"],
         text
     );
-    let listed = call("list_threads", json!({"local":true,"detail":"extended"}))
+    let listed = call("list_chats", json!({"local":true,"detail":"extended"}))
         .await
         .unwrap()
         .structured_content
         .unwrap();
-    let compact_list = call("list_threads", json!({"local":true})).await.unwrap();
+    let compact_list = call("list_chats", json!({"local":true})).await.unwrap();
     assert!(
         compact_list.content[0]
             .as_text()
             .unwrap()
             .text
-            .starts_with("Mash threads")
+            .starts_with("Mash chats")
     );
     presentation_bytes(&compact_list);
     let compact_list = compact_list.structured_content.unwrap();
     assert_eq!(listed["next_offset"], compact_list["next_offset"]);
     assert_eq!(
-        listed["threads"][0]["conversation_id"],
-        compact_list["threads"][0]["conversation_id"]
+        listed["chats"][0]["chat_id"],
+        compact_list["chats"][0]["chat_id"]
     );
-    assert!(listed["threads"][0].get("enrichment").is_some());
-    assert!(compact_list["threads"][0].get("enrichment").is_none());
+    assert!(listed["chats"][0].get("enrichment").is_some());
+    assert!(compact_list["chats"][0].get("enrichment").is_none());
     let status = call("status", json!({})).await.unwrap();
     assert!(
         status.content[0]

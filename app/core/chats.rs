@@ -1,12 +1,12 @@
 //! Metadata discovery independent of inference; merge before global pagination.
 use super::required_shared;
 use crate::AppError;
+use crate::chat_catalog::{Chat, Collector, Page, Request};
 use crate::config::ResolvedConfig;
 use crate::gold::diagnostics::{Artifact, Scope, Source};
 use crate::observability::retrieval::{Capture, Guard, Measurement, Stage};
 use crate::shared;
 use crate::storage::Storage;
-use crate::thread_catalog::{Collector, Page, Request, Thread};
 use serde::Serialize;
 use std::path::Path;
 use std::time::Duration;
@@ -38,7 +38,7 @@ pub(crate) struct Diagnostics {
     stages: Vec<Measurement>,
 }
 
-#[tracing::instrument(name = "list_threads", skip_all)]
+#[tracing::instrument(name = "list_chats", skip_all)]
 pub(super) async fn run(
     config: &ResolvedConfig,
     database: &Path,
@@ -54,7 +54,7 @@ pub(super) async fn run(
         Some(capture) => capture.scope(work).await?,
         None => work.await?,
     };
-    for thread in &mut response.page.threads {
+    for thread in &mut response.page.chats {
         crate::redaction::metadata(&mut thread.metadata);
     }
     if let Some(capture) = capture {
@@ -77,7 +77,7 @@ pub(super) async fn run(
                 vec![Source::Local]
             },
             shared_fallback: response.shared_error.is_some(),
-            returned_results: response.page.threads.len(),
+            returned_results: response.page.chats.len(),
             elapsed_ms: crate::progress::milliseconds(started),
             stages: capture.finish(),
         });
@@ -105,21 +105,21 @@ async fn run_inner(
         .map_or("local", |config| config.node_id.as_str());
     let local = async {
         if shared_only {
-            return Ok::<Vec<Thread>, AppError>(Vec::new());
+            return Ok::<Vec<Chat>, AppError>(Vec::new());
         }
         let mut stage = Guard::begin(Stage::LocalMetadata);
         let input = input.clone();
         let path = database.to_path_buf();
         let node = node.to_owned();
         let rows =
-            crate::blocking(move || Storage::open_catalog(&path)?.thread_candidates(&input, &node))
+            crate::blocking(move || Storage::open_catalog(&path)?.chat_candidates(&input, &node))
                 .await?;
         stage.complete(None, Some(rows.len()));
         Ok(rows)
     };
     let remote = async {
         if !use_shared {
-            return Ok::<Vec<Thread>, AppError>(Vec::new());
+            return Ok::<Vec<Chat>, AppError>(Vec::new());
         }
         let mut stage = Guard::begin(Stage::SharedMetadata);
         let mut request = input.clone();
@@ -147,7 +147,7 @@ async fn run_inner(
         collector.push(thread);
     }
     let page = collector.finish();
-    stage.complete(Some(candidates), Some(page.threads.len()));
+    stage.complete(Some(candidates), Some(page.chats.len()));
     Ok(Response {
         page,
         shared: use_shared && shared_error.is_none(),
@@ -159,22 +159,22 @@ async fn run_inner(
 async fn shared_window(
     config: &crate::config::SharedConfig,
     mut request: Request,
-) -> Result<Vec<Thread>, AppError> {
+) -> Result<Vec<Chat>, AppError> {
     let window = request.offset + request.limit + 1;
     request.offset = 0;
     let mut rows = Vec::new();
     while rows.len() < window {
         request.limit = (window - rows.len()).min(100);
-        let page = shared::list_threads(config, &request).await?;
-        if page.threads.len() > request.limit
-            || (page.next_offset.is_some() && page.threads.len() != request.limit)
+        let page = shared::list_chats(config, &request).await?;
+        if page.chats.len() > request.limit
+            || (page.next_offset.is_some() && page.chats.len() != request.limit)
             || page
                 .next_offset
                 .is_some_and(|next| next != request.offset + request.limit || next > 10_000)
         {
             return Err(AppError::shared("invalid shared thread pagination"));
         }
-        rows.extend(page.threads);
+        rows.extend(page.chats);
         let Some(offset) = page.next_offset else {
             break;
         };

@@ -95,7 +95,7 @@ async fn failed_core_request_does_not_record_query_filters_paths_or_error_text()
             query: "query-canary".into(),
             intent: None,
             limit: Some(5),
-            unit: Some(crate::search_results::SearchUnit::Threads),
+            unit: Some(crate::search_results::SearchUnit::Chats),
             filters: Box::default(),
             local: true,
             shared: true,

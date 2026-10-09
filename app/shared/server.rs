@@ -139,7 +139,7 @@ fn router(app: App) -> Router {
     Router::new()
         .route("/v1/freshness", get(freshness))
         .route("/v1/search", post(search))
-        .route("/v1/threads", post(list_threads))
+        .route("/v1/chats", post(list_chats))
         .route("/v1/view", post(view))
         .route("/v1/contexts", post(contexts::read))
         .route("/v1/attachments", post(attachments::list))
@@ -238,15 +238,15 @@ pub(super) fn prepare_candidates(candidates: &mut protocol::Candidates) {
         }
     }
 }
-async fn list_threads(
+async fn list_chats(
     State(app): State<App>,
     Extension(id): Extension<Identity>,
-    input: Result<Json<crate::thread_catalog::Request>, JsonRejection>,
-) -> Result<Json<crate::thread_catalog::Page>, ApiError> {
+    input: Result<Json<crate::chat_catalog::Request>, JsonRejection>,
+) -> Result<Json<crate::chat_catalog::Page>, ApiError> {
     let input = json(input)?;
     input.validate()?;
-    let mut page = app.store.list_threads(&id, input).await?;
-    for thread in &mut page.threads {
+    let mut page = app.store.list_chats(&id, input).await?;
+    for thread in &mut page.chats {
         crate::redaction::metadata(&mut thread.metadata);
     }
     Ok(Json(page))

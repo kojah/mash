@@ -24,7 +24,7 @@ mod silver_revision;
 mod silver_store;
 mod validation;
 
-pub(crate) use client::{freshness, list_threads, view};
+pub(crate) use client::{freshness, list_chats, view};
 pub(crate) use exact::search as search_exact;
 pub(crate) use output::{FreshnessSummary, PublicationSummary};
 pub(crate) use publication::Inference;

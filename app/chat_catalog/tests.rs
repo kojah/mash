@@ -12,19 +12,19 @@ fn pagination_stops_at_the_documented_offset_cap() {
         collector.push(row(&format!("id-{number:05}"), Some(number)));
     }
     let page = collector.finish();
-    assert_eq!(page.threads.len(), 1);
+    assert_eq!(page.chats.len(), 1);
     assert!(
         page.next_offset.is_none(),
         "never advertise an offset the request validator rejects"
     );
 }
 
-fn row(id: &str, time: Option<i64>) -> Thread {
-    Thread {
+fn row(id: &str, time: Option<i64>) -> Chat {
+    Chat {
         conversation_id: id.into(),
         provider: Provider::Codex,
         node_id: "node".into(),
-        metadata: ThreadMetadata {
+        metadata: ChatMetadata {
             enrichment: None,
             updated_at: time,
             ..Default::default()
@@ -50,7 +50,7 @@ fn bounded_collection_deduplicates_better_copies_before_global_pagination() {
     collector.push(row("id-0000", Some(0)));
     let page = collector.finish();
     assert_eq!(
-        page.threads
+        page.chats
             .into_iter()
             .map(|thread| thread.conversation_id)
             .collect::<Vec<_>>(),
@@ -82,8 +82,8 @@ fn metadata_filters_compose_and_time_bounds_exclude_unknown_activity() {
         collector.push(thread);
     }
     let page = collector.finish();
-    assert_eq!(page.threads.len(), 1);
-    assert_eq!(page.threads[0].conversation_id, "match");
+    assert_eq!(page.chats.len(), 1);
+    assert_eq!(page.chats[0].conversation_id, "match");
     assert!(input.admits_node("other", "caller"));
     let selected = Request {
         node: vec!["other".into()],

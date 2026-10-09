@@ -11,13 +11,13 @@ mod silver;
 pub mod connectors;
 
 // Gold materialization, retrieval models, policies and query-oriented views.
+mod chat_catalog;
 mod gold;
 mod search_filter;
 mod search_query;
 mod search_ranking;
 mod search_results;
 mod semantic;
-mod thread_catalog;
 
 // Application composition and infrastructure supporting both layers.
 mod attachments;

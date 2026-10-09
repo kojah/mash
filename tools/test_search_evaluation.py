@@ -1,11 +1,11 @@
 import copy
-import math
 import json
-from pathlib import Path
+import math
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from search_evaluation import Split, evaluate
 
@@ -13,13 +13,13 @@ from search_evaluation import Split, evaluate
 def fixture():
     query = {'id': 'q1', 'text': 'needle', 'category': 'semantic',
              'split': 'held-out', 'intent': 'related-discussion', 'scope': 'local',
-             'judgments': [{'provider': 'codex', 'conversation_id': identity, 'grade': grade}
+             'judgments': [{'provider': 'codex', 'chat_id': identity, 'grade': grade}
                            for identity, grade in [('a', 2), ('b', 1), ('c', 0)]]}
-    response = {'query': 'needle', 'intent': 'related-discussion', 'unit': 'threads',
+    response = {'query': 'needle', 'intent': 'related-discussion', 'unit': 'chats',
                 'diagnostics': {'requested_scope': 'local', 'limit': 10,
                                 'completed_sources': ['local'], 'shared_fallback': False,
                                 'shared_context_incomplete': False},
-                'results': [{'provider': 'codex', 'conversation_id': identity}
+                'results': [{'provider': 'codex', 'chat_id': identity}
                             for identity in ['c', 'a', 'b']]}
     return {'version': 1, 'queries': [query]}, {'version': 1, 'queries': [{'id': 'q1', 'response': response}]}
 
@@ -38,12 +38,12 @@ class EvaluationTests(unittest.TestCase):
 
     def test_unjudged_threads_prevent_aggregate_scores(self):
         judgments, captures = fixture()
-        captures['queries'][0]['response']['results'][0]['conversation_id'] = 'unknown'
+        captures['queries'][0]['response']['results'][0]['chat_id'] = 'unknown'
         report = evaluate(judgments, captures, Split.HELD_OUT)
         self.assertFalse(report['complete'])
         self.assertIsNone(report['categories'])
         self.assertIsNone(report['queries'][0]['metrics'])
-        self.assertEqual(report['queries'][0]['unjudged'][0]['conversation_id'], 'unknown')
+        self.assertEqual(report['queries'][0]['unjudged'][0]['chat_id'], 'unknown')
 
     def test_empty_positive_and_negative_queries_are_distinct(self):
         judgments, captures = fixture()
@@ -57,7 +57,7 @@ class EvaluationTests(unittest.TestCase):
         negative = evaluate(judgments, captures, Split.HELD_OUT)
         self.assertEqual(negative['categories']['all']['abstention_rate'], 1)
         self.assertNotIn('recall_at_10', negative['categories']['all'])
-        captures['queries'][0]['response']['results'] = [{'provider': 'codex', 'conversation_id': 'c'}]
+        captures['queries'][0]['response']['results'] = [{'provider': 'codex', 'chat_id': 'c'}]
         self.assertEqual(evaluate(judgments, captures, Split.HELD_OUT)
                          ['categories']['all']['abstention_rate'], 0)
 
@@ -83,7 +83,7 @@ class EvaluationTests(unittest.TestCase):
     def test_duplicate_ranked_threads_cannot_inflate_recall(self):
         judgments, captures = fixture()
         captures['queries'][0]['response']['results'].append(
-            {'provider': 'codex', 'conversation_id': 'a', 'node_id': 'another-copy'})
+            {'provider': 'codex', 'chat_id': 'a', 'node_id': 'another-copy'})
         with self.assertRaises(ValueError):
             evaluate(judgments, captures, Split.HELD_OUT)
 
@@ -130,7 +130,7 @@ intent="related-discussion"
 scope="local"
 [[queries.judgments]]
 provider="codex"
-conversation_id="a"
+chat_id="a"
 grade=2
 ''')
             _, captures = fixture()
@@ -147,7 +147,7 @@ grade=2
             self.assertIsNone(report['categories'])
             self.assertEqual(set(report['input_sha256']), {'judgments', 'captures', 'scorer'})
             self.assertTrue(all(len(value) == 64 for value in report['input_sha256'].values()))
-            response['results'] = [{'provider': 'codex', 'conversation_id': 'a'}]
+            response['results'] = [{'provider': 'codex', 'chat_id': 'a'}]
             capture.write_text(json.dumps(captures))
             result = subprocess.run(command, capture_output=True, text=True, check=False)
             self.assertEqual(result.returncode, 0, result.stderr)

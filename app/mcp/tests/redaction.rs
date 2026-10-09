@@ -26,7 +26,7 @@ async fn sdk_outputs_mask_credentials_in_view_discovery_and_search() {
     for (tool, arguments) in [
         ("index", json!({})),
         ("view", json!({"id":"message"})),
-        ("list_threads", json!({"local":true})),
+        ("list_chats", json!({"local":true})),
         ("search", json!({"query":"credentialneedle","local":true})),
     ] {
         let arguments = if tool == "view" {

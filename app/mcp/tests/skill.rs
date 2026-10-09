@@ -43,7 +43,7 @@ fn mcp(tool: &str, text: &str) -> Result<(), String> {
     }
     match tool {
         "search" => arguments::<Search>(text),
-        "list_threads" => arguments::<ListThreads>(text),
+        "list_chats" => arguments::<ListChats>(text),
         "view" => arguments::<View>(text),
         "status" => arguments::<Status>(text),
         "list_attachments" => arguments::<ListAttachments>(text),
@@ -111,8 +111,16 @@ fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
     assert!(validate(&broken).unwrap_err().contains("message_id"));
     assert!(mcp("view", r#"{"id":"message","shared":true}"#).is_err());
     assert!(mcp("search", r#"{"query":"test","intent":"invented"}"#).is_err());
-    assert!(mcp("list_threads", r#"{"limit":101}"#).is_err());
+    assert!(mcp("list_chats", r#"{"limit":101}"#).is_err());
     assert!(mcp("removed_tool", "{}").is_err());
     assert!(block("bash cli", "mash view MESSAGE_ID --invented-option").is_err());
     assert!(block("json", "{}").is_err());
+    assert!(mcp("list_threads", "{}").is_err());
+    assert!(mcp("list_chats", "{}").is_ok());
+    assert!(mcp("search", r#"{"query":"test","unit":"threads"}"#).is_err());
+    assert!(mcp("search", r#"{"query":"test","conversation":["id"]}"#).is_err());
+    assert!(mcp("search", r#"{"query":"test","unit":"chats","chat":["id"]}"#).is_ok());
+    assert!(block("bash cli", "mash list-threads").is_err());
+    assert!(block("bash cli", "mash search test --unit chat-messages").is_err());
+    assert!(block("bash cli", "mash search test --unit messages --chat id").is_ok());
 }

@@ -38,7 +38,7 @@ struct Search {
     intent: Option<crate::gold::exact::Intent>,
     /// Maximum results; omitted uses gold.query.limit (20 by default).
     limit: Option<usize>,
-    /// Threads or messages; omitted uses gold.query.unit (threads by default).
+    /// Chats or chat messages; omitted uses gold.query.unit (chats by default).
     unit: Option<crate::search_results::SearchUnit>,
     /// Advanced related-discussion fusion overrides; omitted fields inherit TOML. Invalid for exact-mention.
     fusion: Option<crate::gold::config::FusionOverrides>,
@@ -72,12 +72,12 @@ struct Status {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct ListThreads {
+struct ListChats {
     /// compact (default) omits enrichment provenance; extended includes all metadata.
     #[serde(default)]
     detail: Detail,
     #[serde(flatten)]
-    input: crate::thread_catalog::Request,
+    input: crate::chat_catalog::Request,
     #[serde(default)]
     local: bool,
     #[serde(default)]
@@ -90,7 +90,7 @@ struct ListThreads {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct View {
-    /// Copy lookup.view from a search hit; id is the message anchor, not the thread ID.
+    /// Copy lookup.view from a search hit; id is the message anchor, not the chat ID.
     id: String,
     /// Number of adjacent messages on each side (default 0); message bodies are never truncated.
     context: Option<u32>,
@@ -155,7 +155,7 @@ struct Index {
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Forget {
-    conversation_id: String,
+    chat_id: String,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -416,11 +416,11 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Quickly list thread metadata without models or inference. Filter by provider, node, literal title substring or thread activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned conversation_id and provider in search with unit=messages. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
+        description = "Quickly list chat metadata without models or inference. Filter by provider, node, literal title substring or chat activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned chat_id and provider in search with unit=messages and chat filters. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
     )]
-    async fn list_threads(&self, Parameters(input): Parameters<ListThreads>) -> CallToolResult {
+    async fn list_chats(&self, Parameters(input): Parameters<ListChats>) -> CallToolResult {
         self.execute_detailed(
-            Operation::ListThreads {
+            Operation::ListChats {
                 input: Box::new(input.input),
                 local: input.local,
                 shared: input.shared,
@@ -433,7 +433,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to threads with compact evidence; use unit=messages to drill into selected conversations. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps."
+        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; use unit=messages to drill into selected conversations. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         self.execute_detailed(
@@ -512,7 +512,7 @@ impl Mash {
     )]
     async fn forget(&self, Parameters(request): Parameters<Forget>) -> CallToolResult {
         self.execute(Operation::Forget {
-            id: request.conversation_id,
+            id: request.chat_id,
         })
         .await
     }

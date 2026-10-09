@@ -156,12 +156,12 @@ fn query(unit: crate::search_results::SearchUnit) -> protocol::Search {
 
 async fn verify_search(api: &Api) {
     use crate::search_results::SearchUnit;
-    for unit in [SearchUnit::Messages, SearchUnit::Threads] {
+    for unit in [SearchUnit::Messages, SearchUnit::Chats] {
         let mut input = query(unit);
         input.filter = Some(Filter::All(vec![
             Filter::Node(vec!["first".into()]),
             Filter::Provider(vec![Provider::Codex]),
-            Filter::Conversation(vec!["codex".into()]),
+            Filter::Chat(vec!["codex".into()]),
         ]));
         let result: protocol::Candidates = api.post_json("search", FIRST, &input).await;
         for hits in [result.lexical, result.semantic] {
@@ -245,7 +245,7 @@ async fn verify(api: &Api, revision: i64) -> String {
         format!("restartneedle canonical revision {revision}")
     );
     assert_eq!(messages[1].content, "canonical context-only tool output");
-    let request = crate::thread_catalog::Request {
+    let request = crate::chat_catalog::Request {
         provider: vec![Provider::Codex],
         node: vec!["first".into()],
         title_contains: Some(format!("Current thread {revision}")),
@@ -253,19 +253,19 @@ async fn verify(api: &Api, revision: i64) -> String {
         before: Some(1_700_000_001),
         ..Default::default()
     };
-    let page: crate::thread_catalog::Page = api.post_json("threads", FIRST, &request).await;
-    assert_eq!(page.threads.len(), 1);
-    assert_eq!(page.threads[0].conversation_id, "codex");
+    let page: crate::chat_catalog::Page = api.post_json("chats", FIRST, &request).await;
+    assert_eq!(page.chats.len(), 1);
+    assert_eq!(page.chats[0].conversation_id, "codex");
     assert_eq!(
-        page.threads[0].metadata.project.as_deref(),
+        page.chats[0].metadata.project.as_deref(),
         Some("/work/restart")
     );
     assert_eq!(
-        page.threads[0].metadata.repository.as_deref(),
+        page.chats[0].metadata.repository.as_deref(),
         Some("repo://restart")
     );
-    let other: crate::thread_catalog::Page = api.post_json("threads", OTHER, &request).await;
-    assert!(other.threads.is_empty());
+    let other: crate::chat_catalog::Page = api.post_json("chats", OTHER, &request).await;
+    assert!(other.chats.is_empty());
     verify_search(api).await;
     let freshness: crate::shared::Freshness = api.get("freshness", FIRST).await;
     assert_eq!(freshness.nodes.len(), 2);
@@ -414,7 +414,7 @@ async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
     let (api, reports) = Api::launch(&fresh, root.path(), Some(&models));
     let mut replayed = reports
         .iter()
-        .filter(|report| report.get("threads").is_some())
+        .filter(|report| report.get("chats").is_some())
         .map(|report| {
             (
                 report["group_id"].as_str().unwrap().to_owned(),

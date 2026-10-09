@@ -37,10 +37,10 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 enum Command {
-    /// List thread metadata without inference, ordered by activity, creation or title.
-    ListThreads {
+    /// List chat metadata without inference, ordered by activity, creation or title.
+    ListChats {
         #[command(flatten)]
-        input: Box<crate::thread_catalog::Request>,
+        input: Box<crate::chat_catalog::Request>,
         #[arg(long, conflicts_with = "shared")]
         local: bool,
         #[arg(long)]
@@ -77,7 +77,7 @@ enum Command {
         #[arg(long)]
         all_history: bool,
     },
-    /// Search indexed threads or messages.
+    /// Search indexed chats or messages.
     Search {
         /// Override dense shared retrieval; omitted inherits the active group default.
         #[arg(long, value_enum)]
@@ -92,7 +92,7 @@ enum Command {
         /// Maximum results; defaults to gold.query.limit (20).
         #[arg(long)]
         limit: Option<usize>,
-        /// Result granularity; defaults to gold.query.unit (threads).
+        /// Result granularity; defaults to gold.query.unit (chats).
         #[arg(long, value_enum)]
         unit: Option<crate::search_results::SearchUnit>,
         /// Override the hybrid fusion rank constant (1–1000).
@@ -208,7 +208,7 @@ struct SearchArguments {
     node: Vec<String>,
     #[arg(long)]
     role: Vec<crate::role::Role>,
-    #[arg(long)]
+    #[arg(long = "chat")]
     conversation: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
     #[arg(long)]
@@ -289,12 +289,12 @@ impl Cli {
     fn into_request(self) -> Result<Request, AppError> {
         let paths = self.paths();
         let operation = match self.command {
-            Command::ListThreads {
+            Command::ListChats {
                 input,
                 local,
                 shared,
                 diagnostics,
-            } => Operation::ListThreads {
+            } => Operation::ListChats {
                 input,
                 local,
                 shared,
@@ -784,7 +784,7 @@ mod tests {
         assert_eq!(
             names,
             [
-                "list-threads",
+                "list-chats",
                 "index",
                 "search",
                 "view",

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// What one node's gold currently reflects. `silver` is set only after every
-/// thread of that silver revision has documents built with this recipe.
+/// chat of that silver revision has documents built with this recipe.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(in crate::shared) struct NodeGold {
@@ -19,20 +19,20 @@ pub(in crate::shared) struct NodeGold {
     pub(in crate::shared) build: crate::gold::config::Build,
     pub(in crate::shared) generation: String,
     pub(in crate::shared) silver: Option<State>,
-    /// The last completed synchronization covered every thread with complete
+    /// The last completed synchronization covered every chat with complete
     /// documents. Searches keep serving it while a later synchronization runs.
     #[serde(default)]
     pub(in crate::shared) certified: bool,
-    pub(in crate::shared) threads: BTreeMap<String, GoldThread>,
+    pub(in crate::shared) chats: BTreeMap<String, GoldChat>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(in crate::shared) struct GoldThread {
-    /// Silver dependency fingerprint of the documents written for this thread.
+pub(in crate::shared) struct GoldChat {
+    /// Silver dependency fingerprint of the documents written for this chat.
     pub(in crate::shared) fingerprint: String,
     pub(in crate::shared) embeddings: u64,
-    /// Every dense-eligible message of the thread has a vector.
+    /// Every dense-eligible message of the chat has a vector.
     pub(in crate::shared) complete: bool,
 }
 
@@ -45,7 +45,7 @@ impl NodeGold {
             generation: identity.generation.clone(),
             silver: None,
             certified: false,
-            threads: BTreeMap::new(),
+            chats: BTreeMap::new(),
         }
     }
 
@@ -64,7 +64,7 @@ impl NodeGold {
         self.compatible(store, identity)
             && silver.is_some()
             && self.silver.as_ref() == silver
-            && self.threads.values().all(|thread| thread.complete)
+            && self.chats.values().all(|chat| chat.complete)
     }
 
     /// Dense retrieval may use this node's documents.
@@ -73,7 +73,7 @@ impl NodeGold {
     }
 
     pub(in crate::shared) fn embeddings(&self) -> u64 {
-        self.threads.values().map(|thread| thread.embeddings).sum()
+        self.chats.values().map(|chat| chat.embeddings).sum()
     }
 }
 
@@ -123,8 +123,8 @@ impl Store {
             .await
     }
 
-    /// Upsert one batch of a thread's documents; returns stored dense vectors.
-    /// Delete a thread's documents except the listed current messages.
+    /// Upsert one batch of a chat's documents; returns stored dense vectors.
+    /// Delete a chat's documents except the listed current messages.
     pub(in crate::shared) async fn retain_documents(
         &self,
         identity: &Identity,
@@ -189,7 +189,7 @@ pub(in crate::shared) struct Documents {
 }
 
 impl Documents {
-    /// A writer that fills whole Qdrant requests across threads.
+    /// A writer that fills whole Qdrant requests across chats.
     pub(in crate::shared) fn new(identity: &Identity) -> Self {
         Self {
             name: collection(&identity.group_id, false),

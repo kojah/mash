@@ -121,7 +121,7 @@ fn upload_serialization_masks_canonical_projection_and_metadata() {
     let safe = String::from_utf8(buffer).unwrap();
     assert!(!safe.contains("hunter2") && !safe.contains("opaque-value"));
     assert!(safe.contains("[REDACTED_SECRET]"));
-    let mut metadata = crate::search_results::ThreadMetadata {
+    let mut metadata = crate::search_results::ChatMetadata {
         title: Some("password=\"hunter2\"".into()),
         project: Some("postgres://u:secret@host/db".into()),
         ..Default::default()

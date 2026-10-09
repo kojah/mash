@@ -4,7 +4,7 @@ SELECT (SELECT count(*) FROM conversations) AS conversations,
 (SELECT count(*) FROM messages WHERE COALESCE(search_projection,content)<>'') AS searchable_messages,
 (SELECT count(*) FROM message_embeddings) AS embeddings;
 
--- name: ListThreads :many
+-- name: ListChats :many
 -- Activity filters apply to recorded thread updated_at, not individual messages.
 -- Null sort keys are always last; identity breaks ties in either direction.
 WITH scope AS (SELECT

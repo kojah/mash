@@ -36,7 +36,7 @@ pub(crate) async fn freshness(config: &SharedConfig) -> Result<Freshness, AppErr
 pub(super) enum Endpoint {
     Freshness,
     Search,
-    Threads,
+    Chats,
     View,
     Contexts,
     Index,
@@ -61,7 +61,7 @@ impl Endpoint {
         match self {
             Self::Freshness => "freshness",
             Self::Search => "search",
-            Self::Threads => "threads",
+            Self::Chats => "chats",
             Self::View => "view",
             Self::Contexts => "contexts",
             Self::Index => "index",
@@ -295,12 +295,12 @@ pub(super) async fn post<T: serde::de::DeserializeOwned + Send + 'static>(
     .await
 }
 
-pub(crate) async fn list_threads(
+pub(crate) async fn list_chats(
     config: &SharedConfig,
-    input: &crate::thread_catalog::Request,
-) -> Result<crate::thread_catalog::Page, AppError> {
+    input: &crate::chat_catalog::Request,
+) -> Result<crate::chat_catalog::Page, AppError> {
     input.validate()?;
-    post(config, Endpoint::Threads, input).await
+    post(config, Endpoint::Chats, input).await
 }
 pub(crate) async fn view(
     config: &SharedConfig,

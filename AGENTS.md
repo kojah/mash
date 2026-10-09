@@ -4,7 +4,7 @@
 
 mash is a Rust CLI with JSON output and stdio MCP server for local agent histories.
 Node and server configuration is strict TOML only. Do not add JSON compatibility or conversion.
-Keep the CLI command surface limited to `index`, `search`, `list-threads`, `view`, `status`,
+Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`, `status`,
 `forget`, `export`, `import`, `models install`, `mcp`, and `serve`.
 
 - Use Rusqlite as the sole SQLite library.
@@ -99,7 +99,7 @@ New research experiments use Optuna for registered trial selection/records and
 MLflow for experiment tracking. Keep metadata in local SQLite and artifacts
 under the private research directory; log parameters, provenance hashes and
 aggregate results. Do not autolog or upload raw chat text, annotations, embeddings
-or per-thread predictions to MLflow. Preserve frozen baselines and keep new
+or per-chat predictions to MLflow. Preserve frozen baselines and keep new
 candidates separate. Do not rewrite historical studies just to add tracking.
 
 ## Verification

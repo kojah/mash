@@ -96,7 +96,7 @@ fn assert_exact_search_without_models(config: &Path, database: &Path) {
     )
     .unwrap();
     let mut durations = Vec::new();
-    for unit in ["threads", "messages"] {
+    for unit in ["chats", "messages"] {
         for query in ["login token", "private-output-marker"] {
             let started = std::time::Instant::now();
             let result = run_json(&[
@@ -357,8 +357,8 @@ fn assert_gold_query_defaults(config: &Path, database: &Path, models: &str) {
         ("messages", 1, 4, None),
         ("messages", 1, 4, Some(2)),
         ("messages", 1, 4, None),
-        ("threads", 3, 1, None),
-        ("threads", 3, 4, Some(2)),
+        ("chats", 3, 1, None),
+        ("chats", 3, 4, Some(2)),
     ] {
         std::fs::write(
             config,
@@ -454,7 +454,7 @@ fn assert_gold_ranking_defaults(config: &Path, database: &Path, models: &str) {
             format!("{original}\n[gold.query]\nranking='{ranking}'\n"),
         )
         .unwrap();
-        for unit in ["threads", "messages"] {
+        for unit in ["chats", "messages"] {
             for direct in [true, false] {
                 let mut command = Command::cargo_bin("mash").unwrap();
                 command.args([
@@ -636,7 +636,7 @@ fn assert_scoped_message_search(config: &Path, database: &Path, model_arg: &str)
         "messages",
         "--provider",
         "claude-code",
-        "--conversation",
+        "--chat",
         &thread,
         "authentication",
     ]);
@@ -661,12 +661,12 @@ fn listed_thread(config: &Path, database: &Path) -> String {
         config.to_str().unwrap(),
         "--db",
         database.to_str().unwrap(),
-        "list-threads",
+        "list-chats",
         "--local",
         "--provider",
         "claude-code",
     ]);
-    let thread = catalog["threads"][0]["conversation_id"].as_str().unwrap();
+    let thread = catalog["chats"][0]["chat_id"].as_str().unwrap();
     assert_eq!(thread, "hybrid");
     thread.to_owned()
 }
@@ -684,10 +684,10 @@ fn assert_thread_search_and_view(config: &Path, database: &Path, model_arg: &str
         "--limit",
         "1",
     ]);
-    assert_eq!(threads["unit"], "threads");
+    assert_eq!(threads["unit"], "chats");
     let results = threads["results"].as_array().unwrap();
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["conversation_id"], "hybrid");
+    assert_eq!(results[0]["chat_id"], "hybrid");
     let matches = results[0]["matches"].as_array().unwrap();
     assert_eq!(matches.len(), 2);
     assert!(

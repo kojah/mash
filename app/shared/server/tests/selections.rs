@@ -34,7 +34,7 @@ pub(super) async fn verify_thread_provider_scopes(service: &Service, vector: &[f
         assert_candidates(service, FIRST, &input, &expected).await;
         assert_candidates(service, OTHER, &input, &[]).await;
         let original = input.filter.take().unwrap();
-        input.filter = Some(Filter::Conversation(vec![]));
+        input.filter = Some(Filter::Chat(vec![]));
         assert_candidates(service, FIRST, &input, &[]).await;
         input.filter = Some(Filter::All(vec![original, Filter::After(1)]));
         // These records lack timestamps; a positive time predicate excludes them.

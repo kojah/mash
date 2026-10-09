@@ -58,9 +58,7 @@ async fn qdrant_flexible_lexical_search_matches_prefixes_and_typos() {
     }
     let mut input = exact_query(&fixture, "idemp");
     input.match_mode = Mode::Flexible;
-    input.filter = Some(crate::search_filter::Filter::Conversation(vec![
-        "absent".into(),
-    ]));
+    input.filter = Some(crate::search_filter::Filter::Chat(vec!["absent".into()]));
     assert!(
         fixture
             .server

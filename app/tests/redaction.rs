@@ -24,7 +24,7 @@ fn cli_masks_archived_credentials_without_changing_local_history() {
         .unwrap();
     for args in [
         vec!["view", message_id.as_str()],
-        vec!["list-threads", "--local"],
+        vec!["list-chats", "--local"],
         vec!["search", "credentialneedle", "--local", "--no-worker"],
         vec![
             "search",

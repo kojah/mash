@@ -36,8 +36,8 @@ pub(in crate::shared) fn validate_search(
     Ok(())
 }
 
-fn metadata(c: &protocol::ConversationRecord) -> crate::search_results::ThreadMetadata {
-    crate::search_results::ThreadMetadata {
+fn metadata(c: &protocol::ConversationRecord) -> crate::search_results::ChatMetadata {
+    crate::search_results::ChatMetadata {
         enrichment: c.enrichment.clone(),
         title: c.title.clone(),
         project: c.project.clone(),
@@ -95,7 +95,7 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
             "role",
             values.iter().map(|r| r.as_str().to_owned()).collect(),
         ),
-        F::Conversation(values) => ("conversation_id", values.clone()),
+        F::Chat(values) => ("conversation_id", values.clone()),
         F::Project(values) => ("project", values.clone()),
         F::Repository(values) => ("repository", values.clone()),
     };

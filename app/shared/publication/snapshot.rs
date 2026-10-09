@@ -177,7 +177,7 @@ async fn prepare_units(
             if let Some(text) = reader.units.prepare(
                 &recipe,
                 crate::gold::units::Input {
-                    thread: &message.conversation_id,
+                    chat: &message.conversation_id,
                     ordinal: message.ordinal,
                     context: message.context,
                     role: &message.role,

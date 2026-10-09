@@ -1,16 +1,16 @@
 //! Bounded metadata query through sqlc; no message, vector or model reads.
 use super::{Storage, generated};
 use crate::AppError;
-use crate::search_results::ThreadMetadata;
-use crate::thread_catalog::{Direction, Request, Sort, Thread};
+use crate::chat_catalog::{Chat, Direction, Request, Sort};
+use crate::search_results::ChatMetadata;
 
 impl Storage {
-    #[tracing::instrument(name = "local_thread_catalog", skip_all)]
-    pub(crate) fn thread_candidates(
+    #[tracing::instrument(name = "local_chat_catalog", skip_all)]
+    pub(crate) fn chat_candidates(
         &self,
         request: &Request,
         node: &str,
-    ) -> Result<Vec<Thread>, AppError> {
+    ) -> Result<Vec<Chat>, AppError> {
         request.validate()?;
         if !request.admits_node(node, node) {
             return Ok(Vec::new());
@@ -24,7 +24,7 @@ impl Storage {
         };
         let size = i64::try_from(request.offset + request.limit + 1)
             .map_err(|_| AppError::usage("thread page is too large"))?;
-        generated::ListThreads::builder()
+        generated::ListChats::builder()
             .all_providers(i64::from(request.provider.is_empty()))
             .providers_json(&providers)
             .title_contains(request.title_contains.as_deref())
@@ -39,11 +39,11 @@ impl Storage {
             .map_err(AppError::database)?
             .into_iter()
             .map(|row| {
-                Ok(Thread {
+                Ok(Chat {
                     conversation_id: row.id,
                     provider: row.provider.parse()?,
                     node_id: node.into(),
-                    metadata: ThreadMetadata {
+                    metadata: ChatMetadata {
                         enrichment: row
                             .enrichment
                             .map(|json| super::enrichment::decode(&json))
