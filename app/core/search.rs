@@ -223,6 +223,7 @@ async fn run_inner(
     }
     options.fusion = resolve_fusion(fusion, intent, configuration.gold.query.fusion)?;
     options.ranking = resolve_ranking(ranking, intent, configuration.gold.query.ranking)?;
+    options.output_redaction = configuration.redaction.output();
     let filters = resolve(
         &query,
         intent,
@@ -234,6 +235,7 @@ async fn run_inner(
             .as_ref()
             .map_or("local", |c| c.node_id.as_str()),
     )?;
+    let output = options.output_redaction;
     if intent == crate::gold::exact::Intent::ExactMention {
         let literal = crate::gold::exact::Literal::with_mode(&query, filters.match_mode)?;
         if use_shared || (!use_local && configuration.shared.is_some()) {
@@ -243,20 +245,15 @@ async fn run_inner(
                 &query,
                 unit,
                 &filters,
+                output,
             )
             .await?;
             return Ok(SearchResponse {
                 diagnostics: None,
                 intent,
-                realized_mode: if shared_error.is_some() {
-                    SearchMode::LocalLexical
-                } else if use_shared {
-                    SearchMode::Lexical
-                } else {
-                    SearchMode::MergedLexical
-                },
+                realized_mode: exact_mode(shared_error.is_some(), use_shared),
                 unit,
-                results: crate::search_results::collect_exact(hits, unit, limit, &literal),
+                results: crate::search_results::collect_exact(hits, unit, limit, &literal, output),
                 query,
                 shared: shared_error.is_none(),
                 shared_error,
@@ -265,7 +262,7 @@ async fn run_inner(
         }
         let database = database.to_path_buf();
         return crate::blocking(move || {
-            local_exact(&database, &literal, query, (limit, unit), &filters)
+            local_exact(&database, &literal, query, (limit, unit), &filters, output)
         })
         .await;
     }
@@ -324,7 +321,13 @@ async fn shared_hybrid(
         intent: crate::gold::exact::Intent::RelatedDiscussion,
         realized_mode: search_mode(shared_error.is_some(), shared_only),
         unit,
-        results: crate::search_results::collect(results, unit, limit, &query),
+        results: crate::search_results::collect(
+            results,
+            unit,
+            limit,
+            &query,
+            options.output_redaction,
+        ),
         query,
         shared: shared_error.is_none(),
         shared_error,
@@ -338,11 +341,16 @@ fn local_exact(
     query: String,
     (limit, unit): (usize, crate::search_results::SearchUnit),
     filters: &crate::search_filter::Scope,
+    output: crate::redaction::Policy,
 ) -> Result<SearchResponse, AppError> {
     let hits = crate::observability::retrieval::measure_vec(
         crate::observability::retrieval::Stage::LocalExact,
         None,
-        || Storage::open_lexical(database)?.search_exact(literal, unit.candidate_limit(), filters),
+        || {
+            Storage::open_lexical(database)?
+                .with_output_redaction(output)
+                .search_exact(literal, unit.candidate_limit(), filters)
+        },
     )?;
     let hits = crate::gold::exact::rank(hits, unit);
     Ok(SearchResponse {
@@ -350,7 +358,7 @@ fn local_exact(
         intent: crate::gold::exact::Intent::ExactMention,
         realized_mode: SearchMode::Lexical,
         unit,
-        results: crate::search_results::collect_exact(hits, unit, limit, literal),
+        results: crate::search_results::collect_exact(hits, unit, limit, literal, output),
         query,
         shared: false,
         shared_error: None,
@@ -371,7 +379,8 @@ fn local_search(
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_search(options.ranking)?;
     let generation = build.generation(&models.generation());
-    let storage = Storage::open_search(database_path, &generation)?;
+    let storage = Storage::open_search(database_path, &generation)?
+        .with_output_redaction(options.output_redaction);
     storage.require_gold_build(build, &models.generation())?;
     let mut backend = models.load_search(options.ranking)?.ok_or_else(|| {
         AppError::model("semantic models are not installed; run `mash models install`")
@@ -390,12 +399,28 @@ fn local_search(
         intent: crate::gold::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,
         unit: options.unit,
-        results: crate::search_results::collect(results, options.unit, options.limit, &query),
+        results: crate::search_results::collect(
+            results,
+            options.unit,
+            options.limit,
+            &query,
+            options.output_redaction,
+        ),
         query,
         shared: false,
         shared_error: None,
         shared_context_error: None,
     })
+}
+
+fn exact_mode(failed: bool, shared_only: bool) -> SearchMode {
+    if failed {
+        SearchMode::LocalLexical
+    } else if shared_only {
+        SearchMode::Lexical
+    } else {
+        SearchMode::MergedLexical
+    }
 }
 
 fn search_mode(failed: bool, shared_only: bool) -> SearchMode {

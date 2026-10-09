@@ -55,8 +55,8 @@ pub(super) async fn run(
         None => work.await?,
     };
     for thread in &mut response.page.chats {
-        crate::redaction::metadata(&mut thread.metadata);
-        crate::redaction::ancestors(&mut thread.ancestors);
+        config.redaction.output().metadata(&mut thread.metadata);
+        config.redaction.output().ancestors(&mut thread.ancestors);
     }
     if let Some(capture) = capture {
         let use_shared = shared_only || (!local_only && config.shared.is_some());

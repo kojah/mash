@@ -65,9 +65,6 @@ async fn execute_admitted(
             diagnostics.elapsed_ms = crate::progress::milliseconds(started);
             if let Some(capture) = capture { diagnostics.record(capture.finish()); }
         }
-        if let Ok(Response::Search(response)) = &mut result {
-            response.query = crate::redaction::text(&response.query);
-        }
         tracing::Span::current().record("elapsed_ms", crate::progress::milliseconds(started));
         match &result {
             Ok(response) if response.needs_retry() => tracing::info!(outcome = "incomplete", "request completed"),
@@ -120,9 +117,13 @@ async fn execute_inner(
     } else {
         None
     };
-    dispatch(request.operation, &configuration, &database, &models)
+    let mut response = dispatch(request.operation, &configuration, &database, &models)
         .boxed()
-        .await
+        .await?;
+    if let Response::Search(search) = &mut response {
+        search.query = configuration.redaction.output().text(&search.query);
+    }
+    Ok(response)
 }
 
 #[cfg(unix)]

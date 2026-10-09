@@ -25,6 +25,8 @@ pub(in crate::shared) struct Store {
     embedder: Option<connectors::Embedder>,
     max_upload_bytes: u64,
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
+    /// Whether HTTP read responses mask recognizable credentials.
+    responses: crate::redaction::Policy,
 }
 
 pub(super) async fn initialize(
@@ -103,7 +105,21 @@ impl Store {
             embedder: None,
             max_upload_bytes,
             nodes: Arc::default(),
+            responses: crate::redaction::Policy::ON,
         }
+    }
+
+    pub(in crate::shared) fn with_response_redaction(
+        mut self,
+        responses: crate::redaction::Policy,
+    ) -> Self {
+        self.responses = responses;
+        self.gold = self.gold.with_response_redaction(responses);
+        self
+    }
+
+    pub(in crate::shared) fn responses(&self) -> crate::redaction::Policy {
+        self.responses
     }
 
     pub(in crate::shared) fn with_embedder(mut self, embedder: connectors::Embedder) -> Self {

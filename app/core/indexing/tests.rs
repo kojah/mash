@@ -58,6 +58,7 @@ fn test_configuration(
     let root = std::env::temp_dir().join("mash-cli-options");
     ResolvedConfig {
         attachments: crate::attachments::Configuration::default(),
+        redaction: crate::redaction::Settings::default(),
         embeddings: None,
         gold: crate::gold::config::Configuration::default(),
         path: root.join("config.toml"),

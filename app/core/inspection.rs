@@ -51,16 +51,17 @@ pub(super) async fn view(
     context: u32,
     node: Option<String>,
 ) -> Result<ViewResponse, AppError> {
+    let output = configuration.redaction.output();
     if let Some(node) = node {
         let mut messages =
             shared::view(required_shared(configuration)?, &node, &id, context).await?;
         for message in &mut messages {
-            message.content = crate::redaction::text(&message.content);
+            message.content = output.text(&message.content);
         }
         Ok(ViewResponse { id, messages })
     } else {
         let database = database.to_path_buf();
-        crate::blocking(move || local_view(&database, id, context)).await
+        crate::blocking(move || local_view(&database, id, context, output)).await
     }
 }
 
@@ -95,11 +96,16 @@ pub(super) async fn status(
     Ok(response)
 }
 
-fn local_view(database_path: &Path, id: String, context: u32) -> Result<ViewResponse, AppError> {
+fn local_view(
+    database_path: &Path,
+    id: String,
+    context: u32,
+    output: crate::redaction::Policy,
+) -> Result<ViewResponse, AppError> {
     let storage = Storage::open_existing(database_path)?;
     let mut messages = storage.view(&id, context)?;
     for message in &mut messages {
-        message.content = crate::redaction::text(&message.content);
+        message.content = output.text(&message.content);
         // Connector attachments are source references, not captured files.
         if !message
             .id

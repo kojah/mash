@@ -75,6 +75,7 @@ fn remote_install_preserves_valid_local_readiness_without_claiming_missing_embed
                 api: remote::Api::OpenaiCompatible,
                 token_env: None,
                 request_dimensions: false,
+                redaction: crate::redaction::Policy::ON,
             }));
         assert_eq!(local.is_installed(), state == State::Complete, "{state:?}");
         assert!(remote.is_installed(), "{state:?}");
@@ -236,6 +237,7 @@ fn remote_model_readiness_requires_the_actual_reranker_repository() {
         api: remote::Api::OpenaiCompatible,
         token_env: None,
         request_dimensions: false,
+        redaction: crate::redaction::Policy::ON,
     }));
     marker.files[0].path = format!("unrelated-{RERANKER_REPOSITORY}/asset");
     store_fixture(root.path(), &marker);

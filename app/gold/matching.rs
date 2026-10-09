@@ -215,8 +215,13 @@ impl Plan {
     }
 }
 
-pub(crate) fn annotate(hit: &mut crate::storage::SearchHit, literal: &super::exact::Literal) {
-    let safe = crate::redaction::text(&hit.content);
+/// Evidence never names text the destination's policy masks.
+pub(crate) fn annotate(
+    hit: &mut crate::storage::SearchHit,
+    literal: &super::exact::Literal,
+    redaction: crate::redaction::Policy,
+) {
+    let safe = redaction.text(&hit.content);
     hit.lexical_match = literal.evidence(&safe);
 }
 

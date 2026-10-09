@@ -473,3 +473,33 @@ fn default_path_failure_is_typed() {
     .expect_err("missing platform path");
     assert_configuration_error(&error);
 }
+
+#[test]
+fn redaction_switches_default_on_and_reach_each_destination() {
+    let directory = TempDir::new().unwrap();
+    let defaults = load(Some(&write_config(&directory, VALID))).unwrap();
+    assert_eq!(defaults.redaction, crate::redaction::Settings::default());
+    assert!(defaults.redaction.output().enabled());
+    let path = write_config(
+        &directory,
+        &format!(
+            "{VALID}\n[shared]\ngroup_id='g'\nnode_id='n'\napi_url='https://mash.example'\ntoken_env='T'\n\
+             [embeddings]\nurl='https://embed.example/v1/embeddings'\nmodel='voyage-4'\n\
+             [redaction]\noutput=false\npublication=false\nremote_embeddings=false\n"
+        ),
+    );
+    let resolved = load(Some(&path)).unwrap();
+    assert!(!resolved.redaction.output().enabled());
+    assert!(!resolved.shared.unwrap().publication_redaction.enabled());
+    assert!(!resolved.embeddings.unwrap().redaction.enabled());
+    let status = serde_json::to_value(load(Some(&path)).unwrap().status()).unwrap();
+    assert_eq!(status["redaction"]["output"], false);
+    // Each switch is independent, and unknown keys are rejected.
+    let partial = parse_document(format!("{VALID}\n[redaction]\noutput=false\n").as_bytes())
+        .unwrap()
+        .redaction;
+    assert!(!partial.output && partial.publication && partial.remote_embeddings);
+    assert_configuration_error(
+        &parse_document(format!("{VALID}\n[redaction]\nlogs=false\n").as_bytes()).unwrap_err(),
+    );
+}

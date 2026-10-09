@@ -39,6 +39,7 @@ impl Storage {
         super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
+            output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
@@ -79,6 +80,7 @@ impl Storage {
         super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
         let storage = Self {
             attachments_config: crate::attachments::Configuration::default(),
+            output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
@@ -188,7 +190,7 @@ impl Storage {
                 let (row, score) = row.map_err(AppError::database)?;
                 let mut hit = search_hit(&self.connection, row)?;
                 hit.lexical_score = Some(score);
-                hit.lexical_match = plan.evidence(&crate::redaction::text(&hit.content), mode);
+                hit.lexical_match = plan.evidence(&self.output_redaction.text(&hit.content), mode);
                 Ok(hit)
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -200,7 +202,7 @@ impl Storage {
             let mut connector = Vec::with_capacity(ids.len());
             for (mut hit, (_, score)) in self.connector_hits(&ids)?.into_iter().zip(ranked) {
                 hit.lexical_score = Some(score);
-                hit.lexical_match = plan.evidence(&crate::redaction::text(&hit.content), mode);
+                hit.lexical_match = plan.evidence(&self.output_redaction.text(&hit.content), mode);
                 connector.push(hit);
             }
             hits = merge_lexical(hits, connector, limit);

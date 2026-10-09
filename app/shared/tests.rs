@@ -97,6 +97,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
         node_id: "local".into(),
         api_url: format!("http://{}", listener.local_addr().unwrap()),
         token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
     };
     let dropped = Arc::new(AtomicBool::new(false));
     let server_dropped = Arc::clone(&dropped);
@@ -170,6 +171,7 @@ async fn interactive_request_timeout_does_not_inherit_the_upload_budget() {
         node_id: "local".into(),
         api_url: format!("http://{}", listener.local_addr().unwrap()),
         token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
     };
     let server = tokio::spawn(async move {
         axum::serve(
@@ -257,6 +259,7 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
         node_id: "local-node".into(),
         api_url: format!("http://{address}"),
         token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
     };
     assert_eq!(
         publish(&path, &config, None).await.state,
@@ -324,6 +327,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         node_id: "local-node".into(),
         api_url: format!("http://{address}"),
         token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
     };
     let filters = crate::search_filter::Selection::default()
         .resolve(&config.node_id)
@@ -373,7 +377,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         serde_json::to_value(hits).unwrap()
     );
     assert!(
-        search(&config, None, &models_dir, None, "hello", options, &filters)
+        search(&config, None, &models_dir, None, "hello", options, &filters,)
             .await
             .is_err()
     );
@@ -476,6 +480,7 @@ async fn http_pool_reuses_connections_without_caching_node_credentials() {
         node_id: "first-node".into(),
         api_url: format!("http://{address}/"),
         token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
     };
     let first_token = std::env::var(&config.token_env).unwrap();
     assert_eq!(
@@ -717,6 +722,7 @@ async fn publication_state_survives_failed_delivery_and_forget() {
         node_id: "test".to_owned(),
         api_url: "http://127.0.0.1:9".to_owned(),
         token_env: "MASH_TEST_UNCONFIGURED_TOKEN_71B9".to_owned(),
+        publication_redaction: crate::redaction::Policy::ON,
     };
     let delivery = publish(&path, &unavailable, None).await;
     assert_eq!(delivery.state, PublicationState::Pending);
@@ -766,4 +772,19 @@ async fn publication_state_survives_failed_delivery_and_forget() {
             })
         })
         .expect("durable deletion");
+}
+
+#[test]
+fn turning_publication_masking_off_changes_the_publication_target() {
+    let mut config = crate::config::SharedConfig {
+        group_id: "g".into(),
+        node_id: "n".into(),
+        api_url: "https://mash.example".into(),
+        token_env: "T".into(),
+        publication_redaction: crate::redaction::Policy::ON,
+    };
+    let masked = super::publication::target(&config);
+    config.publication_redaction = crate::redaction::Policy::new(false);
+    // A different target makes the next publication a full replacement.
+    assert_ne!(super::publication::target(&config), masked);
 }

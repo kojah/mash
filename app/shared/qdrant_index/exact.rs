@@ -173,7 +173,7 @@ impl Store {
                     .map(|point| hit(point, &active))
                     .collect::<Result<Vec<_>, _>>()?;
                 for hit in &mut page_hits {
-                    crate::gold::matching::annotate(hit, &literal);
+                    crate::gold::matching::annotate(hit, &literal, self.responses);
                 }
                 hits.extend(
                     crate::search_results::eligible(page_hits)

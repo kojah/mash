@@ -44,7 +44,7 @@ async fn known(
         })?
         .attachments;
     attachments::validate_metadata(&records)?;
-    crate::redaction::attachments(&mut records);
+    app.store.responses().attachments(&mut records);
     Ok(records)
 }
 

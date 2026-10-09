@@ -22,6 +22,7 @@ pub(crate) async fn search(
     query: &str,
     unit: SearchUnit,
     filters: &Scope,
+    output_redaction: crate::redaction::Policy,
 ) -> Result<(Vec<SearchHit>, Option<String>), AppError> {
     let literal = Literal::with_mode(query, filters.match_mode)?;
     filters.filter.validate()?;
@@ -37,11 +38,9 @@ pub(crate) async fn search(
                     crate::observability::retrieval::Stage::LocalExact,
                     None,
                     || {
-                        Storage::open_lexical(&path)?.search_exact(
-                            &local_literal,
-                            unit.candidate_limit(),
-                            &local_filters,
-                        )
+                        Storage::open_lexical(&path)?
+                            .with_output_redaction(output_redaction)
+                            .search_exact(&local_literal, unit.candidate_limit(), &local_filters)
                     },
                 )
             },
@@ -90,7 +89,7 @@ pub(crate) async fn search(
             ));
         }
         for hit in &mut hits {
-            crate::gold::matching::annotate(hit, &literal);
+            crate::gold::matching::annotate(hit, &literal, output_redaction);
         }
         measured.complete(None, Some(hits.len()));
         Ok(hits)

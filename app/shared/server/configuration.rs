@@ -37,7 +37,26 @@ pub(super) struct Configuration {
     pub(super) qdrant_memory: qdrant_index::MemoryTier,
     #[serde(default = "default_uploads")]
     pub(super) max_concurrent_uploads: usize,
+    #[serde(default)]
+    pub(super) redaction: Redaction,
     nodes: Vec<AuthorizedNode>,
+}
+/// Where the server masks recognizable credentials; each defaults on.
+#[derive(Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct Redaction {
+    /// HTTP read responses: search candidates, chats, view and attachments.
+    pub(super) responses: bool,
+    /// Connector text sent to a remote embedding endpoint.
+    pub(super) remote_embeddings: bool,
+}
+impl Default for Redaction {
+    fn default() -> Self {
+        Self {
+            responses: true,
+            remote_embeddings: true,
+        }
+    }
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -85,6 +104,7 @@ impl EmbeddingSpace {
     /// The HTTP embedding endpoint for replay; `None` selects installed local models.
     pub(super) fn remote(
         &self,
+        redaction: crate::redaction::Policy,
     ) -> Result<Option<crate::semantic::remote::Configuration>, AppError> {
         let Some(url) = &self.url else {
             if crate::semantic::model_space(&self.model, self.dimensions)
@@ -103,6 +123,7 @@ impl EmbeddingSpace {
             api: self.api,
             token_env: self.token_env.clone(),
             request_dimensions: self.request_dimensions,
+            redaction,
         };
         config.validate()?;
         Ok(Some(config))
@@ -286,6 +307,19 @@ mod tests {
         }
     }
     use super::*;
+
+    #[test]
+    fn redaction_switches_default_on_and_reject_unknown_keys() {
+        let default: Configuration = toml::from_str("version=1\nnodes=[]").unwrap();
+        assert!(default.redaction.responses && default.redaction.remote_embeddings);
+        let off: Configuration =
+            toml::from_str("version=1\nnodes=[]\n[redaction]\nresponses=false").unwrap();
+        assert!(!off.redaction.responses && off.redaction.remote_embeddings);
+        assert!(
+            toml::from_str::<Configuration>("version=1\nnodes=[]\n[redaction]\noutput=false")
+                .is_err()
+        );
+    }
 
     #[test]
     fn vector_query_policy_is_independent_of_gold_build_identity() {

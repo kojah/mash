@@ -117,10 +117,15 @@ fn upload_serialization_masks_canonical_projection_and_metadata() {
         }],
     });
     let mut buffer = Vec::new();
-    crate::shared::write_event(&mut buffer, &event).unwrap();
+    crate::shared::write_event(&mut buffer, &event, crate::redaction::Policy::ON).unwrap();
     let safe = String::from_utf8(buffer).unwrap();
     assert!(!safe.contains("hunter2") && !safe.contains("opaque-value"));
     assert!(safe.contains("[REDACTED_SECRET]"));
+    // With publication masking off, uploads carry canonical text.
+    let mut raw = Vec::new();
+    crate::shared::write_event(&mut raw, &event, crate::redaction::Policy::new(false)).unwrap();
+    let raw = String::from_utf8(raw).unwrap();
+    assert!(raw.contains("hunter2") && raw.contains("opaque-value"));
     let mut metadata = crate::search_results::ChatMetadata {
         title: Some("password=\"hunter2\"".into()),
         project: Some("postgres://u:secret@host/db".into()),
@@ -159,4 +164,16 @@ fn policy_upgrade_is_pending_and_retries_keep_the_same_revision() {
     assert!(crate::storage::Storage::publication_is_pending(&path, "redaction-v1").unwrap());
     storage.prepare_publication_target("redaction-v1").unwrap();
     assert_eq!(storage.with_publication_snapshot(|_| Ok(())).unwrap(), next);
+}
+
+#[test]
+fn a_disabled_policy_passes_text_metadata_and_ancestors_through() {
+    let policy = super::Policy::new(false);
+    assert_eq!(policy.text("password=\"hunter2\""), "password=\"hunter2\"");
+    let mut metadata = crate::search_results::ChatMetadata {
+        title: Some("password=\"hunter2\"".into()),
+        ..Default::default()
+    };
+    policy.metadata(&mut metadata);
+    assert_eq!(metadata.title.as_deref(), Some("password=\"hunter2\""));
 }

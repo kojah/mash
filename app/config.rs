@@ -19,6 +19,7 @@ const MAX_SINCE_DAYS: u32 = 36_500;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedConfig {
     pub(crate) attachments: crate::attachments::Configuration,
+    pub(crate) redaction: crate::redaction::Settings,
     pub(crate) path: PathBuf,
     pub(crate) loaded: bool,
     pub(crate) shared: Option<SharedConfig>,
@@ -43,11 +44,15 @@ pub(crate) struct SharedConfig {
     pub(crate) node_id: String,
     pub(crate) api_url: String,
     pub(crate) token_env: String,
+    /// Whether uploads mask credentials; set from `[redaction]`, not this table.
+    #[serde(skip)]
+    pub(crate) publication_redaction: crate::redaction::Policy,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ConfigurationStatus {
     attachments: crate::attachments::Configuration,
+    redaction: crate::redaction::Settings,
     path: PathBuf,
     loaded: bool,
     gold: crate::gold::config::Configuration,
@@ -73,6 +78,7 @@ impl ResolvedConfig {
     pub(crate) fn status(&self) -> ConfigurationStatus {
         ConfigurationStatus {
             attachments: self.attachments.clone(),
+            redaction: self.redaction,
             path: self.path.clone(),
             loaded: self.loaded,
             gold: self.gold.clone(),

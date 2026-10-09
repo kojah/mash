@@ -53,6 +53,7 @@ fn configuration(address: std::net::SocketAddr) -> SharedConfig {
         node_id: "local-node".into(),
         api_url: format!("http://{address}"),
         token_env: "HOME".into(),
+        publication_redaction: crate::redaction::Policy::ON,
     }
 }
 
@@ -94,6 +95,7 @@ async fn lost_ack_recovers_only_with_stable_source_and_current_artifacts() {
             dimensions: 384,
             instance: None,
             publication_revision: 0,
+            redaction: crate::redaction::Policy::ON,
         };
         storage
             .with_publication_snapshot(|snapshot| {

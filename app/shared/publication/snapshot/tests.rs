@@ -25,6 +25,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         dimensions: 384,
         instance: Some(instance),
         publication_revision: base,
+        redaction: crate::redaction::Policy::ON,
     };
     let source = capture(&database, &target, true).unwrap();
     assert_eq!(source.conversations.keys().collect::<Vec<_>>(), vec!["a"]);
@@ -71,6 +72,7 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
         dimensions: 384,
         instance: None,
         publication_revision: 0,
+        redaction: crate::redaction::Policy::ON,
     };
     let source = capture(&database, &target, false).unwrap();
     let stream = std::fs::read_to_string(source.file.path()).unwrap();
@@ -137,9 +139,11 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
         dimensions: 4,
         instance: None,
         publication_revision: 0,
+        redaction: crate::redaction::Policy::ON,
     };
     let source = capture(&database, &target, false).unwrap();
-    let mut reader = Reader::new(source.file.reopen().unwrap()).unwrap();
+    let mut reader =
+        Reader::new(source.file.reopen().unwrap(), crate::redaction::Policy::ON).unwrap();
     let mut inputs = BTreeMap::new();
     let mut sizes = Vec::new();
     loop {

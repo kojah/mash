@@ -13,6 +13,8 @@ pub(super) struct Target {
     pub(super) dimensions: usize,
     pub(super) instance: Option<String>,
     pub(super) publication_revision: i64,
+    /// The node's publication masking, applied as uploads are written.
+    pub(super) redaction: crate::redaction::Policy,
 }
 
 impl Target {
@@ -35,6 +37,7 @@ impl Target {
             dimensions: group.dimensions,
             instance: node.map(|node| node.instance.clone()),
             publication_revision: node.map_or(0, |node| node.revision),
+            redaction: config.publication_redaction,
         })
     }
 }

@@ -202,13 +202,16 @@ async fn search(
     input: Result<Json<protocol::Search>, JsonRejection>,
 ) -> Result<Json<protocol::Candidates>, ApiError> {
     let mut candidates = app.store.search(&id, json(input)?).await?;
-    prepare_candidates(&mut candidates);
+    prepare_candidates(&mut candidates, app.store.responses());
     Ok(Json(candidates))
 }
 
-pub(super) fn prepare_candidates(candidates: &mut protocol::Candidates) {
+pub(super) fn prepare_candidates(
+    candidates: &mut protocol::Candidates,
+    redaction: crate::redaction::Policy,
+) {
     for document in &mut candidates.documents {
-        document.projection = crate::redaction::projection(&document.projection);
+        document.projection = redaction.projection(&document.projection);
     }
     let projections: HashMap<_, _> = candidates
         .documents
@@ -225,9 +228,9 @@ pub(super) fn prepare_candidates(candidates: &mut protocol::Candidates) {
         .iter_mut()
         .chain(&mut candidates.semantic)
     {
-        hit.content = crate::redaction::projection(&hit.content);
-        crate::redaction::metadata(&mut hit.metadata);
-        crate::redaction::ancestors(&mut hit.ancestors);
+        hit.content = redaction.projection(&hit.content);
+        redaction.metadata(&mut hit.metadata);
+        redaction.ancestors(&mut hit.ancestors);
         // Clients restore projections before fusion and reranking. Send text
         // once when the same node/message document supplies it; exact matches
         // have no document records and keep their content inline.
@@ -248,8 +251,8 @@ async fn list_chats(
     input.validate()?;
     let mut page = app.store.list_chats(&id, input).await?;
     for thread in &mut page.chats {
-        crate::redaction::metadata(&mut thread.metadata);
-        crate::redaction::ancestors(&mut thread.ancestors);
+        app.store.responses().metadata(&mut thread.metadata);
+        app.store.responses().ancestors(&mut thread.ancestors);
     }
     Ok(Json(page))
 }
@@ -263,9 +266,10 @@ async fn view(
         return Err(AppError::usage("invalid view request").into());
     }
     let mut messages = app.store.view(&id, input).await?;
+    let redaction = app.store.responses();
     for message in &mut messages {
-        message.content = crate::redaction::text(&message.content);
-        crate::redaction::attachments(&mut message.attachments);
+        message.content = redaction.text(&message.content);
+        redaction.attachments(&mut message.attachments);
     }
     Ok(Json(messages))
 }
@@ -309,6 +313,7 @@ pub(crate) async fn run(
 ) -> Result<(), AppError> {
     let config = configuration::load(path).await?;
     let identities = configuration::identities(&config)?;
+    let remote_redaction = crate::redaction::Policy::new(config.redaction.remote_embeddings);
     let store = store::initialize(
         &config,
         &identities,
@@ -319,10 +324,11 @@ pub(crate) async fn run(
     .await?
     .with_embedder(store::connectors::Embedder {
         models: models.to_path_buf(),
-        remote: config.embeddings.remote()?,
-    });
+        remote: config.embeddings.remote(remote_redaction)?,
+    })
+    .with_response_redaction(crate::redaction::Policy::new(config.redaction.responses));
     if replay {
-        let remote = config.embeddings.remote()?;
+        let remote = config.embeddings.remote(remote_redaction)?;
         let mut nodes = identities.values().collect::<Vec<_>>();
         nodes.sort_by(|a, b| (&a.group_id, &a.node_id).cmp(&(&b.group_id, &b.node_id)));
         for identity in nodes {

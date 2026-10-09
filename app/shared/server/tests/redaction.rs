@@ -64,6 +64,7 @@ async fn qdrant_http_masks_legacy_credentials_and_accepts_redacted_uploads() {
         crate::shared::write_event(
             &mut file,
             &serde_json::from_value::<protocol::Event>(event).unwrap(),
+            crate::redaction::Policy::ON,
         )
         .unwrap();
     }

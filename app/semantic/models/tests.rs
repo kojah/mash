@@ -13,6 +13,7 @@ fn remote_fusion_requires_no_local_model_assets_and_cannot_rerank() {
             api: remote::Api::OpenaiCompatible,
             token_env: None,
             request_dimensions: false,
+            redaction: crate::redaction::Policy::ON,
         }));
     models
         .require_search(crate::gold::config::Ranking::Fusion)

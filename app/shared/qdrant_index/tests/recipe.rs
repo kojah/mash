@@ -12,7 +12,8 @@ fn events(file: &tempfile::NamedTempFile) -> Vec<Event> {
 fn write(events: Vec<Event>) -> tempfile::NamedTempFile {
     let mut file = tempfile::NamedTempFile::new().unwrap();
     for event in events {
-        crate::shared::write_event(file.as_file_mut(), &event).unwrap();
+        crate::shared::write_event(file.as_file_mut(), &event, crate::redaction::Policy::ON)
+            .unwrap();
     }
     file
 }

@@ -54,8 +54,8 @@ pub(super) async fn read(
                 let result = match result {
                     Ok(mut messages) => {
                         for message in &mut messages {
-                            message.content = crate::redaction::text(&message.content);
-                            crate::redaction::attachments(&mut message.attachments);
+                            message.content = store.responses().text(&message.content);
+                            store.responses().attachments(&mut message.attachments);
                         }
                         protocol::ContextResult::Complete { index, messages }
                     }

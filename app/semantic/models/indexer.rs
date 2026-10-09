@@ -139,6 +139,7 @@ mod tests {
             api: remote::Api::OpenaiCompatible,
             token_env: None,
             request_dimensions: false,
+            redaction: crate::redaction::Policy::ON,
         }
     }
 

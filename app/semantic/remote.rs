@@ -47,6 +47,10 @@ pub(crate) struct Configuration {
     /// Some fixed-dimension self-hosted endpoints do not accept this parameter.
     #[serde(default)]
     pub(crate) request_dimensions: bool,
+    /// Whether credentials are masked before text leaves for this endpoint;
+    /// set from the `[redaction]` table, not this one.
+    #[serde(skip)]
+    pub(crate) redaction: crate::redaction::Policy,
 }
 
 #[derive(Deserialize)]
@@ -85,6 +89,7 @@ impl TryFrom<WireConfiguration> for Configuration {
             api: raw.api,
             token_env: raw.token_env,
             request_dimensions: raw.request_dimensions,
+            redaction: crate::redaction::Policy::ON,
         })
     }
 }
@@ -217,7 +222,7 @@ impl Client {
             }
             let safe = batch
                 .iter()
-                .map(|text| crate::redaction::text(text))
+                .map(|text| self.config.redaction.text(text))
                 .collect::<Vec<_>>();
             let batch = safe.as_slice();
             let body = if self.config.api == Api::Voyage {
@@ -385,6 +390,7 @@ mod tests {
             api: Api::Voyage,
             token_env: None,
             request_dimensions: false,
+            redaction: crate::redaction::Policy::ON,
         };
         let app = Router::new()
             .route("/v1/embeddings", post(endpoint))
@@ -422,6 +428,18 @@ mod tests {
             assert!(body.contains("REDACTED_SECRET"));
         }
         assert!(input[0].contains("hunter2"));
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn remote_embedding_masking_can_be_turned_off() {
+        let (mut config, mock, task) = mock().await;
+        config.redaction = crate::redaction::Policy::new(false);
+        let client = Client::new(config).unwrap();
+        let input = vec!["password=\"hunter2\"".into()];
+        client.embed(&input, false).await.unwrap();
+        let body = mock.requests.lock().unwrap()[0].to_string();
+        assert!(body.contains("hunter2") && !body.contains("REDACTED_SECRET"));
         task.abort();
     }
 

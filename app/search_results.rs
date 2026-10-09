@@ -239,13 +239,15 @@ fn qualifies_as_evidence(hit: &SearchHit) -> bool {
         })
 }
 
+/// `redaction` is the output policy: results leave through CLI or MCP.
 pub(crate) fn collect(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
     limit: usize,
     query: &str,
+    redaction: crate::redaction::Policy,
 ) -> Results {
-    collect_inner(hits, unit, limit, query, None)
+    collect_inner(hits, unit, limit, query, None, redaction)
 }
 
 pub(crate) fn collect_exact(
@@ -253,8 +255,9 @@ pub(crate) fn collect_exact(
     unit: SearchUnit,
     limit: usize,
     literal: &crate::gold::exact::Literal,
+    redaction: crate::redaction::Policy,
 ) -> Results {
-    collect_inner(hits, unit, limit, "", Some(literal))
+    collect_inner(hits, unit, limit, "", Some(literal), redaction)
 }
 
 /// What a hit groups under: an entry's nearest container (with the objects
@@ -279,7 +282,7 @@ fn group(hit: &SearchHit) -> (crate::source::ObjectType, Vec<crate::source::Ance
 }
 
 /// A chat result seeded from its best hit; matches and score accrue later.
-fn chat_for(hit: &SearchHit) -> ChatHit {
+fn chat_for(hit: &SearchHit, redaction: crate::redaction::Policy) -> ChatHit {
     let (object, ancestors) = group(hit);
     ChatHit {
         conversation_id: hit.conversation_id.clone(),
@@ -293,7 +296,7 @@ fn chat_for(hit: &SearchHit) -> ChatHit {
                 .metadata
                 .title
                 .clone()
-                .or_else(|| crate::silver::dialogue::title(&crate::redaction::text(&hit.content))),
+                .or_else(|| crate::silver::dialogue::title(&redaction.text(&hit.content))),
             ..hit.metadata.clone()
         },
         score: 0.0,
@@ -307,6 +310,7 @@ fn collect_inner(
     limit: usize,
     query: &str,
     literal: Option<&crate::gold::exact::Literal>,
+    redaction: crate::redaction::Policy,
 ) -> Results {
     let exact_reference = literal.is_some() || crate::search_query::has_reference(query);
     let matches = |hit: &SearchHit| {
@@ -323,9 +327,9 @@ fn collect_inner(
                 .filter(&matches)
                 .take(limit.min(1000))
                 .map(|mut hit| {
-                    hit.content = crate::redaction::text(&hit.content);
-                    crate::redaction::metadata(&mut hit.metadata);
-                    crate::redaction::ancestors(&mut hit.ancestors);
+                    hit.content = redaction.text(&hit.content);
+                    redaction.metadata(&mut hit.metadata);
+                    redaction.ancestors(&mut hit.ancestors);
                     hit
                 })
                 .collect(),
@@ -341,12 +345,12 @@ fn collect_inner(
         .filter(matches)
         .enumerate()
     {
-        crate::redaction::metadata(&mut hit.metadata);
-        crate::redaction::ancestors(&mut hit.ancestors);
+        redaction.metadata(&mut hit.metadata);
+        redaction.ancestors(&mut hit.ancestors);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
         let key = (hit.source.clone(), hit.conversation_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
-            threads.push(chat_for(&hit));
+            threads.push(chat_for(&hit, redaction));
             (threads.len() - 1, rank)
         });
         let thread = &mut threads[index];
@@ -369,12 +373,13 @@ fn collect_inner(
             thread.score = best + budget * weight;
         }
         let (snippet, projection_span) = literal.map_or_else(
-            || evidence_excerpt(&hit.content, query, 800),
+            || evidence_excerpt(&hit.content, query, 800, redaction),
             |literal| {
                 evidence_window_at(
                     &hit.content,
                     literal.find(&hit.content).map_or(0, |range| range.start),
                     800,
+                    redaction,
                 )
             },
         );
@@ -458,12 +463,27 @@ pub(crate) fn contextual_document(
     document
 }
 
+/// A masked window, for model inputs.
 pub(crate) fn evidence_window(content: &str, query: &str, length: usize) -> String {
-    evidence_excerpt(content, query, length).0
+    evidence_window_with(content, query, length, crate::redaction::Policy::ON)
+}
+
+pub(crate) fn evidence_window_with(
+    content: &str,
+    query: &str,
+    length: usize,
+    redaction: crate::redaction::Policy,
+) -> String {
+    evidence_excerpt(content, query, length, redaction).0
 }
 
 /// Prefer lexical evidence; semantic-only matches use the projection's start.
-fn evidence_excerpt(content: &str, query: &str, length: usize) -> (String, ProjectionSpan) {
+fn evidence_excerpt(
+    content: &str,
+    query: &str,
+    length: usize,
+    redaction: crate::redaction::Policy,
+) -> (String, ProjectionSpan) {
     let offset = query
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.len() >= 3 && word.is_ascii())
@@ -476,11 +496,17 @@ fn evidence_excerpt(content: &str, query: &str, length: usize) -> (String, Proje
         })
         .min()
         .unwrap_or(0);
-    evidence_window_at(content, offset, length)
+    evidence_window_at(content, offset, length, redaction)
 }
 
-fn evidence_window_at(content: &str, offset: usize, length: usize) -> (String, ProjectionSpan) {
-    let safe = crate::redaction::projection(content);
+fn evidence_window_at(
+    content: &str,
+    offset: usize,
+    length: usize,
+    redaction: crate::redaction::Policy,
+) -> (String, ProjectionSpan) {
+    // Masking before windowing keeps a secret cut by the window from leaking.
+    let safe = redaction.projection(content);
     let content = safe.as_str();
     // An ASCII match begins at a UTF-8 boundary even in multilingual content.
     let leading_context = (length / 3).min(160);

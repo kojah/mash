@@ -62,26 +62,27 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
                     snapshot: !incremental,
                     forgets: Vec::new(),
                 }),
+                target.redaction,
             )?;
             if let Some(base) = base {
                 for id in snapshot.removed_threads(base)? {
-                    write_event(&mut writer, &Event::Remove { id })?;
+                    write_event(&mut writer, &Event::Remove { id }, target.redaction)?;
                 }
             }
             snapshot.visit_selected(BatchKind::Tombstones, false, base, |batch| {
-                write_event(&mut writer, &Event::Batch(batch))
+                write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
             snapshot.visit_selected(BatchKind::Conversations, false, base, |mut batch| {
-                crate::redaction::batch(&mut batch);
+                target.redaction.batch(&mut batch);
                 if let Batch::Conversations { records } = &batch {
                     for conversation in records {
                         conversations.insert(conversation.id.clone(), conversation.clone());
                     }
                 }
-                write_event(&mut writer, &Event::Batch(batch))
+                write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
             snapshot.visit_selected(BatchKind::Messages, true, base, |mut batch| {
-                crate::redaction::batch(&mut batch);
+                target.redaction.batch(&mut batch);
                 if let Batch::Messages { records } = &mut batch {
                     for message in records {
                         visible += u64::from(
@@ -95,9 +96,9 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
                         message.generation = None;
                     }
                 }
-                write_event(&mut writer, &Event::Batch(batch))
+                write_event(&mut writer, &Event::Batch(batch), target.redaction)
             })?;
-            write_event(&mut writer, &Event::Finish)
+            write_event(&mut writer, &Event::Finish, target.redaction)
         })?;
         writer.flush().map_err(AppError::io)?;
         drop(writer);
@@ -116,16 +117,18 @@ struct Reader {
     pending: VecDeque<MessageRecord>,
     done: bool,
     output: tempfile::NamedTempFile,
+    redaction: crate::redaction::Policy,
 }
 
 impl Reader {
-    fn new(input: std::fs::File) -> Result<Self, AppError> {
+    fn new(input: std::fs::File, redaction: crate::redaction::Policy) -> Result<Self, AppError> {
         Ok(Self {
             units: crate::gold::units::Stream::default(),
             input: std::io::BufReader::with_capacity(64 * 1024, input),
             pending: VecDeque::new(),
             done: false,
             output: tempfile::NamedTempFile::new().map_err(AppError::io)?,
+            redaction,
         })
     }
 
@@ -157,7 +160,7 @@ impl Reader {
             match event {
                 Event::Batch(Batch::Messages { records }) => self.pending.extend(records),
                 Event::Finish => self.done = true,
-                event => write_event(self.output.as_file_mut(), &event)?,
+                event => write_event(self.output.as_file_mut(), &event, self.redaction)?,
             }
         }
         Ok((self, batch))
@@ -258,10 +261,11 @@ pub(super) async fn prepare(
     allow_delta: bool,
 ) -> Result<(tempfile::NamedTempFile, i64, SnapshotWork), AppError> {
     let path = path.to_path_buf();
+    let redaction = target.redaction;
     let metadata = target.clone();
     let source = crate::blocking(move || capture(&path, &metadata, allow_delta)).await?;
     let input = source.file.reopen().map_err(AppError::io)?;
-    let mut reader = crate::blocking(move || Reader::new(input)).await?;
+    let mut reader = crate::blocking(move || Reader::new(input, redaction)).await?;
     let mut build = gold::Build::default();
     let mut pool = None;
     let mut estimate = crate::progress::Estimate::new();
@@ -298,6 +302,7 @@ pub(super) async fn prepare(
             write_event(
                 reader.output.as_file_mut(),
                 &Event::Batch(Batch::Messages { records: batch }),
+                redaction,
             )?;
             Ok(reader)
         })
@@ -315,7 +320,7 @@ pub(super) async fn prepare(
         });
     }
     let file = crate::blocking(move || {
-        write_event(reader.output.as_file_mut(), &Event::Finish)?;
+        write_event(reader.output.as_file_mut(), &Event::Finish, redaction)?;
         reader.output.as_file_mut().flush().map_err(AppError::io)?;
         Ok(reader.output)
     })

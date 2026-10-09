@@ -56,6 +56,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
             "path": config_home.join("mash/config.toml"),
             "loaded": false,
             "attachments": {"allowed_roots": [], "share_files": false},
+            "redaction": {"output": true, "publication": true, "remote_embeddings": true},
             "shared": null,
             "gold": {"build": {"embedding_text": "dialogue"}, "query": {
                 "intent": "related-discussion", "unit": "chats", "limit": 20,

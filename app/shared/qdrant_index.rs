@@ -74,6 +74,8 @@ pub(super) struct Store {
     build: crate::gold::config::Build,
     api: api::Client,
     vector_index: VectorIndex,
+    /// Match evidence follows the server's response masking.
+    responses: crate::redaction::Policy,
 }
 
 /// One searchable message, denormalized with its thread metadata.
@@ -277,7 +279,15 @@ impl Store {
             build: crate::gold::config::Build::default(),
             api: api::Client::new("http://127.0.0.1:9", None, 64 * 1024 * 1024).unwrap(),
             vector_index: VectorIndex::default(),
+            responses: crate::redaction::Policy::ON,
         }
+    }
+    pub(in crate::shared) fn with_response_redaction(
+        mut self,
+        responses: crate::redaction::Policy,
+    ) -> Self {
+        self.responses = responses;
+        self
     }
     pub(in crate::shared) fn with_build(mut self, build: crate::gold::config::Build) -> Self {
         self.build = build;
@@ -314,6 +324,7 @@ impl Store {
             build: crate::gold::config::Build::default(),
             api,
             vector_index,
+            responses: crate::redaction::Policy::ON,
         })
     }
     fn dense_name(&self, identity: &Identity) -> &str {

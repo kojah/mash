@@ -1,7 +1,7 @@
 //! Concurrent local/shared candidate retrieval, fusion and contextual ranking.
 use super::client::{Endpoint, get, post};
 use super::protocol;
-use crate::gold::config::{Fusion, Options};
+use crate::gold::config::Options;
 use crate::semantic::{self, Models};
 use crate::storage::{SearchHit, Storage};
 use crate::{AppError, config::SharedConfig};
@@ -141,9 +141,10 @@ pub(super) async fn search_prepared(
     let Options {
         limit,
         unit,
-        fusion,
+        fusion: _,
         ranking,
         shared_vector_search,
+        output_redaction: _,
     } = options;
     let local_filters = filters.clone();
     let local_database = local_database.map(Path::to_path_buf);
@@ -159,8 +160,7 @@ pub(super) async fn search_prepared(
             &local_query,
             &local_vector,
             &local_filters,
-            unit,
-            fusion,
+            options,
         )
     });
     let request = protocol::Search {
@@ -417,21 +417,21 @@ fn retrieve_local_candidates(
     query: &str,
     vector: &[f64],
     filters: &crate::search_filter::Scope,
-    unit: crate::search_results::SearchUnit,
-    fusion: Fusion,
+    options: Options,
 ) -> Result<(Vec<SearchHit>, Vec<String>), AppError> {
     let Some(database) = database else {
         return Ok((Vec::new(), Vec::new()));
     };
-    let storage = Storage::open_search(database, generation)?;
+    let storage =
+        Storage::open_search(database, generation)?.with_output_redaction(options.output_redaction);
     semantic::local_candidates(
         &storage,
         generation,
         query,
         vector,
-        (None, None, unit),
+        (None, None, options.unit),
         Some(filters),
-        fusion,
+        options.fusion,
     )
 }
 

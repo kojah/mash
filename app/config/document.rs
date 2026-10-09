@@ -11,6 +11,7 @@ use crate::provider::{Provider, ProviderRoots};
 #[derive(Debug)]
 pub(super) struct ParsedDocument {
     pub(super) attachments: crate::attachments::Configuration,
+    pub(super) redaction: crate::redaction::Settings,
     pub(super) providers: ProviderRoots,
     pub(super) since_days: Option<u32>,
     pub(super) shared: Option<SharedConfig>,
@@ -32,6 +33,8 @@ struct RawDocument {
     embeddings: Option<crate::semantic::remote::Configuration>,
     #[serde(default)]
     gold: crate::gold::config::Configuration,
+    #[serde(default)]
+    redaction: crate::redaction::Settings,
 }
 
 type RawProviders = BTreeMap<Provider, RawProvider>;
@@ -119,6 +122,7 @@ pub(super) fn parse_document(bytes: &[u8]) -> Result<ParsedDocument, AppError> {
     }
     Ok(ParsedDocument {
         attachments: raw.attachments,
+        redaction: raw.redaction,
         providers: raw
             .providers
             .into_iter()

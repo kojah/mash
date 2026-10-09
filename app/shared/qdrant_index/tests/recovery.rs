@@ -197,6 +197,7 @@ async fn qdrant_replay_reconstructs_all_gold_from_shared_silver() {
         api: crate::semantic::remote::Api::OpenaiCompatible,
         token_env: None,
         request_dimensions: true,
+        redaction: crate::redaction::Policy::ON,
     };
     let models = tempfile::tempdir().unwrap();
     let replayed = server

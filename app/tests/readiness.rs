@@ -101,6 +101,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
             "path": std::fs::canonicalize(&config).expect("canonical config"),
             "loaded": true,
             "attachments": {"allowed_roots": [], "share_files": false},
+            "redaction": {"output": true, "publication": true, "remote_embeddings": true},
             "shared": null,
             "gold": {"build": {"embedding_text": "dialogue"}, "query": {
                 "intent": "related-discussion", "unit": "chats", "limit": 20,

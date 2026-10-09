@@ -113,7 +113,13 @@ impl<'a> From<&'a ChatMatch> for Excerpt<'a> {
             role: value.role.as_ref(),
             author_kind: value.author_kind,
             created_at: value.created_at,
-            snippet: crate::search_results::evidence_window(&value.snippet, "", EXCERPT_CHARS),
+            // Results were masked under the output policy before they got here.
+            snippet: crate::search_results::evidence_window_with(
+                &value.snippet,
+                "",
+                EXCERPT_CHARS,
+                crate::redaction::Policy::new(false),
+            ),
             snippet_truncated: value.snippet.chars().count() > EXCERPT_CHARS
                 || value.projection_span.start_char > 0
                 || value.snippet.ends_with('…'),
@@ -198,10 +204,11 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                         role: hit.role.as_ref(),
                         author_kind: hit.author_kind,
                         created_at: hit.created_at,
-                        content: crate::search_results::evidence_window(
+                        content: crate::search_results::evidence_window_with(
                             &hit.content,
                             &value.query,
                             EXCERPT_CHARS,
+                            crate::redaction::Policy::new(false),
                         ),
                         content_truncated: hit.content.chars().count() > EXCERPT_CHARS,
                         metadata: metadata(&hit.metadata),

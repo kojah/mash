@@ -216,6 +216,7 @@ fn real_sdk_install_and_failed_model_load_preserve_working_generations() {
         api: super::super::remote::Api::OpenaiCompatible,
         token_env: None,
         request_dimensions: false,
+        redaction: crate::redaction::Policy::ON,
     };
     super::super::Models::new(root.path().to_path_buf())
         .with_remote(Some(remote))

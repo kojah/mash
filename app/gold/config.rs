@@ -358,6 +358,8 @@ pub(crate) struct Options {
     pub(crate) unit: SearchUnit,
     pub(crate) fusion: Fusion,
     pub(crate) ranking: Ranking,
+    /// Results leave through CLI or MCP output under this policy.
+    pub(crate) output_redaction: crate::redaction::Policy,
 }
 
 impl Options {
@@ -368,6 +370,7 @@ impl Options {
             unit,
             fusion: Fusion::default(),
             ranking: Ranking::default(),
+            output_redaction: crate::redaction::Policy::ON,
         }
     }
 }

@@ -136,7 +136,7 @@ impl Storage {
                 let (row, lexical_score) = row.map_err(AppError::database)?;
                 let mut hit = super::queries::search_hit(&self.connection, row)?;
                 hit.lexical_score = Some(lexical_score);
-                crate::gold::matching::annotate(&mut hit, literal);
+                crate::gold::matching::annotate(&mut hit, literal, self.output_redaction);
                 Ok(hit)
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -144,7 +144,7 @@ impl Storage {
         let ranked = self.search_connector_lexical(&fts, limit, None, Some(scope))?;
         let ids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
         for mut hit in self.connector_hits(&ids)? {
-            crate::gold::matching::annotate(&mut hit, literal);
+            crate::gold::matching::annotate(&mut hit, literal, self.output_redaction);
             if hit.lexical_match.is_some() {
                 hit.lexical_score = Some(0.0);
                 hits.push(hit);

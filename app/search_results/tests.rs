@@ -1,6 +1,25 @@
 use super::*;
 use crate::provider::Provider;
 
+// These tests exercise grouping and excerpts with masking on, as configured
+// by default; the policy itself is covered in the redaction tests.
+fn collect(hits: Vec<SearchHit>, unit: SearchUnit, limit: usize, query: &str) -> Results {
+    super::collect(hits, unit, limit, query, crate::redaction::Policy::ON)
+}
+
+fn collect_exact(
+    hits: Vec<SearchHit>,
+    unit: SearchUnit,
+    limit: usize,
+    literal: &crate::gold::exact::Literal,
+) -> Results {
+    super::collect_exact(hits, unit, limit, literal, crate::redaction::Policy::ON)
+}
+
+fn evidence_excerpt(content: &str, query: &str, length: usize) -> (String, ProjectionSpan) {
+    super::evidence_excerpt(content, query, length, crate::redaction::Policy::ON)
+}
+
 #[test]
 fn message_replica_dedup_preserves_repeated_and_divergent_canonical_messages() {
     let original = hit("thread", "message");

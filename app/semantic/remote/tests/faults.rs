@@ -35,6 +35,7 @@ fn configuration(url: String) -> Configuration {
         api: Api::OpenaiCompatible,
         token_env: None,
         request_dimensions: false,
+        redaction: crate::redaction::Policy::ON,
     }
 }
 

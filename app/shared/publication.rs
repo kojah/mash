@@ -24,21 +24,31 @@ pub(crate) struct SnapshotWork {
 pub(super) fn target(config: &SharedConfig) -> String {
     blake3::hash(
         format!(
-            "providers-six-v1-attachments-v1-redaction-v2\0{}\0{}\0{}",
+            "providers-six-v1-attachments-v1-redaction-v2\0{}\0{}\0{}{}",
             config.group_id,
             config.node_id,
-            config.api_url.trim_end_matches('/')
+            config.api_url.trim_end_matches('/'),
+            // Changing the masking replaces everything previously published.
+            if config.publication_redaction.enabled() {
+                ""
+            } else {
+                "\0unmasked"
+            }
         )
         .as_bytes(),
     )
     .to_hex()
     .to_string()
 }
-pub(crate) fn write_event(file: &mut impl Write, event: &Event) -> Result<(), AppError> {
+pub(crate) fn write_event(
+    file: &mut impl Write,
+    event: &Event,
+    redaction: crate::redaction::Policy,
+) -> Result<(), AppError> {
     let mut safe;
     let event = if let Event::Batch(batch) = event {
         let mut batch = batch.clone();
-        crate::redaction::batch(&mut batch);
+        redaction.batch(&mut batch);
         safe = Event::Batch(batch);
         &mut safe
     } else {
@@ -205,10 +215,11 @@ async fn publish_result(
                         snapshot: base.is_none(),
                         forgets: Vec::new(),
                     }),
+                    target.redaction,
                 )?;
                 if let Some(base) = base {
                     for id in snapshot.removed_threads(base)? {
-                        write_event(&mut writer, &Event::Remove { id })?;
+                        write_event(&mut writer, &Event::Remove { id }, target.redaction)?;
                     }
                 }
                 for kind in [
@@ -221,7 +232,7 @@ async fn publish_result(
                             forwarded_embeddings +=
                                 records.iter().filter(|m| m.vector.is_some()).count() as u64;
                         }
-                        write_event(&mut writer, &Event::Batch(batch))
+                        write_event(&mut writer, &Event::Batch(batch), target.redaction)
                     };
                     if let Some(base) = base {
                         snapshot.visit_changed(kind, base, accept)?;
@@ -229,7 +240,7 @@ async fn publish_result(
                         snapshot.visit(kind, accept)?;
                     }
                 }
-                write_event(&mut writer, &Event::Finish)
+                write_event(&mut writer, &Event::Finish, target.redaction)
             })?;
             writer
                 .flush()

@@ -51,6 +51,7 @@ pub(super) fn load_from_paths(
             let providers = built_in_providers()?;
             return Ok(ResolvedConfig {
                 attachments: crate::attachments::Configuration::default(),
+                redaction: crate::redaction::Settings::default(),
                 path,
                 loaded: false,
                 shared: None,
@@ -93,9 +94,16 @@ pub(super) fn load_from_paths(
         )));
     }
 
-    let parsed = parse_document(&bytes)?;
+    let mut parsed = parse_document(&bytes)?;
+    if let Some(embeddings) = &mut parsed.embeddings {
+        embeddings.redaction = parsed.redaction.remote_embeddings();
+    }
+    if let Some(shared) = &mut parsed.shared {
+        shared.publication_redaction = parsed.redaction.publication();
+    }
     Ok(ResolvedConfig {
         attachments: parsed.attachments,
+        redaction: parsed.redaction,
         path: canonical,
         loaded: true,
         providers: parsed.providers,

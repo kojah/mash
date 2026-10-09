@@ -222,7 +222,7 @@ impl Store {
         for mut hit in hits(expanded, true, identity, active, &self.build)? {
             if seen.insert((hit.node_id.clone(), hit.id.clone())) {
                 hit.lexical_match =
-                    plan.evidence(&crate::redaction::text(&hit.content), input.match_mode);
+                    plan.evidence(&self.responses.text(&hit.content), input.match_mode);
                 lexical.push(hit);
             }
         }

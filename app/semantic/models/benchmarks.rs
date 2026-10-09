@@ -109,7 +109,13 @@ fn benchmark_real_search_thread_budget() {
                     Some(&filters),
                 )
                 .unwrap();
-                let actual = keys(crate::search_results::collect(hits, unit, 5, query));
+                let actual = keys(crate::search_results::collect(
+                    hits,
+                    unit,
+                    5,
+                    query,
+                    crate::redaction::Policy::ON,
+                ));
                 let milliseconds = start.elapsed().as_secs_f64() * 1000.0;
                 let same_results = if expected.len() <= index {
                     expected.push(actual);

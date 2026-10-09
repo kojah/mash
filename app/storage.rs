@@ -47,6 +47,8 @@ use semantic_chunks::validate_quantized_vector;
 
 pub(crate) struct Storage {
     attachments_config: crate::attachments::Configuration,
+    /// Match evidence is computed on text masked under the output policy.
+    output_redaction: crate::redaction::Policy,
     connection: Connection,
     writer_active: bool,
     search_updates: SearchUpdates,
@@ -191,6 +193,12 @@ pub(crate) struct ConversationChange {
 }
 
 impl Storage {
+    /// Search results leave through CLI or MCP output under this policy.
+    pub(crate) fn with_output_redaction(mut self, policy: crate::redaction::Policy) -> Self {
+        self.output_redaction = policy;
+        self
+    }
+
     pub(crate) fn open(path: &Path) -> Result<Self, AppError> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(AppError::io)?;
@@ -210,6 +218,7 @@ impl Storage {
             .map_err(AppError::database)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
+            output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
