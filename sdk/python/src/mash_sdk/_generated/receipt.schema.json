@@ -1,0 +1,56 @@
+{
+  "$defs": {
+    "ConnectorId": {
+      "maxLength": 256,
+      "minLength": 1,
+      "not": {
+        "pattern": "[^A-Za-z0-9._:/@+\\-]"
+      },
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
+      "type": "string"
+    },
+    "ConnectorVersion": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Receipt for a durably accepted silver batch. Gold readiness is separate.",
+  "properties": {
+    "batch_id": {
+      "$ref": "#/$defs/ConnectorId"
+    },
+    "gold_ready": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/ConnectorVersion"
+    },
+    "silver_revision": {
+      "description": "Database-wide canonical silver revision, distinct from source ordering.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "source_id": {
+      "$ref": "#/$defs/ConnectorId"
+    },
+    "source_revision": {
+      "description": "Next expected revision for this source at this ingestion destination.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "source_id",
+    "batch_id",
+    "source_revision",
+    "silver_revision",
+    "gold_ready"
+  ],
+  "title": "Receipt",
+  "type": "object"
+}

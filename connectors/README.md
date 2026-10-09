@@ -2,7 +2,8 @@
 
 These Slack, Discord, and GitHub Issues connectors describe the **desired API**.
 They are not runnable integrations yet: `api/mash_sdk/__init__.pyi` is a typing
-specification, and each platform client is an injected protocol. The Python SDK,
+specification, and each platform client is an injected protocol. Generated SDK
+models and batch encoding now live in `sdk/python`. The delivery runner,
 platform adapters, and Rust ingestion endpoints still need implementation.
 Obsidian and Apple Notes share the note-to-Document mapping in `notes.py`;
 their source readers are sketched in `obsidian.py` and `apple_notes.py`.
@@ -70,6 +71,9 @@ before these blueprints are production-ready.
   IDs across retries, and only advance destination checkpoints on a matching ACK.
   Requests may be transmitted more than once. Once-only logical application needs
   transactional server receipts; it is not promised by this blueprint.
+- `Delivery.acknowledge_capture` is a source-adapter callback after capture is
+  durable, not Mash's ingestion ACK. Webhooks, Gateway resume, and polling have
+  different native delivery semantics; some adapters have no upstream event ACK.
 - Event capture must be active before backfill to avoid a bootstrap gap; source
   cursors/resume tokens need durable handling. Delivery payloads must be serializable.
 - Silver contains canonical data only. Search and custom search artifacts belong

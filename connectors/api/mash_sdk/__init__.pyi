@@ -3,13 +3,19 @@
 from collections.abc import AsyncIterable, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Generic, Literal, Self, TypeAlias, TypeVar
+from typing import Generic, Self, TypeAlias, TypeVar
 
 from pydantic import JsonValue
 
 Metadata: TypeAlias = dict[str, JsonValue]
 _T = TypeVar("_T")
+
+class AuthorKind(StrEnum):
+    human = "human"
+    bot = "bot"
+    unknown = "unknown"
 
 class Author:
     id: str
@@ -19,7 +25,7 @@ class Author:
         *,
         id: str,
         name: str | None = ...,
-        kind: Literal["human", "bot", "unknown"] = ...,
+        kind: AuthorKind = ...,
     ) -> None: ...
 
 class Attachment:
@@ -118,12 +124,16 @@ class Debounce:
     max_wait_seconds: float
 
 class Delivery(Generic[_T]):
-    """SDK must persist id/key/value before acknowledging the upstream event."""
+    """SDK persists delivery before this optional source-capture callback.
+
+    Webhooks acknowledge upstream capture; Gateway/poll adapters may use a no-op.
+    This is distinct from Mash's durable silver receipt and gold readiness.
+    """
 
     id: str
     key: str
     value: _T
-    async def acknowledge(self) -> None: ...
+    async def acknowledge_capture(self) -> None: ...
 
 class Destination:
     @classmethod

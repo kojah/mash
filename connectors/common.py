@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from mash_sdk import Attachment, Author
+from mash_sdk import Attachment, Author, AuthorKind
 
 
 class Operation(Enum):
@@ -22,7 +22,7 @@ class Sender:
     kind: Literal["human", "bot", "unknown"]
 
     def to_author(self) -> Author:
-        return Author(id=self.id, name=self.name, kind=self.kind)
+        return Author(id=self.id, name=self.name, kind=AuthorKind(self.kind))
 
 
 @dataclass(frozen=True)

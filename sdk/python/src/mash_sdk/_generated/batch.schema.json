@@ -1,0 +1,394 @@
+{
+  "$defs": {
+    "Attachment": {
+      "additionalProperties": false,
+      "description": "A source attachment reference. Binary retention is a separate explicit operation.",
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/ConnectorId"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "media_type",
+        "url"
+      ],
+      "type": "object"
+    },
+    "Author": {
+      "additionalProperties": false,
+      "description": "Authorship is separate from agent dialogue roles.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ConnectorId"
+        },
+        "kind": {
+          "$ref": "#/$defs/AuthorKind"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "AuthorKind": {
+      "enum": [
+        "human",
+        "bot",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Change": {
+      "description": "Explicit mutations. No implicit deletion from an incomplete enumeration.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A complete metadata replacement; omitted optional fields become unknown.",
+          "properties": {
+            "created_at": {
+              "description": "Unix milliseconds, or unknown. Never inferred from ingestion time.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "id": {
+              "$ref": "#/$defs/ConnectorId"
+            },
+            "metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Metadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "const": "upsert-chat",
+              "type": "string"
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "updated_at": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A complete message replacement. Missing messages in a batch are untouched.",
+          "properties": {
+            "attachments": {
+              "default": [],
+              "description": "References only; ingestion must not fetch URLs or execute attachments.",
+              "items": {
+                "$ref": "#/$defs/Attachment"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            "author": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Author"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "chat_id": {
+              "$ref": "#/$defs/ConnectorId",
+              "description": "The chat containing this message; chat boundaries belong to the connector."
+            },
+            "content": {
+              "type": "string"
+            },
+            "created_at": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "id": {
+              "$ref": "#/$defs/ConnectorId"
+            },
+            "metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Metadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "const": "upsert-message",
+              "type": "string"
+            },
+            "reply_to": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConnectorId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Parent/reply message identity within the same source."
+            },
+            "updated_at": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "id",
+            "chat_id",
+            "content"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Standalone text, such as a note. Documents are not synthetic one-message chats.",
+          "properties": {
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Attachment"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            "content": {
+              "type": "string"
+            },
+            "created_at": {
+              "description": "Unix milliseconds, or unknown. Never inferred from ingestion time.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "id": {
+              "$ref": "#/$defs/ConnectorId"
+            },
+            "metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Metadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "const": "upsert-document",
+              "type": "string"
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "updated_at": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "id",
+            "content"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ConnectorId"
+            },
+            "op": {
+              "const": "delete-chat",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ConnectorId"
+            },
+            "op": {
+              "const": "delete-message",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ConnectorId"
+            },
+            "op": {
+              "const": "delete-document",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ConnectorId": {
+      "maxLength": 256,
+      "minLength": 1,
+      "not": {
+        "pattern": "[^A-Za-z0-9._:/@+\\-]"
+      },
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
+      "type": "string"
+    },
+    "ConnectorVersion": {
+      "const": 1,
+      "type": "integer"
+    },
+    "Metadata": {
+      "additionalProperties": true,
+      "description": "Deliberately opaque source-specific properties, never interpreted as instructions.\nCommon searchable fields belong to the typed records instead.",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Transport-independent batch. Applications must validate decoded instances too.",
+  "properties": {
+    "batch_id": {
+      "$ref": "#/$defs/ConnectorId"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/Change"
+      },
+      "maxItems": 512,
+      "minItems": 1,
+      "type": "array"
+    },
+    "expected_revision": {
+      "description": "Optimistic ordering against the last acknowledged source revision.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/ConnectorVersion"
+    },
+    "source_id": {
+      "$ref": "#/$defs/ConnectorId",
+      "description": "Stable account/dataset identity shared across copies on different machines."
+    }
+  },
+  "required": [
+    "schema_version",
+    "source_id",
+    "batch_id",
+    "expected_revision",
+    "changes"
+  ],
+  "title": "Batch",
+  "type": "object",
+  "x-mash-limits": {
+    "batch_bytes": 8388608,
+    "content_bytes": 1048576,
+    "metadata_bytes": 262144
+  }
+}

@@ -4,7 +4,7 @@ CODEGEN ?= 0
 CARGO_ARGS ?=
 COVERAGE_OUTPUT ?= target/llvm-cov/coverage.json
 
-.PHONY: build check-skills generate-queries check-generated coverage
+.PHONY: build check-skills generate-queries check-generated coverage generate-python-models check-python-models
 build: check-skills
 ifeq ($(CODEGEN),1)
 	$(MAKE) generate-queries
@@ -19,6 +19,13 @@ generate-queries:
 
 check-generated: generate-queries
 	git diff --exit-code -- app/storage/generated app/shared/silver_store/generated
+
+generate-python-models:
+	bash tools/generate-python-models.sh
+
+check-python-models: generate-python-models
+	git ls-files --error-unmatch sdk/python/src/mash_sdk/_generated/batch.py sdk/python/src/mash_sdk/_generated/receipt.py sdk/python/src/mash_sdk/_generated/batch.schema.json sdk/python/src/mash_sdk/_generated/receipt.schema.json >/dev/null
+	git diff --exit-code -- sdk/python/src/mash_sdk/_generated
 
 # Coverage includes the installed-model and disposable shared-backend contracts.
 # LLVM instrumentation is required here; ordinary development uses Cranelift.
