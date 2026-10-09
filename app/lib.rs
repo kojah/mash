@@ -7,6 +7,9 @@ mod provider;
 mod role;
 mod silver;
 
+// Experimental source-neutral contract for out-of-process connectors.
+pub mod connectors;
+
 // Gold materialization, retrieval models, policies and query-oriented views.
 mod gold;
 mod search_filter;

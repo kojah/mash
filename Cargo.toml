@@ -29,6 +29,10 @@ test = false
 name = "cli_contract"
 path = "app/tests/cli_contract.rs"
 
+[[example]]
+name = "connector-schema"
+path = "app/examples/connector_schema.rs"
+
 [dependencies]
 mash-query = { path = "crates/mash-query" }
 aho-corasick = "1.1.5"
