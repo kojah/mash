@@ -326,7 +326,7 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
     // Output of unmodified codex-cli 0.159.2 migrate-rollouts on synthetic history.
     let mut file = tempfile::NamedTempFile::new().unwrap();
     file.write_all(include_bytes!(
-        "../../../docs/fixtures/codex-native-migration-0.159.2.jsonl"
+        "../../../fixtures/codex-native-migration-0.159.2.jsonl"
     ))
     .unwrap();
     let parsed = parse_codex(file.path()).unwrap();
@@ -386,7 +386,7 @@ fn codex_native_migration_preserves_repeated_requests_without_mirrors() {
 fn codex_native_completed_only_dialogue_is_recovered() {
     let mut file = tempfile::NamedTempFile::new().unwrap();
     file.write_all(include_bytes!(
-        "../../../docs/fixtures/codex-native-lifecycle-only-0.159.2.jsonl"
+        "../../../fixtures/codex-native-lifecycle-only-0.159.2.jsonl"
     ))
     .unwrap();
     let parsed = parse_codex(file.path()).unwrap();
@@ -428,7 +428,7 @@ fn codex_native_completed_only_dialogue_is_recovered() {
 fn codex_completed_dialogue_does_not_promote_transient_or_unknown_items() {
     let mut file = tempfile::NamedTempFile::new().unwrap();
     file.write_all(include_bytes!(
-        "../../../docs/fixtures/codex-native-lifecycle-only-0.159.2.jsonl"
+        "../../../fixtures/codex-native-lifecycle-only-0.159.2.jsonl"
     ))
     .unwrap();
     for line in [
@@ -455,7 +455,7 @@ fn codex_completed_dialogue_does_not_promote_transient_or_unknown_items() {
 fn codex_partial_mirrors_keep_unmatched_dialogue_in_both_orders() {
     // Remove different raw records from the actual migrated fixture, then swap
     // remaining adjacent response/completed pairs to exercise reverse arrival.
-    let fixture = include_str!("../../../docs/fixtures/codex-native-migration-0.159.2.jsonl");
+    let fixture = include_str!("../../../fixtures/codex-native-migration-0.159.2.jsonl");
     for reverse in [false, true] {
         let mut lines = fixture.lines().collect::<Vec<_>>();
         lines.remove(10); // second assistant raw response

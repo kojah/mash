@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "source_id": "my-work-chat",
+  "batch_id": "batch-104",
+  "expected_revision": 12,
+  "changes": [
+    {"op": "upsert-chat", "id": "context-456", "title": "Storage decisions", "metadata": {"native_kind": "discussion"}},
+    {
+      "op": "upsert-message",
+      "id": "message-789",
+      "chat_id": "context-456",
+      "author": {"id": "user-42", "name": "Alice", "kind": "human"},
+      "content": "We decided to use Qdrant.",
+      "created_at": 1791540000000,
+      "url": "https://chat.example/messages/789"
+    },
+    {"op": "delete-message", "id": "message-123"}
+  ]
+}

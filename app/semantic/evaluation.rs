@@ -45,7 +45,7 @@ struct Message<'a> {
 
 fn corpus() -> Corpus {
     let corpus: Corpus =
-        toml::from_str(include_str!("../../docs/fixtures/search-relevance.toml")).unwrap();
+        toml::from_str(include_str!("../../fixtures/search-relevance.toml")).unwrap();
     assert_eq!(corpus.version, 1);
     corpus
 }

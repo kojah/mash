@@ -23,7 +23,7 @@ struct Row {
 
 pub(in crate::silver::cursor) fn fixture(path: &Path) -> Connection {
     let fixture: Fixture = serde_json::from_str(include_str!(
-        "../../../../docs/fixtures/cursor-ide-native-v18.json"
+        "../../../../fixtures/cursor-ide-native-v18.json"
     ))
     .unwrap();
     assert_eq!(fixture.expected_bubble_ids.len(), 6);

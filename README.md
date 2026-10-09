@@ -25,7 +25,7 @@ and local canonical SQLite data remain intact. Detection is best effort, not a
 guarantee that arbitrary or obfuscated secrets are absent. Existing deployments
 and stored shared history require an upgrade and explicit re-indexing; rebuilding
 alone does not delete previous publications. See the
-[redaction evaluation and limits](docs/redaction-evaluation.md).
+[redaction evaluation and limits](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redaction-evaluation.md).
 
 ## Commands
 
@@ -192,7 +192,7 @@ shared identity; `tools/upgrade-local-index.sh` does exactly this and is a no-op
 when the schema is unchanged. Then rebuild gold with
 `mash index --rebuild-local-gold`. The shared server never migrates either: an
 empty silver directory is refilled by node publications and `--replay-gold`. See the
-[history pipeline](docs/history-pipeline.md) for layer ownership, storage schemas
+[history pipeline](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/history-pipeline.md) for layer ownership, storage schemas
 and recovery behavior.
 
 `mash index` reports live progress on stderr, including file/vector counts,
@@ -227,7 +227,7 @@ a source fingerprint in place of its path, plus the provider, line, column and
 category. Neither includes record content or raw decoder error messages. Final-result diagnostics
 remain available when intermediate progress notifications are dropped.
 For a recovery checklist that preserves source records and existing index data,
-see [recovering incomplete indexing](docs/index-recovery.md).
+see [recovering incomplete indexing](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/index-recovery.md).
 Interactive terminals show an indicatif progress bar or spinner; redirected stderr retains
 newline-delimited JSON with `eta_seconds` (`null` when unknown) and `eta_scope`.
 The final command response stays JSON on stdout. Watching remains opt-in with
@@ -304,7 +304,7 @@ Scratch files use `TMPDIR` and are removed when their owner finishes or fails.
 Sensitive scratch SQLite stores use owner-only directories and files on Unix.
 Checksums detect corrupt staging before publication. Metadata still grows with
 message count, and some native adapters buffer their input before normalization.
-See the [large-history staging measurement](benchmarks/2026-10-01-normalized-message-staging.md)
+See the [large-history staging measurement](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-01-normalized-message-staging.md)
 for the measured memory and disk-I/O tradeoff.
 
 Claude native ancestry spills to private scratch SQLite above a 2 MiB inline
@@ -319,11 +319,11 @@ a third private store with a 2 MiB inline accounting budget. Missing UUID slots,
 duplicate first positions and forward ancestry references remain exact.
 Reconciliation lineage, spool offsets, model workspaces and other adapters still
 have separate memory costs.
-The [ancestry staging measurement](benchmarks/2026-10-02-claude-ancestry-staging.md)
+The [ancestry staging measurement](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-02-claude-ancestry-staging.md)
 records the whole-index memory reduction and indexing-time tradeoff.
-The [replay staging diagnostic](benchmarks/2026-10-03-claude-replay-staging.md)
+The [replay staging diagnostic](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-claude-replay-staging.md)
 separately compares large compaction metadata with its previous in-memory rules.
-The [dialogue identity diagnostic](benchmarks/2026-10-03-claude-dialogue-identities.md)
+The [dialogue identity diagnostic](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-claude-dialogue-identities.md)
 records its separate memory reduction and additional scratch-I/O cost.
 
 Without a configuration file, mash indexes these built-in roots when present:
@@ -427,11 +427,11 @@ truncating histories. Canceling a streamed request wakes blocked body I/O; it
 does not preempt CPU parsing. Owned typed results and upstream frame buffers still
 consume memory. Large-history paging and owned-data budgets
 remain tracked in `mash-c0d.21.4`.
-See the [response decoding checks](benchmarks/2026-10-03-shared-response-decoding.md)
+See the [response decoding checks](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-decoding.md)
 for concurrency and relevance verification.
-The [response admission checks](benchmarks/2026-10-03-shared-response-admission.md)
+The [response admission checks](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-admission.md)
 cover queue expiry, cancellation, separate capacity and remaining memory limits.
-The [streaming control](benchmarks/2026-10-03-shared-response-streaming.md)
+The [streaming control](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-streaming.md)
 documents the large-state memory/parsing tradeoff and body cancellation checks.
 Live worker stage streaming and fleet overhead measurements remain planned.
 
@@ -525,9 +525,9 @@ orphaned bubbles, simulated/agent-sent prompts and operational rows do not enter
 search prose. Older or unknown root versions fail explicitly. Each JSON record
 is limited to 8 MiB and 65,536 nodes; each conversation has a 64 MiB read budget
 and 32 MiB retained-history budget. IDE and Agent identities remain distinct.
-Its [native storage contract](docs/cursor-ide-ingestion-contract.md) records the
+Its [native storage contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ide-ingestion-contract.md) records the
 fixture provenance and remaining captured-session validation gates.
-The [Cursor ingestion contract](docs/cursor-ingestion-contract.md)
+The [Cursor ingestion contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/cursor-ingestion-contract.md)
 records first-party fixture provenance and remaining real-session validation gates.
 
 Antigravity IDE 2.5.5 is opt-in through `[providers.antigravity]`. Configure
@@ -546,7 +546,7 @@ Each native BLOB is limited to 8 MiB, each conversation to 64 MiB of reads,
 step formats, SQL/protobuf disagreements, malformed timestamps and oversized
 input fail explicitly and preserve the previous index revision. Native workspace
 and Git-root URIs supply project/repository filters when unambiguous. The
-[Antigravity contract](docs/antigravity-ingestion-contract.md) records native
+[Antigravity contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/antigravity-ingestion-contract.md) records native
 writer/fork evidence and remaining real UI, successful rewind, CLI/Hub and
 cross-version validation gates. These limits do not establish aggregate RSS.
 
@@ -562,7 +562,7 @@ Codex histories include raw response records and completed `UserMessage` /
 `AgentMessage` turn items. Nearby raw/completed counterparts are paired once;
 unmatched dialogue and separate repeated requests are retained. Started items,
 streaming deltas and legacy event mirrors are omitted. See the
-[native Codex contract](docs/codex-ingestion-contract.md) for migration fixtures
+[native Codex contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/codex-ingestion-contract.md) for migration fixtures
 and reconciliation limits. Existing nodes require an explicit `mash index`
 refresh for schema 32 / `search-text-v6`; search does not migrate or ingest.
 
@@ -625,7 +625,7 @@ For resolved policy and retrieval outcomes, use CLI `search --diagnostics` or
 MCP `search` with `"diagnostics":true`. The optional report includes selected
 artifacts, completed retrieval sources, fallback, result count and core time.
 It does not run indexing or change search results.
-See [silver enrichment and gold configuration](docs/silver-gold-configuration.md)
+See [silver enrichment and gold configuration](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md)
 for the layer contract and current configuration scope.
 
 ```toml
@@ -837,7 +837,7 @@ mash search 'database migration' --unit messages --provider codex --conversation
 
 The HTTP service stores shared silver in SQLite and shared gold in
 [Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env`; there is no backend
-selector. PostgreSQL/Redis settings are rejected. See [shared storage](docs/shared-storage.md)
+selector. See [shared storage](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/shared-storage.md)
 for the publication sequence, recovery and cutover from Qdrant-only servers.
 
 Each node has a different randomly generated token (at least 32 printable ASCII
@@ -883,7 +883,7 @@ a remote endpoint when `url` is set, otherwise local model assets from
 `--models-dir`. Replay is the only shared gold rebuild; nodes never re-embed
 shared history.
 Benchmark actual search latency, update cost, memory use, and retrieval
-quality for a group. See [the measured comparison](benchmarks/2026-09-30-shared-index.md).
+quality for a group. See [the measured comparison](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-shared-index.md).
 
 In both mode without destination filters, local indexing commits first. Changes
 mark a durable local publication revision;
@@ -936,7 +936,7 @@ in each returned excerpt/message, so `PR 180` cannot be replaced by `PR 183`
 or an incidental numeric value of 180. PR and issue references remain distinct;
 a complete reference URL also constrains its host and repository.
 Use the metadata filters for Boolean scopes.
-See [the search quality audit](docs/search-audit-2026-09-30.md) for measured failures
+See [the search quality audit](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/search-audit-2026-09-30.md) for measured failures
 and remaining relevance limitations.
 
 Thread retrieval considers up to 200 lexical and 200 semantic candidates per
@@ -1107,7 +1107,7 @@ TOML and start with `--activate-gold --replay-gold`, which re-embeds every node'
 shared silver on the API host. Old API settings fail closed, and dense search
 requires compatible manifests across the group. This preserves canonical history
 but interrupts dense search during replacement. See
-[the activation contract](docs/silver-gold-configuration.md#durable-shared-group-configuration)
+[the activation contract](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md#durable-shared-group-configuration)
 for publication races and remaining lifecycle gates.
 Embedding dimension changes retain the same group and canonical history. Mash
 prepares an additional named dense field in the existing collection, then the
@@ -1366,7 +1366,7 @@ after its readable summary. CLI output stays extended JSON.
 retained attachments offline, with a typed JSON manifest and checksums.
 `import_silver({"directory":"/path/to/new-export","database":"/path/to/new.sqlite3"})`
 imports to a fresh path and leaves gold explicitly unready. It does not redirect
-the running MCP session or overwrite existing history. See [silver exports](docs/silver-exports.md)
+the running MCP session or overwrite existing history. See [silver exports](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-exports.md)
 for format, CLI commands, import/rebuild steps and data scope.
 
 Attachment discovery uses a message ID from `view` or search:
@@ -1504,7 +1504,7 @@ cargo test --doc
 The handwritten workspace includes the application and the pure `mash-query`
 crate. These default commands cover both. For an isolated query edit cycle,
 use `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
-See [crate boundaries](docs/crate-boundaries.md) for responsibilities and
+See [crate boundaries](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md) for responsibilities and
 the integrated checks required when changing search behavior.
 
 For repeated unit-test edits, keep one target directory and enable incremental
@@ -1523,9 +1523,9 @@ The empty `RUSTC_WRAPPER` bypasses a locally configured compiler wrapper; the
 installed wrapper failed on this incremental build. `--lib` selects unit tests
 and does not run CLI integration contracts. Keep the full suite, real-model and
 shared-backend checks as completion gates. See the
-[measured workflow](benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
+[measured workflow](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-test-turnaround.md) for scope and limits.
 
-CI also runs the [labeled hybrid relevance matrix](benchmarks/2026-10-01-shared-relevance.md)
+CI also runs the [labeled hybrid relevance matrix](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-01-shared-relevance.md)
 with explicitly installed models against local SQLite and shared Qdrant. The
 report retains historical measurements of the removed backends.
 The shared tests require their disposable backend endpoint and
@@ -1574,7 +1574,7 @@ prevent its final LLVM profile flush, so the contract's runtime checks do not
 guarantee that all child-process execution appears in the coverage report.
 Snapshot restoration stops all fixture writers and restores both group
 collections onto a fresh database after deleting the original database and
-volume. See the [backup scope](docs/silver-gold-configuration.md#quiescent-backup-and-restore).
+volume. See the [backup scope](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md#quiescent-backup-and-restore).
 
 Then run:
 
@@ -1621,7 +1621,7 @@ Use these alongside end-to-end measurements before changing production defaults.
 CPU indexing reserves two workers for long embedding batches and allows short
 batches to use all eight workers. It preserves the dynamically quantized model's
 batch membership and vector generation. See the
-[indexing memory measurements](benchmarks/2026-09-30-index-memory.md) for the
+[indexing memory measurements](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-index-memory.md) for the
 memory/throughput tradeoff and the manual worker-budget diagnostic. This is an
 inference workspace limit, not a total indexing memory limit.
 
@@ -1658,7 +1658,7 @@ Successful CI alone does not confirm that any machine was updated: verify the
 deployment job and destination smoke checks too.
 
 Binary deployment does not rebuild indexes. Use the
-[redeployment checks](docs/redeployment.md) to refresh only incompatible or
+[redeployment checks](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redeployment.md) to refresh only incompatible or
 pending artifacts, while preserving required data migrations.
 
 ## License

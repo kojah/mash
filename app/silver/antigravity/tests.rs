@@ -79,7 +79,7 @@ struct Schemas {
 }
 fn fixture() -> Fixture {
     serde_json::from_str(include_str!(
-        "../../../docs/fixtures/antigravity-native-mutations-2.5.5.json"
+        "../../../fixtures/antigravity-native-mutations-2.5.5.json"
     ))
     .unwrap()
 }
@@ -89,7 +89,7 @@ pub(crate) fn write(directory: &Path) -> PathBuf {
 fn write_case(directory: &Path, case: &Case) -> PathBuf {
     let path = directory.join(format!("{}.db", case.trajectory_meta[0].cascade_id));
     let schemas: Schemas = serde_json::from_str(include_str!(
-        "../../../docs/fixtures/antigravity-native-runtime-2.5.5.json"
+        "../../../fixtures/antigravity-native-runtime-2.5.5.json"
     ))
     .unwrap();
     let connection = Connection::open(&path).unwrap();

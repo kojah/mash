@@ -136,8 +136,8 @@ async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
     use crate::core::{IndexRequest, Operation, Paths, Request, Response};
     use crate::search_results::{Results, SearchUnit};
     for fixture in [
-        include_str!("../../../docs/fixtures/codex-native-lifecycle-only-0.159.2.jsonl"),
-        include_str!("../../../docs/fixtures/codex-native-migration-0.159.2.jsonl"),
+        include_str!("../../../fixtures/codex-native-lifecycle-only-0.159.2.jsonl"),
+        include_str!("../../../fixtures/codex-native-migration-0.159.2.jsonl"),
     ] {
         let directory = tempfile::tempdir().unwrap();
         let history = directory.path().join("session.jsonl");

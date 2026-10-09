@@ -154,15 +154,8 @@ fn direct_batches_obey_encoded_size_budget_without_a_second_payload_buffer() {
 }
 
 #[test]
-fn documented_batch_is_accepted_by_the_real_rust_decoder() {
-    let document = include_str!("../../docs/external-connectors.md");
-    let example = document
-        .split_once("```json\n")
-        .unwrap()
-        .1
-        .split_once("```")
-        .unwrap()
-        .0;
+fn external_connector_batch_fixture_is_accepted_by_the_real_rust_decoder() {
+    let example = include_str!("../../fixtures/external-connector-batch.json");
     assert!(Batch::decode(example.as_bytes()).is_ok());
 }
 

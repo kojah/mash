@@ -7,7 +7,7 @@ const MAX_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MATCHES: usize = 4096;
 
 // Recognizable token formats follow Gitleaks' MIT-licensed rules; see
-// docs/redaction-evaluation.md. Context rules also cover short/opaque values.
+// https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redaction-evaluation.md. Context rules also cover short/opaque values.
 const PATTERNS: &[&str] = &[
     r"\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{60,255})\b",
     r"\b(?:sk-(?:proj-|ant-api\d+-)?[A-Za-z0-9_-]{20,512}|AIza[A-Za-z0-9_-]{35}|(?:AKIA|ASIA)[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{20,255})\b",

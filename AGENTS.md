@@ -152,7 +152,7 @@ async-code compiler crash.
 
 The workspace defaults include `mash`, `mash-query` and `mash-dev`. Query-only iteration can use
 `env CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif -p mash-query`.
-See `docs/crate-boundaries.md`; integrated search validation remains required
+See [docs/crate-boundaries.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/crate-boundaries.md); integrated search validation remains required
 when changing query behavior.
 
 For repeated unit-test edits, use the persistent target/temp directories above
@@ -177,14 +177,14 @@ only when the configured artifacts, source interpretation or publication target
 need repair; do not skip required provider/privacy/schema migrations. A query-model
 availability failure needs explicit model setup, rather than repeated indexing.
 Keep background synchronization or explicit ingestion separate from redeployment.
-See `docs/redeployment.md` for readiness checks, measured costs and pending delta work.
+See [docs/redeployment.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redeployment.md) for readiness checks, measured costs and pending delta work.
 
 The separate project development MCP is `mash-dev-mcp` (`mash-dev` crate).
 It runs only trusted, configured deployment commands and calls installed Mash
 MCPs for refresh/status; it must not duplicate indexing or schema logic. Keep
 deploy and refresh separate, target selections explicit, and raw command logs
 private. It stays independent of the history plugin and inference implementation.
-See `docs/mash-dev.md`; do not restart it or replace its configuration during
+See [docs/mash-dev.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/mash-dev.md); do not restart it or replace its configuration during
 an active development job.
 
 ## Agent work tracking

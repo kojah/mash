@@ -23,7 +23,7 @@ fn native_publication() -> (Vec<Value>, Vec<String>) {
     let connection = rusqlite::Connection::open(&path).unwrap();
     connection.execute_batch("PRAGMA user_version=1; PRAGMA journal_mode=WAL; CREATE TABLE ItemTable(key TEXT UNIQUE ON CONFLICT REPLACE,value BLOB); CREATE TABLE cursorDiskKV(key TEXT UNIQUE ON CONFLICT REPLACE,value BLOB);").unwrap();
     let fixture: Fixture = serde_json::from_str(include_str!(
-        "../../../../docs/fixtures/cursor-ide-native-v18.json"
+        "../../../../fixtures/cursor-ide-native-v18.json"
     ))
     .unwrap();
     for row in fixture.rows {

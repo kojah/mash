@@ -26,7 +26,7 @@ struct Blob {
 
 fn fixture(path: &Path) -> Connection {
     let fixture: Fixture = serde_json::from_str(include_str!(
-        "../../../docs/fixtures/cursor-agent-native-v1.json"
+        "../../../fixtures/cursor-agent-native-v1.json"
     ))
     .unwrap();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();

@@ -1,7 +1,7 @@
 //! Experimental external-ingestion contract, independent of internal silver tables.
 //!
 //! These types define the boundary being prepared for external connectors. They
-//! do not yet submit batches or modify indexes. See `docs/external-connectors.md`.
+//! do not yet submit batches or modify indexes. See `https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/external-connectors.md`.
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
