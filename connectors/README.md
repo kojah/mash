@@ -1,6 +1,6 @@
 # External connector API blueprints
 
-These Slack, Discord, and GitHub Issues connectors describe the **desired API**.
+These Slack, Discord, and GitHub Issues/PR connectors describe the **desired API**.
 They are not runnable integrations yet: `api/mash_sdk/__init__.pyi` is a typing
 specification, and each platform client is an injected protocol. Generated SDK
 models and batch encoding now live in `sdk/python`. The delivery runner,
@@ -60,6 +60,11 @@ before these blueprints are production-ready.
 - iMessage conversations are `Chat`s, with group participants in metadata and
   sender identities on messages. Missing rows in a pruned local database are
   not automatically treated as deletions.
+- `github.py` covers both issues and PRs. A PR description, general discussion,
+  reviews, and inline review replies share one Chat. Review replies retain native
+  parent links; file/diff location, review state and merge/branch details are metadata.
+  Configure `item_kinds` to select issues, PRs, or both. The native adapter must
+  reconcile the same PR appearing through the issues and pull-request APIs.
 - Stable source IDs survive restarts and credential rotation. Native message
   IDs are preserved or deterministically namespaced. Slack timestamps stay strings.
 - Message reply links represent real same-chat relationships. Cross-chat

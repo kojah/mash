@@ -39,9 +39,10 @@ history_days = 90
 quiet_seconds = 2
 max_wait_seconds = 10
 
-[github_issues]
+[github]
 installation_scope = "stable-github-source"
 repositories = ["example/backend", "example/frontend"]
+item_kinds = ["issue", "pull-request"]
 history_days = 90
 quiet_seconds = 2
 max_wait_seconds = 10
