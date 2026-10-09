@@ -431,6 +431,10 @@ fn schema_fields_mode(
             ("created_at", "integer"),
             ("message.ordinal", "integer"),
             ("message.context.ordinal", "integer"),
+            // Connector points: source and kind filters. Qdrant indexes the
+            // points already stored when these are added to a collection.
+            ("source_id", "keyword"),
+            ("object.kind", "keyword"),
         ]
     } else {
         &[("kind", "keyword"), ("version", "keyword")]

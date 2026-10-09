@@ -574,3 +574,41 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
     }
     fixture.cleanup().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
+async fn qdrant_source_and_kind_indexes_are_added_to_existing_collections() {
+    let fixture = Fixture::new(VectorIndex::default()).await;
+    let path = format!(
+        "{}/collections/{}",
+        fixture.url,
+        collection(&fixture.identity.group_id, false)
+    );
+    let indexed = || async {
+        let info: serde_json::Value = reqwest::get(&path).await.unwrap().json().await.unwrap();
+        ["source_id", "object.kind"].map(|field| {
+            info["result"]["payload_schema"][field]["data_type"]
+                .as_str()
+                .map(str::to_owned)
+        })
+    };
+    let keyword = || Some("keyword".to_owned());
+    assert_eq!(indexed().await, [keyword(), keyword()]);
+    // A collection from an earlier release has neither; opening it adds them.
+    for field in ["source_id", "object.kind"] {
+        reqwest::Client::new()
+            .delete(format!("{path}/index/{field}?wait=true"))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+    }
+    assert_eq!(indexed().await, [None, None]);
+    fixture
+        .reopen(VectorIndex::default(), MemoryTier::Cached)
+        .await
+        .unwrap();
+    assert_eq!(indexed().await, [keyword(), keyword()]);
+    fixture.cleanup().await;
+}
