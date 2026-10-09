@@ -92,11 +92,11 @@ async def run(
     *,
     source_id: str,
     scope: Scope,
-    destination: Destination,
+    destinations: Sequence[Destination],
     state_path: Path,
 ) -> None:
     async with Connector(
-        source_id=source_id, destination=destination, state_path=state_path
+        source_id=source_id, destinations=destinations, state_path=state_path
     ) as connector:
         await connector.run(
             backfill=backfill(source, scope),

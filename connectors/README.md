@@ -18,7 +18,7 @@ Mash never imports or executes connector code in its server process.
 
 ## Configuration
 
-Every connector takes a `Scope` and an explicit local or shared destination:
+Every connector takes a `Scope` and one or more explicit destinations:
 `example.toml` sketches the matching configuration-file shape (not wired up yet).
 
 ```python
@@ -31,10 +31,16 @@ scope = Scope(
     quiet_seconds=2,
     max_wait_seconds=10,
 )
-destination = Destination.local(database=Path("mash.sqlite3"))
-# Or, with the same settings as Mash's [shared] configuration:
-# Destination.shared(api_url="https://mash.example", group_id="personal",
-#                    node_id="laptop", token_env="MASH_API_TOKEN")
+destinations = [
+    Destination.local(database=Path("mash.sqlite3")),
+    # Optional; the same settings as Mash's [shared] configuration:
+    Destination.shared(
+        api_url="https://mash.example",
+        group_id="personal",
+        node_id="laptop",
+        token_env="MASH_API_TOKEN",
+    ),
+]
 ```
 
 An empty allowlist selects nothing. The same selection applies to backfill and

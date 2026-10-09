@@ -228,13 +228,13 @@ async def run(
     *,
     installation_scope: str,
     scope: Scope,
-    destination: Destination,
+    destinations: Sequence[Destination],
     state_path: Path,
     kinds: Sequence[ItemKind] = (ItemKind.ISSUE, ItemKind.PULL_REQUEST),
 ) -> None:
     async with Connector(
         source_id=f"github:{installation_scope}",
-        destination=destination,
+        destinations=destinations,
         state_path=state_path,
     ) as connector:
         await connector.run(

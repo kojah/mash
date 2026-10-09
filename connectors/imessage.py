@@ -142,11 +142,15 @@ async def refresh(source: IMessage, event: Event, scope: Scope) -> Changes:
 
 
 async def run(
-    source: IMessage, settings: Settings, *, destination: Destination, state_path: Path
+    source: IMessage,
+    settings: Settings,
+    *,
+    destinations: Sequence[Destination],
+    state_path: Path,
 ) -> None:
     async with Connector(
         source_id=f"imessage:{settings.account_scope}",
-        destination=destination,
+        destinations=destinations,
         state_path=state_path,
     ) as connector:
         await connector.run(

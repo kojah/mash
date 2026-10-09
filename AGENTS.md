@@ -22,8 +22,11 @@ Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`,
   group. Shared silver is server-side SQLite (no gold tables); shared gold is
   Qdrant.
   Commit silver before synchronizing gold; do not build transaction, staging or
-  versioning machinery on top of Qdrant. Require a local SQLite index; support local-only or
-  both indexing, where shared publishes exactly the local index. Keep local operations
+  versioning machinery on top of Qdrant. Native history requires a local SQLite index; support
+  local-only or both indexing, where shared publishes exactly the local index. External
+  connectors deliver to each destination they choose (local and/or a node's shared silver)
+  independently: node publication never carries connector records, and a node's shared
+  connector records arrive only through direct ingress. Keep local operations
   offline-capable. Only the HTTP service accesses Qdrant. Never restore SSH query fan-out.
 - Use the official Rust MCP SDK (rmcp) for the stdio server and call the same typed application core as the CLI.
   Keep CLI argument parsing/output and MCP protocol handling in thin wrappers;

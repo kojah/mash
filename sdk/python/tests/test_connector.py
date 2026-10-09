@@ -37,7 +37,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
 
     def connector(self, destination: Destination) -> Connector:
         return Connector(
-            source_id="external", destination=destination, state_path=self.state
+            source_id="external", destinations=[destination], state_path=self.state
         )
 
     def wrapper(self, *, stall: bool = False, gated: bool = False) -> str:
@@ -82,6 +82,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
                 connector.send(Changes.upsert(Document(id="one", content="First"))),
                 connector.send(Changes.upsert(Document(id="two", content="Second"))),
             )
+        receipts = [receipt for (receipt,) in receipts]
         self.assertEqual([item.source_revision for item in receipts], [1, 2])
         self.assertTrue(all(not item.gold_ready for item in receipts))
         with sqlite3.connect(self.database) as connection:
@@ -106,7 +107,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
                     source_id="external", destination_id=destination._identity()
                 )
                 self.assertIsNotNone(pending)
-            receipt = await connector.send(changes)
+            (receipt,) = await connector.send(changes)
         self.assertEqual(receipt.source_revision, 1)
         assert pending is not None
         self.assertEqual(receipt.batch_id, pending.batch_id)
@@ -188,7 +189,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
                 )
             )
             (self.root / "release").touch()
-            receipt = await later
+            (receipt,) = await later
             self.assertEqual(receipt.source_revision, 2)
         with sqlite3.connect(self.database) as connection:
             self.assertEqual(
@@ -207,7 +208,7 @@ class ConnectorConfigurationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Connector(
                 source_id="invalid source",
-                destination=destination,
+                destinations=[destination],
                 state_path=Path("unused-state.sqlite"),
             )
         for timeout in [0, -1, float("inf"), float("nan")]:

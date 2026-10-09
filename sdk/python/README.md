@@ -50,11 +50,18 @@ changes = Changes.upsert(
 async def publish() -> None:
     async with Connector(
         source_id="my-connector",
-        destination=Destination.local(database=Path("mash.sqlite3")),
+        destinations=[Destination.local(database=Path("mash.sqlite3"))],
         state_path=Path("connector-state.sqlite"),
     ) as connector:
         await connector.send(changes)
 ```
+
+A connector delivers to each of its destinations independently, typically local
+silver, a node's shared silver, or both. Native history reaches shared silver by
+node publication; connector records never do, so a connector that should be
+searchable in both places lists both. `send` returns one receipt per destination,
+in order. Every destination is attempted even when another fails; the error
+reports how many failed and is retryable only if every failure is.
 
 Connector authors pass typed changes. They do not allocate batch IDs, track
 revisions, interpret receipts, or manipulate the delivery state file. The client

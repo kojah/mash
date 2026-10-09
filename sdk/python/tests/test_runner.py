@@ -128,7 +128,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
     def connector(self) -> Connector:
         return Connector(
             source_id="external",
-            destination=self.destination,
+            destinations=[self.destination],
             state_path=self.state_path,
         )
 
@@ -343,7 +343,7 @@ class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
         ):
             async with Connector(
                 source_id="external",
-                destination=destination,
+                destinations=[destination],
                 state_path=root / "sdk.sqlite",
             ) as connector:
                 await connector.run(
@@ -363,3 +363,99 @@ class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FanOutTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.state_path = Path(temporary.name) / "sdk.sqlite"
+        self.servers = (Behaviour(), Behaviour())
+        self.destinations = []
+        # Two independent services; the fake authorizes the same node on each.
+        for server in self.servers:
+            url, stop = serve(server)
+            self.addCleanup(stop)
+            self.destinations.append(
+                Destination.shared(
+                    api_url=url,
+                    group_id="group",
+                    node_id="laptop",
+                    token_env=TOKEN_ENV,
+                    timeout=5,
+                )
+            )
+        os.environ[TOKEN_ENV] = TOKEN
+        self.addCleanup(os.environ.pop, TOKEN_ENV, None)
+
+    def connector(self) -> Connector:
+        return Connector(
+            source_id="external",
+            destinations=self.destinations,
+            state_path=self.state_path,
+        )
+
+    async def test_each_destination_receives_and_acknowledges_independently(
+        self,
+    ) -> None:
+        healthy, flaky = self.servers
+        flaky.failures = [503]
+        async with self.connector() as connector:
+            with self.assertRaises(DeliveryError) as raised:
+                await connector.send(Changes.upsert(Document(id="a", content="one")))
+            self.assertTrue(raised.exception.retryable)
+            self.assertIn("1 of 2", str(raised.exception))
+            self.assertEqual(set(healthy.documents), {"a"})
+            self.assertEqual(flaky.documents, {})
+            # The flaky destination's saved batch goes first, then the new one.
+            receipts = await connector.send(
+                Changes.upsert(Document(id="b", content="two"))
+            )
+        self.assertEqual([receipt.source_revision for receipt in receipts], [2, 2])
+        for server in self.servers:
+            self.assertEqual(set(server.documents), {"a", "b"})
+
+    async def test_one_refresh_serves_every_destination_and_permanent_failures_end_runs(
+        self,
+    ) -> None:
+        events = Events()
+        events.put(Event("note", 1))
+        events.close()
+        refreshed: list[Event] = []
+
+        async def refresh(event: Event) -> Changes:
+            refreshed.append(event)
+            return Changes.upsert(Document(id="note", content="current"))
+
+        async with self.connector() as connector:
+            await connector.run(
+                backfill=snapshots(documents("a", scopes=("A",))),
+                events=events,
+                event_type=Event,
+                refresh=refresh,
+                debounce=QUICK,
+            )
+        self.assertEqual(refreshed, [Event("note", 1)])
+        for server in self.servers:
+            self.assertEqual(set(server.documents), {"a", "note"})
+        self.servers[1].failures = [409]
+        with self.assertRaises(DeliveryError) as raised:
+            async with self.connector() as connector:
+                await connector.run(
+                    backfill=snapshots(documents("a", "b", scopes=("A",))),
+                    events=closed(),
+                    event_type=Event,
+                    refresh=unexpected,
+                    debounce=QUICK,
+                )
+        self.assertFalse(raised.exception.retryable)
+        self.assertEqual(set(self.servers[0].documents), {"a", "b", "note"})
+
+    def test_destinations_must_be_present_and_distinct(self) -> None:
+        for destinations in ([], [self.destinations[0], self.destinations[0]]):
+            with self.assertRaises(ValueError):
+                Connector(
+                    source_id="external",
+                    destinations=destinations,
+                    state_path=self.state_path,
+                )

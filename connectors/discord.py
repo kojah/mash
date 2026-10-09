@@ -138,12 +138,12 @@ async def run(
     *,
     account_id: str,
     scope: Scope,
-    destination: Destination,
+    destinations: Sequence[Destination],
     state_path: Path,
 ) -> None:
     async with Connector(
         source_id=f"discord:{account_id}",
-        destination=destination,
+        destinations=destinations,
         state_path=state_path,
     ) as connector:
         await connector.run(

@@ -167,7 +167,11 @@ class Destination:
 
 class Connector:
     def __init__(
-        self, *, source_id: str, destination: Destination, state_path: Path
+        self,
+        *,
+        source_id: str,
+        destinations: Sequence[Destination],
+        state_path: Path,
     ) -> None: ...
     async def __aenter__(self) -> Self: ...
     async def __aexit__(self, *args: object) -> None: ...

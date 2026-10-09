@@ -37,7 +37,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
     def connector(self, destination: Destination | None = None) -> Connector:
         return Connector(
             source_id="external",
-            destination=destination or self.destination(),
+            destinations=[destination or self.destination()],
             state_path=self.state_path,
         )
 
@@ -50,8 +50,8 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_sends_authenticated_json_and_orders_batches(self) -> None:
         async with self.connector() as connector:
-            first = await connector.send(note("one"))
-            second = await connector.send(note("two"))
+            (first,) = await connector.send(note("one"))
+            (second,) = await connector.send(note("two"))
         self.assertEqual((first.source_revision, second.source_revision), (1, 2))
         self.assertFalse(second.gold_ready)
         path, headers = self.server_state.requests[0]
