@@ -1,21 +1,27 @@
 # Experimental Python connector SDK
 
 The runnable portion currently provides Rust-schema-generated Pydantic models,
-typed mutations, and deterministic, schema-checked batch encoding. Delivery,
-durable pending batches, debounce, source adapters, and server ingestion remain
-under development. This package is not published.
+typed mutations, deterministic encoding, and private durable pending-batch state.
+The connector-facing runner, network delivery, debounce, source adapters, and
+server ingestion remain under development. This package is not published.
 
 ```python
-from mash_sdk import Changes, Chat, Document, Message, encode_batch
+from mash_sdk import Changes, Chat, Document, Message
 
 changes = Changes.upsert(
     Chat(id="channel-1", title="Engineering"),
     Message(id="message-1", chat_id="channel-1", content="Use Qdrant."),
     Document(id="note-1", title="Architecture", content="Silver is canonical."),
 )
-batch = changes.to_batch(source_id="my-source", batch_id="stable-batch-1", expected_revision=0)
-payload = encode_batch(batch)
 ```
+
+Connector authors should hand these changes to the forthcoming client/runner.
+They should not need to allocate batch IDs, track revisions, interpret receipts,
+or manage a retry database. The current private machinery persists pending work
+before delivery, preserves its exact identity across restarts, and advances only
+on a matching durable-silver acknowledgement. A failed or malformed response
+leaves the work pending. Server-side receipt storage is still required to make
+retransmission produce once-only logical application.
 
 Wire classes are generated from `app/connectors.rs`; do not edit `_generated`.
 The SDK's `Chat`, `Message`, and `Document` names alias the corresponding typed
