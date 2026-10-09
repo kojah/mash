@@ -15,6 +15,13 @@ already matches the artifact (byte comparison locally, SHA-256 remotely). Remote
 installs check before transferring the artifact. Builds and readiness checks still
 run; an identical executable does not certify index readiness or source policy.
 
+Xenia's test admission launcher is maintained in `tools/agent-test.sh`; install it
+with `install -m 755 tools/agent-test.sh ~/.local/bin/agent-test`. Its foreground
+parent owns the slot lock, and workloads never inherit that descriptor. Idle
+search workers can therefore finish their normal timeout without retaining test
+admission. `bash tools/test-agent-test-locks.sh` verifies both active-job exclusion
+and a surviving child's lack of a slot lock against the installed launcher.
+
 ## Decide whether an index refresh is required
 
 Run `mash status` with the node's normal configuration/database/model paths.
