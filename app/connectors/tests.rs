@@ -4,8 +4,8 @@ use serde_json::json;
 fn example() -> serde_json::Value {
     json!({"schema_version":1,"source_id":"work-chat","batch_id":"batch-1","expected_revision":0,
     "changes":[
-        {"op":"upsert-chat-context","id":"document-1","title":"Storage decisions"},
-        {"op":"upsert-chat-message","id":"message-1","chat_context_id":"document-1",
+        {"op":"upsert-chat","id":"document-1","title":"Storage decisions"},
+        {"op":"upsert-message","id":"message-1","chat_id":"document-1",
          "author":{"id":"alice","name":"Alice","kind":"human"},
              "content":"Use Qdrant.","created_at":1_791_540_000_000_i64,
          "url":"https://chat.example/messages/1"}
@@ -22,7 +22,7 @@ fn complete_replacements_and_explicit_deletions_round_trip() {
     value["changes"]
         .as_array_mut()
         .unwrap()
-        .push(json!({"op":"delete-chat-message","id":"old-message"}));
+        .push(json!({"op":"delete-message","id":"old-message"}));
     let batch = decode(&value).unwrap();
     assert_eq!(batch.source_id.as_str(), "work-chat");
     let encoded = serde_json::to_vec(&batch).unwrap();
@@ -73,7 +73,7 @@ fn schema_exposes_closed_fields_and_decoder_rejects_contract_drift() {
 #[test]
 fn mutations_are_unambiguous_and_references_are_not_silently_rewritten() {
     for duplicate in [
-        json!({"op":"delete-chat-message","id":"message-1"}),
+        json!({"op":"delete-message","id":"message-1"}),
         example()["changes"][1].clone(),
     ] {
         let mut value = example();
@@ -81,8 +81,8 @@ fn mutations_are_unambiguous_and_references_are_not_silently_rewritten() {
         assert_eq!(decode(&value), Err(Error::DuplicateMutation));
     }
     let mut value = example();
-    value["changes"][0] = json!({"op":"delete-chat-context","id":"document-1"});
-    assert_eq!(decode(&value), Err(Error::ConflictingChatContextDeletion));
+    value["changes"][0] = json!({"op":"delete-chat","id":"document-1"});
+    assert_eq!(decode(&value), Err(Error::ConflictingChatDeletion));
     let mut value = example();
     value["changes"][1]["reply_to"] = json!("message-1");
     assert_eq!(decode(&value), Err(Error::SelfReply));
@@ -101,7 +101,7 @@ fn wire_and_record_budgets_are_enforced_before_storage() {
     assert_eq!(decode(&value), Err(Error::FieldTooLarge));
     for changes in [
         vec![],
-        vec![json!({"op":"delete-chat-message","id":"old"}); MAX_CHANGES + 1],
+        vec![json!({"op":"delete-message","id":"old"}); MAX_CHANGES + 1],
     ] {
         let mut value = example();
         value["changes"] = json!(changes);
@@ -138,7 +138,7 @@ fn decoding_failures_never_echo_private_message_text() {
 #[test]
 fn direct_batches_obey_encoded_size_budget_without_a_second_payload_buffer() {
     let mut batch = decode(&example()).unwrap();
-    let Change::UpsertChatMessage(message) = &batch.changes[1] else {
+    let Change::UpsertMessage(message) = &batch.changes[1] else {
         panic!("message fixture")
     };
     let mut message = message.clone();
@@ -146,9 +146,7 @@ fn direct_batches_obey_encoded_size_budget_without_a_second_payload_buffer() {
     message.content = "\0".repeat(100_000);
     for index in 0..20 {
         message.id = Id::try_from(format!("message-{index}")).unwrap();
-        batch
-            .changes
-            .push(Change::UpsertChatMessage(message.clone()));
+        batch.changes.push(Change::UpsertMessage(message.clone()));
     }
     // Remove the original message to keep all native identities unique.
     batch.changes.remove(1);
@@ -183,7 +181,7 @@ fn attachment_references_round_trip_without_fetching_and_reject_ambiguous_ids() 
 }
 
 #[test]
-fn multi_party_chat_contexts_preserve_authors_and_branching_replies() {
+fn multi_party_chats_preserve_authors_and_branching_replies() {
     let mut value = example();
     let changes = value["changes"].as_array_mut().unwrap();
     for (id, name, kind, parent) in [
@@ -191,18 +189,16 @@ fn multi_party_chat_contexts_preserve_authors_and_branching_replies() {
         ("carol", "Carol", "human", "message-1"),
         ("build-bot", "Build bot", "bot", "message-bob"),
     ] {
-        changes.push(
-            json!({"op":"upsert-chat-message","id":format!("message-{id}"),
-            "chat_context_id":"document-1","author":{"id":id,"name":name,"kind":kind},
-            "content":"A participant's reply","reply_to":parent}),
-        );
+        changes.push(json!({"op":"upsert-message","id":format!("message-{id}"),
+            "chat_id":"document-1","author":{"id":id,"name":name,"kind":kind},
+            "content":"A participant's reply","reply_to":parent}));
     }
     let batch = decode(&value).unwrap();
     let messages = batch
         .changes
         .iter()
         .filter_map(|change| match change {
-            Change::UpsertChatMessage(message) => Some(message),
+            Change::UpsertMessage(message) => Some(message),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -223,7 +219,7 @@ fn multi_party_chat_contexts_preserve_authors_and_branching_replies() {
 }
 
 #[test]
-fn chat_contexts_only_group_chat_messages_and_do_not_own_authorship_or_content() {
+fn chats_only_group_chat_messages_and_do_not_own_authorship_or_content() {
     for field in ["author", "content", "body"] {
         let mut value = example();
         value["changes"][0][field] = json!("not a document field");
@@ -233,7 +229,7 @@ fn chat_contexts_only_group_chat_messages_and_do_not_own_authorship_or_content()
     value["changes"][1]["author"] = serde_json::Value::Null;
     value["changes"][1]["content"] = json!("A file's text is still a message.");
     assert!(decode(&value).is_ok());
-    value["changes"][1]["chat_context_id"] = serde_json::Value::Null;
+    value["changes"][1]["chat_id"] = serde_json::Value::Null;
     assert_eq!(decode(&value), Err(Error::InvalidJson));
 }
 
@@ -242,36 +238,20 @@ fn reply_graph_rejects_cycles_deleted_parents_and_cross_context_links() {
     let mut value = example();
     value["changes"][1]["reply_to"] = json!("message-2");
     value["changes"].as_array_mut().unwrap().push(json!({
-        "op":"upsert-chat-message", "id":"message-2", "chat_context_id":"document-1",
+        "op":"upsert-message", "id":"message-2", "chat_id":"document-1",
         "content":"Second reply", "reply_to":"message-1"
     }));
     assert_eq!(decode(&value), Err(Error::CyclicHierarchy));
     value["changes"][2]["reply_to"] = serde_json::Value::Null;
     assert!(decode(&value).is_ok());
-    value["changes"][2]["chat_context_id"] = json!("another-context");
-    assert_eq!(decode(&value), Err(Error::CrossChatContextReply));
-    value["changes"][2] = json!({"op":"delete-chat-message", "id":"message-2"});
-    assert_eq!(decode(&value), Err(Error::ConflictingChatMessageDeletion));
+    value["changes"][2]["chat_id"] = json!("another-context");
+    assert_eq!(decode(&value), Err(Error::CrossChatReply));
+    value["changes"][2] = json!({"op":"delete-message", "id":"message-2"});
+    assert_eq!(decode(&value), Err(Error::ConflictingMessageDeletion));
 }
 
 #[test]
-fn containers_preserve_hierarchy_but_reject_cycles_and_deleted_references() {
-    let mut value = example();
-    value["changes"][0]["container_id"] = json!("channel");
-    let changes = value["changes"].as_array_mut().unwrap();
-    changes.push(json!({"op":"upsert-container", "id":"channel", "parent_id":"workspace"}));
-    changes.push(json!({"op":"upsert-container", "id":"workspace", "parent_id":"channel"}));
-    assert_eq!(decode(&value), Err(Error::CyclicHierarchy));
-    value["changes"][3]["parent_id"] = serde_json::Value::Null;
-    assert!(decode(&value).is_ok());
-    value["changes"][3] = json!({"op":"delete-container", "id":"workspace"});
-    assert_eq!(decode(&value), Err(Error::ConflictingContainerDeletion));
-    value["changes"][2] = json!({"op":"delete-container", "id":"channel"});
-    assert_eq!(decode(&value), Err(Error::ConflictingContainerDeletion));
-}
-
-#[test]
-fn chat_context_and_chat_message_metadata_remain_opaque_objects_with_explicit_budgets() {
+fn chat_and_message_metadata_remain_opaque_objects_with_explicit_budgets() {
     let mut value = example();
     value["changes"][0]["metadata"] = json!({"native_kind":"pull-request","number":42,
         "custom":{"labels":["bug","urgent"],"merged":false}});
@@ -294,4 +274,24 @@ fn chat_context_and_chat_message_metadata_remain_opaque_objects_with_explicit_bu
         invalid["changes"][index]["metadata"] = json!(["not an object"]);
         assert_eq!(decode(&invalid), Err(Error::InvalidJson));
     }
+}
+
+#[test]
+fn a_channel_is_a_chat_with_workspace_details_in_metadata() {
+    let mut value = example();
+    value["changes"][0]["id"] = json!("channel-42");
+    value["changes"][0]["title"] = json!("engineering");
+    value["changes"][0]["metadata"] = json!({"workspace":{"id":"work","name":"Company"},
+        "native_kind":"channel", "channel":{"name":"engineering","private":true}});
+    value["changes"][1]["chat_id"] = json!("channel-42");
+    let batch = decode(&value).unwrap();
+    let Change::UpsertChat(chat) = &batch.changes[0] else {
+        panic!("chat fixture")
+    };
+    assert_eq!(chat.id.as_str(), "channel-42");
+    assert_eq!(chat.title.as_deref(), Some("engineering"));
+    assert_eq!(
+        serde_json::to_value(batch).unwrap()["changes"][0]["metadata"],
+        value["changes"][0]["metadata"]
+    );
 }

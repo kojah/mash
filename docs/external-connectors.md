@@ -31,48 +31,49 @@ exercise it end to end. Do not advertise a stable SDK yet.
   "batch_id": "batch-104",
   "expected_revision": 12,
   "changes": [
-    {"op": "upsert-chat-context", "id": "context-456", "title": "Storage decisions", "metadata": {"native_kind": "discussion"}},
+    {"op": "upsert-chat", "id": "context-456", "title": "Storage decisions", "metadata": {"native_kind": "discussion"}},
     {
-      "op": "upsert-chat-message",
+      "op": "upsert-message",
       "id": "message-789",
-      "chat_context_id": "context-456",
+      "chat_id": "context-456",
       "author": {"id": "user-42", "name": "Alice", "kind": "human"},
       "content": "We decided to use Qdrant.",
       "created_at": 1791540000000,
       "url": "https://chat.example/messages/789"
     },
-    {"op": "delete-chat-message", "id": "message-123"}
+    {"op": "delete-message", "id": "message-123"}
   ]
 }
 ```
 
 IDs are opaque ASCII identifiers of 1–256 characters. The source ID identifies
 an account/dataset, not a machine: copies on different machines must use the
-same identity. ChatMessage and ChatContext IDs are separate namespaces within a
+same identity. Message and Chat IDs are separate namespaces within a
 source. Canonical storage keys must incorporate that source identity. Names
 and message text may contain Unicode. Timestamps are Unix milliseconds; unknown
 timestamps stay unknown. Native reply relationships use stable message IDs,
 not internal SQLite ordinals. Missing parents may exist outside the current
 batch; storage must resolve or reject them explicitly.
 
-`ChatContext` is composed of `ChatMessage` records. It has no author or separate
-body. A file's text can be one message without a fabricated user/assistant role. Context
+`Chat` is composed of `Message` records. It has no author or separate
+body. A file's text can be one message without a fabricated user/assistant role. Chat
 boundaries belong to the connector; source-native channels, discussions or agent
-sessions can map to chat contexts while native replies remain message relationships.
-Containers preserve source organization (workspace/server/channel/repository).
+sessions can map to chats while native replies remain message relationships.
+A source channel is a chat. Workspace, server and repository details belong in
+the chat's bounded metadata; they do not require separate organizational records.
 
 Chat contexts are not limited to two participants or alternating agent/user
 turns. Each message may carry its own stable author identity; several humans
 and bots can speak in any order and reply along different branches. Bot authors
 are not automatically LLM assistants. Participant membership can be derived
 from retained authorship, without inventing a user/assistant designation or
-requiring a fixed participant list on every chat context. Native agent roles
+requiring a fixed participant list on every chat. Native agent roles
 remain native metadata; external messages require source-appropriate visibility
 and retrieval rules. Preserve the native grouping supplied by the connector.
 
 Upserts contain complete record replacements; omitted optional fields become
 unknown. Omitted *records* remain untouched. Deletions are explicit. A batch
-cannot mutate an identity twice or upsert messages in a chat context it deletes.
+cannot mutate an identity twice or upsert messages in a chat it deletes.
 The initial budgets are 512 changes, 8 MiB encoded JSON and 1 MiB UTF-8 content
 per message. Titles, author names and HTTP(S) source URLs are bounded to 4096 bytes.
 Messages may include up to 32 typed attachment references (ID, name, media type,
@@ -81,21 +82,20 @@ binary retention remains a separate operation and is not implemented by this con
 The Rust decoder also rejects URL credentials. Structural schemas do not replace
 semantic, byte-budget, ownership or stored-reference validation.
 
-Attachments belong to `ChatMessage`, never to `ChatContext`. A context's attachment
+Attachments belong to `Message`, never to `Chat`. A chat's attachment
 list is derived from its messages. The contract stores references only; a missing
 retained binary must not erase the original source reference. Fetching and retaining
 attachment bytes requires a separate explicit operation.
 
-Replies stay within a chat context. The decoder rejects cycles and cross-context
+Replies stay within a chat. The decoder rejects cycles and cross-chat
 reply links visible in a batch, plus links to parents deleted in that batch.
 Ingestion must also validate the final stored graph: a batch-local check alone
 cannot catch a cycle spanning previously accepted batches.
 
-Chat contexts and messages may carry arbitrary JSON-object metadata, bounded to
+Chats and messages may carry arbitrary JSON-object metadata, bounded to
 256 KiB encoded per object and covered by the total batch budget. Metadata is
 opaque source data: it is not executed, fetched, embedded or automatically made
-filterable. Known searchable fields remain typed. The contract also permits
-bounded metadata on source containers.
+filterable. Known searchable fields remain typed.
 
 ## Required ingestion semantics
 
@@ -112,7 +112,7 @@ These are implementation requirements, not behavior supplied by the DTO module:
   Keep publication synchronous; do not introduce a broker or shared outbox.
 - The connector advances its upstream checkpoint only after a durable receipt.
   Lost responses are resolved by retrying the same batch, not guessing success.
-- Validate author/chat-context/source metadata without interpreting human chat as
+- Validate author/chat/source metadata without interpreting human chat as
   unknown agent roles or applying agent-specific exclusion rules indiscriminately.
 - Keep ingestion local by default. Optional publication sends the local data
   through Mash's existing authenticated shared path. A future direct shared
@@ -122,14 +122,16 @@ These are implementation requirements, not behavior supplied by the DTO module:
 
 1. Separate closed native parser enums from extensible canonical source identities
    throughout silver, shared publication, query filters and provenance. Store
-   human authorship and container/reply metadata without provider-specific code.
+   human authorship and reply metadata without provider-specific code.
    Follow the existing release export/import policy; add no schema upgrade code.
 2. Implement local batches in the application core. Do not reuse snapshot
    reconciliation that deletes omitted messages. File ingestion and live requests
    must call the same operation. Gold remains reconstructible from silver.
-3. Rename Mash's aggregate thread concept to ChatContext across core/CLI/MCP.
-   Rename canonical messages to ChatMessage. Add source/author/container filters
-   and source links to search and chat-context
+3. Carry `Chat` and `Message` across core/CLI/MCP. Metadata discovery is
+   `list_chats` / `mash list-chats`; search units are `chats` and `messages`,
+   with `chat` / `--chat` filters and `chat_id` in result records.
+   Keep canonical messages named Message. Add source/author filters
+   and source links to search and chat
    results. Existing native-provider histories and search behavior must continue
    to pass their contracts.
 4. Publish generated schema artifacts and Python record models with drift checks;

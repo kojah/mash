@@ -110,26 +110,13 @@ impl From<Version> for u16 {
 /// A complete metadata replacement; omitted optional fields become unknown.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct ChatContext {
+pub struct Chat {
     pub id: Id,
     pub title: Option<String>,
-    pub container_id: Option<Id>,
     pub url: Option<String>,
     /// Unix milliseconds, or unknown. Never inferred from ingestion time.
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
-    pub metadata: Option<Metadata>,
-}
-
-/// A source-native container: workspace, server, channel or project, for example.
-/// Parent links preserve hierarchy without requiring platform-specific kinds.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Container {
-    pub id: Id,
-    pub parent_id: Option<Id>,
-    pub name: Option<String>,
-    pub url: Option<String>,
     pub metadata: Option<Metadata>,
 }
 
@@ -153,10 +140,10 @@ pub enum AuthorKind {
 /// A complete message replacement. Missing messages in a batch are untouched.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct ChatMessage {
+pub struct Message {
     pub id: Id,
-    /// The chat context containing this message; chat-context boundaries belong to the connector.
-    pub chat_context_id: Id,
+    /// The chat containing this message; chat boundaries belong to the connector.
+    pub chat_id: Id,
     pub author: Option<Author>,
     /// Parent/reply message identity within the same source.
     pub reply_to: Option<Id>,
@@ -186,12 +173,10 @@ pub struct Attachment {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Change {
-    UpsertContainer(Container),
-    UpsertChatContext(ChatContext),
-    UpsertChatMessage(ChatMessage),
-    DeleteChatContext { id: Id },
-    DeleteChatMessage { id: Id },
-    DeleteContainer { id: Id },
+    UpsertChat(Chat),
+    UpsertMessage(Message),
+    DeleteChat { id: Id },
+    DeleteMessage { id: Id },
 }
 
 /// Transport-independent batch. Applications must validate decoded instances too.
@@ -231,17 +216,15 @@ pub enum Error {
     BatchTooLarge,
     InvalidChangeCount,
     DuplicateMutation,
-    ConflictingChatContextDeletion,
+    ConflictingChatDeletion,
     SelfReply,
     FieldTooLarge,
     InvalidUrl,
     InvalidAttachment,
-    SelfContainerParent,
-    ConflictingContainerDeletion,
     MetadataTooLarge,
     CyclicHierarchy,
-    CrossChatContextReply,
-    ConflictingChatMessageDeletion,
+    CrossChatReply,
+    ConflictingMessageDeletion,
 }
 
 impl std::fmt::Display for Error {
@@ -275,41 +258,28 @@ impl Batch {
             return Err(Error::InvalidChangeCount);
         }
         let mut messages = BTreeSet::new();
-        let mut contexts = BTreeSet::new();
+        let mut chats = BTreeSet::new();
         let mut deleted = BTreeSet::new();
-        let mut containers = BTreeSet::new();
-        let mut deleted_containers = BTreeSet::new();
         for change in &self.changes {
             change.validate()?;
             match change {
-                Change::UpsertContainer(value) => {
-                    if !containers.insert(&value.id) {
+                Change::UpsertChat(value) => {
+                    if !chats.insert(&value.id) {
                         return Err(Error::DuplicateMutation);
                     }
                 }
-                Change::DeleteContainer { id } => {
-                    if !containers.insert(id) {
-                        return Err(Error::DuplicateMutation);
-                    }
-                    deleted_containers.insert(id);
-                }
-                Change::UpsertChatContext(value) => {
-                    if !contexts.insert(&value.id) {
-                        return Err(Error::DuplicateMutation);
-                    }
-                }
-                Change::DeleteChatContext { id } => {
-                    if !contexts.insert(id) {
+                Change::DeleteChat { id } => {
+                    if !chats.insert(id) {
                         return Err(Error::DuplicateMutation);
                     }
                     deleted.insert(id);
                 }
-                Change::UpsertChatMessage(value) => {
+                Change::UpsertMessage(value) => {
                     if !messages.insert(&value.id) {
                         return Err(Error::DuplicateMutation);
                     }
                 }
-                Change::DeleteChatMessage { id } => {
+                Change::DeleteMessage { id } => {
                     if !messages.insert(id) {
                         return Err(Error::DuplicateMutation);
                     }
@@ -318,24 +288,11 @@ impl Batch {
         }
         if self.changes.iter().any(|change| {
             matches!(change,
-            Change::UpsertChatMessage(value) if deleted.contains(&value.chat_context_id))
+            Change::UpsertMessage(value) if deleted.contains(&value.chat_id))
         }) {
-            return Err(Error::ConflictingChatContextDeletion);
+            return Err(Error::ConflictingChatDeletion);
         }
-        for change in &self.changes {
-            let container = match change {
-                Change::UpsertContainer(value) => value.parent_id.as_ref(),
-                Change::UpsertChatContext(value) => value.container_id.as_ref(),
-                Change::UpsertChatMessage(_)
-                | Change::DeleteContainer { .. }
-                | Change::DeleteChatContext { .. }
-                | Change::DeleteChatMessage { .. } => None,
-            };
-            if container.is_some_and(|id| deleted_containers.contains(id)) {
-                return Err(Error::ConflictingContainerDeletion);
-            }
-        }
-        validate_hierarchies(&self.changes)?;
+        validate_replies(&self.changes)?;
         serde_json::to_writer(SizeLimit::new(MAX_BATCH_BYTES), self)
             .map_err(|_| Error::BatchTooLarge)
     }
@@ -344,20 +301,12 @@ impl Batch {
 impl Change {
     fn validate(&self) -> Result<(), Error> {
         match self {
-            Self::UpsertContainer(value) => {
-                if value.parent_id.as_ref() == Some(&value.id) {
-                    return Err(Error::SelfContainerParent);
-                }
-                text_field(value.name.as_deref())?;
-                url(value.url.as_deref())?;
-                metadata(value.metadata.as_ref())
-            }
-            Self::UpsertChatContext(value) => {
+            Self::UpsertChat(value) => {
                 text_field(value.title.as_deref())?;
                 url(value.url.as_deref())?;
                 metadata(value.metadata.as_ref())
             }
-            Self::UpsertChatMessage(value) => {
+            Self::UpsertMessage(value) => {
                 if value.reply_to.as_ref() == Some(&value.id) {
                     return Err(Error::SelfReply);
                 }
@@ -371,52 +320,43 @@ impl Change {
                 attachments(&value.attachments)?;
                 metadata(value.metadata.as_ref())
             }
-            Self::DeleteChatMessage { .. }
-            | Self::DeleteChatContext { .. }
-            | Self::DeleteContainer { .. } => Ok(()),
+            Self::DeleteMessage { .. } | Self::DeleteChat { .. } => Ok(()),
         }
     }
 }
 
 /// Check relationships visible in this batch. Ingestion must separately check
 /// the final stored graph, including parents supplied by earlier batches.
-fn validate_hierarchies(changes: &[Change]) -> Result<(), Error> {
+fn validate_replies(changes: &[Change]) -> Result<(), Error> {
     let mut messages = BTreeMap::new();
     let mut replies = BTreeMap::new();
-    let mut containers = BTreeMap::new();
     let mut deleted_messages = BTreeSet::new();
     for change in changes {
         match change {
-            Change::UpsertChatMessage(message) => {
+            Change::UpsertMessage(message) => {
                 messages.insert(&message.id, message);
                 replies.insert(&message.id, message.reply_to.as_ref());
             }
-            Change::UpsertContainer(container) => {
-                containers.insert(&container.id, container.parent_id.as_ref());
-            }
-            Change::DeleteChatMessage { id } => {
+            Change::DeleteMessage { id } => {
                 deleted_messages.insert(id);
             }
-            Change::UpsertChatContext(_)
-            | Change::DeleteChatContext { .. }
-            | Change::DeleteContainer { .. } => {}
+            Change::UpsertChat(_) | Change::DeleteChat { .. } => {}
         }
     }
     for message in messages.values() {
         if let Some(parent) = &message.reply_to {
             if deleted_messages.contains(parent) {
-                return Err(Error::ConflictingChatMessageDeletion);
+                return Err(Error::ConflictingMessageDeletion);
             }
             if messages
                 .get(parent)
-                .is_some_and(|parent| parent.chat_context_id != message.chat_context_id)
+                .is_some_and(|parent| parent.chat_id != message.chat_id)
             {
-                return Err(Error::CrossChatContextReply);
+                return Err(Error::CrossChatReply);
             }
         }
     }
-    acyclic(&replies)?;
-    acyclic(&containers)
+    acyclic(&replies)
 }
 
 /// Iterative traversal avoids recursion on adversarially deep reply chains.
