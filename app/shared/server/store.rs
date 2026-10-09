@@ -345,7 +345,67 @@ impl Store {
                 "shared lexical index has not been initialized; run mash index",
             ));
         }
-        self.gold.search(identity, input, &active).await
+        let mut candidates = self.gold.search(identity, input, &active).await?;
+        self.native_ancestry(identity, &mut candidates).await?;
+        Ok(candidates)
+    }
+
+    /// Native points name only their chat; each node's shared silver holds the
+    /// derived turns between, so ancestry is read from it at query time. Gold
+    /// never stores the hierarchy, and turn changes never rewrite points.
+    async fn native_ancestry(
+        &self,
+        identity: &Identity,
+        candidates: &mut protocol::Candidates,
+    ) -> Result<(), AppError> {
+        let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for hit in candidates.lexical.iter().chain(&candidates.semantic) {
+            if let (crate::source::Source::Provider(_), Some(node)) = (&hit.source, &hit.node_id) {
+                wanted
+                    .entry(node.clone())
+                    .or_default()
+                    .insert(hit.id.clone());
+            }
+        }
+        let mut found = BTreeMap::new();
+        for (node, ids) in wanted {
+            let scope = silver_store::node_identity(&identity.group_id, &node);
+            let ancestry = self
+                .read(&scope, move |connection| {
+                    let mut ancestry = BTreeMap::new();
+                    for id in ids {
+                        // A point can briefly outlive its silver row; keep its chat.
+                        let Some(row) = crate::storage::generated::NativeEntryParent::builder()
+                            .id(&id)
+                            .build()
+                            .query_opt(connection)
+                            .map_err(AppError::database)?
+                        else {
+                            continue;
+                        };
+                        let ancestors =
+                            crate::storage::objects::ancestors(connection, row.parent_storage_id)?;
+                        ancestry.insert(id, ancestors);
+                    }
+                    Ok(ancestry)
+                })
+                .await?;
+            for (id, ancestors) in ancestry {
+                found.insert((node.clone(), id), ancestors);
+            }
+        }
+        for hit in candidates
+            .lexical
+            .iter_mut()
+            .chain(candidates.semantic.iter_mut())
+        {
+            if let Some(node) = &hit.node_id
+                && let Some(ancestors) = found.get(&(node.clone(), hit.id.clone()))
+            {
+                hit.ancestors.clone_from(ancestors);
+            }
+        }
+        Ok(())
     }
 
     pub(in crate::shared) async fn list_chats(

@@ -269,31 +269,7 @@ async fn qdrant_connector_records_are_searchable_and_follow_shared_silver() {
         response.text().await.unwrap()
     );
     assert_eq!(found(&service, &exact("airship")).await[0].id, NOTE);
-    // Kinds select connector payloads and native points alike.
-    let kind = |kinds: &[&str], text: &str| crate::shared::protocol::Search {
-        filter: Some(crate::search_filter::Filter::Kind(
-            kinds.iter().map(|kind| (*kind).to_owned()).collect(),
-        )),
-        ..exact(text)
-    };
-    assert_eq!(
-        found(&service, &kind(&["obsidian:note"], "airship")).await[0].id,
-        NOTE
-    );
-    assert!(
-        found(&service, &kind(&["github:review-comment"], "airship"))
-            .await
-            .is_empty()
-    );
-    assert_eq!(
-        found(&service, &kind(&["codex:message"], "hello")).await[0].id,
-        "searchable"
-    );
-    assert!(
-        found(&service, &kind(&["obsidian:note"], "hello"))
-            .await
-            .is_empty()
-    );
+    verify_kinds(&service).await;
     // Replay rebuilds every point, connector points included, from silver.
     service
         .store
@@ -338,5 +314,33 @@ async fn verify_view_and_listing(service: &Service) {
             .unwrap()
             .iter()
             .any(|chat| chat["chat_id"] == "connector#container#github:installation#pr:42")
+    );
+}
+
+/// Kinds select connector payloads and native points alike.
+async fn verify_kinds(service: &Service) {
+    let kind = |kinds: &[&str], text: &str| crate::shared::protocol::Search {
+        filter: Some(crate::search_filter::Filter::Kind(
+            kinds.iter().map(|kind| (*kind).to_owned()).collect(),
+        )),
+        ..exact(text)
+    };
+    assert_eq!(
+        found(service, &kind(&["obsidian:note"], "airship")).await[0].id,
+        NOTE
+    );
+    assert!(
+        found(service, &kind(&["github:review-comment"], "airship"))
+            .await
+            .is_empty()
+    );
+    assert_eq!(
+        found(service, &kind(&["codex:message"], "hello")).await[0].id,
+        "searchable"
+    );
+    assert!(
+        found(service, &kind(&["obsidian:note"], "hello"))
+            .await
+            .is_empty()
     );
 }

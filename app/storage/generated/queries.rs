@@ -10651,3 +10651,77 @@ impl<'a> ObjectAncestorBuilder<'a, (i64,)> {
         ObjectAncestor { storage_id }
     }
 }
+pub struct NativeEntryParentRow {
+    pub parent_storage_id: Option<i64>,
+}
+impl NativeEntryParentRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            parent_storage_id: row.get(0)?,
+        })
+    }
+}
+pub struct NativeEntryParent<'a> {
+    id: &'a str,
+}
+impl<'a> NativeEntryParent<'a> {
+    pub const QUERY: &'static str = r"SELECT parent_storage_id FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> NativeEntryParent<'a> {
+    pub fn query_one(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<NativeEntryParentRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), NativeEntryParentRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<NativeEntryParentRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), NativeEntryParentRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl<'a> NativeEntryParent<'a> {
+    pub const fn builder() -> NativeEntryParentBuilder<'a, ((),)> {
+        NativeEntryParentBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct NativeEntryParentBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> NativeEntryParentBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> NativeEntryParentBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        NativeEntryParentBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> NativeEntryParentBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> NativeEntryParent<'a> {
+        let (id,) = self.fields;
+        NativeEntryParent { id }
+    }
+}

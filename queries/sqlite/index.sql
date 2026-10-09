@@ -406,3 +406,6 @@ SELECT id FROM objects WHERE origin='provider' AND object_role='container' ORDER
 
 -- name: ObjectAncestor :one
 SELECT id,object_role,kind,title,parent_storage_id FROM objects WHERE storage_id=sqlc.arg(storage_id);
+
+-- name: NativeEntryParent :one
+SELECT parent_storage_id FROM objects WHERE origin='provider' AND object_role='entry' AND id=sqlc.arg(id);
