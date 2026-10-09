@@ -4,6 +4,7 @@ The Rust ingestion boundary remains authoritative for stored-graph validation.
 This client check does not imply that a destination accepted or persisted a batch.
 """
 
+import hashlib
 from dataclasses import dataclass
 from importlib.resources import files
 from math import isfinite
@@ -112,3 +113,13 @@ def encode_batch(batch: Batch, *, contract: Contract | None = None) -> bytes:
             ):
                 raise InvalidBatch("metadata exceeds the connector limit")
     return encoded
+
+
+def fingerprint(
+    mutation: ChangeUpsertChat | ChangeUpsertMessage | ChangeUpsertDocument,
+) -> bytes:
+    """Digest of one record's canonical form; equal digests need no resend."""
+    encoded = orjson.dumps(
+        mutation.model_dump(mode="json"), option=orjson.OPT_SORT_KEYS
+    )
+    return hashlib.sha256(encoded).digest()

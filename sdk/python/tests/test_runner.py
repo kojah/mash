@@ -1,0 +1,365 @@
+"""Connector.run: backfill diffs, captured events, debounce and recovery."""
+
+import asyncio
+import os
+import sqlite3
+import tempfile
+import unittest
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+from mash_sdk import (
+    Changes,
+    Chat,
+    Connector,
+    Debounce,
+    Delivery,
+    DeliveryError,
+    Destination,
+    Document,
+    DocumentSnapshot,
+    Message,
+    Snapshot,
+)
+from tests.fake_mash import TOKEN, TOKEN_ENV, Behaviour, serve
+
+SINCE = datetime(2026, 1, 1, tzinfo=UTC)
+BEFORE = int(SINCE.timestamp() * 1000) - 1
+AFTER = int(SINCE.timestamp() * 1000) + 1
+QUICK = Debounce(quiet_seconds=0.05, max_wait_seconds=1)
+
+
+@dataclass(frozen=True)
+class Event:
+    id: str
+    version: int
+
+
+class Events:
+    """A live event source the test feeds and closes."""
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue[Delivery[Event] | None] = asyncio.Queue()
+
+    def put(
+        self, event: Event, acknowledge: Callable[[], Awaitable[None]] | None = None
+    ) -> None:
+        self.queue.put_nowait(
+            Delivery(
+                id=f"{event.id}:{event.version}",
+                key=event.id,
+                value=event,
+                acknowledge=acknowledge,
+            )
+        )
+
+    def close(self) -> None:
+        self.queue.put_nowait(None)
+
+    async def __aiter__(self) -> AsyncIterator[Delivery[Event]]:
+        while (delivery := await self.queue.get()) is not None:
+            yield delivery
+
+
+def closed() -> Events:
+    events = Events()
+    events.close()
+    return events
+
+
+async def snapshots(
+    *items: Snapshot | DocumentSnapshot,
+) -> AsyncIterator[Snapshot | DocumentSnapshot]:
+    for item in items:
+        yield item
+
+
+def message(
+    id: str, created_at: int | None = AFTER, reply_to: str | None = None
+) -> Message:
+    return Message(
+        id=id,
+        chat_id="chat",
+        content=f"text {id}",
+        created_at=created_at,
+        reply_to=reply_to,
+    )
+
+
+def chat_snapshot(*messages: Message, complete: bool = True) -> Snapshot:
+    return Snapshot(
+        chat=Chat(id="chat", title="Chat"),
+        messages=messages,
+        complete=complete,
+        created_since=SINCE,
+    )
+
+
+def documents(
+    *ids: str, scopes: tuple[str, ...], complete: bool = True
+) -> DocumentSnapshot:
+    return DocumentSnapshot(
+        documents=[Document(id=id, content=f"note {id}") for id in ids],
+        scope_ids=scopes,
+        complete=complete,
+    )
+
+
+async def unexpected(event: Event) -> Changes:
+    raise AssertionError("no events were expected")
+
+
+class RunnerTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.state_path = Path(temporary.name) / "sdk.sqlite"
+        self.server = Behaviour()
+        url, stop = serve(self.server)
+        self.addCleanup(stop)
+        self.destination = Destination.shared(
+            api_url=url, group_id="group", node_id="laptop", token_env=TOKEN_ENV
+        )
+        os.environ[TOKEN_ENV] = TOKEN
+        self.addCleanup(os.environ.pop, TOKEN_ENV, None)
+
+    def connector(self) -> Connector:
+        return Connector(
+            source_id="external",
+            destination=self.destination,
+            state_path=self.state_path,
+        )
+
+    async def run_once(
+        self,
+        *items: Snapshot | DocumentSnapshot,
+        events: Events | None = None,
+        refresh: Callable[[Event], Awaitable[Changes]] = unexpected,
+        debounce: Debounce = QUICK,
+    ) -> None:
+        async with self.connector() as connector:
+            await asyncio.wait_for(
+                connector.run(
+                    backfill=snapshots(*items),
+                    events=events or closed(),
+                    event_type=Event,
+                    refresh=refresh,
+                    debounce=debounce,
+                ),
+                timeout=30,
+            )
+
+    def journal(self) -> list[tuple[str, int]]:
+        with sqlite3.connect(self.state_path) as connection:
+            return connection.execute("SELECT key,sequence FROM events").fetchall()
+
+    async def test_unchanged_backfill_is_not_resent(self) -> None:
+        snapshot = chat_snapshot(message("one"), message("two"))
+        await self.run_once(snapshot)
+        await self.run_once(snapshot)
+        self.assertEqual(len(self.server.commits), 1)
+        await self.run_once(chat_snapshot(message("one"), message("two", AFTER + 1)))
+        self.assertEqual(len(self.server.commits), 2)
+        self.assertEqual(self.server.messages["two"]["created_at"], AFTER + 1)
+
+    async def test_complete_chat_snapshot_deletes_only_omitted_messages_in_window(
+        self,
+    ) -> None:
+        await self.run_once(
+            chat_snapshot(
+                message("old", BEFORE),
+                message("unknown", None),
+                message("kept"),
+                message("gone"),
+                message("parent"),
+                complete=False,
+            )
+        )
+        # An incomplete snapshot never turns absence into deletion.
+        await self.run_once(chat_snapshot(complete=False))
+        self.assertEqual(len(self.server.messages), 5)
+        await self.run_once(
+            chat_snapshot(message("kept"), message("child", reply_to="parent"))
+        )
+        self.assertEqual(
+            set(self.server.messages), {"old", "unknown", "kept", "parent", "child"}
+        )
+
+    async def test_document_omission_needs_a_complete_snapshot_covering_its_scope(
+        self,
+    ) -> None:
+        await self.run_once(documents("a", "b", scopes=("A", "B")))
+        async with self.connector() as connector:
+            await connector.send(Changes.upsert(Document(id="sent", content="direct")))
+        # A narrower scope does not cover documents delivered from (A, B).
+        await self.run_once(documents(scopes=("A",)))
+        self.assertEqual(set(self.server.documents), {"a", "b", "sent"})
+        await self.run_once(documents("a", scopes=("A", "B")))
+        # Documents never delivered by a complete snapshot are not omitted.
+        self.assertEqual(set(self.server.documents), {"a", "sent"})
+        # An unchanged document adopts the scope of the latest snapshot holding it.
+        await self.run_once(documents("a", scopes=("A",)))
+        await self.run_once(documents(scopes=("A",)))
+        self.assertEqual(set(self.server.documents), {"sent"})
+
+    async def test_events_are_journaled_before_capture_ack_and_coalesce_after_backfill(
+        self,
+    ) -> None:
+        events = Events()
+        released = asyncio.Event()
+        journaled: list[list[tuple[str, int]]] = []
+        refreshed: list[Event] = []
+
+        async def acknowledge() -> None:
+            journaled.append(self.journal())
+
+        async def gated() -> AsyncIterator[Snapshot | DocumentSnapshot]:
+            await released.wait()
+            yield documents("note", scopes=("notes",))
+
+        async def refresh(event: Event) -> Changes:
+            refreshed.append(event)
+            return Changes.upsert(Document(id="note", content=f"v{event.version}"))
+
+        async with self.connector() as connector:
+            running = asyncio.create_task(
+                connector.run(
+                    backfill=gated(),
+                    events=events,
+                    event_type=Event,
+                    refresh=refresh,
+                    debounce=QUICK,
+                )
+            )
+            for version in (1, 2, 3):
+                events.put(Event("note", version), acknowledge)
+            while len(journaled) < 3:
+                await asyncio.sleep(0.01)
+            await asyncio.sleep(0.2)  # Well past quiet_seconds.
+            self.assertEqual(refreshed, [])
+            released.set()
+            events.close()
+            await asyncio.wait_for(running, timeout=30)
+        self.assertEqual(journaled, [[("note", 0)], [("note", 1)], [("note", 2)]])
+        self.assertEqual(refreshed, [Event("note", 3)])
+        self.assertEqual(self.server.documents["note"]["content"], "v3")
+        self.assertEqual(self.journal(), [])
+
+    async def test_max_wait_refreshes_a_key_that_never_goes_quiet(self) -> None:
+        events = Events()
+        refreshed = asyncio.Event()
+
+        async def refresh(event: Event) -> Changes:
+            refreshed.set()
+            return Changes.empty()
+
+        async with self.connector() as connector:
+            running = asyncio.create_task(
+                connector.run(
+                    backfill=snapshots(),
+                    events=events,
+                    event_type=Event,
+                    refresh=refresh,
+                    # Events arrive every 20ms, so the key is never quiet.
+                    debounce=Debounce(quiet_seconds=0.3, max_wait_seconds=0.3),
+                )
+            )
+            version = 0
+            while not refreshed.is_set():
+                version += 1
+                events.put(Event("busy", version))
+                await asyncio.sleep(0.02)
+                self.assertLess(version, 250, "max_wait did not trigger a refresh")
+            events.close()
+            await asyncio.wait_for(running, timeout=30)
+
+    async def test_failed_refresh_keeps_the_event_for_the_next_run(self) -> None:
+        events = Events()
+        events.put(Event("note", 1))
+        events.close()
+
+        async def broken(event: Event) -> Changes:
+            raise RuntimeError("source unavailable")
+
+        with self.assertRaises(RuntimeError):
+            await self.run_once(events=events, refresh=broken)
+        self.assertEqual(self.journal(), [("note", 0)])
+        refreshed: list[Event] = []
+
+        async def refresh(event: Event) -> Changes:
+            refreshed.append(event)
+            return Changes.upsert(Document(id="note", content="recovered"))
+
+        await self.run_once(refresh=refresh)
+        self.assertEqual(refreshed, [Event("note", 1)])
+        self.assertEqual(self.server.documents["note"]["content"], "recovered")
+        self.assertEqual(self.journal(), [])
+
+    async def test_retryable_failures_back_off_and_permanent_ones_end_the_run(
+        self,
+    ) -> None:
+        self.server.failures = [503]
+        await self.run_once(documents("a", scopes=("A",)))
+        self.assertEqual(set(self.server.documents), {"a"})
+        self.server.failures = [409]
+        with self.assertRaises(DeliveryError) as raised:
+            await self.run_once(documents("a", "b", scopes=("A",)))
+        self.assertFalse(raised.exception.retryable)
+
+    async def test_large_snapshots_are_split_under_the_batch_limits(self) -> None:
+        await self.run_once(chat_snapshot(*(message(f"m{i}") for i in range(600))))
+        self.assertEqual(len(self.server.commits), 2)
+        self.assertEqual(len(self.server.messages), 600)
+        self.assertIn("chat", self.server.chats)
+
+    async def test_snapshot_messages_must_belong_to_the_chat(self) -> None:
+        with self.assertRaises(ValueError):
+            Snapshot(
+                chat=Chat(id="chat"),
+                messages=[Message(id="m", chat_id="other", content="x")],
+                complete=True,
+            )
+
+
+class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_snapshot_deletion_is_accepted_by_local_mash(self) -> None:
+        binary = os.environ.get("MASH_CONNECTOR_MASH_BINARY")
+        if binary is None:
+            self.skipTest("set MASH_CONNECTOR_MASH_BINARY for actual CLI delivery")
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        config = root / "config.toml"
+        config.write_text("version=1\n[providers]\n")
+        database = root / "silver.sqlite3"
+        destination = Destination.local(
+            database=database, executable=binary, config=config
+        )
+        for snapshot in (
+            chat_snapshot(message("kept"), message("gone")),
+            chat_snapshot(message("kept"), message("child", reply_to="kept")),
+        ):
+            async with Connector(
+                source_id="external",
+                destination=destination,
+                state_path=root / "sdk.sqlite",
+            ) as connector:
+                await connector.run(
+                    backfill=snapshots(snapshot),
+                    events=closed(),
+                    event_type=Event,
+                    refresh=unexpected,
+                    debounce=QUICK,
+                )
+        with sqlite3.connect(database) as connection:
+            stored = {
+                row[0]
+                for row in connection.execute("SELECT id FROM connector_messages")
+            }
+        self.assertEqual(stored, {"kept", "child"})
+
+
+if __name__ == "__main__":
+    unittest.main()

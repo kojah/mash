@@ -2,9 +2,10 @@
 
 These Slack, Discord, and GitHub Issues/PR connectors describe the **desired API**.
 They are not runnable integrations yet: `api/mash_sdk/__init__.pyi` is a typing
-specification, and each platform client is an injected protocol. Generated SDK
-models and batch encoding now live in `sdk/python`. The delivery runner,
-platform adapters, and Rust ingestion endpoints still need implementation.
+specification, and each platform client is an injected protocol. The SDK in
+`sdk/python` now implements the models, local and shared delivery, and
+`Connector.run` (backfill diffs, event capture and debounce). Platform adapters
+and gold projection still need implementation.
 Obsidian and Apple Notes share the note-to-Document mapping in `notes.py`;
 their source readers are sketched in `obsidian.py` and `apple_notes.py`.
 `imessage.py` sketches Chat/Message mapping from a separate read-only SQLite
@@ -30,8 +31,10 @@ scope = Scope(
     quiet_seconds=2,
     max_wait_seconds=10,
 )
-destination = Destination.local()
-# Or Destination.shared(url="https://mash.example", token=secret, node_id="laptop")
+destination = Destination.local(database=Path("mash.sqlite3"))
+# Or, with the same settings as Mash's [shared] configuration:
+# Destination.shared(api_url="https://mash.example", group_id="personal",
+#                    node_id="laptop", token_env="MASH_API_TOKEN")
 ```
 
 An empty allowlist selects nothing. The same selection applies to backfill and

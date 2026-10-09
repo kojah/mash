@@ -152,6 +152,7 @@ async def run(
         await connector.run(
             backfill=backfill(source, settings.scope),
             events=source.events(settings.scope.ids),
+            event_type=Event,
             refresh=lambda event: refresh(source, event, settings.scope),
             debounce=Debounce(
                 quiet_seconds=settings.scope.quiet_seconds,

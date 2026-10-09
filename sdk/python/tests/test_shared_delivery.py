@@ -1,112 +1,13 @@
-"""Shared HTTP delivery against an in-process server with Mash's ingress contract.
-
-The Rust tests in app/shared/server/tests/connectors.rs own the server side of
-this contract; this server reproduces its headers, ordering and replay rules
-so the client's recovery and error handling can be exercised without Qdrant.
-"""
+"""Shared HTTP delivery against an in-process server with Mash's ingress contract."""
 
 import os
 import tempfile
-import threading
-import time
 import unittest
-from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-
-import orjson
 
 from mash_sdk import Changes, Connector, DeliveryError, Destination, Document
 from mash_sdk._state import StateStore
-
-TOKEN = "test-token-first-32-bytes-long-xx"
-TOKEN_ENV = "MASH_SDK_TEST_SHARED_TOKEN"
-
-
-@dataclass
-class Behaviour:
-    """Next-request faults and what the server accepted."""
-
-    status: int | None = None
-    drop_after_commit: bool = False
-    stall_seconds: float = 0
-    redirect: bool = False
-    revision: int = 0
-    silver: int = 0
-    receipts: dict[str, bytes] = field(default_factory=dict)
-    commits: list[bytes] = field(default_factory=list)
-    requests: list[tuple[str, dict[str, str]]] = field(default_factory=list)
-
-
-def handler(state: Behaviour) -> type[BaseHTTPRequestHandler]:
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, format: str, *args: object) -> None:
-            pass
-
-        def reply(self, status: int, body: bytes) -> None:
-            self.send_response(status)
-            self.send_header("content-type", "application/json")
-            self.send_header("content-length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def do_POST(self) -> None:
-            body = self.rfile.read(int(self.headers["content-length"]))
-            state.requests.append(
-                (self.path, {k.lower(): v for k, v in self.headers.items()})
-            )
-            if state.stall_seconds:
-                time.sleep(state.stall_seconds)
-                return
-            if state.redirect:
-                self.send_response(307)
-                self.send_header("location", "/elsewhere")
-                self.end_headers()
-                return
-            if state.status is not None:
-                self.reply(state.status, b'{"error":"PRIVATE-CANARY"}')
-                return
-            if self.headers["authorization"] != f"Bearer {TOKEN}":
-                self.reply(401, b"{}")
-                return
-            if (self.headers["x-mash-group"], self.headers["x-mash-node"]) != (
-                "group",
-                "laptop",
-            ):
-                self.reply(403, b"{}")
-                return
-            if self.path != "/v1/connector-batches" or not self.headers[
-                "content-type"
-            ].startswith("application/json"):
-                self.reply(400, b"{}")
-                return
-            batch = orjson.loads(body)
-            receipt = state.receipts.get(batch["batch_id"])
-            if receipt is None:
-                if batch["expected_revision"] != state.revision:
-                    self.reply(409, b"{}")
-                    return
-                state.revision += 1
-                state.silver += 1
-                state.commits.append(body)
-                receipt = orjson.dumps(
-                    {
-                        "schema_version": 1,
-                        "source_id": batch["source_id"],
-                        "batch_id": batch["batch_id"],
-                        "source_revision": state.revision,
-                        "silver_revision": state.silver,
-                        "gold_ready": False,
-                    }
-                )
-                state.receipts[batch["batch_id"]] = receipt
-            if state.drop_after_commit:
-                state.drop_after_commit = False
-                self.close_connection = True
-                return
-            self.reply(200, receipt)
-
-    return Handler
+from tests.fake_mash import TOKEN, TOKEN_ENV, Behaviour, serve
 
 
 def note(content: str) -> Changes:
@@ -119,12 +20,8 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(temporary.cleanup)
         self.state_path = Path(temporary.name) / "sdk.sqlite"
         self.server_state = Behaviour()
-        server = ThreadingHTTPServer(("127.0.0.1", 0), handler(self.server_state))
-        server.daemon_threads = True
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        self.addCleanup(server.server_close)
-        self.addCleanup(server.shutdown)
-        self.url = f"http://127.0.0.1:{server.server_address[1]}/"
+        self.url, stop = serve(self.server_state)
+        self.addCleanup(stop)
         os.environ[TOKEN_ENV] = TOKEN
         self.addCleanup(os.environ.pop, TOKEN_ENV, None)
 

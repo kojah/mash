@@ -7,6 +7,7 @@ requires transactional receipt storage at the ingestion boundary.
 
 import os
 import sqlite3
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -17,14 +18,24 @@ from uuid import uuid4
 import orjson
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
-from ._generated.batch import Batch
+from ._generated.batch import (
+    Batch,
+    ChangeDeleteChat,
+    ChangeDeleteDocument,
+    ChangeDeleteMessage,
+    ChangeUpsertChat,
+    ChangeUpsertDocument,
+    ChangeUpsertMessage,
+)
 from ._generated.receipt import Receipt
 from ._receipts import decode_receipt
 from .changes import Changes
-from .codec import Contract, encode_batch, finite
+from .codec import Contract, encode_batch, fingerprint, finite
 
 APPLICATION_ID = 0x4D53444B
-STATE_VERSION = 1
+STATE_VERSION = 2
+# Captured events hold source identities, not documents; bound the journal row.
+MAX_EVENT_BYTES = 64 * 1024
 
 
 class StateError(RuntimeError):
@@ -56,6 +67,20 @@ class PendingBatch:
     destination_id: str
     batch_id: str
     expected_revision: int
+    payload: bytes
+
+
+@dataclass(frozen=True)
+class RecordRow:
+    id: str
+    created_at: int | None
+    scope: frozenset[str] | None
+
+
+@dataclass(frozen=True)
+class JournaledEvent:
+    key: str
+    sequence: int
     payload: bytes
 
 
@@ -208,8 +233,13 @@ class StateStore:
         destination_id: str,
         source_id: str,
         next_cursor: JsonValue = None,
+        document_scopes: Mapping[str, Collection[str]] | None = None,
     ) -> PendingBatch:
-        """Commit a batch before attempting network delivery; serialize writers."""
+        """Commit a batch before attempting network delivery; serialize writers.
+
+        `document_scopes` names the complete-snapshot scope each upserted
+        document came from; only those documents can later be deleted by omission.
+        """
         self.connection.execute("BEGIN IMMEDIATE")
         try:
             if (
@@ -243,7 +273,8 @@ class StateStore:
             )
             self.connection.execute(
                 "INSERT INTO pending(destination_id,source_id,batch_id,"
-                "expected_revision,payload,next_cursor) VALUES(?,?,?,?,?,?)",
+                "expected_revision,payload,next_cursor,document_scopes) "
+                "VALUES(?,?,?,?,?,?,?)",
                 (
                     destination_id,
                     source_id,
@@ -251,6 +282,11 @@ class StateStore:
                     str(checkpoint.revision),
                     payload,
                     cursor,
+                    None
+                    if not document_scopes
+                    else orjson.dumps(
+                        {id: sorted(scope) for id, scope in document_scopes.items()}
+                    ),
                 ),
             )
             self.connection.execute("COMMIT")
@@ -292,6 +328,7 @@ class StateStore:
                 and receipt.silver_revision < checkpoint.receipt.silver_revision
             ):
                 raise StateError("receipt silver revision moved backwards")
+            self._record(pending)
             self.connection.execute(
                 "UPDATE scopes SET revision=?,cursor=(SELECT next_cursor FROM "
                 "pending WHERE destination_id=? AND source_id=?),last_receipt=? "
@@ -315,3 +352,206 @@ class StateStore:
             if self.connection.in_transaction:
                 self.connection.execute("ROLLBACK")
             raise
+
+    def _record(self, pending: PendingBatch) -> None:
+        """Mirror an acknowledged batch into the ledger, inside its transaction."""
+        row = self.connection.execute(
+            "SELECT document_scopes FROM pending "
+            "WHERE destination_id=? AND source_id=?",
+            (pending.destination_id, pending.source_id),
+        ).fetchone()
+        try:
+            scopes = (
+                {}
+                if row[0] is None
+                else TypeAdapter(dict[str, list[str]]).validate_json(row[0])
+            )
+            batch = Batch.model_validate_json(pending.payload)
+        except ValidationError:
+            raise StateError("stored pending batch has invalid fields") from None
+        key = (pending.destination_id, pending.source_id)
+        for mutation in batch.changes:
+            match mutation:
+                case ChangeUpsertChat():
+                    self._upsert_record(key, "chat", mutation.id, mutation)
+                case ChangeUpsertMessage():
+                    self._upsert_record(
+                        key,
+                        "message",
+                        mutation.id,
+                        mutation,
+                        chat_id=mutation.chat_id,
+                        created_at=mutation.created_at,
+                    )
+                case ChangeUpsertDocument():
+                    scope = scopes.get(mutation.id)
+                    self._upsert_record(
+                        key,
+                        "document",
+                        mutation.id,
+                        mutation,
+                        created_at=mutation.created_at,
+                        scope=None if scope is None else orjson.dumps(scope),
+                    )
+                case ChangeDeleteChat():
+                    # Mash deletes a chat's messages with it.
+                    self.connection.execute(
+                        "DELETE FROM records WHERE destination_id=? AND source_id=? "
+                        "AND (kind='chat' AND id=? OR kind='message' AND chat_id=?)",
+                        (*key, mutation.id, mutation.id),
+                    )
+                case ChangeDeleteMessage():
+                    self._delete_record(key, "message", mutation.id)
+                case ChangeDeleteDocument():
+                    self._delete_record(key, "document", mutation.id)
+
+    def _upsert_record(
+        self,
+        key: tuple[str, str],
+        kind: str,
+        id: str,
+        mutation: ChangeUpsertChat | ChangeUpsertMessage | ChangeUpsertDocument,
+        *,
+        chat_id: str | None = None,
+        created_at: int | None = None,
+        scope: bytes | None = None,
+    ) -> None:
+        # A refresh outside any snapshot keeps the scope a snapshot recorded.
+        self.connection.execute(
+            "INSERT INTO records(destination_id,source_id,kind,id,fingerprint,"
+            "chat_id,created_at,scope) VALUES(?,?,?,?,?,?,?,?) "
+            "ON CONFLICT DO UPDATE SET fingerprint=excluded.fingerprint,"
+            "chat_id=excluded.chat_id,created_at=excluded.created_at,"
+            "scope=coalesce(excluded.scope,records.scope)",
+            (*key, kind, id, fingerprint(mutation), chat_id, created_at, scope),
+        )
+
+    def _delete_record(self, key: tuple[str, str], kind: str, id: str) -> None:
+        self.connection.execute(
+            "DELETE FROM records WHERE destination_id=? AND source_id=? "
+            "AND kind=? AND id=?",
+            (*key, kind, id),
+        )
+
+    def fingerprints(
+        self, *, destination_id: str, source_id: str, kind: str, ids: Sequence[str]
+    ) -> dict[str, bytes]:
+        """Acknowledged fingerprints for the named records of one kind."""
+        found: dict[str, bytes] = {}
+        for id in ids:
+            row = self.connection.execute(
+                "SELECT fingerprint FROM records WHERE destination_id=? AND "
+                "source_id=? AND kind=? AND id=?",
+                (destination_id, source_id, kind, id),
+            ).fetchone()
+            if row is not None:
+                found[id] = row[0]
+        return found
+
+    def chat_messages(
+        self, *, destination_id: str, source_id: str, chat_id: str
+    ) -> list[RecordRow]:
+        rows = self.connection.execute(
+            "SELECT id,created_at,scope FROM records WHERE destination_id=? AND "
+            "source_id=? AND kind='message' AND chat_id=?",
+            (destination_id, source_id, chat_id),
+        ).fetchall()
+        return [self._row(row) for row in rows]
+
+    def scoped_documents(
+        self, *, destination_id: str, source_id: str
+    ) -> list[RecordRow]:
+        """Documents a complete snapshot delivered; others are never omitted."""
+        rows = self.connection.execute(
+            "SELECT id,created_at,scope FROM records WHERE destination_id=? AND "
+            "source_id=? AND kind='document' AND scope IS NOT NULL",
+            (destination_id, source_id),
+        ).fetchall()
+        return [self._row(row) for row in rows]
+
+    def _row(self, row: sqlite3.Row) -> "RecordRow":
+        try:
+            scope = (
+                None
+                if row["scope"] is None
+                else frozenset(TypeAdapter(list[str]).validate_json(row["scope"]))
+            )
+            created_at = row["created_at"]
+            if created_at is not None and not isinstance(created_at, int):
+                raise StateError("stored record has invalid fields")
+        except ValidationError:
+            raise StateError("stored record has invalid fields") from None
+        return RecordRow(row["id"], created_at, scope)
+
+    def capture(
+        self,
+        *,
+        destination_id: str,
+        source_id: str,
+        key: str,
+        payload: bytes,
+        now: float,
+    ) -> None:
+        """Durably journal an event; a later event for the key replaces it."""
+        if len(payload) > MAX_EVENT_BYTES:
+            raise StateError("captured event exceeds its size limit")
+        self.connection.execute(
+            "INSERT INTO events(destination_id,source_id,key,sequence,payload,"
+            "first_seen,last_seen) VALUES(?,?,?,0,?,?,?) ON CONFLICT DO UPDATE "
+            "SET sequence=events.sequence+1,payload=excluded.payload,"
+            "last_seen=excluded.last_seen",
+            (destination_id, source_id, key, payload, now, now),
+        )
+
+    def due_events(
+        self,
+        *,
+        destination_id: str,
+        source_id: str,
+        now: float,
+        quiet_seconds: float,
+        max_wait_seconds: float,
+    ) -> tuple[list[JournaledEvent], float | None]:
+        """Events ready for refresh, and when the next one becomes ready."""
+        rows = self.connection.execute(
+            "SELECT key,sequence,payload,first_seen,last_seen FROM events "
+            "WHERE destination_id=? AND source_id=? ORDER BY first_seen,key",
+            (destination_id, source_id),
+        ).fetchall()
+        due: list[JournaledEvent] = []
+        upcoming: float | None = None
+        for row in rows:
+            ready = min(
+                row["last_seen"] + quiet_seconds, row["first_seen"] + max_wait_seconds
+            )
+            if ready <= now:
+                due.append(JournaledEvent(row["key"], row["sequence"], row["payload"]))
+            elif upcoming is None or ready < upcoming:
+                upcoming = ready
+        return due, upcoming
+
+    def complete_event(
+        self, *, destination_id: str, source_id: str, key: str, sequence: int
+    ) -> None:
+        """Forget a refreshed event unless a newer one arrived meanwhile."""
+        self.connection.execute(
+            "DELETE FROM events WHERE destination_id=? AND source_id=? AND key=? "
+            "AND sequence=?",
+            (destination_id, source_id, key, sequence),
+        )
+
+    def assign_scope(
+        self,
+        *,
+        destination_id: str,
+        source_id: str,
+        ids: Sequence[str],
+        scope: frozenset[str],
+    ) -> None:
+        """Record the snapshot scope of already acknowledged documents."""
+        encoded = orjson.dumps(sorted(scope))
+        self.connection.executemany(
+            "UPDATE records SET scope=? WHERE destination_id=? AND source_id=? "
+            "AND kind='document' AND id=?",
+            [(encoded, destination_id, source_id, id) for id in ids],
+        )

@@ -11,6 +11,7 @@ from .changes import Changes
 from .codec import InvalidBatch, encode_batch
 from .connector import Connector
 from .destination import Destination
+from .runner import Debounce, Delivery, DocumentSnapshot, Snapshot
 
 __all__ = [
     "Attachment",
@@ -20,12 +21,16 @@ __all__ = [
     "Changes",
     "Chat",
     "Connector",
+    "Debounce",
+    "Delivery",
     "DeliveryError",
     "Destination",
     "Document",
+    "DocumentSnapshot",
     "InvalidBatch",
     "Message",
     "Metadata",
     "Receipt",
+    "Snapshot",
     "encode_batch",
 ]

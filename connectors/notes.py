@@ -101,6 +101,7 @@ async def run(
         await connector.run(
             backfill=backfill(source, scope),
             events=source.events(scope.ids),
+            event_type=Event,
             refresh=lambda event: refresh(source, event, scope),
             debounce=Debounce(
                 quiet_seconds=scope.quiet_seconds,
