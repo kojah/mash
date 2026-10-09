@@ -3,9 +3,11 @@
 These Slack, Discord, and GitHub Issues/PR connectors describe the **desired API**.
 They are not runnable integrations yet: `api/mash_sdk/__init__.pyi` is a typing
 specification, and each platform client is an injected protocol. The SDK in
-`sdk/python` now implements the models, local and shared delivery, and
-`Connector.run` (backfill diffs, event capture and debounce). Platform adapters
-and gold projection still need implementation.
+`sdk/python` implements the models, local and shared delivery, `sync` for polled
+sources and `Connector.run` (backfill diffs, event capture and debounce), and
+Mash indexes delivered records for search. Platform adapters still need
+implementation; `sdk/python/examples/markdown_folder.py` is a complete, runnable
+connector to start from.
 Obsidian and Apple Notes share the note-to-document mapping in `notes.py`;
 their source readers are sketched in `obsidian.py` and `apple_notes.py`.
 `imessage.py` sketches container/entry mapping from a separate read-only SQLite

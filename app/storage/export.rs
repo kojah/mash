@@ -100,6 +100,11 @@ pub(crate) fn restore(
         .query_row(revisions, [], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(AppError::database)?;
     crate::storage::turns::derive_all(&transaction)?;
+    if !crate::storage::objects::native_violations(&transaction)?.is_empty() {
+        return Err(AppError::usage(
+            "archive native history does not follow its provider topology",
+        ));
+    }
     transaction
         .execute(
             "UPDATE silver_state SET revision=?1 WHERE singleton=1",

@@ -81,6 +81,12 @@ fn indexing_stores_turns_between_chats_and_their_messages() {
     storage.replace_conversation(&first).unwrap();
     assert_eq!(turn_count(&storage), 1);
     assert_eq!(parents(&storage), [segment("ask"), segment("answer")]);
+    assert!(
+        crate::storage::objects::native_violations(&storage.connection)
+            .unwrap()
+            .is_empty(),
+        "native silver must follow the declared native topology"
+    );
     // Searchable counts and listings stay message-only.
     assert_eq!(storage.counts().unwrap().messages, 2);
     assert_eq!(storage.counts().unwrap().conversations, 1);
@@ -98,4 +104,11 @@ fn unchanged_reindexing_leaves_silver_untouched() {
     let before = storage.silver_certificate().unwrap();
     super::derive(&storage.connection, &thread.id).unwrap();
     assert_eq!(storage.silver_certificate().unwrap(), before);
+}
+
+#[test]
+fn every_provider_declares_a_valid_native_topology() {
+    for &provider in crate::provider::Provider::ALL {
+        crate::source::native_schema(provider).validate().unwrap();
+    }
 }

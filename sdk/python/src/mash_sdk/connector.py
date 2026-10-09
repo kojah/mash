@@ -126,6 +126,25 @@ class Connector:
             raise RuntimeError("delivery returned no receipt")
         return receipts
 
+    async def sync(self, *snapshots: Snapshot | DocumentSnapshot) -> int:
+        """Publish what a polled source holds now; call it on your own schedule.
+
+        Snapshots follow the same rules as `run`'s backfill: unchanged objects
+        are not resent, and a complete snapshot deletes what it no longer
+        contains. A failure raises `DeliveryError` with the work saved, and the
+        next call resumes it. Returns the number of batches delivered.
+        """
+        if not self._entered:
+            raise RuntimeError("use the connector inside an async context manager")
+        sent = 0
+        for snapshot in snapshots:
+            sent += await self._call(
+                lambda snapshot=snapshot: self._publish(
+                    lambda store, id: snapshot_plan(store, id, self.source_id, snapshot)
+                )
+            )
+        return sent
+
     async def run(
         self,
         *,

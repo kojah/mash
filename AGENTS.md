@@ -14,6 +14,11 @@ Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`,
   paired SQLite database; neither gold store may hold history that silver lacks,
   and both must stay replayable from silver (`index --rebuild-local-gold --full`,
   `serve --replay-gold`).
+- Native and connector history share one silver object model: the `objects` table
+  with core roles (container, segment, entry, document), namespaced kinds and
+  parent edges, plus native-only side tables. Native turns are segments derived
+  from silver after every write, never archived or published; each native
+  provider declares its topology in code (`source::native_schema`).
 - Do not check in schema upgrade code. Each release opens only its own silver
   and gold schemas and rejects others untouched; gold is rebuilt, shared silver
   is republished, and local silver crosses releases only through export and

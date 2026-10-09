@@ -89,7 +89,8 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(self.database) as connection:
             self.assertEqual(
                 connection.execute(
-                    "SELECT count(*) FROM connector_objects WHERE role='document'"
+                    "SELECT count(*) FROM objects"
+                    " WHERE origin='connector' AND object_role='document'"
                 ).fetchone()[0],
                 2,
             )
@@ -193,7 +194,8 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(self.database) as connection:
             self.assertEqual(
                 connection.execute(
-                    "SELECT count(*) FROM connector_objects WHERE role='document'"
+                    "SELECT count(*) FROM objects"
+                    " WHERE origin='connector' AND object_role='document'"
                 ).fetchone()[0],
                 2,
             )
@@ -216,7 +218,8 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(raised.exception.retryable)
         with sqlite3.connect(self.database) as connection:
             stored = connection.execute(
-                "SELECT count(*) FROM connector_objects WHERE role='document'"
+                "SELECT count(*) FROM objects"
+                " WHERE origin='connector' AND object_role='document'"
             ).fetchone()[0]
         self.assertEqual(stored, 0)
 

@@ -46,8 +46,41 @@ impl ObjectType {
     }
 }
 
-/// A native message's ancestry: its chat. Turn segments join it once parsers
-/// record them in silver.
+/// Every native provider's topology, declared like a connector's: a chat is a
+/// root container, turns segment it, and messages sit in a turn, or directly
+/// in the chat when they belong to none (injected or empty records).
+pub(crate) fn native_schema(provider: Provider) -> crate::connectors::Schema {
+    use crate::connectors::{Kind, KindRule, Role};
+    let kind = |name: &str| {
+        Kind::try_from(format!("{}:{name}", provider.as_str()))
+            .expect("provider names are valid kind namespaces")
+    };
+    crate::connectors::Schema {
+        kinds: vec![
+            KindRule {
+                kind: kind("chat"),
+                role: Role::Container,
+                parents: Vec::new(),
+                root: true,
+            },
+            KindRule {
+                kind: kind("turn"),
+                role: Role::Segment,
+                parents: vec![kind("chat")],
+                root: false,
+            },
+            KindRule {
+                kind: kind("message"),
+                role: Role::Entry,
+                parents: vec![kind("chat"), kind("turn")],
+                root: false,
+            },
+        ],
+    }
+}
+
+/// A native chat's ancestry for Qdrant points, which do not record turns;
+/// the shared server replaces it from shared silver.
 pub(crate) fn native_ancestors(
     provider: Provider,
     chat_id: &str,

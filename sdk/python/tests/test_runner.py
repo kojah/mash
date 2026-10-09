@@ -110,7 +110,9 @@ async def unexpected(event: Event) -> Changes:
     raise AssertionError("no events were expected")
 
 
-class RunnerTests(unittest.IsolatedAsyncioTestCase):
+class Harness(unittest.IsolatedAsyncioTestCase):
+    """A fake shared destination and a connector state file; no tests itself."""
+
     async def asyncSetUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -154,6 +156,8 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(self.state_path) as connection:
             return connection.execute("SELECT key,sequence FROM events").fetchall()
 
+
+class RunnerTests(Harness):
     async def test_unchanged_backfill_is_not_resent(self) -> None:
         snapshot = chat_snapshot(entry("one"), entry("two"))
         await self.run_once(snapshot)
@@ -322,6 +326,35 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             )
 
 
+class SyncTests(Harness):
+    """`sync` publishes polled snapshots with backfill's rules, without events."""
+
+    async def test_polling_resends_only_changes_and_deletes_omissions(self) -> None:
+        async with self.connector() as connector:
+            self.assertEqual(
+                await connector.sync(chat_snapshot(entry("one"), entry("two"))), 1
+            )
+            self.assertEqual(
+                await connector.sync(chat_snapshot(entry("one"), entry("two"))), 0
+            )
+            await connector.sync(chat_snapshot(entry("one")))
+        self.assertEqual(set(self.server.messages), {"one"})
+        self.assertEqual(len(self.server.commits), 2)
+
+    async def test_failures_raise_and_the_next_poll_resumes(self) -> None:
+        self.server.failures = [503]
+        async with self.connector() as connector:
+            with self.assertRaises(DeliveryError) as raised:
+                await connector.sync(documents("a", scopes=("A",)))
+            self.assertTrue(raised.exception.retryable)
+            await connector.sync(documents("a", scopes=("A",)))
+        self.assertEqual(set(self.server.documents), {"a"})
+
+    async def test_sync_needs_an_open_connector(self) -> None:
+        with self.assertRaises(RuntimeError):
+            await self.connector().sync(documents("a", scopes=("A",)))
+
+
 class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
     async def test_snapshot_deletion_is_accepted_by_local_mash(self) -> None:
         binary = os.environ.get("MASH_CONNECTOR_MASH_BINARY")
@@ -356,7 +389,8 @@ class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
             stored = {
                 row[0]
                 for row in connection.execute(
-                    "SELECT id FROM connector_objects WHERE role='entry'"
+                    "SELECT id FROM objects"
+                    " WHERE origin='connector' AND object_role='entry'"
                 )
             }
         self.assertEqual(stored, {"kept", "child"})
