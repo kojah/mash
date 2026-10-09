@@ -50,8 +50,8 @@ fn unfiltered(fixture: &Fixture) {
 fn local_witness(fixture: &Fixture) -> Vec<String> {
     let connection = open_index(&fixture.database);
     [
-        "SELECT json_object('id',id,'provider',provider,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM conversations ORDER BY id",
-        "SELECT json_object('id',id,'conversation',conversation_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM messages ORDER BY id",
+        "SELECT json_object('id',id,'provider',source,'title',title,'project',project,'repository',repository,'created_at',created_at,'updated_at',updated_at) AS witness FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id",
+        "SELECT json_object('id',id,'conversation',conversation_id,'ordinal',ordinal,'role',role,'content',content,'projection',search_projection,'parent',context_parent,'created_at',created_at) AS witness FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id",
         "SELECT json_object('id',conversation_id,'evidence',evidence) AS witness FROM conversation_enrichment ORDER BY conversation_id",
         "SELECT json_object('id',message_id,'generation',generation,'vector',hex(vector),'norm',norm) AS witness FROM message_embeddings ORDER BY message_id",
     ].into_iter().flat_map(|sql| {
@@ -111,7 +111,7 @@ fn qdrant_full_snapshots_negotiate_recipes_reuse_unchanged_threads_and_forget_wi
     let connection = open_index(&fixture.database);
     let id: String = connection
         .query_row(
-            "SELECT id FROM conversations WHERE provider='codex'",
+            "SELECT id FROM objects WHERE origin='provider' AND object_role='container' AND source='codex'",
             [],
             |row| row.get(0),
         )

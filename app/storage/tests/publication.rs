@@ -40,7 +40,7 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
     storage
         .connection
         .execute(
-            "UPDATE conversations SET title='newer' WHERE id='session-1'",
+            "UPDATE objects SET title='newer' WHERE origin='provider' AND id='session-1'",
             [],
         )
         .unwrap();
@@ -61,7 +61,10 @@ fn journal_survives_reopen_tracks_complete_threads_and_preserves_newer_edits() {
         .unwrap();
     storage
         .connection
-        .execute("DELETE FROM conversations WHERE id='session-1'", [])
+        .execute(
+            "DELETE FROM objects WHERE origin='provider' AND id='session-1'",
+            [],
+        )
         .unwrap();
     storage
         .with_publication_snapshot(|snapshot| {
@@ -89,7 +92,7 @@ fn journal_changes_roll_back_with_the_source_mutation() {
     let before = storage.with_publication_snapshot(|_| Ok(())).unwrap();
     {
         let transaction = storage.connection.unchecked_transaction().unwrap();
-        transaction.execute("INSERT INTO conversations(id,provider,source_path,source_key) VALUES('rollback','codex','file','file')",[]).unwrap();
+        transaction.execute("INSERT INTO objects(origin,source,id,object_role,kind,conversation_id) VALUES('provider','codex','rollback','container','codex:chat','rollback')",[]).unwrap();
         let changed: i64 = transaction
             .query_row("SELECT count(*) FROM shared_changes", [], |row| row.get(0))
             .unwrap();

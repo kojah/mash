@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::AppError;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(super) const SCHEMA_VERSION: i64 = 49;
+pub(super) const SCHEMA_VERSION: i64 = 50;
 const GOLD_VERSION: i64 = 3;
 
 /// The one silver schema, shared by local nodes and the shared server.
@@ -265,29 +265,35 @@ fn match_silver_permissions(connection: &Connection, gold: &Path) -> Result<(), 
 fn install_connection_triggers(connection: &Connection) -> Result<(), AppError> {
     let mut statements = String::from(
         "CREATE TEMP TRIGGER IF NOT EXISTS gold_message_delete
-         AFTER DELETE ON main.messages BEGIN
+         AFTER DELETE ON main.objects WHEN OLD.origin = 'provider' BEGIN
          DELETE FROM gold.message_embeddings WHERE message_id = OLD.id;
          DELETE FROM gold.pending_embeddings WHERE message_id = OLD.id;
          END;",
     );
-    for (table, schema) in [
-        ("conversations", "main"),
-        ("messages", "main"),
-        ("message_embeddings", "gold"),
-        ("tombstones", "main"),
-        ("conversation_enrichment", "main"),
+    // Node publication carries native history only; connector objects reach
+    // shared silver through their own ingress.
+    for (table, schema, when) in [
+        ("objects", "main", Some("origin = 'provider'")),
+        ("native_chats", "main", None),
+        ("native_messages", "main", None),
+        ("message_embeddings", "gold", None),
+        ("tombstones", "main", None),
+        ("conversation_enrichment", "main", None),
     ] {
         for operation in ["INSERT", "UPDATE", "DELETE"] {
-            let mut changes = String::new();
-            for reference in match operation {
+            let references = match operation {
                 "INSERT" => vec!["NEW"],
                 "DELETE" => vec!["OLD"],
                 _ => vec!["OLD", "NEW"],
-            } {
+            };
+            let mut changes = String::new();
+            for reference in &references {
                 let id = match table {
-                    "conversations" => format!("{reference}.id"),
+                    "native_messages" => format!(
+                        "(SELECT conversation_id FROM main.objects WHERE storage_id={reference}.storage_id)"
+                    ),
                     "message_embeddings" => format!(
-                        "(SELECT conversation_id FROM main.messages WHERE id={reference}.message_id)"
+                        "(SELECT conversation_id FROM main.objects WHERE origin='provider' AND object_role='entry' AND id={reference}.message_id)"
                     ),
                     _ => format!("{reference}.conversation_id"),
                 };
@@ -296,10 +302,18 @@ fn install_connection_triggers(connection: &Connection) -> Result<(), AppError> 
                      ON CONFLICT(conversation_id) DO UPDATE SET revision=excluded.revision;"
                 ).map_err(|_|AppError::internal("format publication trigger"))?;
             }
+            let when = when.map_or_else(String::new, |when| {
+                let condition = references
+                    .iter()
+                    .map(|reference| format!("{reference}.{when}"))
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                format!("WHEN {condition}")
+            });
             write!(
                 statements,
                 "CREATE TEMP TRIGGER IF NOT EXISTS shared_{table}_{operation}
-                 AFTER {operation} ON {schema}.{table} BEGIN
+                 AFTER {operation} ON {schema}.{table} {when} BEGIN
                  UPDATE main.shared_publication SET revision = revision + 1 WHERE singleton = 1;
                  {changes}
                  END;"
@@ -316,12 +330,14 @@ fn backfill_pending_embeddings(connection: &Connection) -> Result<(), AppError> 
     connection
         .execute_batch(
             "DELETE FROM pending_embeddings
-              WHERE message_id NOT IN (SELECT id FROM messages);
+              WHERE message_id NOT IN
+                (SELECT id FROM objects WHERE origin = 'provider' AND object_role = 'entry');
              INSERT OR IGNORE INTO pending_embeddings(message_id)
              SELECT m.id
-               FROM messages m
+               FROM objects m
                LEFT JOIN message_embeddings e ON e.message_id = m.id
-              WHERE COALESCE(m.search_projection, m.content) <> ''
+              WHERE m.origin = 'provider' AND m.object_role = 'entry'
+                AND COALESCE(m.search_projection, m.content) <> ''
                 AND e.message_id IS NULL;",
         )
         .map_err(AppError::database)

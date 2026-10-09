@@ -57,8 +57,9 @@ fn silver_holds_no_gold_and_gold_holds_no_history() {
     }
     let gold = main_tables(&gold_path(&path));
     for table in [
-        "conversations",
-        "messages",
+        "objects",
+        "native_chats",
+        "native_messages",
         "tombstones",
         "source_checkpoints",
     ] {
@@ -133,7 +134,7 @@ fn deleting_silver_removes_its_gold_and_journals_the_change() {
     let before = revision(&storage);
     storage
         .connection
-        .execute("DELETE FROM conversations", [])
+        .execute("DELETE FROM objects WHERE origin = 'provider'", [])
         .unwrap();
     assert_eq!(storage.counts().unwrap().embeddings, 0);
     assert!(revision(&storage) > before);

@@ -210,7 +210,7 @@ fn exact_lexical_filters_literal_decoys_before_limit_and_never_reads_hidden_text
     assert!(
         reader
             .connection
-            .execute("DELETE FROM messages", [])
+            .execute("DELETE FROM objects", [])
             .is_err()
     );
 }

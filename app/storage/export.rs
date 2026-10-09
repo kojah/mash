@@ -147,7 +147,7 @@ pub(crate) fn attachments(storage: &Storage) -> Result<BTreeMap<String, u64>, Ap
     // Claude's branch evidence can retain files absent from the visible thread.
     for (query, format) in [
         (
-            "SELECT attachments FROM messages",
+            "SELECT attachments FROM objects WHERE origin = 'provider'",
             AttachmentFormat::Canonical,
         ),
         (

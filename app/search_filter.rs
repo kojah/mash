@@ -291,7 +291,7 @@ struct Columns {
 impl Columns {
     const NATIVE: Self = Self {
         node: "m.node_id",
-        provider: "c.provider",
+        provider: "c.source",
         role: "m.role",
         chat: "m.conversation_id",
         project: "c.project",

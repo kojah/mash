@@ -287,7 +287,7 @@ fn invalid_text_fails_planning_without_dequeuing_or_replacing_vectors() {
         .connection
         .execute_batch(
             "INSERT INTO pending_embeddings(message_id) VALUES ('one');
-         UPDATE messages SET search_projection = CAST(x'ff' AS TEXT) WHERE id = 'one'",
+         UPDATE objects SET search_projection = CAST(x'ff' AS TEXT) WHERE origin = 'provider' AND id = 'one'",
         )
         .unwrap();
     assert!(EmbeddingPlan::new(&storage).is_err());

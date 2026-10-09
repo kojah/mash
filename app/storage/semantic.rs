@@ -65,14 +65,15 @@ impl Storage {
                 // partial identity index keeps both checks off message bodies.
                 "SELECT
                  (SELECT count(*) FROM message_embeddings WHERE generation=?1) =
-                 (SELECT count(*) FROM messages
-                  WHERE COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user'))
+                 (SELECT count(*) FROM objects
+                  WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user'))
                  AND NOT EXISTS (
                     SELECT 1
-                      FROM messages m INDEXED BY messages_searchable_identity
+                      FROM objects m INDEXED BY objects_searchable_identity
                       LEFT JOIN message_embeddings e
                         ON e.message_id = m.id AND e.generation = ?1
-                     WHERE COALESCE(m.search_projection, m.content) <> ''
+                     WHERE m.origin = 'provider' AND m.object_role = 'entry'
+                       AND COALESCE(m.search_projection, m.content) <> ''
                        AND (?2 = 0 OR m.role = 'user')
                        AND e.message_id IS NULL
                  )",
@@ -102,8 +103,8 @@ impl Storage {
                 .connection
                 .query_row(
                     "SELECT
-                        (SELECT count(*) FROM messages
-                          WHERE COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user')) =
+                        (SELECT count(*) FROM objects
+                          WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user')) =
                         (SELECT COALESCE(sum(vector_count), 0)
                            FROM semantic_chunks WHERE generation = ?1)",
                     params![generation, users_only],
@@ -146,9 +147,10 @@ impl Storage {
                 .execute(
                     "DELETE FROM pending_embeddings
                      WHERE EXISTS (
-                         SELECT 1 FROM messages
-                         WHERE messages.id = pending_embeddings.message_id
-                           AND messages.role <> 'user'
+                         SELECT 1 FROM objects
+                         WHERE objects.origin = 'provider' AND objects.object_role = 'entry'
+                           AND objects.id = pending_embeddings.message_id
+                           AND objects.role <> 'user'
                      )",
                     [],
                 )
@@ -172,8 +174,8 @@ impl Storage {
         let expected: i64 = self
             .connection
             .query_row(
-                "SELECT count(*) FROM messages
-                  WHERE COALESCE(search_projection, content) <> '' AND (?1=0 OR role='user')",
+                "SELECT count(*) FROM objects
+                  WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '' AND (?1=0 OR role='user')",
                 [build.users_only()],
                 |row| row.get(0),
             )
@@ -221,9 +223,10 @@ impl Storage {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT messages.id, COALESCE(messages.search_projection, messages.content)
+                "SELECT objects.id, COALESCE(objects.search_projection, objects.content)
                    FROM pending_embeddings
-                   JOIN messages ON messages.id = pending_embeddings.message_id
+                   JOIN objects ON objects.origin = 'provider' AND objects.object_role = 'entry'
+                    AND objects.id = pending_embeddings.message_id
                   ORDER BY pending_embeddings.message_id",
             )
             .map_err(AppError::database)?;
@@ -272,7 +275,7 @@ impl Storage {
             .connection
             .prepare_cached(
                 "INSERT INTO dirty_semantic_chunks(chunk_id, generation)
-                 SELECT (rowid - 1) / ?2, ?3 FROM messages WHERE id = ?1
+                 SELECT (storage_id - 1) / ?2, ?3 FROM objects WHERE origin = 'provider' AND object_role = 'entry' AND id = ?1
                  ON CONFLICT(chunk_id) DO UPDATE SET generation = excluded.generation",
             )
             .map_err(AppError::database)?;
@@ -477,8 +480,8 @@ impl Storage {
                  DELETE FROM dirty_semantic_chunks;
                  DELETE FROM pending_embeddings;
                  INSERT INTO pending_embeddings(message_id)
-                    SELECT id FROM messages
-                     WHERE COALESCE(search_projection, content) <> '';",
+                    SELECT id FROM objects
+                     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';",
             )
             .map_err(AppError::database)?;
         u64::try_from(removed).map_err(|_| AppError::internal("too many stale embeddings"))
@@ -491,8 +494,9 @@ pub(super) fn semantic_filter_query(scope: &crate::search_filter::Scope) -> Stri
     // here. Require the metadata index to avoid scattered canonical-body reads
     // when applying time, role and conversation filters to a cold database.
     format!(
-        "SELECT m.rowid FROM messages m INDEXED BY messages_searchable_metadata
-         JOIN conversations c ON c.id=m.conversation_id
-         WHERE COALESCE(m.search_projection, m.content) <> '' AND {predicate}"
+        "SELECT m.storage_id FROM objects m INDEXED BY objects_searchable_metadata
+         JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
+         WHERE m.origin = 'provider' AND m.object_role = 'entry'
+           AND COALESCE(m.search_projection, m.content) <> '' AND {predicate}"
     )
 }

@@ -70,7 +70,7 @@ fn canonical(path: &Path) -> Vec<u8> {
         rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .unwrap();
     let id: String = connection
-        .query_row("SELECT id FROM messages WHERE ordinal = 0", [], |row| {
+        .query_row("SELECT id FROM objects WHERE origin='provider' AND object_role='entry' AND ordinal = 0", [], |row| {
             row.get("id")
         })
         .unwrap();
@@ -265,6 +265,14 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
         assert_eq!(storage.silver_certificate().unwrap(), certificate);
         assert_eq!(storage.gold_manifest().unwrap().unwrap().build, *recipe);
         let connection = rusqlite::Connection::open(&fixture.database).unwrap();
+        connection
+            .execute(
+                "ATTACH DATABASE ?1 AS gold",
+                [crate::storage::schema::gold_path(&fixture.database)
+                    .to_str()
+                    .unwrap()],
+            )
+            .unwrap();
         let generations: i64 = connection
             .query_row(
                 "SELECT COUNT(DISTINCT generation) FROM message_embeddings",
@@ -301,7 +309,11 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
     let mut storage = Storage::open_existing(&fixture.database).unwrap();
     let connection = rusqlite::Connection::open(&fixture.database).unwrap();
     let thread: String = connection
-        .query_row("SELECT id FROM conversations LIMIT 1", [], |r| r.get(0))
+        .query_row(
+            "SELECT id FROM objects WHERE origin='provider' AND object_role='container' LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert!(storage.forget(&thread).unwrap());
     storage

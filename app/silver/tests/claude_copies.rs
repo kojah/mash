@@ -138,9 +138,7 @@ fn claude_checkpointed_survivor_is_retained_after_owner_deletion_and_restart() {
     drop(storage);
     let owner: String = rusqlite::Connection::open(&database)
         .unwrap()
-        .query_row("SELECT source_path FROM conversations", [], |row| {
-            row.get(0)
-        })
+        .query_row("SELECT source_path FROM native_chats", [], |row| row.get(0))
         .unwrap();
     fs::remove_file(owner).unwrap();
     for _ in 0..2 {

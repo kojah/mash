@@ -42,7 +42,8 @@ pub(crate) fn visit(
             }
         }};
     }
-    table!("SELECT * FROM conversations ORDER BY id", |row| Ok::<
+    table!("SELECT c.id,c.source AS provider,n.source_path,n.source_key,n.source_session,c.title,c.created_at,c.updated_at,n.source_fingerprint,c.project,c.repository
+         FROM objects c JOIN native_chats n ON n.storage_id=c.storage_id ORDER BY c.id", |row| Ok::<
         _,
         AppError,
     >(
@@ -61,7 +62,9 @@ pub(crate) fn visit(
         }
     ));
     table!(
-        "SELECT * FROM messages ORDER BY conversation_id,ordinal",
+        "SELECT m.attachments,m.id,m.conversation_id,m.ordinal,m.role,m.content,m.search_projection,m.context_parent,m.created_at,COALESCE(n.fingerprint,'') AS fingerprint
+         FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
+         WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.conversation_id,m.ordinal",
         |row| Ok::<_, AppError>(Record::Message {
             attachments: json(row, "attachments")?,
             id: get(row, "id")?,
@@ -183,7 +186,7 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT source_id,record FROM connector_objects ORDER BY source_id,id",
+        "SELECT source AS source_id,record FROM objects WHERE origin='connector' ORDER BY source,id",
         |row| Ok::<_, AppError>(Record::ConnectorObject {
             source_id: connector_id(row, "source_id")?,
             object: json(row, "record")?,
@@ -251,16 +254,10 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             );
         }
         Record::ConnectorObject { source_id, object } => {
-            // The parent edge is deferred, so objects may precede their parents.
-            execute!(
-                "INSERT INTO connector_objects(source_id,id,role,parent_id,reply_to,record) VALUES(?1,?2,?3,?4,?5,?6)",
-                source_id.as_str(),
-                object.id.as_str(),
-                crate::connectors::silver::role_name(object.role),
-                object.parent.as_ref().map(crate::connectors::Id::as_str),
-                object.reply_to.as_ref().map(crate::connectors::Id::as_str),
-                encode(&object)?
-            );
+            // The parent edge is deferred, so objects may precede their
+            // parents; archive validation groups them once all are present.
+            crate::connectors::silver::put_object(connection, &source_id, &object)
+                .map_err(crate::connectors::silver::app_error)?;
         }
         Record::ConnectorReceipt {
             fingerprint,
@@ -313,18 +310,24 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             repository,
         } => {
             execute!(
-                "INSERT INTO conversations(id,provider,source_path,source_key,source_session,title,created_at,updated_at,source_fingerprint,project,repository) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                "INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,title,created_at,updated_at,project,repository)
+                 VALUES('provider',?2,?1,'container',?2||':chat',?1,?3,?4,?5,?6,?7)",
                 id,
                 provider,
-                source_path,
-                source_key,
-                source_session,
                 title,
                 created_at,
                 updated_at,
-                source_fingerprint,
                 project,
                 repository
+            );
+            execute!(
+                "INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_fingerprint,source_key,source_session)
+                 SELECT storage_id,id,source,?2,?3,?4,?5 FROM objects WHERE origin='provider' AND object_role='container' AND id=?1",
+                id,
+                source_path,
+                source_fingerprint,
+                source_key,
+                source_session
             );
         }
         Record::Message {
@@ -339,8 +342,13 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             created_at,
             fingerprint,
         } => {
-            execute!(
-                "INSERT INTO messages(attachments,id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at,fingerprint) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            // The chat precedes its messages in every archive; a message
+            // without one would otherwise vanish rather than fail.
+            let inserted = execute!(
+                "INSERT INTO objects(attachments,id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at,
+                    origin,source,object_role,kind,parent_id,parent_storage_id)
+                 SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,'provider',c.source,'entry',c.source||':message',c.id,c.storage_id
+                   FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?3",
                 encode(&attachments)?,
                 id,
                 conversation_id,
@@ -349,7 +357,17 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 content,
                 dialogue_text,
                 context.parent(),
-                created_at,
+                created_at
+            );
+            if inserted == 0 {
+                return Err(AppError::database_data(
+                    "archive message precedes its conversation",
+                ));
+            }
+            execute!(
+                "INSERT INTO native_messages(storage_id,id,fingerprint)
+                 SELECT storage_id,id,?2 FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1",
+                id,
                 fingerprint
             );
         }

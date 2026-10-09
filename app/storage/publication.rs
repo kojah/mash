@@ -33,7 +33,7 @@ impl Snapshot<'_> {
     }
 
     pub(crate) fn removed_threads(&self, after: i64) -> Result<Vec<String>, AppError> {
-        let mut statement = self.connection.prepare("SELECT j.conversation_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM conversations c WHERE c.id=j.conversation_id) ORDER BY j.conversation_id").map_err(AppError::database)?;
+        let mut statement = self.connection.prepare("SELECT j.conversation_id FROM shared_changes j WHERE j.revision>?1 AND NOT EXISTS(SELECT 1 FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=j.conversation_id) ORDER BY j.conversation_id").map_err(AppError::database)?;
         statement
             .query_map([after], |row| row.get(0))
             .map_err(AppError::database)?
@@ -76,18 +76,21 @@ impl Snapshot<'_> {
     ) -> Result<(), AppError> {
         let sql = match kind {
             BatchKind::Conversations => {
-                "SELECT c.id,c.provider,c.title,c.created_at,c.updated_at,c.project,c.repository,e.evidence
-                 FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id ORDER BY c.id"
+                "SELECT c.id,c.source,c.title,c.created_at,c.updated_at,c.project,c.repository,e.evidence
+                 FROM objects c LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+                 WHERE c.origin='provider' AND c.object_role='container' ORDER BY c.id"
             }
             BatchKind::Messages if by_thread => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
                 COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent, m.attachments
-                FROM messages m ORDER BY m.conversation_id, m.ordinal, m.id"
+                FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
+                ORDER BY m.conversation_id, m.ordinal, m.id"
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
                 COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector, m.context_parent, m.attachments
-                FROM messages m LEFT JOIN message_embeddings e ON e.message_id = m.id ORDER BY m.id"
+                FROM objects m LEFT JOIN message_embeddings e ON e.message_id = m.id
+                WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.id"
             }
             BatchKind::Tombstones => {
                 "SELECT provider, conversation_id FROM tombstones ORDER BY provider, conversation_id"
@@ -182,8 +185,13 @@ fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<Stri
     let (query, order) = sql
         .split_once(" ORDER BY")
         .ok_or_else(|| AppError::internal("missing publication ordering"))?;
+    let join = if query.contains(" WHERE ") {
+        "AND"
+    } else {
+        "WHERE"
+    };
     Ok(format!(
-        "{query} WHERE {id} IN (SELECT conversation_id FROM shared_changes WHERE revision>{after}) ORDER BY{order}"
+        "{query} {join} {id} IN (SELECT conversation_id FROM shared_changes WHERE revision>{after}) ORDER BY{order}"
     ))
 }
 

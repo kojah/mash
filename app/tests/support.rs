@@ -48,14 +48,20 @@ pub(super) fn seed_readiness_database(path: &Path, dialogue_text: Option<&str>) 
     let connection = open_index(path);
     connection.execute_batch(
         "UPDATE derived_state SET search_dirty=0,semantic_ready_generation=NULL WHERE singleton=1;
-         INSERT INTO conversations(id,provider,source_path,source_key)
-         VALUES ('session','codex','/tmp/session.jsonl','file:/tmp/session.jsonl');"
+         INSERT INTO objects(origin,source,id,object_role,kind,conversation_id)
+         VALUES ('provider','codex','session','container','codex:chat','session');
+         INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_key)
+         SELECT storage_id,id,source,'/tmp/session.jsonl','file:/tmp/session.jsonl'
+           FROM objects WHERE object_role='container' AND id='session';"
     ).expect("readiness history");
     connection
         .execute(
-            "INSERT INTO messages(
+            "INSERT INTO objects(
+                origin, source, object_role, kind, parent_id, parent_storage_id,
                 id, conversation_id, ordinal, role, content, search_projection
-             ) VALUES ('message', 'session', 0, 'tool', 'canonical tool output', ?1)",
+             ) SELECT 'provider', 'codex', 'entry', 'codex:message', 'session', storage_id,
+                'message', 'session', 0, 'tool', 'canonical tool output', ?1
+                 FROM objects WHERE object_role = 'container' AND id = 'session'",
             [dialogue_text],
         )
         .expect("readiness message");
@@ -143,7 +149,7 @@ impl NodeFixture {
              UPDATE lexical_manifest SET manifest=json_set(manifest,
                  '$.silver.revision',(SELECT revision FROM silver_state WHERE singleton=1),
                  '$.silver.completeness','complete',
-                 '$.searchable_messages',(SELECT count(*) FROM messages WHERE COALESCE(search_projection,content)<>'')) WHERE singleton=1;"
+                 '$.searchable_messages',(SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry' AND COALESCE(search_projection,content)<>'')) WHERE singleton=1;"
         ).unwrap();
         connection
             .execute(

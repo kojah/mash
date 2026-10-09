@@ -184,7 +184,7 @@ fn claude_copy_reconciliation() {
         assert_ready_node(node, messages);
         let connection = rusqlite::Connection::open(&fixture.database).unwrap();
         let rows = connection
-            .prepare("SELECT id,content FROM messages ORDER BY ordinal")
+            .prepare("SELECT id,content FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY ordinal")
             .unwrap()
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))

@@ -17,7 +17,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
     storage.acknowledge_publication("journal", base).unwrap();
     crate::storage::test_support::write(
         &database,
-        "UPDATE conversations SET title='changed' WHERE id='a'; DELETE FROM conversations WHERE id='b';",
+        "UPDATE objects SET title='changed' WHERE origin='provider' AND id='a'; DELETE FROM objects WHERE origin='provider' AND id='b';",
     );
     let target = Target {
         build: crate::gold::config::Build::default(),
@@ -58,10 +58,10 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
     let root = tempfile::tempdir().unwrap();
     let database = seed(root.path());
     let connection = rusqlite::Connection::open(&database).unwrap();
-    connection.execute("UPDATE messages SET content='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE id='a-100'",[]).unwrap();
+    connection.execute("UPDATE objects SET content='password=\"hunter2\"',search_projection='password=\"hunter2\"' WHERE origin='provider' AND id='a-100'",[]).unwrap();
     connection
         .execute(
-            "UPDATE conversations SET title='password=\"rosebud\"' WHERE id='a'",
+            "UPDATE objects SET title='password=\"rosebud\"' WHERE origin='provider' AND id='a'",
             [],
         )
         .unwrap();
@@ -76,7 +76,7 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
     let stream = std::fs::read_to_string(source.file.path()).unwrap();
     assert!(!stream.contains("hunter2") && !stream.contains("rosebud"));
     let canonical: String = connection
-        .query_row("SELECT content FROM messages WHERE id='a-100'", [], |row| {
+        .query_row("SELECT content FROM objects WHERE origin='provider' AND object_role='entry' AND id='a-100'", [], |row| {
             row.get(0)
         })
         .unwrap();

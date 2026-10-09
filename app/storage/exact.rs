@@ -25,8 +25,8 @@ impl Storage {
             let scope = scope.expect("filtered scope");
             format!(
                 "SELECT DISTINCT v.term FROM temp.mash_vocabulary_instances v
-                JOIN message_fts f ON f.rowid=v.doc JOIN messages m ON m.id=f.message_id
-                JOIN conversations c ON c.id=m.conversation_id WHERE ({}) LIMIT ?1",
+                JOIN message_fts f ON f.rowid=v.doc JOIN objects m ON m.origin='provider' AND m.object_role='entry' AND m.id=f.message_id
+                JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id WHERE ({}) LIMIT ?1",
                 scope.filter.sql(Some(&scope.node))
             )
         };
@@ -82,8 +82,14 @@ impl Storage {
                 2,
                 FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
                 move |ctx| {
-                    let role = ctx.get::<crate::role::Role>(0)?;
-                    let content = ctx.get_raw(1).as_str()?;
+                    // Only native messages carry a role and match; SQLite may
+                    // call this before the join has excluded other objects.
+                    let Some(role) = ctx.get::<Option<crate::role::Role>>(0)? else {
+                        return Ok(0);
+                    };
+                    let Ok(content) = ctx.get_raw(1).as_str() else {
+                        return Ok(0);
+                    };
                     let visible = crate::silver::dialogue::visible(&role, content);
                     Ok(matcher
                         .evidence(&visible)
@@ -97,7 +103,7 @@ impl Storage {
             )
             .map_err(AppError::database)?;
         let (projection, _) = generated::SearchHit::QUERY
-            .split_once("FROM messages m")
+            .split_once("FROM objects m")
             .ok_or_else(|| AppError::internal("invalid generated search projection"))?;
         let predicate = scope.filter.sql(Some(&scope.node));
         let mut statement = self
@@ -105,8 +111,8 @@ impl Storage {
             .prepare(&format!(
                 "{projection}, 0.0 AS lexical_score
              FROM message_fts
-             JOIN messages m ON m.id=message_fts.message_id
-             JOIN conversations c ON c.id=m.conversation_id
+             JOIN objects m ON m.origin='provider' AND m.object_role='entry' AND m.id=message_fts.message_id
+             JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
              LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
              WHERE message_fts MATCH ?1 AND ({predicate})
                AND mash_literal(m.role,COALESCE(m.search_projection,m.content))

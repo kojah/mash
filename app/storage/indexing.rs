@@ -53,10 +53,10 @@ impl Storage {
     }
 
     pub(super) fn message_count(&self) -> Result<u64, AppError> {
-        let messages: i64 = self
-            .connection
-            .query_row("SELECT count(*) FROM messages", [], |row| row.get(0))
-            .map_err(AppError::database)?;
+        let messages = sql::NativeMessageCount
+            .query_one(&self.connection)
+            .map_err(AppError::database)?
+            .messages;
         u64::try_from(messages).map_err(|_| AppError::internal("negative message count"))
     }
 
@@ -89,8 +89,9 @@ impl Storage {
                       WHERE message_id IN (SELECT message_id FROM pending_fts_messages);
                      INSERT INTO message_fts(content, message_id, conversation_id)
                      SELECT COALESCE(search_projection, content), id, conversation_id
-                       FROM messages
-                      WHERE id IN (SELECT message_id FROM pending_fts_messages)
+                       FROM objects
+                      WHERE origin = 'provider' AND object_role = 'entry'
+                        AND id IN (SELECT message_id FROM pending_fts_messages)
                         AND COALESCE(search_projection, content) <> '';
                      DELETE FROM pending_fts_messages;",
                 )
@@ -109,9 +110,9 @@ impl Storage {
             .execute(
                 "INSERT INTO dirty_semantic_chunks(chunk_id, generation)
                  SELECT (m.rowid - 1) / ?2, COALESCE(?3, e.generation)
-                   FROM messages m
+                   FROM objects m
                    LEFT JOIN message_embeddings e ON e.message_id = m.id
-                  WHERE m.id = ?1
+                  WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = ?1
                  ON CONFLICT(chunk_id) DO UPDATE SET
                     generation = COALESCE(excluded.generation, generation)",
                 params![message_id, SEMANTIC_CHUNK_ROWS, generation],
@@ -125,9 +126,9 @@ impl Storage {
             .execute(
                 "INSERT INTO dirty_semantic_chunks(chunk_id, generation)
                  SELECT (m.rowid - 1) / ?2, min(e.generation)
-                   FROM messages m
+                   FROM objects m
                    LEFT JOIN message_embeddings e ON e.message_id = m.id
-                  WHERE m.conversation_id = ?1
+                  WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
                   GROUP BY (m.rowid - 1) / ?2
                  ON CONFLICT(chunk_id) DO UPDATE SET
                     generation = COALESCE(excluded.generation, generation)",
@@ -264,15 +265,12 @@ impl Storage {
 
         let enrichment = crate::silver::enrichment::Evidence::capture(conversation)?;
         let source_fingerprint = conversation_fingerprint(conversation, &enrichment)?;
-        let existing_source_fingerprint: Option<String> = self
-            .connection
-            .query_row(
-                "SELECT source_fingerprint FROM conversations WHERE id = ?1",
-                [&conversation.id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(AppError::database)?;
+        let existing_source_fingerprint = sql::NativeSourceFingerprint::builder()
+            .id(&conversation.id)
+            .build()
+            .query_opt(&self.connection)
+            .map_err(AppError::database)?
+            .map(|row| row.source_fingerprint);
         if existing_source_fingerprint.as_deref() == Some(source_fingerprint.as_str()) {
             // A metadata-only migration can lose evidence while retaining the
             // same history fingerprint. Explicit replay must repair that row.
@@ -290,36 +288,28 @@ impl Storage {
         }
 
         let existing_messages = self.message_states(&conversation.id)?;
-        self.connection
-            .execute(
-                "INSERT INTO conversations(
-                    id, provider, source_path, title, created_at, updated_at, source_fingerprint, project, repository,
-                    source_key, source_session
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-                 ON CONFLICT(id) DO UPDATE SET
-                    provider = excluded.provider,
-                    source_path = excluded.source_path,
-                    source_key = excluded.source_key,
-                    source_session = excluded.source_session,
-                    title = excluded.title,
-                    created_at = excluded.created_at,
-                    updated_at = excluded.updated_at,
-                    source_fingerprint = excluded.source_fingerprint,
-                    project = excluded.project, repository = excluded.repository",
-                params![
-                    conversation.id,
-                    conversation.provider,
-                    conversation.source.path.to_string_lossy(),
-                    conversation.title,
-                    conversation.created_at,
-                    conversation.updated_at,
-                    source_fingerprint,
-                    conversation.project,
-                    conversation.repository,
-                    conversation.source.key(),
-                    conversation.source.session,
-                ],
-            )
+        sql::UpsertNativeChat::builder()
+            .provider(conversation.provider.as_str())
+            .id(&conversation.id)
+            .kind(&format!("{}:chat", conversation.provider.as_str()))
+            .title(conversation.title.as_deref())
+            .created_at(conversation.created_at)
+            .updated_at(conversation.updated_at)
+            .project(conversation.project.as_deref())
+            .repository(conversation.repository.as_deref())
+            .build()
+            .execute(&self.connection)
+            .map_err(AppError::database)?;
+        let source_path = conversation.source.path.to_string_lossy();
+        let source_key = conversation.source.key();
+        sql::UpsertNativeChatSource::builder()
+            .source_path(&source_path)
+            .source_fingerprint(&source_fingerprint)
+            .source_key(Some(&source_key))
+            .source_session(conversation.source.session.as_deref())
+            .id(&conversation.id)
+            .build()
+            .execute(&self.connection)
             .map_err(AppError::database)?;
 
         self.store_enrichment(&conversation.id, &enrichment)?;
@@ -350,20 +340,15 @@ impl Storage {
         // The old parser could store a subagent under its parent's ID. Repair
         // source ownership within the writer transaction, staging every derived
         // index before deletion so an agent-first replay is also correct.
-        let displaced: Option<i64> = self
-            .connection
-            .query_row(
-                "SELECT (SELECT COUNT(*) FROM messages WHERE conversation_id = conversations.id)
-             FROM conversations WHERE provider = ?1 AND source_key = ?2 AND id != ?3",
-                params![
-                    conversation.provider,
-                    conversation.source.key(),
-                    conversation.id
-                ],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(AppError::database)?;
+        let source_key = conversation.source.key();
+        let displaced = sql::DisplacedNativeMessages::builder()
+            .provider(conversation.provider.as_str())
+            .source_key(Some(&source_key))
+            .id(&conversation.id)
+            .build()
+            .query_opt(&self.connection)
+            .map_err(AppError::database)?
+            .map(|row| row.messages);
         if displaced.is_some() {
             self.remove_source(conversation.provider, &conversation.source)?;
         }
@@ -433,22 +418,11 @@ impl Storage {
         let mut changed = Vec::new();
         let mut upsert_message = self
             .connection
-            .prepare_cached(
-                "INSERT INTO messages(
-                    id, conversation_id, ordinal, role, content, search_projection,
-                    created_at, fingerprint, context_parent, attachments
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                 ON CONFLICT(id) DO UPDATE SET
-                    conversation_id = excluded.conversation_id,
-                    ordinal = excluded.ordinal,
-                    role = excluded.role,
-                    content = excluded.content,
-                    search_projection = excluded.search_projection,
-                    created_at = excluded.created_at,
-                    fingerprint = excluded.fingerprint,
-                    context_parent = excluded.context_parent,
-                    attachments = excluded.attachments",
-            )
+            .prepare_cached(sql::UpsertNativeMessage::QUERY)
+            .map_err(AppError::database)?;
+        let mut upsert_fingerprint = self
+            .connection
+            .prepare_cached(sql::UpsertNativeMessageFingerprint::QUERY)
             .map_err(AppError::database)?;
         let mut stage_fts = self
             .connection
@@ -484,19 +458,26 @@ impl Storage {
             }
             let attachments = serde_json::to_string(&self.retain_attachments(&message)?)
                 .map_err(|_| AppError::internal("serialize attachments"))?;
+            let upsert = sql::UpsertNativeMessage::builder()
+                .id(&message.id)
+                .conversation_id(&conversation.id)
+                .ordinal(Some(message.ordinal))
+                .role(Some(message.role.as_str()))
+                .content(Some(&message.content))
+                .search_projection(message.dialogue_text.as_deref())
+                .created_at(message.created_at)
+                .context_parent(message.context.parent())
+                .attachments(&attachments)
+                .build();
             upsert_message
-                .execute(params![
-                    message.id,
-                    conversation.id,
-                    message.ordinal,
-                    message.role,
-                    message.content,
-                    message.dialogue_text,
-                    message.created_at,
-                    fingerprint,
-                    message.context.parent(),
-                    attachments,
-                ])
+                .execute(upsert.as_params())
+                .map_err(AppError::database)?;
+            let stored = sql::UpsertNativeMessageFingerprint::builder()
+                .fingerprint(&fingerprint)
+                .id(&message.id)
+                .build();
+            upsert_fingerprint
+                .execute(stored.as_params())
                 .map_err(AppError::database)?;
             if self.search_updates != SearchUpdates::FullRebuild {
                 stage_fts
@@ -539,7 +520,7 @@ impl Storage {
             .collect::<Result<BTreeSet<_>, AppError>>()?;
         let mut delete = self
             .connection
-            .prepare_cached("DELETE FROM messages WHERE id = ?1")
+            .prepare_cached(sql::DeleteNativeMessage::QUERY)
             .map_err(AppError::database)?;
         let mut stage = self
             .connection
@@ -569,8 +550,8 @@ impl Storage {
                  DELETE FROM dirty_semantic_chunks;
                  DELETE FROM pending_embeddings;
                  INSERT INTO pending_embeddings(message_id)
-                    SELECT id FROM messages
-                     WHERE COALESCE(search_projection, content) <> '';
+                    SELECT id FROM objects
+                     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
                  UPDATE derived_state
                     SET search_dirty = 0,
                         semantic_ready_generation = NULL
@@ -587,8 +568,8 @@ impl Storage {
                 "DELETE FROM message_fts;
                  INSERT INTO message_fts(content, message_id, conversation_id)
                  SELECT COALESCE(search_projection, content), id, conversation_id
-                   FROM messages
-                  WHERE COALESCE(search_projection, content) <> '';
+                   FROM objects
+                  WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
                  DELETE FROM pending_fts_messages;",
             )
             .map_err(AppError::database)?;
@@ -622,32 +603,21 @@ impl Storage {
         } else {
             0
         };
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT conversations.id, conversations.source_path, conversations.source_key,
-                        source_checkpoints.modified_ns
-                   FROM conversations
-                   LEFT JOIN source_checkpoints
-                     ON source_checkpoints.provider = conversations.provider
-                    AND source_checkpoints.source_key = conversations.source_key
-                  WHERE conversations.provider = ?1",
-            )
-            .map_err(AppError::database)?;
-        let rows = statement
-            .query_map([provider], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                ))
+        let existing = sql::NativeChatsForPurge::builder()
+            .provider(provider.as_str())
+            .build()
+            .query_many(&self.connection)
+            .map_err(AppError::database)?
+            .into_iter()
+            .map(|row| {
+                (
+                    row.id,
+                    row.source_path,
+                    row.source_key.unwrap_or_default(),
+                    row.modified_ns,
+                )
             })
-            .map_err(AppError::database)?;
-        let existing = rows
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(AppError::database)?;
-        drop(statement);
+            .collect::<Vec<_>>();
         for (id, source_path, source_key, modified_ns) in existing {
             if observed_keys.contains(&source_key)
                 || !source_is_in_reconciliation_scope(
@@ -664,9 +634,7 @@ impl Storage {
                 self.stage_semantic_conversation(&id)?;
                 self.mark_semantic_index_incomplete()?;
             }
-            self.connection
-                .execute("DELETE FROM conversations WHERE id = ?1", [&id])
-                .map_err(AppError::database)?;
+            self.delete_native_chat(&id)?;
             if self.search_updates != SearchUpdates::Immediate {
                 self.mark_derived_search_dirty()?;
             }
@@ -723,15 +691,14 @@ impl Storage {
         {
             return Ok(removed);
         }
-        let id: Option<String> = self
-            .connection
-            .query_row(
-                "SELECT id FROM conversations WHERE provider = ?1 AND source_key = ?2",
-                params![provider, source.key()],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(AppError::database)?;
+        let source_key = source.key();
+        let id = sql::NativeChatBySource::builder()
+            .provider(provider.as_str())
+            .source_key(Some(&source_key))
+            .build()
+            .query_opt(&self.connection)
+            .map_err(AppError::database)?
+            .map(|row| row.id);
         let Some(id) = id else {
             return Ok(false);
         };
@@ -747,17 +714,24 @@ impl Storage {
         if self.search_updates != SearchUpdates::Immediate {
             self.mark_derived_search_dirty()?;
         }
-        self.connection
-            .execute("DELETE FROM conversations WHERE id = ?1", [id])
-            .map_err(AppError::database)?;
+        self.delete_native_chat(id)?;
         Ok(true)
+    }
+
+    fn delete_native_chat(&self, id: &str) -> Result<(), AppError> {
+        sql::DeleteNativeChat::builder()
+            .id(id)
+            .build()
+            .execute(&self.connection)
+            .map_err(AppError::database)?;
+        Ok(())
     }
 
     fn stage_conversation_fts(&self, conversation_id: &str) -> Result<(), AppError> {
         self.connection
             .execute(
                 "INSERT OR IGNORE INTO pending_fts_messages(message_id)
-                 SELECT id FROM messages WHERE conversation_id = ?1",
+                 SELECT id FROM objects WHERE origin = 'provider' AND object_role = 'entry' AND conversation_id = ?1",
                 [conversation_id],
             )
             .map_err(AppError::database)?;
@@ -784,14 +758,13 @@ impl Storage {
         {
             manifest = None;
         }
-        let provider: Option<Provider> = transaction
-            .query_row(
-                "SELECT provider FROM conversations WHERE id = ?1",
-                [id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(AppError::database)?;
+        let provider = sql::NativeChatProvider::builder()
+            .id(id)
+            .build()
+            .query_opt(&transaction)
+            .map_err(AppError::database)?
+            .map(|row| row.provider.parse::<Provider>())
+            .transpose()?;
         let Some(provider) = provider else {
             transaction.commit().map_err(AppError::database)?;
             return Ok(false);
@@ -805,8 +778,8 @@ impl Storage {
             .map_err(AppError::database)?;
         let mut statement = transaction
             .prepare(
-                "SELECT DISTINCT (rowid - 1) / ?2
-                   FROM messages WHERE conversation_id = ?1 ORDER BY 1",
+                "SELECT DISTINCT (storage_id - 1) / ?2
+                   FROM objects WHERE origin = 'provider' AND object_role = 'entry' AND conversation_id = ?1 ORDER BY 1",
             )
             .map_err(AppError::database)?;
         let semantic_chunk_ids = statement
@@ -826,8 +799,10 @@ impl Storage {
         transaction
             .execute("DELETE FROM message_fts WHERE conversation_id = ?1", [id])
             .map_err(AppError::database)?;
-        let removed = transaction
-            .execute("DELETE FROM conversations WHERE id = ?1", [id])
+        let removed = sql::DeleteNativeChat::builder()
+            .id(id)
+            .build()
+            .execute(&transaction)
             .map_err(AppError::database)?;
         sql::DeleteClaudeThreadSources::builder()
             .conversation_id(id)
@@ -894,7 +869,7 @@ impl Storage {
                     .checked_add(1)
                     .ok_or_else(|| AppError::database_data("message ordinal staging overflow"))?;
                 let query = sql::ParkMessageOrdinal::builder()
-                    .ordinal(ordinal)
+                    .ordinal(Some(ordinal))
                     .conversation_id(&conversation.id)
                     .message_id(&message.id)
                     .build();
@@ -926,18 +901,18 @@ impl Storage {
             )
             .map_err(AppError::database)?
             .map(|row| {
-                let row = row?;
+                let row = row.map_err(AppError::database)?;
+                let search_text = super::required(row.search_text, "content")?;
                 Ok((
                     row.id,
                     MessageState {
                         fingerprint: row.fingerprint,
-                        ordinal: row.ordinal,
-                        search_text_hash: blake3::hash(row.search_text.as_bytes()),
+                        ordinal: super::required(row.ordinal, "ordinal")?,
+                        search_text_hash: blake3::hash(search_text.as_bytes()),
                     },
                 ))
             })
-            .collect::<rusqlite::Result<_>>()
-            .map_err(AppError::database)
+            .collect()
     }
 }
 

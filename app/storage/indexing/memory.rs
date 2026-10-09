@@ -59,8 +59,8 @@ fn benchmark_prior_message_state_memory() {
                         row.id,
                         PriorState {
                             fingerprint: row.fingerprint,
-                            ordinal: row.ordinal,
-                            search_text: row.search_text,
+                            ordinal: row.ordinal.unwrap(),
+                            search_text: row.search_text.unwrap(),
                         },
                     )
                 })

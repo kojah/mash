@@ -43,7 +43,7 @@ impl Storage {
         {
             // A root-policy change must replay sources even when history files are
             // unchanged. Keep embeddings when visible dialogue remains identical.
-            self.connection.execute_batch("UPDATE source_checkpoints SET interpretation_version=0; UPDATE conversations SET source_fingerprint=''; UPDATE messages SET fingerprint='' WHERE attachments<>'[]';").map_err(AppError::database)?;
+            self.connection.execute_batch("UPDATE source_checkpoints SET interpretation_version=0; UPDATE native_chats SET source_fingerprint=''; UPDATE native_messages SET fingerprint='' WHERE storage_id IN (SELECT storage_id FROM objects WHERE origin='provider' AND attachments<>'[]');").map_err(AppError::database)?;
         }
         sql::SetAttachmentPolicy::builder()
             .fingerprint(&fingerprint)
@@ -197,7 +197,7 @@ mod tests {
         let visible: String = writer
             .connection
             .query_row(
-                "SELECT search_projection FROM messages WHERE id=?1",
+                "SELECT search_projection FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1",
                 [&id],
                 |r| r.get(0),
             )

@@ -51,7 +51,11 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
     assert!(!indexed.needs_retry());
     let id: String = rusqlite::Connection::open(&db)
         .unwrap()
-        .query_row("SELECT id FROM messages LIMIT 1", [], |r| r.get(0))
+        .query_row(
+            "SELECT id FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     std::fs::remove_file(source).unwrap();
     let mash = Mash {

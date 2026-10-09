@@ -10,7 +10,7 @@ fn cli_lists_metadata_with_typed_filters_without_installed_models() {
     let models = directory.path().join("uninstalled-models");
     seed_readiness_database(&database, None);
     let connection = Connection::open(&database).unwrap();
-    connection.execute("UPDATE conversations SET title='cBioPortal migration',created_at=1000,updated_at=3000 WHERE id='session'", []).unwrap();
+    connection.execute("UPDATE objects SET title='cBioPortal migration',created_at=1000,updated_at=3000 WHERE origin='provider' AND id='session'", []).unwrap();
     let arguments = [
         "--config",
         config.to_str().unwrap(),

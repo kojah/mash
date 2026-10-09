@@ -108,9 +108,14 @@ impl Store {
             .build()
             .query_opt(&self.connection)
             .map_err(database)?
-            .map(|row| decode(&row.record))
+            .map(|row| record(row.record.as_deref()))
             .transpose()
     }
+}
+
+/// A connector row's exact submitted object; every connector row has one.
+fn record(value: Option<&str>) -> Result<Object, Error> {
+    decode(value.ok_or(Error::CorruptRecord)?)
 }
 
 /// Shared service callers can supply their existing per-node silver transaction.
@@ -152,35 +157,26 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
         .build()
         .execute(transaction)
         .map_err(database)?;
-    let mut changed = false;
     // Parents may arrive later in the batch; the edge constraint is deferred
-    // and the stored graph is checked once every change is applied.
+    // and the stored graph is checked once every change is applied. Silver
+    // revision triggers record whether anything actually changed.
     for change in &batch.changes {
-        changed |= mutate(transaction, &batch.source_id, change)?;
+        mutate(transaction, &batch.source_id, change)?;
     }
     let source = batch.source_id.as_str();
     let schema = stored_schema(transaction, source)?;
     let mut checked = BTreeSet::new();
     let ids = objects_to_check(transaction, batch, schema.is_some())?;
-    for id in ids {
-        check_object(transaction, source, &id, schema.as_ref(), &mut checked)?;
+    for id in &ids {
+        check_object(transaction, source, id, schema.as_ref(), &mut checked)?;
     }
-    let current = sql::ConnectorSilverRevision
+    for id in &ids {
+        group(transaction, source, id)?;
+    }
+    let silver_revision = sql::ConnectorSilverRevision
         .query_one(transaction)
         .map_err(database)?
         .revision;
-    let silver_revision = if changed {
-        current.checked_add(1).ok_or(Error::RevisionExhausted)?
-    } else {
-        current
-    };
-    if changed {
-        sql::ConnectorSetSilverRevision::builder()
-            .revision(silver_revision)
-            .build()
-            .execute(transaction)
-            .map_err(database)?;
-    }
     let receipt = Receipt {
         schema_version: Version,
         source_id: batch.source_id.clone(),
@@ -267,33 +263,128 @@ fn parse_role(role: &str) -> Result<Role, Error> {
     }
 }
 
-fn mutate(transaction: &Transaction<'_>, source: &Id, change: &Change) -> Result<bool, Error> {
-    let rows = match change {
-        Change::UpsertObject(object) => sql::ConnectorPutObject::builder()
-            .source_id(source.as_str())
-            .id(object.id.as_str())
-            .role(role_name(object.role))
-            .parent_id(object.parent.as_ref().map(Id::as_str))
-            .reply_to(object.reply_to.as_ref().map(Id::as_str))
-            .record(&encode(object)?)
-            .build()
-            .execute(transaction)
-            .map_err(database)?,
+fn mutate(transaction: &Transaction<'_>, source: &Id, change: &Change) -> Result<(), Error> {
+    match change {
+        Change::UpsertObject(object) => put_object(transaction, source, object)?,
         // Descendants go with it through the cascading parent edge.
-        Change::DeleteObject { id } => sql::ConnectorDeleteObject::builder()
-            .source_id(source.as_str())
-            .id(id.as_str())
+        Change::DeleteObject { id } => {
+            sql::ConnectorDeleteObject::builder()
+                .source_id(source.as_str())
+                .id(id.as_str())
+                .build()
+                .execute(transaction)
+                .map_err(database)?;
+        }
+        Change::DeclareSchema(schema) => {
+            sql::ConnectorPutSchema::builder()
+                .source_id(source.as_str())
+                .schema(&encode(schema)?)
+                .build()
+                .execute(transaction)
+                .map_err(database)?;
+        }
+    }
+    Ok(())
+}
+
+/// Store one object exactly as submitted; grouping happens after the batch.
+pub(crate) fn put_object(
+    connection: &Connection,
+    source: &Id,
+    object: &Object,
+) -> Result<(), Error> {
+    sql::ConnectorPutObject::builder()
+        .source_id(source.as_str())
+        .id(object.id.as_str())
+        .role(role_name(object.role))
+        .kind(object.kind.as_str())
+        .parent_id(object.parent.as_ref().map(Id::as_str))
+        .reply_to(object.reply_to.as_ref().map(Id::as_str))
+        .author(object.author.as_ref().map(encode).transpose()?.as_deref())
+        .title(object.title.as_deref())
+        .content(object.content.as_deref())
+        .created_at(object.created_at)
+        .updated_at(object.updated_at)
+        .url(object.url.as_deref())
+        .metadata(object.metadata.as_ref().map(encode).transpose()?.as_deref())
+        .attachments(&encode(&object.attachments)?)
+        .record(Some(&encode(object)?))
+        .build()
+        .execute(connection)
+        .map_err(database)?;
+    // Link the edge both ways now, so deleting a parent later in the same
+    // batch still takes children that arrived ahead of it.
+    sql::ConnectorLinkParent::builder()
+        .source_id(source.as_str())
+        .id(object.id.as_str())
+        .build()
+        .execute(connection)
+        .map_err(database)?;
+    sql::ConnectorLinkChildren::builder()
+        .source_id(source.as_str())
+        .id(object.id.as_str())
+        .build()
+        .execute(connection)
+        .map_err(database)?;
+    Ok(())
+}
+
+/// Record an object's nearest container, and its non-container descendants'.
+/// Moving a segment or entry regroups everything below it.
+fn group(connection: &Connection, source: &str, id: &str) -> Result<(), Error> {
+    let load = |id: &str| {
+        sql::ConnectorObject::builder()
+            .source_id(source)
+            .id(id)
             .build()
-            .execute(transaction)
-            .map_err(database)?,
-        Change::DeclareSchema(schema) => sql::ConnectorPutSchema::builder()
-            .source_id(source.as_str())
-            .schema(&encode(schema)?)
-            .build()
-            .execute(transaction)
-            .map_err(database)?,
+            .query_opt(connection)
+            .map_err(database)
     };
-    Ok(rows > 0)
+    let Some(row) = load(id)? else {
+        return Ok(()); // Deleted later in the same batch.
+    };
+    let role = parse_role(&row.role)?;
+    let mut nearest = id.to_owned();
+    if matches!(role, Role::Segment | Role::Entry) {
+        let mut current = row.parent_id;
+        while let Some(parent) = current.take() {
+            let parent_row = load(&parent)?.ok_or(Error::InvalidReferences)?;
+            if parse_role(&parent_row.role)? == Role::Container {
+                nearest = parent;
+                break;
+            }
+            current = parent_row.parent_id;
+        }
+    }
+    let mut pending = vec![(id.to_owned(), role, nearest)];
+    while let Some((id, role, nearest)) = pending.pop() {
+        sql::ConnectorSetConversation::builder()
+            .conversation_id(&nearest)
+            .source_id(source)
+            .id(&id)
+            .build()
+            .execute(connection)
+            .map_err(database)?;
+        // A container's own descendants group under it.
+        let inherited = if role == Role::Container {
+            id.clone()
+        } else {
+            nearest
+        };
+        for child in sql::ConnectorChildren::builder()
+            .source_id(source)
+            .parent_id(Some(id.as_str()))
+            .build()
+            .query_many(connection)
+            .map_err(database)?
+        {
+            let child_role = parse_role(&child.role)?;
+            if child_role != Role::Container {
+                pending.push((child.id, child_role, inherited.clone()));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The stored graph around one object: its parent exists and is not a document,
@@ -329,7 +420,7 @@ fn check_object(
         .ok_or(Error::InvalidReferences)?;
     let role = parse_role(&row.role)?;
     if let Some(schema) = schema {
-        let object: Object = decode(&row.record)?;
+        let object = record(row.record.as_deref())?;
         let parent_kind = match &row.parent_id {
             None => None,
             Some(parent) => {
@@ -340,7 +431,7 @@ fn check_object(
                     .query_opt(connection)
                     .map_err(database)?
                     .ok_or(Error::InvalidReferences)?;
-                Some(decode::<Object>(&parent.record)?.kind)
+                Some(record(parent.record.as_deref())?.kind)
             }
         };
         if !schema.admits(&object.kind, role, parent_kind.as_ref()) {
@@ -424,6 +515,10 @@ pub(crate) fn validate_archive(connection: &Connection) -> Result<(), Error> {
     {
         let schema = schemas.get(&row.source_id);
         check_object(connection, &row.source_id, &row.id, schema, &mut checked)?;
+        // Each container regroups its subtree; parentless objects group alone.
+        if row.role == "container" || row.parent_id.is_none() {
+            group(connection, &row.source_id, &row.id)?;
+        }
     }
     Ok(())
 }

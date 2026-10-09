@@ -147,8 +147,9 @@ fn assert_source_independent_gold_rebuild(
     let connection = open_index(database);
     let silver_tables = [
         "conversation_enrichment",
-        "conversations",
-        "messages",
+        "objects",
+        "native_chats",
+        "native_messages",
         "tombstones",
         "claude_sources",
         "claude_source_messages",

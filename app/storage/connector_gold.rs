@@ -67,7 +67,9 @@ pub(crate) struct Unit {
     pub(crate) ancestry: String,
 }
 
-fn decode(record: &str) -> Result<Object, AppError> {
+fn decode(record: Option<&str>) -> Result<Object, AppError> {
+    let record =
+        record.ok_or_else(|| AppError::database_data("stored connector record is missing"))?;
     serde_json::from_str(record)
         .map_err(|_| AppError::database_data("stored connector record is invalid"))
 }
@@ -155,7 +157,7 @@ pub(crate) fn evidence(
     let Some(row) = load(id)? else {
         return Ok(None);
     };
-    let object = decode(&row.record)?;
+    let object = decode(row.record.as_deref())?;
     let mut ancestors = Vec::new();
     let mut current = row.parent_id;
     // Silver rejects parent cycles; the bound only guards corrupt data.
@@ -167,7 +169,7 @@ pub(crate) fn evidence(
             .ok_or_else(|| AppError::database_data("connector ancestry is incomplete"))?;
         let role = parse_role(&row.role)
             .ok_or_else(|| AppError::database_data("stored connector role is invalid"))?;
-        ancestors.push((role, decode(&row.record)?));
+        ancestors.push((role, decode(row.record.as_deref())?));
         current = row.parent_id;
     }
     Ok(Some(Evidence { object, ancestors }))
@@ -192,7 +194,7 @@ pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppErro
             Row {
                 role,
                 parent: row.parent_id,
-                object: decode(&row.record)?,
+                object: decode(row.record.as_deref())?,
             },
         );
     }
@@ -619,7 +621,7 @@ pub(crate) fn view(
                     .query_many(connection)
                     .map_err(AppError::database)?
                 {
-                    let object = decode(&row.record)?;
+                    let object = decode(row.record.as_deref())?;
                     // A nested container groups its own entries.
                     if object.role != Role::Container {
                         pending.push(row.id);

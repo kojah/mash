@@ -79,7 +79,7 @@ fn sessions_in_one_database_have_independent_checkpoints_and_reconciliation() {
     let mut storage = Storage::open_writer(&database).unwrap();
     assert_eq!(storage.counts().unwrap().conversations, 4);
     let paths: Vec<(String, String)> = storage.connection.prepare(
-        "SELECT source_path, source_session FROM conversations WHERE id IN ('keep','deleted') ORDER BY id"
+        "SELECT source_path, source_session FROM native_chats WHERE conversation_id IN ('keep','deleted') ORDER BY conversation_id"
     ).unwrap().query_map([], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
         .collect::<Result<_, _>>().unwrap();
     assert!(
@@ -542,7 +542,7 @@ fn search_projection_controls_fts_embeddings_and_rerank_text_not_view() {
         .semantic_chunks("generation", None, None)
         .expect("semantic vectors");
     assert_eq!(vectors.chunks.len(), 1);
-    assert_eq!(vectors.chunks[0].message_rowids, [2, 3]);
+    assert_eq!(vectors.chunks[0].message_rowids, [3, 4]);
     storage
         .connection
         .execute(
@@ -697,14 +697,14 @@ fn benchmark_fts_refresh_crossover() {
                     .connection
                     .execute(
                         "INSERT INTO pending_fts_messages(message_id)
-                         SELECT id FROM messages ORDER BY id LIMIT ?1",
+                         SELECT id FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY id LIMIT ?1",
                         [i64::try_from(delta).expect("delta")],
                     )
                     .expect("stage benchmark messages");
                 writer
                     .connection
                     .execute(
-                        "UPDATE messages SET content = content || ' changed'
+                        "UPDATE objects SET content = content || ' changed'
                           WHERE id IN (SELECT message_id FROM pending_fts_messages)",
                         [],
                     )

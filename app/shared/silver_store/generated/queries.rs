@@ -146,11 +146,12 @@ impl CountsRow {
 }
 pub struct Counts;
 impl Counts {
-    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM conversations) AS conversations,
-    (SELECT count(*) FROM messages) AS messages,
-    (SELECT count(*) FROM messages WHERE COALESCE(search_projection, content) <> '') AS searchable,
-    (SELECT count(*) FROM messages
-        WHERE COALESCE(search_projection, content) <> '' AND role = 'user') AS searchable_users";
+    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'container') AS conversations,
+    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry') AS messages,
+    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry'
+        AND COALESCE(search_projection, content) <> '') AS searchable,
+    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry'
+        AND COALESCE(search_projection, content) <> '' AND role = 'user') AS searchable_users";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -222,10 +223,10 @@ pub struct Conversation<'a> {
     id: &'a str,
 }
 impl<'a> Conversation<'a> {
-    pub const QUERY: &'static str = r"SELECT c.id, c.provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
+    pub const QUERY: &'static str = r"SELECT c.id, c.source AS provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
     e.evidence AS enrichment
-FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
-WHERE c.id = ?1";
+FROM objects c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
+WHERE c.origin = 'provider' AND c.object_role = 'container' AND c.id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -308,9 +309,10 @@ impl NodeConversationsRow {
 }
 pub struct NodeConversations;
 impl NodeConversations {
-    pub const QUERY: &'static str = r"SELECT c.id, c.provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
+    pub const QUERY: &'static str = r"SELECT c.id, c.source AS provider, c.title, c.project, c.repository, c.created_at, c.updated_at,
     e.evidence AS enrichment
-FROM conversations c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
+FROM objects c LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
+WHERE c.origin = 'provider' AND c.object_role = 'container'
 ORDER BY c.id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -367,7 +369,8 @@ pub struct ConversationProvider<'a> {
     id: &'a str,
 }
 impl<'a> ConversationProvider<'a> {
-    pub const QUERY: &'static str = r"SELECT provider FROM conversations WHERE id = ?1";
+    pub const QUERY: &'static str = r"SELECT source AS provider FROM objects
+WHERE origin = 'provider' AND object_role = 'container' AND id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -441,7 +444,7 @@ impl FingerprintsRow {
 }
 pub struct Fingerprints;
 impl Fingerprints {
-    pub const QUERY: &'static str = r"SELECT id, thread_fingerprint FROM conversations ORDER BY id";
+    pub const QUERY: &'static str = r"SELECT conversation_id AS id, thread_fingerprint FROM native_chats ORDER BY conversation_id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -490,8 +493,9 @@ impl InsertConversationRow {
     }
 }
 pub struct InsertConversation<'a> {
-    id: &'a str,
     provider: &'a str,
+    id: &'a str,
+    kind: &'a str,
     title: Option<&'a str>,
     created_at: Option<i64>,
     updated_at: Option<i64>,
@@ -499,11 +503,13 @@ pub struct InsertConversation<'a> {
     repository: Option<&'a str>,
 }
 impl<'a> InsertConversation<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO conversations(
-    id, provider, source_path, title, created_at, updated_at, project, repository
+    pub const QUERY: &'static str = r"INSERT INTO objects(
+    origin, source, id, object_role, kind, conversation_id, title, created_at, updated_at,
+    project, repository
 ) VALUES (
-    ?1, ?2, '', ?3, ?4,
-    ?5, ?6, ?7
+    'provider', ?1, ?2, 'container', ?3, ?2,
+    ?4, ?5, ?6, ?7,
+    ?8
 )";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -521,8 +527,9 @@ impl<'a> InsertConversation<'a> {
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
-            self.id,
             self.provider,
+            self.id,
+            self.kind,
             self.title,
             self.created_at,
             self.updated_at,
@@ -532,23 +539,65 @@ impl<'a> InsertConversation<'a> {
     }
 }
 impl<'a> InsertConversation<'a> {
-    pub const fn builder() -> InsertConversationBuilder<'a, ((), (), (), (), (), (), ())> {
+    pub const fn builder() -> InsertConversationBuilder<'a, ((), (), (), (), (), (), (), ())> {
         InsertConversationBuilder {
-            fields: ((), (), (), (), (), (), ()),
+            fields: ((), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct InsertConversationBuilder<'a, Fields = ((), (), (), (), (), (), ())> {
+pub struct InsertConversationBuilder<'a, Fields = ((), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
+impl<'a, Id, Kind, Title, CreatedAt, UpdatedAt, Project, Repository>
     InsertConversationBuilder<
         'a,
         (
             (),
+            Id,
+            Kind,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    >
+{
+    pub fn provider(
+        self,
+        provider: &'a str,
+    ) -> InsertConversationBuilder<
+        'a,
+        (
+            &'a str,
+            Id,
+            Kind,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    > {
+        let ((), id, kind, title, created_at, updated_at, project, repository) = self.fields;
+        let _phantom = self._phantom;
+        InsertConversationBuilder {
+            fields: (
+                provider, id, kind, title, created_at, updated_at, project, repository,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Provider, Kind, Title, CreatedAt, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<
+        'a,
+        (
             Provider,
+            (),
+            Kind,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -563,8 +612,9 @@ impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
     ) -> InsertConversationBuilder<
         'a,
         (
-            &'a str,
             Provider,
+            &'a str,
+            Kind,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -572,25 +622,38 @@ impl<'a, Provider, Title, CreatedAt, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let ((), provider, title, created_at, updated_at, project, repository) = self.fields;
+        let (provider, (), kind, title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
             fields: (
-                id, provider, title, created_at, updated_at, project, repository,
+                provider, id, kind, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
-    InsertConversationBuilder<'a, (Id, (), Title, CreatedAt, UpdatedAt, Project, Repository)>
+impl<'a, Provider, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<
+        'a,
+        (
+            Provider,
+            Id,
+            (),
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    >
 {
-    pub fn provider(
+    pub fn kind(
         self,
-        provider: &'a str,
+        kind: &'a str,
     ) -> InsertConversationBuilder<
         'a,
         (
+            Provider,
             Id,
             &'a str,
             Title,
@@ -600,18 +663,30 @@ impl<'a, Id, Title, CreatedAt, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (id, (), title, created_at, updated_at, project, repository) = self.fields;
+        let (provider, id, (), title, created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
             fields: (
-                id, provider, title, created_at, updated_at, project, repository,
+                provider, id, kind, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
-    InsertConversationBuilder<'a, (Id, Provider, (), CreatedAt, UpdatedAt, Project, Repository)>
+impl<'a, Provider, Id, Kind, CreatedAt, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<
+        'a,
+        (
+            Provider,
+            Id,
+            Kind,
+            (),
+            CreatedAt,
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    >
 {
     pub fn title(
         self,
@@ -619,8 +694,9 @@ impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
     ) -> InsertConversationBuilder<
         'a,
         (
-            Id,
             Provider,
+            Id,
+            Kind,
             Option<&'a str>,
             CreatedAt,
             UpdatedAt,
@@ -628,18 +704,30 @@ impl<'a, Id, Provider, CreatedAt, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (id, provider, (), created_at, updated_at, project, repository) = self.fields;
+        let (provider, id, kind, (), created_at, updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
             fields: (
-                id, provider, title, created_at, updated_at, project, repository,
+                provider, id, kind, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
-    InsertConversationBuilder<'a, (Id, Provider, Title, (), UpdatedAt, Project, Repository)>
+impl<'a, Provider, Id, Kind, Title, UpdatedAt, Project, Repository>
+    InsertConversationBuilder<
+        'a,
+        (
+            Provider,
+            Id,
+            Kind,
+            Title,
+            (),
+            UpdatedAt,
+            Project,
+            Repository,
+        ),
+    >
 {
     pub fn created_at(
         self,
@@ -647,8 +735,9 @@ impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
     ) -> InsertConversationBuilder<
         'a,
         (
-            Id,
             Provider,
+            Id,
+            Kind,
             Title,
             Option<i64>,
             UpdatedAt,
@@ -656,18 +745,30 @@ impl<'a, Id, Provider, Title, UpdatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (id, provider, title, (), updated_at, project, repository) = self.fields;
+        let (provider, id, kind, title, (), updated_at, project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
             fields: (
-                id, provider, title, created_at, updated_at, project, repository,
+                provider, id, kind, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
-    InsertConversationBuilder<'a, (Id, Provider, Title, CreatedAt, (), Project, Repository)>
+impl<'a, Provider, Id, Kind, Title, CreatedAt, Project, Repository>
+    InsertConversationBuilder<
+        'a,
+        (
+            Provider,
+            Id,
+            Kind,
+            Title,
+            CreatedAt,
+            (),
+            Project,
+            Repository,
+        ),
+    >
 {
     pub fn updated_at(
         self,
@@ -675,8 +776,9 @@ impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
     ) -> InsertConversationBuilder<
         'a,
         (
-            Id,
             Provider,
+            Id,
+            Kind,
             Title,
             CreatedAt,
             Option<i64>,
@@ -684,18 +786,30 @@ impl<'a, Id, Provider, Title, CreatedAt, Project, Repository>
             Repository,
         ),
     > {
-        let (id, provider, title, created_at, (), project, repository) = self.fields;
+        let (provider, id, kind, title, created_at, (), project, repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
             fields: (
-                id, provider, title, created_at, updated_at, project, repository,
+                provider, id, kind, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
-    InsertConversationBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, (), Repository)>
+impl<'a, Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Repository>
+    InsertConversationBuilder<
+        'a,
+        (
+            Provider,
+            Id,
+            Kind,
+            Title,
+            CreatedAt,
+            UpdatedAt,
+            (),
+            Repository,
+        ),
+    >
 {
     pub fn project(
         self,
@@ -703,8 +817,9 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
     ) -> InsertConversationBuilder<
         'a,
         (
-            Id,
             Provider,
+            Id,
+            Kind,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -712,18 +827,18 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Repository>
             Repository,
         ),
     > {
-        let (id, provider, title, created_at, updated_at, (), repository) = self.fields;
+        let (provider, id, kind, title, created_at, updated_at, (), repository) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
             fields: (
-                id, provider, title, created_at, updated_at, project, repository,
+                provider, id, kind, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
-    InsertConversationBuilder<'a, (Id, Provider, Title, CreatedAt, UpdatedAt, Project, ())>
+impl<'a, Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Project>
+    InsertConversationBuilder<'a, (Provider, Id, Kind, Title, CreatedAt, UpdatedAt, Project, ())>
 {
     pub fn repository(
         self,
@@ -731,8 +846,9 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
     ) -> InsertConversationBuilder<
         'a,
         (
-            Id,
             Provider,
+            Id,
+            Kind,
             Title,
             CreatedAt,
             UpdatedAt,
@@ -740,11 +856,11 @@ impl<'a, Id, Provider, Title, CreatedAt, UpdatedAt, Project>
             Option<&'a str>,
         ),
     > {
-        let (id, provider, title, created_at, updated_at, project, ()) = self.fields;
+        let (provider, id, kind, title, created_at, updated_at, project, ()) = self.fields;
         let _phantom = self._phantom;
         InsertConversationBuilder {
             fields: (
-                id, provider, title, created_at, updated_at, project, repository,
+                provider, id, kind, title, created_at, updated_at, project, repository,
             ),
             _phantom,
         }
@@ -756,6 +872,7 @@ impl<'a>
         (
             &'a str,
             &'a str,
+            &'a str,
             Option<&'a str>,
             Option<i64>,
             Option<i64>,
@@ -765,16 +882,76 @@ impl<'a>
     >
 {
     pub fn build(self) -> InsertConversation<'a> {
-        let (id, provider, title, created_at, updated_at, project, repository) = self.fields;
+        let (provider, id, kind, title, created_at, updated_at, project, repository) = self.fields;
         InsertConversation {
-            id,
             provider,
+            id,
+            kind,
             title,
             created_at,
             updated_at,
             project,
             repository,
         }
+    }
+}
+pub struct InsertNativeChatRow {}
+impl InsertNativeChatRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct InsertNativeChat<'a> {
+    id: &'a str,
+}
+impl<'a> InsertNativeChat<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO native_chats(storage_id, conversation_id, provider, source_path)
+SELECT o.storage_id, o.id, o.source, '' FROM objects o
+WHERE o.origin = 'provider' AND o.object_role = 'container' AND o.id = ?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> InsertNativeChat<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl<'a> InsertNativeChat<'a> {
+    pub const fn builder() -> InsertNativeChatBuilder<'a, ((),)> {
+        InsertNativeChatBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct InsertNativeChatBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> InsertNativeChatBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> InsertNativeChatBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        InsertNativeChatBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> InsertNativeChatBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> InsertNativeChat<'a> {
+        let (id,) = self.fields;
+        InsertNativeChat { id }
     }
 }
 pub struct InsertEnrichmentRow {}
@@ -866,8 +1043,8 @@ pub struct SetFingerprint<'a> {
     id: &'a str,
 }
 impl<'a> SetFingerprint<'a> {
-    pub const QUERY: &'static str =
-        r"UPDATE conversations SET thread_fingerprint = ?1 WHERE id = ?2";
+    pub const QUERY: &'static str = r"UPDATE native_chats SET thread_fingerprint = ?1
+WHERE conversation_id = ?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -937,7 +1114,8 @@ pub struct DeleteConversation<'a> {
     id: &'a str,
 }
 impl<'a> DeleteConversation<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM conversations WHERE id = ?1";
+    pub const QUERY: &'static str =
+        r"DELETE FROM objects WHERE origin = 'provider' AND object_role = 'container' AND id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -992,7 +1170,7 @@ impl DeleteNodeConversationsRow {
 }
 pub struct DeleteNodeConversations;
 impl DeleteNodeConversations {
-    pub const QUERY: &'static str = r"DELETE FROM conversations";
+    pub const QUERY: &'static str = r"DELETE FROM objects WHERE origin = 'provider'";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1033,9 +1211,9 @@ pub struct MessageRow {
     pub attachments: String,
     pub id: String,
     pub conversation_id: String,
-    pub ordinal: i64,
-    pub role: String,
-    pub content: String,
+    pub ordinal: Option<i64>,
+    pub role: Option<String>,
+    pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
@@ -1059,9 +1237,9 @@ pub struct Message<'a> {
     id: &'a str,
 }
 impl<'a> Message<'a> {
-    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
-    created_at, context_parent
-FROM messages WHERE id = ?1";
+    pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
+    m.created_at, m.context_parent
+FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1119,9 +1297,9 @@ pub struct MessageAtRow {
     pub attachments: String,
     pub id: String,
     pub conversation_id: String,
-    pub ordinal: i64,
-    pub role: String,
-    pub content: String,
+    pub ordinal: Option<i64>,
+    pub role: Option<String>,
+    pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
@@ -1143,13 +1321,14 @@ impl MessageAtRow {
 }
 pub struct MessageAt<'a> {
     conversation_id: &'a str,
-    ordinal: i64,
+    ordinal: Option<i64>,
 }
 impl<'a> MessageAt<'a> {
-    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
-    created_at, context_parent
-FROM messages
-WHERE conversation_id = ?1 AND ordinal = ?2";
+    pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
+    m.created_at, m.context_parent
+FROM objects m
+WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
+  AND m.ordinal = ?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1204,7 +1383,10 @@ impl<'a, Ordinal> MessageAtBuilder<'a, ((), Ordinal)> {
     }
 }
 impl<'a, ConversationId> MessageAtBuilder<'a, (ConversationId, ())> {
-    pub fn ordinal(self, ordinal: i64) -> MessageAtBuilder<'a, (ConversationId, i64)> {
+    pub fn ordinal(
+        self,
+        ordinal: Option<i64>,
+    ) -> MessageAtBuilder<'a, (ConversationId, Option<i64>)> {
         let (conversation_id, ()) = self.fields;
         let _phantom = self._phantom;
         MessageAtBuilder {
@@ -1213,7 +1395,7 @@ impl<'a, ConversationId> MessageAtBuilder<'a, (ConversationId, ())> {
         }
     }
 }
-impl<'a> MessageAtBuilder<'a, (&'a str, i64)> {
+impl<'a> MessageAtBuilder<'a, (&'a str, Option<i64>)> {
     pub fn build(self) -> MessageAt<'a> {
         let (conversation_id, ordinal) = self.fields;
         MessageAt {
@@ -1226,9 +1408,9 @@ pub struct FirstChildRow {
     pub attachments: String,
     pub id: String,
     pub conversation_id: String,
-    pub ordinal: i64,
-    pub role: String,
-    pub content: String,
+    pub ordinal: Option<i64>,
+    pub role: Option<String>,
+    pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
@@ -1253,11 +1435,12 @@ pub struct FirstChild<'a> {
     parent: Option<i64>,
 }
 impl<'a> FirstChild<'a> {
-    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
-    created_at, context_parent
-FROM messages
-WHERE conversation_id = ?1 AND context_parent = ?2
-ORDER BY ordinal LIMIT 1";
+    pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
+    m.created_at, m.context_parent
+FROM objects m
+WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
+  AND m.context_parent = ?2
+ORDER BY m.ordinal LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1337,9 +1520,9 @@ pub struct MessageWindowRow {
     pub attachments: String,
     pub id: String,
     pub conversation_id: String,
-    pub ordinal: i64,
-    pub role: String,
-    pub content: String,
+    pub ordinal: Option<i64>,
+    pub role: Option<String>,
+    pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
@@ -1361,16 +1544,16 @@ impl MessageWindowRow {
 }
 pub struct MessageWindow<'a> {
     conversation_id: &'a str,
-    first_ordinal: i64,
-    last_ordinal: i64,
+    first_ordinal: Option<i64>,
+    last_ordinal: Option<i64>,
 }
 impl<'a> MessageWindow<'a> {
-    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
-    created_at, context_parent
-FROM messages
-WHERE conversation_id = ?1
-  AND ordinal >= ?2 AND ordinal <= ?3
-ORDER BY ordinal";
+    pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
+    m.created_at, m.context_parent
+FROM objects m
+WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
+  AND m.ordinal >= ?2 AND m.ordinal <= ?3
+ORDER BY m.ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1422,8 +1605,8 @@ impl<'a, FirstOrdinal, LastOrdinal> MessageWindowBuilder<'a, ((), FirstOrdinal, 
 impl<'a, ConversationId, LastOrdinal> MessageWindowBuilder<'a, (ConversationId, (), LastOrdinal)> {
     pub fn first_ordinal(
         self,
-        first_ordinal: i64,
-    ) -> MessageWindowBuilder<'a, (ConversationId, i64, LastOrdinal)> {
+        first_ordinal: Option<i64>,
+    ) -> MessageWindowBuilder<'a, (ConversationId, Option<i64>, LastOrdinal)> {
         let (conversation_id, (), last_ordinal) = self.fields;
         let _phantom = self._phantom;
         MessageWindowBuilder {
@@ -1437,8 +1620,8 @@ impl<'a, ConversationId, FirstOrdinal>
 {
     pub fn last_ordinal(
         self,
-        last_ordinal: i64,
-    ) -> MessageWindowBuilder<'a, (ConversationId, FirstOrdinal, i64)> {
+        last_ordinal: Option<i64>,
+    ) -> MessageWindowBuilder<'a, (ConversationId, FirstOrdinal, Option<i64>)> {
         let (conversation_id, first_ordinal, ()) = self.fields;
         let _phantom = self._phantom;
         MessageWindowBuilder {
@@ -1447,7 +1630,7 @@ impl<'a, ConversationId, FirstOrdinal>
         }
     }
 }
-impl<'a> MessageWindowBuilder<'a, (&'a str, i64, i64)> {
+impl<'a> MessageWindowBuilder<'a, (&'a str, Option<i64>, Option<i64>)> {
     pub fn build(self) -> MessageWindow<'a> {
         let (conversation_id, first_ordinal, last_ordinal) = self.fields;
         MessageWindow {
@@ -1461,9 +1644,9 @@ pub struct ThreadMessagesRow {
     pub attachments: String,
     pub id: String,
     pub conversation_id: String,
-    pub ordinal: i64,
-    pub role: String,
-    pub content: String,
+    pub ordinal: Option<i64>,
+    pub role: Option<String>,
+    pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
@@ -1487,10 +1670,10 @@ pub struct ThreadMessages<'a> {
     conversation_id: &'a str,
 }
 impl<'a> ThreadMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
-    created_at, context_parent
-FROM messages WHERE conversation_id = ?1
-ORDER BY ordinal";
+    pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
+    m.created_at, m.context_parent
+FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
+ORDER BY m.ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1549,9 +1732,9 @@ pub struct NodeMessagesRow {
     pub attachments: String,
     pub id: String,
     pub conversation_id: String,
-    pub ordinal: i64,
-    pub role: String,
-    pub content: String,
+    pub ordinal: Option<i64>,
+    pub role: Option<String>,
+    pub content: Option<String>,
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
@@ -1573,9 +1756,9 @@ impl NodeMessagesRow {
 }
 pub struct NodeMessages;
 impl NodeMessages {
-    pub const QUERY: &'static str = r"SELECT attachments, id, conversation_id, ordinal, role, content, search_projection,
-    created_at, context_parent
-FROM messages ORDER BY id";
+    pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
+    m.created_at, m.context_parent
+FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' ORDER BY m.id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1624,25 +1807,26 @@ impl InsertMessageRow {
     }
 }
 pub struct InsertMessage<'a> {
-    attachments: &'a str,
     id: &'a str,
-    conversation_id: &'a str,
-    ordinal: i64,
-    role: &'a str,
-    content: &'a str,
+    attachments: &'a str,
+    ordinal: Option<i64>,
+    role: Option<&'a str>,
+    content: Option<&'a str>,
     search_projection: Option<&'a str>,
     created_at: Option<i64>,
     context_parent: Option<i64>,
+    conversation_id: &'a str,
 }
 impl<'a> InsertMessage<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO messages(
-    attachments, id, conversation_id, ordinal, role, content, search_projection,
-    created_at, context_parent
-) VALUES (
-    ?1, ?2, ?3, ?4,
-    ?5, ?6, ?7, ?8,
-    ?9
-)";
+    pub const QUERY: &'static str = r"INSERT INTO objects(
+    origin, source, id, object_role, kind, parent_id, parent_storage_id, conversation_id,
+    attachments, ordinal, role, content, search_projection, created_at, context_parent
+)
+SELECT 'provider', c.source, ?1, 'entry', c.source || ':message', c.id, c.storage_id, c.id,
+    ?2, ?3, ?4, ?5,
+    ?6, ?7, ?8
+FROM objects c
+WHERE c.origin = 'provider' AND c.object_role = 'container' AND c.id = ?9";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1659,15 +1843,15 @@ impl<'a> InsertMessage<'a> {
     }
     pub fn as_params(&self) -> impl rusqlite::Params {
         (
-            self.attachments,
             self.id,
-            self.conversation_id,
+            self.attachments,
             self.ordinal,
             self.role,
             self.content,
             self.search_projection,
             self.created_at,
             self.context_parent,
+            self.conversation_id,
         )
     }
 }
@@ -1683,90 +1867,29 @@ pub struct InsertMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ()
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, Id, ConversationId, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent>
-    InsertMessageBuilder<
-        'a,
-        (
-            (),
-            Id,
-            ConversationId,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-        ),
-    >
-{
-    pub fn attachments(
-        self,
-        attachments: &'a str,
-    ) -> InsertMessageBuilder<
-        'a,
-        (
-            &'a str,
-            Id,
-            ConversationId,
-            Ordinal,
-            Role,
-            Content,
-            SearchProjection,
-            CreatedAt,
-            ContextParent,
-        ),
-    > {
-        let (
-            (),
-            id,
-            conversation_id,
-            ordinal,
-            role,
-            content,
-            search_projection,
-            created_at,
-            context_parent,
-        ) = self.fields;
-        let _phantom = self._phantom;
-        InsertMessageBuilder {
-            fields: (
-                attachments,
-                id,
-                conversation_id,
-                ordinal,
-                role,
-                content,
-                search_projection,
-                created_at,
-                context_parent,
-            ),
-            _phantom,
-        }
-    }
-}
 impl<
     'a,
     Attachments,
-    ConversationId,
     Ordinal,
     Role,
     Content,
     SearchProjection,
     CreatedAt,
     ContextParent,
+    ConversationId,
 >
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             (),
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     >
 {
@@ -1776,50 +1899,49 @@ impl<
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             &'a str,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             (),
-            conversation_id,
+            attachments,
             ordinal,
             role,
             content,
             search_projection,
             created_at,
             context_parent,
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Attachments, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent>
+impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent, ConversationId>
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
             (),
             Ordinal,
@@ -1828,16 +1950,16 @@ impl<'a, Attachments, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     >
 {
-    pub fn conversation_id(
+    pub fn attachments(
         self,
-        conversation_id: &'a str,
+        attachments: &'a str,
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
             &'a str,
             Ordinal,
@@ -1846,10 +1968,10 @@ impl<'a, Attachments, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             id,
             (),
             ordinal,
@@ -1858,80 +1980,81 @@ impl<'a, Attachments, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             search_projection,
             created_at,
             context_parent,
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Attachments, Id, ConversationId, Role, Content, SearchProjection, CreatedAt, ContextParent>
+impl<'a, Id, Attachments, Role, Content, SearchProjection, CreatedAt, ContextParent, ConversationId>
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             (),
             Role,
             Content,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     >
 {
     pub fn ordinal(
         self,
-        ordinal: i64,
+        ordinal: Option<i64>,
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
-            i64,
+            Attachments,
+            Option<i64>,
             Role,
             Content,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             id,
-            conversation_id,
+            attachments,
             (),
             role,
             content,
             search_projection,
             created_at,
             context_parent,
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
             ),
             _phantom,
         }
@@ -1939,149 +2062,149 @@ impl<'a, Attachments, Id, ConversationId, Role, Content, SearchProjection, Creat
 }
 impl<
     'a,
-    Attachments,
     Id,
-    ConversationId,
+    Attachments,
     Ordinal,
     Content,
     SearchProjection,
     CreatedAt,
     ContextParent,
+    ConversationId,
 >
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             (),
             Content,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     >
 {
     pub fn role(
         self,
-        role: &'a str,
+        role: Option<&'a str>,
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
-            &'a str,
+            Option<&'a str>,
             Content,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             id,
-            conversation_id,
+            attachments,
             ordinal,
             (),
             content,
             search_projection,
             created_at,
             context_parent,
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Attachments, Id, ConversationId, Ordinal, Role, SearchProjection, CreatedAt, ContextParent>
+impl<'a, Id, Attachments, Ordinal, Role, SearchProjection, CreatedAt, ContextParent, ConversationId>
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             (),
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     >
 {
     pub fn content(
         self,
-        content: &'a str,
+        content: Option<&'a str>,
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
-            &'a str,
+            Option<&'a str>,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             id,
-            conversation_id,
+            attachments,
             ordinal,
             role,
             (),
             search_projection,
             created_at,
             context_parent,
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, CreatedAt, ContextParent>
+impl<'a, Id, Attachments, Ordinal, Role, Content, CreatedAt, ContextParent, ConversationId>
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             (),
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     >
 {
@@ -2091,58 +2214,58 @@ impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, CreatedAt, Con
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             Option<&'a str>,
             CreatedAt,
             ContextParent,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             id,
-            conversation_id,
+            attachments,
             ordinal,
             role,
             content,
             (),
             created_at,
             context_parent,
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, SearchProjection, ContextParent>
+impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, ContextParent, ConversationId>
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             SearchProjection,
             (),
             ContextParent,
+            ConversationId,
         ),
     >
 {
@@ -2152,58 +2275,58 @@ impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, SearchProjecti
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             SearchProjection,
             Option<i64>,
             ContextParent,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             id,
-            conversation_id,
+            attachments,
             ordinal,
             role,
             content,
             search_projection,
             (),
             context_parent,
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, SearchProjection, CreatedAt>
+impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, ConversationId>
     InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             SearchProjection,
             CreatedAt,
             (),
+            ConversationId,
         ),
     >
 {
@@ -2213,40 +2336,101 @@ impl<'a, Attachments, Id, ConversationId, Ordinal, Role, Content, SearchProjecti
     ) -> InsertMessageBuilder<
         'a,
         (
-            Attachments,
             Id,
-            ConversationId,
+            Attachments,
             Ordinal,
             Role,
             Content,
             SearchProjection,
             CreatedAt,
             Option<i64>,
+            ConversationId,
         ),
     > {
         let (
-            attachments,
             id,
-            conversation_id,
+            attachments,
             ordinal,
             role,
             content,
             search_projection,
             created_at,
             (),
+            conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
         InsertMessageBuilder {
             fields: (
-                attachments,
                 id,
-                conversation_id,
+                attachments,
                 ordinal,
                 role,
                 content,
                 search_projection,
                 created_at,
                 context_parent,
+                conversation_id,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent>
+    InsertMessageBuilder<
+        'a,
+        (
+            Id,
+            Attachments,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            (),
+        ),
+    >
+{
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> InsertMessageBuilder<
+        'a,
+        (
+            Id,
+            Attachments,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            &'a str,
+        ),
+    > {
+        let (
+            id,
+            attachments,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+            (),
+        ) = self.fields;
+        let _phantom = self._phantom;
+        InsertMessageBuilder {
+            fields: (
+                id,
+                attachments,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                conversation_id,
             ),
             _phantom,
         }
@@ -2258,38 +2442,38 @@ impl<'a>
         (
             &'a str,
             &'a str,
-            &'a str,
-            i64,
-            &'a str,
-            &'a str,
+            Option<i64>,
+            Option<&'a str>,
+            Option<&'a str>,
             Option<&'a str>,
             Option<i64>,
             Option<i64>,
+            &'a str,
         ),
     >
 {
     pub fn build(self) -> InsertMessage<'a> {
         let (
-            attachments,
             id,
-            conversation_id,
+            attachments,
             ordinal,
             role,
             content,
             search_projection,
             created_at,
             context_parent,
+            conversation_id,
         ) = self.fields;
         InsertMessage {
-            attachments,
             id,
-            conversation_id,
+            attachments,
             ordinal,
             role,
             content,
             search_projection,
             created_at,
             context_parent,
+            conversation_id,
         }
     }
 }
@@ -2303,7 +2487,9 @@ pub struct DeleteThreadMessages<'a> {
     conversation_id: &'a str,
 }
 impl<'a> DeleteThreadMessages<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM messages WHERE conversation_id = ?1";
+    pub const QUERY: &'static str = r"DELETE FROM objects
+WHERE origin = 'provider' AND object_role <> 'container'
+  AND conversation_id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2361,7 +2547,8 @@ impl DeleteNodeMessagesRow {
 }
 pub struct DeleteNodeMessages;
 impl DeleteNodeMessages {
-    pub const QUERY: &'static str = r"DELETE FROM messages";
+    pub const QUERY: &'static str =
+        r"DELETE FROM objects WHERE origin = 'provider' AND object_role <> 'container'";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -2410,10 +2597,11 @@ pub struct MissingParent<'a> {
     conversation_id: &'a str,
 }
 impl<'a> MissingParent<'a> {
-    pub const QUERY: &'static str = r"SELECT m.id FROM messages m
-WHERE m.conversation_id = ?1 AND m.context_parent >= 0
-  AND NOT EXISTS(SELECT 1 FROM messages p
-      WHERE p.conversation_id = m.conversation_id AND p.ordinal = m.context_parent)
+    pub const QUERY: &'static str = r"SELECT m.id FROM objects m
+WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1 AND m.context_parent >= 0
+  AND NOT EXISTS(SELECT 1 FROM objects p
+      WHERE p.origin = 'provider' AND p.object_role = 'entry'
+        AND p.conversation_id = m.conversation_id AND p.ordinal = m.context_parent)
 LIMIT 1";
     pub fn query_str(&self) -> &str {
         Self::QUERY

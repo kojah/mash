@@ -27,7 +27,7 @@ pub(super) fn rebuild_semantic_chunk(
             .query_row(
                 "SELECT e.generation
                    FROM message_embeddings e
-                   JOIN messages m ON m.id = e.message_id
+                   JOIN objects m ON m.origin = 'provider' AND m.object_role = 'entry' AND m.id = e.message_id
                   WHERE m.rowid BETWEEN ?1 AND ?2
                   ORDER BY m.rowid
                   LIMIT 1",
@@ -74,10 +74,10 @@ fn pack_semantic_chunk(
 ) -> Result<Option<PackedSemanticChunk>, AppError> {
     let mut statement = connection
         .prepare(
-            "SELECT m.rowid, e.dimensions, e.norm, e.vector, c.provider, m.created_at
+            "SELECT m.rowid, e.dimensions, e.norm, e.vector, c.source, m.created_at
                FROM message_embeddings e
-               JOIN messages m ON m.id = e.message_id
-               JOIN conversations c ON c.id = m.conversation_id
+               JOIN objects m ON m.origin = 'provider' AND m.object_role = 'entry' AND m.id = e.message_id
+               JOIN objects c ON c.origin = 'provider' AND c.object_role = 'container' AND c.id = m.conversation_id
               WHERE m.rowid BETWEEN ?1 AND ?2
                 AND e.generation = ?3
                 AND COALESCE(m.search_projection, m.content) <> ''

@@ -47,7 +47,7 @@ async fn sdk_outputs_mask_credentials_in_view_discovery_and_search() {
         if tool == "index" {
             message_id = rusqlite::Connection::open(root.path().join("index.sqlite3"))
                 .unwrap()
-                .query_row("SELECT id FROM messages LIMIT 1", [], |row| row.get(0))
+                .query_row("SELECT id FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1", [], |row| row.get(0))
                 .unwrap();
         }
         if tool != "index" {

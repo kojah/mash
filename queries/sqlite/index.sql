@@ -1,7 +1,7 @@
 -- name: Counts :one
-SELECT (SELECT count(*) FROM conversations) AS conversations,
-(SELECT count(*) FROM messages) AS messages,
-(SELECT count(*) FROM messages WHERE COALESCE(search_projection,content)<>'') AS searchable_messages,
+SELECT (SELECT count(*) FROM objects WHERE origin='provider' AND object_role='container') AS conversations,
+(SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry') AS messages,
+(SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry' AND COALESCE(search_projection,content)<>'') AS searchable_messages,
 (SELECT count(*) FROM message_embeddings) AS embeddings;
 
 -- name: ListChats :many
@@ -15,9 +15,9 @@ WITH scope AS (SELECT
     CAST(sqlc.narg(before_ms) AS INTEGER) AS before_ms,
     CAST(sqlc.arg(sort_key) AS TEXT) AS sort_key,
     CAST(sqlc.arg(descending) AS INTEGER) AS descending)
-SELECT c.id,c.provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
-FROM conversations c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
-WHERE (s.all_providers = 1 OR c.provider IN (
+SELECT c.id,c.source AS provider,c.title,c.project,c.repository,c.created_at,c.updated_at,e.evidence AS enrichment
+FROM objects c CROSS JOIN scope s LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id
+WHERE c.origin='provider' AND c.object_role='container' AND (s.all_providers = 1 OR c.source IN (
     SELECT CAST(value AS TEXT) FROM json_each(s.providers_json)
 ))
 AND (s.title_contains IS NULL OR instr(lower(c.title),lower(s.title_contains)) > 0)
@@ -34,11 +34,13 @@ CASE WHEN s.sort_key = 'created_at' AND s.descending = 0 THEN c.created_at END A
 CASE WHEN s.sort_key = 'created_at' AND s.descending = 1 THEN c.created_at END DESC,
 CASE WHEN s.sort_key = 'updated_at' AND s.descending = 0 THEN c.updated_at END ASC,
 CASE WHEN s.sort_key = 'updated_at' AND s.descending = 1 THEN c.updated_at END DESC,
-c.provider COLLATE BINARY ASC,c.id COLLATE BINARY ASC
+c.source COLLATE BINARY ASC,c.id COLLATE BINARY ASC
 LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 
 -- name: ConversationMessageState :many
-SELECT id,fingerprint,ordinal,COALESCE(search_projection,content) AS search_text FROM messages WHERE conversation_id=sqlc.arg(conversation_id);
+SELECT m.id,COALESCE(n.fingerprint,'') AS fingerprint,m.ordinal,COALESCE(m.search_projection,m.content) AS search_text
+FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
+WHERE m.origin='provider' AND m.object_role='entry' AND m.conversation_id=sqlc.arg(conversation_id);
 
 -- name: ClaudeSourceThread :one
 SELECT conversation_id FROM claude_sources WHERE source_key=sqlc.arg(source_key);
@@ -82,29 +84,29 @@ DELETE FROM claude_sources WHERE conversation_id=sqlc.arg(conversation_id);
 SELECT conversation_id FROM tombstones WHERE provider='claude-code' AND conversation_id=sqlc.arg(conversation_id);
 
 -- name: CanonicalThreadMessageCount :one
-SELECT count(*) AS messages FROM messages WHERE conversation_id=sqlc.arg(conversation_id);
+SELECT count(*) AS messages FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id);
 
 -- name: ParkMessageOrdinal :exec
-UPDATE messages SET ordinal=sqlc.arg(ordinal)
-WHERE conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
+UPDATE objects SET ordinal=sqlc.arg(ordinal)
+WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND id=sqlc.arg(message_id);
 
 -- name: SearchHit :one
-SELECT m.id,m.conversation_id,c.provider,m.role,COALESCE(m.search_projection,m.content) AS content,
+SELECT m.id,m.conversation_id,c.source AS provider,m.role,COALESCE(m.search_projection,m.content) AS content,
 m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment
-FROM messages m JOIN conversations c ON c.id=m.conversation_id
+FROM objects m JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
 LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id WHERE m.storage_id=?1;
 
 -- name: SearchDocument :one
-SELECT COALESCE(search_projection,content) AS content FROM messages WHERE id=?1;
+SELECT COALESCE(search_projection,content) AS content FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
 
 -- name: Anchor :one
-SELECT conversation_id,ordinal,context_parent FROM messages WHERE id=?1;
+SELECT conversation_id,ordinal,context_parent FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
 
 -- name: MessageAttachments :one
-SELECT attachments FROM messages WHERE id=?1;
+SELECT attachments FROM objects WHERE origin='provider' AND object_role='entry' AND id=?1;
 
 -- name: AttachmentCandidates :many
-SELECT id,attachments FROM messages WHERE attachments<>'[]' ORDER BY id;
+SELECT id,attachments FROM objects WHERE origin='provider' AND object_role='entry' AND attachments<>'[]' ORDER BY id;
 
 -- name: AttachmentPolicy :one
 SELECT fingerprint FROM attachment_policy WHERE singleton=1;
@@ -113,15 +115,15 @@ SELECT fingerprint FROM attachment_policy WHERE singleton=1;
 INSERT INTO attachment_policy(singleton,fingerprint) VALUES(1,sqlc.arg(fingerprint)) ON CONFLICT(singleton) DO UPDATE SET fingerprint=excluded.fingerprint;
 
 -- name: ViewMessages :many
-SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM messages
-WHERE conversation_id=sqlc.arg(conversation_id) AND ordinal>=sqlc.arg(first_ordinal) AND ordinal<=sqlc.arg(last_ordinal) ORDER BY ordinal;
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM objects
+WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND ordinal>=sqlc.arg(first_ordinal) AND ordinal<=sqlc.arg(last_ordinal) ORDER BY ordinal;
 
 -- name: ContextMessage :one
-SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent FROM messages
-WHERE conversation_id=sqlc.arg(conversation_id) AND ordinal=sqlc.arg(ordinal);
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent FROM objects
+WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND ordinal=sqlc.arg(ordinal);
 
 -- name: FirstChild :one
-SELECT ordinal FROM messages WHERE conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
+SELECT ordinal FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND context_parent=sqlc.arg(parent) ORDER BY ordinal LIMIT 1;
 
 -- name: SilverCertificate :one
 SELECT s.revision, s.interpretation_version,
@@ -129,7 +131,7 @@ SELECT s.revision, s.interpretation_version,
     CAST(s.interpretation_version<>sqlc.arg(current_version)
         OR EXISTS(SELECT 1 FROM silver_scans WHERE interpretation_version<>sqlc.arg(current_version))
         OR EXISTS(SELECT 1 FROM source_checkpoints WHERE interpretation_version<>sqlc.arg(current_version))
-        OR EXISTS(SELECT 1 FROM conversations c WHERE NOT EXISTS(
+        OR EXISTS(SELECT 1 FROM native_chats c WHERE NOT EXISTS(
             SELECT 1 FROM silver_scans p WHERE p.provider=c.provider
               AND p.interpretation_version=sqlc.arg(current_version))) AS INTEGER) AS unverified,
     CAST(EXISTS(SELECT 1 FROM silver_scans WHERE state=2) AS INTEGER) AS incomplete,
@@ -147,9 +149,10 @@ SELECT manifest FROM gold_manifest WHERE singleton=1;
 SELECT manifest FROM lexical_manifest WHERE singleton=1;
 
 -- name: SourceEnrichment :many
-SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at FROM conversations AS c
+SELECT e.evidence,c.title,c.project,c.repository,c.created_at,c.updated_at
+FROM native_chats AS n JOIN objects AS c ON c.storage_id=n.storage_id
 LEFT JOIN conversation_enrichment AS e ON e.conversation_id=c.id
-WHERE c.provider=sqlc.arg(provider) AND c.source_key=sqlc.arg(source_key);
+WHERE n.provider=sqlc.arg(provider) AND n.source_key=sqlc.arg(source_key);
 
 -- name: ConversationEnrichment :one
 SELECT evidence FROM conversation_enrichment WHERE conversation_id=sqlc.arg(conversation_id);
@@ -166,18 +169,50 @@ INSERT INTO connector_sources(id,revision) VALUES(sqlc.arg(id),sqlc.arg(revision
 ON CONFLICT(id) DO UPDATE SET revision=excluded.revision;
 
 -- name: ConnectorObject :one
-SELECT role,parent_id,reply_to,record FROM connector_objects
-WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+SELECT object_role AS role,parent_id,reply_to,record FROM objects
+WHERE origin='connector' AND source=sqlc.arg(source_id) AND id=sqlc.arg(id);
 
 -- name: ConnectorPutObject :execrows
-INSERT INTO connector_objects(source_id,id,role,parent_id,reply_to,record)
-VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(role),sqlc.narg(parent_id),sqlc.narg(reply_to),sqlc.arg(record))
-ON CONFLICT(source_id,id) DO UPDATE SET role=excluded.role,parent_id=excluded.parent_id,
-reply_to=excluded.reply_to,record=excluded.record
-WHERE connector_objects.record<>excluded.record;
+-- conversation_id starts as the object's own ID and the parent edge unlinked;
+-- the link queries and ConnectorSetConversation fix both.
+INSERT INTO objects(origin,source,id,object_role,kind,parent_id,reply_to,conversation_id,
+    author,title,content,created_at,updated_at,url,metadata,attachments,record)
+VALUES('connector',sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(role),sqlc.arg(kind),
+    sqlc.narg(parent_id),sqlc.narg(reply_to),sqlc.arg(id),sqlc.narg(author),sqlc.narg(title),
+    sqlc.narg(content),sqlc.narg(created_at),sqlc.narg(updated_at),sqlc.narg(url),
+    sqlc.narg(metadata),sqlc.arg(attachments),sqlc.arg(record))
+ON CONFLICT(source,id) WHERE origin='connector' DO UPDATE SET object_role=excluded.object_role,kind=excluded.kind,
+parent_id=excluded.parent_id,reply_to=excluded.reply_to,author=excluded.author,
+title=excluded.title,content=excluded.content,created_at=excluded.created_at,
+updated_at=excluded.updated_at,url=excluded.url,metadata=excluded.metadata,
+attachments=excluded.attachments,record=excluded.record
+WHERE objects.record<>excluded.record;
+
+-- name: ConnectorLinkParent :exec
+-- Unchanged edges are left alone so revision triggers see no change.
+UPDATE objects SET parent_storage_id=(SELECT p.storage_id FROM objects c
+    JOIN objects p ON p.origin='connector' AND p.source=c.source AND p.id=c.parent_id
+    WHERE c.origin='connector' AND c.source=sqlc.arg(source_id) AND c.id=sqlc.arg(id))
+WHERE origin='connector' AND source=sqlc.arg(source_id) AND id=sqlc.arg(id)
+  AND parent_storage_id IS NOT (SELECT p.storage_id FROM objects c
+    JOIN objects p ON p.origin='connector' AND p.source=c.source AND p.id=c.parent_id
+    WHERE c.origin='connector' AND c.source=sqlc.arg(source_id) AND c.id=sqlc.arg(id));
+
+-- name: ConnectorLinkChildren :exec
+-- Children may have arrived before their parent in the same batch.
+UPDATE objects SET parent_storage_id=(SELECT p.storage_id FROM objects p
+    WHERE p.origin='connector' AND p.source=sqlc.arg(source_id) AND p.id=sqlc.arg(id))
+WHERE origin='connector' AND source=sqlc.arg(source_id) AND parent_id=sqlc.arg(id)
+  AND parent_storage_id IS NOT (SELECT p.storage_id FROM objects p
+    WHERE p.origin='connector' AND p.source=sqlc.arg(source_id) AND p.id=sqlc.arg(id));
+
+-- name: ConnectorSetConversation :exec
+UPDATE objects SET conversation_id=sqlc.arg(conversation_id)
+WHERE origin='connector' AND source=sqlc.arg(source_id) AND id=sqlc.arg(id)
+  AND conversation_id<>sqlc.arg(conversation_id);
 
 -- name: ConnectorDeleteObject :execrows
-DELETE FROM connector_objects WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+DELETE FROM objects WHERE origin='connector' AND source=sqlc.arg(source_id) AND id=sqlc.arg(id);
 
 -- name: ConnectorSchema :one
 SELECT schema FROM connector_schemas WHERE source_id=sqlc.arg(source_id);
@@ -188,14 +223,14 @@ ON CONFLICT(source_id) DO UPDATE SET schema=excluded.schema
 WHERE connector_schemas.schema<>excluded.schema;
 
 -- name: ConnectorSourceObjects :many
-SELECT id FROM connector_objects WHERE source_id=sqlc.arg(source_id) ORDER BY id;
+SELECT id FROM objects WHERE origin='connector' AND source=sqlc.arg(source_id) ORDER BY id;
 
 -- name: ConnectorAllSchemas :many
 SELECT source_id,schema FROM connector_schemas ORDER BY source_id;
 
 -- name: ConnectorChildren :many
-SELECT id,role,record FROM connector_objects
-WHERE source_id=sqlc.arg(source_id) AND parent_id=sqlc.arg(parent_id) ORDER BY id;
+SELECT id,object_role AS role,record FROM objects
+WHERE origin='connector' AND source=sqlc.arg(source_id) AND parent_id=sqlc.arg(parent_id) ORDER BY id;
 
 -- name: ConnectorSilverRevision :one
 SELECT revision FROM silver_state WHERE singleton=1;
@@ -208,13 +243,14 @@ INSERT INTO connector_receipts(source_id,batch_id,fingerprint,receipt)
 VALUES(sqlc.arg(source_id),sqlc.arg(batch_id),sqlc.arg(fingerprint),sqlc.arg(receipt));
 
 -- name: ConnectorAllObjects :many
-SELECT source_id,id FROM connector_objects ORDER BY source_id,id;
+SELECT source AS source_id,id,object_role AS role,parent_id FROM objects WHERE origin='connector' ORDER BY source,id;
 
 -- name: ConnectorUnitDigests :many
 SELECT anchor, id, digest FROM connector_units;
 
 -- name: ConnectorSilverObjects :many
-SELECT source_id, id, role, parent_id, record FROM connector_objects ORDER BY source_id, id;
+SELECT source AS source_id, id, object_role AS role, parent_id, record FROM objects
+WHERE origin = 'connector' ORDER BY source, id;
 
 -- name: ConnectorInsertUnit :one
 INSERT INTO connector_units(anchor, role, label, source_id, record_id, group_anchor, created_at, digest)
@@ -261,4 +297,71 @@ SELECT CAST(NOT EXISTS(
 DELETE FROM connector_embeddings;
 
 -- name: ConnectorContainers :many
-SELECT source_id, id, record FROM connector_objects WHERE role = 'container';
+SELECT source AS source_id, id, record FROM objects
+WHERE origin = 'connector' AND object_role = 'container';
+
+-- name: NativeMessageCount :one
+SELECT count(*) AS messages FROM objects WHERE origin='provider' AND object_role='entry';
+
+-- name: NativeSourceFingerprint :one
+SELECT source_fingerprint FROM native_chats WHERE conversation_id=sqlc.arg(id);
+
+-- name: UpsertNativeChat :exec
+INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,title,created_at,updated_at,project,repository)
+VALUES('provider',sqlc.arg(provider),sqlc.arg(id),'container',sqlc.arg(kind),sqlc.arg(id),
+    sqlc.narg(title),sqlc.narg(created_at),sqlc.narg(updated_at),sqlc.narg(project),sqlc.narg(repository))
+ON CONFLICT(id) WHERE origin='provider' AND object_role='container' DO UPDATE SET kind=excluded.kind,title=excluded.title,
+created_at=excluded.created_at,updated_at=excluded.updated_at,project=excluded.project,
+repository=excluded.repository;
+
+-- name: UpsertNativeChatSource :exec
+INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_fingerprint,source_key,source_session)
+SELECT o.storage_id,o.id,o.source,sqlc.arg(source_path),sqlc.arg(source_fingerprint),sqlc.narg(source_key),sqlc.narg(source_session)
+FROM objects o WHERE o.origin='provider' AND o.object_role='container' AND o.id=sqlc.arg(id)
+ON CONFLICT(conversation_id) DO UPDATE SET provider=excluded.provider,source_path=excluded.source_path,
+source_fingerprint=excluded.source_fingerprint,source_key=excluded.source_key,
+source_session=excluded.source_session;
+
+-- name: DisplacedNativeMessages :one
+SELECT (SELECT count(*) FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
+    AND m.conversation_id=n.conversation_id) AS messages
+FROM native_chats n
+WHERE n.provider=sqlc.arg(provider) AND n.source_key=sqlc.arg(source_key) AND n.conversation_id<>sqlc.arg(id);
+
+-- name: UpsertNativeMessage :exec
+-- A native message takes its provider from its chat, and sits under it.
+INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
+    ordinal,role,content,search_projection,created_at,context_parent,attachments)
+SELECT 'provider',c.source,sqlc.arg(id),'entry',c.source||':message',c.id,c.storage_id,c.id,
+    sqlc.arg(ordinal),sqlc.arg(role),sqlc.arg(content),sqlc.narg(search_projection),
+    sqlc.narg(created_at),sqlc.narg(context_parent),sqlc.arg(attachments)
+FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=sqlc.arg(conversation_id)
+ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
+source=excluded.source,kind=excluded.kind,parent_id=excluded.parent_id,
+parent_storage_id=excluded.parent_storage_id,
+conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
+content=excluded.content,search_projection=excluded.search_projection,created_at=excluded.created_at,
+context_parent=excluded.context_parent,attachments=excluded.attachments;
+
+-- name: UpsertNativeMessageFingerprint :exec
+INSERT INTO native_messages(storage_id,id,fingerprint)
+SELECT o.storage_id,o.id,sqlc.arg(fingerprint) FROM objects o WHERE o.origin='provider' AND o.object_role='entry' AND o.id=sqlc.arg(id)
+ON CONFLICT(id) DO UPDATE SET fingerprint=excluded.fingerprint;
+
+-- name: DeleteNativeChat :execrows
+-- Its turns and messages go with it through the parent edge.
+DELETE FROM objects WHERE origin='provider' AND object_role='container' AND id=sqlc.arg(id);
+
+-- name: DeleteNativeMessage :exec
+DELETE FROM objects WHERE origin='provider' AND object_role='entry' AND id=sqlc.arg(id);
+
+-- name: NativeChatsForPurge :many
+SELECT n.conversation_id AS id,n.source_path,n.source_key,k.modified_ns
+FROM native_chats n LEFT JOIN source_checkpoints k ON k.provider=n.provider AND k.source_key=n.source_key
+WHERE n.provider=sqlc.arg(provider);
+
+-- name: NativeChatBySource :one
+SELECT conversation_id AS id FROM native_chats WHERE provider=sqlc.arg(provider) AND source_key=sqlc.arg(source_key);
+
+-- name: NativeChatProvider :one
+SELECT provider FROM native_chats WHERE conversation_id=sqlc.arg(id);

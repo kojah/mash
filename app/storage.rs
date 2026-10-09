@@ -295,6 +295,11 @@ impl Drop for Storage {
     }
 }
 
+/// A column every native entry has; its absence means corrupt silver.
+pub(crate) fn required<T>(value: Option<T>, field: &str) -> Result<T, AppError> {
+    value.ok_or_else(|| AppError::database_data(format!("native silver is missing {field}")))
+}
+
 pub(crate) fn cutoff_timestamp(days: Option<u32>) -> Result<Option<i64>, AppError> {
     let Some(days) = days else {
         return Ok(None);

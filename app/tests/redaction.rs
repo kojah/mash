@@ -20,7 +20,11 @@ fn cli_masks_archived_credentials_without_changing_local_history() {
     run_json(&[prefix.as_slice(), &["index"]].concat());
     let connection = Connection::open(&db).unwrap();
     let message_id: String = connection
-        .query_row("SELECT id FROM messages LIMIT 1", [], |row| row.get(0))
+        .query_row(
+            "SELECT id FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     for args in [
         vec!["view", message_id.as_str()],
@@ -51,7 +55,11 @@ fn cli_masks_archived_credentials_without_changing_local_history() {
         format!("{body}\n")
     );
     let canonical: String = connection
-        .query_row("SELECT content FROM messages LIMIT 1", [], |row| row.get(0))
+        .query_row(
+            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     assert!(canonical.contains("hunter2"));
 }

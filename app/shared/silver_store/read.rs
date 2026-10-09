@@ -57,8 +57,8 @@ pub(in crate::shared) fn view(
     if anchor.context == MessageContext::Linear {
         return sql::MessageWindow::builder()
             .conversation_id(&thread)
-            .first_ordinal(anchor.ordinal.saturating_sub(context))
-            .last_ordinal(anchor.ordinal.saturating_add(context))
+            .first_ordinal(Some(anchor.ordinal.saturating_sub(context)))
+            .last_ordinal(Some(anchor.ordinal.saturating_add(context)))
             .build()
             .query_many(connection)
             .map_err(database)?
@@ -78,7 +78,7 @@ pub(in crate::shared) fn view(
         };
         let Some(next) = sql::MessageAt::builder()
             .conversation_id(&thread)
-            .ordinal(parent)
+            .ordinal(Some(parent))
             .build()
             .query_opt(connection)
             .map_err(database)?
@@ -100,11 +100,12 @@ pub(in crate::shared) fn view(
         else {
             break;
         };
+        let child = message_record!(child)?;
         if child.ordinal <= ordinal {
             return Err(AppError::database_data("invalid message context parent"));
         }
         ordinal = child.ordinal;
-        rows.push(message_record!(child)?);
+        rows.push(child);
     }
     rows.sort_by_key(|row| row.ordinal);
     Ok(rows)

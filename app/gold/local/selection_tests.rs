@@ -28,7 +28,7 @@ fn rows(database: &Path) -> Vec<u8> {
     let connection = rusqlite::Connection::open(database).unwrap();
     let id: String = connection
         .query_row(
-            "SELECT id FROM messages ORDER BY ordinal LIMIT 1",
+            "SELECT id FROM objects WHERE origin='provider' AND object_role='entry' ORDER BY ordinal LIMIT 1",
             [],
             |row| row.get("id"),
         )
@@ -87,8 +87,9 @@ fn parent_units_replace_only_gold_and_recover_after_missing_model_build() {
         drop(storage);
         assert_eq!(rows(&database), before);
         let connection = rusqlite::Connection::open(&database).unwrap();
+        attach_gold(&connection, &database);
         vectors.push(connection.query_row(
-            "SELECT vector FROM message_embeddings JOIN messages ON messages.id=message_embeddings.message_id WHERE ordinal=1",
+            "SELECT vector FROM message_embeddings JOIN objects ON objects.origin='provider' AND objects.id=message_embeddings.message_id WHERE ordinal=1",
             [], |row| row.get::<_, Vec<u8>>("vector"),
         ).unwrap());
         assert_eq!(
@@ -152,8 +153,9 @@ fn parent_edits_reembed_unchanged_child_anchors() {
         drop(storage);
         assert_eq!(rows(&database), before);
         let connection = rusqlite::Connection::open(&database).unwrap();
+        attach_gold(&connection, &database);
         vectors.push(connection.query_row(
-            "SELECT vector FROM message_embeddings JOIN messages ON messages.id=message_embeddings.message_id WHERE ordinal=1",
+            "SELECT vector FROM message_embeddings JOIN objects ON objects.origin='provider' AND objects.id=message_embeddings.message_id WHERE ordinal=1",
             [], |row| row.get::<_, Vec<u8>>("vector"),
         ).unwrap());
     }
@@ -282,4 +284,16 @@ fn dense_content_switches_edits_and_forget_preserve_canonical_silver_and_lexical
     assert!(storage.forget(&id).unwrap());
     assert_eq!(storage.counts().unwrap().messages, 0);
     assert_eq!(storage.counts().unwrap().embeddings, 0);
+}
+
+/// Embeddings live in the paired gold database beside silver.
+fn attach_gold(connection: &rusqlite::Connection, database: &std::path::Path) {
+    connection
+        .execute(
+            "ATTACH DATABASE ?1 AS gold",
+            [crate::storage::schema::gold_path(database)
+                .to_str()
+                .unwrap()],
+        )
+        .unwrap();
 }

@@ -19,7 +19,7 @@ fn catalog() -> (tempfile::TempDir, Storage) {
         ("e", "codex", None, None, None),
     ] {
         storage.connection.execute(
-            "INSERT INTO conversations(id,provider,source_path,source_key,title,created_at,updated_at,project,repository) VALUES(?1,?2,?1,?1,?3,?4,?5,'/work/project','repo://project')",
+            "INSERT INTO objects(origin,source,id,object_role,kind,conversation_id,title,created_at,updated_at,project,repository) VALUES('provider',?2,?1,'container',?2||':chat',?1,?3,?4,?5,'/work/project','repo://project')",
             rusqlite::params![id, provider, title, created, updated],
         ).unwrap();
     }
@@ -227,7 +227,7 @@ fn catalog_opens_only_existing_current_schemas_without_migration_or_writes() {
     assert!(
         reader
             .connection
-            .execute("DELETE FROM conversations", [])
+            .execute("DELETE FROM objects WHERE origin = 'provider'", [])
             .is_err()
     );
     assert_eq!(reader.counts().unwrap().conversations, 5);

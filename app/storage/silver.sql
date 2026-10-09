@@ -3,9 +3,68 @@
 -- holds no retrieval artifacts. Some tables are populated by only one side:
 -- ingestion and publication state locally, shared_head on the server.
 
--- Canonical history.
-CREATE TABLE IF NOT EXISTS conversations (
-    id TEXT PRIMARY KEY,
+-- Canonical history for every source, native providers and connectors alike.
+-- An object has a core role (container, segment, entry, document), its source's
+-- kind label and a parent. Native-only columns are NULL for connector objects.
+CREATE TABLE IF NOT EXISTS objects (
+    -- Stable integer address for gold vectors; never exported.
+    storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    origin TEXT NOT NULL CHECK (origin IN ('provider', 'connector')),
+    -- The provider name, or the connector's source ID.
+    source TEXT NOT NULL,
+    id TEXT NOT NULL,
+    object_role TEXT NOT NULL CHECK (object_role IN ('container', 'segment', 'entry', 'document')),
+    kind TEXT NOT NULL,
+    -- The parent's own ID, as submitted or parsed.
+    parent_id TEXT,
+    -- The same edge by storage address: native chat and message IDs are
+    -- separate namespaces, so the logical ID alone cannot be a key.
+    parent_storage_id INTEGER REFERENCES objects(storage_id) ON DELETE CASCADE,
+    reply_to TEXT,
+    -- The nearest container: a container's or document's own ID, or the
+    -- container that holds an entry or segment. Results group by it.
+    conversation_id TEXT NOT NULL,
+    -- Native order and branch tree: NULL for linear threads, -1 for a tree
+    -- root, otherwise the parent ordinal. NULL for connector objects.
+    ordinal INTEGER,
+    context_parent INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal)),
+    -- Native dialogue role, or a connector entry's author as JSON.
+    role TEXT,
+    author TEXT,
+    title TEXT,
+    content TEXT,
+    -- Silver's interpreted visible dialogue; the Rust model calls this dialogue_text.
+    search_projection TEXT,
+    created_at INTEGER,
+    updated_at INTEGER,
+    project TEXT,
+    repository TEXT,
+    url TEXT,
+    metadata TEXT,
+    attachments TEXT NOT NULL DEFAULT '[]',
+    -- A connector object's exact submitted record, kept for receipts and replay.
+    record TEXT
+);
+-- A connector source's IDs span all of its roles.
+CREATE UNIQUE INDEX IF NOT EXISTS objects_connector_id ON objects(source, id) WHERE origin = 'connector';
+-- Native chat and message IDs are each global, as gold, views and
+-- enrichment address them alone, but a message may reuse a chat's ID.
+CREATE UNIQUE INDEX IF NOT EXISTS objects_native_container ON objects(id)
+    WHERE origin = 'provider' AND object_role = 'container';
+CREATE UNIQUE INDEX IF NOT EXISTS objects_native_id ON objects(id)
+    WHERE origin = 'provider' AND object_role <> 'container';
+CREATE UNIQUE INDEX IF NOT EXISTS objects_native_order ON objects(conversation_id, ordinal)
+    WHERE origin = 'provider' AND ordinal IS NOT NULL;
+-- Lookups by ID; the partial unique indexes above only serve conflicts.
+CREATE INDEX IF NOT EXISTS objects_id ON objects(id);
+CREATE INDEX IF NOT EXISTS objects_parent ON objects(origin, source, parent_id);
+CREATE INDEX IF NOT EXISTS objects_parent_storage ON objects(parent_storage_id);
+CREATE INDEX IF NOT EXISTS objects_reply ON objects(origin, source, reply_to);
+CREATE INDEX IF NOT EXISTS objects_conversation ON objects(conversation_id, object_role, ordinal);
+-- Native ingestion and publication bookkeeping for each native chat.
+CREATE TABLE IF NOT EXISTS native_chats (
+    storage_id INTEGER PRIMARY KEY REFERENCES objects(storage_id) ON DELETE CASCADE,
+    conversation_id TEXT NOT NULL UNIQUE,
     provider TEXT NOT NULL CHECK (
         provider IN (
             'claude-code', 'codex', 'opencode', 'copilot', 'cursor', 'antigravity'
@@ -13,12 +72,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     ),
     -- Empty on the server: published history never carries local paths.
     source_path TEXT NOT NULL,
-    title TEXT,
-    created_at INTEGER,
-    updated_at INTEGER,
     source_fingerprint TEXT NOT NULL DEFAULT '',
-    project TEXT,
-    repository TEXT,
     -- Provider-native identity; NULL on the server.
     source_key TEXT,
     source_session TEXT,
@@ -26,24 +80,14 @@ CREATE TABLE IF NOT EXISTS conversations (
     thread_fingerprint TEXT,
     UNIQUE (provider, source_key)
 );
-CREATE TABLE IF NOT EXISTS messages (
-    attachments TEXT NOT NULL DEFAULT '[]',
-    storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
+-- Native message change detection; not published.
+CREATE TABLE IF NOT EXISTS native_messages (
+    storage_id INTEGER PRIMARY KEY REFERENCES objects(storage_id) ON DELETE CASCADE,
     id TEXT NOT NULL UNIQUE,
-    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    -- Silver's interpreted visible dialogue; the Rust model calls this dialogue_text.
-    search_projection TEXT,
-    created_at INTEGER,
-    -- NULL for linear threads, -1 for a tree root, otherwise the parent ordinal.
-    context_parent INTEGER CHECK (context_parent IS NULL OR (context_parent >= -1 AND context_parent < ordinal)),
-    fingerprint TEXT NOT NULL DEFAULT '',
-    UNIQUE (conversation_id, ordinal)
+    fingerprint TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS conversation_enrichment (
-    conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    conversation_id TEXT PRIMARY KEY REFERENCES native_chats(conversation_id) ON DELETE CASCADE,
     evidence TEXT NOT NULL
 ) WITHOUT ROWID;
 -- Deletion intent.
@@ -79,22 +123,6 @@ CREATE TABLE IF NOT EXISTS connector_sources (
     id TEXT PRIMARY KEY,
     revision TEXT NOT NULL
 ) WITHOUT ROWID;
--- One table for every object role; `record` decodes into the Rust Object model.
--- Deleting an object deletes its descendants. Parents may arrive later in the
--- same batch, so the edge is checked when the transaction commits.
-CREATE TABLE IF NOT EXISTS connector_objects (
-    source_id TEXT NOT NULL REFERENCES connector_sources(id),
-    id TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('container', 'segment', 'entry', 'document')),
-    parent_id TEXT,
-    reply_to TEXT,
-    record TEXT NOT NULL,
-    PRIMARY KEY (source_id, id),
-    FOREIGN KEY (source_id, parent_id) REFERENCES connector_objects(source_id, id)
-        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS connector_objects_parent ON connector_objects(source_id, parent_id);
-CREATE INDEX IF NOT EXISTS connector_objects_reply ON connector_objects(source_id, reply_to);
 -- A source's declared topology; its objects must conform once it exists.
 CREATE TABLE IF NOT EXISTS connector_schemas (
     source_id TEXT PRIMARY KEY REFERENCES connector_sources(id),

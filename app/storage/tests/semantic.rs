@@ -39,7 +39,7 @@ fn coverage_requires_membership_as_well_as_cardinality() {
     writer
         .connection
         .execute(
-            "UPDATE messages SET search_projection='' WHERE id='second'",
+            "UPDATE objects SET search_projection='' WHERE origin='provider' AND id='second'",
             [],
         )
         .unwrap();
@@ -77,7 +77,7 @@ fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_sc
     writer
         .connection
         .execute(
-            "UPDATE messages SET search_projection=NULL WHERE id='fallback'",
+            "UPDATE objects SET search_projection=NULL WHERE origin='provider' AND id='fallback'",
             [],
         )
         .unwrap();
@@ -107,7 +107,7 @@ fn filtered_dense_rows_use_searchable_index_and_preserve_fallback_and_boolean_sc
     assert!(
         plans
             .iter()
-            .any(|plan| plan.contains("messages_searchable_metadata")),
+            .any(|plan| plan.contains("objects_searchable_metadata")),
         "{plans:?}"
     );
     let chunks = writer
@@ -502,11 +502,13 @@ fn semantic_chunks_bound_incremental_rewrites_to_affected_rowid_ranges() {
     writer
         .connection
         .execute(
-            "INSERT INTO messages(
-                rowid, id, conversation_id, ordinal, role, content,
-                search_projection, created_at, fingerprint
-             ) VALUES (4097, 'message-4097', 'session-1', 4097, 'assistant',
-                       'second chunk', NULL, 123, 'fingerprint')",
+            "INSERT INTO objects(
+                storage_id, origin, source, object_role, kind, parent_id, parent_storage_id,
+                id, conversation_id, ordinal, role, content, search_projection, created_at
+             ) SELECT 4097, 'provider', source, 'entry', source || ':message', id, storage_id,
+                       'message-4097', 'session-1', 4097, 'assistant',
+                       'second chunk', NULL, 123
+                 FROM objects WHERE origin = 'provider' AND object_role = 'container' AND id = 'session-1'",
             [],
         )
         .expect("seed second chunk message");
@@ -653,7 +655,7 @@ fn explicit_semantic_storage_identifiers_survive_vacuum() {
     let chunks = storage
         .semantic_chunks("generation", None, None)
         .expect("read chunks after vacuum");
-    assert_eq!(chunks.chunks[0].message_rowids, [1]);
+    assert_eq!(chunks.chunks[0].message_rowids, [2]);
     assert_eq!(
         storage
             .semantic_chunks(
@@ -676,7 +678,7 @@ fn explicit_semantic_storage_identifiers_survive_vacuum() {
     );
     assert_eq!(
         storage
-            .search_hits(&[1])
+            .search_hits(&[2])
             .expect("hydrate stable storage identifiers")
             .iter()
             .map(|hit| hit.id.as_str())
@@ -750,12 +752,12 @@ fn stale_embedding_generation_is_excluded_and_replaced() {
         .semantic_chunks("new-generation", None, None)
         .expect("stored quantized vectors");
     assert_eq!(vectors.chunks.len(), 1);
-    assert_eq!(vectors.chunks[0].message_rowids, [1]);
+    assert_eq!(vectors.chunks[0].message_rowids, [2]);
     assert_eq!(vectors.chunks[0].values, [0, 127]);
     assert_eq!(vectors.chunks[0].norms, [127.0]);
     assert_eq!(vectors.dimensions, 2);
     assert_eq!(
-        writer.search_hits(&[1]).expect("hydrate semantic hit")[0].content,
+        writer.search_hits(&[2]).expect("hydrate semantic hit")[0].content,
         "generation proof"
     );
 }

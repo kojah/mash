@@ -152,18 +152,18 @@ impl Storage {
         // when fields are added or reordered. sqlc cannot analyze FTS MATCH's
         // table operand; only that ranking/filtering clause is handwritten.
         let (projection, _) = sql::SearchHit::QUERY
-            .split_once("FROM messages m")
+            .split_once("FROM objects m")
             .ok_or_else(|| AppError::internal("invalid generated search projection"))?;
         let mut statement = self
             .connection
             .prepare(&format!(
                 "{projection}, bm25(message_fts) AS lexical_score
                    FROM message_fts
-                   JOIN messages m ON m.id = message_fts.message_id
-                   JOIN conversations c ON c.id = m.conversation_id
+                   JOIN objects m ON m.origin='provider' AND m.object_role='entry' AND m.id = message_fts.message_id
+                   JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id = m.conversation_id
                    LEFT JOIN conversation_enrichment e ON e.conversation_id = c.id
                   WHERE message_fts MATCH ?1
-                    AND (?2 IS NULL OR c.provider = ?2)
+                    AND (?2 IS NULL OR c.source = ?2)
                     AND (?3 IS NULL OR m.created_at >= ?3)
                     AND ({predicate})
                   ORDER BY CASE WHEN message_fts.rowid IN
@@ -240,8 +240,8 @@ impl Storage {
                 }
                 statement
                     .query_row([message_id], sql::SearchDocumentRow::from_row)
-                    .map(|row| row.content)
                     .map_err(AppError::database)
+                    .and_then(|row| super::required(row.content, "content"))
             })
             .collect()
     }
@@ -268,49 +268,55 @@ impl Storage {
             return Ok(Vec::new());
         };
         let context = i64::from(context);
+        let anchor_ordinal = super::required(anchor.ordinal, "ordinal")?;
         if anchor.context_parent.is_some() {
-            return self.view_branch(&anchor, context, representation);
+            return self.view_branch(&anchor, anchor_ordinal, context, representation);
         }
         let rows = sql::ViewMessages::builder()
             .conversation_id(&anchor.conversation_id)
-            .first_ordinal(anchor.ordinal.saturating_sub(context))
-            .last_ordinal(anchor.ordinal.saturating_add(context))
+            .first_ordinal(Some(anchor_ordinal.saturating_sub(context)))
+            .last_ordinal(Some(anchor_ordinal.saturating_add(context)))
             .build()
             .query_many(&self.connection)
             .map_err(AppError::database)?;
-        Ok(rows
-            .into_iter()
-            .map(|row| Message {
-                attachments: Vec::new(),
-                id: row.id,
-                ordinal: row.ordinal,
-                role: Some(row.role.into()),
-                author_kind: None,
-                content: match representation {
-                    super::MessageContent::Canonical => row.content,
-                    super::MessageContent::SearchProjection => row.projection,
-                },
-                created_at: row.created_at,
+        rows.into_iter()
+            .map(|row| {
+                Ok(Message {
+                    attachments: Vec::new(),
+                    id: row.id,
+                    ordinal: super::required(row.ordinal, "ordinal")?,
+                    role: Some(super::required(row.role, "role")?.into()),
+                    author_kind: None,
+                    content: super::required(
+                        match representation {
+                            super::MessageContent::Canonical => row.content,
+                            super::MessageContent::SearchProjection => row.projection,
+                        },
+                        "content",
+                    )?,
+                    created_at: row.created_at,
+                })
             })
-            .collect())
+            .collect()
     }
 
     fn view_branch(
         &self,
         anchor: &sql::AnchorRow,
+        anchor_ordinal: i64,
         context: i64,
         representation: super::MessageContent,
     ) -> Result<Vec<Message>, AppError> {
         let read = |ordinal| {
             sql::ContextMessage::builder()
                 .conversation_id(&anchor.conversation_id)
-                .ordinal(ordinal)
+                .ordinal(Some(ordinal))
                 .build()
                 .query_opt(&self.connection)
                 .map_err(AppError::database)
         };
         let mut rows = Vec::new();
-        let mut ordinal = anchor.ordinal;
+        let mut ordinal = anchor_ordinal;
         for _ in 0..=context {
             let Some(row) = read(ordinal)? else { break };
             let parent = row.context_parent;
@@ -320,7 +326,7 @@ impl Storage {
             };
             ordinal = parent;
         }
-        ordinal = anchor.ordinal;
+        ordinal = anchor_ordinal;
         for _ in 0..context {
             let Some(child) = sql::FirstChild::builder()
                 .conversation_id(&anchor.conversation_id)
@@ -331,29 +337,34 @@ impl Storage {
             else {
                 break;
             };
-            if child.ordinal <= ordinal {
+            let child = super::required(child.ordinal, "ordinal")?;
+            if child <= ordinal {
                 return Err(AppError::database_data("invalid message context parent"));
             }
-            ordinal = child.ordinal;
+            ordinal = child;
             let Some(row) = read(ordinal)? else { break };
             rows.push(row);
         }
         rows.sort_by_key(|row| row.ordinal);
-        Ok(rows
-            .into_iter()
-            .map(|row| Message {
-                attachments: Vec::new(),
-                id: row.id,
-                ordinal: row.ordinal,
-                role: Some(row.role.into()),
-                author_kind: None,
-                content: match representation {
-                    super::MessageContent::Canonical => row.content,
-                    super::MessageContent::SearchProjection => row.projection,
-                },
-                created_at: row.created_at,
+        rows.into_iter()
+            .map(|row| {
+                Ok(Message {
+                    attachments: Vec::new(),
+                    id: row.id,
+                    ordinal: super::required(row.ordinal, "ordinal")?,
+                    role: Some(super::required(row.role, "role")?.into()),
+                    author_kind: None,
+                    content: super::required(
+                        match representation {
+                            super::MessageContent::Canonical => row.content,
+                            super::MessageContent::SearchProjection => row.projection,
+                        },
+                        "content",
+                    )?,
+                    created_at: row.created_at,
+                })
             })
-            .collect())
+            .collect()
     }
 }
 
@@ -396,9 +407,9 @@ pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> 
         conversation_id: row.conversation_id,
         source: crate::source::Source::Provider(provider),
         object: crate::source::ObjectType::native_message(provider),
-        role: Some(row.role.into()),
+        role: Some(super::required(row.role, "role")?.into()),
         author_kind: None,
-        content: row.content,
+        content: super::required(row.content, "content")?,
         copies: Vec::new(),
         created_at: row.created_at,
         metadata: crate::search_results::ChatMetadata {

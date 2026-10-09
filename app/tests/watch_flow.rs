@@ -108,7 +108,11 @@ fn watcher_coalesces_writes_tracks_atomic_replacement_and_deletion() {
     assert_eq!(watcher.next()["changed_messages"], 1);
     let connection = Connection::open(root.join("index.sqlite3")).unwrap();
     let content: String = connection
-        .query_row("SELECT content FROM messages", [], |r| r.get(0))
+        .query_row(
+            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(content, "three");
     watcher.quiet();
@@ -150,7 +154,11 @@ fn watcher_recovers_missing_roots_and_reloads_configuration() {
     watcher.next();
     let connection = Connection::open(root.join("index.sqlite3")).unwrap();
     let content: String = connection
-        .query_row("SELECT content FROM messages", [], |r| r.get(0))
+        .query_row(
+            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(content, "new root");
     watcher.quiet();
@@ -222,8 +230,12 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         )
         .is_ok_and(|db| {
-            db.query_row("SELECT count(*) FROM messages", [], |r| r.get::<_, i64>(0))
-                .ok()
+            db.query_row(
+                "SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .ok()
                 == Some(1)
         });
         if indexed {

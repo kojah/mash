@@ -22,7 +22,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     };
     let mut storage = Storage::open_writer(&path).unwrap();
     crate::silver::index(&mut storage, &options).unwrap();
-    let (id, message): (String, String) = storage.connection.query_row("SELECT c.id,m.id FROM conversations c JOIN messages m ON m.conversation_id=c.id WHERE m.ordinal=1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+    let (id, message): (String, String) = storage.connection.query_row("SELECT m.conversation_id,m.id FROM objects m WHERE m.origin='provider' AND m.object_role='entry' AND m.ordinal=1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
     let evidence = storage.conversation_enrichment(&id).unwrap().unwrap();
     assert_eq!(
         evidence.title,
@@ -41,7 +41,7 @@ fn native_history_retains_traceable_title_and_project_evidence_across_restart() 
     let hidden: String = storage
         .connection
         .query_row(
-            "SELECT id FROM messages WHERE conversation_id=?1 AND ordinal=0",
+            "SELECT id FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND ordinal=0",
             [&id],
             |row| row.get(0),
         )

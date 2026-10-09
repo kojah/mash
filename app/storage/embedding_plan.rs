@@ -207,12 +207,12 @@ fn plan_sql(build: &crate::gold::config::Build) -> String {
     let anchor_sql = match build.embedding_text {
         crate::gold::config::EmbeddingText::Dialogue =>
             "SELECT messages.id, COALESCE(messages.search_projection, messages.content), NULL, messages.role
-             FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
+             FROM pending_embeddings JOIN objects messages ON messages.origin = 'provider' AND messages.object_role = 'entry' AND messages.id = pending_embeddings.message_id
              ORDER BY pending_embeddings.message_id",
         crate::gold::config::EmbeddingText::TitleAndDialogue =>
             "SELECT messages.id, COALESCE(messages.search_projection, messages.content), conversations.title, messages.role
-             FROM pending_embeddings JOIN messages ON messages.id = pending_embeddings.message_id
-             JOIN conversations ON conversations.id = messages.conversation_id
+             FROM pending_embeddings JOIN objects messages ON messages.origin = 'provider' AND messages.object_role = 'entry' AND messages.id = pending_embeddings.message_id
+             JOIN objects conversations ON conversations.origin = 'provider' AND conversations.object_role = 'container' AND conversations.id = messages.conversation_id
              ORDER BY pending_embeddings.message_id",
     };
     if build.retrieval_unit == crate::gold::config::RetrievalUnit::ParentAndMessage {
@@ -224,9 +224,9 @@ fn plan_sql(build: &crate::gold::config::Build) -> String {
             "SELECT messages.id, COALESCE(messages.search_projection, messages.content), {title}, messages.role,
                     COALESCE(parent.search_projection, parent.content) AS parent_projection,
                     parent.role AS parent_role
-             FROM pending_embeddings JOIN messages ON messages.id=pending_embeddings.message_id
-             JOIN conversations ON conversations.id=messages.conversation_id
-             LEFT JOIN messages parent ON parent.conversation_id=messages.conversation_id
+             FROM pending_embeddings JOIN objects messages ON messages.origin = 'provider' AND messages.object_role = 'entry' AND messages.id = pending_embeddings.message_id
+             JOIN objects conversations ON conversations.origin='provider' AND conversations.object_role='container' AND conversations.id=messages.conversation_id
+             LEFT JOIN objects parent ON parent.origin='provider' AND parent.object_role='entry' AND parent.conversation_id=messages.conversation_id
                AND parent.ordinal=CASE WHEN messages.context_parent IS NULL THEN messages.ordinal-1 ELSE messages.context_parent END
                AND parent.ordinal >= 0 AND parent.ordinal < messages.ordinal
              ORDER BY pending_embeddings.message_id"

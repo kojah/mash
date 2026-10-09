@@ -174,13 +174,19 @@ impl Upload<'_> {
             return Ok(());
         }
         sql::InsertConversation::builder()
-            .id(&record.id)
             .provider(record.provider.as_str())
+            .id(&record.id)
+            .kind(&format!("{}:chat", record.provider.as_str()))
             .title(record.title.as_deref())
             .created_at(record.created_at)
             .updated_at(record.updated_at)
             .project(record.project.as_deref())
             .repository(record.repository.as_deref())
+            .build()
+            .execute(self.tx)
+            .map_err(database)?;
+        sql::InsertNativeChat::builder()
+            .id(&record.id)
             .build()
             .execute(self.tx)
             .map_err(database)?;
@@ -231,9 +237,9 @@ impl Upload<'_> {
             .attachments(&encode(&record.attachments)?)
             .id(&record.id)
             .conversation_id(&record.conversation_id)
-            .ordinal(record.ordinal)
-            .role(record.role.as_str())
-            .content(&record.content)
+            .ordinal(Some(record.ordinal))
+            .role(Some(record.role.as_str()))
+            .content(Some(&record.content))
             .search_projection(Some(&record.projection))
             .created_at(record.created_at)
             .context_parent(record.context.parent())
