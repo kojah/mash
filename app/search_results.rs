@@ -63,7 +63,11 @@ pub(crate) struct ChatHit {
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) source: crate::source::Source,
-    pub(crate) kind: crate::source::Kind,
+    /// The group: an entry's nearest container, or a document itself.
+    pub(crate) object: crate::source::ObjectType,
+    /// Objects enclosing the group, nearest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) ancestors: Vec<crate::source::Ancestor>,
     pub(crate) node_id: Option<String>,
     #[serde(flatten)]
     pub(crate) metadata: ChatMetadata,
@@ -253,12 +257,35 @@ pub(crate) fn collect_exact(
     collect_inner(hits, unit, limit, "", Some(literal))
 }
 
+/// What a hit groups under: an entry's nearest container (with the objects
+/// outside it), or a document on its own.
+fn group(hit: &SearchHit) -> (crate::source::ObjectType, Vec<crate::source::Ancestor>) {
+    if hit.object.role == crate::connectors::Role::Entry
+        && let Some(index) = hit
+            .ancestors
+            .iter()
+            .position(|ancestor| ancestor.role == crate::connectors::Role::Container)
+    {
+        let container = &hit.ancestors[index];
+        return (
+            crate::source::ObjectType {
+                role: container.role,
+                kind: container.kind.clone(),
+            },
+            hit.ancestors[index + 1..].to_vec(),
+        );
+    }
+    (hit.object.clone(), hit.ancestors.clone())
+}
+
 /// A chat result seeded from its best hit; matches and score accrue later.
 fn chat_for(hit: &SearchHit) -> ChatHit {
+    let (object, ancestors) = group(hit);
     ChatHit {
         conversation_id: hit.conversation_id.clone(),
         source: hit.source.clone(),
-        kind: hit.kind,
+        object,
+        ancestors,
         node_id: hit.node_id.clone(),
         metadata: ChatMetadata {
             enrichment: None,
@@ -298,6 +325,7 @@ fn collect_inner(
                 .map(|mut hit| {
                     hit.content = crate::redaction::text(&hit.content);
                     crate::redaction::metadata(&mut hit.metadata);
+                    crate::redaction::ancestors(&mut hit.ancestors);
                     hit
                 })
                 .collect(),
@@ -314,6 +342,7 @@ fn collect_inner(
         .enumerate()
     {
         crate::redaction::metadata(&mut hit.metadata);
+        crate::redaction::ancestors(&mut hit.ancestors);
         let rank = f32::from(u16::try_from(rank).unwrap_or(u16::MAX));
         let key = (hit.source.clone(), hit.conversation_id.clone());
         let (index, best_rank) = *groups.entry(key.clone()).or_insert_with(|| {
@@ -419,7 +448,7 @@ pub(crate) fn contextual_document(
     for (_, message, text) in neighbours.into_iter().take(2) {
         document.push_str("\nNearby ");
         document.push_str(crate::source::speaker(
-            crate::source::Kind::Message,
+            crate::connectors::Role::Entry,
             message.role.as_ref(),
             message.author_kind,
         ));

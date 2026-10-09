@@ -227,6 +227,7 @@ pub(super) fn prepare_candidates(candidates: &mut protocol::Candidates) {
     {
         hit.content = crate::redaction::projection(&hit.content);
         crate::redaction::metadata(&mut hit.metadata);
+        crate::redaction::ancestors(&mut hit.ancestors);
         // Clients restore projections before fusion and reranking. Send text
         // once when the same node/message document supplies it; exact matches
         // have no document records and keep their content inline.
@@ -248,6 +249,7 @@ async fn list_chats(
     let mut page = app.store.list_chats(&id, input).await?;
     for thread in &mut page.chats {
         crate::redaction::metadata(&mut thread.metadata);
+        crate::redaction::ancestors(&mut thread.ancestors);
     }
     Ok(Json(page))
 }

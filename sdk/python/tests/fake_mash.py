@@ -31,34 +31,45 @@ class Behaviour:
     commits: list[bytes] = field(default_factory=list)
     # Statuses returned (without committing) by the next requests, in order.
     failures: list[int] = field(default_factory=list)
-    chats: dict[str, dict[str, object]] = field(default_factory=dict)
-    messages: dict[str, dict[str, object]] = field(default_factory=dict)
-    documents: dict[str, dict[str, object]] = field(default_factory=dict)
+    objects: dict[str, dict[str, object]] = field(default_factory=dict)
+    requests: list[tuple[str, dict[str, str]]] = field(default_factory=list)
+
+    def by_role(self, role: str) -> dict[str, dict[str, object]]:
+        return {
+            id: value for id, value in self.objects.items() if value["role"] == role
+        }
+
+    @property
+    def chats(self) -> dict[str, dict[str, object]]:
+        return self.by_role("container")
+
+    @property
+    def messages(self) -> dict[str, dict[str, object]]:
+        return self.by_role("entry")
+
+    @property
+    def documents(self) -> dict[str, dict[str, object]]:
+        return self.by_role("document")
 
     def apply(self, changes: list[dict[str, object]]) -> None:
         for change in changes:
             id = str(change["id"])
-            match change["op"]:
-                case "upsert-chat":
-                    self.chats[id] = change
-                case "upsert-message":
-                    self.messages[id] = change
-                case "upsert-document":
-                    self.documents[id] = change
-                case "delete-chat":
-                    self.chats.pop(id, None)
-                    for message in [
-                        key
-                        for key, value in self.messages.items()
-                        if value["chat_id"] == id
-                    ]:
-                        del self.messages[message]
-                case "delete-message":
-                    self.messages.pop(id, None)
-                case "delete-document":
-                    self.documents.pop(id, None)
-
-    requests: list[tuple[str, dict[str, str]]] = field(default_factory=list)
+            if change["op"] == "upsert-object":
+                self.objects[id] = change
+                continue
+            # Deleting an object deletes its descendants, as Mash does.
+            doomed = {id}
+            while True:
+                children = {
+                    key
+                    for key, value in self.objects.items()
+                    if value.get("parent") in doomed and key not in doomed
+                }
+                if not children:
+                    break
+                doomed |= children
+            for key in doomed:
+                self.objects.pop(key, None)
 
 
 def handler(state: Behaviour) -> type[BaseHTTPRequestHandler]:
@@ -118,7 +129,7 @@ def handler(state: Behaviour) -> type[BaseHTTPRequestHandler]:
                 state.apply(batch["changes"])
                 receipt = orjson.dumps(
                     {
-                        "schema_version": 1,
+                        "schema_version": 2,
                         "source_id": batch["source_id"],
                         "batch_id": batch["batch_id"],
                         "source_revision": state.revision,

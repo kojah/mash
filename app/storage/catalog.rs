@@ -55,9 +55,12 @@ impl Storage {
             .map_err(AppError::database)?
             .into_iter()
             .map(|row| {
+                let provider: crate::provider::Provider = row.provider.parse()?;
                 Ok(Chat {
                     conversation_id: row.id,
-                    source: crate::source::Source::Provider(row.provider.parse()?),
+                    source: crate::source::Source::Provider(provider),
+                    object: crate::source::ObjectType::native_chat(provider),
+                    ancestors: Vec::new(),
                     node_id: node.into(),
                     metadata: ChatMetadata {
                         enrichment: row

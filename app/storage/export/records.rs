@@ -176,24 +176,10 @@ pub(crate) fn visit(
         })
     );
     table!(
-        "SELECT source_id,record FROM connector_chats ORDER BY source_id,id",
-        |row| Ok::<_, AppError>(Record::ConnectorChat {
+        "SELECT source_id,record FROM connector_objects ORDER BY source_id,id",
+        |row| Ok::<_, AppError>(Record::ConnectorObject {
             source_id: connector_id(row, "source_id")?,
-            chat: json(row, "record")?,
-        })
-    );
-    table!(
-        "SELECT source_id,record FROM connector_messages ORDER BY source_id,id",
-        |row| Ok::<_, AppError>(Record::ConnectorMessage {
-            source_id: connector_id(row, "source_id")?,
-            message: json(row, "record")?,
-        })
-    );
-    table!(
-        "SELECT source_id,record FROM connector_documents ORDER BY source_id,id",
-        |row| Ok::<_, AppError>(Record::ConnectorDocument {
-            source_id: connector_id(row, "source_id")?,
-            document: json(row, "record")?,
+            object: json(row, "record")?,
         })
     );
     table!(
@@ -250,33 +236,16 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 revision.to_string()
             );
         }
-        Record::ConnectorChat { source_id, chat } => {
+        Record::ConnectorObject { source_id, object } => {
+            // The parent edge is deferred, so objects may precede their parents.
             execute!(
-                "INSERT INTO connector_chats(source_id,id,record) VALUES(?1,?2,?3)",
+                "INSERT INTO connector_objects(source_id,id,role,parent_id,reply_to,record) VALUES(?1,?2,?3,?4,?5,?6)",
                 source_id.as_str(),
-                chat.id.as_str(),
-                encode(&chat)?
-            );
-        }
-        Record::ConnectorMessage { source_id, message } => {
-            execute!(
-                "INSERT INTO connector_messages(source_id,id,chat_id,reply_to,record) VALUES(?1,?2,?3,?4,?5)",
-                source_id.as_str(),
-                message.id.as_str(),
-                message.chat_id.as_str(),
-                message.reply_to.as_ref().map(crate::connectors::Id::as_str),
-                encode(&message)?
-            );
-        }
-        Record::ConnectorDocument {
-            source_id,
-            document,
-        } => {
-            execute!(
-                "INSERT INTO connector_documents(source_id,id,record) VALUES(?1,?2,?3)",
-                source_id.as_str(),
-                document.id.as_str(),
-                encode(&document)?
+                object.id.as_str(),
+                crate::connectors::silver::role_name(object.role),
+                object.parent.as_ref().map(crate::connectors::Id::as_str),
+                object.reply_to.as_ref().map(crate::connectors::Id::as_str),
+                encode(&object)?
             );
         }
         Record::ConnectorReceipt {

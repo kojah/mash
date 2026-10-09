@@ -17,8 +17,26 @@ class AuthorKind(StrEnum):
     unknown = "unknown"
 
 
-class ConnectorVersion(RootModel[Literal[1]]):
-    root: Literal[1] = 1
+class ConnectorKind(RootModel[StrictStr]):
+    root: Annotated[
+        StrictStr,
+        Field(
+            max_length=97,
+            min_length=3,
+            pattern="^[a-z0-9][a-z0-9-]{0,31}:[a-z0-9][a-z0-9-]{0,63}$",
+        ),
+    ]
+
+
+class ConnectorVersion(RootModel[Literal[2]]):
+    root: Literal[2] = 2
+
+
+class Role(StrEnum):
+    container = "container"
+    segment = "segment"
+    entry = "entry"
+    document = "document"
 
 
 class Attachment(BaseModel):
@@ -55,81 +73,23 @@ class Author(BaseModel):
     name: StrictStr | None = None
 
 
-class ChangeUpsertChat(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    created_at: Annotated[
-        StrictInt | None,
-        Field(
-            description="Unix milliseconds, or unknown. Never inferred from ingestion time."
-        ),
-    ] = None
-    id: Annotated[
-        StrictStr,
-        Field(
-            max_length=256,
-            min_length=1,
-            pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
-        ),
-    ]
-    metadata: Metadata | None = None
-    op: Literal["upsert-chat"] = "upsert-chat"
-    title: StrictStr | None = None
-    updated_at: StrictInt | None = None
-    url: StrictStr | None = None
-
-
-class ChangeUpsertMessage(BaseModel):
+class ChangeUpsertObject(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     attachments: Annotated[
         list[Attachment],
         Field(
-            description="References only; ingestion must not fetch URLs or execute attachments.",
+            description="References only; ingestion must not fetch URLs or execute attachments.\nEntries and documents only.",
             max_length=32,
             validate_default=True,
         ),
     ] = []
-    author: Author | None = None
-    chat_id: Annotated[
-        StrictStr,
-        Field(
-            description="The chat containing this message; chat boundaries belong to the connector.",
-            max_length=256,
-            min_length=1,
-            pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
-        ),
-    ]
-    content: StrictStr
-    created_at: StrictInt | None = None
-    id: Annotated[
-        StrictStr,
-        Field(
-            max_length=256,
-            min_length=1,
-            pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
-        ),
-    ]
-    metadata: Metadata | None = None
-    op: Literal["upsert-message"] = "upsert-message"
-    reply_to: Annotated[
-        str | None,
-        Field(description="Parent/reply message identity within the same source."),
+    author: Annotated[Author | None, Field(description="Entries only.")] = None
+    content: Annotated[
+        StrictStr | None,
+        Field(description="Entries and documents only; required for them."),
     ] = None
-    updated_at: StrictInt | None = None
-    url: StrictStr | None = None
-
-
-class ChangeUpsertDocument(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    attachments: Annotated[
-        list[Attachment], Field(max_length=32, validate_default=True)
-    ] = []
-    content: StrictStr
     created_at: Annotated[
         StrictInt | None,
         Field(
@@ -144,14 +104,35 @@ class ChangeUpsertDocument(BaseModel):
             pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
         ),
     ]
+    kind: Annotated[
+        StrictStr,
+        Field(
+            max_length=97,
+            min_length=3,
+            pattern="^[a-z0-9][a-z0-9-]{0,31}:[a-z0-9][a-z0-9-]{0,63}$",
+        ),
+    ]
     metadata: Metadata | None = None
-    op: Literal["upsert-document"] = "upsert-document"
+    op: Literal["upsert-object"] = "upsert-object"
+    parent: Annotated[
+        str | None,
+        Field(
+            description="The containing object within this source; required for entries.\nDeleting a parent deletes its descendants."
+        ),
+    ] = None
+    reply_to: Annotated[
+        str | None,
+        Field(
+            description="Entries only: the entry this replies to, within the same source."
+        ),
+    ] = None
+    role: Role
     title: StrictStr | None = None
     updated_at: StrictInt | None = None
     url: StrictStr | None = None
 
 
-class ChangeDeleteChat(BaseModel):
+class ChangeDeleteObject(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -163,56 +144,12 @@ class ChangeDeleteChat(BaseModel):
             pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
         ),
     ]
-    op: Literal["delete-chat"] = "delete-chat"
+    op: Literal["delete-object"] = "delete-object"
 
 
-class ChangeDeleteMessage(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    id: Annotated[
-        StrictStr,
-        Field(
-            max_length=256,
-            min_length=1,
-            pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
-        ),
-    ]
-    op: Literal["delete-message"] = "delete-message"
-
-
-class ChangeDeleteDocument(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    id: Annotated[
-        StrictStr,
-        Field(
-            max_length=256,
-            min_length=1,
-            pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
-        ),
-    ]
-    op: Literal["delete-document"] = "delete-document"
-
-
-class Change(
-    RootModel[
-        ChangeUpsertChat
-        | ChangeUpsertMessage
-        | ChangeUpsertDocument
-        | ChangeDeleteChat
-        | ChangeDeleteMessage
-        | ChangeDeleteDocument
-    ]
-):
+class Change(RootModel[ChangeUpsertObject | ChangeDeleteObject]):
     root: Annotated[
-        ChangeUpsertChat
-        | ChangeUpsertMessage
-        | ChangeUpsertDocument
-        | ChangeDeleteChat
-        | ChangeDeleteMessage
-        | ChangeDeleteDocument,
+        ChangeUpsertObject | ChangeDeleteObject,
         Field(
             description="Explicit mutations. No implicit deletion from an incomplete enumeration."
         ),
@@ -232,14 +169,7 @@ class Batch(BaseModel):
         ),
     ]
     changes: Annotated[
-        list[
-            ChangeUpsertChat
-            | ChangeUpsertMessage
-            | ChangeUpsertDocument
-            | ChangeDeleteChat
-            | ChangeDeleteMessage
-            | ChangeDeleteDocument
-        ],
+        list[ChangeUpsertObject | ChangeDeleteObject],
         Field(max_length=512, min_length=1),
     ]
     expected_revision: Annotated[
@@ -249,7 +179,7 @@ class Batch(BaseModel):
             ge=0,
         ),
     ]
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     source_id: Annotated[
         StrictStr,
         Field(

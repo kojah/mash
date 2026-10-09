@@ -2,12 +2,13 @@ use super::*;
 use serde_json::json;
 
 fn example() -> serde_json::Value {
-    json!({"schema_version":1,"source_id":"work-chat","batch_id":"batch-1","expected_revision":0,
+    json!({"schema_version":2,"source_id":"work-chat","batch_id":"batch-1","expected_revision":0,
     "changes":[
-        {"op":"upsert-chat","id":"document-1","title":"Storage decisions"},
-        {"op":"upsert-message","id":"message-1","chat_id":"document-1",
-         "author":{"id":"alice","name":"Alice","kind":"human"},
-             "content":"Use Qdrant.","created_at":1_791_540_000_000_i64,
+        {"op":"upsert-object","id":"chat-1","role":"container","kind":"slack:channel",
+         "title":"Storage decisions"},
+        {"op":"upsert-object","id":"message-1","role":"entry","kind":"slack:message",
+         "parent":"chat-1","author":{"id":"alice","name":"Alice","kind":"human"},
+         "content":"Use Qdrant.","created_at":1_791_540_000_000_i64,
          "url":"https://chat.example/messages/1"}
     ]})
 }
@@ -16,13 +17,14 @@ fn decode(value: &serde_json::Value) -> Result<Batch, Error> {
     Batch::decode(&serde_json::to_vec(value).unwrap())
 }
 
+fn push(value: &mut serde_json::Value, change: serde_json::Value) {
+    value["changes"].as_array_mut().unwrap().push(change);
+}
+
 #[test]
 fn complete_replacements_and_explicit_deletions_round_trip() {
     let mut value = example();
-    value["changes"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!({"op":"delete-message","id":"old-message"}));
+    push(&mut value, json!({"op":"delete-object","id":"old-message"}));
     let batch = decode(&value).unwrap();
     assert_eq!(batch.source_id.as_str(), "work-chat");
     let encoded = serde_json::to_vec(&batch).unwrap();
@@ -48,46 +50,164 @@ fn schema_exposes_closed_fields_and_decoder_rejects_contract_drift() {
     let schema = serde_json::to_value(schemars::schema_for!(Batch)).unwrap();
     assert_eq!(schema["additionalProperties"], false);
     assert_eq!(schema["properties"]["changes"]["maxItems"], MAX_CHANGES);
-    assert_eq!(schema["$defs"]["ConnectorVersion"]["const"], 1);
-    assert!(
-        schema["required"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("expected_revision"))
-    );
+    assert_eq!(schema["$defs"]["ConnectorVersion"]["const"], 2);
     for field in ["content", "fingerprint", "provider"] {
         let mut value = example();
         value[field] = json!("not accepted");
         assert_eq!(decode(&value), Err(Error::InvalidJson));
     }
-    for version in [0, 2] {
+    for version in [0, 1, 3] {
         let mut value = example();
         value["schema_version"] = json!(version);
         assert_eq!(decode(&value), Err(Error::InvalidJson));
     }
+    for op in ["execute-code", "upsert-chat", "upsert-message"] {
+        let mut value = example();
+        value["changes"][1]["op"] = json!(op);
+        assert_eq!(decode(&value), Err(Error::InvalidJson));
+    }
     let mut value = example();
-    value["changes"][1]["op"] = json!("execute-code");
+    value["changes"][1]["role"] = json!("attachment");
     assert_eq!(decode(&value), Err(Error::InvalidJson));
+}
+
+#[test]
+fn kinds_are_namespaced_lowercase_labels() {
+    for kind in ["discord:reply-thread", "codex:turn", "a1:b2"] {
+        let mut value = example();
+        value["changes"][1]["kind"] = json!(kind);
+        assert!(decode(&value).is_ok(), "{kind}");
+    }
+    for kind in [
+        "message",
+        "Discord:message",
+        ":message",
+        "slack:",
+        "a:b:c",
+        "slack:-x",
+    ] {
+        let mut value = example();
+        value["changes"][1]["kind"] = json!(kind);
+        assert_eq!(decode(&value), Err(Error::InvalidJson), "{kind}");
+    }
 }
 
 #[test]
 fn mutations_are_unambiguous_and_references_are_not_silently_rewritten() {
     for duplicate in [
-        json!({"op":"delete-message","id":"message-1"}),
+        json!({"op":"delete-object","id":"message-1"}),
         example()["changes"][1].clone(),
     ] {
         let mut value = example();
-        value["changes"].as_array_mut().unwrap().push(duplicate);
+        push(&mut value, duplicate);
         assert_eq!(decode(&value), Err(Error::DuplicateMutation));
     }
+    // One identity namespace per source, whatever the role.
     let mut value = example();
-    value["changes"][0] = json!({"op":"delete-chat","id":"document-1"});
-    assert_eq!(decode(&value), Err(Error::ConflictingChatDeletion));
+    push(
+        &mut value,
+        json!({"op":"upsert-object","id":"message-1","role":"document",
+        "kind":"notes:note","content":"Same ID"}),
+    );
+    assert_eq!(decode(&value), Err(Error::DuplicateMutation));
+    let mut value = example();
+    value["changes"][0] = json!({"op":"delete-object","id":"chat-1"});
+    assert_eq!(decode(&value), Err(Error::ConflictingDeletion));
     let mut value = example();
     value["changes"][1]["reply_to"] = json!("message-1");
     assert_eq!(decode(&value), Err(Error::SelfReply));
     value["changes"][1]["reply_to"] = json!("older-message-outside-this-batch");
-    assert!(decode(&value).is_ok()); // Stored-parent validation belongs to ingestion.
+    assert!(decode(&value).is_ok()); // Stored targets are checked at ingestion.
+}
+
+#[test]
+fn roles_decide_which_fields_an_object_may_carry() {
+    let fields = [
+        // A container or segment has no text, author, reply or attachments.
+        (0, "content", json!("text")),
+        (0, "author", json!({"id":"a","kind":"human"})),
+        (0, "reply_to", json!("message-1")),
+        (
+            0,
+            "attachments",
+            json!([{"id":"f","name":"f","media_type":"text/plain",
+            "url":"https://chat.example/f"}]),
+        ),
+        // An entry has text and a parent.
+        (1, "content", serde_json::Value::Null),
+        (1, "parent", serde_json::Value::Null),
+    ];
+    for (index, field, field_value) in fields {
+        let mut value = example();
+        value["changes"][index][field] = field_value;
+        assert!(
+            matches!(
+                decode(&value),
+                Err(Error::InvalidRoleFields | Error::InvalidParent)
+            ),
+            "{index} {field}"
+        );
+    }
+    let mut value = example();
+    value["changes"][0]["role"] = json!("segment");
+    assert!(decode(&value).is_ok()); // Stored ancestry is checked at ingestion.
+    let mut document = example();
+    document["changes"][1] = json!({"op":"upsert-object","id":"note","role":"document",
+        "kind":"notes:note","content":"A note","author":{"id":"a","kind":"human"}});
+    assert_eq!(decode(&document), Err(Error::InvalidRoleFields));
+    document["changes"][1]["author"] = serde_json::Value::Null;
+    assert!(decode(&document).is_ok());
+}
+
+#[test]
+fn parents_and_replies_form_acyclic_graphs_and_documents_contain_nothing() {
+    let mut value = example();
+    value["changes"][0]["parent"] = json!("message-1");
+    assert_eq!(decode(&value), Err(Error::CyclicHierarchy));
+    let mut value = example();
+    push(
+        &mut value,
+        json!({"op":"upsert-object","id":"note","role":"document",
+        "kind":"notes:note","content":"A note"}),
+    );
+    value["changes"][1]["parent"] = json!("note");
+    assert_eq!(decode(&value), Err(Error::InvalidParent));
+    let mut value = example();
+    value["changes"][1]["reply_to"] = json!("message-2");
+    push(
+        &mut value,
+        json!({"op":"upsert-object","id":"message-2","role":"entry",
+        "kind":"slack:message","parent":"chat-1","content":"Second","reply_to":"message-1"}),
+    );
+    assert_eq!(decode(&value), Err(Error::CyclicHierarchy));
+    value["changes"][2]["reply_to"] = json!("chat-1");
+    assert_eq!(decode(&value), Err(Error::InvalidReply));
+    value["changes"][2] = json!({"op":"delete-object", "id":"message-2"});
+    assert_eq!(decode(&value), Err(Error::ConflictingDeletion));
+}
+
+#[test]
+fn an_entry_may_own_a_thread_and_segments_structure_containers() {
+    let fixture = include_str!("../../fixtures/external-connector-batch.json");
+    let batch = Batch::decode(fixture.as_bytes()).unwrap();
+    let Change::UpsertObject(thread) = &batch.changes[2] else {
+        panic!("thread fixture")
+    };
+    assert_eq!(thread.role, Role::Container);
+    assert_eq!(thread.kind.as_str(), "discord:reply-thread");
+    assert_eq!(thread.parent.as_ref().unwrap().as_str(), "message-1");
+    let mut value = example();
+    push(
+        &mut value,
+        json!({"op":"upsert-object","id":"review-1","role":"segment",
+        "kind":"github:review","parent":"chat-1","title":"Changes requested"}),
+    );
+    push(
+        &mut value,
+        json!({"op":"upsert-object","id":"comment-1","role":"entry",
+        "kind":"github:review-comment","parent":"review-1","content":"Rename this."}),
+    );
+    assert!(decode(&value).is_ok());
 }
 
 #[test]
@@ -101,7 +221,7 @@ fn wire_and_record_budgets_are_enforced_before_storage() {
     assert_eq!(decode(&value), Err(Error::FieldTooLarge));
     for changes in [
         vec![],
-        vec![json!({"op":"delete-message","id":"old"}); MAX_CHANGES + 1],
+        vec![json!({"op":"delete-object","id":"old"}); MAX_CHANGES + 1],
     ] {
         let mut value = example();
         value["changes"] = json!(changes);
@@ -111,7 +231,14 @@ fn wire_and_record_budgets_are_enforced_before_storage() {
 
 #[test]
 fn identities_and_links_do_not_accept_ambiguous_or_executable_inputs() {
-    for id in ["", "message\nforged", " has-space", "ü", "-leading"] {
+    for id in [
+        "",
+        "message\nforged",
+        " has-space",
+        "ü",
+        "-leading",
+        "has#hash",
+    ] {
         let mut value = example();
         value["changes"][1]["id"] = json!(id);
         assert_eq!(decode(&value), Err(Error::InvalidJson));
@@ -138,25 +265,17 @@ fn decoding_failures_never_echo_private_message_text() {
 #[test]
 fn direct_batches_obey_encoded_size_budget_without_a_second_payload_buffer() {
     let mut batch = decode(&example()).unwrap();
-    let Change::UpsertMessage(message) = &batch.changes[1] else {
+    let Change::UpsertObject(message) = batch.changes.remove(1) else {
         panic!("message fixture")
     };
-    let mut message = message.clone();
+    let mut message = message;
     // Canonical JSON escapes these characters: raw content alone is below 8 MiB.
-    message.content = "\0".repeat(100_000);
+    message.content = Some("\0".repeat(100_000));
     for index in 0..20 {
         message.id = Id::try_from(format!("message-{index}")).unwrap();
-        batch.changes.push(Change::UpsertMessage(message.clone()));
+        batch.changes.push(Change::UpsertObject(message.clone()));
     }
-    // Remove the original message to keep all native identities unique.
-    batch.changes.remove(1);
     assert_eq!(batch.validate(), Err(Error::BatchTooLarge));
-}
-
-#[test]
-fn external_connector_batch_fixture_is_accepted_by_the_real_rust_decoder() {
-    let example = include_str!("../../fixtures/external-connector-batch.json");
-    assert!(Batch::decode(example.as_bytes()).is_ok());
 }
 
 #[test]
@@ -174,37 +293,33 @@ fn attachment_references_round_trip_without_fetching_and_reject_ambiguous_ids() 
 }
 
 #[test]
-fn multi_party_chats_preserve_authors_and_branching_replies() {
+fn multi_party_entries_preserve_authors_and_branching_replies() {
     let mut value = example();
-    let changes = value["changes"].as_array_mut().unwrap();
     for (id, name, kind, parent) in [
         ("bob", "Bob", "human", "message-1"),
         ("carol", "Carol", "human", "message-1"),
         ("build-bot", "Build bot", "bot", "message-bob"),
     ] {
-        changes.push(json!({"op":"upsert-message","id":format!("message-{id}"),
-            "chat_id":"document-1","author":{"id":id,"name":name,"kind":kind},
-            "content":"A participant's reply","reply_to":parent}));
+        push(
+            &mut value,
+            json!({"op":"upsert-object","id":format!("message-{id}"),
+            "role":"entry","kind":"slack:message","parent":"chat-1",
+            "author":{"id":id,"name":name,"kind":kind},
+            "content":"A participant's reply","reply_to":parent}),
+        );
     }
     let batch = decode(&value).unwrap();
-    let messages = batch
+    let entries = batch
         .changes
         .iter()
         .filter_map(|change| match change {
-            Change::UpsertMessage(message) => Some(message),
+            Change::UpsertObject(object) if object.role == Role::Entry => Some(object),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(messages.len(), 4);
-    assert_eq!(messages[0].author.as_ref().unwrap().id.as_str(), "alice");
-    assert_eq!(messages[1].author.as_ref().unwrap().id.as_str(), "bob");
-    assert_eq!(messages[2].author.as_ref().unwrap().id.as_str(), "carol");
-    assert_eq!(messages[1].reply_to, messages[2].reply_to);
-    assert_eq!(messages[3].author.as_ref().unwrap().kind, AuthorKind::Bot);
-    assert_eq!(
-        messages[3].reply_to.as_ref().unwrap().as_str(),
-        "message-bob"
-    );
+    assert_eq!(entries.len(), 4);
+    assert_eq!(entries[1].reply_to, entries[2].reply_to);
+    assert_eq!(entries[3].author.as_ref().unwrap().kind, AuthorKind::Bot);
     assert_eq!(
         Batch::decode(&serde_json::to_vec(&batch).unwrap()).unwrap(),
         batch
@@ -212,44 +327,11 @@ fn multi_party_chats_preserve_authors_and_branching_replies() {
 }
 
 #[test]
-fn chats_only_group_chat_messages_and_do_not_own_authorship_or_content() {
-    for field in ["author", "content", "body"] {
-        let mut value = example();
-        value["changes"][0][field] = json!("not a document field");
-        assert_eq!(decode(&value), Err(Error::InvalidJson));
-    }
+fn metadata_remains_opaque_objects_with_explicit_budgets() {
     let mut value = example();
-    value["changes"][1]["author"] = serde_json::Value::Null;
-    value["changes"][1]["content"] = json!("A file's text is still a message.");
-    assert!(decode(&value).is_ok());
-    value["changes"][1]["chat_id"] = serde_json::Value::Null;
-    assert_eq!(decode(&value), Err(Error::InvalidJson));
-}
-
-#[test]
-fn reply_graph_rejects_cycles_deleted_parents_and_cross_context_links() {
-    let mut value = example();
-    value["changes"][1]["reply_to"] = json!("message-2");
-    value["changes"].as_array_mut().unwrap().push(json!({
-        "op":"upsert-message", "id":"message-2", "chat_id":"document-1",
-        "content":"Second reply", "reply_to":"message-1"
-    }));
-    assert_eq!(decode(&value), Err(Error::CyclicHierarchy));
-    value["changes"][2]["reply_to"] = serde_json::Value::Null;
-    assert!(decode(&value).is_ok());
-    value["changes"][2]["chat_id"] = json!("another-context");
-    assert_eq!(decode(&value), Err(Error::CrossChatReply));
-    value["changes"][2] = json!({"op":"delete-message", "id":"message-2"});
-    assert_eq!(decode(&value), Err(Error::ConflictingMessageDeletion));
-}
-
-#[test]
-fn chat_and_message_metadata_remain_opaque_objects_with_explicit_budgets() {
-    let mut value = example();
-    value["changes"][0]["metadata"] = json!({"native_kind":"pull-request","number":42,
-        "custom":{"labels":["bug","urgent"],"merged":false}});
-    value["changes"][1]["metadata"] = json!({"reactions":[{"emoji":"👍","count":3}],
-        "blocks":[{"type":"code","text":"anything source-specific"}]});
+    value["changes"][0]["metadata"] = json!({"workspace":{"id":"work","name":"Company"},
+        "channel":{"name":"engineering","private":true}});
+    value["changes"][1]["metadata"] = json!({"reactions":[{"emoji":"👍","count":3}]});
     let batch = decode(&value).unwrap();
     let encoded = serde_json::to_value(batch).unwrap();
     for index in [0, 1] {
@@ -257,8 +339,6 @@ fn chat_and_message_metadata_remain_opaque_objects_with_explicit_budgets() {
             encoded["changes"][index]["metadata"],
             value["changes"][index]["metadata"]
         );
-    }
-    for index in [0, 1] {
         let mut oversized = example();
         oversized["changes"][index]["metadata"] =
             json!({"opaque":"x".repeat(MAX_METADATA_BYTES+1)});
@@ -267,69 +347,4 @@ fn chat_and_message_metadata_remain_opaque_objects_with_explicit_budgets() {
         invalid["changes"][index]["metadata"] = json!(["not an object"]);
         assert_eq!(decode(&invalid), Err(Error::InvalidJson));
     }
-}
-
-#[test]
-fn a_channel_is_a_chat_with_workspace_details_in_metadata() {
-    let mut value = example();
-    value["changes"][0]["id"] = json!("channel-42");
-    value["changes"][0]["title"] = json!("engineering");
-    value["changes"][0]["metadata"] = json!({"workspace":{"id":"work","name":"Company"},
-        "native_kind":"channel", "channel":{"name":"engineering","private":true}});
-    value["changes"][1]["chat_id"] = json!("channel-42");
-    let batch = decode(&value).unwrap();
-    let Change::UpsertChat(chat) = &batch.changes[0] else {
-        panic!("chat fixture")
-    };
-    assert_eq!(chat.id.as_str(), "channel-42");
-    assert_eq!(chat.title.as_deref(), Some("engineering"));
-    assert_eq!(
-        serde_json::to_value(batch).unwrap()["changes"][0]["metadata"],
-        value["changes"][0]["metadata"]
-    );
-}
-
-#[test]
-fn standalone_documents_own_text_metadata_and_attachments_without_chat_links() {
-    let mut value = example();
-    value["changes"] = json!([{
-        "op":"upsert-document", "id":"note-42", "title":"SQLite recovery",
-        "content":"Replay canonical silver into gold.", "created_at":1234,
-        "metadata":{"folder":"Architecture","tags":["storage"]},
-        "attachments":[{"id":"diagram", "name":"diagram.png", "media_type":"image/png",
-            "url":"https://notes.example/files/diagram"}]
-    }]);
-    let batch = decode(&value).unwrap();
-    let Change::UpsertDocument(document) = &batch.changes[0] else {
-        panic!("document fixture")
-    };
-    assert_eq!(document.content, "Replay canonical silver into gold.");
-    assert_eq!(document.attachments.len(), 1);
-    assert_eq!(
-        Batch::decode(&serde_json::to_vec(&batch).unwrap()).unwrap(),
-        batch
-    );
-    value["changes"][0]["chat_id"] = json!("invented-chat");
-    assert_eq!(decode(&value), Err(Error::InvalidJson));
-}
-
-#[test]
-fn document_mutations_are_bounded_and_use_a_separate_identity_namespace() {
-    let mut value = example();
-    value["changes"].as_array_mut().unwrap().push(json!({
-        "op":"upsert-document", "id":"message-1", "content":"Independent note"
-    }));
-    assert!(decode(&value).is_ok());
-    value["changes"].as_array_mut().unwrap().push(json!({
-        "op":"delete-document", "id":"message-1"
-    }));
-    assert_eq!(decode(&value), Err(Error::DuplicateMutation));
-    value["changes"].as_array_mut().unwrap().pop();
-    value["changes"][2]["content"] = json!("x".repeat(MAX_CONTENT_BYTES + 1));
-    assert_eq!(decode(&value), Err(Error::FieldTooLarge));
-    value["changes"][2]["content"] = json!("Valid content");
-    value["changes"][2]["metadata"] = json!({"blob":"x".repeat(MAX_METADATA_BYTES + 1)});
-    assert_eq!(decode(&value), Err(Error::MetadataTooLarge));
-    value["changes"][2] = json!({"op":"delete-document","id":"older-note"});
-    assert!(decode(&value).is_ok());
 }

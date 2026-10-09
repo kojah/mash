@@ -3,24 +3,9 @@
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from ._generated.batch import (
-    Batch,
-    ChangeDeleteChat,
-    ChangeDeleteDocument,
-    ChangeDeleteMessage,
-    ChangeUpsertChat,
-    ChangeUpsertDocument,
-    ChangeUpsertMessage,
-)
+from ._generated.batch import Batch, ChangeDeleteObject, ChangeUpsertObject
 
-Mutation: TypeAlias = (
-    ChangeUpsertChat
-    | ChangeUpsertMessage
-    | ChangeUpsertDocument
-    | ChangeDeleteChat
-    | ChangeDeleteMessage
-    | ChangeDeleteDocument
-)
+Mutation: TypeAlias = ChangeUpsertObject | ChangeDeleteObject
 
 
 @dataclass(frozen=True)
@@ -32,22 +17,13 @@ class Changes:
         return cls()
 
     @classmethod
-    def upsert(
-        cls, *records: ChangeUpsertChat | ChangeUpsertMessage | ChangeUpsertDocument
-    ) -> "Changes":
-        return cls(tuple(record.model_copy(deep=True) for record in records))
+    def upsert(cls, *objects: ChangeUpsertObject) -> "Changes":
+        return cls(tuple(item.model_copy(deep=True) for item in objects))
 
     @classmethod
-    def delete_chats(cls, *ids: str) -> "Changes":
-        return cls(tuple(ChangeDeleteChat(id=id) for id in ids))
-
-    @classmethod
-    def delete_messages(cls, *ids: str) -> "Changes":
-        return cls(tuple(ChangeDeleteMessage(id=id) for id in ids))
-
-    @classmethod
-    def delete_documents(cls, *ids: str) -> "Changes":
-        return cls(tuple(ChangeDeleteDocument(id=id) for id in ids))
+    def delete(cls, *ids: str) -> "Changes":
+        """Delete objects and, through their parent edges, their descendants."""
+        return cls(tuple(ChangeDeleteObject(id=id) for id in ids))
 
     def __add__(self, other: "Changes") -> "Changes":
         return Changes(self.mutations + other.mutations)

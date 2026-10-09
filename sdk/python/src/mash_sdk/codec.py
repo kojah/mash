@@ -8,7 +8,6 @@ import hashlib
 from dataclasses import dataclass
 from importlib.resources import files
 from math import isfinite
-from typing import Literal
 
 import orjson
 from jsonschema import Draft202012Validator
@@ -16,15 +15,7 @@ from jsonschema.protocols import Validator
 from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 from pydantic_core import PydanticSerializationError
 
-from ._generated.batch import (
-    Batch,
-    ChangeDeleteChat,
-    ChangeDeleteDocument,
-    ChangeDeleteMessage,
-    ChangeUpsertChat,
-    ChangeUpsertDocument,
-    ChangeUpsertMessage,
-)
+from ._generated.batch import Batch, ChangeUpsertObject
 
 
 class InvalidBatch(ValueError):
@@ -88,24 +79,18 @@ def encode_batch(batch: Batch, *, contract: Contract | None = None) -> bytes:
         raise InvalidBatch("batch cannot be represented as JSON") from None
     if len(encoded) > contract.limits.batch_bytes:
         raise InvalidBatch("encoded batch exceeds the connector limit")
-    seen: set[tuple[Literal["chat", "message", "document"], str]] = set()
+    # One identity namespace per source, whatever the role.
+    seen: set[str] = set()
     for mutation in batch.changes:
-        match mutation:
-            case ChangeUpsertChat() | ChangeDeleteChat():
-                kind: Literal["chat", "message", "document"] = "chat"
-            case ChangeUpsertMessage() | ChangeDeleteMessage():
-                kind = "message"
-            case ChangeUpsertDocument() | ChangeDeleteDocument():
-                kind = "document"
-        if (kind, mutation.id) in seen:
+        if mutation.id in seen:
             raise InvalidBatch("duplicate mutation")
-        seen.add((kind, mutation.id))
-        if isinstance(mutation, ChangeUpsertMessage | ChangeUpsertDocument):
-            if len(mutation.content.encode()) > contract.limits.content_bytes:
+        seen.add(mutation.id)
+        if isinstance(mutation, ChangeUpsertObject):
+            if (
+                mutation.content is not None
+                and len(mutation.content.encode()) > contract.limits.content_bytes
+            ):
                 raise InvalidBatch("content exceeds the connector limit")
-        if isinstance(
-            mutation, ChangeUpsertChat | ChangeUpsertMessage | ChangeUpsertDocument
-        ):
             if (
                 mutation.metadata is not None
                 and len(orjson.dumps(mutation.metadata))
@@ -115,9 +100,7 @@ def encode_batch(batch: Batch, *, contract: Contract | None = None) -> bytes:
     return encoded
 
 
-def fingerprint(
-    mutation: ChangeUpsertChat | ChangeUpsertMessage | ChangeUpsertDocument,
-) -> bytes:
+def fingerprint(mutation: ChangeUpsertObject) -> bytes:
     """Digest of one record's canonical form; equal digests need no resend."""
     encoded = orjson.dumps(
         mutation.model_dump(mode="json"), option=orjson.OPT_SORT_KEYS

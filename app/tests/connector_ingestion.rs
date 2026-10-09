@@ -18,12 +18,12 @@ fn ingest(database: &Path, config: &Path, input: &Path, models: &Path) -> std::p
 
 fn payload(name: &str, revision: u64) -> Value {
     serde_json::json!({
-        "schema_version": 1, "source_id": "github:installation",
+        "schema_version": 2, "source_id": "github:installation",
         "batch_id": name, "expected_revision": revision,
         "changes": [
-            {"op":"upsert-chat", "id":"repo:pr:42", "title":"Fix ingestion", "metadata":{"native_kind":"pull-request"}},
-            {"op":"upsert-message", "id":"review:1", "chat_id":"repo:pr:42", "content":"Review with two participants", "author":{"id":"alice","kind":"human"}},
-            {"op":"upsert-document", "id":"note", "content":"Independent document"}
+            {"op":"upsert-object", "id":"repo:pr:42", "role":"container", "kind":"github:pull-request", "title":"Fix ingestion"},
+            {"op":"upsert-object", "id":"review:1", "role":"entry", "kind":"github:review-comment", "parent":"repo:pr:42", "content":"Review with two participants", "author":{"id":"alice","kind":"human"}},
+            {"op":"upsert-object", "id":"note", "role":"document", "kind":"obsidian:note", "content":"Independent document"}
         ]
     })
 }
@@ -60,11 +60,12 @@ fn connector_cli_commits_silver_and_replays_receipts_without_model_work() {
     assert_eq!(
         mash::connectors::silver::Store::open(&database)
             .unwrap()
-            .document(&source, &document)
+            .object(&source, &document)
             .unwrap()
             .unwrap()
-            .content,
-        "Independent document"
+            .content
+            .as_deref(),
+        Some("Independent document")
     );
 
     std::fs::write(&input, serde_json::to_vec(&payload("stale", 0)).unwrap()).unwrap();
@@ -177,10 +178,12 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
         ],
     );
     let hit = &found["results"][0];
-    let anchor = "connector#message#github:installation#review:1";
+    let anchor = "connector#entry#github:installation#review:1";
     assert_eq!(hit["id"], anchor);
     assert_eq!(hit["source"]["connector"], "github:installation");
-    assert_eq!(hit["kind"], "message");
+    assert_eq!(hit["object"]["role"], "entry");
+    assert_eq!(hit["object"]["kind"], "github:review-comment");
+    assert_eq!(hit["ancestors"][0]["kind"], "github:pull-request");
     assert_eq!(hit["author_kind"], "human");
     assert!(hit.get("role").is_none());
     let documents = run(
@@ -198,7 +201,7 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
             "github:installation",
         ],
     );
-    assert_eq!(documents["results"][0]["kind"], "document");
+    assert_eq!(documents["results"][0]["object"]["role"], "document");
     let native_only = run(
         &database,
         &config,
@@ -221,7 +224,7 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
     let chats = run(&database, &config, &models, &["list-chats", "--local"]);
     assert_eq!(
         chats["chats"][0]["chat_id"],
-        "connector#chat#github:installation#repo:pr:42"
+        "connector#container#github:installation#repo:pr:42"
     );
     assert_eq!(
         chats["chats"][0]["source"]["connector"],

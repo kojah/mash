@@ -1,19 +1,20 @@
 {
-  "schema_version": 1,
-  "source_id": "my-work-chat",
-  "batch_id": "batch-104",
-  "expected_revision": 12,
+  "schema_version": 2,
+  "source_id": "discord:guild-1",
+  "batch_id": "batch-2026-10-09-1",
+  "expected_revision": 0,
   "changes": [
-    {"op": "upsert-chat", "id": "context-456", "title": "Storage decisions", "metadata": {"native_kind": "discussion"}},
-    {
-      "op": "upsert-message",
-      "id": "message-789",
-      "chat_id": "context-456",
-      "author": {"id": "user-42", "name": "Alice", "kind": "human"},
-      "content": "We decided to use Qdrant.",
-      "created_at": 1791540000000,
-      "url": "https://chat.example/messages/789"
-    },
-    {"op": "delete-message", "id": "message-123"}
+    {"op": "upsert-object", "id": "channel-1", "role": "container", "kind": "discord:channel",
+     "title": "engineering", "metadata": {"guild": "Company"}},
+    {"op": "upsert-object", "id": "message-1", "role": "entry", "kind": "discord:message",
+     "parent": "channel-1", "content": "Should we move search to Qdrant?",
+     "author": {"id": "alice", "name": "Alice", "kind": "human"}, "created_at": 1791540000000},
+    {"op": "upsert-object", "id": "thread-1", "role": "container", "kind": "discord:reply-thread",
+     "parent": "message-1", "title": "Qdrant migration"},
+    {"op": "upsert-object", "id": "message-2", "role": "entry", "kind": "discord:message",
+     "parent": "thread-1", "content": "Yes, once replay is verified.",
+     "author": {"id": "bob", "kind": "human"}, "created_at": 1791540060000},
+    {"op": "upsert-object", "id": "note-1", "role": "document", "kind": "obsidian:note",
+     "title": "Runbook", "content": "Replay canonical silver into gold."}
   ]
 }

@@ -12,12 +12,12 @@ from typing import Protocol
 
 from mash_sdk import (
     Changes,
-    Chat,
     Connector,
     Debounce,
     Delivery,
     Destination,
-    Message,
+    Object,
+    Role,
     Snapshot,
 )
 
@@ -74,8 +74,10 @@ def message_id(channel_id: str, ts: str) -> str:
     return f"{channel_id}:{ts}"
 
 
-def chat(channel: Channel) -> Chat:
-    return Chat(
+def chat(channel: Channel) -> Object:
+    return Object(
+        role=Role.container,
+        kind="slack:channel",
         id=channel.id,
         title=channel.name,
         url=channel.url,
@@ -88,11 +90,13 @@ def chat(channel: Channel) -> Chat:
     )
 
 
-def message(post: Post) -> Message:
+def message(post: Post) -> Object:
     parent = post.thread_ts if post.thread_ts != post.ts else None
-    return Message(
+    return Object(
+        role=Role.entry,
+        kind="slack:message",
         id=message_id(post.channel_id, post.ts),
-        chat_id=post.channel_id,
+        parent=post.channel_id,
         content=post.text,
         author=post.sender.to_author() if post.sender else None,
         reply_to=message_id(post.channel_id, parent) if parent else None,
@@ -116,7 +120,7 @@ async def backfill(source: Slack, scope: Scope) -> AsyncIterator[Snapshot]:
         ]
         # A production adapter must expose scoped pages for very large channels.
         yield Snapshot(
-            chat=chat(channel), messages=posts, complete=True, created_since=since
+            container=chat(channel), objects=posts, complete=True, created_since=since
         )
 
 
@@ -125,7 +129,7 @@ async def refresh(source: Slack, event: Event, scope: Scope) -> Changes:
         return Changes.empty()
     match event.operation:
         case Operation.DELETE_CHAT:
-            return Changes.delete_chats(event.channel_id)
+            return Changes.delete(event.channel_id)
         case Operation.REFRESH_CHAT:
             return Changes.upsert(chat(await source.channel(event.channel_id)))
         case Operation.DELETE_MESSAGE | Operation.REFRESH_MESSAGE:
@@ -134,9 +138,7 @@ async def refresh(source: Slack, event: Event, scope: Scope) -> Changes:
                     "message events require the original message timestamp"
                 )
             if event.operation == Operation.DELETE_MESSAGE:
-                return Changes.delete_messages(
-                    message_id(event.channel_id, event.message_ts)
-                )
+                return Changes.delete(message_id(event.channel_id, event.message_ts))
             # Fetch current complete state; coalesced edits must not clear omitted fields.
             post = await source.message(event.channel_id, event.message_ts)
             if not scope.includes(post.channel_id, post.created_at):

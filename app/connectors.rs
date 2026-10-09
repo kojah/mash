@@ -79,7 +79,7 @@ impl From<Id> for String {
     }
 }
 
-/// Only contract version 1 is currently defined. Unknown versions fail closed.
+/// Contract version 2: generic objects. Other versions fail closed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(try_from = "u16", into = "u16")]
 pub struct Version;
@@ -89,14 +89,14 @@ impl JsonSchema for Version {
         "ConnectorVersion".into()
     }
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({"type":"integer","const":1})
+        schemars::json_schema!({"type":"integer","const":2})
     }
 }
 
 impl TryFrom<u16> for Version {
     type Error = Error;
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        if value == 1 {
+        if value == 2 {
             Ok(Self)
         } else {
             Err(Error::UnsupportedVersion)
@@ -106,35 +106,100 @@ impl TryFrom<u16> for Version {
 
 impl From<Version> for u16 {
     fn from(_: Version) -> Self {
-        1
+        2
     }
 }
 
-/// A complete metadata replacement; omitted optional fields become unknown.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Chat {
-    pub id: Id,
-    pub title: Option<String>,
-    pub url: Option<String>,
-    /// Unix milliseconds, or unknown. Never inferred from ingestion time.
-    pub created_at: Option<i64>,
-    pub updated_at: Option<i64>,
-    pub metadata: Option<Metadata>,
+/// What Mash may do with an object, whatever its source calls it.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize, JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum Role {
+    /// Groups results and owns context, such as a chat, channel or thread.
+    Container,
+    /// A structural part of a container, such as a turn or review: it gives
+    /// context and ancestry, but results still group under the container.
+    Segment,
+    /// Searchable text with an author, such as a message or comment.
+    Entry,
+    /// Standalone searchable text, such as a note; never a parent.
+    Document,
 }
 
-/// Standalone text, such as a note. Documents are not synthetic one-message chats.
+/// A namespaced source label such as `discord:reply-thread`. Mash shows and
+/// filters on it but gives it no behaviour; `role` carries the semantics.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct Kind(String);
+
+impl JsonSchema for Kind {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ConnectorKind".into()
+    }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({"type":"string","minLength":3,"maxLength":97,
+            "pattern":"^[a-z0-9][a-z0-9-]{0,31}:[a-z0-9][a-z0-9-]{0,63}$",
+            "not":{"pattern":"[^a-z0-9:-]"}})
+    }
+}
+
+impl Kind {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for Kind {
+    type Error = Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let label = |part: &str, limit: usize| {
+            !part.is_empty()
+                && part.len() <= limit
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                && part.as_bytes()[0] != b'-'
+        };
+        match value.split_once(':') {
+            Some((namespace, name)) if label(namespace, 32) && label(name, 64) => Ok(Self(value)),
+            _ => Err(Error::InvalidKind),
+        }
+    }
+}
+
+impl From<Kind> for String {
+    fn from(value: Kind) -> Self {
+        value.0
+    }
+}
+
+/// A complete object replacement; omitted optional fields become unknown.
+/// Which fields apply depends on `role`; see [`Object::validate`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct Document {
+pub struct Object {
     pub id: Id,
+    pub role: Role,
+    pub kind: Kind,
+    /// The containing object within this source; required for entries.
+    /// Deleting a parent deletes its descendants.
+    pub parent: Option<Id>,
     pub title: Option<String>,
-    pub content: String,
+    /// Entries and documents only; required for them.
+    pub content: Option<String>,
+    /// Entries only.
+    pub author: Option<Author>,
+    /// Entries only: the entry this replies to, within the same source.
+    pub reply_to: Option<Id>,
     pub url: Option<String>,
     /// Unix milliseconds, or unknown. Never inferred from ingestion time.
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
     pub metadata: Option<Metadata>,
+    /// References only; ingestion must not fetch URLs or execute attachments.
+    /// Entries and documents only.
     #[serde(default)]
     #[schemars(length(max = 32))]
     pub attachments: Vec<Attachment>,
@@ -157,27 +222,6 @@ pub enum AuthorKind {
     Unknown,
 }
 
-/// A complete message replacement. Missing messages in a batch are untouched.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Message {
-    pub id: Id,
-    /// The chat containing this message; chat boundaries belong to the connector.
-    pub chat_id: Id,
-    pub author: Option<Author>,
-    /// Parent/reply message identity within the same source.
-    pub reply_to: Option<Id>,
-    pub content: String,
-    pub url: Option<String>,
-    pub created_at: Option<i64>,
-    pub updated_at: Option<i64>,
-    pub metadata: Option<Metadata>,
-    /// References only; ingestion must not fetch URLs or execute attachments.
-    #[serde(default)]
-    #[schemars(length(max = 32))]
-    pub attachments: Vec<Attachment>,
-}
-
 /// A source attachment reference. Binary retention is a separate explicit operation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -190,15 +234,16 @@ pub struct Attachment {
 }
 
 /// Explicit mutations. No implicit deletion from an incomplete enumeration.
+// Batches are short-lived wire values; boxing objects would only add indirection.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Change {
-    UpsertChat(Chat),
-    UpsertMessage(Message),
-    UpsertDocument(Document),
-    DeleteChat { id: Id },
-    DeleteMessage { id: Id },
-    DeleteDocument { id: Id },
+    UpsertObject(Object),
+    /// Deletes the object and every descendant.
+    DeleteObject {
+        id: Id,
+    },
 }
 
 /// Transport-independent batch. Applications must validate decoded instances too.
@@ -238,15 +283,21 @@ pub enum Error {
     BatchTooLarge,
     InvalidChangeCount,
     DuplicateMutation,
-    ConflictingChatDeletion,
+    /// An object is upserted under, or replies to, an object deleted in the same batch.
+    ConflictingDeletion,
+    InvalidKind,
+    /// A field that the object's role does not allow, or a missing required one.
+    InvalidRoleFields,
+    /// An entry without a parent, or a document used as a parent.
+    InvalidParent,
     SelfReply,
     FieldTooLarge,
     InvalidUrl,
     InvalidAttachment,
     MetadataTooLarge,
     CyclicHierarchy,
-    CrossChatReply,
-    ConflictingMessageDeletion,
+    /// A reply to an object in this batch that is not an entry.
+    InvalidReply,
 }
 
 impl std::fmt::Display for Error {
@@ -279,53 +330,26 @@ impl Batch {
         if self.changes.is_empty() || self.changes.len() > MAX_CHANGES {
             return Err(Error::InvalidChangeCount);
         }
-        let mut messages = BTreeSet::new();
-        let mut chats = BTreeSet::new();
-        let mut documents = BTreeSet::new();
+        let mut seen = BTreeSet::new();
+        let mut objects = BTreeMap::new();
         let mut deleted = BTreeSet::new();
         for change in &self.changes {
             change.validate()?;
-            match change {
-                Change::UpsertChat(value) => {
-                    if !chats.insert(&value.id) {
-                        return Err(Error::DuplicateMutation);
-                    }
+            let id = match change {
+                Change::UpsertObject(object) => {
+                    objects.insert(&object.id, object);
+                    &object.id
                 }
-                Change::DeleteChat { id } => {
-                    if !chats.insert(id) {
-                        return Err(Error::DuplicateMutation);
-                    }
+                Change::DeleteObject { id } => {
                     deleted.insert(id);
+                    id
                 }
-                Change::UpsertMessage(value) => {
-                    if !messages.insert(&value.id) {
-                        return Err(Error::DuplicateMutation);
-                    }
-                }
-                Change::DeleteMessage { id } => {
-                    if !messages.insert(id) {
-                        return Err(Error::DuplicateMutation);
-                    }
-                }
-                Change::UpsertDocument(value) => {
-                    if !documents.insert(&value.id) {
-                        return Err(Error::DuplicateMutation);
-                    }
-                }
-                Change::DeleteDocument { id } => {
-                    if !documents.insert(id) {
-                        return Err(Error::DuplicateMutation);
-                    }
-                }
+            };
+            if !seen.insert(id) {
+                return Err(Error::DuplicateMutation);
             }
         }
-        if self.changes.iter().any(|change| {
-            matches!(change,
-            Change::UpsertMessage(value) if deleted.contains(&value.chat_id))
-        }) {
-            return Err(Error::ConflictingChatDeletion);
-        }
-        validate_replies(&self.changes)?;
+        validate_graph(&objects, &deleted)?;
         serde_json::to_writer(SizeLimit::new(MAX_BATCH_BYTES), self)
             .map_err(|_| Error::BatchTooLarge)
     }
@@ -334,75 +358,83 @@ impl Batch {
 impl Change {
     pub(crate) fn validate(&self) -> Result<(), Error> {
         match self {
-            Self::UpsertChat(value) => {
-                text_field(value.title.as_deref())?;
-                url(value.url.as_deref())?;
-                metadata(value.metadata.as_ref())
-            }
-            Self::UpsertMessage(value) => {
-                if value.reply_to.as_ref() == Some(&value.id) {
-                    return Err(Error::SelfReply);
-                }
-                if value.content.len() > MAX_CONTENT_BYTES {
-                    return Err(Error::FieldTooLarge);
-                }
-                url(value.url.as_deref())?;
-                if let Some(author) = &value.author {
-                    text_field(author.name.as_deref())?;
-                }
-                attachments(&value.attachments)?;
-                metadata(value.metadata.as_ref())
-            }
-            Self::UpsertDocument(value) => {
-                text_field(value.title.as_deref())?;
-                if value.content.len() > MAX_CONTENT_BYTES {
-                    return Err(Error::FieldTooLarge);
-                }
-                url(value.url.as_deref())?;
-                attachments(&value.attachments)?;
-                metadata(value.metadata.as_ref())
-            }
-            Self::DeleteMessage { .. } | Self::DeleteChat { .. } | Self::DeleteDocument { .. } => {
-                Ok(())
-            }
+            Self::UpsertObject(object) => object.validate(),
+            Self::DeleteObject { .. } => Ok(()),
         }
     }
 }
 
+impl Object {
+    /// Field rules that follow from the role alone.
+    ///
+    /// # Errors
+    /// Rejects fields the role does not allow and invalid field values.
+    pub fn validate(&self) -> Result<(), Error> {
+        let text = matches!(self.role, Role::Entry | Role::Document);
+        if text != self.content.is_some()
+            || (!text && !self.attachments.is_empty())
+            || (self.role != Role::Entry && (self.author.is_some() || self.reply_to.is_some()))
+        {
+            return Err(Error::InvalidRoleFields);
+        }
+        if self.role == Role::Entry && self.parent.is_none() {
+            return Err(Error::InvalidParent);
+        }
+        if self.reply_to.as_ref() == Some(&self.id) {
+            return Err(Error::SelfReply);
+        }
+        if self.parent.as_ref() == Some(&self.id) {
+            return Err(Error::CyclicHierarchy);
+        }
+        if self
+            .content
+            .as_ref()
+            .is_some_and(|content| content.len() > MAX_CONTENT_BYTES)
+        {
+            return Err(Error::FieldTooLarge);
+        }
+        text_field(self.title.as_deref())?;
+        url(self.url.as_deref())?;
+        if let Some(author) = &self.author {
+            text_field(author.name.as_deref())?;
+        }
+        attachments(&self.attachments)?;
+        metadata(self.metadata.as_ref())
+    }
+}
+
 /// Check relationships visible in this batch. Ingestion must separately check
-/// the final stored graph, including parents supplied by earlier batches.
-fn validate_replies(changes: &[Change]) -> Result<(), Error> {
-    let mut messages = BTreeMap::new();
+/// the final stored graph, including objects supplied by earlier batches.
+fn validate_graph(objects: &BTreeMap<&Id, &Object>, deleted: &BTreeSet<&Id>) -> Result<(), Error> {
+    let mut parents = BTreeMap::new();
     let mut replies = BTreeMap::new();
-    let mut deleted_messages = BTreeSet::new();
-    for change in changes {
-        match change {
-            Change::UpsertMessage(message) => {
-                messages.insert(&message.id, message);
-                replies.insert(&message.id, message.reply_to.as_ref());
+    for object in objects.values() {
+        for target in [object.parent.as_ref(), object.reply_to.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            if deleted.contains(target) {
+                return Err(Error::ConflictingDeletion);
             }
-            Change::DeleteMessage { id } => {
-                deleted_messages.insert(id);
-            }
-            Change::UpsertChat(_)
-            | Change::DeleteChat { .. }
-            | Change::UpsertDocument(_)
-            | Change::DeleteDocument { .. } => {}
         }
-    }
-    for message in messages.values() {
-        if let Some(parent) = &message.reply_to {
-            if deleted_messages.contains(parent) {
-                return Err(Error::ConflictingMessageDeletion);
-            }
-            if messages
+        if let Some(parent) = &object.parent
+            && objects
                 .get(parent)
-                .is_some_and(|parent| parent.chat_id != message.chat_id)
-            {
-                return Err(Error::CrossChatReply);
-            }
+                .is_some_and(|parent| parent.role == Role::Document)
+        {
+            return Err(Error::InvalidParent);
         }
+        if let Some(target) = &object.reply_to
+            && objects
+                .get(target)
+                .is_some_and(|target| target.role != Role::Entry)
+        {
+            return Err(Error::InvalidReply);
+        }
+        parents.insert(&object.id, object.parent.as_ref());
+        replies.insert(&object.id, object.reply_to.as_ref());
     }
+    acyclic(&parents)?;
     acyclic(&replies)
 }
 

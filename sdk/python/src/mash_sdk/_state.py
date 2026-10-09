@@ -18,22 +18,14 @@ from uuid import uuid4
 import orjson
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
-from ._generated.batch import (
-    Batch,
-    ChangeDeleteChat,
-    ChangeDeleteDocument,
-    ChangeDeleteMessage,
-    ChangeUpsertChat,
-    ChangeUpsertDocument,
-    ChangeUpsertMessage,
-)
+from ._generated.batch import Batch, ChangeDeleteObject, ChangeUpsertObject
 from ._generated.receipt import Receipt
 from ._receipts import decode_receipt
 from .changes import Changes
 from .codec import Contract, encode_batch, fingerprint, finite
 
 APPLICATION_ID = 0x4D53444B
-STATE_VERSION = 2
+STATE_VERSION = 3
 # Captured events hold source identities, not documents; bound the journal row.
 MAX_EVENT_BYTES = 64 * 1024
 
@@ -372,89 +364,76 @@ class StateStore:
         key = (pending.destination_id, pending.source_id)
         for mutation in batch.changes:
             match mutation:
-                case ChangeUpsertChat():
-                    self._upsert_record(key, "chat", mutation.id, mutation)
-                case ChangeUpsertMessage():
-                    self._upsert_record(
-                        key,
-                        "message",
-                        mutation.id,
-                        mutation,
-                        chat_id=mutation.chat_id,
-                        created_at=mutation.created_at,
-                    )
-                case ChangeUpsertDocument():
+                case ChangeUpsertObject():
                     scope = scopes.get(mutation.id)
                     self._upsert_record(
                         key,
-                        "document",
-                        mutation.id,
                         mutation,
-                        created_at=mutation.created_at,
                         scope=None if scope is None else orjson.dumps(scope),
                     )
-                case ChangeDeleteChat():
-                    # Mash deletes a chat's messages with it.
+                case ChangeDeleteObject():
+                    # Mash deletes an object's descendants with it.
                     self.connection.execute(
-                        "DELETE FROM records WHERE destination_id=? AND source_id=? "
-                        "AND (kind='chat' AND id=? OR kind='message' AND chat_id=?)",
-                        (*key, mutation.id, mutation.id),
+                        "WITH RECURSIVE tree(id) AS (SELECT ?3 UNION "
+                        "SELECT r.id FROM records r JOIN tree t ON r.parent_id=t.id "
+                        "WHERE r.destination_id=?1 AND r.source_id=?2) "
+                        "DELETE FROM records WHERE destination_id=?1 AND source_id=?2 "
+                        "AND id IN tree",
+                        (*key, mutation.id),
                     )
-                case ChangeDeleteMessage():
-                    self._delete_record(key, "message", mutation.id)
-                case ChangeDeleteDocument():
-                    self._delete_record(key, "document", mutation.id)
 
     def _upsert_record(
         self,
         key: tuple[str, str],
-        kind: str,
-        id: str,
-        mutation: ChangeUpsertChat | ChangeUpsertMessage | ChangeUpsertDocument,
+        mutation: ChangeUpsertObject,
         *,
-        chat_id: str | None = None,
-        created_at: int | None = None,
         scope: bytes | None = None,
     ) -> None:
         # A refresh outside any snapshot keeps the scope a snapshot recorded.
         self.connection.execute(
-            "INSERT INTO records(destination_id,source_id,kind,id,fingerprint,"
-            "chat_id,created_at,scope) VALUES(?,?,?,?,?,?,?,?) "
-            "ON CONFLICT DO UPDATE SET fingerprint=excluded.fingerprint,"
-            "chat_id=excluded.chat_id,created_at=excluded.created_at,"
-            "scope=coalesce(excluded.scope,records.scope)",
-            (*key, kind, id, fingerprint(mutation), chat_id, created_at, scope),
-        )
-
-    def _delete_record(self, key: tuple[str, str], kind: str, id: str) -> None:
-        self.connection.execute(
-            "DELETE FROM records WHERE destination_id=? AND source_id=? "
-            "AND kind=? AND id=?",
-            (*key, kind, id),
+            "INSERT INTO records(destination_id,source_id,id,role,fingerprint,"
+            "parent_id,created_at,scope) VALUES(?,?,?,?,?,?,?,?) "
+            "ON CONFLICT DO UPDATE SET role=excluded.role,"
+            "fingerprint=excluded.fingerprint,parent_id=excluded.parent_id,"
+            "created_at=excluded.created_at,scope=coalesce(excluded.scope,records.scope)",
+            (
+                *key,
+                mutation.id,
+                mutation.role.value,
+                fingerprint(mutation),
+                mutation.parent,
+                mutation.created_at,
+                scope,
+            ),
         )
 
     def fingerprints(
-        self, *, destination_id: str, source_id: str, kind: str, ids: Sequence[str]
+        self, *, destination_id: str, source_id: str, ids: Sequence[str]
     ) -> dict[str, bytes]:
-        """Acknowledged fingerprints for the named records of one kind."""
+        """Acknowledged fingerprints for the named records."""
         found: dict[str, bytes] = {}
         for id in ids:
             row = self.connection.execute(
                 "SELECT fingerprint FROM records WHERE destination_id=? AND "
-                "source_id=? AND kind=? AND id=?",
-                (destination_id, source_id, kind, id),
+                "source_id=? AND id=?",
+                (destination_id, source_id, id),
             ).fetchone()
             if row is not None:
                 found[id] = row[0]
         return found
 
-    def chat_messages(
-        self, *, destination_id: str, source_id: str, chat_id: str
+    def subtree_entries(
+        self, *, destination_id: str, source_id: str, container_id: str
     ) -> list[RecordRow]:
+        """Acknowledged entries whose nearest container is this one: nested
+        containers, such as reply threads, are their own snapshot scopes."""
         rows = self.connection.execute(
-            "SELECT id,created_at,scope FROM records WHERE destination_id=? AND "
-            "source_id=? AND kind='message' AND chat_id=?",
-            (destination_id, source_id, chat_id),
+            "WITH RECURSIVE tree(id) AS (SELECT ?3 UNION "
+            "SELECT r.id FROM records r JOIN tree t ON r.parent_id=t.id "
+            "WHERE r.destination_id=?1 AND r.source_id=?2 AND r.role<>'container') "
+            "SELECT id,created_at,scope FROM records WHERE destination_id=?1 "
+            "AND source_id=?2 AND role='entry' AND id IN tree AND id<>?3",
+            (destination_id, source_id, container_id),
         ).fetchall()
         return [self._row(row) for row in rows]
 
@@ -464,7 +443,7 @@ class StateStore:
         """Documents a complete snapshot delivered; others are never omitted."""
         rows = self.connection.execute(
             "SELECT id,created_at,scope FROM records WHERE destination_id=? AND "
-            "source_id=? AND kind='document' AND scope IS NOT NULL",
+            "source_id=? AND role='document' AND scope IS NOT NULL",
             (destination_id, source_id),
         ).fetchall()
         return [self._row(row) for row in rows]
@@ -552,6 +531,6 @@ class StateStore:
         encoded = orjson.dumps(sorted(scope))
         self.connection.executemany(
             "UPDATE records SET scope=? WHERE destination_id=? AND source_id=? "
-            "AND kind='document' AND id=?",
+            "AND role='document' AND id=?",
             [(encoded, destination_id, source_id, id) for id in ids],
         )

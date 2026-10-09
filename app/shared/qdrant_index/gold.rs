@@ -278,8 +278,8 @@ impl Documents {
     ) -> Result<(), AppError> {
         let ConnectorPoint {
             source_id,
-            kind,
-            chat_anchor,
+            object,
+            group_anchor,
             created_at,
             mut unit,
             vector,
@@ -299,8 +299,8 @@ impl Documents {
                     payload: ConnectorDocument {
                         node_id: identity.node_id.clone(),
                         source_id,
-                        kind,
-                        conversation_id: chat_anchor,
+                        object,
+                        conversation_id: group_anchor,
                         created_at,
                         tokens: words,
                         unit,
@@ -318,8 +318,8 @@ impl Documents {
 /// One connector unit ready to write.
 pub(in crate::shared) struct ConnectorPoint {
     pub(in crate::shared) source_id: String,
-    pub(in crate::shared) kind: crate::source::Kind,
-    pub(in crate::shared) chat_anchor: String,
+    pub(in crate::shared) object: crate::source::ObjectType,
+    pub(in crate::shared) group_anchor: String,
     pub(in crate::shared) created_at: Option<i64>,
     pub(in crate::shared) unit: ConnectorUnit,
     pub(in crate::shared) vector: Option<Vec<f64>>,

@@ -18,7 +18,7 @@ pub(super) fn view(out: &mut String, value: &ViewResponse) -> Result<(), serde_j
                 "\nMessage: {} · {} · ordinal={} · time (Unix ms): {}",
                 safe(&message.id),
                 crate::source::speaker(
-                    crate::source::Kind::Message,
+                    crate::connectors::Role::Entry,
                     message.role.as_ref(),
                     message.author_kind
                 ),

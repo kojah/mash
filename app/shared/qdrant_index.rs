@@ -92,16 +92,16 @@ struct Document {
     message: super::protocol::MessageRecord,
 }
 
-/// One searchable connector message or document with its display evidence.
+/// One searchable connector entry or document with its display evidence.
 /// Provider, role, project and repository are absent, so filters on them never
-/// match; `source_id` and `kind` are absent from native documents.
+/// match; `source_id` and `object` are absent from native documents.
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ConnectorDocument {
     node_id: String,
     source_id: String,
-    kind: crate::source::Kind,
-    /// The chat anchor, or a document's own anchor.
+    object: crate::source::ObjectType,
+    /// An entry's nearest container anchor, or a document's own anchor.
     conversation_id: String,
     created_at: Option<i64>,
     tokens: Vec<String>,
@@ -119,6 +119,8 @@ pub(in crate::shared) struct ConnectorUnit {
     pub(in crate::shared) author_kind: Option<crate::connectors::AuthorKind>,
     pub(in crate::shared) chat_created_at: Option<i64>,
     pub(in crate::shared) chat_updated_at: Option<i64>,
+    /// Enclosing objects, nearest first.
+    pub(in crate::shared) ancestors: Vec<crate::source::Ancestor>,
     /// Set when the point carries a dense vector of this generation.
     pub(in crate::shared) generation: Option<String>,
 }
@@ -143,13 +145,22 @@ fn connector_hit(
     generation: Option<&str>,
 ) -> Result<crate::storage::SearchHit, AppError> {
     let d = *d;
-    let expected_chat = match d.kind {
-        crate::source::Kind::Document => d.unit.anchor.as_str(),
-        crate::source::Kind::Message => d.conversation_id.as_str(),
+    let expected_group = match d.object.role {
+        crate::connectors::Role::Entry => d
+            .unit
+            .ancestors
+            .iter()
+            .find(|ancestor| ancestor.role == crate::connectors::Role::Container)
+            .map_or("", |container| container.id.as_str()),
+        _ => d.unit.anchor.as_str(),
     };
     if id != connector_id(&d.node_id, &d.unit.anchor)
         || !active.contains(&d.node_id)
-        || d.conversation_id != expected_chat
+        || d.conversation_id != expected_group
+        || !matches!(
+            d.object.role,
+            crate::connectors::Role::Entry | crate::connectors::Role::Document
+        )
         || !d
             .unit
             .anchor
@@ -165,7 +176,8 @@ fn connector_hit(
         id: d.unit.anchor,
         conversation_id: d.conversation_id,
         source: crate::source::Source::Connector(d.source_id),
-        kind: d.kind,
+        object: d.object,
+        ancestors: d.unit.ancestors,
         role: None,
         author_kind: d.unit.author_kind,
         content: d.unit.content,

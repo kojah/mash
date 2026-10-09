@@ -1,15 +1,15 @@
 use super::*;
-use crate::connectors::{Document, Receipt};
+use crate::connectors::{Object, Receipt};
 use crate::storage::SearchHit;
 
 fn batch(name: &str, revision: u64, content: &str) -> Value {
     json!({
-        "schema_version":1, "source_id":"github:installation", "batch_id":name,
+        "schema_version":2, "source_id":"github:installation", "batch_id":name,
         "expected_revision":revision,
         "changes":[
-            {"op":"upsert-chat","id":"pr:42","title":"Review","metadata":{"repository":"owner/repo"}},
-            {"op":"upsert-message","id":"review:1","chat_id":"pr:42","content":"Review comment","author":{"id":"human","kind":"human"},"reply_to":"outside-window"},
-            {"op":"upsert-document","id":"note","content":content}
+            {"op":"upsert-object","id":"pr:42","role":"container","kind":"github:pull-request","title":"Review","metadata":{"repository":"owner/repo"}},
+            {"op":"upsert-object","id":"review:1","role":"entry","kind":"github:review-comment","parent":"pr:42","content":"Review comment","author":{"id":"human","kind":"human"},"reply_to":"outside-window"},
+            {"op":"upsert-object","id":"note","role":"document","kind":"obsidian:note","content":content}
         ]
     })
 }
@@ -23,7 +23,7 @@ async fn upload(service: &Service, token: &str, batch: &Value) -> reqwest::Respo
         .unwrap()
 }
 
-fn document(service: &Service, token: &str) -> Document {
+fn document(service: &Service, token: &str) -> String {
     let identity = &service.identities[&blake3::hash(token.as_bytes())];
     let path = service
         .silver_dir
@@ -33,11 +33,12 @@ fn document(service: &Service, token: &str) -> Document {
         .join(format!("{}.sqlite3", identity.node_id));
     crate::connectors::silver::Store::open(&path)
         .unwrap()
-        .document(
+        .object(
             &"github:installation".to_owned().try_into().unwrap(),
             &"note".to_owned().try_into().unwrap(),
         )
         .unwrap()
+        .and_then(|object: Object| object.content)
         .unwrap()
 }
 
@@ -82,7 +83,7 @@ async fn connector_http_receipts_replay_after_later_batches_and_conflicts_do_not
     }
     // Without Qdrant, gold synchronization fails after the silver commit; the
     // durable receipt is still returned and silver holds the latest batch.
-    assert_eq!(document(&service, FIRST).content, "Edited");
+    assert_eq!(document(&service, FIRST), "Edited");
 }
 
 #[tokio::test]
@@ -97,7 +98,7 @@ async fn connector_http_identity_is_authorized_by_token_not_payload_or_headers()
             .await
             .error_for_status()
             .unwrap();
-        assert_eq!(document(&service, token).content, content);
+        assert_eq!(document(&service, token), content);
     }
     let unauthorized = upload(&service, "invalid", &batch("third", 1, "private")).await;
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
@@ -115,8 +116,8 @@ async fn connector_http_identity_is_authorized_by_token_not_payload_or_headers()
         upload(&service, FIRST, &forged).await.status(),
         StatusCode::BAD_REQUEST
     );
-    assert_eq!(document(&service, FIRST).content, "first node");
-    assert_eq!(document(&service, SECOND).content, "second node");
+    assert_eq!(document(&service, FIRST), "first node");
+    assert_eq!(document(&service, SECOND), "second node");
 }
 
 #[tokio::test]
@@ -195,7 +196,7 @@ async fn found(service: &Service, input: &crate::shared::protocol::Search) -> Ve
         .collect()
 }
 
-const MESSAGE: &str = "connector#message#github:installation#review:1";
+const MESSAGE: &str = "connector#entry#github:installation#review:1";
 const NOTE: &str = "connector#document#github:installation#note";
 
 #[tokio::test]
@@ -211,7 +212,7 @@ async fn qdrant_connector_records_are_searchable_and_follow_shared_silver() {
     let hits = found(&service, &exact("zeppelin")).await;
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, NOTE);
-    assert_eq!(hits[0].kind, crate::source::Kind::Document);
+    assert_eq!(hits[0].object.role, crate::connectors::Role::Document);
     assert_eq!(
         hits[0].source,
         crate::source::Source::Connector("github:installation".into())
@@ -311,6 +312,6 @@ async fn verify_view_and_listing(service: &Service) {
             .as_array()
             .unwrap()
             .iter()
-            .any(|chat| chat["chat_id"] == "connector#chat#github:installation#pr:42")
+            .any(|chat| chat["chat_id"] == "connector#container#github:installation#pr:42")
     );
 }

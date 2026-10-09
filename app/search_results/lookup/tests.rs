@@ -3,7 +3,7 @@ use crate::search_results::Results;
 
 fn results(node: Option<&str>) -> Results {
     serde_json::from_value(serde_json::json!([{
-        "id":"message", "chat_id":"chat", "source":{"provider":"codex"},
+        "id":"message", "chat_id":"chat", "source":{"provider":"codex"}, "object":{"role":"entry","kind":"codex:message"},
         "role":"user", "content":"request", "fusion_score":1.0,
         "node_id":node
     }]))

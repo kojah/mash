@@ -9,12 +9,12 @@ from typing import Protocol
 
 from mash_sdk import (
     Changes,
-    Chat,
     Connector,
     Debounce,
     Delivery,
     Destination,
-    Message,
+    Object,
+    Role,
     Snapshot,
 )
 
@@ -77,8 +77,10 @@ class IMessage(Protocol):
     def events(self, ids: Sequence[str]) -> AsyncIterator[Delivery[Event]]: ...
 
 
-def chat(conversation: Conversation) -> Chat:
-    return Chat(
+def chat(conversation: Conversation) -> Object:
+    return Object(
+        role=Role.container,
+        kind="imessage:chat",
         id=conversation.id,
         title=conversation.title,
         metadata={
@@ -90,10 +92,12 @@ def chat(conversation: Conversation) -> Chat:
     )
 
 
-def message(post: Post) -> Message:
-    return Message(
+def message(post: Post) -> Object:
+    return Object(
+        role=Role.entry,
+        kind="imessage:message",
         id=f"{post.chat_id}:{post.id}",
-        chat_id=post.chat_id,
+        parent=post.chat_id,
         content=post.content,
         author=post.sender.to_author() if post.sender else None,
         reply_to=f"{post.chat_id}:{post.reply_to}" if post.reply_to else None,
@@ -117,7 +121,10 @@ async def backfill(source: IMessage, scope: Scope) -> AsyncIterator[Snapshot]:
         # A local database can be pruned independently of the source conversation.
         # Its absence alone must not retract already imported history.
         yield Snapshot(
-            chat=chat(conversation), messages=posts, complete=False, created_since=since
+            container=chat(conversation),
+            objects=posts,
+            complete=False,
+            created_since=since,
         )
 
 
@@ -126,7 +133,7 @@ async def refresh(source: IMessage, event: Event, scope: Scope) -> Changes:
         return Changes.empty()
     match event.operation:
         case Operation.DELETE_CHAT:
-            return Changes.delete_chats(event.chat_id)
+            return Changes.delete(event.chat_id)
         case Operation.REFRESH_CHAT:
             return Changes.upsert(chat(await source.chat(event.chat_id)))
         case Operation.DELETE_MESSAGE | Operation.REFRESH_MESSAGE:
@@ -134,7 +141,7 @@ async def refresh(source: IMessage, event: Event, scope: Scope) -> Changes:
                 raise ValueError("message events require a stable native message ID")
             if event.operation == Operation.DELETE_MESSAGE:
                 # The adapter must provide affirmative deletion evidence, not missing rows.
-                return Changes.delete_messages(f"{event.chat_id}:{event.message_id}")
+                return Changes.delete(f"{event.chat_id}:{event.message_id}")
             post = await source.message(event.chat_id, event.message_id)
             if not scope.includes(post.chat_id, post.created_at):
                 return Changes.empty()

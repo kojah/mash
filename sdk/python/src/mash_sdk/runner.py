@@ -6,32 +6,39 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from ._generated.batch import (
-    ChangeUpsertChat,
-    ChangeUpsertDocument,
-    ChangeUpsertMessage,
-)
+from ._generated.batch import ChangeUpsertObject, Role
 
 T = TypeVar("T")
 
 
 @dataclass(frozen=True)
 class Snapshot:
-    """One chat and its messages as the source currently has them.
+    """One container and objects below it, as the source currently has them.
 
-    Only a `complete` snapshot may delete by omission, and only messages of this
-    chat created at or after `created_since`. Messages with unknown creation
-    time are never omitted from a bounded window. Pagination must finish first.
+    Only a `complete` snapshot may delete by omission, and only entries whose
+    nearest container is this one (entries under its segments included),
+    created at or after `created_since`. Nested containers, such as reply
+    threads, are their own scopes. Entries with unknown creation time are never
+    omitted from a bounded window. Pagination must finish first.
     """
 
-    chat: ChangeUpsertChat
-    messages: Sequence[ChangeUpsertMessage]
+    container: ChangeUpsertObject
+    objects: Sequence[ChangeUpsertObject]
     complete: bool
     created_since: datetime | None = None
 
     def __post_init__(self) -> None:
-        if any(message.chat_id != self.chat.id for message in self.messages):
-            raise ValueError("snapshot messages must belong to its chat")
+        if self.container.role != Role.container:
+            raise ValueError("a snapshot is rooted at a container")
+        parents = {item.id: item.parent for item in self.objects}
+        for item in self.objects:
+            seen = {item.id}
+            parent = item.parent
+            while parent != self.container.id:
+                if parent is None or parent in seen or parent not in parents:
+                    raise ValueError("snapshot objects must sit below its container")
+                seen.add(parent)
+                parent = parents[parent]
 
 
 @dataclass(frozen=True)
@@ -43,7 +50,7 @@ class DocumentSnapshot:
     ever sent through events or `send` are never deleted by omission.
     """
 
-    documents: Sequence[ChangeUpsertDocument]
+    documents: Sequence[ChangeUpsertObject]
     scope_ids: Sequence[str]
     complete: bool
     created_since: datetime | None = None
@@ -51,6 +58,8 @@ class DocumentSnapshot:
     def __post_init__(self) -> None:
         if self.complete and not self.scope_ids:
             raise ValueError("a complete document snapshot must name its scopes")
+        if any(document.role != Role.document for document in self.documents):
+            raise ValueError("a document snapshot holds documents only")
 
 
 @dataclass(frozen=True)

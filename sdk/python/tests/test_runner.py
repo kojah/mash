@@ -12,18 +12,17 @@ from pathlib import Path
 
 from mash_sdk import (
     Changes,
-    Chat,
     Connector,
     Debounce,
     Delivery,
     DeliveryError,
     Destination,
-    Document,
     DocumentSnapshot,
-    Message,
+    Object,
     Snapshot,
 )
 from tests.fake_mash import TOKEN, TOKEN_ENV, Behaviour, serve
+from tests.objects import channel, message, note
 
 SINCE = datetime(2026, 1, 1, tzinfo=UTC)
 BEFORE = int(SINCE.timestamp() * 1000) - 1
@@ -76,22 +75,22 @@ async def snapshots(
         yield item
 
 
-def message(
+def entry(
     id: str, created_at: int | None = AFTER, reply_to: str | None = None
-) -> Message:
-    return Message(
+) -> Object:
+    return message(
         id=id,
-        chat_id="chat",
+        parent="chat",
         content=f"text {id}",
         created_at=created_at,
         reply_to=reply_to,
     )
 
 
-def chat_snapshot(*messages: Message, complete: bool = True) -> Snapshot:
+def chat_snapshot(*entries: Object, complete: bool = True) -> Snapshot:
     return Snapshot(
-        chat=Chat(id="chat", title="Chat"),
-        messages=messages,
+        container=channel(id="chat", title="Chat"),
+        objects=entries,
         complete=complete,
         created_since=SINCE,
     )
@@ -101,7 +100,7 @@ def documents(
     *ids: str, scopes: tuple[str, ...], complete: bool = True
 ) -> DocumentSnapshot:
     return DocumentSnapshot(
-        documents=[Document(id=id, content=f"note {id}") for id in ids],
+        documents=[note(id=id, content=f"note {id}") for id in ids],
         scope_ids=scopes,
         complete=complete,
     )
@@ -156,11 +155,11 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             return connection.execute("SELECT key,sequence FROM events").fetchall()
 
     async def test_unchanged_backfill_is_not_resent(self) -> None:
-        snapshot = chat_snapshot(message("one"), message("two"))
+        snapshot = chat_snapshot(entry("one"), entry("two"))
         await self.run_once(snapshot)
         await self.run_once(snapshot)
         self.assertEqual(len(self.server.commits), 1)
-        await self.run_once(chat_snapshot(message("one"), message("two", AFTER + 1)))
+        await self.run_once(chat_snapshot(entry("one"), entry("two", AFTER + 1)))
         self.assertEqual(len(self.server.commits), 2)
         self.assertEqual(self.server.messages["two"]["created_at"], AFTER + 1)
 
@@ -169,11 +168,11 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.run_once(
             chat_snapshot(
-                message("old", BEFORE),
-                message("unknown", None),
-                message("kept"),
-                message("gone"),
-                message("parent"),
+                entry("old", BEFORE),
+                entry("unknown", None),
+                entry("kept"),
+                entry("gone"),
+                entry("parent"),
                 complete=False,
             )
         )
@@ -181,7 +180,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         await self.run_once(chat_snapshot(complete=False))
         self.assertEqual(len(self.server.messages), 5)
         await self.run_once(
-            chat_snapshot(message("kept"), message("child", reply_to="parent"))
+            chat_snapshot(entry("kept"), entry("child", reply_to="parent"))
         )
         self.assertEqual(
             set(self.server.messages), {"old", "unknown", "kept", "parent", "child"}
@@ -192,7 +191,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.run_once(documents("a", "b", scopes=("A", "B")))
         async with self.connector() as connector:
-            await connector.send(Changes.upsert(Document(id="sent", content="direct")))
+            await connector.send(Changes.upsert(note(id="sent", content="direct")))
         # A narrower scope does not cover documents delivered from (A, B).
         await self.run_once(documents(scopes=("A",)))
         self.assertEqual(set(self.server.documents), {"a", "b", "sent"})
@@ -221,7 +220,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
 
         async def refresh(event: Event) -> Changes:
             refreshed.append(event)
-            return Changes.upsert(Document(id="note", content=f"v{event.version}"))
+            return Changes.upsert(note(id="note", content=f"v{event.version}"))
 
         async with self.connector() as connector:
             running = asyncio.create_task(
@@ -290,7 +289,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
 
         async def refresh(event: Event) -> Changes:
             refreshed.append(event)
-            return Changes.upsert(Document(id="note", content="recovered"))
+            return Changes.upsert(note(id="note", content="recovered"))
 
         await self.run_once(refresh=refresh)
         self.assertEqual(refreshed, [Event("note", 1)])
@@ -309,7 +308,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(raised.exception.retryable)
 
     async def test_large_snapshots_are_split_under_the_batch_limits(self) -> None:
-        await self.run_once(chat_snapshot(*(message(f"m{i}") for i in range(600))))
+        await self.run_once(chat_snapshot(*(entry(f"m{i}") for i in range(600))))
         self.assertEqual(len(self.server.commits), 2)
         self.assertEqual(len(self.server.messages), 600)
         self.assertIn("chat", self.server.chats)
@@ -317,8 +316,8 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
     async def test_snapshot_messages_must_belong_to_the_chat(self) -> None:
         with self.assertRaises(ValueError):
             Snapshot(
-                chat=Chat(id="chat"),
-                messages=[Message(id="m", chat_id="other", content="x")],
+                container=channel(id="chat"),
+                objects=[message(id="m", parent="other", content="x")],
                 complete=True,
             )
 
@@ -338,8 +337,8 @@ class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
             database=database, executable=binary, config=config
         )
         for snapshot in (
-            chat_snapshot(message("kept"), message("gone")),
-            chat_snapshot(message("kept"), message("child", reply_to="kept")),
+            chat_snapshot(entry("kept"), entry("gone")),
+            chat_snapshot(entry("kept"), entry("child", reply_to="kept")),
         ):
             async with Connector(
                 source_id="external",
@@ -356,7 +355,9 @@ class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(database) as connection:
             stored = {
                 row[0]
-                for row in connection.execute("SELECT id FROM connector_messages")
+                for row in connection.execute(
+                    "SELECT id FROM connector_objects WHERE role='entry'"
+                )
             }
         self.assertEqual(stored, {"kept", "child"})
 
@@ -402,15 +403,13 @@ class FanOutTests(unittest.IsolatedAsyncioTestCase):
         flaky.failures = [503]
         async with self.connector() as connector:
             with self.assertRaises(DeliveryError) as raised:
-                await connector.send(Changes.upsert(Document(id="a", content="one")))
+                await connector.send(Changes.upsert(note(id="a", content="one")))
             self.assertTrue(raised.exception.retryable)
             self.assertIn("1 of 2", str(raised.exception))
             self.assertEqual(set(healthy.documents), {"a"})
             self.assertEqual(flaky.documents, {})
             # The flaky destination's saved batch goes first, then the new one.
-            receipts = await connector.send(
-                Changes.upsert(Document(id="b", content="two"))
-            )
+            receipts = await connector.send(Changes.upsert(note(id="b", content="two")))
         self.assertEqual([receipt.source_revision for receipt in receipts], [2, 2])
         for server in self.servers:
             self.assertEqual(set(server.documents), {"a", "b"})
@@ -425,7 +424,7 @@ class FanOutTests(unittest.IsolatedAsyncioTestCase):
 
         async def refresh(event: Event) -> Changes:
             refreshed.append(event)
-            return Changes.upsert(Document(id="note", content="current"))
+            return Changes.upsert(note(id="note", content="current"))
 
         async with self.connector() as connector:
             await connector.run(

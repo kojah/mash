@@ -33,51 +33,38 @@ class Attachment:
         self, *, id: str, name: str, media_type: str, url: str, bytes: int | None = ...
     ) -> None: ...
 
-class Chat:
+class Role(StrEnum):
+    """What Mash may do with an object; `kind` is the source's own label."""
+
+    container = "container"
+    segment = "segment"
+    entry = "entry"
+    document = "document"
+
+class Object:
+    """One source object. Roles decide which fields apply: entries and
+    documents carry content; only entries have authors and replies; entries
+    need a parent; documents never contain anything."""
+
     id: str
+    role: Role
+    kind: str
+    parent: str | None
     title: str | None
+    content: str | None
+    author: Author | None
     metadata: Metadata | None
     def __init__(
         self,
         *,
         id: str,
+        role: Role,
+        kind: str,
+        parent: str | None = ...,
         title: str | None = ...,
-        url: str | None = ...,
-        created_at: int | None = ...,
-        updated_at: int | None = ...,
-        metadata: Metadata | None = ...,
-    ) -> None: ...
-
-class Message:
-    id: str
-    content: str
-    author: Author | None
-    def __init__(
-        self,
-        *,
-        id: str,
-        chat_id: str,
-        content: str,
+        content: str | None = ...,
         author: Author | None = ...,
         reply_to: str | None = ...,
-        url: str | None = ...,
-        created_at: int | None = ...,
-        updated_at: int | None = ...,
-        metadata: Metadata | None = ...,
-        attachments: Sequence[Attachment] = ...,
-    ) -> None: ...
-
-class Document:
-    id: str
-    title: str | None
-    content: str
-    metadata: Metadata | None
-    def __init__(
-        self,
-        *,
-        id: str,
-        content: str,
-        title: str | None = ...,
         url: str | None = ...,
         created_at: int | None = ...,
         updated_at: int | None = ...,
@@ -89,31 +76,25 @@ class Changes:
     @classmethod
     def empty(cls) -> Changes: ...
     @classmethod
-    def upsert(cls, *records: Chat | Message | Document) -> Changes: ...
+    def upsert(cls, *objects: Object) -> Changes: ...
     @classmethod
-    def delete_messages(cls, *ids: str) -> Changes: ...
-    @classmethod
-    def delete_chats(cls, *ids: str) -> Changes: ...
-    @classmethod
-    def delete_documents(cls, *ids: str) -> Changes: ...
+    def delete(cls, *ids: str) -> Changes: ...
 
 @dataclass(frozen=True)
 class Snapshot:
-    """Only complete, authoritative scopes may produce omission-based deletions."""
+    """One container and objects below it. Only a complete snapshot deletes by
+    omission, and only entries whose nearest container is this one."""
 
-    chat: Chat
-    messages: Sequence[Message]
+    container: Object
+    objects: Sequence[Object]
     complete: bool
     created_since: datetime | None = None
-
-    # complete applies only to this time scope. Pagination must finish before
-    # missing IDs can become deletions; older records remain untouched.
 
 @dataclass(frozen=True)
 class DocumentSnapshot:
     """Authoritative enumeration of documents inside an explicit source scope."""
 
-    documents: Sequence[Document]
+    documents: Sequence[Object]
     scope_ids: Sequence[str]
     complete: bool
     created_since: datetime | None = None
@@ -189,14 +170,14 @@ class Connector:
 class SilverSnapshot:
     source_id: str
     revision: str
-    chat: Chat
-    messages: Sequence[Message]
+    container: Object
+    objects: Sequence[Object]
 
 @dataclass(frozen=True)
 class DocumentSilverSnapshot:
     source_id: str
     revision: str
-    document: Document
+    document: Object
 
 @dataclass(frozen=True)
 class MessageRef:

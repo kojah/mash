@@ -8,13 +8,14 @@ from pathlib import Path
 
 import orjson
 
-from mash_sdk import Changes, Document
+from mash_sdk import Changes
 from mash_sdk._receipts import InvalidReceipt, decode_receipt
 from mash_sdk._state import PendingBatch, PendingExists, StateError, StateStore
+from tests.objects import note
 
 
 def changes(text: str = "First version") -> Changes:
-    return Changes.upsert(Document(id="note", content=text))
+    return Changes.upsert(note(id="note", content=text))
 
 
 def receipt(
@@ -22,7 +23,7 @@ def receipt(
 ) -> bytes:
     return orjson.dumps(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "source_id": pending.source_id,
             "batch_id": pending.batch_id,
             "source_revision": pending.expected_revision + 1,
@@ -290,7 +291,7 @@ class DeliveryStateTests(unittest.TestCase):
 
     def test_receipt_revisions_reject_unsigned_overflow_and_bool(self) -> None:
         base = {
-            "schema_version": 1,
+            "schema_version": 2,
             "source_id": "source",
             "batch_id": "batch",
             "source_revision": 1,

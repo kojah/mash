@@ -303,7 +303,7 @@ impl Columns {
         node: "NULL",
         provider: "NULL",
         role: "NULL",
-        chat: "u.chat_anchor",
+        chat: "u.group_anchor",
         project: "NULL",
         repository: "NULL",
         source: "u.source_id",

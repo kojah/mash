@@ -385,11 +385,17 @@ fn merge_lexical(
 }
 
 pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> {
+    let provider: crate::provider::Provider = row.provider.parse()?;
     Ok(SearchHit {
+        ancestors: crate::source::native_ancestors(
+            provider,
+            &row.conversation_id,
+            row.title.as_deref(),
+        ),
         id: row.id,
         conversation_id: row.conversation_id,
-        source: crate::source::Source::Provider(row.provider.parse()?),
-        kind: crate::source::Kind::Message,
+        source: crate::source::Source::Provider(provider),
+        object: crate::source::ObjectType::native_message(provider),
         role: Some(row.role.into()),
         author_kind: None,
         content: row.content,

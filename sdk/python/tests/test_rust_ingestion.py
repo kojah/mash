@@ -6,8 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mash_sdk import Changes, Chat, Document, Message
+from mash_sdk import Changes
 from mash_sdk._state import StateStore
+from tests.objects import channel, message, note
 
 
 class RustIngestionTests(unittest.TestCase):
@@ -24,11 +25,9 @@ class RustIngestionTests(unittest.TestCase):
             state = root / "sdk.sqlite"
             silver = root / "silver.sqlite"
             records = Changes.upsert(
-                Chat(id="channel", title="Engineering"),
-                Message(
-                    id="message", chat_id="channel", content="A participant's post"
-                ),
-                Document(id="note", content="A standalone note"),
+                channel(id="channel", title="Engineering"),
+                message(id="message", parent="channel", content="A participant's post"),
+                note(id="note", content="A standalone note"),
             )
             with StateStore(state) as store:
                 pending = store.prepare(

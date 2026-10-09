@@ -8,8 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mash_sdk import Changes, Connector, DeliveryError, Destination, Document
+from mash_sdk import Changes, Connector, DeliveryError, Destination
 from mash_sdk._state import StateStore
+from tests.objects import note
 
 
 class ConnectorTests(unittest.IsolatedAsyncioTestCase):
@@ -79,8 +80,8 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         async with self.connector(self.destination()) as connector:
             receipts = await asyncio.gather(
-                connector.send(Changes.upsert(Document(id="one", content="First"))),
-                connector.send(Changes.upsert(Document(id="two", content="Second"))),
+                connector.send(Changes.upsert(note(id="one", content="First"))),
+                connector.send(Changes.upsert(note(id="two", content="Second"))),
             )
         receipts = [receipt for (receipt,) in receipts]
         self.assertEqual([item.source_revision for item in receipts], [1, 2])
@@ -88,7 +89,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(self.database) as connection:
             self.assertEqual(
                 connection.execute(
-                    "SELECT count(*) FROM connector_documents"
+                    "SELECT count(*) FROM connector_objects WHERE role='document'"
                 ).fetchone()[0],
                 2,
             )
@@ -98,7 +99,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         destination = self.destination(executable=self.wrapper())
-        changes = Changes.upsert(Document(id="note", content="A durable note"))
+        changes = Changes.upsert(note(id="note", content="A durable note"))
         async with self.connector(destination) as connector:
             with self.assertRaises(DeliveryError):
                 await connector.send(changes)
@@ -123,7 +124,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         destination = self.destination(executable=self.wrapper())
         async with self.connector(destination) as first:
             with self.assertRaises(DeliveryError):
-                await first.send(Changes.upsert(Document(id="note", content="Restart")))
+                await first.send(Changes.upsert(note(id="note", content="Restart")))
         async with self.connector(destination):
             pass
         with StateStore(self.state) as store:
@@ -148,7 +149,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         async with self.connector(destination) as connector:
             with self.assertRaises(DeliveryError) as raised:
                 await connector.send(
-                    Changes.upsert(Document(id="note", content="PRIVATE-CANARY"))
+                    Changes.upsert(note(id="note", content="PRIVATE-CANARY"))
                 )
             self.assertTrue(raised.exception.retryable)
             self.assertNotIn("PRIVATE-CANARY", str(raised.exception))
@@ -173,7 +174,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
             caller = asyncio.create_task(
                 connector.send(
                     Changes.upsert(
-                        Document(id="one", content="Accepted before cancellation")
+                        note(id="one", content="Accepted before cancellation")
                     )
                 )
             )
@@ -183,9 +184,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
                 await caller
             later = asyncio.create_task(
                 connector.send(
-                    Changes.upsert(
-                        Document(id="two", content="Sent after cancellation")
-                    )
+                    Changes.upsert(note(id="two", content="Sent after cancellation"))
                 )
             )
             (self.root / "release").touch()
@@ -194,7 +193,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
         with sqlite3.connect(self.database) as connection:
             self.assertEqual(
                 connection.execute(
-                    "SELECT count(*) FROM connector_documents"
+                    "SELECT count(*) FROM connector_objects WHERE role='document'"
                 ).fetchone()[0],
                 2,
             )

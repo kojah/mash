@@ -165,45 +165,23 @@ SELECT revision FROM connector_sources WHERE id=sqlc.arg(id);
 INSERT INTO connector_sources(id,revision) VALUES(sqlc.arg(id),sqlc.arg(revision))
 ON CONFLICT(id) DO UPDATE SET revision=excluded.revision;
 
--- name: ConnectorChat :one
-SELECT record FROM connector_chats WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+-- name: ConnectorObject :one
+SELECT role,parent_id,reply_to,record FROM connector_objects
+WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
 
--- name: ConnectorMessage :one
-SELECT record FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+-- name: ConnectorPutObject :execrows
+INSERT INTO connector_objects(source_id,id,role,parent_id,reply_to,record)
+VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(role),sqlc.narg(parent_id),sqlc.narg(reply_to),sqlc.arg(record))
+ON CONFLICT(source_id,id) DO UPDATE SET role=excluded.role,parent_id=excluded.parent_id,
+reply_to=excluded.reply_to,record=excluded.record
+WHERE connector_objects.record<>excluded.record;
 
--- name: ConnectorDocument :one
-SELECT record FROM connector_documents WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
-
--- name: ConnectorPutChat :execrows
-INSERT INTO connector_chats(source_id,id,record) VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(record))
-ON CONFLICT(source_id,id) DO UPDATE SET record=excluded.record
-WHERE connector_chats.record<>excluded.record;
-
--- name: ConnectorPutMessage :execrows
-INSERT INTO connector_messages(source_id,id,chat_id,reply_to,record)
-VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(chat_id),sqlc.narg(reply_to),sqlc.arg(record))
-ON CONFLICT(source_id,id) DO UPDATE SET chat_id=excluded.chat_id,reply_to=excluded.reply_to,record=excluded.record
-WHERE connector_messages.record<>excluded.record;
-
--- name: ConnectorPutDocument :execrows
-INSERT INTO connector_documents(source_id,id,record) VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(record))
-ON CONFLICT(source_id,id) DO UPDATE SET record=excluded.record
-WHERE connector_documents.record<>excluded.record;
-
--- name: ConnectorDeleteChat :execrows
-DELETE FROM connector_chats WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
-
--- name: ConnectorDeleteMessage :execrows
-DELETE FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
-
--- name: ConnectorDeleteDocument :execrows
-DELETE FROM connector_documents WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
-
--- name: ConnectorEdge :one
-SELECT chat_id,reply_to FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+-- name: ConnectorDeleteObject :execrows
+DELETE FROM connector_objects WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
 
 -- name: ConnectorChildren :many
-SELECT chat_id FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND reply_to=sqlc.arg(id);
+SELECT id,role,record FROM connector_objects
+WHERE source_id=sqlc.arg(source_id) AND parent_id=sqlc.arg(parent_id) ORDER BY id;
 
 -- name: ConnectorSilverRevision :one
 SELECT revision FROM silver_state WHERE singleton=1;
@@ -215,29 +193,25 @@ UPDATE silver_state SET revision=sqlc.arg(revision) WHERE singleton=1;
 INSERT INTO connector_receipts(source_id,batch_id,fingerprint,receipt)
 VALUES(sqlc.arg(source_id),sqlc.arg(batch_id),sqlc.arg(fingerprint),sqlc.arg(receipt));
 
--- name: ConnectorAllEdges :many
-SELECT source_id,id,chat_id FROM connector_messages ORDER BY source_id,chat_id,id;
+-- name: ConnectorAllObjects :many
+SELECT source_id,id FROM connector_objects ORDER BY source_id,id;
 
 -- name: ConnectorUnitDigests :many
 SELECT anchor, id, digest FROM connector_units;
 
--- name: ConnectorSilverMessages :many
-SELECT m.source_id, m.record AS message, c.record AS chat
-  FROM connector_messages m
-  JOIN connector_chats c ON c.source_id = m.source_id AND c.id = m.chat_id;
-
--- name: ConnectorSilverDocuments :many
-SELECT source_id, record FROM connector_documents;
+-- name: ConnectorSilverObjects :many
+SELECT source_id, id, role, parent_id, record FROM connector_objects ORDER BY source_id, id;
 
 -- name: ConnectorInsertUnit :one
-INSERT INTO connector_units(anchor, kind, source_id, record_id, chat_anchor, created_at, digest)
-VALUES (sqlc.arg(anchor), sqlc.arg(kind), sqlc.arg(source_id), sqlc.arg(record_id),
-        sqlc.arg(chat_anchor), sqlc.narg(created_at), sqlc.arg(digest))
+INSERT INTO connector_units(anchor, role, label, source_id, record_id, group_anchor, created_at, digest)
+VALUES (sqlc.arg(anchor), sqlc.arg(role), sqlc.arg(label), sqlc.arg(source_id), sqlc.arg(record_id),
+        sqlc.arg(group_anchor), sqlc.narg(created_at), sqlc.arg(digest))
 RETURNING id;
 
 -- name: ConnectorUpdateUnit :exec
 UPDATE connector_units
-   SET chat_anchor = sqlc.arg(chat_anchor), created_at = sqlc.narg(created_at), digest = sqlc.arg(digest)
+   SET label = sqlc.arg(label), group_anchor = sqlc.arg(group_anchor),
+       created_at = sqlc.narg(created_at), digest = sqlc.arg(digest)
  WHERE id = sqlc.arg(id);
 
 -- name: ConnectorDeleteUnit :exec
@@ -247,19 +221,10 @@ DELETE FROM connector_units WHERE id = sqlc.arg(id);
 DELETE FROM connector_embeddings WHERE unit_id = sqlc.arg(unit_id);
 
 -- name: ConnectorUnit :one
-SELECT anchor, kind, source_id, record_id, chat_anchor FROM connector_units WHERE id = sqlc.arg(id);
-
--- name: ConnectorMessageEvidence :one
-SELECT m.record AS message, c.record AS chat
-  FROM connector_messages m
-  JOIN connector_chats c ON c.source_id = m.source_id AND c.id = m.chat_id
- WHERE m.source_id = sqlc.arg(source_id) AND m.id = sqlc.arg(id);
-
--- name: ConnectorDocumentEvidence :one
-SELECT record FROM connector_documents WHERE source_id = sqlc.arg(source_id) AND id = sqlc.arg(id);
+SELECT source_id, record_id FROM connector_units WHERE id = sqlc.arg(id);
 
 -- name: ConnectorPendingEmbeddings :many
-SELECT u.id, u.kind, u.source_id, u.record_id
+SELECT u.id, u.source_id, u.record_id
   FROM connector_units u
   LEFT JOIN connector_embeddings e ON e.unit_id = u.id AND e.generation = sqlc.arg(generation)
  WHERE e.unit_id IS NULL
@@ -281,10 +246,5 @@ SELECT CAST(NOT EXISTS(
 -- name: ConnectorClearEmbeddings :exec
 DELETE FROM connector_embeddings;
 
--- name: ConnectorChatMessages :many
-SELECT id, record FROM connector_messages
- WHERE source_id = sqlc.arg(source_id) AND chat_id = sqlc.arg(chat_id)
- ORDER BY json_extract(record, '$.created_at') IS NULL, json_extract(record, '$.created_at'), id;
-
--- name: ConnectorChats :many
-SELECT source_id, record FROM connector_chats;
+-- name: ConnectorContainers :many
+SELECT source_id, id, record FROM connector_objects WHERE role = 'container';

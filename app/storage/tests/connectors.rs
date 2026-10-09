@@ -1,18 +1,20 @@
 use super::*;
+use crate::connectors::Role;
 use crate::connectors::{AuthorKind, Batch};
 use crate::gold::exact::Literal;
 use crate::search_filter::{Filter, Selection};
-use crate::source::{Kind, Source};
+use crate::source::Source;
 
-const MESSAGE: &str = "connector#message#github:org#review-1";
-const REPLY: &str = "connector#message#github:org#review-2";
+const MESSAGE: &str = "connector#entry#github:org#review-1";
+const REPLY: &str = "connector#entry#github:org#review-2";
 const DOCUMENT: &str = "connector#document#github:org#note";
-const CHAT: &str = "connector#chat#github:org#pr-42";
+const CHAT: &str = "connector#container#github:org#pr-42";
+const REVIEW: &str = "connector#segment#github:org#review";
 
 fn batch(revision: u64, changes: &serde_json::Value) -> Batch {
     Batch::decode(
         serde_json::json!({
-            "schema_version": 1, "source_id": "github:org",
+            "schema_version": 2, "source_id": "github:org",
             "batch_id": format!("batch-{revision}"), "expected_revision": revision,
             "changes": changes,
         })
@@ -26,15 +28,21 @@ fn initial() -> Batch {
     batch(
         0,
         &serde_json::json!([
-            {"op": "upsert-chat", "id": "pr-42", "title": "Cache rollout",
+            {"op": "upsert-object", "id": "pr-42", "role": "container",
+             "kind": "github:pull-request", "title": "Cache rollout",
              "created_at": 1000, "updated_at": 3000},
-            {"op": "upsert-message", "id": "review-1", "chat_id": "pr-42",
+            {"op": "upsert-object", "id": "review", "role": "segment",
+             "kind": "github:review", "parent": "pr-42", "title": "Changes requested"},
+            {"op": "upsert-object", "id": "review-1", "role": "entry",
+             "kind": "github:review-comment", "parent": "review",
              "content": "Please measure the zeppelin latency first",
              "author": {"id": "alice", "kind": "human"}, "created_at": 1000},
-            {"op": "upsert-message", "id": "review-2", "chat_id": "pr-42",
+            {"op": "upsert-object", "id": "review-2", "role": "entry",
+             "kind": "github:comment", "parent": "pr-42",
              "content": "Measured; results attached", "reply_to": "review-1",
              "author": {"id": "ci", "kind": "bot"}, "created_at": 2000},
-            {"op": "upsert-document", "id": "note", "title": "Runbook",
+            {"op": "upsert-object", "id": "note", "role": "document", "kind": "obsidian:note",
+             "title": "Runbook",
              "content": "The zeppelin dashboard lives here", "created_at": 500},
         ]),
     )
@@ -104,14 +112,26 @@ fn connector_commits_keep_search_closed_until_gold_projects_them() {
     assert_eq!(found, [DOCUMENT, MESSAGE, "native"]);
     let message = hits.iter().find(|hit| hit.id == MESSAGE).unwrap();
     assert_eq!(message.source, Source::Connector("github:org".into()));
-    assert_eq!(message.kind, Kind::Message);
+    assert_eq!(message.object.role, Role::Entry);
+    assert_eq!(message.object.kind, "github:review-comment");
+    // Nearest first: the review segment, then the pull request container.
+    assert_eq!(
+        message
+            .ancestors
+            .iter()
+            .map(|a| a.id.as_str())
+            .collect::<Vec<_>>(),
+        [REVIEW, CHAT]
+    );
+    assert_eq!(message.ancestors[0].role, Role::Segment);
     assert_eq!(message.conversation_id, CHAT);
     assert_eq!(message.role, None);
     assert_eq!(message.author_kind, Some(AuthorKind::Human));
     assert_eq!(message.metadata.title.as_deref(), Some("Cache rollout"));
     assert_eq!(message.content, "Please measure the zeppelin latency first");
     let document = hits.iter().find(|hit| hit.id == DOCUMENT).unwrap();
-    assert_eq!(document.kind, Kind::Document);
+    assert_eq!(document.object.role, Role::Document);
+    assert_eq!(document.ancestors, Vec::new());
     assert_eq!(document.conversation_id, DOCUMENT);
     assert_eq!(document.author_kind, None);
     let literal = Literal::with_mode("zeppelin", all.match_mode).unwrap();
@@ -270,10 +290,11 @@ fn edits_reindex_only_changed_units_and_deletions_leave_gold() {
         &batch(
             1,
             &serde_json::json!([
-                {"op": "upsert-message", "id": "review-1", "chat_id": "pr-42",
+                {"op": "upsert-object", "id": "review-1", "role": "entry",
+                 "kind": "github:review-comment", "parent": "review",
                  "content": "Please measure the airship latency first",
                  "author": {"id": "alice", "kind": "human"}, "created_at": 1000},
-                {"op": "delete-document", "id": "note"},
+                {"op": "delete-object", "id": "note"},
             ]),
         ),
     );

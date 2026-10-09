@@ -6,6 +6,7 @@ from mash_sdk import (
     DocumentRef,
     DocumentSilverSnapshot,
     MessageRef,
+    Role,
     SearchDocument,
     SilverSnapshot,
 )
@@ -14,13 +15,13 @@ from mash_sdk import (
 async def project(
     snapshot: SilverSnapshot | DocumentSilverSnapshot,
 ) -> Sequence[SearchDocument]:
-    """Publish evidence-backed gold for standalone documents and chat messages."""
+    """Publish evidence-backed gold for standalone documents and container entries."""
     if isinstance(snapshot, DocumentSilverSnapshot):
         document = snapshot.document
         return [
             SearchDocument(
                 id=document.id,
-                text=f"{document.title or ''}\n\n{document.content}".strip(),
+                text=f"{document.title or ''}\n\n{document.content or ''}".strip(),
                 references=[
                     DocumentRef(source_id=snapshot.source_id, document_id=document.id)
                 ],
@@ -29,17 +30,20 @@ async def project(
         ]
     return [
         SearchDocument(
-            id=message.id,
-            text=f"{snapshot.chat.title or ''}\n\n{message.content}".strip(),
+            id=entry.id,
+            text=f"{snapshot.container.title or ''}\n\n{entry.content or ''}".strip(),
             references=[
                 MessageRef(
                     source_id=snapshot.source_id,
-                    chat_id=snapshot.chat.id,
-                    message_id=message.id,
+                    chat_id=snapshot.container.id,
+                    message_id=entry.id,
                 )
             ],
-            metadata={"source_id": snapshot.source_id, "chat_id": snapshot.chat.id},
+            metadata={
+                "source_id": snapshot.source_id,
+                "chat_id": snapshot.container.id,
+            },
         )
-        for message in snapshot.messages
-        if message.content.strip()
+        for entry in snapshot.objects
+        if entry.role == Role.entry and (entry.content or "").strip()
     ]

@@ -9,12 +9,12 @@ from typing import Literal, Protocol
 
 from mash_sdk import (
     Changes,
-    Chat,
     Connector,
     Debounce,
     Delivery,
     Destination,
-    Message,
+    Object,
+    Role,
     Snapshot,
 )
 
@@ -111,8 +111,10 @@ class GitHub(Protocol):
     ) -> AsyncIterator[Delivery[Event]]: ...
 
 
-def chat(issue: Item) -> Chat:
-    return Chat(
+def chat(issue: Item) -> Object:
+    return Object(
+        role=Role.container,
+        kind=f"github:{issue.kind.value}",
         id=issue.id,
         title=issue.title,
         url=issue.url,
@@ -132,10 +134,12 @@ def chat(issue: Item) -> Chat:
     )
 
 
-def body(issue: Item) -> Message:
-    return Message(
+def body(issue: Item) -> Object:
+    return Object(
+        role=Role.entry,
+        kind="github:description",
         id=f"item:{issue.id}:body",
-        chat_id=issue.id,
+        parent=issue.id,
         content=issue.body,
         author=issue.author.to_author(),
         url=issue.url,
@@ -144,12 +148,14 @@ def body(issue: Item) -> Message:
     )
 
 
-def message(comment: Comment) -> Message:
+def message(comment: Comment) -> Object:
     # General discussion is flat; preserve actual inline review replies only.
     parent = comment.reply_to_id if comment.kind == CommentKind.REVIEW_COMMENT else None
-    return Message(
+    return Object(
+        role=Role.entry,
+        kind=f"github:{comment.kind.value}",
         id=f"{comment.kind.value}:{comment.id}",
-        chat_id=comment.item_id,
+        parent=comment.item_id,
         content=comment.content,
         author=comment.author.to_author(),
         url=comment.url,
@@ -189,7 +195,10 @@ async def backfill(
         # Old issues may contain recent comments, so issue creation is not a discovery cutoff.
         if messages:
             yield Snapshot(
-                chat=chat(issue), messages=messages, complete=True, created_since=since
+                container=chat(issue),
+                objects=messages,
+                complete=True,
+                created_since=since,
             )
 
 
@@ -200,7 +209,7 @@ async def refresh(
         return Changes.empty()
     match event.operation:
         case Operation.DELETE_CHAT:
-            return Changes.delete_chats(event.item_id)
+            return Changes.delete(event.item_id)
         case Operation.REFRESH_CHAT:
             # Closing/relabeling is an upsert, not deletion.
             issue = await source.item(event.repository, event.item_id)
@@ -211,9 +220,7 @@ async def refresh(
             if event.comment_id is None:
                 raise ValueError("comment events require a comment ID")
             if event.operation == Operation.DELETE_MESSAGE:
-                return Changes.delete_messages(
-                    f"{event.comment_kind.value}:{event.comment_id}"
-                )
+                return Changes.delete(f"{event.comment_kind.value}:{event.comment_id}")
             comment = await source.comment(
                 event.repository, event.comment_id, event.comment_kind
             )

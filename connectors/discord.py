@@ -8,12 +8,12 @@ from typing import Protocol
 
 from mash_sdk import (
     Changes,
-    Chat,
     Connector,
     Debounce,
     Delivery,
     Destination,
-    Message,
+    Object,
+    Role,
     Snapshot,
 )
 
@@ -63,8 +63,10 @@ class Discord(Protocol):
     def events(self, channels: Sequence[str]) -> AsyncIterator[Delivery[Event]]: ...
 
 
-def chat(channel: Channel) -> Chat:
-    return Chat(
+def chat(channel: Channel) -> Object:
+    return Object(
+        role=Role.container,
+        kind="discord:channel",
         id=channel.id,
         title=channel.name,
         url=channel.url,
@@ -75,11 +77,13 @@ def chat(channel: Channel) -> Chat:
     )
 
 
-def message(post: Post) -> Message:
+def message(post: Post) -> Object:
     same_chat = post.reply_channel_id == post.channel_id
-    return Message(
+    return Object(
+        role=Role.entry,
+        kind="discord:message",
         id=post.id,
-        chat_id=post.channel_id,
+        parent=post.channel_id,
         content=post.text,
         author=post.sender.to_author(),
         reply_to=post.reply_message_id if same_chat else None,
@@ -107,7 +111,10 @@ async def backfill(source: Discord, scope: Scope) -> AsyncIterator[Snapshot]:
             if since is None or post.created_at >= since
         ]
         yield Snapshot(
-            chat=chat(channel), messages=messages, complete=True, created_since=since
+            container=chat(channel),
+            objects=messages,
+            complete=True,
+            created_since=since,
         )
 
 
@@ -116,14 +123,14 @@ async def refresh(source: Discord, event: Event, scope: Scope) -> Changes:
         return Changes.empty()
     match event.operation:
         case Operation.DELETE_CHAT:
-            return Changes.delete_chats(event.channel_id)
+            return Changes.delete(event.channel_id)
         case Operation.REFRESH_CHAT:
             return Changes.upsert(chat(await source.channel(event.channel_id)))
         case Operation.DELETE_MESSAGE | Operation.REFRESH_MESSAGE:
             if event.message_id is None:
                 raise ValueError("message events require a message ID")
             if event.operation == Operation.DELETE_MESSAGE:
-                return Changes.delete_messages(event.message_id)
+                return Changes.delete(event.message_id)
             post = await source.message(event.channel_id, event.message_id)
             if not scope.includes(post.channel_id, post.created_at):
                 return Changes.empty()

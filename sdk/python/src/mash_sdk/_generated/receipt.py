@@ -16,8 +16,8 @@ from pydantic import (
 )
 
 
-class ConnectorVersion(RootModel[Literal[1]]):
-    root: Literal[1] = 1
+class ConnectorVersion(RootModel[Literal[2]]):
+    root: Literal[2] = 2
 
 
 class Receipt(BaseModel):
@@ -33,7 +33,7 @@ class Receipt(BaseModel):
         ),
     ]
     gold_ready: StrictBool
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     silver_revision: Annotated[
         StrictInt,
         Field(

@@ -6,11 +6,7 @@ from datetime import datetime
 
 import orjson
 
-from ._generated.batch import (
-    ChangeUpsertChat,
-    ChangeUpsertDocument,
-    ChangeUpsertMessage,
-)
+from ._generated.batch import ChangeUpsertObject, Role
 from ._state import RecordRow, StateStore
 from .changes import Changes, Mutation
 from .codec import Contract, fingerprint
@@ -33,21 +29,11 @@ def unchanged_removed(
     """Drop upserts whose acknowledged fingerprint already matches."""
     kept: list[Mutation] = []
     for mutation in changes.mutations:
-        match mutation:
-            case ChangeUpsertChat():
-                kind = "chat"
-            case ChangeUpsertMessage():
-                kind = "message"
-            case ChangeUpsertDocument():
-                kind = "document"
-            case _:
-                kept.append(mutation)
-                continue
+        if not isinstance(mutation, ChangeUpsertObject):
+            kept.append(mutation)
+            continue
         known = store.fingerprints(
-            destination_id=destination_id,
-            source_id=source_id,
-            kind=kind,
-            ids=[mutation.id],
+            destination_id=destination_id, source_id=source_id, ids=[mutation.id]
         )
         if known.get(mutation.id) != fingerprint(mutation):
             kept.append(mutation)
@@ -69,26 +55,28 @@ def milliseconds(value: datetime | None) -> int | None:
     return int(value.timestamp() * 1000)
 
 
-def chat_plan(
+def container_plan(
     store: StateStore, destination_id: str, source_id: str, snapshot: Snapshot
 ) -> Plan:
-    changes = Changes.upsert(snapshot.chat, *snapshot.messages)
+    changes = Changes.upsert(snapshot.container, *snapshot.objects)
     if snapshot.complete:
         since = milliseconds(snapshot.created_since)
-        present = {message.id for message in snapshot.messages}
-        # Mash rejects deleting a message that a message in the same batch
-        # replies to; a parent the source still references is not deleted.
-        referenced = {m.reply_to for m in snapshot.messages if m.reply_to is not None}
+        present = {item.id for item in snapshot.objects}
+        # Mash rejects deleting an entry that another entry in the same batch
+        # replies to; a target the source still references is not deleted.
+        referenced = {
+            item.reply_to for item in snapshot.objects if item.reply_to is not None
+        }
         gone = sorted(
             row.id
-            for row in store.chat_messages(
+            for row in store.subtree_entries(
                 destination_id=destination_id,
                 source_id=source_id,
-                chat_id=snapshot.chat.id,
+                container_id=snapshot.container.id,
             )
             if omitted(row, present, since) and row.id not in referenced
         )
-        changes = changes + Changes.delete_messages(*gone)
+        changes = changes + Changes.delete(*gone)
     return Plan(unchanged_removed(store, destination_id, source_id, changes))
 
 
@@ -116,7 +104,7 @@ def document_plan(
     scopes = {
         mutation.id: scope
         for mutation in changes.mutations
-        if isinstance(mutation, ChangeUpsertDocument)
+        if isinstance(mutation, ChangeUpsertObject) and mutation.role == Role.document
     }
     store.assign_scope(
         destination_id=destination_id,
@@ -124,7 +112,7 @@ def document_plan(
         ids=sorted(present - scopes.keys()),
         scope=scope,
     )
-    return Plan(changes + Changes.delete_documents(*gone), scopes)
+    return Plan(changes + Changes.delete(*gone), scopes)
 
 
 def snapshot_plan(
@@ -135,7 +123,7 @@ def snapshot_plan(
 ) -> Plan:
     match snapshot:
         case Snapshot():
-            return chat_plan(store, destination_id, source_id, snapshot)
+            return container_plan(store, destination_id, source_id, snapshot)
         case DocumentSnapshot():
             return document_plan(store, destination_id, source_id, snapshot)
 
@@ -157,7 +145,11 @@ def batches(plan: Plan, contract: Contract) -> Iterator[Plan]:
 
 
 def subset(plan: Plan, mutations: Sequence[Mutation]) -> Plan:
-    ids = {m.id for m in mutations if isinstance(m, ChangeUpsertDocument)}
+    ids = {
+        m.id
+        for m in mutations
+        if isinstance(m, ChangeUpsertObject) and m.role == Role.document
+    }
     return Plan(
         Changes(tuple(mutations)),
         {id: scope for id, scope in plan.document_scopes.items() if id in ids},

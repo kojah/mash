@@ -64,11 +64,16 @@ server. Canonical silver is retained.
 
 Search results, chat matches and listed chats identify their origin with a tagged
 `source`: `{"provider": "codex"}` for native history or
-`{"connector": "<source_id>"}` for external connector records. Search results
-also carry `kind` (`message` or `document`). Native messages keep `role`;
-connector messages carry `author_kind` (`human`, `bot` or `unknown`) instead,
-and documents carry neither. The local gold schema is now version 2: existing
-local gold is recreated empty and rebuilt from silver by the next `mash index`.
+`{"connector": "<source_id>"}` for external connector records. Every result also
+carries `object`, its core role and its source's kind label (for example
+`{"role": "entry", "kind": "codex:message"}`), and `ancestors`: the containers
+and segments enclosing it, nearest first. Chat-level results group under an
+entry's nearest container, or a document on its own. Native messages keep
+`role`; connector entries carry `author_kind` (`human`, `bot` or `unknown`)
+instead, and documents carry neither. The local gold schema is now version 3 and
+silver version 48: existing local gold is rebuilt from silver by the next
+`mash index`, and silver from an earlier release crosses over through export and
+`import --keep-identity`.
 
 One-shot data commands emit one JSON value; watch mode emits newline-delimited
 results, and `mash mcp` serves the stdio protocol. `mash serve` runs the shared
@@ -687,20 +692,28 @@ machine's `providers` and `index` settings to the top level and optionally add
 ## External connectors
 
 Out-of-process connectors (see `sdk/python` and `connectors/`) deliver typed
-batches of chats, messages and standalone documents.
+batches of objects. Each object has a core `role`: a `container` (a channel,
+thread or pull request) groups results; a `segment` (such as a review) is a
+structural part of a container; an `entry` is searchable text with an author; a
+`document` is standalone text. A namespaced `kind` such as
+`discord:reply-thread` labels it, and a `parent` places it in the source's own
+hierarchy: an entry may own a thread container, for example. Ingestion enforces
+the role rules (only entries and documents carry text; entries and segments sit
+under a container; documents contain nothing; no parent or reply cycles); kind
+labels are not checked against a declared topology.
 `mash index --connector-batch PATH` commits a batch to local silver and returns a
 durable receipt with `gold_ready: false`; it loads no models. Records become
 searchable after the next `mash index` (or `index --rebuild-local-gold`), which
 indexes their text, embeds them with the configured model and recertifies local
 gold. Until then, local search reports gold as stale rather than omitting them.
 
-Connector results use namespaced anchors such as
-`connector#message#<source_id>#<id>`, `connector#document#<source_id>#<id>` and
-`connector#chat#<source_id>#<chat_id>`; pass them to `view`, `chat` filters and
-the history skill like native IDs. `view` shows a message with its chronological
-neighbours in the chat, or a document on its own. Connector attachments are
-source references, not captured files. `list-chats` includes connector chats
-unless a `provider` selection names native providers.
+Connector results use namespaced anchors `connector#<role>#<source_id>#<id>`,
+such as `connector#entry#discord:guild#message-1`; pass them to `view`, `chat`
+filters and the history skill like native IDs. `view` shows an entry with its
+chronological neighbours among the entries of its nearest container (segments
+included), or a document on its own. Connector attachments are source
+references, not captured files. `list-chats` lists connector containers, nested
+ones included, unless a `provider` selection names native providers.
 
 Connectors deliver to each destination they list: local silver, a node's shared
 silver (`POST /v1/connector-batches`, authenticated as that node), or both. Node

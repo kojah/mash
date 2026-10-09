@@ -24,8 +24,11 @@ struct Units {
     changed: Vec<(Unit, Evidence)>,
 }
 
+/// Covers what a point stores beyond the text: kind, group and ancestry.
 fn digest(unit: &Unit) -> String {
-    blake3::hash(unit.text.as_bytes()).to_hex().to_string()
+    blake3::hash(connector_gold::unit_digest_input(unit).as_bytes())
+        .to_hex()
+        .to_string()
 }
 
 impl Store {
@@ -84,12 +87,11 @@ impl Store {
                 for unit in connector_gold::silver_units(connection)? {
                     let value = digest(&unit);
                     if known.get(&unit.anchor) != Some(&value) {
-                        let evidence = connector_gold::evidence(
-                            connection,
-                            unit.kind,
-                            &unit.source_id,
-                            &unit.record_id,
-                        )?;
+                        let evidence =
+                            connector_gold::evidence(connection, &unit.source_id, &unit.record_id)?
+                                .ok_or_else(|| {
+                                    AppError::internal("connector object disappeared")
+                                })?;
                         changed.push((unit.clone(), evidence));
                     }
                     digests.insert(unit.anchor, value);
@@ -163,19 +165,21 @@ impl Store {
 }
 
 fn point(unit: &Unit, evidence: &Evidence, vector: Option<Vec<f64>>) -> ConnectorPoint {
+    let (group_created_at, group_updated_at) = evidence.group_times();
     ConnectorPoint {
         source_id: unit.source_id.clone(),
-        kind: unit.kind,
-        chat_anchor: unit.chat_anchor.clone(),
+        object: unit.object.clone(),
+        group_anchor: unit.group_anchor.clone(),
         created_at: unit.created_at,
         unit: ConnectorUnit {
             anchor: unit.anchor.clone(),
             text: unit.text.clone(),
-            content: evidence.content.clone(),
-            title: evidence.title.clone(),
-            author_kind: evidence.author,
-            chat_created_at: evidence.chat_created_at,
-            chat_updated_at: evidence.chat_updated_at,
+            content: evidence.content().to_owned(),
+            title: evidence.title().map(str::to_owned),
+            author_kind: evidence.author(),
+            chat_created_at: group_created_at,
+            chat_updated_at: group_updated_at,
+            ancestors: evidence.ancestors(&unit.source_id),
             generation: None,
         },
         vector,

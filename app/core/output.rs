@@ -34,7 +34,8 @@ pub(crate) fn serialize(
                 .map(|thread| Chat {
                     conversation_id: &thread.conversation_id,
                     source: &thread.source,
-                    kind: None,
+                    object: &thread.object,
+                    ancestors: &thread.ancestors,
                     node_id: Some(&thread.node_id),
                     metadata: metadata(&thread.metadata),
                     score: None,
@@ -67,7 +68,9 @@ struct Message<'a> {
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
     source: &'a crate::source::Source,
-    kind: crate::source::Kind,
+    object: &'a crate::source::ObjectType,
+    #[serde(skip_serializing_if = "<[crate::source::Ancestor]>::is_empty")]
+    ancestors: &'a [crate::source::Ancestor],
     node_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     role: Option<&'a crate::role::Role>,
@@ -124,9 +127,9 @@ struct Chat<'a> {
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
     source: &'a crate::source::Source,
-    /// Search results only; listed chats are never documents.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    kind: Option<crate::source::Kind>,
+    object: &'a crate::source::ObjectType,
+    #[serde(skip_serializing_if = "<[crate::source::Ancestor]>::is_empty")]
+    ancestors: &'a [crate::source::Ancestor],
     node_id: Option<&'a str>,
     #[serde(flatten)]
     metadata: ChatMetadata,
@@ -141,7 +144,8 @@ impl<'a> From<&'a ChatHit> for Chat<'a> {
         Self {
             conversation_id: &value.conversation_id,
             source: &value.source,
-            kind: Some(value.kind),
+            object: &value.object,
+            ancestors: &value.ancestors,
             node_id: value.node_id.as_deref(),
             metadata: metadata(&value.metadata),
             score: Some(value.score),
@@ -188,7 +192,8 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
                         id: &hit.id,
                         conversation_id: &hit.conversation_id,
                         source: &hit.source,
-                        kind: hit.kind,
+                        object: &hit.object,
+                        ancestors: &hit.ancestors,
                         node_id: hit.node_id.as_deref(),
                         role: hit.role.as_ref(),
                         author_kind: hit.author_kind,

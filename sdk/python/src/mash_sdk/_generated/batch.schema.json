@@ -69,66 +69,11 @@
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "A complete metadata replacement; omitted optional fields become unknown.",
-          "properties": {
-            "created_at": {
-              "description": "Unix milliseconds, or unknown. Never inferred from ingestion time.",
-              "format": "int64",
-              "type": [
-                "integer",
-                "null"
-              ]
-            },
-            "id": {
-              "$ref": "#/$defs/ConnectorId"
-            },
-            "metadata": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Metadata"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "op": {
-              "const": "upsert-chat",
-              "type": "string"
-            },
-            "title": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "updated_at": {
-              "format": "int64",
-              "type": [
-                "integer",
-                "null"
-              ]
-            },
-            "url": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "required": [
-            "op",
-            "id"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "A complete message replacement. Missing messages in a batch are untouched.",
+          "description": "A complete object replacement; omitted optional fields become unknown.\nWhich fields apply depends on `role`; see [`Object::validate`].",
           "properties": {
             "attachments": {
               "default": [],
-              "description": "References only; ingestion must not fetch URLs or execute attachments.",
+              "description": "References only; ingestion must not fetch URLs or execute attachments.\nEntries and documents only.",
               "items": {
                 "$ref": "#/$defs/Attachment"
               },
@@ -143,86 +88,15 @@
                 {
                   "type": "null"
                 }
-              ]
-            },
-            "chat_id": {
-              "$ref": "#/$defs/ConnectorId",
-              "description": "The chat containing this message; chat boundaries belong to the connector."
+              ],
+              "description": "Entries only."
             },
             "content": {
-              "type": "string"
-            },
-            "created_at": {
-              "format": "int64",
-              "type": [
-                "integer",
-                "null"
-              ]
-            },
-            "id": {
-              "$ref": "#/$defs/ConnectorId"
-            },
-            "metadata": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Metadata"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "op": {
-              "const": "upsert-message",
-              "type": "string"
-            },
-            "reply_to": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ConnectorId"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Parent/reply message identity within the same source."
-            },
-            "updated_at": {
-              "format": "int64",
-              "type": [
-                "integer",
-                "null"
-              ]
-            },
-            "url": {
+              "description": "Entries and documents only; required for them.",
               "type": [
                 "string",
                 "null"
               ]
-            }
-          },
-          "required": [
-            "op",
-            "id",
-            "chat_id",
-            "content"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "Standalone text, such as a note. Documents are not synthetic one-message chats.",
-          "properties": {
-            "attachments": {
-              "default": [],
-              "items": {
-                "$ref": "#/$defs/Attachment"
-              },
-              "maxItems": 32,
-              "type": "array"
-            },
-            "content": {
-              "type": "string"
             },
             "created_at": {
               "description": "Unix milliseconds, or unknown. Never inferred from ingestion time.",
@@ -235,6 +109,9 @@
             "id": {
               "$ref": "#/$defs/ConnectorId"
             },
+            "kind": {
+              "$ref": "#/$defs/ConnectorKind"
+            },
             "metadata": {
               "anyOf": [
                 {
@@ -246,8 +123,33 @@
               ]
             },
             "op": {
-              "const": "upsert-document",
+              "const": "upsert-object",
               "type": "string"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConnectorId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The containing object within this source; required for entries.\nDeleting a parent deletes its descendants."
+            },
+            "reply_to": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConnectorId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Entries only: the entry this replies to, within the same source."
+            },
+            "role": {
+              "$ref": "#/$defs/Role"
             },
             "title": {
               "type": [
@@ -272,52 +174,20 @@
           "required": [
             "op",
             "id",
-            "content"
+            "role",
+            "kind"
           ],
           "type": "object"
         },
         {
           "additionalProperties": false,
+          "description": "Deletes the object and every descendant.",
           "properties": {
             "id": {
               "$ref": "#/$defs/ConnectorId"
             },
             "op": {
-              "const": "delete-chat",
-              "type": "string"
-            }
-          },
-          "required": [
-            "op",
-            "id"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "id": {
-              "$ref": "#/$defs/ConnectorId"
-            },
-            "op": {
-              "const": "delete-message",
-              "type": "string"
-            }
-          },
-          "required": [
-            "op",
-            "id"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "id": {
-              "$ref": "#/$defs/ConnectorId"
-            },
-            "op": {
-              "const": "delete-document",
+              "const": "delete-object",
               "type": "string"
             }
           },
@@ -338,14 +208,48 @@
       "pattern": "^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
       "type": "string"
     },
+    "ConnectorKind": {
+      "maxLength": 97,
+      "minLength": 3,
+      "not": {
+        "pattern": "[^a-z0-9:-]"
+      },
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}:[a-z0-9][a-z0-9-]{0,63}$",
+      "type": "string"
+    },
     "ConnectorVersion": {
-      "const": 1,
+      "const": 2,
       "type": "integer"
     },
     "Metadata": {
       "additionalProperties": true,
       "description": "Deliberately opaque source-specific properties, never interpreted as instructions.\nCommon searchable fields belong to the typed records instead.",
       "type": "object"
+    },
+    "Role": {
+      "description": "What Mash may do with an object, whatever its source calls it.",
+      "oneOf": [
+        {
+          "const": "container",
+          "description": "Groups results and owns context, such as a chat, channel or thread.",
+          "type": "string"
+        },
+        {
+          "const": "segment",
+          "description": "A structural part of a container, such as a turn or review: it gives\ncontext and ancestry, but results still group under the container.",
+          "type": "string"
+        },
+        {
+          "const": "entry",
+          "description": "Searchable text with an author, such as a message or comment.",
+          "type": "string"
+        },
+        {
+          "const": "document",
+          "description": "Standalone searchable text, such as a note; never a parent.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

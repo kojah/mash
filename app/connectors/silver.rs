@@ -1,7 +1,7 @@
 //! Canonical connector records and transactional receipts in the common silver schema.
 //! No vectors, lexical indexes, provider plugins or external code execute here.
 
-use super::{Batch, Change, Chat, Document, Id, Message, Receipt, Version};
+use super::{Batch, Change, Id, Object, Receipt, Role, Version};
 use crate::storage::generated as sql;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use serde::{Serialize, de::DeserializeOwned};
@@ -93,42 +93,12 @@ impl Store {
         Ok(receipt)
     }
 
-    /// Fetch one canonical chat by source and identity; this is not search.
+    /// Fetch one canonical object by source and identity; this is not search.
     ///
     /// # Errors
     /// Returns an error for storage failures or malformed canonical rows.
-    pub fn chat(&self, source: &Id, id: &Id) -> Result<Option<Chat>, Error> {
-        sql::ConnectorChat::builder()
-            .source_id(source.as_str())
-            .id(id.as_str())
-            .build()
-            .query_opt(&self.connection)
-            .map_err(database)?
-            .map(|row| decode(&row.record))
-            .transpose()
-    }
-
-    /// Fetch one canonical message by source and identity.
-    ///
-    /// # Errors
-    /// Returns an error for storage failures or malformed canonical rows.
-    pub fn message(&self, source: &Id, id: &Id) -> Result<Option<Message>, Error> {
-        sql::ConnectorMessage::builder()
-            .source_id(source.as_str())
-            .id(id.as_str())
-            .build()
-            .query_opt(&self.connection)
-            .map_err(database)?
-            .map(|row| decode(&row.record))
-            .transpose()
-    }
-
-    /// Fetch one standalone canonical document by source and identity.
-    ///
-    /// # Errors
-    /// Returns an error for storage failures or malformed canonical rows.
-    pub fn document(&self, source: &Id, id: &Id) -> Result<Option<Document>, Error> {
-        sql::ConnectorDocument::builder()
+    pub fn object(&self, source: &Id, id: &Id) -> Result<Option<Object>, Error> {
+        sql::ConnectorObject::builder()
             .source_id(source.as_str())
             .id(id.as_str())
             .build()
@@ -179,23 +149,22 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
         .execute(transaction)
         .map_err(database)?;
     let mut changed = false;
-    // Parents can arrive later in the same batch. Create chats before messages.
-    for change in &batch.changes {
-        if let Change::UpsertChat(chat) = change {
-            changed |= sql::ConnectorPutChat::builder()
-                .source_id(batch.source_id.as_str())
-                .id(chat.id.as_str())
-                .record(&encode(chat)?)
-                .build()
-                .execute(transaction)
-                .map_err(database)?
-                > 0;
-        }
-    }
+    // Parents may arrive later in the batch; the edge constraint is deferred
+    // and the stored graph is checked once every change is applied.
     for change in &batch.changes {
         changed |= mutate(transaction, &batch.source_id, change)?;
     }
-    validate_stored_replies(transaction, batch)?;
+    let mut checked = BTreeSet::new();
+    for change in &batch.changes {
+        if let Change::UpsertObject(object) = change {
+            check_object(
+                transaction,
+                batch.source_id.as_str(),
+                object.id.as_str(),
+                &mut checked,
+            )?;
+        }
+    }
     let current = sql::ConnectorSilverRevision
         .query_one(transaction)
         .map_err(database)?
@@ -232,50 +201,39 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
     Ok(receipt)
 }
 
+pub(crate) fn role_name(role: Role) -> &'static str {
+    match role {
+        Role::Container => "container",
+        Role::Segment => "segment",
+        Role::Entry => "entry",
+        Role::Document => "document",
+    }
+}
+
+fn parse_role(role: &str) -> Result<Role, Error> {
+    match role {
+        "container" => Ok(Role::Container),
+        "segment" => Ok(Role::Segment),
+        "entry" => Ok(Role::Entry),
+        "document" => Ok(Role::Document),
+        _ => Err(Error::CorruptRecord),
+    }
+}
+
 fn mutate(transaction: &Transaction<'_>, source: &Id, change: &Change) -> Result<bool, Error> {
     let rows = match change {
-        Change::UpsertChat(_) => 0,
-        Change::UpsertMessage(message) => {
-            if sql::ConnectorChat::builder()
-                .source_id(source.as_str())
-                .id(message.chat_id.as_str())
-                .build()
-                .query_opt(transaction)
-                .map_err(database)?
-                .is_none()
-            {
-                return Err(Error::InvalidReferences);
-            }
-            sql::ConnectorPutMessage::builder()
-                .source_id(source.as_str())
-                .id(message.id.as_str())
-                .chat_id(message.chat_id.as_str())
-                .reply_to(message.reply_to.as_ref().map(Id::as_str))
-                .record(&encode(message)?)
-                .build()
-                .execute(transaction)
-                .map_err(database)?
-        }
-        Change::UpsertDocument(document) => sql::ConnectorPutDocument::builder()
+        Change::UpsertObject(object) => sql::ConnectorPutObject::builder()
             .source_id(source.as_str())
-            .id(document.id.as_str())
-            .record(&encode(document)?)
+            .id(object.id.as_str())
+            .role(role_name(object.role))
+            .parent_id(object.parent.as_ref().map(Id::as_str))
+            .reply_to(object.reply_to.as_ref().map(Id::as_str))
+            .record(&encode(object)?)
             .build()
             .execute(transaction)
             .map_err(database)?,
-        Change::DeleteChat { id } => sql::ConnectorDeleteChat::builder()
-            .source_id(source.as_str())
-            .id(id.as_str())
-            .build()
-            .execute(transaction)
-            .map_err(database)?,
-        Change::DeleteMessage { id } => sql::ConnectorDeleteMessage::builder()
-            .source_id(source.as_str())
-            .id(id.as_str())
-            .build()
-            .execute(transaction)
-            .map_err(database)?,
-        Change::DeleteDocument { id } => sql::ConnectorDeleteDocument::builder()
+        // Descendants go with it through the cascading parent edge.
+        Change::DeleteObject { id } => sql::ConnectorDeleteObject::builder()
             .source_id(source.as_str())
             .id(id.as_str())
             .build()
@@ -285,89 +243,94 @@ fn mutate(transaction: &Transaction<'_>, source: &Id, change: &Change) -> Result
     Ok(rows > 0)
 }
 
-type Completed = std::collections::BTreeMap<(String, String), BTreeSet<String>>;
-
-fn validate_stored_replies(transaction: &Transaction<'_>, batch: &Batch) -> Result<(), Error> {
-    let mut completed = Completed::new();
-    for change in &batch.changes {
-        let Change::UpsertMessage(message) = change else {
-            continue;
-        };
-        verify_reply(
-            transaction,
-            batch.source_id.as_str(),
-            message.chat_id.as_str(),
-            message.id.as_str(),
-            &mut completed,
-        )?;
-    }
-    Ok(())
-}
-
-fn verify_reply(
+/// The stored graph around one object: its parent exists and is not a document,
+/// segments and entries sit under a container, documents have no children, and
+/// neither the parent chain nor the reply chain loops. Reply targets may be
+/// outside the stored window, but stored ones must be entries.
+fn check_object(
     connection: &Connection,
     source: &str,
-    chat: &str,
-    message: &str,
-    completed: &mut Completed,
+    id: &str,
+    checked: &mut BTreeSet<(String, String)>,
 ) -> Result<(), Error> {
-    // Moving a parent cannot leave existing children in a different chat.
-    for child in sql::ConnectorChildren::builder()
-        .source_id(source)
-        .id(Some(message))
-        .build()
-        .query_many(connection)
-        .map_err(database)?
-    {
-        if child.chat_id != chat {
-            return Err(Error::InvalidReferences);
-        }
+    if !checked.insert((source.to_owned(), id.to_owned())) {
+        return Ok(());
     }
-    let completed = completed
-        .entry((source.to_owned(), chat.to_owned()))
-        .or_default();
-    let mut visited = BTreeSet::new();
-    let mut current = Some(message.to_owned());
-    while let Some(id) = current {
-        if completed.contains(&id) {
-            break;
-        }
-        if !visited.insert(id.clone()) {
+    let row = sql::ConnectorObject::builder()
+        .source_id(source)
+        .id(id)
+        .build()
+        .query_opt(connection)
+        .map_err(database)?
+        .ok_or(Error::InvalidReferences)?;
+    let role = parse_role(&row.role)?;
+    if role == Role::Document
+        && !sql::ConnectorChildren::builder()
+            .source_id(source)
+            .parent_id(Some(id))
+            .build()
+            .query_many(connection)
+            .map_err(database)?
+            .is_empty()
+    {
+        return Err(Error::InvalidReferences);
+    }
+    let mut visited = BTreeSet::from([id.to_owned()]);
+    let mut contained = false;
+    let mut current = row.parent_id;
+    while let Some(parent) = current {
+        if !visited.insert(parent.clone()) {
             return Err(Error::InvalidReferences);
         }
-        let edge = sql::ConnectorEdge::builder()
+        let parent = sql::ConnectorObject::builder()
             .source_id(source)
-            .id(&id)
+            .id(&parent)
             .build()
             .query_opt(connection)
-            .map_err(database)?;
-        let Some(edge) = edge else { break }; // The selected window may exclude a parent.
-        if edge.chat_id != chat {
+            .map_err(database)?
+            .ok_or(Error::InvalidReferences)?;
+        match parse_role(&parent.role)? {
+            Role::Document => return Err(Error::InvalidReferences),
+            Role::Container => {
+                contained = true;
+                break;
+            }
+            Role::Segment | Role::Entry => current = parent.parent_id,
+        }
+    }
+    if matches!(role, Role::Segment | Role::Entry) && !contained {
+        return Err(Error::InvalidReferences);
+    }
+    let mut visited = BTreeSet::from([id.to_owned()]);
+    let mut current = row.reply_to;
+    while let Some(target) = current {
+        if !visited.insert(target.clone()) {
             return Err(Error::InvalidReferences);
         }
-        current = edge.reply_to;
+        let Some(target) = sql::ConnectorObject::builder()
+            .source_id(source)
+            .id(&target)
+            .build()
+            .query_opt(connection)
+            .map_err(database)?
+        else {
+            break; // The stored window may exclude a reply target.
+        };
+        if parse_role(&target.role)? != Role::Entry {
+            return Err(Error::InvalidReferences);
+        }
+        current = target.reply_to;
     }
-    completed.extend(visited);
     Ok(())
 }
 
 pub(crate) fn validate_archive(connection: &Connection) -> Result<(), Error> {
-    let mut completed = Completed::new();
-    let mut statement = sql::ConnectorAllEdges
-        .prepare(connection)
-        .map_err(database)?;
-    let rows = statement
-        .query_map([], sql::ConnectorAllEdgesRow::from_row)
-        .map_err(database)?;
-    for row in rows {
-        let row = row.map_err(database)?;
-        verify_reply(
-            connection,
-            &row.source_id,
-            &row.chat_id,
-            &row.id,
-            &mut completed,
-        )?;
+    let mut checked = BTreeSet::new();
+    for row in sql::ConnectorAllObjects
+        .query_many(connection)
+        .map_err(database)?
+    {
+        check_object(connection, &row.source_id, &row.id, &mut checked)?;
     }
     Ok(())
 }

@@ -39,12 +39,14 @@ node has its own.
 
 ```python
 from pathlib import Path
-from mash_sdk import Changes, Chat, Connector, Destination, Document, Message
+from mash_sdk import Changes, Connector, Destination, Object, Role
 
 changes = Changes.upsert(
-    Chat(id="channel-1", title="Engineering"),
-    Message(id="message-1", chat_id="channel-1", content="Use Qdrant."),
-    Document(id="note-1", title="Architecture", content="Silver is canonical."),
+    Object(id="channel-1", role=Role.container, kind="slack:channel", title="Engineering"),
+    Object(id="message-1", role=Role.entry, kind="slack:message",
+           parent="channel-1", content="Use Qdrant."),
+    Object(id="note-1", role=Role.document, kind="notes:note",
+           title="Architecture", content="Silver is canonical."),
 )
 
 async def publish() -> None:
@@ -103,10 +105,12 @@ await connector.run(
   event. Journaled events left by an earlier run are refreshed on restart.
 - The state file keeps a ledger of what the destination acknowledged, updated
   in the same transaction as the receipt. Unchanged records are not resent.
-- Only `complete` snapshots delete by omission. A chat `Snapshot` deletes its
-  omitted messages created at or after `created_since`. Messages with unknown
-  creation time, and parents that a snapshot message still replies to, are
-  kept. A `DocumentSnapshot` deletes omitted documents that a complete snapshot
+- Only `complete` snapshots delete by omission. A `Snapshot` holds one
+  container and objects below it; it deletes omitted entries whose nearest
+  container is that container (entries under its segments included) created
+  at or after `created_since`. Nested containers, such as reply threads, are
+  their own scopes. Entries with unknown creation time, and targets that a
+  snapshot entry still replies to, are kept. A `DocumentSnapshot` deletes omitted documents that a complete snapshot
   delivered from scopes it now fully covers. Narrowing a scope never deletes
   what it excludes. Documents sent only through events or `send` are never
   deleted by omission.
@@ -120,8 +124,8 @@ version is rejected untouched; remove it to start over, and the next backfill
 resends records it cannot prove were delivered.
 
 Wire classes are generated from `app/connectors.rs`; do not edit `_generated`.
-The SDK's `Chat`, `Message`, and `Document` names alias the corresponding typed
-upsert records, whose operation tags have generated defaults. Opaque metadata
+The SDK's `Object` aliases the generated upsert record; `role` decides which of
+its fields apply, and Rust enforces those rules when it ingests a batch. Opaque metadata
 keeps JSON types rather than using `Any`.
 
 Run `make generate-python-models` to emit Rust JSON Schema and regenerate models

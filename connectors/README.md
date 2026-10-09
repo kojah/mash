@@ -6,9 +6,9 @@ specification, and each platform client is an injected protocol. The SDK in
 `sdk/python` now implements the models, local and shared delivery, and
 `Connector.run` (backfill diffs, event capture and debounce). Platform adapters
 and gold projection still need implementation.
-Obsidian and Apple Notes share the note-to-Document mapping in `notes.py`;
+Obsidian and Apple Notes share the note-to-document mapping in `notes.py`;
 their source readers are sketched in `obsidian.py` and `apple_notes.py`.
-`imessage.py` sketches Chat/Message mapping from a separate read-only SQLite
+`imessage.py` sketches container/entry mapping from a separate read-only SQLite
 reader. Native database readers and local attachment transport are not implemented.
 
 The platform adapter handles authentication, permissions, rate limits, pagination,
@@ -62,15 +62,17 @@ before these blueprints are production-ready.
 
 ## Data and delivery contract
 
-- Channels/issues are `Chat`s; their text and authors live on `Message`s.
-- Notes are standalone `Document`s with text, title, metadata, and attachments.
-  They do not require synthetic chats/messages. Documents must be searchable via
+- Every record is an `Object` with a core `role` (container, segment, entry or
+  document), a namespaced `kind` label and an optional `parent`.
+- Channels/issues are containers; their text and authors live on entries.
+- Notes are standalone documents with text, title, metadata, and attachments.
+  They do not require synthetic containers or entries. Documents must be searchable via
   gold and usable as direct evidence references alongside messages.
-- iMessage conversations are `Chat`s, with group participants in metadata and
+- iMessage conversations are containers, with group participants in metadata and
   sender identities on messages. Missing rows in a pruned local database are
   not automatically treated as deletions.
 - `github.py` covers both issues and PRs. A PR description, general discussion,
-  reviews, and inline review replies share one Chat. Review replies retain native
+  reviews, and inline review replies share one container. Review replies retain native
   parent links; file/diff location, review state and merge/branch details are metadata.
   Configure `item_kinds` to select issues, PRs, or both. The native adapter must
   reconcile the same PR appearing through the issues and pull-request APIs.

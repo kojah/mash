@@ -13,17 +13,9 @@ pub(crate) enum Record {
         source_id: crate::connectors::Id,
         revision: u64,
     },
-    ConnectorChat {
+    ConnectorObject {
         source_id: crate::connectors::Id,
-        chat: crate::connectors::Chat,
-    },
-    ConnectorMessage {
-        source_id: crate::connectors::Id,
-        message: crate::connectors::Message,
-    },
-    ConnectorDocument {
-        source_id: crate::connectors::Id,
-        document: crate::connectors::Document,
+        object: crate::connectors::Object,
     },
     ConnectorReceipt {
         fingerprint: String,
@@ -127,19 +119,9 @@ pub(crate) enum ScanState {
 impl Record {
     pub(crate) fn validate(&self) -> Result<(), crate::AppError> {
         match self {
-            Self::ConnectorChat { chat, .. } => crate::connectors::Change::UpsertChat(chat.clone())
+            Self::ConnectorObject { object, .. } => object
                 .validate()
-                .map_err(|_| crate::AppError::usage("invalid connector archive chat")),
-            Self::ConnectorMessage { message, .. } => {
-                crate::connectors::Change::UpsertMessage(message.clone())
-                    .validate()
-                    .map_err(|_| crate::AppError::usage("invalid connector archive message"))
-            }
-            Self::ConnectorDocument { document, .. } => {
-                crate::connectors::Change::UpsertDocument(document.clone())
-                    .validate()
-                    .map_err(|_| crate::AppError::usage("invalid connector archive document"))
-            }
+                .map_err(|_| crate::AppError::usage("invalid connector archive object")),
             Self::ConnectorReceipt { fingerprint, .. }
                 if fingerprint.len() != 64
                     || !fingerprint.bytes().all(|value| value.is_ascii_hexdigit()) =>

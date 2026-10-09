@@ -125,7 +125,7 @@ fn thread(out: &mut String, number: usize, value: &Chat<'_>) -> Result<(), serde
             &format!(
                 "  Message: {} · {} · {} · time (Unix ms): {}",
                 safe(hit.message_id),
-                crate::source::speaker(value.kind.unwrap_or_default(), hit.role, hit.author_kind),
+                crate::source::speaker(value.object.role, hit.role, hit.author_kind),
                 origin(hit.node_id, hit.lookup),
                 time(hit.created_at)
             ),
@@ -183,7 +183,7 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
                     &format!(
                         "  Chat: {} · role: {} · time (Unix ms): {}",
                         safe(hit.conversation_id),
-                        crate::source::speaker(hit.kind, hit.role, hit.author_kind),
+                        crate::source::speaker(hit.object.role, hit.role, hit.author_kind),
                         time(hit.created_at)
                     ),
                 );
@@ -433,7 +433,8 @@ fn list(out: &mut String, value: &crate::core::chats::Response) -> Result<(), se
             &Chat {
                 conversation_id: &row.conversation_id,
                 source: &row.source,
-                kind: None,
+                object: &row.object,
+                ancestors: &row.ancestors,
                 node_id: Some(&row.node_id),
                 metadata: super::metadata(&row.metadata),
                 score: None,

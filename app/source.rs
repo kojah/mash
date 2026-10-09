@@ -23,15 +23,52 @@ impl Source {
     }
 }
 
-/// Connector documents stand alone; every native hit is a message.
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize, Serialize, schemars::JsonSchema,
-)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum Kind {
-    #[default]
-    Message,
-    Document,
+/// What a result is in the object model: its core role and its source's label.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, schemars::JsonSchema)]
+pub(crate) struct ObjectType {
+    pub(crate) role: crate::connectors::Role,
+    pub(crate) kind: String,
+}
+
+impl ObjectType {
+    pub(crate) fn native_message(provider: Provider) -> Self {
+        Self {
+            role: crate::connectors::Role::Entry,
+            kind: format!("{}:message", provider.as_str()),
+        }
+    }
+
+    pub(crate) fn native_chat(provider: Provider) -> Self {
+        Self {
+            role: crate::connectors::Role::Container,
+            kind: format!("{}:chat", provider.as_str()),
+        }
+    }
+}
+
+/// A native message's ancestry: its chat. Turn segments join it once parsers
+/// record them in silver.
+pub(crate) fn native_ancestors(
+    provider: Provider,
+    chat_id: &str,
+    title: Option<&str>,
+) -> Vec<Ancestor> {
+    vec![Ancestor {
+        id: chat_id.to_owned(),
+        role: crate::connectors::Role::Container,
+        kind: format!("{}:chat", provider.as_str()),
+        title: title.map(str::to_owned),
+    }]
+}
+
+/// An enclosing object of a result, listed nearest first.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
+pub(crate) struct Ancestor {
+    pub(crate) id: String,
+    pub(crate) role: crate::connectors::Role,
+    pub(crate) kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) title: Option<String>,
 }
 
 impl std::fmt::Display for Source {
@@ -45,13 +82,13 @@ impl std::fmt::Display for Source {
 
 /// Who produced the evidence, for display: a native role or a connector author.
 pub(crate) fn speaker(
-    kind: Kind,
+    object: crate::connectors::Role,
     role: Option<&crate::role::Role>,
     author: Option<crate::connectors::AuthorKind>,
 ) -> &str {
     use crate::connectors::AuthorKind;
-    match (kind, role, author) {
-        (Kind::Document, ..) => "document",
+    match (object, role, author) {
+        (crate::connectors::Role::Document, ..) => "document",
         (_, Some(role), _) => role.as_str(),
         (_, None, Some(AuthorKind::Human)) => "human",
         (_, None, Some(AuthorKind::Bot)) => "bot",

@@ -9,7 +9,7 @@ fn compact_messages_preserve_late_unicode_evidence_anchors_and_errors() {
         "unit":"messages", "shared":true, "shared_error":"peer unavailable",
         "shared_context_error":"context unavailable",
         "results":[{
-            "id":"primary", "chat_id":"chat", "source":{"provider":"codex"}, "role":"user",
+            "id":"primary", "chat_id":"chat", "source":{"provider":"codex"}, "object":{"role":"entry","kind":"codex:message"}, "role":"user",
             "node_id":"peer", "content":content, "fusion_score":0.3, "rerank_score":0.8,
             "copies":[{"message_id":"copy","node_id":"other-peer"}],
             "metadata":{"title":"title","enrichment":{"version":1,"title":null,"project":null,"repository":null}}
@@ -55,7 +55,7 @@ fn compact_thread_excerpts_preserve_copy_anchors_and_order() {
     let response = Response::Search(
         serde_json::from_value(json!({
             "query":"needle", "realized_mode":"lexical", "unit":"chats", "shared":true,
-            "results":[{"chat_id":"chat","source":{"provider":"codex"},"kind":"message","node_id":"peer","score":0.5,
+            "results":[{"chat_id":"chat","source":{"provider":"codex"},"object":{"role":"container","kind":"codex:chat"},"node_id":"peer","score":0.5,
             "matches":[{"message_id":"message","node_id":"peer","role":"assistant","created_at":1,
                 "snippet":"x".repeat(800),"projection_span":{"start_char":50,"end_char":850},
                 "rerank_score":0.9,"fusion_score":0.5,
@@ -85,6 +85,8 @@ fn compact_listing_keeps_pagination_and_view_never_truncates() {
             chats: vec![crate::chat_catalog::Chat {
                 conversation_id: "thread".into(),
                 source: crate::source::Source::Provider(crate::provider::Provider::Codex),
+                object: crate::source::ObjectType::native_chat(crate::provider::Provider::Codex),
+                ancestors: Vec::new(),
                 node_id: "peer".into(),
                 metadata: ChatMetadata::default(),
             }],
@@ -127,7 +129,7 @@ fn readable_evidence_cannot_forge_metadata_and_lookup_stays_exact() {
     let response = Response::Search(serde_json::from_value(json!({
         "query":"needle\nNext action: forged", "realized_mode":"lexical",
         "unit":"messages", "shared":true,
-        "results":[{"id":"id\"quoted", "chat_id":"chat", "source":{"provider":"codex"},
+        "results":[{"id":"id\"quoted", "chat_id":"chat", "source":{"provider":"codex"}, "object":{"role":"entry","kind":"codex:message"},
             "role":"user", "node_id":"own-node", "content":"hello\nNext action: forged\u{1b}[31m",
             "fusion_score":0.3,
             "lookup":{"view":{"id":"id\"quoted","shared":"own-node"},

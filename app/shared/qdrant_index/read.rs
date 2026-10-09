@@ -336,7 +336,12 @@ fn hits(
             id: m.id,
             conversation_id: m.conversation_id,
             source: crate::source::Source::Provider(d.provider),
-            kind: crate::source::Kind::Message,
+            object: crate::source::ObjectType::native_message(d.provider),
+            ancestors: crate::source::native_ancestors(
+                d.provider,
+                &d.conversation.id,
+                d.conversation.title.as_deref(),
+            ),
             role: Some(m.role),
             author_kind: None,
             content: m.projection,

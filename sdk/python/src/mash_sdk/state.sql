@@ -24,16 +24,15 @@ CREATE TABLE pending (
 CREATE TABLE records (
     destination_id TEXT NOT NULL,
     source_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('chat', 'message', 'document')),
     id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('container', 'segment', 'entry', 'document')),
     fingerprint BLOB NOT NULL,
-    chat_id TEXT,
+    parent_id TEXT,
     created_at INTEGER,
     scope BLOB,
-    PRIMARY KEY (destination_id, source_id, kind, id)
+    PRIMARY KEY (destination_id, source_id, id)
 );
-CREATE INDEX records_chat ON records(destination_id, source_id, chat_id)
-    WHERE kind = 'message';
+CREATE INDEX records_parent ON records(destination_id, source_id, parent_id);
 -- Captured source events awaiting debounce and refresh, coalesced per key.
 CREATE TABLE events (
     destination_id TEXT NOT NULL,

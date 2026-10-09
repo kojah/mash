@@ -1,41 +1,49 @@
-//! Gold projection of connector silver: searchable messages and documents.
+//! Gold projection of connector objects: searchable entries and documents.
 //!
-//! Connector records have no native message rowid, provider or role. Each unit
+//! Connector objects have no native message rowid, provider or role. Each unit
 //! is keyed by a namespaced anchor, indexed for lexical search, and embedded
 //! once per generation. Units are synchronized from silver incrementally by
 //! content digest, so unchanged records keep their FTS rows and vectors.
 use super::generated as sql;
 use super::{SearchHit, Storage};
 use crate::AppError;
-use crate::connectors::{AuthorKind, Chat, Document, Message};
-use crate::source::{Kind, Source};
+use crate::connectors::{AuthorKind, Object, Role};
+use crate::source::{Ancestor, ObjectType, Source};
 use rusqlite::{Connection, params};
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 /// Every connector anchor starts with this; native message IDs never do.
 pub(crate) const ANCHOR_PREFIX: &str = "connector#";
 
-/// `connector#<kind>#<source_id>#<id>`. Connector IDs exclude `#`, so the
-/// anchor splits unambiguously.
-pub(crate) fn anchor(kind: &str, source_id: &str, id: &str) -> String {
-    format!("{ANCHOR_PREFIX}{kind}#{source_id}#{id}")
+pub(crate) fn role_name(role: Role) -> &'static str {
+    crate::connectors::silver::role_name(role)
 }
 
-/// The kind, source and record ID named by an anchor.
-pub(crate) fn parse_anchor(anchor: &str) -> Option<(&str, &str, &str)> {
-    let mut parts = anchor.strip_prefix(ANCHOR_PREFIX)?.splitn(3, '#');
-    Some((parts.next()?, parts.next()?, parts.next()?))
-}
-
-fn kind_name(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Message => "message",
-        Kind::Document => "document",
+fn parse_role(role: &str) -> Option<Role> {
+    match role {
+        "container" => Some(Role::Container),
+        "segment" => Some(Role::Segment),
+        "entry" => Some(Role::Entry),
+        "document" => Some(Role::Document),
+        _ => None,
     }
 }
 
-/// The text indexed and embedded for a unit. A chat or document title gives a
-/// short message context, much as native embeddings prefix the chat title.
+/// `connector#<role>#<source_id>#<id>`. Connector IDs exclude `#`, so the
+/// anchor splits unambiguously.
+pub(crate) fn anchor(role: Role, source_id: &str, id: &str) -> String {
+    format!("{ANCHOR_PREFIX}{}#{source_id}#{id}", role_name(role))
+}
+
+/// The role, source and object ID named by an anchor.
+pub(crate) fn parse_anchor(anchor: &str) -> Option<(Role, &str, &str)> {
+    let mut parts = anchor.strip_prefix(ANCHOR_PREFIX)?.splitn(3, '#');
+    Some((parse_role(parts.next()?)?, parts.next()?, parts.next()?))
+}
+
+/// The text indexed and embedded for a unit. A container or document title
+/// gives short context, much as native embeddings prefix the chat title.
 pub(crate) fn unit_text(title: Option<&str>, content: &str) -> String {
     match title.map(str::trim).filter(|title| !title.is_empty()) {
         Some(title) => format!("{title}\n{content}"),
@@ -46,29 +54,208 @@ pub(crate) fn unit_text(title: Option<&str>, content: &str) -> String {
 #[derive(Clone)]
 pub(crate) struct Unit {
     pub(crate) anchor: String,
-    pub(crate) kind: Kind,
+    pub(crate) object: ObjectType,
     pub(crate) source_id: String,
     pub(crate) record_id: String,
-    pub(crate) chat_anchor: String,
+    /// An entry's nearest container, or a document's own anchor.
+    pub(crate) group_anchor: String,
     pub(crate) created_at: Option<i64>,
     /// What is indexed and embedded; its digest decides when to re-index.
     pub(crate) text: String,
+    /// Every ancestor's identity, kind and title, so renaming or moving an
+    /// enclosing object changes the unit's digest too.
+    pub(crate) ancestry: String,
 }
 
-fn decode<T: serde::de::DeserializeOwned>(record: &str) -> Result<T, AppError> {
+fn decode(record: &str) -> Result<Object, AppError> {
     serde_json::from_str(record)
         .map_err(|_| AppError::database_data("stored connector record is invalid"))
 }
 
-/// A connector unit's evidence, hydrated from silver.
+/// A unit's evidence, hydrated from silver: the object and its ancestry.
 pub(crate) struct Evidence {
-    pub(crate) content: String,
-    pub(crate) title: Option<String>,
-    pub(crate) author: Option<AuthorKind>,
-    pub(crate) created_at: Option<i64>,
-    pub(crate) updated_at: Option<i64>,
-    pub(crate) chat_created_at: Option<i64>,
-    pub(crate) chat_updated_at: Option<i64>,
+    pub(crate) object: Object,
+    /// Enclosing objects, nearest first.
+    pub(crate) ancestors: Vec<(Role, Object)>,
+}
+
+impl Evidence {
+    /// The group a result belongs to: an entry's nearest container, or itself.
+    fn group(&self) -> Option<&Object> {
+        if self.object.role == Role::Entry {
+            self.ancestors
+                .iter()
+                .find(|(role, _)| *role == Role::Container)
+                .map(|(_, object)| object)
+        } else {
+            Some(&self.object)
+        }
+    }
+
+    pub(crate) fn title(&self) -> Option<&str> {
+        self.group().and_then(|group| group.title.as_deref())
+    }
+
+    pub(crate) fn content(&self) -> &str {
+        self.object.content.as_deref().unwrap_or_default()
+    }
+
+    pub(crate) fn author(&self) -> Option<AuthorKind> {
+        (self.object.role == Role::Entry).then(|| {
+            self.object
+                .author
+                .as_ref()
+                .map_or(AuthorKind::Unknown, |author| author.kind)
+        })
+    }
+
+    pub(crate) fn text(&self) -> String {
+        unit_text(self.title(), self.content())
+    }
+
+    pub(crate) fn object_type(&self) -> ObjectType {
+        ObjectType {
+            role: self.object.role,
+            kind: self.object.kind.as_str().to_owned(),
+        }
+    }
+
+    pub(crate) fn ancestors(&self, source_id: &str) -> Vec<Ancestor> {
+        self.ancestors
+            .iter()
+            .map(|(role, object)| Ancestor {
+                id: anchor(*role, source_id, object.id.as_str()),
+                role: *role,
+                kind: object.kind.as_str().to_owned(),
+                title: object.title.clone(),
+            })
+            .collect()
+    }
+
+    pub(crate) fn group_times(&self) -> (Option<i64>, Option<i64>) {
+        self.group()
+            .map_or((None, None), |group| (group.created_at, group.updated_at))
+    }
+}
+
+/// Load one object and walk its parents. Missing objects yield `None`.
+pub(crate) fn evidence(
+    connection: &Connection,
+    source_id: &str,
+    id: &str,
+) -> Result<Option<Evidence>, AppError> {
+    let load = |id: &str| {
+        sql::ConnectorObject::builder()
+            .source_id(source_id)
+            .id(id)
+            .build()
+            .query_opt(connection)
+            .map_err(AppError::database)
+    };
+    let Some(row) = load(id)? else {
+        return Ok(None);
+    };
+    let object = decode(&row.record)?;
+    let mut ancestors = Vec::new();
+    let mut current = row.parent_id;
+    // Silver rejects parent cycles; the bound only guards corrupt data.
+    while let Some(parent) = current {
+        if ancestors.len() > 256 {
+            return Err(AppError::database_data("connector ancestry is too deep"));
+        }
+        let row = load(&parent)?
+            .ok_or_else(|| AppError::database_data("connector ancestry is incomplete"))?;
+        let role = parse_role(&row.role)
+            .ok_or_else(|| AppError::database_data("stored connector role is invalid"))?;
+        ancestors.push((role, decode(&row.record)?));
+        current = row.parent_id;
+    }
+    Ok(Some(Evidence { object, ancestors }))
+}
+
+/// Every searchable unit that connector silver currently holds.
+pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppError> {
+    struct Row {
+        role: Role,
+        parent: Option<String>,
+        object: Object,
+    }
+    let mut objects = HashMap::new();
+    for row in sql::ConnectorSilverObjects
+        .query_many(connection)
+        .map_err(AppError::database)?
+    {
+        let role = parse_role(&row.role)
+            .ok_or_else(|| AppError::database_data("stored connector role is invalid"))?;
+        objects.insert(
+            (row.source_id, row.id),
+            Row {
+                role,
+                parent: row.parent_id,
+                object: decode(&row.record)?,
+            },
+        );
+    }
+    let mut units = Vec::new();
+    for ((source_id, id), row) in &objects {
+        let content = match (row.role, row.object.content.as_deref()) {
+            (Role::Entry | Role::Document, Some(content)) if !content.trim().is_empty() => content,
+            _ => continue,
+        };
+        let mut ancestry = String::new();
+        let mut current = row.parent.clone();
+        while let Some(parent) = current.take() {
+            let Some(ancestor) = objects.get(&(source_id.clone(), parent.clone())) else {
+                break;
+            };
+            // Writing to a String cannot fail.
+            let _ = writeln!(
+                ancestry,
+                "{}\0{}\0{}\0{}",
+                role_name(ancestor.role),
+                parent,
+                ancestor.object.kind.as_str(),
+                ancestor.object.title.as_deref().unwrap_or_default()
+            );
+            current.clone_from(&ancestor.parent);
+        }
+        let (group_anchor, title) = if row.role == Role::Entry {
+            // Silver guarantees a container ancestor and no cycles.
+            let mut current = row.parent.clone();
+            let mut found = None;
+            while let Some(parent) = current.take() {
+                let Some(ancestor) = objects.get(&(source_id.clone(), parent.clone())) else {
+                    break;
+                };
+                if ancestor.role == Role::Container {
+                    found = Some((
+                        anchor(Role::Container, source_id, &parent),
+                        ancestor.object.title.as_deref(),
+                    ));
+                    break;
+                }
+                current.clone_from(&ancestor.parent);
+            }
+            found.ok_or_else(|| AppError::database_data("connector entry has no container"))?
+        } else {
+            (anchor(row.role, source_id, id), row.object.title.as_deref())
+        };
+        units.push(Unit {
+            anchor: anchor(row.role, source_id, id),
+            object: ObjectType {
+                role: row.role,
+                kind: row.object.kind.as_str().to_owned(),
+            },
+            source_id: source_id.clone(),
+            record_id: id.clone(),
+            group_anchor,
+            created_at: row.object.created_at,
+            text: unit_text(title, content),
+            ancestry,
+        });
+    }
+    units.sort_by(|left, right| left.anchor.cmp(&right.anchor));
+    Ok(units)
 }
 
 impl Storage {
@@ -83,12 +270,15 @@ impl Storage {
             .map(|row| (row.anchor, (row.id, row.digest)))
             .collect::<HashMap<_, _>>();
         for unit in silver_units(&self.connection)? {
-            let digest = blake3::hash(unit.text.as_bytes()).as_bytes().to_vec();
+            let digest = blake3::hash(unit_digest_input(&unit).as_bytes())
+                .as_bytes()
+                .to_vec();
             match known.remove(&unit.anchor) {
                 Some((_, previous)) if previous == digest => {}
                 Some((id, _)) => {
                     sql::ConnectorUpdateUnit::builder()
-                        .chat_anchor(&unit.chat_anchor)
+                        .label(&unit.object.kind)
+                        .group_anchor(&unit.group_anchor)
                         .created_at(unit.created_at)
                         .digest(&digest)
                         .id(id)
@@ -106,10 +296,11 @@ impl Storage {
                 None => {
                     let id = sql::ConnectorInsertUnit::builder()
                         .anchor(&unit.anchor)
-                        .kind(kind_name(unit.kind))
+                        .role(role_name(unit.object.role))
+                        .label(&unit.object.kind)
                         .source_id(&unit.source_id)
                         .record_id(&unit.record_id)
-                        .chat_anchor(&unit.chat_anchor)
+                        .group_anchor(&unit.group_anchor)
                         .created_at(unit.created_at)
                         .digest(&digest)
                         .build()
@@ -241,34 +432,7 @@ impl Storage {
                     .ok_or_else(|| {
                         AppError::database_data("connector index references a missing unit")
                     })?;
-                let kind = unit_kind(&unit.kind);
-                let evidence = evidence(&self.connection, kind, &unit.source_id, &unit.record_id)?;
-                Ok(SearchHit {
-                    lookup: None,
-                    lexical_match: None,
-                    id: unit.anchor,
-                    conversation_id: unit.chat_anchor,
-                    source: Source::Connector(unit.source_id),
-                    kind,
-                    role: None,
-                    author_kind: evidence.author,
-                    content: evidence.content,
-                    created_at: evidence.created_at,
-                    metadata: crate::search_results::ChatMetadata {
-                        enrichment: None,
-                        title: evidence.title,
-                        project: None,
-                        repository: None,
-                        created_at: evidence.chat_created_at,
-                        updated_at: evidence.chat_updated_at.or(evidence.updated_at),
-                    },
-                    copies: Vec::new(),
-                    lexical_score: None,
-                    semantic_score: None,
-                    fusion_score: 0.0,
-                    rerank_score: None,
-                    node_id: None,
-                })
+                connector_hit(&self.connection, &unit.source_id, &unit.record_id)
             })
             .collect()
     }
@@ -287,16 +451,11 @@ impl Storage {
             .map_err(AppError::database)?
             .into_iter()
             .map(|row| {
-                let evidence = evidence(
-                    &self.connection,
-                    unit_kind(&row.kind),
-                    &row.source_id,
-                    &row.record_id,
-                )?;
-                Ok((
-                    row.id,
-                    unit_text(evidence.title.as_deref(), &evidence.content),
-                ))
+                let evidence = evidence(&self.connection, &row.source_id, &row.record_id)?
+                    .ok_or_else(|| {
+                        AppError::database_data("connector index references missing silver")
+                    })?;
+                Ok((row.id, evidence.text()))
             })
             .collect()
     }
@@ -339,202 +498,13 @@ impl Storage {
 impl Storage {
     /// The indexed text behind a connector anchor, for contextual reranking.
     pub(crate) fn connector_document(&self, anchor: &str) -> Result<String, AppError> {
-        let (kind, source_id, record_id) = parse_anchor(anchor)
+        let (_, source_id, id) = parse_anchor(anchor)
             .ok_or_else(|| AppError::database_data("invalid connector anchor"))?;
-        let kind = unit_kind(kind);
-        let evidence = evidence(&self.connection, kind, source_id, record_id)?;
-        Ok(unit_text(evidence.title.as_deref(), &evidence.content))
+        Ok(evidence(&self.connection, source_id, id)?
+            .ok_or_else(|| AppError::database_data("connector index references missing silver"))?
+            .text())
     }
-}
 
-pub(crate) fn unit_kind(kind: &str) -> Kind {
-    if kind == "document" {
-        Kind::Document
-    } else {
-        Kind::Message
-    }
-}
-
-/// Every searchable unit that connector silver currently holds.
-pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppError> {
-    let mut units = Vec::new();
-    for row in sql::ConnectorSilverMessages
-        .query_many(connection)
-        .map_err(AppError::database)?
-    {
-        let message: Message = decode(&row.message)?;
-        let chat: Chat = decode(&row.chat)?;
-        if message.content.trim().is_empty() {
-            continue;
-        }
-        units.push(Unit {
-            anchor: anchor("message", &row.source_id, message.id.as_str()),
-            kind: Kind::Message,
-            chat_anchor: anchor("chat", &row.source_id, message.chat_id.as_str()),
-            record_id: message.id.as_str().to_owned(),
-            created_at: message.created_at,
-            text: unit_text(chat.title.as_deref(), &message.content),
-            source_id: row.source_id,
-        });
-    }
-    for row in sql::ConnectorSilverDocuments
-        .query_many(connection)
-        .map_err(AppError::database)?
-    {
-        let document: Document = decode(&row.record)?;
-        if document.content.trim().is_empty() {
-            continue;
-        }
-        let own = anchor("document", &row.source_id, document.id.as_str());
-        units.push(Unit {
-            chat_anchor: own.clone(),
-            anchor: own,
-            kind: Kind::Document,
-            record_id: document.id.as_str().to_owned(),
-            created_at: document.created_at,
-            text: unit_text(document.title.as_deref(), &document.content),
-            source_id: row.source_id,
-        });
-    }
-    Ok(units)
-}
-
-/// A unit's display evidence, decoded from connector silver.
-pub(crate) fn evidence(
-    connection: &Connection,
-    kind: Kind,
-    source_id: &str,
-    record_id: &str,
-) -> Result<Evidence, AppError> {
-    let missing = || AppError::database_data("connector index references missing silver");
-    match kind {
-        Kind::Message => {
-            let row = sql::ConnectorMessageEvidence::builder()
-                .source_id(source_id)
-                .id(record_id)
-                .build()
-                .query_opt(connection)
-                .map_err(AppError::database)?
-                .ok_or_else(missing)?;
-            let message: Message = decode(&row.message)?;
-            let chat: Chat = decode(&row.chat)?;
-            Ok(Evidence {
-                content: message.content,
-                title: chat.title,
-                author: Some(
-                    message
-                        .author
-                        .map_or(AuthorKind::Unknown, |author| author.kind),
-                ),
-                created_at: message.created_at,
-                updated_at: message.updated_at,
-                chat_created_at: chat.created_at,
-                chat_updated_at: chat.updated_at,
-            })
-        }
-        Kind::Document => {
-            let row = sql::ConnectorDocumentEvidence::builder()
-                .source_id(source_id)
-                .id(record_id)
-                .build()
-                .query_opt(connection)
-                .map_err(AppError::database)?
-                .ok_or_else(missing)?;
-            let document: Document = decode(&row.record)?;
-            Ok(Evidence {
-                content: document.content,
-                title: document.title,
-                author: None,
-                created_at: document.created_at,
-                updated_at: document.updated_at,
-                chat_created_at: document.created_at,
-                chat_updated_at: document.updated_at,
-            })
-        }
-    }
-}
-
-/// A connector message with up to `context` chronological neighbours in its
-/// chat, or a document on its own. Unknown anchors yield nothing.
-pub(crate) fn view(
-    connection: &Connection,
-    anchor: &str,
-    context: u32,
-) -> Result<Vec<super::Message>, AppError> {
-    let Some((kind, source_id, record_id)) = parse_anchor(anchor) else {
-        return Ok(Vec::new());
-    };
-    match kind {
-        "document" => {
-            let Some(row) = sql::ConnectorDocumentEvidence::builder()
-                .source_id(source_id)
-                .id(record_id)
-                .build()
-                .query_opt(connection)
-                .map_err(AppError::database)?
-            else {
-                return Ok(Vec::new());
-            };
-            let document: Document = decode(&row.record)?;
-            Ok(vec![super::Message {
-                attachments: Vec::new(),
-                id: anchor.to_owned(),
-                ordinal: 0,
-                role: None,
-                author_kind: None,
-                content: unit_text(document.title.as_deref(), &document.content),
-                created_at: document.created_at,
-            }])
-        }
-        "message" => {
-            let Some(row) = sql::ConnectorMessageEvidence::builder()
-                .source_id(source_id)
-                .id(record_id)
-                .build()
-                .query_opt(connection)
-                .map_err(AppError::database)?
-            else {
-                return Ok(Vec::new());
-            };
-            let target: Message = decode(&row.message)?;
-            let messages = sql::ConnectorChatMessages::builder()
-                .source_id(source_id)
-                .chat_id(target.chat_id.as_str())
-                .build()
-                .query_many(connection)
-                .map_err(AppError::database)?;
-            let Some(position) = messages.iter().position(|row| row.id == record_id) else {
-                return Ok(Vec::new());
-            };
-            let context = usize::try_from(context).unwrap_or(usize::MAX);
-            let first = position.saturating_sub(context);
-            let last = position.saturating_add(context).min(messages.len() - 1);
-            messages[first..=last]
-                .iter()
-                .enumerate()
-                .map(|(offset, row)| {
-                    let message: Message = decode(&row.record)?;
-                    Ok(super::Message {
-                        attachments: Vec::new(),
-                        id: self::anchor("message", source_id, message.id.as_str()),
-                        ordinal: i64::try_from(first + offset).unwrap_or(i64::MAX),
-                        role: None,
-                        author_kind: Some(
-                            message
-                                .author
-                                .map_or(AuthorKind::Unknown, |author| author.kind),
-                        ),
-                        content: message.content,
-                        created_at: message.created_at,
-                    })
-                })
-                .collect()
-        }
-        _ => Ok(Vec::new()),
-    }
-}
-
-impl Storage {
     pub(crate) fn connector_view(
         &self,
         anchor: &str,
@@ -544,28 +514,174 @@ impl Storage {
     }
 }
 
-/// Connector chats as catalog rows, keyed by chat anchor.
+/// The digest covers kind, group and ancestry too, so moves and renames re-index.
+pub(crate) fn unit_digest_input(unit: &Unit) -> String {
+    format!(
+        "{}\0{}\0{}\0{}",
+        unit.object.kind, unit.group_anchor, unit.ancestry, unit.text
+    )
+}
+
+/// One connector object as a search hit with its ancestry.
+pub(crate) fn connector_hit(
+    connection: &Connection,
+    source_id: &str,
+    id: &str,
+) -> Result<SearchHit, AppError> {
+    let evidence = evidence(connection, source_id, id)?
+        .ok_or_else(|| AppError::database_data("connector index references missing silver"))?;
+    let (group_created_at, group_updated_at) = evidence.group_times();
+    let own = anchor(evidence.object.role, source_id, id);
+    let group = if evidence.object.role == Role::Entry {
+        evidence
+            .ancestors
+            .iter()
+            .find(|(role, _)| *role == Role::Container)
+            .map_or_else(
+                || own.clone(),
+                |(_, container)| anchor(Role::Container, source_id, container.id.as_str()),
+            )
+    } else {
+        own.clone()
+    };
+    Ok(SearchHit {
+        lookup: None,
+        lexical_match: None,
+        id: own,
+        conversation_id: group,
+        source: Source::Connector(source_id.to_owned()),
+        object: evidence.object_type(),
+        ancestors: evidence.ancestors(source_id),
+        role: None,
+        author_kind: evidence.author(),
+        content: evidence.content().to_owned(),
+        created_at: evidence.object.created_at,
+        metadata: crate::search_results::ChatMetadata {
+            enrichment: None,
+            title: evidence.title().map(str::to_owned),
+            project: None,
+            repository: None,
+            created_at: group_created_at,
+            updated_at: group_updated_at.or(evidence.object.updated_at),
+        },
+        copies: Vec::new(),
+        lexical_score: None,
+        semantic_score: None,
+        fusion_score: 0.0,
+        rerank_score: None,
+        node_id: None,
+    })
+}
+
+/// An entry with up to `context` chronological neighbours among the entries of
+/// its nearest container (segments included), or a document on its own.
+/// Unknown anchors yield nothing.
+pub(crate) fn view(
+    connection: &Connection,
+    target: &str,
+    context: u32,
+) -> Result<Vec<super::Message>, AppError> {
+    let Some((_, source_id, id)) = parse_anchor(target) else {
+        return Ok(Vec::new());
+    };
+    let Some(evidence) = evidence(connection, source_id, id)? else {
+        return Ok(Vec::new());
+    };
+    let message = |object: &Object, ordinal: usize, text: String| super::Message {
+        attachments: Vec::new(),
+        id: anchor(object.role, source_id, object.id.as_str()),
+        ordinal: i64::try_from(ordinal).unwrap_or(i64::MAX),
+        role: None,
+        author_kind: (object.role == Role::Entry).then(|| {
+            object
+                .author
+                .as_ref()
+                .map_or(AuthorKind::Unknown, |author| author.kind)
+        }),
+        content: text,
+        created_at: object.created_at,
+    };
+    match evidence.object.role {
+        Role::Document => Ok(vec![message(&evidence.object, 0, evidence.text())]),
+        Role::Container | Role::Segment => Ok(Vec::new()),
+        Role::Entry => {
+            let Some(container) = evidence.group() else {
+                return Ok(Vec::new());
+            };
+            let mut entries = Vec::new();
+            let mut pending = vec![container.id.as_str().to_owned()];
+            // Breadth-first over the container's subtree; silver has no cycles.
+            while let Some(parent) = pending.pop() {
+                for row in sql::ConnectorChildren::builder()
+                    .source_id(source_id)
+                    .parent_id(Some(parent.as_str()))
+                    .build()
+                    .query_many(connection)
+                    .map_err(AppError::database)?
+                {
+                    let object = decode(&row.record)?;
+                    // A nested container groups its own entries.
+                    if object.role != Role::Container {
+                        pending.push(row.id);
+                    }
+                    if object.role == Role::Entry {
+                        entries.push(object);
+                    }
+                }
+            }
+            entries.sort_by(|left, right| {
+                (left.created_at.is_none(), left.created_at, left.id.as_str()).cmp(&(
+                    right.created_at.is_none(),
+                    right.created_at,
+                    right.id.as_str(),
+                ))
+            });
+            let Some(position) = entries.iter().position(|entry| entry.id.as_str() == id) else {
+                return Ok(Vec::new());
+            };
+            let context = usize::try_from(context).unwrap_or(usize::MAX);
+            let first = position.saturating_sub(context);
+            let last = position.saturating_add(context).min(entries.len() - 1);
+            Ok(entries[first..=last]
+                .iter()
+                .enumerate()
+                .map(|(offset, entry)| {
+                    message(
+                        entry,
+                        first + offset,
+                        entry.content.clone().unwrap_or_default(),
+                    )
+                })
+                .collect())
+        }
+    }
+}
+
+/// Connector containers as catalog rows, keyed by container anchor.
 pub(crate) fn chats(
     connection: &Connection,
     node: &str,
 ) -> Result<Vec<crate::chat_catalog::Chat>, AppError> {
-    sql::ConnectorChats
+    sql::ConnectorContainers
         .query_many(connection)
         .map_err(AppError::database)?
         .into_iter()
         .map(|row| {
-            let chat: Chat = decode(&row.record)?;
+            let evidence = evidence(connection, &row.source_id, &row.id)?
+                .ok_or_else(|| AppError::database_data("connector container disappeared"))?;
             Ok(crate::chat_catalog::Chat {
-                conversation_id: anchor("chat", &row.source_id, chat.id.as_str()),
+                conversation_id: anchor(Role::Container, &row.source_id, &row.id),
+                object: evidence.object_type(),
+                ancestors: evidence.ancestors(&row.source_id),
                 source: Source::Connector(row.source_id),
                 node_id: node.into(),
                 metadata: crate::search_results::ChatMetadata {
                     enrichment: None,
-                    title: chat.title,
+                    title: evidence.object.title.clone(),
                     project: None,
                     repository: None,
-                    created_at: chat.created_at,
-                    updated_at: chat.updated_at,
+                    created_at: evidence.object.created_at,
+                    updated_at: evidence.object.updated_at,
                 },
             })
         })

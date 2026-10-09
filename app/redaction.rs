@@ -1,6 +1,16 @@
 mod detection;
 pub(crate) use detection::{projection, text};
 
+/// Ancestor titles are copies of container metadata and need the same masking.
+pub(crate) fn ancestors(ancestors: &mut [crate::source::Ancestor]) {
+    for title in ancestors
+        .iter_mut()
+        .filter_map(|ancestor| ancestor.title.as_mut())
+    {
+        *title = text(title);
+    }
+}
+
 pub(crate) fn metadata(metadata: &mut crate::search_results::ChatMetadata) {
     let mut changed = false;
     for value in [

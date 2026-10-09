@@ -145,6 +145,10 @@ pub(crate) struct Chat {
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) source: crate::source::Source,
+    pub(crate) object: crate::source::ObjectType,
+    /// Objects enclosing this container, nearest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) ancestors: Vec<crate::source::Ancestor>,
     pub(crate) node_id: String,
     #[serde(flatten)]
     pub(crate) metadata: ChatMetadata,

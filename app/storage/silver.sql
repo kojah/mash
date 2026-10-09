@@ -73,34 +73,28 @@ CREATE TABLE IF NOT EXISTS silver_state (
 INSERT OR IGNORE INTO silver_state(singleton) VALUES (1);
 
 -- Source-neutral canonical records submitted by out-of-process connectors.
--- JSON columns decode into the Rust Chat/Message/Document models; they preserve
--- opaque metadata and attachments without inventing agent roles or containers.
+-- JSON columns decode into the Rust Object model; they preserve opaque metadata
+-- and attachments without inventing agent roles.
 CREATE TABLE IF NOT EXISTS connector_sources (
     id TEXT PRIMARY KEY,
     revision TEXT NOT NULL
 ) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS connector_chats (
+-- One table for every object role; `record` decodes into the Rust Object model.
+-- Deleting an object deletes its descendants. Parents may arrive later in the
+-- same batch, so the edge is checked when the transaction commits.
+CREATE TABLE IF NOT EXISTS connector_objects (
     source_id TEXT NOT NULL REFERENCES connector_sources(id),
     id TEXT NOT NULL,
-    record TEXT NOT NULL,
-    PRIMARY KEY (source_id, id)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS connector_messages (
-    source_id TEXT NOT NULL,
-    id TEXT NOT NULL,
-    chat_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('container', 'segment', 'entry', 'document')),
+    parent_id TEXT,
     reply_to TEXT,
     record TEXT NOT NULL,
     PRIMARY KEY (source_id, id),
-    FOREIGN KEY (source_id, chat_id) REFERENCES connector_chats(source_id, id) ON DELETE CASCADE
+    FOREIGN KEY (source_id, parent_id) REFERENCES connector_objects(source_id, id)
+        ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 ) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS connector_messages_parent ON connector_messages(source_id, reply_to);
-CREATE TABLE IF NOT EXISTS connector_documents (
-    source_id TEXT NOT NULL REFERENCES connector_sources(id),
-    id TEXT NOT NULL,
-    record TEXT NOT NULL,
-    PRIMARY KEY (source_id, id)
-) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS connector_objects_parent ON connector_objects(source_id, parent_id);
+CREATE INDEX IF NOT EXISTS connector_objects_reply ON connector_objects(source_id, reply_to);
 -- Receipts are committed with the mutations they acknowledge. A replayed
 -- batch cannot apply again, nor reuse its identity for different contents.
 CREATE TABLE IF NOT EXISTS connector_receipts (

@@ -12,9 +12,10 @@ from mash_sdk import (
     Debounce,
     Delivery,
     Destination,
-    Document,
     DocumentSnapshot,
     Metadata,
+    Object,
+    Role,
 )
 
 from .common import File, milliseconds
@@ -50,8 +51,10 @@ class Notes(Protocol):
     def events(self, folders: Sequence[str]) -> AsyncIterator[Delivery[Event]]: ...
 
 
-def document(note: Note) -> Document:
-    return Document(
+def document(note: Note) -> Object:
+    return Object(
+        role=Role.document,
+        kind="notes:note",
         id=note.id,
         title=note.title,
         content=note.content,
@@ -80,7 +83,7 @@ async def refresh(source: Notes, event: Event, scope: Scope) -> Changes:
         return Changes.empty()
     if event.deleted:
         # Disappearance during file saves, moves, or failed DB reads is not proof.
-        return Changes.delete_documents(event.id)
+        return Changes.delete(event.id)
     note = await source.note(event.id)
     if not scope.includes(note.folder_id, note.created_at):
         return Changes.empty()

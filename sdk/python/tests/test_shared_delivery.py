@@ -5,13 +5,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mash_sdk import Changes, Connector, DeliveryError, Destination, Document
+from mash_sdk import Changes, Connector, DeliveryError, Destination
 from mash_sdk._state import StateStore
 from tests.fake_mash import TOKEN, TOKEN_ENV, Behaviour, serve
+from tests.objects import note
 
 
-def note(content: str) -> Changes:
-    return Changes.upsert(Document(id="note", content=content))
+def edit(content: str) -> Changes:
+    return Changes.upsert(note(id="note", content=content))
 
 
 class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
@@ -50,8 +51,8 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_sends_authenticated_json_and_orders_batches(self) -> None:
         async with self.connector() as connector:
-            (first,) = await connector.send(note("one"))
-            (second,) = await connector.send(note("two"))
+            (first,) = await connector.send(edit("one"))
+            (second,) = await connector.send(edit("two"))
         self.assertEqual((first.source_revision, second.source_revision), (1, 2))
         self.assertFalse(second.gold_ready)
         path, headers = self.server_state.requests[0]
@@ -66,7 +67,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.server_state.drop_after_commit = True
         async with self.connector() as connector:
             with self.assertRaises(DeliveryError) as raised:
-                await connector.send(note("one"))
+                await connector.send(edit("one"))
             self.assertTrue(raised.exception.retryable)
         self.assertTrue(self.pending(self.destination()))
         # Opening resumes the saved batch; the server replays its receipt.
@@ -84,7 +85,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
             # After the first failure, opening retries the saved batch itself.
             with self.assertRaises(DeliveryError) as raised:
                 async with self.connector() as connector:
-                    await connector.send(note("one"))
+                    await connector.send(edit("one"))
             message = str(raised.exception)
             self.assertIn(str(status), message)
             self.assertNotIn("PRIVATE-CANARY", message)
@@ -101,7 +102,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.server_state.redirect = True
         async with self.connector() as connector:
             with self.assertRaises(DeliveryError) as raised:
-                await connector.send(note("one"))
+                await connector.send(edit("one"))
         self.assertFalse(raised.exception.retryable)
         self.assertEqual(
             [path for path, _ in self.server_state.requests],
@@ -112,7 +113,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
         del os.environ[TOKEN_ENV]
         async with self.connector() as connector:
             with self.assertRaises(DeliveryError) as raised:
-                await connector.send(note("one"))
+                await connector.send(edit("one"))
         self.assertIn(TOKEN_ENV, str(raised.exception))
         self.assertFalse(raised.exception.retryable)
         self.assertEqual(self.server_state.requests, [])
@@ -121,7 +122,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.server_state.stall_seconds = 1
         async with self.connector(self.destination(timeout=0.2)) as connector:
             with self.assertRaises(DeliveryError) as raised:
-                await connector.send(note("one"))
+                await connector.send(edit("one"))
         self.assertTrue(raised.exception.retryable)
 
 

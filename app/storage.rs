@@ -97,8 +97,10 @@ pub(crate) struct SearchHit {
     #[serde(rename = "chat_id")]
     pub(crate) conversation_id: String,
     pub(crate) source: crate::source::Source,
-    #[serde(default)]
-    pub(crate) kind: crate::source::Kind,
+    pub(crate) object: crate::source::ObjectType,
+    /// Enclosing containers and segments, nearest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) ancestors: Vec<crate::source::Ancestor>,
     /// Native messages have a role; connector messages have an author kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) role: Option<crate::role::Role>,
