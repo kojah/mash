@@ -121,6 +121,23 @@ pub struct Chat {
     pub metadata: Option<Metadata>,
 }
 
+/// Standalone text, such as a note. Documents are not synthetic one-message chats.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Document {
+    pub id: Id,
+    pub title: Option<String>,
+    pub content: String,
+    pub url: Option<String>,
+    /// Unix milliseconds, or unknown. Never inferred from ingestion time.
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+    pub metadata: Option<Metadata>,
+    #[serde(default)]
+    #[schemars(length(max = 32))]
+    pub attachments: Vec<Attachment>,
+}
+
 /// Authorship is separate from agent dialogue roles.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -176,8 +193,10 @@ pub struct Attachment {
 pub enum Change {
     UpsertChat(Chat),
     UpsertMessage(Message),
+    UpsertDocument(Document),
     DeleteChat { id: Id },
     DeleteMessage { id: Id },
+    DeleteDocument { id: Id },
 }
 
 /// Transport-independent batch. Applications must validate decoded instances too.
@@ -260,6 +279,7 @@ impl Batch {
         }
         let mut messages = BTreeSet::new();
         let mut chats = BTreeSet::new();
+        let mut documents = BTreeSet::new();
         let mut deleted = BTreeSet::new();
         for change in &self.changes {
             change.validate()?;
@@ -282,6 +302,16 @@ impl Batch {
                 }
                 Change::DeleteMessage { id } => {
                     if !messages.insert(id) {
+                        return Err(Error::DuplicateMutation);
+                    }
+                }
+                Change::UpsertDocument(value) => {
+                    if !documents.insert(&value.id) {
+                        return Err(Error::DuplicateMutation);
+                    }
+                }
+                Change::DeleteDocument { id } => {
+                    if !documents.insert(id) {
                         return Err(Error::DuplicateMutation);
                     }
                 }
@@ -321,7 +351,18 @@ impl Change {
                 attachments(&value.attachments)?;
                 metadata(value.metadata.as_ref())
             }
-            Self::DeleteMessage { .. } | Self::DeleteChat { .. } => Ok(()),
+            Self::UpsertDocument(value) => {
+                text_field(value.title.as_deref())?;
+                if value.content.len() > MAX_CONTENT_BYTES {
+                    return Err(Error::FieldTooLarge);
+                }
+                url(value.url.as_deref())?;
+                attachments(&value.attachments)?;
+                metadata(value.metadata.as_ref())
+            }
+            Self::DeleteMessage { .. } | Self::DeleteChat { .. } | Self::DeleteDocument { .. } => {
+                Ok(())
+            }
         }
     }
 }
@@ -341,7 +382,10 @@ fn validate_replies(changes: &[Change]) -> Result<(), Error> {
             Change::DeleteMessage { id } => {
                 deleted_messages.insert(id);
             }
-            Change::UpsertChat(_) | Change::DeleteChat { .. } => {}
+            Change::UpsertChat(_)
+            | Change::DeleteChat { .. }
+            | Change::UpsertDocument(_)
+            | Change::DeleteDocument { .. } => {}
         }
     }
     for message in messages.values() {

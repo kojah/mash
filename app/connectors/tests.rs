@@ -288,3 +288,48 @@ fn a_channel_is_a_chat_with_workspace_details_in_metadata() {
         value["changes"][0]["metadata"]
     );
 }
+
+#[test]
+fn standalone_documents_own_text_metadata_and_attachments_without_chat_links() {
+    let mut value = example();
+    value["changes"] = json!([{
+        "op":"upsert-document", "id":"note-42", "title":"SQLite recovery",
+        "content":"Replay canonical silver into gold.", "created_at":1234,
+        "metadata":{"folder":"Architecture","tags":["storage"]},
+        "attachments":[{"id":"diagram", "name":"diagram.png", "media_type":"image/png",
+            "url":"https://notes.example/files/diagram"}]
+    }]);
+    let batch = decode(&value).unwrap();
+    let Change::UpsertDocument(document) = &batch.changes[0] else {
+        panic!("document fixture")
+    };
+    assert_eq!(document.content, "Replay canonical silver into gold.");
+    assert_eq!(document.attachments.len(), 1);
+    assert_eq!(
+        Batch::decode(&serde_json::to_vec(&batch).unwrap()).unwrap(),
+        batch
+    );
+    value["changes"][0]["chat_id"] = json!("invented-chat");
+    assert_eq!(decode(&value), Err(Error::InvalidJson));
+}
+
+#[test]
+fn document_mutations_are_bounded_and_use_a_separate_identity_namespace() {
+    let mut value = example();
+    value["changes"].as_array_mut().unwrap().push(json!({
+        "op":"upsert-document", "id":"message-1", "content":"Independent note"
+    }));
+    assert!(decode(&value).is_ok());
+    value["changes"].as_array_mut().unwrap().push(json!({
+        "op":"delete-document", "id":"message-1"
+    }));
+    assert_eq!(decode(&value), Err(Error::DuplicateMutation));
+    value["changes"].as_array_mut().unwrap().pop();
+    value["changes"][2]["content"] = json!("x".repeat(MAX_CONTENT_BYTES + 1));
+    assert_eq!(decode(&value), Err(Error::FieldTooLarge));
+    value["changes"][2]["content"] = json!("Valid content");
+    value["changes"][2]["metadata"] = json!({"blob":"x".repeat(MAX_METADATA_BYTES + 1)});
+    assert_eq!(decode(&value), Err(Error::MetadataTooLarge));
+    value["changes"][2] = json!({"op":"delete-document","id":"older-note"});
+    assert!(decode(&value).is_ok());
+}

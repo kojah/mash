@@ -2,11 +2,31 @@
 
 from collections.abc import Sequence
 
-from mash_sdk import MessageRef, SearchDocument, SilverSnapshot
+from mash_sdk import (
+    DocumentRef,
+    DocumentSilverSnapshot,
+    MessageRef,
+    SearchDocument,
+    SilverSnapshot,
+)
 
 
-async def project(snapshot: SilverSnapshot) -> Sequence[SearchDocument]:
-    """Publish one evidence-backed search document per nonempty message."""
+async def project(
+    snapshot: SilverSnapshot | DocumentSilverSnapshot,
+) -> Sequence[SearchDocument]:
+    """Publish evidence-backed gold for standalone documents and chat messages."""
+    if isinstance(snapshot, DocumentSilverSnapshot):
+        document = snapshot.document
+        return [
+            SearchDocument(
+                id=document.id,
+                text=f"{document.title or ''}\n\n{document.content}".strip(),
+                references=[
+                    DocumentRef(source_id=snapshot.source_id, document_id=document.id)
+                ],
+                metadata={"source_id": snapshot.source_id, "document_id": document.id},
+            )
+        ]
     return [
         SearchDocument(
             id=message.id,

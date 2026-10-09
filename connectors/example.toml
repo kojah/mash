@@ -13,6 +13,25 @@ history_days = 90
 quiet_seconds = 2
 max_wait_seconds = 10
 
+[obsidian]
+vault_path = "/path/to/vault"
+vault_id = "personal-vault"
+folders = ["Projects", "Research"]
+history_days = 90
+include_globs = ["**/*.md"]
+exclude_globs = [".obsidian/**", ".trash/**", ".git/**"]
+quiet_seconds = 2
+max_wait_seconds = 10
+
+[apple_notes]
+database_path = "/path/to/NoteStore.sqlite"
+account_scope = "personal-notes"
+folders = ["stable-notebook-id"]
+history_days = 90
+poll_seconds = 10
+quiet_seconds = 2
+max_wait_seconds = 10
+
 [discord]
 account_id = "stable-discord-source"
 channels = ["123456789012345678", "234567890123456789"]
@@ -24,5 +43,14 @@ max_wait_seconds = 10
 installation_scope = "stable-github-source"
 repositories = ["example/backend", "example/frontend"]
 history_days = 90
+quiet_seconds = 2
+max_wait_seconds = 10
+
+[imessage]
+database_path = "/path/to/chat.db"
+account_scope = "personal-imessage"
+chats = ["stable-native-chat-guid"]
+history_days = 90
+poll_seconds = 10
 quiet_seconds = 2
 max_wait_seconds = 10

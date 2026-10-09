@@ -61,15 +61,35 @@ class Message:
         attachments: Sequence[Attachment] = ...,
     ) -> None: ...
 
+class Document:
+    id: str
+    title: str | None
+    content: str
+    metadata: Metadata | None
+    def __init__(
+        self,
+        *,
+        id: str,
+        content: str,
+        title: str | None = ...,
+        url: str | None = ...,
+        created_at: int | None = ...,
+        updated_at: int | None = ...,
+        metadata: Metadata | None = ...,
+        attachments: Sequence[Attachment] = ...,
+    ) -> None: ...
+
 class Changes:
     @classmethod
     def empty(cls) -> Changes: ...
     @classmethod
-    def upsert(cls, *records: Chat | Message) -> Changes: ...
+    def upsert(cls, *records: Chat | Message | Document) -> Changes: ...
     @classmethod
     def delete_messages(cls, *ids: str) -> Changes: ...
     @classmethod
     def delete_chats(cls, *ids: str) -> Changes: ...
+    @classmethod
+    def delete_documents(cls, *ids: str) -> Changes: ...
 
 @dataclass(frozen=True)
 class Snapshot:
@@ -82,6 +102,15 @@ class Snapshot:
 
     # complete applies only to this time scope. Pagination must finish before
     # missing IDs can become deletions; older records remain untouched.
+
+@dataclass(frozen=True)
+class DocumentSnapshot:
+    """Authoritative enumeration of documents inside an explicit source scope."""
+
+    documents: Sequence[Document]
+    scope_ids: Sequence[str]
+    complete: bool
+    created_since: datetime | None = None
 
 @dataclass(frozen=True)
 class Debounce:
@@ -111,7 +140,7 @@ class Connector:
     async def run(
         self,
         *,
-        backfill: AsyncIterable[Snapshot],
+        backfill: AsyncIterable[Snapshot | DocumentSnapshot],
         events: AsyncIterable[Delivery[_T]],
         refresh: Callable[[_T], Awaitable[Changes]],
         debounce: Debounce,
@@ -125,16 +154,27 @@ class SilverSnapshot:
     messages: Sequence[Message]
 
 @dataclass(frozen=True)
+class DocumentSilverSnapshot:
+    source_id: str
+    revision: str
+    document: Document
+
+@dataclass(frozen=True)
 class MessageRef:
     source_id: str
     chat_id: str
     message_id: str
 
 @dataclass(frozen=True)
+class DocumentRef:
+    source_id: str
+    document_id: str
+
+@dataclass(frozen=True)
 class SearchDocument:
     id: str
     text: str
-    references: Sequence[MessageRef]
+    references: Sequence[MessageRef | DocumentRef]
     metadata: Metadata
 
 class Projector:
@@ -150,5 +190,8 @@ class Projector:
     async def run(
         self,
         *,
-        transform: Callable[[SilverSnapshot], Awaitable[Sequence[SearchDocument]]],
+        transform: Callable[
+            [SilverSnapshot | DocumentSilverSnapshot],
+            Awaitable[Sequence[SearchDocument]],
+        ],
     ) -> None: ...

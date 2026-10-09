@@ -4,7 +4,10 @@ These Slack, Discord, and GitHub Issues connectors describe the **desired API**.
 They are not runnable integrations yet: `api/mash_sdk/__init__.pyi` is a typing
 specification, and each platform client is an injected protocol. The Python SDK,
 platform adapters, and Rust ingestion endpoints still need implementation.
-Obsidian is deferred.
+Obsidian and Apple Notes share the note-to-Document mapping in `notes.py`;
+their source readers are sketched in `obsidian.py` and `apple_notes.py`.
+`imessage.py` sketches Chat/Message mapping from a separate read-only SQLite
+reader. Native database readers and local attachment transport are not implemented.
 
 The platform adapter handles authentication, permissions, rate limits, pagination,
 source text rendering, and event capture. Mash's SDK should handle durable pending
@@ -36,6 +39,9 @@ The history window uses message creation time, not edit time. On GitHub, old
 issues can still contain recent comments and must remain discoverable. Discord
 thread channels are separate chats and must be explicitly selected; native
 parent-channel/workspace/repository information is chat metadata.
+Note connectors select vault folders or stable notebook IDs. Notes with unknown
+creation time are excluded from a bounded creation-time window; use unbounded
+history to include them. Obsidian readers must not invent creation time from mtime.
 
 Rolling windows restrict what is newly ingested; they do not automatically purge
 previously imported history. Changing a scope must not silently delete excluded
@@ -47,6 +53,12 @@ before these blueprints are production-ready.
 ## Data and delivery contract
 
 - Channels/issues are `Chat`s; their text and authors live on `Message`s.
+- Notes are standalone `Document`s with text, title, metadata, and attachments.
+  They do not require synthetic chats/messages. Documents must be searchable via
+  gold and usable as direct evidence references alongside messages.
+- iMessage conversations are `Chat`s, with group participants in metadata and
+  sender identities on messages. Missing rows in a pruned local database are
+  not automatically treated as deletions.
 - Stable source IDs survive restarts and credential rotation. Native message
   IDs are preserved or deterministically namespaced. Slack timestamps stay strings.
 - Message reply links represent real same-chat relationships. Cross-chat
