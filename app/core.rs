@@ -5,6 +5,7 @@ use directories::ProjectDirs;
 use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 
+mod connector_ingestion;
 pub(crate) mod coverage;
 mod indexing;
 mod inspection;
@@ -38,6 +39,7 @@ async fn execute_admitted(
     use tracing::Instrument;
     let operation = match &request.operation {
         Operation::Index(_) => "index",
+        Operation::IngestConnector { .. } => "ingest_connector",
         Operation::ListThreads { .. } => "list_threads",
         Operation::Search { .. } => "search",
         Operation::View { .. } => "view",
@@ -184,6 +186,9 @@ async fn dispatch(
     models: &Path,
 ) -> Result<Response, AppError> {
     match command {
+        Operation::IngestConnector { batch_file } => connector_ingestion::run(database, batch_file)
+            .await
+            .map(Response::IngestConnector),
         Operation::ExportSilver { directory } => {
             let database = database.to_path_buf();
             let source_node = configuration

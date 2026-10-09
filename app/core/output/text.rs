@@ -332,6 +332,20 @@ pub(crate) fn render(
         Response::Status(value) => status(&mut out, &Status::from(value.as_ref()))?,
         Response::View(value) => operations::view(&mut out, value)?,
         Response::Index(value) => operations::index(&mut out, value)?,
+        Response::IngestConnector(value) => {
+            line(&mut out, "Mash connector ingestion — silver committed");
+            line(
+                &mut out,
+                &format!(
+                    "Source: {} · batch: {} · source revision: {} · silver revision: {} · gold ready: {}",
+                    safe(value.source_id.as_str()),
+                    safe(value.batch_id.as_str()),
+                    value.source_revision,
+                    value.silver_revision,
+                    value.gold_ready
+                ),
+            );
+        }
         Response::Forget(value) => {
             line(
                 &mut out,

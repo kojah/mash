@@ -51,6 +51,9 @@ enum Command {
     },
     /// Discover and index supported local histories.
     Index {
+        /// Commit an external connector batch to local silver; receipt reports gold readiness.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["watch", "full", "rebuild_local_gold", "provider", "since_days", "all_history"])]
+        connector_batch: Option<PathBuf>,
         /// Build local retrieval state from certified stored silver, offline.
         /// With --full, discard all local gold and replay it from silver.
         #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history"])]
@@ -279,6 +282,10 @@ impl Cli {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep the mechanical CLI-to-core command mapping together."
+    )]
     fn into_request(self) -> Result<Request, AppError> {
         let paths = self.paths();
         let operation = match self.command {
@@ -293,6 +300,10 @@ impl Cli {
                 shared,
                 diagnostics,
             },
+            Command::Index {
+                connector_batch: Some(batch_file),
+                ..
+            } => Operation::IngestConnector { batch_file },
             Command::Index {
                 rebuild_local_gold,
                 full,

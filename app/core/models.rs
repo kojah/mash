@@ -53,6 +53,9 @@ pub(crate) struct IndexRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) enum Operation {
     Index(IndexRequest),
+    IngestConnector {
+        batch_file: PathBuf,
+    },
     ListThreads {
         input: Box<crate::thread_catalog::Request>,
         local: bool,
@@ -116,6 +119,7 @@ pub(crate) enum Operation {
 #[serde(untagged)]
 pub(crate) enum Response {
     Index(IndexResponse),
+    IngestConnector(crate::connectors::Receipt),
     ListThreads(super::threads::Response),
     Search(SearchResponse),
     View(ViewResponse),

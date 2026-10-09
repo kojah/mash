@@ -10,6 +10,7 @@ mod test_support;
 use support::*;
 
 mod commands;
+mod connector_ingestion;
 mod configuration;
 mod export;
 mod index_destinations;

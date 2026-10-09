@@ -5,6 +5,12 @@ typed mutations, deterministic encoding, and private durable pending-batch state
 The connector-facing runner, network delivery, debounce, source adapters, and
 server ingestion remain under development. This package is not published.
 
+Mash now accepts a typed batch file through
+`mash --db PATH index --connector-batch BATCH_FILE`. This local entry point uses
+the shared application core and returns a durable silver receipt. It does not
+load models, publish to the shared service, or certify unbuilt gold. The SDK's
+forthcoming local destination will hide this command and temporary-file handling.
+
 ```python
 from mash_sdk import Changes, Chat, Document, Message
 

@@ -267,6 +267,7 @@ impl Mash {
         let _guard = if matches!(
             operation,
             Operation::Index(_)
+                | Operation::IngestConnector { .. }
                 | Operation::Forget { .. }
                 | Operation::ModelsInstall
                 | Operation::ExportSilver { .. }
