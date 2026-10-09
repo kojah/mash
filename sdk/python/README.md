@@ -1,16 +1,40 @@
 # Experimental Python connector SDK
 
 The runnable portion provides Rust-schema-generated Pydantic models, typed
-mutations, and a local connector client with durable delivery and restart
-recovery. The event runner, network delivery, debounce, source adapters, server
-ingestion and gold projection remain under development. This package is not
-published.
+mutations, and a connector client with durable local or shared delivery and
+restart recovery. The event runner, debounce, source adapters and gold
+projection remain under development. This package is not published.
 
 Mash now accepts a typed batch file through
 `mash --db PATH index --connector-batch BATCH_FILE`. This local entry point uses
 the shared application core and returns a durable silver receipt. It does not
 load models, publish to the shared service, or certify unbuilt gold. The SDK's
 local destination hides this command and temporary-file handling.
+
+The shared service accepts the same batch at `POST /v1/connector-batches` and
+commits it with its receipt in that node's shared silver. The node comes from
+the bearer token, never from the batch. Shared connector input is not
+searchable yet: until gold projection exists, the node reports gold as not
+current and group searches fail closed unless they exclude that node.
+`Destination.shared` takes the same `api_url`, `group_id`, `node_id` and
+`token_env` as Mash's `[shared]` configuration:
+
+```python
+Destination.shared(
+    api_url="https://mash.example",
+    group_id="personal",
+    node_id="laptop",
+    token_env="MASH_API_TOKEN",
+)
+```
+
+The token is read from the environment at each delivery and never stored. The
+group and node are sent so the server rejects a token issued for another node
+(HTTP 403) instead of committing under it. Redirects are not followed.
+Unreachable servers, timeouts, HTTP 408, 429 and 5xx are retryable. Other
+statuses need intervention. Ordering and checkpoints belong to the receiving
+node, so changing the token or `token_env` keeps saved progress, while each
+node has its own.
 
 ```python
 from pathlib import Path
@@ -75,6 +99,9 @@ transaction and receipt replay. The test fails if the specified binary is missin
 Set `MASH_CONNECTOR_MASH_BINARY` to the built `mash` binary for high-level client
 tests through the real public CLI. CI supplies both. Offline tests still run
 without these variables, but skipped tests do not prove delivery conformance.
+Shared-delivery tests use an in-process server that reproduces the ingress
+contract; the Rust server tests in `app/shared/server/tests/connectors.rs` own
+the server side, which needs Qdrant to run as `mash serve`.
 
 The bundled schema checks structural rules and SDK encoding checks budgets and
 duplicate mutations. Rust remains authoritative for its additional validation

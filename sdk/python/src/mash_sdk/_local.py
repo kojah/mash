@@ -4,19 +4,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from ._delivery import DeliveryError
 from ._receipts import MAX_RECEIPT_BYTES
-from .destination import Destination
+from .destination import Local
 
 
-class DeliveryError(RuntimeError):
-    """Delivery failed; the saved batch remains available for recovery."""
-
-    def __init__(self, message: str, *, retryable: bool) -> None:
-        super().__init__(message)
-        self.retryable = retryable
-
-
-def deliver(destination: Destination, payload: bytes, state_path: Path) -> bytes:
+def deliver_local(
+    local: Local, timeout: float, payload: bytes, state_path: Path
+) -> bytes:
     # Private files avoid putting canonical data in argv or shell interpolation.
     # Keeping stdout on disk also bounds RAM if a faulty executable prints more
     # than the receipt limit; stderr is discarded rather than exposing history.
@@ -26,13 +21,13 @@ def deliver(destination: Destination, payload: bytes, state_path: Path) -> bytes
         root = Path(directory)
         batch = root / "batch.json"
         batch.write_bytes(payload)
-        command = [destination.executable]
-        if destination.config is not None:
-            command.extend(["--config", str(destination.config)])
+        command = [local.executable]
+        if local.config is not None:
+            command.extend(["--config", str(local.config)])
         command.extend(
             [
                 "--db",
-                str(destination.database),
+                str(local.database),
                 "index",
                 "--connector-batch",
                 str(batch),
@@ -45,7 +40,7 @@ def deliver(destination: Destination, payload: bytes, state_path: Path) -> bytes
                     stdin=subprocess.DEVNULL,
                     stdout=output,
                     stderr=subprocess.DEVNULL,
-                    timeout=destination.timeout,
+                    timeout=timeout,
                     check=False,
                 )
             except subprocess.TimeoutExpired:

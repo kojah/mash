@@ -1,11 +1,11 @@
-"""Experimental typed connectors with durable local delivery."""
+"""Experimental typed connectors with durable local and shared delivery."""
 
+from ._delivery import DeliveryError
 from ._generated.batch import Attachment, Author, AuthorKind, Batch
 from ._generated.batch import ChangeUpsertChat as Chat
 from ._generated.batch import ChangeUpsertDocument as Document
 from ._generated.batch import ChangeUpsertMessage as Message
 from ._generated.receipt import Receipt
-from ._local import DeliveryError
 from ._types import Metadata
 from .changes import Changes
 from .codec import InvalidBatch, encode_batch

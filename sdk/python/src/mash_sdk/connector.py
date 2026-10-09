@@ -1,4 +1,4 @@
-"""High-level local delivery; revisions, identities and saved batches stay private."""
+"""High-level delivery; revisions, identities and saved batches stay private."""
 
 import asyncio
 import sqlite3
@@ -9,23 +9,25 @@ from typing import Self
 
 from pydantic import TypeAdapter, ValidationError
 
+from ._delivery import DeliveryError
 from ._generated.batch import Batch
 from ._generated.receipt import Receipt
-from ._local import DeliveryError, deliver
+from ._local import deliver_local
 from ._receipts import InvalidReceipt
+from ._shared import deliver_shared
 from ._state import PendingBatch, PendingExists, StateError, StateStore
 from .changes import Changes
 from .codec import InvalidBatch, encode_batch
-from .destination import Destination
+from .destination import Destination, Local, Shared
 
 
 class Connector:
-    """Send typed changes to local silver and recover unfinished delivery.
+    """Send typed changes to local or shared silver and recover unfinished delivery.
 
     Use an async context manager. Opening automatically resumes a saved batch.
     Cancellation of a caller does not cancel already accepted work; exit waits
     for outstanding delivery. This client does not yet implement event capture,
-    debounce, snapshot diffing, shared delivery, or gold projection.
+    debounce, snapshot diffing, or gold projection.
     """
 
     def __init__(
@@ -154,7 +156,14 @@ class Connector:
             ) from None
 
     def _deliver(self, store: StateStore, pending: PendingBatch) -> Receipt:
-        payload = deliver(self.destination, pending.payload, self.state_path)
+        timeout = self.destination.timeout
+        match self.destination.target:
+            case Local() as local:
+                payload = deliver_local(
+                    local, timeout, pending.payload, self.state_path
+                )
+            case Shared() as shared:
+                payload = deliver_shared(shared, timeout, pending.payload)
         return store.acknowledge(
             payload,
             source_id=self.source_id,
