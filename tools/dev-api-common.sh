@@ -44,6 +44,15 @@ check_api_http() {
     [[ "$status" == 401 ]]
 }
 
+# A shared silver database's schema version, read without writing to it.
+silver_version() {
+    python3 - "$1" <<'PYTHON'
+import pathlib, sqlite3, sys
+uri = pathlib.Path(sys.argv[1]).resolve().as_uri() + "?mode=ro"
+print(sqlite3.connect(uri, uri=True).execute("PRAGMA user_version").fetchone()[0])
+PYTHON
+}
+
 publication_identity() {
     jq -S '{nodes: [.nodes[] | {node_id, revision, last_synced_at, last_updated_at, silver_revision, source_silver}] | sort_by(.node_id)}' "$1"
 }

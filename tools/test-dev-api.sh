@@ -77,3 +77,44 @@ rg -qx -- --activate-query "$TEST_API_ARGUMENTS"
 [[ "$(ps -p "$(jq -r .pid "$TEST_API_POINTER")" -o sid=)" != "$(ps -p $$ -o sid=)" ]]
 bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
+# Across a silver schema change, opt-in retirement moves incompatible shared
+# silver aside so its node republishes, and keeps compatible silver in place.
+silver="$scratch/silver"
+mkdir -p "$silver/group"
+python3 - "$silver/group" <<'PYTHON'
+import sqlite3, sys
+for name, version in (("old", 46), ("current", 51)):
+    connection = sqlite3.connect(f"{sys.argv[1]}/{name}.sqlite3")
+    connection.execute(f"PRAGMA user_version = {version}")
+    connection.commit()
+PYTHON
+cat > "$scratch/release" <<'RELEASE'
+#!/usr/bin/env bash
+if [[ ${1:-} == --version ]]; then echo '{"version":"test","silver_schema":51}'; exit 0; fi
+printf '%s\n' "$@" > "$TEST_API_ARGUMENTS"
+while :; do sleep 0.1; done
+RELEASE
+cat > "$scratch/broken-release" <<'RELEASE'
+#!/usr/bin/env bash
+echo 'not a schema report'
+RELEASE
+chmod 755 "$scratch/release" "$scratch/broken-release"
+# A candidate that cannot report its schema fails after the old API stopped:
+# the old API restarts and every silver file stays where it was.
+previous_pid=$(jq -r .pid "$TEST_API_POINTER")
+if bash "$repository/tools/restart-dev-api.sh" "$scratch/broken-release" fixture.toml \
+    "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" \
+    --retire-incompatible-silver "$silver" 2>/dev/null; then
+    echo 'Expected a candidate without a schema report to roll back.' >&2
+    exit 1
+fi
+[[ -e "$silver/group/old.sqlite3" && -e "$silver/group/current.sqlite3" ]]
+restarted=$(jq -r .pid "$TEST_API_POINTER")
+[[ "$restarted" != "$previous_pid" && -e "/proc/$restarted" ]]
+report=$(bash "$repository/tools/restart-dev-api.sh" "$scratch/release" fixture.toml \
+    "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" \
+    --retire-incompatible-silver "$silver")
+[[ "$(jq -c .republish <<<"$report")" == '["old"]' ]]
+[[ "$(jq -r .publications_preserved <<<"$report")" == false ]]
+[[ ! -e "$silver/group/old.sqlite3" && -e "$silver/group/current.sqlite3" ]]
+[[ -e "$(jq -r .retired_silver "$TEST_API_POINTER")/group/old.sqlite3" ]]

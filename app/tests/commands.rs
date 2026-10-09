@@ -77,10 +77,9 @@ fn informational_flags_succeed_without_initializing_application_resources() {
         assert!(output.stderr.is_empty(), "{arguments:?}");
         let response: Value = serde_json::from_slice(&output.stdout).unwrap();
         if arguments.contains(&"--version") || arguments.contains(&"-V") {
-            assert_eq!(
-                response,
-                serde_json::json!({"version": env!("CARGO_PKG_VERSION")})
-            );
+            assert_eq!(response["version"], env!("CARGO_PKG_VERSION"));
+            assert!(response["silver_schema"].as_i64().is_some_and(|v| v > 0));
+            assert_eq!(response.as_object().unwrap().len(), 2);
         } else {
             assert_eq!(response.as_object().unwrap().len(), 1);
             let help = response["help"].as_str().unwrap();

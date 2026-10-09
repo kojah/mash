@@ -275,9 +275,18 @@ impl SearchArguments {
 #[serde(untagged)]
 pub(super) enum Response {
     Operation(Box<core::Response>),
-    Help { help: String },
-    Version { version: &'static str },
-    WatchStopped { watching: bool },
+    Help {
+        help: String,
+    },
+    /// The release and the silver schema it opens; deployment compares the
+    /// latter with an existing database's `user_version` before replacing it.
+    Version {
+        version: &'static str,
+        silver_schema: i64,
+    },
+    WatchStopped {
+        watching: bool,
+    },
     McpStopped,
 }
 
@@ -419,6 +428,7 @@ where
             clap::error::ErrorKind::DisplayVersion => {
                 return Ok(Response::Version {
                     version: env!("CARGO_PKG_VERSION"),
+                    silver_schema: crate::storage::schema::SCHEMA_VERSION,
                 });
             }
             _ => return Err(AppError::usage(error.to_string())),

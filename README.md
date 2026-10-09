@@ -215,7 +215,13 @@ the new release using `mash import --keep-identity`, which continues the node's
 shared identity; `tools/upgrade-local-index.sh` does exactly this and is a no-op
 when the schema is unchanged. Then rebuild gold with
 `mash index --rebuild-local-gold`. The shared server never migrates either: an
-empty silver directory is refilled by node publications and `--replay-gold`. See the
+empty silver directory is refilled by node publications and `--replay-gold`.
+`mash --version` reports the silver schema a release opens (`silver_schema`).
+For development fleets, `tools/restart-dev-api.sh --retire-incompatible-silver
+DIR` moves node databases the new server cannot open into its deployment log
+and lists those nodes under `republish`. Their nodes then republish on their
+next refresh. `tools/upgrade-remote-index.sh` runs the local upgrade on a
+remote node before its binary is replaced. See the
 [history pipeline](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/history-pipeline.md) for layer ownership, storage schemas
 and recovery behavior.
 
