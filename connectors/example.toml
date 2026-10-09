@@ -1,0 +1,28 @@
+# Proposed configuration, not a currently supported Mash config file.
+# Credentials belong in environment variables/secret stores, not this file.
+
+[destination]
+kind = "local"
+# Shared alternative: kind = "shared", url = "https://mash.example",
+# token_env = "MASH_CONNECTOR_TOKEN", node_id = "laptop"
+
+[slack]
+workspace_id = "T0123456789"
+channels = ["C0123456789", "C9876543210"]
+history_days = 90
+quiet_seconds = 2
+max_wait_seconds = 10
+
+[discord]
+account_id = "stable-discord-source"
+channels = ["123456789012345678", "234567890123456789"]
+history_days = 90
+quiet_seconds = 2
+max_wait_seconds = 10
+
+[github_issues]
+installation_scope = "stable-github-source"
+repositories = ["example/backend", "example/frontend"]
+history_days = 90
+quiet_seconds = 2
+max_wait_seconds = 10
