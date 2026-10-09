@@ -2459,6 +2459,8 @@ pub struct SearchHitRow {
     pub conversation_created_at: Option<i64>,
     pub conversation_updated_at: Option<i64>,
     pub enrichment: Option<String>,
+    pub kind: String,
+    pub parent_storage_id: Option<i64>,
 }
 impl SearchHitRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -2475,6 +2477,8 @@ impl SearchHitRow {
             conversation_created_at: row.get(9)?,
             conversation_updated_at: row.get(10)?,
             enrichment: row.get(11)?,
+            kind: row.get(12)?,
+            parent_storage_id: row.get(13)?,
         })
     }
 }
@@ -2483,7 +2487,8 @@ pub struct SearchHit {
 }
 impl SearchHit {
     pub const QUERY: &'static str = r"SELECT m.id,m.conversation_id,c.source AS provider,m.role,COALESCE(m.search_projection,m.content) AS content,
-m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment
+m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment,
+m.kind,m.parent_storage_id
 FROM objects m JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
 LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id WHERE m.storage_id=?1";
     pub fn query_str(&self) -> &str {
@@ -10564,5 +10569,85 @@ impl<'a> NativeChatIdsBuilder<'a, ()> {
     pub fn build(self) -> NativeChatIds {
         let () = self.fields;
         NativeChatIds {}
+    }
+}
+pub struct ObjectAncestorRow {
+    pub id: String,
+    pub object_role: String,
+    pub kind: String,
+    pub title: Option<String>,
+    pub parent_storage_id: Option<i64>,
+}
+impl ObjectAncestorRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            object_role: row.get(1)?,
+            kind: row.get(2)?,
+            title: row.get(3)?,
+            parent_storage_id: row.get(4)?,
+        })
+    }
+}
+pub struct ObjectAncestor {
+    storage_id: i64,
+}
+impl ObjectAncestor {
+    pub const QUERY: &'static str =
+        r"SELECT id,object_role,kind,title,parent_storage_id FROM objects WHERE storage_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ObjectAncestor {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ObjectAncestorRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ObjectAncestorRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ObjectAncestorRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ObjectAncestorRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.storage_id,)
+    }
+}
+impl ObjectAncestor {
+    pub const fn builder() -> ObjectAncestorBuilder<'static, ((),)> {
+        ObjectAncestorBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ObjectAncestorBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ObjectAncestorBuilder<'a, ((),)> {
+    pub fn storage_id(self, storage_id: i64) -> ObjectAncestorBuilder<'a, (i64,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ObjectAncestorBuilder {
+            fields: (storage_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ObjectAncestorBuilder<'a, (i64,)> {
+    pub fn build(self) -> ObjectAncestor {
+        let (storage_id,) = self.fields;
+        ObjectAncestor { storage_id }
     }
 }

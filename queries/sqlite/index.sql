@@ -92,7 +92,8 @@ WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(con
 
 -- name: SearchHit :one
 SELECT m.id,m.conversation_id,c.source AS provider,m.role,COALESCE(m.search_projection,m.content) AS content,
-m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment
+m.created_at,c.title,c.project,c.repository,c.created_at AS conversation_created_at,c.updated_at AS conversation_updated_at,e.evidence AS enrichment,
+m.kind,m.parent_storage_id
 FROM objects m JOIN objects c ON c.origin='provider' AND c.object_role='container' AND c.id=m.conversation_id
 LEFT JOIN conversation_enrichment e ON e.conversation_id=c.id WHERE m.storage_id=?1;
 
@@ -402,3 +403,6 @@ DELETE FROM objects WHERE origin='provider' AND object_role='segment' AND id=sql
 
 -- name: NativeChatIds :many
 SELECT id FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id;
+
+-- name: ObjectAncestor :one
+SELECT id,object_role,kind,title,parent_storage_id FROM objects WHERE storage_id=sqlc.arg(storage_id);

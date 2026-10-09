@@ -136,3 +136,27 @@ fn thread_request_bounds_and_enums_reject_invalid_external_values() {
     }
     Request::default().validate().unwrap();
 }
+
+#[test]
+fn kind_selection_lists_only_matching_containers() {
+    let mut collector = Collector::new(Request {
+        kind: vec!["slack:channel".into()],
+        ..Default::default()
+    })
+    .unwrap();
+    collector.push(row("native", Some(1)));
+    let mut channel = row("channel", Some(2));
+    channel.source = crate::source::Source::Connector("slack:team".into());
+    channel.object = crate::source::ObjectType {
+        role: crate::connectors::Role::Container,
+        kind: "slack:channel".into(),
+    };
+    collector.push(channel);
+    let page = collector.finish();
+    let ids: Vec<_> = page
+        .chats
+        .iter()
+        .map(|chat| chat.conversation_id.as_str())
+        .collect();
+    assert_eq!(ids, ["channel"]);
+}

@@ -377,3 +377,51 @@ fn connector_vectors_join_native_dense_candidates_by_cosine() {
             .all(|hit| hit.source != Source::Connector("github:org".into()))
     );
 }
+
+#[test]
+fn kind_filters_and_ancestry_cover_native_and_connector_objects() {
+    let root = tempfile::tempdir().unwrap();
+    let path = database(root.path());
+    project(&path);
+    let reader = Storage::open_lexical(&path).unwrap();
+    let search = |kind: &[&str]| {
+        let mut found = reader
+            .search_filtered(
+                "zeppelin",
+                10,
+                None,
+                None,
+                Some(&scope(Selection {
+                    kind: kind.iter().map(|kind| (*kind).to_owned()).collect(),
+                    ..Selection::default()
+                })),
+            )
+            .unwrap();
+        found.sort_by(|left, right| left.id.cmp(&right.id));
+        found
+    };
+    assert_eq!(ids(&search(&["codex:message"])), ["native"]);
+    assert_eq!(ids(&search(&["obsidian:note"])), [DOCUMENT]);
+    assert_eq!(
+        ids(&search(&["codex:message", "github:review-comment"])),
+        [MESSAGE, "native"]
+    );
+    assert!(search(&["slack:message"]).is_empty());
+
+    // A native message sits under its derived turn, then its chat.
+    let native = search(&["codex:message"]).remove(0);
+    assert_eq!(native.object.kind, "codex:message");
+    let lineage: Vec<_> = native
+        .ancestors
+        .iter()
+        .map(|ancestor| (ancestor.role, ancestor.kind.as_str()))
+        .collect();
+    assert_eq!(
+        lineage,
+        [
+            (crate::connectors::Role::Segment, "codex:turn"),
+            (crate::connectors::Role::Container, "codex:chat"),
+        ]
+    );
+    assert_eq!(native.ancestors[1].id, native.conversation_id);
+}

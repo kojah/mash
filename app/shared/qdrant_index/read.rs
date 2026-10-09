@@ -100,6 +100,7 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         F::Repository(values) => ("repository", values.clone()),
         // Native points carry no source_id, so they never match.
         F::Source(values) => ("source_id", values.clone()),
+        F::Kind(values) => return kind_condition(values),
     };
     if field.1.is_empty() {
         api::impossible()
@@ -107,6 +108,25 @@ fn condition(input: &crate::search_filter::Filter) -> api::Condition {
         api::matches(field.0, field.1)
     }
 }
+/// Connector points record their kind; a native point's kind follows from
+/// its provider, so stored points need no rewrite.
+fn kind_condition(values: &[String]) -> api::Condition {
+    let providers: Vec<String> = values
+        .iter()
+        .filter_map(|kind| kind.strip_suffix(":message"))
+        .filter(|provider| provider.parse::<crate::provider::Provider>().is_ok())
+        .map(str::to_owned)
+        .collect();
+    let mut should = vec![api::matches("object.kind", values.to_vec())];
+    if !providers.is_empty() {
+        should.push(api::matches("provider", providers));
+    }
+    api::Condition::Nested(api::Filter {
+        should,
+        ..api::Filter::default()
+    })
+}
+
 pub(super) fn search_filter(
     input: &protocol::Search,
     active: &BTreeSet<String>,
@@ -357,4 +377,23 @@ fn hits(
         });
     }
     Ok(output)
+}
+
+#[cfg(test)]
+mod kind_tests {
+    #[test]
+    fn kinds_match_connector_payloads_and_native_providers() {
+        let condition = super::kind_condition(&[
+            "codex:message".to_owned(),
+            "slack:message".to_owned(),
+            "codex:chat".to_owned(),
+        ]);
+        assert_eq!(
+            serde_json::to_value(condition).unwrap(),
+            serde_json::json!({"should": [
+                {"key": "object.kind", "match": {"any": ["codex:message", "slack:message", "codex:chat"]}},
+                {"key": "provider", "match": {"any": ["codex"]}},
+            ]})
+        );
+    }
 }

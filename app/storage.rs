@@ -26,6 +26,7 @@ mod claude_sources;
 mod enrichment;
 pub(crate) mod export;
 mod indexing;
+pub(crate) mod objects;
 pub(crate) mod publication;
 mod silver_state;
 pub(crate) mod turns;

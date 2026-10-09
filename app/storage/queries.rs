@@ -186,7 +186,7 @@ impl Storage {
         let mut hits = rows
             .map(|row| {
                 let (row, score) = row.map_err(AppError::database)?;
-                let mut hit = search_hit(row)?;
+                let mut hit = search_hit(&self.connection, row)?;
                 hit.lexical_score = Some(score);
                 hit.lexical_match = plan.evidence(&crate::redaction::text(&hit.content), mode);
                 Ok(hit)
@@ -222,7 +222,7 @@ impl Storage {
             let hit = hit.ok_or_else(|| {
                 AppError::database_data("semantic index references a missing message")
             })?;
-            hits.push(search_hit(hit)?);
+            hits.push(search_hit(&self.connection, hit)?);
         }
         Ok(hits)
     }
@@ -395,18 +395,20 @@ fn merge_lexical(
     merged
 }
 
-pub(super) fn search_hit(row: sql::SearchHitRow) -> Result<SearchHit, AppError> {
+pub(super) fn search_hit(
+    connection: &rusqlite::Connection,
+    row: sql::SearchHitRow,
+) -> Result<SearchHit, AppError> {
     let provider: crate::provider::Provider = row.provider.parse()?;
     Ok(SearchHit {
-        ancestors: crate::source::native_ancestors(
-            provider,
-            &row.conversation_id,
-            row.title.as_deref(),
-        ),
+        ancestors: super::objects::ancestors(connection, row.parent_storage_id)?,
         id: row.id,
         conversation_id: row.conversation_id,
         source: crate::source::Source::Provider(provider),
-        object: crate::source::ObjectType::native_message(provider),
+        object: crate::source::ObjectType {
+            role: crate::connectors::Role::Entry,
+            kind: row.kind,
+        },
         role: Some(super::required(row.role, "role")?.into()),
         author_kind: None,
         content: super::required(row.content, "content")?,

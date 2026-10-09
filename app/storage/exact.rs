@@ -134,7 +134,7 @@ impl Storage {
         let mut hits = rows
             .map(|row| {
                 let (row, lexical_score) = row.map_err(AppError::database)?;
-                let mut hit = super::queries::search_hit(row)?;
+                let mut hit = super::queries::search_hit(&self.connection, row)?;
                 hit.lexical_score = Some(lexical_score);
                 crate::gold::matching::annotate(&mut hit, literal);
                 Ok(hit)

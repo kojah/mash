@@ -42,7 +42,7 @@ reuse the generated projection and decoder; migrations and writes remain explici
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-gold [--full]
 mash search <query> [--unit chats|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
-mash list-chats [--local | --shared] [--provider PROVIDER] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
+mash list-chats [--local | --shared] [--provider PROVIDER] [--kind KIND] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
 mash forget <chat-id>
@@ -67,11 +67,13 @@ Search results, chat matches and listed chats identify their origin with a tagge
 `{"connector": "<source_id>"}` for external connector records. Every result also
 carries `object`, its core role and its source's kind label (for example
 `{"role": "entry", "kind": "codex:message"}`), and `ancestors`: the containers
-and segments enclosing it, nearest first. Chat-level results group under an
+and segments enclosing it, nearest first. A native message's ancestors are its
+turn (`codex:turn`, a prompt with the answers that follow it, derived from
+silver) and then its chat. Chat-level results group under an
 entry's nearest container, or a document on its own. Native messages keep
 `role`; connector entries carry `author_kind` (`human`, `bot` or `unknown`)
 instead, and documents carry neither. The local gold schema is now version 3 and
-silver version 48: existing local gold is rebuilt from silver by the next
+silver version 51: existing local gold is rebuilt from silver by the next
 `mash index`, and silver from an earlier release crosses over through export and
 `import --keep-identity`.
 
@@ -755,7 +757,7 @@ terms remain searchable; language detection cannot reliably classify every short
 or mixed-language query.
 
 CLI search accepts repeatable `--provider`, `--node`, `--role`, `--chat`,
-`--project`, `--repository` and `--source`. Repeated values for one field are alternatives;
+`--project`, `--repository`, `--source` and `--kind`. Repeated values for one field are alternatives;
 different fields are combined with AND. `--node` filters publishing identity and
 does not connect directly to another node. A standalone local installation uses
 the node label `local`. `--days` is a rolling message-age window. `--after` is
@@ -763,9 +765,11 @@ inclusive and `--before` exclusive; both accept `YYYY-MM-DD` (UTC midnight) or
 RFC3339 timestamps with an explicit offset.
 
 MCP exposes the same selection fields: `provider`, `chat`, `node`,
-`role`, `project`, `repository` and `source` are arrays, including for a single
+`role`, `project`, `repository`, `source` and `kind` are arrays, including for a single
 value. `provider` and `role` name native history, so they never match connector
 records; `source` names connector source IDs, so it never matches native history.
+`kind` names object kinds from either: `codex:message` for native messages, or a
+connector's own labels such as `slack:message`.
 Connector records have no project or repository.
 `after` and `before` use Unix seconds. Omitted or empty shortcut arrays impose
 no restriction; an empty list inside a structured predicate, such as

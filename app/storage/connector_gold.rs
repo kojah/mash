@@ -20,7 +20,7 @@ pub(crate) fn role_name(role: Role) -> &'static str {
     crate::connectors::silver::role_name(role)
 }
 
-fn parse_role(role: &str) -> Option<Role> {
+pub(crate) fn parse_role(role: &str) -> Option<Role> {
     match role {
         "container" => Some(Role::Container),
         "segment" => Some(Role::Segment),
