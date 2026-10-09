@@ -451,6 +451,7 @@ pub(in crate::shared) fn apply(
     }
     let supplied = upload.applied.supplied.clone();
     for id in &supplied {
+        crate::storage::turns::derive(tx, id)?;
         let fingerprint = upload.fingerprint(id)?;
         sql::SetFingerprint::builder()
             .fingerprint(Some(&fingerprint))

@@ -9976,3 +9976,593 @@ impl<'a> NativeChatProviderBuilder<'a, (&'a str,)> {
         NativeChatProvider { id }
     }
 }
+pub struct TurnSourcesRow {
+    pub id: String,
+    pub ordinal: Option<i64>,
+    pub role: Option<String>,
+    pub projection: Option<String>,
+    pub context_parent: Option<i64>,
+    pub created_at: Option<i64>,
+}
+impl TurnSourcesRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            ordinal: row.get(1)?,
+            role: row.get(2)?,
+            projection: row.get(3)?,
+            context_parent: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    }
+}
+pub struct TurnSources<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> TurnSources<'a> {
+    pub const QUERY: &'static str = r"SELECT id,ordinal,role,COALESCE(search_projection,content) AS projection,context_parent,created_at
+FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=?1
+ORDER BY ordinal";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> TurnSources<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<TurnSourcesRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), TurnSourcesRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> TurnSources<'a> {
+    pub const fn builder() -> TurnSourcesBuilder<'a, ((),)> {
+        TurnSourcesBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct TurnSourcesBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> TurnSourcesBuilder<'a, ((),)> {
+    pub fn conversation_id(self, conversation_id: &'a str) -> TurnSourcesBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        TurnSourcesBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> TurnSourcesBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> TurnSources<'a> {
+        let (conversation_id,) = self.fields;
+        TurnSources { conversation_id }
+    }
+}
+pub struct ChatTurnsRow {
+    pub id: String,
+}
+impl ChatTurnsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self { id: row.get(0)? })
+    }
+}
+pub struct ChatTurns<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> ChatTurns<'a> {
+    pub const QUERY: &'static str = r"SELECT id FROM objects WHERE origin='provider' AND object_role='segment' AND conversation_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ChatTurns<'a> {
+    pub fn query_many(&self, client: &impl RusqliteClient) -> rusqlite::Result<Vec<ChatTurnsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ChatTurnsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> ChatTurns<'a> {
+    pub const fn builder() -> ChatTurnsBuilder<'a, ((),)> {
+        ChatTurnsBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ChatTurnsBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ChatTurnsBuilder<'a, ((),)> {
+    pub fn conversation_id(self, conversation_id: &'a str) -> ChatTurnsBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ChatTurnsBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ChatTurnsBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ChatTurns<'a> {
+        let (conversation_id,) = self.fields;
+        ChatTurns { conversation_id }
+    }
+}
+pub struct UpsertTurnRow {}
+impl UpsertTurnRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct UpsertTurn<'a> {
+    id: &'a str,
+    created_at: Option<i64>,
+    updated_at: Option<i64>,
+    metadata: Option<&'a str>,
+    conversation_id: &'a str,
+}
+impl<'a> UpsertTurn<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
+    created_at,updated_at,metadata)
+SELECT 'provider',c.source,?1,'segment',c.source||':turn',c.id,c.storage_id,c.id,
+    ?2,?3,?4
+FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?5
+ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
+created_at=excluded.created_at,updated_at=excluded.updated_at,metadata=excluded.metadata
+WHERE objects.created_at IS NOT excluded.created_at OR objects.updated_at IS NOT excluded.updated_at
+   OR objects.metadata IS NOT excluded.metadata";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> UpsertTurn<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.id,
+            self.created_at,
+            self.updated_at,
+            self.metadata,
+            self.conversation_id,
+        )
+    }
+}
+impl<'a> UpsertTurn<'a> {
+    pub const fn builder() -> UpsertTurnBuilder<'a, ((), (), (), (), ())> {
+        UpsertTurnBuilder {
+            fields: ((), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct UpsertTurnBuilder<'a, Fields = ((), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, CreatedAt, UpdatedAt, Metadata, ConversationId>
+    UpsertTurnBuilder<'a, ((), CreatedAt, UpdatedAt, Metadata, ConversationId)>
+{
+    pub fn id(
+        self,
+        id: &'a str,
+    ) -> UpsertTurnBuilder<'a, (&'a str, CreatedAt, UpdatedAt, Metadata, ConversationId)> {
+        let ((), created_at, updated_at, metadata, conversation_id) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (id, created_at, updated_at, metadata, conversation_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, UpdatedAt, Metadata, ConversationId>
+    UpsertTurnBuilder<'a, (Id, (), UpdatedAt, Metadata, ConversationId)>
+{
+    pub fn created_at(
+        self,
+        created_at: Option<i64>,
+    ) -> UpsertTurnBuilder<'a, (Id, Option<i64>, UpdatedAt, Metadata, ConversationId)> {
+        let (id, (), updated_at, metadata, conversation_id) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (id, created_at, updated_at, metadata, conversation_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, CreatedAt, Metadata, ConversationId>
+    UpsertTurnBuilder<'a, (Id, CreatedAt, (), Metadata, ConversationId)>
+{
+    pub fn updated_at(
+        self,
+        updated_at: Option<i64>,
+    ) -> UpsertTurnBuilder<'a, (Id, CreatedAt, Option<i64>, Metadata, ConversationId)> {
+        let (id, created_at, (), metadata, conversation_id) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (id, created_at, updated_at, metadata, conversation_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, CreatedAt, UpdatedAt, ConversationId>
+    UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, (), ConversationId)>
+{
+    pub fn metadata(
+        self,
+        metadata: Option<&'a str>,
+    ) -> UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, Option<&'a str>, ConversationId)> {
+        let (id, created_at, updated_at, (), conversation_id) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (id, created_at, updated_at, metadata, conversation_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, Id, CreatedAt, UpdatedAt, Metadata>
+    UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, Metadata, ())>
+{
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> UpsertTurnBuilder<'a, (Id, CreatedAt, UpdatedAt, Metadata, &'a str)> {
+        let (id, created_at, updated_at, metadata, ()) = self.fields;
+        let _phantom = self._phantom;
+        UpsertTurnBuilder {
+            fields: (id, created_at, updated_at, metadata, conversation_id),
+            _phantom,
+        }
+    }
+}
+impl<'a> UpsertTurnBuilder<'a, (&'a str, Option<i64>, Option<i64>, Option<&'a str>, &'a str)> {
+    pub fn build(self) -> UpsertTurn<'a> {
+        let (id, created_at, updated_at, metadata, conversation_id) = self.fields;
+        UpsertTurn {
+            id,
+            created_at,
+            updated_at,
+            metadata,
+            conversation_id,
+        }
+    }
+}
+pub struct SegmentStorageRow {
+    pub id: String,
+    pub storage_id: i64,
+}
+impl SegmentStorageRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            storage_id: row.get(1)?,
+        })
+    }
+}
+pub struct SegmentStorage<'a> {
+    conversation_id: &'a str,
+}
+impl<'a> SegmentStorage<'a> {
+    pub const QUERY: &'static str = r"SELECT id,storage_id FROM objects
+WHERE origin='provider' AND object_role IN ('container','segment') AND conversation_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> SegmentStorage<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<SegmentStorageRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), SegmentStorageRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.conversation_id,)
+    }
+}
+impl<'a> SegmentStorage<'a> {
+    pub const fn builder() -> SegmentStorageBuilder<'a, ((),)> {
+        SegmentStorageBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct SegmentStorageBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> SegmentStorageBuilder<'a, ((),)> {
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> SegmentStorageBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        SegmentStorageBuilder {
+            fields: (conversation_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> SegmentStorageBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> SegmentStorage<'a> {
+        let (conversation_id,) = self.fields;
+        SegmentStorage { conversation_id }
+    }
+}
+pub struct SetEntryParentRow {}
+impl SetEntryParentRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct SetEntryParent<'a> {
+    parent_id: Option<&'a str>,
+    parent_storage_id: Option<i64>,
+    conversation_id: &'a str,
+    id: &'a str,
+}
+impl<'a> SetEntryParent<'a> {
+    pub const QUERY: &'static str = r"UPDATE objects SET parent_id=?1,parent_storage_id=?2
+WHERE origin='provider' AND object_role='entry' AND conversation_id=?3
+  AND id=?4 AND parent_storage_id IS NOT ?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> SetEntryParent<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.parent_id,
+            self.parent_storage_id,
+            self.conversation_id,
+            self.id,
+        )
+    }
+}
+impl<'a> SetEntryParent<'a> {
+    pub const fn builder() -> SetEntryParentBuilder<'a, ((), (), (), ())> {
+        SetEntryParentBuilder {
+            fields: ((), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct SetEntryParentBuilder<'a, Fields = ((), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, ParentStorageId, ConversationId, Id>
+    SetEntryParentBuilder<'a, ((), ParentStorageId, ConversationId, Id)>
+{
+    pub fn parent_id(
+        self,
+        parent_id: Option<&'a str>,
+    ) -> SetEntryParentBuilder<'a, (Option<&'a str>, ParentStorageId, ConversationId, Id)> {
+        let ((), parent_storage_id, conversation_id, id) = self.fields;
+        let _phantom = self._phantom;
+        SetEntryParentBuilder {
+            fields: (parent_id, parent_storage_id, conversation_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ParentId, ConversationId, Id>
+    SetEntryParentBuilder<'a, (ParentId, (), ConversationId, Id)>
+{
+    pub fn parent_storage_id(
+        self,
+        parent_storage_id: Option<i64>,
+    ) -> SetEntryParentBuilder<'a, (ParentId, Option<i64>, ConversationId, Id)> {
+        let (parent_id, (), conversation_id, id) = self.fields;
+        let _phantom = self._phantom;
+        SetEntryParentBuilder {
+            fields: (parent_id, parent_storage_id, conversation_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ParentId, ParentStorageId, Id>
+    SetEntryParentBuilder<'a, (ParentId, ParentStorageId, (), Id)>
+{
+    pub fn conversation_id(
+        self,
+        conversation_id: &'a str,
+    ) -> SetEntryParentBuilder<'a, (ParentId, ParentStorageId, &'a str, Id)> {
+        let (parent_id, parent_storage_id, (), id) = self.fields;
+        let _phantom = self._phantom;
+        SetEntryParentBuilder {
+            fields: (parent_id, parent_storage_id, conversation_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a, ParentId, ParentStorageId, ConversationId>
+    SetEntryParentBuilder<'a, (ParentId, ParentStorageId, ConversationId, ())>
+{
+    pub fn id(
+        self,
+        id: &'a str,
+    ) -> SetEntryParentBuilder<'a, (ParentId, ParentStorageId, ConversationId, &'a str)> {
+        let (parent_id, parent_storage_id, conversation_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        SetEntryParentBuilder {
+            fields: (parent_id, parent_storage_id, conversation_id, id),
+            _phantom,
+        }
+    }
+}
+impl<'a> SetEntryParentBuilder<'a, (Option<&'a str>, Option<i64>, &'a str, &'a str)> {
+    pub fn build(self) -> SetEntryParent<'a> {
+        let (parent_id, parent_storage_id, conversation_id, id) = self.fields;
+        SetEntryParent {
+            parent_id,
+            parent_storage_id,
+            conversation_id,
+            id,
+        }
+    }
+}
+pub struct DeleteTurnRow {}
+impl DeleteTurnRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct DeleteTurn<'a> {
+    id: &'a str,
+}
+impl<'a> DeleteTurn<'a> {
+    pub const QUERY: &'static str =
+        r"DELETE FROM objects WHERE origin='provider' AND object_role='segment' AND id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> DeleteTurn<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.id,)
+    }
+}
+impl<'a> DeleteTurn<'a> {
+    pub const fn builder() -> DeleteTurnBuilder<'a, ((),)> {
+        DeleteTurnBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct DeleteTurnBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> DeleteTurnBuilder<'a, ((),)> {
+    pub fn id(self, id: &'a str) -> DeleteTurnBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        DeleteTurnBuilder {
+            fields: (id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> DeleteTurnBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> DeleteTurn<'a> {
+        let (id,) = self.fields;
+        DeleteTurn { id }
+    }
+}
+pub struct NativeChatIdsRow {
+    pub id: String,
+}
+impl NativeChatIdsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self { id: row.get(0)? })
+    }
+}
+pub struct NativeChatIds;
+impl NativeChatIds {
+    pub const QUERY: &'static str =
+        r"SELECT id FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl NativeChatIds {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<NativeChatIdsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), NativeChatIdsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl NativeChatIds {
+    pub const fn builder() -> NativeChatIdsBuilder<'static, ()> {
+        NativeChatIdsBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct NativeChatIdsBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> NativeChatIdsBuilder<'a, ()> {
+    pub fn build(self) -> NativeChatIds {
+        let () = self.fields;
+        NativeChatIds {}
+    }
+}

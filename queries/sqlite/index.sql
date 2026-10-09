@@ -365,3 +365,40 @@ SELECT conversation_id AS id FROM native_chats WHERE provider=sqlc.arg(provider)
 
 -- name: NativeChatProvider :one
 SELECT provider FROM native_chats WHERE conversation_id=sqlc.arg(id);
+
+-- name: TurnSources :many
+SELECT id,ordinal,role,COALESCE(search_projection,content) AS projection,context_parent,created_at
+FROM objects WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id)
+ORDER BY ordinal;
+
+-- name: ChatTurns :many
+SELECT id FROM objects WHERE origin='provider' AND object_role='segment' AND conversation_id=sqlc.arg(conversation_id);
+
+-- name: UpsertTurn :exec
+-- Turns sit under their chat; unchanged turns are left alone so revision
+-- triggers see no change.
+INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
+    created_at,updated_at,metadata)
+SELECT 'provider',c.source,sqlc.arg(id),'segment',c.source||':turn',c.id,c.storage_id,c.id,
+    sqlc.narg(created_at),sqlc.narg(updated_at),sqlc.arg(metadata)
+FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=sqlc.arg(conversation_id)
+ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
+created_at=excluded.created_at,updated_at=excluded.updated_at,metadata=excluded.metadata
+WHERE objects.created_at IS NOT excluded.created_at OR objects.updated_at IS NOT excluded.updated_at
+   OR objects.metadata IS NOT excluded.metadata;
+
+-- name: SegmentStorage :many
+SELECT id,storage_id FROM objects
+WHERE origin='provider' AND object_role IN ('container','segment') AND conversation_id=sqlc.arg(conversation_id);
+
+-- name: SetEntryParent :exec
+-- A message's parent is its turn, or its chat when it belongs to none.
+UPDATE objects SET parent_id=sqlc.arg(parent_id),parent_storage_id=sqlc.arg(parent_storage_id)
+WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id)
+  AND id=sqlc.arg(id) AND parent_storage_id IS NOT sqlc.arg(parent_storage_id);
+
+-- name: DeleteTurn :exec
+DELETE FROM objects WHERE origin='provider' AND object_role='segment' AND id=sqlc.arg(id);
+
+-- name: NativeChatIds :many
+SELECT id FROM objects WHERE origin='provider' AND object_role='container' ORDER BY id;

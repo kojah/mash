@@ -696,6 +696,38 @@ async fn http_storage_contract(service: Service) {
         "{}",
         initial.text().await.unwrap()
     );
+    // Shared silver derives the same turns a local index stores.
+    let identity = &service.identities[&blake3::hash(FIRST.as_bytes())];
+    let silver = rusqlite::Connection::open(
+        service
+            .silver_dir
+            .path()
+            .join("silver")
+            .join(&identity.group_id)
+            .join(format!("{}.sqlite3", identity.node_id)),
+    )
+    .unwrap();
+    let parents: Vec<(String, String)> = silver
+        .prepare(
+            "SELECT m.id, p.object_role FROM objects m
+               JOIN objects p ON p.storage_id = m.parent_storage_id
+              WHERE m.object_role = 'entry' ORDER BY m.ordinal",
+        )
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let parent = |id: &str, role: &str| (id.to_owned(), role.to_owned());
+    assert_eq!(
+        parents,
+        [
+            parent("searchable", "segment"),
+            parent("opposite", "segment"),
+            parent("context", "container"),
+        ]
+    );
+    drop(silver);
     let freshness = service.get("freshness", FIRST).await;
     let duplicate = service.upload(FIRST, &events).await;
     assert_eq!(duplicate.status(), StatusCode::OK);

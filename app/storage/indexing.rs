@@ -315,6 +315,9 @@ impl Storage {
         self.store_enrichment(&conversation.id, &enrichment)?;
         let (changed_message_ids, removed_messages) =
             self.reconcile_messages(conversation, &existing_messages)?;
+        if !changed_message_ids.is_empty() || removed_messages != 0 {
+            super::turns::derive(&self.connection, &conversation.id)?;
+        }
         if !changed_message_ids.is_empty() {
             self.mark_semantic_index_incomplete()?;
         }

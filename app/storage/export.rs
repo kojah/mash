@@ -92,6 +92,26 @@ pub(crate) fn restore(
             "export carries no publication identity to keep",
         ));
     }
+    // Turns are derived silver, not archived history: deriving them restores
+    // the exported silver exactly, so it keeps the archived revision.
+    let revisions = "SELECT (SELECT revision FROM silver_state WHERE singleton=1),
+                            (SELECT revision FROM shared_publication WHERE singleton=1)";
+    let (silver, publication): (i64, i64) = transaction
+        .query_row(revisions, [], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(AppError::database)?;
+    crate::storage::turns::derive_all(&transaction)?;
+    transaction
+        .execute(
+            "UPDATE silver_state SET revision=?1 WHERE singleton=1",
+            [silver],
+        )
+        .map_err(AppError::database)?;
+    transaction
+        .execute(
+            "UPDATE shared_publication SET revision=?1 WHERE singleton=1",
+            [publication],
+        )
+        .map_err(AppError::database)?;
     crate::connectors::silver::validate_archive(&transaction)
         .map_err(|_| AppError::usage("invalid connector archive reply graph"))?;
     // The next publication is a full snapshot: the change journal starts empty.

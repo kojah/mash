@@ -75,6 +75,15 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          UPDATE silver_state SET revision=77,interpretation_version=2;
          UPDATE sqlite_sequence SET seq=42 WHERE name='objects';"
     ).unwrap();
+    // Indexing derives turns; the raw fixture does the same, then keeps its
+    // chosen revisions.
+    crate::storage::turns::derive(&connection, "thread").unwrap();
+    connection
+        .execute_batch(
+            "UPDATE silver_state SET revision=77;
+             UPDATE shared_publication SET acknowledged=revision;",
+        )
+        .unwrap();
     let bytes = b"retained attachment";
     let hash = blake3::hash(bytes).to_hex().to_string();
     let metadata = attachments::Metadata {
