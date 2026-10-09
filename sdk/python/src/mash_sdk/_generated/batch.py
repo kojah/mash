@@ -8,24 +8,21 @@ from enum import StrEnum
 from typing import Annotated, Literal
 
 from mash_sdk._types import Metadata
-from pydantic import BaseModel, ConfigDict, Field, RootModel, StrictInt, StrictStr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    RootModel,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+)
 
 
 class AuthorKind(StrEnum):
     human = "human"
     bot = "bot"
     unknown = "unknown"
-
-
-class ConnectorKind(RootModel[StrictStr]):
-    root: Annotated[
-        StrictStr,
-        Field(
-            max_length=97,
-            min_length=3,
-            pattern="^[a-z0-9][a-z0-9-]{0,31}:[a-z0-9][a-z0-9-]{0,63}$",
-        ),
-    ]
 
 
 class ConnectorVersion(RootModel[Literal[2]]):
@@ -147,9 +144,43 @@ class ChangeDeleteObject(BaseModel):
     op: Literal["delete-object"] = "delete-object"
 
 
-class Change(RootModel[ChangeUpsertObject | ChangeDeleteObject]):
+class KindRule(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Annotated[
+        StrictStr,
+        Field(
+            max_length=97,
+            min_length=3,
+            pattern="^[a-z0-9][a-z0-9-]{0,31}:[a-z0-9][a-z0-9-]{0,63}$",
+        ),
+    ]
+    parents: Annotated[
+        list[str],
+        Field(
+            description="Declared kinds this kind may sit directly under.",
+            max_length=256,
+        ),
+    ] = []
+    role: Role
     root: Annotated[
-        ChangeUpsertObject | ChangeDeleteObject,
+        StrictBool,
+        Field(description="Whether objects of this kind may have no parent."),
+    ] = False
+
+
+class ChangeDeclareSchema(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kinds: Annotated[list[KindRule], Field(max_length=256, min_length=1)]
+    op: Literal["declare-schema"] = "declare-schema"
+
+
+class Change(RootModel[ChangeUpsertObject | ChangeDeleteObject | ChangeDeclareSchema]):
+    root: Annotated[
+        ChangeUpsertObject | ChangeDeleteObject | ChangeDeclareSchema,
         Field(
             description="Explicit mutations. No implicit deletion from an incomplete enumeration."
         ),
@@ -169,7 +200,7 @@ class Batch(BaseModel):
         ),
     ]
     changes: Annotated[
-        list[ChangeUpsertObject | ChangeDeleteObject],
+        list[ChangeUpsertObject | ChangeDeleteObject | ChangeDeclareSchema],
         Field(max_length=512, min_length=1),
     ]
     expected_revision: Annotated[

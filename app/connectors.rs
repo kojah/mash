@@ -222,6 +222,80 @@ pub enum AuthorKind {
     Unknown,
 }
 
+/// The topology a source commits to. Once declared, every object of the
+/// source must use a declared kind with its role and an allowed parent kind.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Schema {
+    #[schemars(length(min = 1, max = 256))]
+    pub kinds: Vec<KindRule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct KindRule {
+    pub kind: Kind,
+    pub role: Role,
+    /// Declared kinds this kind may sit directly under.
+    #[serde(default)]
+    #[schemars(length(max = 256))]
+    pub parents: Vec<Kind>,
+    /// Whether objects of this kind may have no parent.
+    #[serde(default)]
+    pub root: bool,
+}
+
+impl Schema {
+    /// A schema must be self-consistent before it can constrain objects.
+    ///
+    /// # Errors
+    /// Rejects duplicate or undeclared kinds, document parents, and entries or
+    /// segments that could sit outside every container.
+    pub fn validate(&self) -> Result<(), Error> {
+        let mut roles = BTreeMap::new();
+        if self.kinds.is_empty() || self.kinds.len() > 256 {
+            return Err(Error::InvalidSchema);
+        }
+        for rule in &self.kinds {
+            if roles.insert(&rule.kind, rule.role).is_some() || rule.parents.len() > 256 {
+                return Err(Error::InvalidSchema);
+            }
+        }
+        for rule in &self.kinds {
+            let needs_parent = matches!(rule.role, Role::Entry | Role::Segment);
+            if (needs_parent && rule.root) || (!rule.root && rule.parents.is_empty()) {
+                return Err(Error::InvalidSchema);
+            }
+            for parent in &rule.parents {
+                match roles.get(parent) {
+                    None | Some(Role::Document) => return Err(Error::InvalidSchema),
+                    Some(_) => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The rule for a kind, if declared.
+    #[must_use]
+    pub fn rule(&self, kind: &Kind) -> Option<&KindRule> {
+        self.kinds.iter().find(|rule| &rule.kind == kind)
+    }
+
+    /// Whether an object of `kind` and `role` may sit under a parent of
+    /// `parent_kind` (`None` for a top-level object).
+    #[must_use]
+    pub fn admits(&self, kind: &Kind, role: Role, parent_kind: Option<&Kind>) -> bool {
+        self.rule(kind).is_some_and(|rule| {
+            rule.role == role
+                && match parent_kind {
+                    None => rule.root,
+                    Some(parent) => rule.parents.contains(parent),
+                }
+        })
+    }
+}
+
 /// A source attachment reference. Binary retention is a separate explicit operation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -244,6 +318,8 @@ pub enum Change {
     DeleteObject {
         id: Id,
     },
+    /// Replaces the source's schema; all its objects are re-checked.
+    DeclareSchema(Schema),
 }
 
 /// Transport-independent batch. Applications must validate decoded instances too.
@@ -298,6 +374,9 @@ pub enum Error {
     CyclicHierarchy,
     /// A reply to an object in this batch that is not an entry.
     InvalidReply,
+    InvalidSchema,
+    /// An object that the source's declared schema does not admit.
+    SchemaViolation,
 }
 
 impl std::fmt::Display for Error {
@@ -333,9 +412,16 @@ impl Batch {
         let mut seen = BTreeSet::new();
         let mut objects = BTreeMap::new();
         let mut deleted = BTreeSet::new();
+        let mut schema = None;
         for change in &self.changes {
             change.validate()?;
             let id = match change {
+                Change::DeclareSchema(declared) => {
+                    if schema.replace(declared).is_some() {
+                        return Err(Error::DuplicateMutation);
+                    }
+                    continue;
+                }
                 Change::UpsertObject(object) => {
                     objects.insert(&object.id, object);
                     &object.id
@@ -350,6 +436,23 @@ impl Batch {
             }
         }
         validate_graph(&objects, &deleted)?;
+        if let Some(schema) = schema {
+            // Parents outside the batch are checked against stored silver.
+            for object in objects.values() {
+                let admitted = match object.parent.as_ref().map(|parent| objects.get(parent)) {
+                    None => schema.admits(&object.kind, object.role, None),
+                    Some(Some(parent)) => {
+                        schema.admits(&object.kind, object.role, Some(&parent.kind))
+                    }
+                    Some(None) => schema
+                        .rule(&object.kind)
+                        .is_some_and(|rule| rule.role == object.role),
+                };
+                if !admitted {
+                    return Err(Error::SchemaViolation);
+                }
+            }
+        }
         serde_json::to_writer(SizeLimit::new(MAX_BATCH_BYTES), self)
             .map_err(|_| Error::BatchTooLarge)
     }
@@ -360,6 +463,7 @@ impl Change {
         match self {
             Self::UpsertObject(object) => object.validate(),
             Self::DeleteObject { .. } => Ok(()),
+            Self::DeclareSchema(schema) => schema.validate(),
         }
     }
 }

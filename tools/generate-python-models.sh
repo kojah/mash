@@ -23,7 +23,7 @@ for kind in batch receipt; do
         --use-annotated --collapse-root-models --strict-nullable \
         --infer-union-variant-names --use-one-literal-as-default \
         --strict-types str int bool \
-        --type-overrides '{"Metadata":"mash_sdk._types.Metadata","ConnectorId":"builtins.str"}'
+        --type-overrides '{"Metadata":"mash_sdk._types.Metadata","ConnectorId":"builtins.str","ConnectorKind":"builtins.str"}'
     uv run --project "$sdk_dir" --locked ruff format "$scratch_dir/$kind.py"
 done
 

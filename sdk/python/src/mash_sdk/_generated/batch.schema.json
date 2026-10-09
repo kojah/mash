@@ -196,6 +196,29 @@
             "id"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Replaces the source's schema; all its objects are re-checked.",
+          "properties": {
+            "kinds": {
+              "items": {
+                "$ref": "#/$defs/KindRule"
+              },
+              "maxItems": 256,
+              "minItems": 1,
+              "type": "array"
+            },
+            "op": {
+              "const": "declare-schema",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "kinds"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -220,6 +243,36 @@
     "ConnectorVersion": {
       "const": 2,
       "type": "integer"
+    },
+    "KindRule": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ConnectorKind"
+        },
+        "parents": {
+          "default": [],
+          "description": "Declared kinds this kind may sit directly under.",
+          "items": {
+            "$ref": "#/$defs/ConnectorKind"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "role": {
+          "$ref": "#/$defs/Role"
+        },
+        "root": {
+          "default": false,
+          "description": "Whether objects of this kind may have no parent.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "role"
+      ],
+      "type": "object"
     },
     "Metadata": {
       "additionalProperties": true,

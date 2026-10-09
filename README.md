@@ -700,7 +700,12 @@ structural part of a container; an `entry` is searchable text with an author; a
 hierarchy: an entry may own a thread container, for example. Ingestion enforces
 the role rules (only entries and documents carry text; entries and segments sit
 under a container; documents contain nothing; no parent or reply cycles); kind
-labels are not checked against a declared topology.
+labels are free unless the source declares a schema. A `declare-schema` change
+(SDK: `Changes.declare(KindRule(...), ...)`) lists the source's kinds, each with
+its role, the kinds it may sit under and whether it may be top-level. From then
+on ingestion rejects objects that use an undeclared kind, a different role or a
+disallowed parent, and a new declaration is rejected if anything the source
+already stored would violate it.
 `mash index --connector-batch PATH` commits a batch to local silver and returns a
 durable receipt with `gold_ready: false`; it loads no models. Records become
 searchable after the next `mash index` (or `index --rebuild-local-gold`), which

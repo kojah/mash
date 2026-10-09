@@ -176,6 +176,13 @@ pub(crate) fn visit(
         })
     );
     table!(
+        "SELECT source_id,schema FROM connector_schemas ORDER BY source_id",
+        |row| Ok::<_, AppError>(Record::ConnectorSchema {
+            source_id: connector_id(row, "source_id")?,
+            schema: json(row, "schema")?,
+        })
+    );
+    table!(
         "SELECT source_id,record FROM connector_objects ORDER BY source_id,id",
         |row| Ok::<_, AppError>(Record::ConnectorObject {
             source_id: connector_id(row, "source_id")?,
@@ -234,6 +241,13 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 "INSERT INTO connector_sources(id,revision) VALUES(?1,?2)",
                 source_id.as_str(),
                 revision.to_string()
+            );
+        }
+        Record::ConnectorSchema { source_id, schema } => {
+            execute!(
+                "INSERT INTO connector_schemas(source_id,schema) VALUES(?1,?2)",
+                source_id.as_str(),
+                encode(&schema)?
             );
         }
         Record::ConnectorObject { source_id, object } => {

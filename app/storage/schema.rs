@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::AppError;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(super) const SCHEMA_VERSION: i64 = 48;
+pub(super) const SCHEMA_VERSION: i64 = 49;
 const GOLD_VERSION: i64 = 3;
 
 /// The one silver schema, shared by local nodes and the shared server.

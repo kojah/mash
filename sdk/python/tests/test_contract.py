@@ -13,6 +13,7 @@ from mash_sdk import (
     Batch,
     Changes,
     InvalidBatch,
+    KindRule,
     Object,
     Role,
     encode_batch,
@@ -115,6 +116,13 @@ class ContractTests(unittest.TestCase):
                 encode_batch(batch(duplicate))
         with self.assertRaises(ValidationError):
             batch(Changes.empty())
+
+    def test_schema_declarations_encode_without_an_identity(self) -> None:
+        declared = Changes.declare(
+            KindRule(kind="chat:channel", role=Role.container, root=True)
+        )
+        encoded = encode_batch(batch(declared + Changes.upsert(channel(id="room"))))
+        self.assertIn(b'"op":"declare-schema"', encoded)
 
     def test_schema_enforces_full_id_pattern_and_strict_types(self) -> None:
         # Some regex engines accept a terminal newline at `$`; the schema's `not`

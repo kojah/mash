@@ -95,6 +95,11 @@ CREATE TABLE IF NOT EXISTS connector_objects (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS connector_objects_parent ON connector_objects(source_id, parent_id);
 CREATE INDEX IF NOT EXISTS connector_objects_reply ON connector_objects(source_id, reply_to);
+-- A source's declared topology; its objects must conform once it exists.
+CREATE TABLE IF NOT EXISTS connector_schemas (
+    source_id TEXT PRIMARY KEY REFERENCES connector_sources(id),
+    schema TEXT NOT NULL
+) WITHOUT ROWID;
 -- Receipts are committed with the mutations they acknowledge. A replayed
 -- batch cannot apply again, nor reuse its identity for different contents.
 CREATE TABLE IF NOT EXISTS connector_receipts (

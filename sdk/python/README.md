@@ -65,6 +65,21 @@ searchable in both places lists both. `send` returns one receipt per destination
 in order. Every destination is attempted even when another fails; the error
 reports how many failed and is retryable only if every failure is.
 
+A source can declare its topology so Mash enforces it:
+
+```python
+await connector.send(Changes.declare(
+    KindRule(kind="discord:channel", role=Role.container, root=True),
+    KindRule(kind="discord:thread", role=Role.container, parents=["discord:message"]),
+    KindRule(kind="discord:message", role=Role.entry,
+             parents=["discord:channel", "discord:thread"]),
+))
+```
+
+Afterwards an object with an undeclared kind, another role or a disallowed
+parent is rejected as a permanent delivery error, and redeclaring is rejected
+if stored objects would not conform.
+
 Connector authors pass typed changes. They do not allocate batch IDs, track
 revisions, interpret receipts, or manipulate the delivery state file. The client
 persists pending work

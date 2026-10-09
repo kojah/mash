@@ -72,9 +72,31 @@ class Object:
         attachments: Sequence[Attachment] = ...,
     ) -> None: ...
 
+class KindRule:
+    """One declared kind: its role, the kinds it may sit under, and whether it
+    may be top-level. Entries and segments can never be top-level."""
+
+    def __init__(
+        self,
+        *,
+        kind: str,
+        role: Role,
+        parents: Sequence[str] = ...,
+        root: bool = ...,
+    ) -> None: ...
+
+class Receipt:
+    source_id: str
+    batch_id: str
+    source_revision: int
+    silver_revision: int
+    gold_ready: bool
+
 class Changes:
     @classmethod
     def empty(cls) -> Changes: ...
+    @classmethod
+    def declare(cls, *rules: KindRule) -> Changes: ...
     @classmethod
     def upsert(cls, *objects: Object) -> Changes: ...
     @classmethod
@@ -156,6 +178,7 @@ class Connector:
     ) -> None: ...
     async def __aenter__(self) -> Self: ...
     async def __aexit__(self, *args: object) -> None: ...
+    async def send(self, changes: Changes) -> tuple[Receipt, ...]: ...
     async def run(
         self,
         *,

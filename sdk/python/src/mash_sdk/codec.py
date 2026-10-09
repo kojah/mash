@@ -15,7 +15,7 @@ from jsonschema.protocols import Validator
 from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 from pydantic_core import PydanticSerializationError
 
-from ._generated.batch import Batch, ChangeUpsertObject
+from ._generated.batch import Batch, ChangeDeleteObject, ChangeUpsertObject
 
 
 class InvalidBatch(ValueError):
@@ -82,6 +82,8 @@ def encode_batch(batch: Batch, *, contract: Contract | None = None) -> bytes:
     # One identity namespace per source, whatever the role.
     seen: set[str] = set()
     for mutation in batch.changes:
+        if not isinstance(mutation, ChangeUpsertObject | ChangeDeleteObject):
+            continue  # A schema declaration has no identity.
         if mutation.id in seen:
             raise InvalidBatch("duplicate mutation")
         seen.add(mutation.id)

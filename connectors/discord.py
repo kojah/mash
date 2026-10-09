@@ -12,6 +12,7 @@ from mash_sdk import (
     Debounce,
     Delivery,
     Destination,
+    KindRule,
     Object,
     Role,
     Snapshot,
@@ -140,6 +141,18 @@ async def refresh(source: Discord, event: Event, scope: Scope) -> Changes:
             )
 
 
+# Discord's topology: channels hold messages, and a message may own a thread.
+SCHEMA = Changes.declare(
+    KindRule(kind="discord:channel", role=Role.container, root=True),
+    KindRule(kind="discord:thread", role=Role.container, parents=["discord:message"]),
+    KindRule(
+        kind="discord:message",
+        role=Role.entry,
+        parents=["discord:channel", "discord:thread"],
+    ),
+)
+
+
 async def run(
     source: Discord,
     *,
@@ -153,6 +166,7 @@ async def run(
         destinations=destinations,
         state_path=state_path,
     ) as connector:
+        await connector.send(SCHEMA)
         await connector.run(
             backfill=backfill(source, scope),
             events=source.events(scope.ids),

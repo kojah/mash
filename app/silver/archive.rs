@@ -17,6 +17,10 @@ pub(crate) enum Record {
         source_id: crate::connectors::Id,
         object: crate::connectors::Object,
     },
+    ConnectorSchema {
+        source_id: crate::connectors::Id,
+        schema: crate::connectors::Schema,
+    },
     ConnectorReceipt {
         fingerprint: String,
         receipt: crate::connectors::Receipt,
@@ -122,6 +126,9 @@ impl Record {
             Self::ConnectorObject { object, .. } => object
                 .validate()
                 .map_err(|_| crate::AppError::usage("invalid connector archive object")),
+            Self::ConnectorSchema { schema, .. } => schema
+                .validate()
+                .map_err(|_| crate::AppError::usage("invalid connector archive schema")),
             Self::ConnectorReceipt { fingerprint, .. }
                 if fingerprint.len() != 64
                     || !fingerprint.bytes().all(|value| value.is_ascii_hexdigit()) =>

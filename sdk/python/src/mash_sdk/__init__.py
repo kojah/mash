@@ -1,7 +1,7 @@
 """Experimental typed connectors with durable local and shared delivery."""
 
 from ._delivery import DeliveryError
-from ._generated.batch import Attachment, Author, AuthorKind, Batch, Role
+from ._generated.batch import Attachment, Author, AuthorKind, Batch, KindRule, Role
 from ._generated.batch import ChangeUpsertObject as Object
 from ._generated.receipt import Receipt
 from ._types import Metadata
@@ -24,6 +24,7 @@ __all__ = [
     "Destination",
     "DocumentSnapshot",
     "InvalidBatch",
+    "KindRule",
     "Metadata",
     "Object",
     "Receipt",

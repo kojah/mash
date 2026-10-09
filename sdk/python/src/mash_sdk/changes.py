@@ -3,9 +3,15 @@
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from ._generated.batch import Batch, ChangeDeleteObject, ChangeUpsertObject
+from ._generated.batch import (
+    Batch,
+    ChangeDeclareSchema,
+    ChangeDeleteObject,
+    ChangeUpsertObject,
+    KindRule,
+)
 
-Mutation: TypeAlias = ChangeUpsertObject | ChangeDeleteObject
+Mutation: TypeAlias = ChangeUpsertObject | ChangeDeleteObject | ChangeDeclareSchema
 
 
 @dataclass(frozen=True)
@@ -24,6 +30,15 @@ class Changes:
     def delete(cls, *ids: str) -> "Changes":
         """Delete objects and, through their parent edges, their descendants."""
         return cls(tuple(ChangeDeleteObject(id=id) for id in ids))
+
+    @classmethod
+    def declare(cls, *rules: KindRule) -> "Changes":
+        """Replace the source's schema: its kinds, their roles and allowed parents.
+
+        Mash then rejects objects the schema does not admit, and rejects the
+        declaration itself if anything already stored would violate it.
+        """
+        return cls((ChangeDeclareSchema(kinds=list(rules)),))
 
     def __add__(self, other: "Changes") -> "Changes":
         return Changes(self.mutations + other.mutations)

@@ -348,3 +348,81 @@ fn metadata_remains_opaque_objects_with_explicit_budgets() {
         assert_eq!(decode(&invalid), Err(Error::InvalidJson));
     }
 }
+
+fn schema() -> serde_json::Value {
+    json!({"op":"declare-schema","kinds":[
+        {"kind":"slack:channel","role":"container","root":true},
+        {"kind":"slack:thread","role":"container","parents":["slack:message"]},
+        {"kind":"slack:message","role":"entry","parents":["slack:channel","slack:thread"]}
+    ]})
+}
+
+#[test]
+fn schemas_must_be_self_consistent() {
+    let mut value = example();
+    push(&mut value, schema());
+    assert!(decode(&value).is_ok());
+    for (index, field, field_value) in [
+        // An undeclared parent kind.
+        (2, "parents", json!(["slack:unknown"])),
+        // An entry cannot be a root: it would sit outside every container.
+        (2, "root", json!(true)),
+        // A non-root kind needs somewhere to live.
+        (1, "parents", json!([])),
+    ] {
+        let mut value = example();
+        let mut declared = schema();
+        declared["kinds"][index][field] = field_value;
+        push(&mut value, declared);
+        assert_eq!(decode(&value), Err(Error::InvalidSchema), "{index} {field}");
+    }
+    let mut duplicate = schema();
+    duplicate["kinds"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"kind":"slack:channel","role":"segment","parents":["slack:channel"]}));
+    let mut value = example();
+    push(&mut value, duplicate);
+    assert_eq!(decode(&value), Err(Error::InvalidSchema));
+    let mut document_parent = schema();
+    document_parent["kinds"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"kind":"slack:file","role":"document","root":true}));
+    document_parent["kinds"][2]["parents"] = json!(["slack:file"]);
+    let mut value = example();
+    push(&mut value, document_parent);
+    assert_eq!(decode(&value), Err(Error::InvalidSchema));
+    let mut twice = example();
+    push(&mut twice, schema());
+    push(&mut twice, schema());
+    assert_eq!(decode(&twice), Err(Error::DuplicateMutation));
+}
+
+#[test]
+fn a_declared_schema_constrains_objects_in_the_same_batch() {
+    let mut value = example();
+    push(&mut value, schema());
+    // A thread hangs off a message, as the schema allows.
+    push(
+        &mut value,
+        json!({"op":"upsert-object","id":"thread-1","role":"container",
+        "kind":"slack:thread","parent":"message-1"}),
+    );
+    assert!(decode(&value).is_ok());
+    for (index, field, field_value) in [
+        (1, "kind", json!("slack:reaction")), // undeclared kind
+        (1, "parent", json!("thread-x-outside-batch")), // fine here; stored check later
+        (0, "kind", json!("slack:thread")),   // a thread cannot be a root
+    ] {
+        let mut value = example();
+        push(&mut value, schema());
+        value["changes"][index][field] = field_value.clone();
+        let decoded = decode(&value);
+        if field_value == json!("thread-x-outside-batch") {
+            assert!(decoded.is_ok());
+        } else {
+            assert_eq!(decoded, Err(Error::SchemaViolation), "{index} {field}");
+        }
+    }
+}

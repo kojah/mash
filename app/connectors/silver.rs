@@ -1,7 +1,7 @@
 //! Canonical connector records and transactional receipts in the common silver schema.
 //! No vectors, lexical indexes, provider plugins or external code execute here.
 
-use super::{Batch, Change, Id, Object, Receipt, Role, Version};
+use super::{Batch, Change, Id, Object, Receipt, Role, Schema, Version};
 use crate::storage::generated as sql;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use serde::{Serialize, de::DeserializeOwned};
@@ -17,6 +17,8 @@ pub enum Error {
     BatchConflict,
     RevisionExhausted,
     InvalidReferences,
+    /// An object that the source's declared schema does not admit.
+    SchemaViolation,
 }
 
 impl std::fmt::Display for Error {
@@ -36,7 +38,9 @@ pub(crate) fn app_error(problem: Error) -> crate::AppError {
         Error::BatchConflict | Error::RevisionConflict => {
             AppError::new(12, ErrorKind::Conflict, problem.to_string(), false)
         }
-        Error::InvalidBatch(_) | Error::InvalidReferences => AppError::usage(problem.to_string()),
+        Error::InvalidBatch(_) | Error::InvalidReferences | Error::SchemaViolation => {
+            AppError::usage(problem.to_string())
+        }
         Error::UnsupportedSchema => AppError::schema(problem.to_string()),
         Error::Database => AppError::new(5, ErrorKind::Database, problem.to_string(), true),
         Error::CorruptRecord | Error::RevisionExhausted => {
@@ -154,16 +158,12 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
     for change in &batch.changes {
         changed |= mutate(transaction, &batch.source_id, change)?;
     }
+    let source = batch.source_id.as_str();
+    let schema = stored_schema(transaction, source)?;
     let mut checked = BTreeSet::new();
-    for change in &batch.changes {
-        if let Change::UpsertObject(object) = change {
-            check_object(
-                transaction,
-                batch.source_id.as_str(),
-                object.id.as_str(),
-                &mut checked,
-            )?;
-        }
+    let ids = objects_to_check(transaction, batch, schema.is_some())?;
+    for id in ids {
+        check_object(transaction, source, &id, schema.as_ref(), &mut checked)?;
     }
     let current = sql::ConnectorSilverRevision
         .query_one(transaction)
@@ -199,6 +199,53 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
         .execute(transaction)
         .map_err(database)?;
     Ok(receipt)
+}
+
+/// Objects whose stored graph a batch can have changed.
+fn objects_to_check(
+    transaction: &Transaction<'_>,
+    batch: &Batch,
+    schema: bool,
+) -> Result<Vec<String>, Error> {
+    let source = batch.source_id.as_str();
+    // A new schema must hold for everything the source already stored.
+    let ids = if batch
+        .changes
+        .iter()
+        .any(|change| matches!(change, Change::DeclareSchema(_)))
+    {
+        sql::ConnectorSourceObjects::builder()
+            .source_id(source)
+            .build()
+            .query_many(transaction)
+            .map_err(database)?
+            .into_iter()
+            .map(|row| row.id)
+            .collect()
+    } else {
+        let mut ids = Vec::new();
+        for change in &batch.changes {
+            let Change::UpsertObject(object) = change else {
+                continue;
+            };
+            ids.push(object.id.as_str().to_owned());
+            // A parent's new kind must still admit its existing children.
+            if schema {
+                ids.extend(
+                    sql::ConnectorChildren::builder()
+                        .source_id(source)
+                        .parent_id(Some(object.id.as_str()))
+                        .build()
+                        .query_many(transaction)
+                        .map_err(database)?
+                        .into_iter()
+                        .map(|row| row.id),
+                );
+            }
+        }
+        ids
+    };
+    Ok(ids)
 }
 
 pub(crate) fn role_name(role: Role) -> &'static str {
@@ -239,6 +286,12 @@ fn mutate(transaction: &Transaction<'_>, source: &Id, change: &Change) -> Result
             .build()
             .execute(transaction)
             .map_err(database)?,
+        Change::DeclareSchema(schema) => sql::ConnectorPutSchema::builder()
+            .source_id(source.as_str())
+            .schema(&encode(schema)?)
+            .build()
+            .execute(transaction)
+            .map_err(database)?,
     };
     Ok(rows > 0)
 }
@@ -247,10 +300,21 @@ fn mutate(transaction: &Transaction<'_>, source: &Id, change: &Change) -> Result
 /// segments and entries sit under a container, documents have no children, and
 /// neither the parent chain nor the reply chain loops. Reply targets may be
 /// outside the stored window, but stored ones must be entries.
+fn stored_schema(connection: &Connection, source: &str) -> Result<Option<Schema>, Error> {
+    sql::ConnectorSchema::builder()
+        .source_id(source)
+        .build()
+        .query_opt(connection)
+        .map_err(database)?
+        .map(|row| decode(&row.schema))
+        .transpose()
+}
+
 fn check_object(
     connection: &Connection,
     source: &str,
     id: &str,
+    schema: Option<&Schema>,
     checked: &mut BTreeSet<(String, String)>,
 ) -> Result<(), Error> {
     if !checked.insert((source.to_owned(), id.to_owned())) {
@@ -264,6 +328,25 @@ fn check_object(
         .map_err(database)?
         .ok_or(Error::InvalidReferences)?;
     let role = parse_role(&row.role)?;
+    if let Some(schema) = schema {
+        let object: Object = decode(&row.record)?;
+        let parent_kind = match &row.parent_id {
+            None => None,
+            Some(parent) => {
+                let parent = sql::ConnectorObject::builder()
+                    .source_id(source)
+                    .id(parent)
+                    .build()
+                    .query_opt(connection)
+                    .map_err(database)?
+                    .ok_or(Error::InvalidReferences)?;
+                Some(decode::<Object>(&parent.record)?.kind)
+            }
+        };
+        if !schema.admits(&object.kind, role, parent_kind.as_ref()) {
+            return Err(Error::SchemaViolation);
+        }
+    }
     if role == Role::Document
         && !sql::ConnectorChildren::builder()
             .source_id(source)
@@ -325,12 +408,22 @@ fn check_object(
 }
 
 pub(crate) fn validate_archive(connection: &Connection) -> Result<(), Error> {
+    let mut schemas = std::collections::BTreeMap::new();
+    for row in sql::ConnectorAllSchemas
+        .query_many(connection)
+        .map_err(database)?
+    {
+        let schema: Schema = decode(&row.schema)?;
+        schema.validate().map_err(Error::InvalidBatch)?;
+        schemas.insert(row.source_id, schema);
+    }
     let mut checked = BTreeSet::new();
     for row in sql::ConnectorAllObjects
         .query_many(connection)
         .map_err(database)?
     {
-        check_object(connection, &row.source_id, &row.id, &mut checked)?;
+        let schema = schemas.get(&row.source_id);
+        check_object(connection, &row.source_id, &row.id, schema, &mut checked)?;
     }
     Ok(())
 }

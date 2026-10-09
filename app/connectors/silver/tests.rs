@@ -234,3 +234,71 @@ fn unchanged_replacements_advance_ordering_without_invalidating_silver_again() {
     assert_eq!(next.source_revision, 2);
     assert_eq!(next.silver_revision, receipt.silver_revision);
 }
+
+fn declared() -> serde_json::Value {
+    json!({"op":"declare-schema","kinds":[
+        {"kind":"chat:channel","role":"container","root":true},
+        {"kind":"chat:archive","role":"container","root":true},
+        {"kind":"chat:message","role":"entry","parents":["chat:channel"]},
+        {"kind":"notes:note","role":"document","root":true}
+    ]})
+}
+
+#[test]
+fn declared_schemas_hold_for_stored_objects_and_later_batches() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("silver.sqlite3");
+    let mut store = Store::open(&path).unwrap();
+    let mut thread = container("thread");
+    thread["kind"] = json!("chat:thread");
+    store
+        .apply(&batch(
+            "source",
+            "first",
+            0,
+            json!([container("chat"), entry("message", "chat", "Hello"), thread]),
+        ))
+        .unwrap();
+    // The stored chat:thread container is undeclared: the schema is rejected
+    // and nothing in the batch applies.
+    let rejected = batch(
+        "source",
+        "second",
+        1,
+        json!([declared(), document("note", "Must roll back")]),
+    );
+    assert_eq!(store.apply(&rejected), Err(Error::SchemaViolation));
+    assert!(store.object(&id("source"), &id("note")).unwrap().is_none());
+    let accepted = batch(
+        "source",
+        "second",
+        1,
+        json!([declared(), {"op":"delete-object","id":"thread"}]),
+    );
+    assert_eq!(store.apply(&accepted).unwrap().source_revision, 2);
+    // Later batches without a declaration are checked against the stored one.
+    let mut reaction = entry("reaction", "chat", "👍");
+    reaction["kind"] = json!("chat:reaction");
+    assert_eq!(
+        store.apply(&batch("source", "third", 2, json!([reaction]))),
+        Err(Error::SchemaViolation)
+    );
+    // A parent's new kind must still admit its existing children.
+    let mut renamed = container("chat");
+    renamed["kind"] = json!("chat:archive");
+    assert_eq!(
+        store.apply(&batch("source", "third", 2, json!([renamed]))),
+        Err(Error::SchemaViolation)
+    );
+    let archive = directory.path().join("archive.jsonl");
+    crate::storage::export::write(&path, &archive).unwrap();
+    let restored = directory.path().join("restored.sqlite3");
+    crate::storage::export::restore(&archive, &restored, true).unwrap();
+    let mut restored = Store::open(&restored).unwrap();
+    let mut reaction = entry("reaction", "chat", "👍");
+    reaction["kind"] = json!("chat:reaction");
+    assert_eq!(
+        restored.apply(&batch("source", "third", 2, json!([reaction]))),
+        Err(Error::SchemaViolation)
+    );
+}

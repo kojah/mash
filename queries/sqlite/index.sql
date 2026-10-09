@@ -179,6 +179,20 @@ WHERE connector_objects.record<>excluded.record;
 -- name: ConnectorDeleteObject :execrows
 DELETE FROM connector_objects WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
 
+-- name: ConnectorSchema :one
+SELECT schema FROM connector_schemas WHERE source_id=sqlc.arg(source_id);
+
+-- name: ConnectorPutSchema :execrows
+INSERT INTO connector_schemas(source_id,schema) VALUES(sqlc.arg(source_id),sqlc.arg(schema))
+ON CONFLICT(source_id) DO UPDATE SET schema=excluded.schema
+WHERE connector_schemas.schema<>excluded.schema;
+
+-- name: ConnectorSourceObjects :many
+SELECT id FROM connector_objects WHERE source_id=sqlc.arg(source_id) ORDER BY id;
+
+-- name: ConnectorAllSchemas :many
+SELECT source_id,schema FROM connector_schemas ORDER BY source_id;
+
 -- name: ConnectorChildren :many
 SELECT id,role,record FROM connector_objects
 WHERE source_id=sqlc.arg(source_id) AND parent_id=sqlc.arg(parent_id) ORDER BY id;

@@ -8,9 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mash_sdk import Changes, Connector, DeliveryError, Destination
+from mash_sdk import Changes, Connector, DeliveryError, Destination, KindRule, Role
 from mash_sdk._state import StateStore
-from tests.objects import note
+from tests.objects import channel, message, note
 
 
 class ConnectorTests(unittest.IsolatedAsyncioTestCase):
@@ -197,6 +197,28 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
                 ).fetchone()[0],
                 2,
             )
+
+    async def test_declared_schema_is_enforced_by_mash(self) -> None:
+        schema = Changes.declare(
+            KindRule(kind="chat:channel", role=Role.container, root=True),
+            KindRule(kind="chat:message", role=Role.entry, parents=["chat:channel"]),
+        )
+        async with self.connector(self.destination()) as connector:
+            await connector.send(
+                schema
+                + Changes.upsert(
+                    channel(id="room"),
+                    message(id="hello", parent="room", content="Hello"),
+                )
+            )
+            with self.assertRaises(DeliveryError) as raised:
+                await connector.send(Changes.upsert(note(id="note", content="x")))
+        self.assertFalse(raised.exception.retryable)
+        with sqlite3.connect(self.database) as connection:
+            stored = connection.execute(
+                "SELECT count(*) FROM connector_objects WHERE role='document'"
+            ).fetchone()[0]
+        self.assertEqual(stored, 0)
 
 
 class ConnectorConfigurationTests(unittest.TestCase):

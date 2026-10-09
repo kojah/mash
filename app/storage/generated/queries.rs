@@ -4254,6 +4254,269 @@ impl<'a> ConnectorDeleteObjectBuilder<'a, (&'a str, &'a str)> {
         ConnectorDeleteObject { source_id, id }
     }
 }
+pub struct ConnectorSchemaRow {
+    pub schema: String,
+}
+impl ConnectorSchemaRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            schema: row.get(0)?,
+        })
+    }
+}
+pub struct ConnectorSchema<'a> {
+    source_id: &'a str,
+}
+impl<'a> ConnectorSchema<'a> {
+    pub const QUERY: &'static str = r"SELECT schema FROM connector_schemas WHERE source_id=?1";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorSchema<'a> {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ConnectorSchemaRow> {
+        self.prepare(client)?
+            .query_row(self.as_params(), ConnectorSchemaRow::from_row)
+    }
+    pub fn query_opt(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Option<ConnectorSchemaRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorSchemaRow::from_row)?
+            .next()
+            .transpose()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id,)
+    }
+}
+impl<'a> ConnectorSchema<'a> {
+    pub const fn builder() -> ConnectorSchemaBuilder<'a, ((),)> {
+        ConnectorSchemaBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorSchemaBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorSchemaBuilder<'a, ((),)> {
+    pub fn source_id(self, source_id: &'a str) -> ConnectorSchemaBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorSchemaBuilder {
+            fields: (source_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorSchemaBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ConnectorSchema<'a> {
+        let (source_id,) = self.fields;
+        ConnectorSchema { source_id }
+    }
+}
+pub struct ConnectorPutSchemaRow {}
+impl ConnectorPutSchemaRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ConnectorPutSchema<'a> {
+    source_id: &'a str,
+    schema: &'a str,
+}
+impl<'a> ConnectorPutSchema<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO connector_schemas(source_id,schema) VALUES(?1,?2)
+ON CONFLICT(source_id) DO UPDATE SET schema=excluded.schema
+WHERE connector_schemas.schema<>excluded.schema";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorPutSchema<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id, self.schema)
+    }
+}
+impl<'a> ConnectorPutSchema<'a> {
+    pub const fn builder() -> ConnectorPutSchemaBuilder<'a, ((), ())> {
+        ConnectorPutSchemaBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorPutSchemaBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Schema> ConnectorPutSchemaBuilder<'a, ((), Schema)> {
+    pub fn source_id(self, source_id: &'a str) -> ConnectorPutSchemaBuilder<'a, (&'a str, Schema)> {
+        let ((), schema) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPutSchemaBuilder {
+            fields: (source_id, schema),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId> ConnectorPutSchemaBuilder<'a, (SourceId, ())> {
+    pub fn schema(self, schema: &'a str) -> ConnectorPutSchemaBuilder<'a, (SourceId, &'a str)> {
+        let (source_id, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorPutSchemaBuilder {
+            fields: (source_id, schema),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorPutSchemaBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> ConnectorPutSchema<'a> {
+        let (source_id, schema) = self.fields;
+        ConnectorPutSchema { source_id, schema }
+    }
+}
+pub struct ConnectorSourceObjectsRow {
+    pub id: String,
+}
+impl ConnectorSourceObjectsRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self { id: row.get(0)? })
+    }
+}
+pub struct ConnectorSourceObjects<'a> {
+    source_id: &'a str,
+}
+impl<'a> ConnectorSourceObjects<'a> {
+    pub const QUERY: &'static str =
+        r"SELECT id FROM connector_objects WHERE source_id=?1 ORDER BY id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorSourceObjects<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorSourceObjectsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorSourceObjectsRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_id,)
+    }
+}
+impl<'a> ConnectorSourceObjects<'a> {
+    pub const fn builder() -> ConnectorSourceObjectsBuilder<'a, ((),)> {
+        ConnectorSourceObjectsBuilder {
+            fields: ((),),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorSourceObjectsBuilder<'a, Fields = ((),)> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorSourceObjectsBuilder<'a, ((),)> {
+    pub fn source_id(self, source_id: &'a str) -> ConnectorSourceObjectsBuilder<'a, (&'a str,)> {
+        let ((),) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorSourceObjectsBuilder {
+            fields: (source_id,),
+            _phantom,
+        }
+    }
+}
+impl<'a> ConnectorSourceObjectsBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ConnectorSourceObjects<'a> {
+        let (source_id,) = self.fields;
+        ConnectorSourceObjects { source_id }
+    }
+}
+pub struct ConnectorAllSchemasRow {
+    pub source_id: String,
+    pub schema: String,
+}
+impl ConnectorAllSchemasRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_id: row.get(0)?,
+            schema: row.get(1)?,
+        })
+    }
+}
+pub struct ConnectorAllSchemas;
+impl ConnectorAllSchemas {
+    pub const QUERY: &'static str =
+        r"SELECT source_id,schema FROM connector_schemas ORDER BY source_id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorAllSchemas {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorAllSchemasRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorAllSchemasRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorAllSchemas {
+    pub const fn builder() -> ConnectorAllSchemasBuilder<'static, ()> {
+        ConnectorAllSchemasBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorAllSchemasBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorAllSchemasBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorAllSchemas {
+        let () = self.fields;
+        ConnectorAllSchemas {}
+    }
+}
 pub struct ConnectorChildrenRow {
     pub id: String,
     pub role: String,
