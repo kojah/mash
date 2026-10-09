@@ -22,8 +22,8 @@ are rejected. Node HTTP configuration and CLI/MCP tools retain their interfaces.
 
 Unique provider and CLI publication contracts were ported to Qdrant. Shared
 read/index tracing remains on the concrete Qdrant methods. Historical benchmark
-reports remain evidence of their recorded versions; the Redis vector pilot is
-archived under `research/storage/`, outside supported development tooling.
+reports remain evidence of their recorded versions; the obsolete Redis vector
+pilot harness has been removed from the repository.
 
 ## Validation on Xenia, 2026-10-03
 

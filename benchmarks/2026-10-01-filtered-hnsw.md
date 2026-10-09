@@ -90,12 +90,9 @@ actual out-of-sample user queries, relevance/ranking effects, end-to-end latency
 concurrent mutations and repeated controlled runs under the existing performance
 budget. Faster vector retrieval alone does not establish faster, relevant search.
 
-```sh
-python3 research/storage/redis-vector-pilot.py \
-  --frozen /path/to/private/vectors.sqlite3 \
-  --artifacts /path/to/new/private/artifacts \
-  --sizes 100000 --queries 100 --k 20 --profiles --filtered-policies
-```
+The historical run used 100,000 frozen vectors, 100 queries and `k=20`, with
+profiles and filtered policies enabled. The obsolete pilot harness has been
+removed from the repository.
 
 Reports are retained privately at
 `/home/james/scratch/mash-artifacts/hnsw-filtered-policy-20261001/report.json`

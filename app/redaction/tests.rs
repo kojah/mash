@@ -10,18 +10,13 @@ struct Fixture {
 #[test]
 fn synthetic_credentials_and_benign_chat_contract() {
     let mut fixtures: Vec<Fixture> =
-        serde_json::from_str(include_str!("../../research/redaction/fixtures.json")).unwrap();
+        serde_json::from_str(include_str!("fixtures/fixtures.json")).unwrap();
     fixtures.extend(
-        serde_json::from_str::<Vec<Fixture>>(include_str!(
-            "../../research/redaction/additional.json"
-        ))
-        .unwrap(),
+        serde_json::from_str::<Vec<Fixture>>(include_str!("fixtures/additional.json")).unwrap(),
     );
     fixtures.extend(
-        serde_json::from_str::<Vec<Fixture>>(include_str!(
-            "../../research/redaction/audit-regressions.json"
-        ))
-        .unwrap(),
+        serde_json::from_str::<Vec<Fixture>>(include_str!("fixtures/audit-regressions.json"))
+            .unwrap(),
     );
     for fixture in fixtures {
         let safe = text(&fixture.text);

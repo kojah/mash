@@ -87,22 +87,11 @@ execution profiles for production filters, concurrent publication/deletion and
 end-to-end hybrid search. Even the large unfiltered gain saves approximately six
 milliseconds here; embedding and reranking can dominate the full request.
 
-The [pilot harness](../research/storage/redis-vector-pilot.py) requires no Python packages. It
-reads the source SQLite database without changing it, freezes vector metadata in
-a private artifact directory, and uses isolated Redis namespaces with cleanup.
-It only accepts the designated disposable test port and never flushes Redis.
-Do not run alongside other performance measurements. For example:
-
-```sh
-python3 research/storage/redis-vector-pilot.py \
-  --source /path/to/existing-index.sqlite3 \
-  --artifacts /path/to/private/pilot-artifacts \
-  --sizes 1000 10000 100000 --queries 100 --k 20
-```
-
-Reuse the frozen corpus with `--frozen /path/to/pilot-artifacts/vectors.sqlite3`
-instead of `--source`, writing to a new private report directory. Frozen vectors
-remain sensitive artifacts and must stay outside Git. The full report for this
+The historical pilot harness read the source SQLite database without changing
+it, froze vector metadata in a private artifact directory, and used isolated
+Redis namespaces with cleanup. The obsolete harness has been removed from the
+repository. Frozen vectors remain sensitive artifacts and must stay outside
+Git. The full report for this
 run is `/home/james/scratch/mash-artifacts/hnsw-pilot-20261001-final/report.json`.
 
 Tracking: `mash-c0d.11.1` (this pilot), `mash-c0d.11.2` (filter profiling),

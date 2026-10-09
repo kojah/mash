@@ -25,7 +25,7 @@ and local canonical SQLite data remain intact. Detection is best effort, not a
 guarantee that arbitrary or obfuscated secrets are absent. Existing deployments
 and stored shared history require an upgrade and explicit re-indexing; rebuilding
 alone does not delete previous publications. See the
-[redaction evaluation and limits](research/redaction/README.md).
+[redaction evaluation and limits](docs/redaction-evaluation.md).
 
 ## Commands
 

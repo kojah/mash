@@ -122,25 +122,12 @@ encoded/obfuscated secrets, query-string credentials and unsupported layouts can
 be missed. A literal credential-looking example may be masked. This policy does
 not detect general PII and does not promise that output contains no secrets.
 
-## Reproduction
+## Regression validation
 
-Keep downloads/build output outside Git. Clone Rusty Hog at the pinned commit
-into an artifact directory, then create a standalone Cargo manifest there with
-an empty `[workspace]`, `evaluate.rs` as the absolute `[[bin]].path`, and:
-
-```toml
-[dependencies]
-secrets_scanner = { version = "=0.2.3", default-features = false }
-rusty_hog_scanner = { path = "rusty-hog/crates/rusty-hog-scanner" }
-regex = "1.12"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-```
-
-Run `cargo run --release --manifest-path <artifact>/Cargo.toml --
-research/redaction/fixtures.json`, then repeat with `additional.json`.
-The harness prints case names, miss counts and aggregate timing, never matched
-values. CI regression tests use the same fixtures against the production policy.
+The historical scanner comparison harness has been removed from the repository.
+CI regression tests use the synthetic fixtures in `app/redaction/fixtures/`
+against the production policy. Run the redaction tests with
+`cargo test-clif -E 'test(redaction::)'`.
 
 Implementation validation: the complete standard suite passed (644 tests);
 36 affected tests passed on the final source with isolated RAM-backed temporary
