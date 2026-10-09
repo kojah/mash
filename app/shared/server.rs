@@ -14,6 +14,7 @@ use serde::Deserialize;
 mod admission;
 mod attachments;
 mod configuration;
+mod connectors;
 mod contexts;
 pub(super) mod store;
 mod upload;
@@ -148,6 +149,7 @@ fn router(app: App) -> Router {
             post(attachments::upload).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
         .route("/v1/index", post(index))
+        .route("/v1/connector-batches", post(connectors::ingest))
         .method_not_allowed_fallback(|| async {
             ApiError(
                 StatusCode::METHOD_NOT_ALLOWED,

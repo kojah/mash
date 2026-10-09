@@ -29,6 +29,21 @@ impl std::error::Error for Error {}
 fn database(_: rusqlite::Error) -> Error {
     Error::Database
 }
+
+pub(crate) fn app_error(problem: Error) -> crate::AppError {
+    use crate::{AppError, ErrorKind};
+    match problem {
+        Error::BatchConflict | Error::RevisionConflict => {
+            AppError::new(12, ErrorKind::Conflict, problem.to_string(), false)
+        }
+        Error::InvalidBatch(_) | Error::InvalidReferences => AppError::usage(problem.to_string()),
+        Error::UnsupportedSchema => AppError::schema(problem.to_string()),
+        Error::Database => AppError::new(5, ErrorKind::Database, problem.to_string(), true),
+        Error::CorruptRecord | Error::RevisionExhausted => {
+            AppError::database_data(problem.to_string())
+        }
+    }
+}
 fn encode(value: &impl Serialize) -> Result<String, Error> {
     serde_json::to_string(value).map_err(|_| Error::CorruptRecord)
 }

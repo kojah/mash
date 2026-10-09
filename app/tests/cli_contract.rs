@@ -10,8 +10,8 @@ mod test_support;
 use support::*;
 
 mod commands;
-mod connector_ingestion;
 mod configuration;
+mod connector_ingestion;
 mod export;
 mod index_destinations;
 mod indexing;

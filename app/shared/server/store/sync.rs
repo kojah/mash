@@ -180,6 +180,11 @@ impl Store {
         mut gold: NodeGold,
         fingerprints: &BTreeMap<String, String>,
     ) -> Result<(), AppError> {
+        if self.connector_inputs(identity).await? {
+            return Err(AppError::search_not_ready(
+                "external connector gold projection has not completed",
+            ));
+        }
         gold.threads.retain(|id, _| fingerprints.contains_key(id));
         let head = self.head(identity).await?;
         let synced = gold.threads.len() == fingerprints.len()

@@ -12,7 +12,7 @@ pub(super) async fn run(database: &Path, batch_file: PathBuf) -> Result<Receipt,
         let batch = read(&batch_file)?;
         silver::Store::open(&database)
             .and_then(|mut store| store.apply(&batch))
-            .map_err(error)
+            .map_err(silver::app_error)
     })
     .await
 }
@@ -32,20 +32,5 @@ fn read(path: &Path) -> Result<Batch, AppError> {
     file.take((MAX_BATCH_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(AppError::io)?;
-    Batch::decode(&bytes).map_err(|problem| error(silver::Error::InvalidBatch(problem)))
-}
-
-fn error(problem: silver::Error) -> AppError {
-    use silver::Error;
-    match problem {
-        Error::BatchConflict | Error::RevisionConflict => {
-            AppError::new(12, crate::ErrorKind::Conflict, problem.to_string(), false)
-        }
-        Error::InvalidBatch(_) | Error::InvalidReferences => AppError::usage(problem.to_string()),
-        Error::UnsupportedSchema => AppError::schema(problem.to_string()),
-        Error::Database => AppError::new(5, crate::ErrorKind::Database, problem.to_string(), true),
-        Error::CorruptRecord | Error::RevisionExhausted => {
-            AppError::database_data(problem.to_string())
-        }
-    }
+    Batch::decode(&bytes).map_err(|problem| silver::app_error(silver::Error::InvalidBatch(problem)))
 }

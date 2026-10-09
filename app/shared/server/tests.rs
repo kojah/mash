@@ -5,6 +5,7 @@ use std::collections::HashSet;
 mod admission;
 mod antigravity;
 mod attachments;
+mod connectors;
 mod context;
 mod contexts;
 mod correlation;
@@ -207,7 +208,7 @@ async fn remote_space_contract(service: Service) {
 
 struct Service {
     _attachments: tempfile::TempDir,
-    _silver: tempfile::TempDir,
+    silver_dir: tempfile::TempDir,
     url: String,
     group: String,
     task: tokio::task::JoinHandle<()>,
@@ -215,6 +216,13 @@ struct Service {
     store: Store,
     first: Identity,
     identities: Arc<HashMap<blake3::Hash, Identity>>,
+}
+
+#[derive(Clone, Copy)]
+enum TestBackend {
+    Unavailable,
+    Silver,
+    Qdrant,
 }
 
 async fn exclude_own_contract(service: Service) {
@@ -410,6 +418,30 @@ impl Service {
         max_node_bytes: usize,
         first_token: &str,
     ) -> Self {
+        Self::with_backend(
+            if available {
+                TestBackend::Qdrant
+            } else {
+                TestBackend::Unavailable
+            },
+            dimensions,
+            max_node_bytes,
+            first_token,
+        )
+        .await
+    }
+
+    async fn canonical() -> Self {
+        Self::with_backend(TestBackend::Silver, 384, 64 * 1024 * 1024, FIRST).await
+    }
+
+    async fn with_backend(
+        backend: TestBackend,
+        dimensions: usize,
+        max_node_bytes: usize,
+        first_token: &str,
+    ) -> Self {
+        let available = matches!(backend, TestBackend::Qdrant);
         let generation = if dimensions == 384 {
             crate::semantic::SHARED_EMBEDDING_GENERATION.to_owned()
         } else {
@@ -469,15 +501,15 @@ impl Service {
                 gold.select_gold(identity, false).await.unwrap();
             }
         }
-        let store = if available {
+        let store = if matches!(backend, TestBackend::Unavailable) {
+            Store::unavailable()
+        } else {
             let silver = super::super::silver_store::SilverStore::open(
                 &directory.path().join("silver"),
                 identities.values(),
             )
             .unwrap();
             Store::new(silver, gold, max_node_bytes as u64)
-        } else {
-            Store::unavailable()
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
@@ -495,7 +527,7 @@ impl Service {
         });
         Self {
             _attachments: attachments,
-            _silver: directory,
+            silver_dir: directory,
             url,
             group,
             task,

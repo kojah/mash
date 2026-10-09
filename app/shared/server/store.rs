@@ -10,6 +10,7 @@ use crate::storage::Counts;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
+mod connectors;
 mod replay;
 mod sync;
 
@@ -213,14 +214,15 @@ impl Store {
                 ..identity.clone()
             };
             let mut counts = self.read(&node, silver_store::counts).await?;
+            let connector_inputs = self.connector_inputs(&node).await?;
             let gold = self.gold.node_gold(&node).await?;
             let silver = head.silver_revision.as_ref();
-            let lexical_current = gold
-                .as_ref()
-                .is_some_and(|g| silver.is_some() && g.silver.as_ref() == silver);
+            let lexical_current = gold.as_ref().is_some_and(|g| {
+                !connector_inputs && silver.is_some() && g.silver.as_ref() == silver
+            });
             let gold_current = gold
                 .as_ref()
-                .is_some_and(|g| g.current(&self.gold, &node, silver));
+                .is_some_and(|g| !connector_inputs && g.current(&self.gold, &node, silver));
             counts.embeddings = gold
                 .as_ref()
                 .filter(|g| g.compatible(&self.gold, &node))
@@ -228,7 +230,7 @@ impl Store {
             let build = self.gold.build();
             nodes.push(NodeFreshness {
                 artifacts: Some(crate::gold::readiness::Artifacts {
-                    metadata: crate::gold::readiness::State::publication(true, true),
+                    metadata: crate::gold::readiness::State::publication(true, !connector_inputs),
                     lexical: crate::gold::readiness::State::publication(
                         gold.is_some(),
                         lexical_current,
@@ -313,6 +315,8 @@ impl Store {
     ) -> Result<protocol::Candidates, AppError> {
         qdrant_index::validate_search(&input, identity)?;
         self.gold.gold_configuration(identity).await?;
+        self.require_connector_gold(identity, input.exclude_self)
+            .await?;
         let exact = input.intent == crate::gold::exact::Intent::ExactMention;
         let active = self
             .searchable_nodes(identity, !exact, input.exclude_self)
