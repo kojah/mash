@@ -14,6 +14,7 @@ from mash_sdk import (
     Destination,
     DocumentSnapshot,
     Metadata,
+    Mode,
     Object,
     Role,
 )
@@ -99,7 +100,10 @@ async def run(
     state_path: Path,
 ) -> None:
     async with Connector(
-        source_id=source_id, destinations=destinations, state_path=state_path
+        source_id=source_id,
+        modes=[Mode.live],
+        destinations=destinations,
+        state_path=state_path,
     ) as connector:
         await connector.run(
             backfill=backfill(source, scope),

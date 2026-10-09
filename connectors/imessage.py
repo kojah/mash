@@ -13,6 +13,7 @@ from mash_sdk import (
     Debounce,
     Delivery,
     Destination,
+    Mode,
     Object,
     Role,
     Snapshot,
@@ -155,8 +156,10 @@ async def run(
     destinations: Sequence[Destination],
     state_path: Path,
 ) -> None:
+    # Live or snapshot is still undecided for iMessage.
     async with Connector(
         source_id=f"imessage:{settings.account_scope}",
+        modes=[Mode.live],
         destinations=destinations,
         state_path=state_path,
     ) as connector:

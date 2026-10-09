@@ -279,6 +279,21 @@
       "description": "Deliberately opaque source-specific properties, never interpreted as instructions.\nCommon searchable fields belong to the typed records instead.",
       "type": "object"
     },
+    "Mode": {
+      "description": "How a source can be kept in sync. Native providers and connectors declare\ntheirs in code, and Mash reports when each last ran.",
+      "oneOf": [
+        {
+          "const": "snapshot",
+          "description": "Describe what the source holds now, on demand or on a schedule.",
+          "type": "string"
+        },
+        {
+          "const": "live",
+          "description": "Follow source events as they happen, after a snapshot backfill\ncatches up with whatever changed while it was not running.",
+          "type": "string"
+        }
+      ]
+    },
     "Role": {
       "description": "What Mash may do with an object, whatever its source calls it.",
       "oneOf": [
@@ -300,6 +315,31 @@
         {
           "const": "document",
           "description": "Standalone searchable text, such as a note; never a parent.",
+          "type": "string"
+        }
+      ]
+    },
+    "Trigger": {
+      "description": "What produced one batch.",
+      "oneOf": [
+        {
+          "const": "snapshot",
+          "description": "Part of a snapshot that does not delete by omission.",
+          "type": "string"
+        },
+        {
+          "const": "complete-snapshot",
+          "description": "Part of a complete snapshot, which deletes what it no longer contains.",
+          "type": "string"
+        },
+        {
+          "const": "live",
+          "description": "A refresh after a live source event.",
+          "type": "string"
+        },
+        {
+          "const": "change",
+          "description": "Explicit changes outside either mode.",
           "type": "string"
         }
       ]
@@ -326,12 +366,34 @@
       "minimum": 0,
       "type": "integer"
     },
+    "modes": {
+      "description": "The modes this connector declares it supports; absent from clients\nthat predate declarations.",
+      "items": {
+        "$ref": "#/$defs/Mode"
+      },
+      "maxItems": 2,
+      "type": [
+        "array",
+        "null"
+      ]
+    },
     "schema_version": {
       "$ref": "#/$defs/ConnectorVersion"
     },
     "source_id": {
       "$ref": "#/$defs/ConnectorId",
       "description": "Stable account/dataset identity shared across copies on different machines."
+    },
+    "trigger": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Trigger"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What produced this batch; absent from clients that predate it."
     }
   },
   "required": [

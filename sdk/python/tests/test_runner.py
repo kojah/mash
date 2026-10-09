@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import orjson
+
 from mash_sdk import (
     Changes,
     Connector,
@@ -18,11 +20,15 @@ from mash_sdk import (
     DeliveryError,
     Destination,
     DocumentSnapshot,
+    Mode,
     Object,
     Snapshot,
 )
 from tests.fake_mash import TOKEN, TOKEN_ENV, Behaviour, serve
 from tests.objects import channel, message, note
+
+# Tests exercise every operation, so their connector declares both modes.
+BOTH = (Mode.snapshot, Mode.live)
 
 SINCE = datetime(2026, 1, 1, tzinfo=UTC)
 BEFORE = int(SINCE.timestamp() * 1000) - 1
@@ -129,6 +135,7 @@ class Harness(unittest.IsolatedAsyncioTestCase):
     def connector(self) -> Connector:
         return Connector(
             source_id="external",
+            modes=BOTH,
             destinations=[self.destination],
             state_path=self.state_path,
         )
@@ -355,6 +362,65 @@ class SyncTests(Harness):
             await self.connector().sync(documents("a", scopes=("A",)))
 
 
+class ModeTests(Harness):
+    """Declared modes gate operations, and each batch says what produced it."""
+
+    def triggers(self) -> list[tuple[str, list[str]]]:
+        batches = [orjson.loads(body) for body in self.server.commits]
+        return [(batch["trigger"], batch["modes"]) for batch in batches]
+
+    async def test_batches_record_what_produced_them(self) -> None:
+        async with self.connector() as connector:
+            await connector.sync(chat_snapshot(entry("one"), complete=False))
+            await connector.sync(chat_snapshot(entry("one"), entry("two")))
+            await connector.send(Changes.upsert(note(id="manual", content="text")))
+        both = ["live", "snapshot"]
+        self.assertEqual(
+            self.triggers(),
+            [("snapshot", both), ("complete-snapshot", both), ("change", both)],
+        )
+
+    async def test_live_refreshes_are_marked_live(self) -> None:
+        events = Events()
+        events.put(Event("note", 1))
+        events.close()
+
+        async def refresh(event: Event) -> Changes:
+            return Changes.upsert(note(id=event.id, content="refreshed"))
+
+        await self.run_once(
+            documents("a", scopes=("A",)), events=events, refresh=refresh
+        )
+        self.assertEqual(
+            [trigger for trigger, _ in self.triggers()], ["complete-snapshot", "live"]
+        )
+
+    async def test_operations_need_their_declared_mode(self) -> None:
+        def connector(*modes: Mode) -> Connector:
+            return Connector(
+                source_id="external",
+                modes=modes,
+                destinations=[self.destination],
+                state_path=self.state_path,
+            )
+
+        with self.assertRaises(ValueError):
+            connector()
+        async with connector(Mode.live) as live:
+            with self.assertRaises(ValueError):
+                await live.sync(documents("a", scopes=("A",)))
+        async with connector(Mode.snapshot) as polled:
+            with self.assertRaises(ValueError):
+                await polled.run(
+                    backfill=snapshots(),
+                    events=closed(),
+                    event_type=Event,
+                    refresh=unexpected,
+                    debounce=QUICK,
+                )
+        self.assertEqual(self.server.commits, [])
+
+
 class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
     async def test_snapshot_deletion_is_accepted_by_local_mash(self) -> None:
         binary = os.environ.get("MASH_CONNECTOR_MASH_BINARY")
@@ -375,6 +441,7 @@ class RealMashRunnerTests(unittest.IsolatedAsyncioTestCase):
         ):
             async with Connector(
                 source_id="external",
+                modes=BOTH,
                 destinations=[destination],
                 state_path=root / "sdk.sqlite",
             ) as connector:
@@ -426,6 +493,7 @@ class FanOutTests(unittest.IsolatedAsyncioTestCase):
     def connector(self) -> Connector:
         return Connector(
             source_id="external",
+            modes=BOTH,
             destinations=self.destinations,
             state_path=self.state_path,
         )
@@ -489,6 +557,7 @@ class FanOutTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 Connector(
                     source_id="external",
+                    modes=BOTH,
                     destinations=destinations,
                     state_path=self.state_path,
                 )

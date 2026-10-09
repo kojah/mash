@@ -1,6 +1,6 @@
 """Desired SDK interface. This is a typing specification, not a runtime SDK."""
 
-from collections.abc import AsyncIterable, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterable, Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -32,6 +32,13 @@ class Attachment:
     def __init__(
         self, *, id: str, name: str, media_type: str, url: str, bytes: int | None = ...
     ) -> None: ...
+
+class Mode(StrEnum):
+    """How a connector keeps its source in sync: `snapshot` permits `sync`,
+    `live` permits `run` (which backfills with snapshots, then follows events)."""
+
+    snapshot = "snapshot"
+    live = "live"
 
 class Role(StrEnum):
     """What Mash may do with an object; `kind` is the source's own label."""
@@ -173,6 +180,7 @@ class Connector:
         self,
         *,
         source_id: str,
+        modes: Collection[Mode],
         destinations: Sequence[Destination],
         state_path: Path,
     ) -> None: ...

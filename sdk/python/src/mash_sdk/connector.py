@@ -4,7 +4,14 @@ import asyncio
 import hashlib
 import sqlite3
 import time
-from collections.abc import AsyncIterable, Awaitable, Callable, Iterator, Sequence
+from collections.abc import (
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Collection,
+    Iterator,
+    Sequence,
+)
 from contextlib import contextmanager
 from pathlib import Path
 from types import TracebackType
@@ -14,7 +21,7 @@ from pydantic import TypeAdapter, ValidationError
 from pydantic_core import PydanticSerializationError
 
 from ._delivery import DeliveryError
-from ._generated.batch import Batch
+from ._generated.batch import Batch, Mode, Trigger
 from ._generated.receipt import Receipt
 from ._local import deliver_local
 from ._plan import Plan, batches, snapshot_plan, unchanged_removed
@@ -47,12 +54,17 @@ class Connector:
     Cancellation of a caller does not cancel already accepted work; exit waits
     for outstanding delivery. `run` adds backfill, event capture and debounce.
     Records become searchable once each destination's gold projects them.
+
+    `modes` declares how this connector keeps its source in sync, so readers
+    and Mash both know: `Mode.snapshot` permits `sync`, and `Mode.live`
+    permits `run`. Mash reports when each last delivered.
     """
 
     def __init__(
         self,
         *,
         source_id: str,
+        modes: Collection[Mode],
         destinations: Sequence[Destination],
         state_path: Path,
     ) -> None:
@@ -63,6 +75,9 @@ class Connector:
         except ValidationError:
             raise ValueError("invalid connector source identity") from None
         self.source_id = source_id
+        self.modes = tuple(sorted({Mode(mode) for mode in modes}))
+        if not self.modes:
+            raise ValueError("a connector declares at least one mode")
         self.destinations = tuple(destinations)
         identities = [destination._identity() for destination in self.destinations]
         if not identities:
@@ -136,14 +151,25 @@ class Connector:
         """
         if not self._entered:
             raise RuntimeError("use the connector inside an async context manager")
+        self._require(Mode.snapshot, "sync")
         sent = 0
         for snapshot in snapshots:
             sent += await self._call(
                 lambda snapshot=snapshot: self._publish(
-                    lambda store, id: snapshot_plan(store, id, self.source_id, snapshot)
+                    lambda store, id: snapshot_plan(
+                        store, id, self.source_id, snapshot
+                    ),
+                    snapshot_trigger(snapshot),
                 )
             )
         return sent
+
+    def _require(self, mode: Mode, operation: str) -> None:
+        if mode not in self.modes:
+            raise ValueError(
+                f"{operation} needs Mode.{mode.name}, "
+                "which this connector does not declare"
+            )
 
     async def run(
         self,
@@ -167,6 +193,7 @@ class Connector:
         """
         if not self._entered:
             raise RuntimeError("use the connector inside an async context manager")
+        self._require(Mode.live, "run")
         adapter = TypeAdapter(event_type)
         destination_id = self._journal_id
         wake = asyncio.Event()
@@ -195,7 +222,8 @@ class Connector:
                     lambda snapshot=snapshot: self._publish(
                         lambda store, id: snapshot_plan(
                             store, id, self.source_id, snapshot
-                        )
+                        ),
+                        snapshot_trigger(snapshot),
                     ),
                     capturing,
                 )
@@ -241,7 +269,8 @@ class Connector:
                 lambda: self._publish(
                     lambda store, id: Plan(
                         unchanged_removed(store, id, self.source_id, changes)
-                    )
+                    ),
+                    Trigger.live,
                 ),
                 capturing,
             )
@@ -263,12 +292,19 @@ class Connector:
             await asyncio.sleep(delay)
             delay = min(delay * 2, MAX_RETRY_SECONDS)
 
-    def _publish(self, plan: Callable[[StateStore, str], Plan]) -> int:
+    def _publish(
+        self, plan: Callable[[StateStore, str], Plan], trigger: Trigger
+    ) -> int:
         """Plan and send separately to each destination against its own ledger."""
-        return sum(self._each(lambda destination: self._publish_to(destination, plan)))
+        return sum(
+            self._each(lambda destination: self._publish_to(destination, plan, trigger))
+        )
 
     def _publish_to(
-        self, destination: Destination, plan: Callable[[StateStore, str], Plan]
+        self,
+        destination: Destination,
+        plan: Callable[[StateStore, str], Plan],
+        trigger: Trigger,
     ) -> int:
         """Finish saved work, then plan against the ledger and send each part."""
         destination_id = destination._identity()
@@ -285,6 +321,8 @@ class Connector:
                     source_id=self.source_id,
                     destination_id=destination_id,
                     document_scopes=part.document_scopes,
+                    trigger=trigger,
+                    modes=self.modes,
                 )
                 self._deliver(store, prepared, destination)
                 sent += 1
@@ -389,6 +427,8 @@ class Connector:
                             source_id=self.source_id,
                             batch_id=pending.batch_id,
                             expected_revision=pending.expected_revision,
+                            trigger=Trigger.change,
+                            modes=self.modes,
                         ),
                         contract=store.contract,
                     )
@@ -402,7 +442,11 @@ class Connector:
             return self._deliver(
                 store,
                 store.prepare(
-                    changes, source_id=self.source_id, destination_id=destination_id
+                    changes,
+                    source_id=self.source_id,
+                    destination_id=destination_id,
+                    trigger=Trigger.change,
+                    modes=self.modes,
                 ),
                 destination,
             )
@@ -423,6 +467,11 @@ class Connector:
             source_id=self.source_id,
             destination_id=destination._identity(),
         )
+
+
+def snapshot_trigger(snapshot: Snapshot | DocumentSnapshot) -> Trigger:
+    """Only a complete snapshot deletes what it no longer contains."""
+    return Trigger.complete_snapshot if snapshot.complete else Trigger.snapshot
 
 
 @contextmanager

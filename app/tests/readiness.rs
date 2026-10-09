@@ -370,3 +370,26 @@ fn status_reports_another_release_schema_without_touching_it() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("--keep-identity"));
     assert_eq!(std::fs::read(&database).unwrap(), before);
 }
+
+#[test]
+fn status_lists_each_source_with_its_declared_modes() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    write_config(
+        &config,
+        &directory.path().join("claude"),
+        &directory.path().join("codex"),
+    );
+    let body = run_json(&[
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        directory.path().join("missing.sqlite3").to_str().unwrap(),
+        "status",
+    ]);
+    let native = |provider: &str| serde_json::json!({"source": {"provider": provider}, "modes": ["snapshot", "live"]});
+    assert_eq!(
+        body["sources"],
+        serde_json::json!([native("claude-code"), native("codex")])
+    );
+}

@@ -10725,3 +10725,365 @@ impl<'a> NativeEntryParentBuilder<'a, (&'a str,)> {
         NativeEntryParent { id }
     }
 }
+pub struct ConnectorRecordActivityRow {}
+impl ConnectorRecordActivityRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct ConnectorRecordActivity<'a> {
+    source_id: &'a str,
+    modes: &'a str,
+    snapshot_at: Option<i64>,
+    complete_snapshot_at: Option<i64>,
+    live_at: Option<i64>,
+    change_at: Option<i64>,
+}
+impl<'a> ConnectorRecordActivity<'a> {
+    pub const QUERY: &'static str = r"INSERT INTO connector_activity(source_id,modes,snapshot_at,complete_snapshot_at,live_at,change_at)
+VALUES(?1,?2,?3,?4,
+    ?5,?6)
+ON CONFLICT(source_id) DO UPDATE SET
+modes=CASE WHEN excluded.modes='[]' THEN connector_activity.modes ELSE excluded.modes END,
+snapshot_at=COALESCE(excluded.snapshot_at,connector_activity.snapshot_at),
+complete_snapshot_at=COALESCE(excluded.complete_snapshot_at,connector_activity.complete_snapshot_at),
+live_at=COALESCE(excluded.live_at,connector_activity.live_at),
+change_at=COALESCE(excluded.change_at,connector_activity.change_at)";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> ConnectorRecordActivity<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (
+            self.source_id,
+            self.modes,
+            self.snapshot_at,
+            self.complete_snapshot_at,
+            self.live_at,
+            self.change_at,
+        )
+    }
+}
+impl<'a> ConnectorRecordActivity<'a> {
+    pub const fn builder() -> ConnectorRecordActivityBuilder<'a, ((), (), (), (), (), ())> {
+        ConnectorRecordActivityBuilder {
+            fields: ((), (), (), (), (), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorRecordActivityBuilder<'a, Fields = ((), (), (), (), (), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, Modes, SnapshotAt, CompleteSnapshotAt, LiveAt, ChangeAt>
+    ConnectorRecordActivityBuilder<
+        'a,
+        ((), Modes, SnapshotAt, CompleteSnapshotAt, LiveAt, ChangeAt),
+    >
+{
+    pub fn source_id(
+        self,
+        source_id: &'a str,
+    ) -> ConnectorRecordActivityBuilder<
+        'a,
+        (
+            &'a str,
+            Modes,
+            SnapshotAt,
+            CompleteSnapshotAt,
+            LiveAt,
+            ChangeAt,
+        ),
+    > {
+        let ((), modes, snapshot_at, complete_snapshot_at, live_at, change_at) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorRecordActivityBuilder {
+            fields: (
+                source_id,
+                modes,
+                snapshot_at,
+                complete_snapshot_at,
+                live_at,
+                change_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId, SnapshotAt, CompleteSnapshotAt, LiveAt, ChangeAt>
+    ConnectorRecordActivityBuilder<
+        'a,
+        (
+            SourceId,
+            (),
+            SnapshotAt,
+            CompleteSnapshotAt,
+            LiveAt,
+            ChangeAt,
+        ),
+    >
+{
+    pub fn modes(
+        self,
+        modes: &'a str,
+    ) -> ConnectorRecordActivityBuilder<
+        'a,
+        (
+            SourceId,
+            &'a str,
+            SnapshotAt,
+            CompleteSnapshotAt,
+            LiveAt,
+            ChangeAt,
+        ),
+    > {
+        let (source_id, (), snapshot_at, complete_snapshot_at, live_at, change_at) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorRecordActivityBuilder {
+            fields: (
+                source_id,
+                modes,
+                snapshot_at,
+                complete_snapshot_at,
+                live_at,
+                change_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId, Modes, CompleteSnapshotAt, LiveAt, ChangeAt>
+    ConnectorRecordActivityBuilder<'a, (SourceId, Modes, (), CompleteSnapshotAt, LiveAt, ChangeAt)>
+{
+    pub fn snapshot_at(
+        self,
+        snapshot_at: Option<i64>,
+    ) -> ConnectorRecordActivityBuilder<
+        'a,
+        (
+            SourceId,
+            Modes,
+            Option<i64>,
+            CompleteSnapshotAt,
+            LiveAt,
+            ChangeAt,
+        ),
+    > {
+        let (source_id, modes, (), complete_snapshot_at, live_at, change_at) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorRecordActivityBuilder {
+            fields: (
+                source_id,
+                modes,
+                snapshot_at,
+                complete_snapshot_at,
+                live_at,
+                change_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId, Modes, SnapshotAt, LiveAt, ChangeAt>
+    ConnectorRecordActivityBuilder<'a, (SourceId, Modes, SnapshotAt, (), LiveAt, ChangeAt)>
+{
+    pub fn complete_snapshot_at(
+        self,
+        complete_snapshot_at: Option<i64>,
+    ) -> ConnectorRecordActivityBuilder<
+        'a,
+        (SourceId, Modes, SnapshotAt, Option<i64>, LiveAt, ChangeAt),
+    > {
+        let (source_id, modes, snapshot_at, (), live_at, change_at) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorRecordActivityBuilder {
+            fields: (
+                source_id,
+                modes,
+                snapshot_at,
+                complete_snapshot_at,
+                live_at,
+                change_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId, Modes, SnapshotAt, CompleteSnapshotAt, ChangeAt>
+    ConnectorRecordActivityBuilder<
+        'a,
+        (
+            SourceId,
+            Modes,
+            SnapshotAt,
+            CompleteSnapshotAt,
+            (),
+            ChangeAt,
+        ),
+    >
+{
+    pub fn live_at(
+        self,
+        live_at: Option<i64>,
+    ) -> ConnectorRecordActivityBuilder<
+        'a,
+        (
+            SourceId,
+            Modes,
+            SnapshotAt,
+            CompleteSnapshotAt,
+            Option<i64>,
+            ChangeAt,
+        ),
+    > {
+        let (source_id, modes, snapshot_at, complete_snapshot_at, (), change_at) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorRecordActivityBuilder {
+            fields: (
+                source_id,
+                modes,
+                snapshot_at,
+                complete_snapshot_at,
+                live_at,
+                change_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceId, Modes, SnapshotAt, CompleteSnapshotAt, LiveAt>
+    ConnectorRecordActivityBuilder<
+        'a,
+        (SourceId, Modes, SnapshotAt, CompleteSnapshotAt, LiveAt, ()),
+    >
+{
+    pub fn change_at(
+        self,
+        change_at: Option<i64>,
+    ) -> ConnectorRecordActivityBuilder<
+        'a,
+        (
+            SourceId,
+            Modes,
+            SnapshotAt,
+            CompleteSnapshotAt,
+            LiveAt,
+            Option<i64>,
+        ),
+    > {
+        let (source_id, modes, snapshot_at, complete_snapshot_at, live_at, ()) = self.fields;
+        let _phantom = self._phantom;
+        ConnectorRecordActivityBuilder {
+            fields: (
+                source_id,
+                modes,
+                snapshot_at,
+                complete_snapshot_at,
+                live_at,
+                change_at,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a>
+    ConnectorRecordActivityBuilder<
+        'a,
+        (
+            &'a str,
+            &'a str,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+        ),
+    >
+{
+    pub fn build(self) -> ConnectorRecordActivity<'a> {
+        let (source_id, modes, snapshot_at, complete_snapshot_at, live_at, change_at) = self.fields;
+        ConnectorRecordActivity {
+            source_id,
+            modes,
+            snapshot_at,
+            complete_snapshot_at,
+            live_at,
+            change_at,
+        }
+    }
+}
+pub struct ConnectorActivityRow {
+    pub source_id: String,
+    pub modes: Option<String>,
+    pub snapshot_at: Option<i64>,
+    pub complete_snapshot_at: Option<i64>,
+    pub live_at: Option<i64>,
+    pub change_at: Option<i64>,
+}
+impl ConnectorActivityRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            source_id: row.get(0)?,
+            modes: row.get(1)?,
+            snapshot_at: row.get(2)?,
+            complete_snapshot_at: row.get(3)?,
+            live_at: row.get(4)?,
+            change_at: row.get(5)?,
+        })
+    }
+}
+pub struct ConnectorActivity;
+impl ConnectorActivity {
+    pub const QUERY: &'static str = r"SELECT s.id AS source_id,a.modes,a.snapshot_at,a.complete_snapshot_at,a.live_at,a.change_at
+FROM connector_sources s LEFT JOIN connector_activity a ON a.source_id=s.id ORDER BY s.id";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl ConnectorActivity {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ConnectorActivityRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ConnectorActivityRow::from_row)?
+            .collect()
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        ()
+    }
+}
+impl ConnectorActivity {
+    pub const fn builder() -> ConnectorActivityBuilder<'static, ()> {
+        ConnectorActivityBuilder {
+            fields: (),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ConnectorActivityBuilder<'a, Fields = ()> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a> ConnectorActivityBuilder<'a, ()> {
+    pub fn build(self) -> ConnectorActivity {
+        let () = self.fields;
+        ConnectorActivity {}
+    }
+}

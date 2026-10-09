@@ -334,6 +334,55 @@ pub struct Batch {
     pub expected_revision: u64,
     #[schemars(length(min = 1, max = 512))]
     pub changes: Vec<Change>,
+    /// What produced this batch; absent from clients that predate it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<Trigger>,
+    /// The modes this connector declares it supports; absent from clients
+    /// that predate declarations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(max = 2))]
+    pub modes: Option<Vec<Mode>>,
+}
+
+/// How a source can be kept in sync. Native providers and connectors declare
+/// theirs in code, and Mash reports when each last ran.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum Mode {
+    /// Describe what the source holds now, on demand or on a schedule.
+    Snapshot,
+    /// Follow source events as they happen, after a snapshot backfill
+    /// catches up with whatever changed while it was not running.
+    Live,
+}
+
+/// What produced one batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Trigger {
+    /// Part of a snapshot that does not delete by omission.
+    Snapshot,
+    /// Part of a complete snapshot, which deletes what it no longer contains.
+    CompleteSnapshot,
+    /// A refresh after a live source event.
+    Live,
+    /// Explicit changes outside either mode.
+    Change,
+}
+
+impl Trigger {
+    /// Whether a connector declaring these modes can produce this batch.
+    /// Snapshots come from either mode: a live connector backfills with them.
+    #[must_use]
+    pub fn allowed_by(self, modes: &[Mode]) -> bool {
+        match self {
+            Self::Snapshot | Self::CompleteSnapshot => !modes.is_empty(),
+            Self::Live => modes.contains(&Mode::Live),
+            Self::Change => true,
+        }
+    }
 }
 
 /// Receipt for a durably accepted silver batch. Gold readiness is separate.
@@ -377,6 +426,8 @@ pub enum Error {
     InvalidSchema,
     /// An object that the source's declared schema does not admit.
     SchemaViolation,
+    /// A batch from a mode its connector does not declare, or a repeated mode.
+    UndeclaredMode,
 }
 
 impl std::fmt::Display for Error {
@@ -408,6 +459,16 @@ impl Batch {
     pub fn validate(&self) -> Result<(), Error> {
         if self.changes.is_empty() || self.changes.len() > MAX_CHANGES {
             return Err(Error::InvalidChangeCount);
+        }
+        // Batches from clients that declare no modes are not checked.
+        let modes = self.modes.as_deref().unwrap_or_default();
+        let declared: BTreeSet<Mode> = modes.iter().copied().collect();
+        if declared.len() != modes.len()
+            || self
+                .trigger
+                .is_some_and(|trigger| !modes.is_empty() && !trigger.allowed_by(modes))
+        {
+            return Err(Error::UndeclaredMode);
         }
         let mut seen = BTreeSet::new();
         let mut objects = BTreeMap::new();

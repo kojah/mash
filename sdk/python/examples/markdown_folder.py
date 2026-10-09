@@ -21,6 +21,7 @@ from mash_sdk import (
     Destination,
     DocumentSnapshot,
     KindRule,
+    Mode,
     Object,
     Role,
 )
@@ -54,7 +55,11 @@ async def main(
     folder: Path, destination: Destination, state: Path, once: bool = False
 ) -> None:
     async with Connector(
-        source_id=SOURCE_ID, destinations=[destination], state_path=state
+        source_id=SOURCE_ID,
+        # A folder is polled: each sync describes it as it is now.
+        modes=[Mode.snapshot],
+        destinations=[destination],
+        state_path=state,
     ) as connector:
         # Declaring the topology makes Mash reject anything else from this source.
         await connector.send(

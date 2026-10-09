@@ -16,6 +16,7 @@ from mash_sdk import (
     Debounce,
     Delivery,
     Destination,
+    Mode,
     Object,
     Role,
     Snapshot,
@@ -158,6 +159,7 @@ async def run(
 ) -> None:
     async with Connector(
         source_id=f"slack:{workspace_id}",
+        modes=[Mode.live],
         destinations=destinations,
         state_path=state_path,
     ) as connector:

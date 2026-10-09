@@ -154,6 +154,7 @@ fn local_status(
                 crate::Action::ModelsInstall
             }),
             configuration: configuration.status(),
+            sources: native_sources(configuration),
             shared: publication_config(configuration).map(|_| shared::Publication::pending()),
             shared_index: None,
         });
@@ -216,9 +217,18 @@ fn local_status(
             Some(crate::Action::Index)
         },
         configuration: configuration.status(),
+        sources: [native_sources(configuration), snapshot.connectors].concat(),
         shared: shared::status(database_path, publication_config(configuration))?,
         shared_index: None,
     })
+}
+
+fn native_sources(configuration: &ResolvedConfig) -> Vec<crate::source::SourceStatus> {
+    configuration
+        .providers
+        .keys()
+        .map(|&provider| crate::source::SourceStatus::native(provider))
+        .collect()
 }
 
 fn local_artifacts(

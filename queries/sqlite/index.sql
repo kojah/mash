@@ -409,3 +409,20 @@ SELECT id,object_role,kind,title,parent_storage_id FROM objects WHERE storage_id
 
 -- name: NativeEntryParent :one
 SELECT parent_storage_id FROM objects WHERE origin='provider' AND object_role='entry' AND id=sqlc.arg(id);
+
+-- name: ConnectorRecordActivity :exec
+-- Absent values keep what was stored: a batch records only its own delivery,
+-- and replaces declared modes only when it states them.
+INSERT INTO connector_activity(source_id,modes,snapshot_at,complete_snapshot_at,live_at,change_at)
+VALUES(sqlc.arg(source_id),sqlc.arg(modes),sqlc.narg(snapshot_at),sqlc.narg(complete_snapshot_at),
+    sqlc.narg(live_at),sqlc.narg(change_at))
+ON CONFLICT(source_id) DO UPDATE SET
+modes=CASE WHEN excluded.modes='[]' THEN connector_activity.modes ELSE excluded.modes END,
+snapshot_at=COALESCE(excluded.snapshot_at,connector_activity.snapshot_at),
+complete_snapshot_at=COALESCE(excluded.complete_snapshot_at,connector_activity.complete_snapshot_at),
+live_at=COALESCE(excluded.live_at,connector_activity.live_at),
+change_at=COALESCE(excluded.change_at,connector_activity.change_at);
+
+-- name: ConnectorActivity :many
+SELECT s.id AS source_id,a.modes,a.snapshot_at,a.complete_snapshot_at,a.live_at,a.change_at
+FROM connector_sources s LEFT JOIN connector_activity a ON a.source_id=s.id ORDER BY s.id;

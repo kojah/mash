@@ -88,6 +88,7 @@ pub(crate) struct StatusSnapshot {
     pub(crate) current_embeddings: u64,
     pub(crate) derived_clean: bool,
     pub(crate) exact_semantic_coverage: bool,
+    pub(crate) connectors: Vec<crate::source::SourceStatus>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

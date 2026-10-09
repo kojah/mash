@@ -13,6 +13,7 @@ from mash_sdk import (
     Delivery,
     Destination,
     KindRule,
+    Mode,
     Object,
     Role,
     Snapshot,
@@ -161,8 +162,11 @@ async def run(
     destinations: Sequence[Destination],
     state_path: Path,
 ) -> None:
+    # This bot/Gateway design is superseded for personal history by a planned
+    # snapshot-only importer of DiscordChatExporter JSON exports.
     async with Connector(
         source_id=f"discord:{account_id}",
+        modes=[Mode.live],
         destinations=destinations,
         state_path=state_path,
     ) as connector:

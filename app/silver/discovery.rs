@@ -17,6 +17,9 @@ pub(super) struct Discovery {
 pub(crate) fn watch_roots(options: &IndexOptions) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for (&provider, paths) in &options.providers {
+        if !crate::source::native_modes(provider).contains(&crate::connectors::Mode::Live) {
+            continue;
+        }
         for path in paths {
             if provider == Provider::Copilot
                 && path.file_name().is_some_and(|name| name == "state.vscdb")

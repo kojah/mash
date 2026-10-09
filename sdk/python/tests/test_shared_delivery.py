@@ -5,10 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mash_sdk import Changes, Connector, DeliveryError, Destination
+from mash_sdk import Changes, Connector, DeliveryError, Destination, Mode
 from mash_sdk._state import StateStore
 from tests.fake_mash import TOKEN, TOKEN_ENV, Behaviour, serve
 from tests.objects import note
+
+# Tests exercise every operation, so their connector declares both modes.
+BOTH = (Mode.snapshot, Mode.live)
 
 
 def edit(content: str) -> Changes:
@@ -38,6 +41,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
     def connector(self, destination: Destination | None = None) -> Connector:
         return Connector(
             source_id="external",
+            modes=BOTH,
             destinations=[destination or self.destination()],
             state_path=self.state_path,
         )

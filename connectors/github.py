@@ -13,6 +13,7 @@ from mash_sdk import (
     Debounce,
     Delivery,
     Destination,
+    Mode,
     Object,
     Role,
     Snapshot,
@@ -241,6 +242,7 @@ async def run(
 ) -> None:
     async with Connector(
         source_id=f"github:{installation_scope}",
+        modes=[Mode.live],
         destinations=destinations,
         state_path=state_path,
     ) as connector:

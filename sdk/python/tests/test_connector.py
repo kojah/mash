@@ -8,9 +8,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mash_sdk import Changes, Connector, DeliveryError, Destination, KindRule, Role
+from mash_sdk import (
+    Changes,
+    Connector,
+    DeliveryError,
+    Destination,
+    KindRule,
+    Mode,
+    Role,
+)
 from mash_sdk._state import StateStore
 from tests.objects import channel, message, note
+
+# Tests exercise every operation, so their connector declares both modes.
+BOTH = (Mode.snapshot, Mode.live)
 
 
 class ConnectorTests(unittest.IsolatedAsyncioTestCase):
@@ -38,7 +49,10 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
 
     def connector(self, destination: Destination) -> Connector:
         return Connector(
-            source_id="external", destinations=[destination], state_path=self.state
+            source_id="external",
+            modes=BOTH,
+            destinations=[destination],
+            state_path=self.state,
         )
 
     def wrapper(self, *, stall: bool = False, gated: bool = False) -> str:
@@ -232,6 +246,7 @@ class ConnectorConfigurationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Connector(
                 source_id="invalid source",
+                modes=BOTH,
                 destinations=[destination],
                 state_path=Path("unused-state.sqlite"),
             )

@@ -302,3 +302,75 @@ fn declared_schemas_hold_for_stored_objects_and_later_batches() {
         Err(Error::SchemaViolation)
     );
 }
+
+fn labelled(
+    name: &str,
+    revision: u64,
+    trigger: &str,
+    modes: &[&str],
+) -> Result<Batch, crate::connectors::Error> {
+    let envelope = json!({"schema_version":2,"source_id":"source","batch_id":name,
+        "expected_revision":revision,"changes":[document("note", name)],
+        "trigger":trigger,"modes":modes});
+    Batch::decode(&serde_json::to_vec(&envelope).unwrap())
+}
+
+#[test]
+fn batches_must_come_from_a_declared_mode() {
+    use crate::connectors::Error;
+    // A live connector backfills with snapshots; a polled one never sends live.
+    assert!(labelled("a", 0, "complete-snapshot", &["live"]).is_ok());
+    assert!(labelled("a", 0, "change", &["snapshot"]).is_ok());
+    assert_eq!(
+        labelled("a", 0, "live", &["snapshot"]).unwrap_err(),
+        Error::UndeclaredMode
+    );
+    assert_eq!(
+        labelled("a", 0, "snapshot", &["live", "live"]).unwrap_err(),
+        Error::UndeclaredMode
+    );
+    // Clients that declare nothing are not checked.
+    assert!(labelled("a", 0, "live", &[]).is_ok());
+}
+
+#[test]
+fn commits_record_declared_modes_and_when_each_trigger_last_ran() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("index.sqlite3");
+    let mut store = Store::open(&path).unwrap();
+    let complete = labelled("first", 0, "complete-snapshot", &["live", "snapshot"]).unwrap();
+    store.apply(&complete).unwrap();
+    let activity = || {
+        crate::storage::Storage::open_existing(&path)
+            .unwrap()
+            .connector_activity()
+            .unwrap()
+            .remove(0)
+    };
+    let first = activity();
+    assert_eq!(
+        first.modes,
+        [
+            crate::connectors::Mode::Snapshot,
+            crate::connectors::Mode::Live
+        ]
+    );
+    assert!(first.last_snapshot_at.is_some());
+    assert_eq!(first.last_complete_snapshot_at, first.last_snapshot_at);
+    assert!(first.last_live_at.is_none() && first.last_change_at.is_none());
+    // A replayed batch commits nothing, so it records nothing either.
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    store.apply(&complete).unwrap();
+    assert_eq!(activity(), first);
+    // A later live batch keeps the snapshot times and its declared modes.
+    store
+        .apply(&labelled("second", 1, "live", &[]).unwrap())
+        .unwrap();
+    let second = activity();
+    assert!(second.last_live_at.is_some());
+    assert_eq!(
+        second.last_complete_snapshot_at,
+        first.last_complete_snapshot_at
+    );
+    assert_eq!(second.modes, first.modes);
+}

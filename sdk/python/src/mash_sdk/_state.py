@@ -18,7 +18,13 @@ from uuid import uuid4
 import orjson
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
-from ._generated.batch import Batch, ChangeDeleteObject, ChangeUpsertObject
+from ._generated.batch import (
+    Batch,
+    ChangeDeleteObject,
+    ChangeUpsertObject,
+    Mode,
+    Trigger,
+)
 from ._generated.receipt import Receipt
 from ._receipts import decode_receipt
 from .changes import Changes
@@ -226,6 +232,8 @@ class StateStore:
         source_id: str,
         next_cursor: JsonValue = None,
         document_scopes: Mapping[str, Collection[str]] | None = None,
+        trigger: Trigger | None = None,
+        modes: Sequence[Mode] | None = None,
     ) -> PendingBatch:
         """Commit a batch before attempting network delivery; serialize writers.
 
@@ -248,6 +256,8 @@ class StateStore:
                 source_id=source_id,
                 batch_id=str(uuid4()),
                 expected_revision=checkpoint.revision,
+                trigger=trigger,
+                modes=modes,
             )
             payload = encode_batch(batch, contract=self.contract)
             cursor_value = TypeAdapter(JsonValue).validate_python(

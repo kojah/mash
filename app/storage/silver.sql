@@ -123,6 +123,17 @@ CREATE TABLE IF NOT EXISTS connector_sources (
     id TEXT PRIMARY KEY,
     revision TEXT NOT NULL
 ) WITHOUT ROWID;
+-- When each delivery mode last committed for a source, in Unix milliseconds,
+-- and the modes its connector declares. Delivery metadata rather than
+-- history: it is not exported and changes no silver revision.
+CREATE TABLE IF NOT EXISTS connector_activity (
+    source_id TEXT PRIMARY KEY REFERENCES connector_sources(id),
+    modes TEXT NOT NULL DEFAULT '[]',
+    snapshot_at INTEGER,
+    complete_snapshot_at INTEGER,
+    live_at INTEGER,
+    change_at INTEGER
+) WITHOUT ROWID;
 -- A source's declared topology; its objects must conform once it exists.
 CREATE TABLE IF NOT EXISTS connector_schemas (
     source_id TEXT PRIMARY KEY REFERENCES connector_sources(id),

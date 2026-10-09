@@ -29,11 +29,23 @@ class ConnectorVersion(RootModel[Literal[2]]):
     root: Literal[2] = 2
 
 
+class Mode(StrEnum):
+    snapshot = "snapshot"
+    live = "live"
+
+
 class Role(StrEnum):
     container = "container"
     segment = "segment"
     entry = "entry"
     document = "document"
+
+
+class Trigger(StrEnum):
+    snapshot = "snapshot"
+    complete_snapshot = "complete-snapshot"
+    live = "live"
+    change = "change"
 
 
 class Attachment(BaseModel):
@@ -210,6 +222,13 @@ class Batch(BaseModel):
             ge=0,
         ),
     ]
+    modes: Annotated[
+        list[Mode] | None,
+        Field(
+            description="The modes this connector declares it supports; absent from clients\nthat predate declarations.",
+            max_length=2,
+        ),
+    ] = None
     schema_version: Literal[2] = 2
     source_id: Annotated[
         StrictStr,
@@ -220,3 +239,9 @@ class Batch(BaseModel):
             pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
         ),
     ]
+    trigger: Annotated[
+        Trigger | None,
+        Field(
+            description="What produced this batch; absent from clients that predate it."
+        ),
+    ] = None

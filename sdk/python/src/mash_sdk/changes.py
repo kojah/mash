@@ -1,5 +1,6 @@
 """Typed mutations; absence is never converted into a deletion here."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
@@ -9,6 +10,8 @@ from ._generated.batch import (
     ChangeDeleteObject,
     ChangeUpsertObject,
     KindRule,
+    Mode,
+    Trigger,
 )
 
 Mutation: TypeAlias = ChangeUpsertObject | ChangeDeleteObject | ChangeDeclareSchema
@@ -44,7 +47,13 @@ class Changes:
         return Changes(self.mutations + other.mutations)
 
     def to_batch(
-        self, *, source_id: str, batch_id: str, expected_revision: int
+        self,
+        *,
+        source_id: str,
+        batch_id: str,
+        expected_revision: int,
+        trigger: Trigger | None = None,
+        modes: Sequence[Mode] | None = None,
     ) -> Batch:
         """Bind stable retry identity and ordering; an empty batch is invalid."""
         return Batch(
@@ -52,4 +61,6 @@ class Changes:
             batch_id=batch_id,
             expected_revision=expected_revision,
             changes=[mutation.model_copy(deep=True) for mutation in self.mutations],
+            trigger=trigger,
+            modes=None if modes is None else sorted(modes),
         )

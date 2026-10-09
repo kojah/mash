@@ -194,7 +194,43 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
         .build()
         .execute(transaction)
         .map_err(database)?;
+    record_activity(transaction, batch)?;
     Ok(receipt)
+}
+
+/// Note when this kind of batch last committed, and what the connector
+/// declares. A replayed batch returns before this, so it records nothing.
+fn record_activity(transaction: &Transaction<'_>, batch: &Batch) -> Result<(), Error> {
+    use crate::connectors::Trigger;
+    let modes = batch.modes.as_deref().unwrap_or_default();
+    if batch.trigger.is_none() && modes.is_empty() {
+        return Ok(());
+    }
+    // Stored in one order, however the client listed them.
+    let mut declared = modes.to_vec();
+    declared.sort_unstable();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
+        .ok_or(Error::CorruptRecord)?;
+    let at = |triggers: &[Trigger]| {
+        batch
+            .trigger
+            .is_some_and(|trigger| triggers.contains(&trigger))
+            .then_some(now)
+    };
+    sql::ConnectorRecordActivity::builder()
+        .source_id(batch.source_id.as_str())
+        .modes(&encode(&declared)?)
+        .snapshot_at(at(&[Trigger::Snapshot, Trigger::CompleteSnapshot]))
+        .complete_snapshot_at(at(&[Trigger::CompleteSnapshot]))
+        .live_at(at(&[Trigger::Live]))
+        .change_at(at(&[Trigger::Change]))
+        .build()
+        .execute(transaction)
+        .map_err(database)?;
+    Ok(())
 }
 
 /// Objects whose stored graph a batch can have changed.
