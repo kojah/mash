@@ -1,13 +1,16 @@
-"""Experimental connector models and batch construction; delivery is not implemented."""
+"""Experimental typed connectors with durable local delivery."""
 
 from ._generated.batch import Attachment, Author, AuthorKind, Batch
 from ._generated.batch import ChangeUpsertChat as Chat
 from ._generated.batch import ChangeUpsertDocument as Document
 from ._generated.batch import ChangeUpsertMessage as Message
 from ._generated.receipt import Receipt
+from ._local import DeliveryError
 from ._types import Metadata
 from .changes import Changes
 from .codec import InvalidBatch, encode_batch
+from .connector import Connector
+from .destination import Destination
 
 __all__ = [
     "Attachment",
@@ -16,6 +19,9 @@ __all__ = [
     "Batch",
     "Changes",
     "Chat",
+    "Connector",
+    "DeliveryError",
+    "Destination",
     "Document",
     "InvalidBatch",
     "Message",

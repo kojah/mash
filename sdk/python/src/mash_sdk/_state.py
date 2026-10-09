@@ -17,6 +17,7 @@ from uuid import uuid4
 import orjson
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
+from ._generated.batch import Batch
 from ._generated.receipt import Receipt
 from ._receipts import decode_receipt
 from .changes import Changes
@@ -162,13 +163,21 @@ class StateStore:
             return None
         try:
             value = PendingRow.model_validate(dict(row))
+            batch = Batch.model_validate_json(value.payload)
         except ValidationError:
             raise StateError("stored pending batch has invalid fields") from None
+        expected = revision_value(value.expected_revision)
+        if (
+            batch.source_id != source_id
+            or batch.batch_id != value.batch_id
+            or batch.expected_revision != expected
+        ):
+            raise StateError("stored payload does not match its delivery identity")
         return PendingBatch(
             source_id,
             destination_id,
             value.batch_id,
-            revision_value(value.expected_revision),
+            expected,
             value.payload,
         )
 

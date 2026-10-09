@@ -33,6 +33,31 @@ def receipt(
 
 
 class DeliveryStateTests(unittest.TestCase):
+    def test_payload_identity_corruption_is_rejected_before_delivery(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            StateStore(Path(directory) / "state.sqlite") as store,
+        ):
+            pending = store.prepare(
+                changes(), source_id="source", destination_id="local"
+            )
+            for field, replacement in [
+                ("source_id", "wrong-source"),
+                ("batch_id", "wrong-batch"),
+                ("expected_revision", 9),
+            ]:
+                altered = orjson.loads(pending.payload)
+                altered[field] = replacement
+                store.connection.execute(
+                    "UPDATE pending SET payload=?", (orjson.dumps(altered),)
+                )
+                with self.assertRaises(StateError):
+                    store.pending(source_id="source", destination_id="local")
+            store.connection.execute("UPDATE pending SET payload=?", (pending.payload,))
+            self.assertEqual(
+                store.pending(source_id="source", destination_id="local"), pending
+            )
+
     def test_corrupt_state_errors_do_not_echo_record_text(self) -> None:
         with (
             tempfile.TemporaryDirectory() as directory,

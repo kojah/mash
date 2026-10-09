@@ -61,10 +61,12 @@ jobs:
         run: MASH_SCHEMA_CARGO_RUN=run make check-python-models
       - name: Verify Python connector SDK and Rust decoder conformance
         run: |
+          cargo build --locked --bin mash
           uv run --directory sdk/python --locked ruff check src tests
           uv run --directory sdk/python --locked ruff format --check src tests
           uv run --directory sdk/python --locked ty check src tests
           MASH_CONNECTOR_CONTRACT_BINARY="$GITHUB_WORKSPACE/target/debug/examples/connector-schema" \
+            MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --directory sdk/python --locked python -m unittest discover -s tests
       - name: Verify deployment gate
         run: |
