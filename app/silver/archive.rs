@@ -9,6 +9,26 @@ pub(crate) const VERSION: u32 = 1;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Record {
+    ConnectorSource {
+        source_id: crate::connectors::Id,
+        revision: u64,
+    },
+    ConnectorChat {
+        source_id: crate::connectors::Id,
+        chat: crate::connectors::Chat,
+    },
+    ConnectorMessage {
+        source_id: crate::connectors::Id,
+        message: crate::connectors::Message,
+    },
+    ConnectorDocument {
+        source_id: crate::connectors::Id,
+        document: crate::connectors::Document,
+    },
+    ConnectorReceipt {
+        fingerprint: String,
+        receipt: crate::connectors::Receipt,
+    },
     /// The node's shared-publication identity, restored only by an upgrade
     /// import that retires the exporting database.
     Publication {
@@ -107,6 +127,25 @@ pub(crate) enum ScanState {
 impl Record {
     pub(crate) fn validate(&self) -> Result<(), crate::AppError> {
         match self {
+            Self::ConnectorChat { chat, .. } => crate::connectors::Change::UpsertChat(chat.clone())
+                .validate()
+                .map_err(|_| crate::AppError::usage("invalid connector archive chat")),
+            Self::ConnectorMessage { message, .. } => {
+                crate::connectors::Change::UpsertMessage(message.clone())
+                    .validate()
+                    .map_err(|_| crate::AppError::usage("invalid connector archive message"))
+            }
+            Self::ConnectorDocument { document, .. } => {
+                crate::connectors::Change::UpsertDocument(document.clone())
+                    .validate()
+                    .map_err(|_| crate::AppError::usage("invalid connector archive document"))
+            }
+            Self::ConnectorReceipt { fingerprint, .. }
+                if fingerprint.len() != 64
+                    || !fingerprint.bytes().all(|value| value.is_ascii_hexdigit()) =>
+            {
+                Err(crate::AppError::usage("invalid connector archive receipt"))
+            }
             Self::Message {
                 attachments,
                 context,

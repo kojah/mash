@@ -20,8 +20,10 @@ They should not need to allocate batch IDs, track revisions, interpret receipts,
 or manage a retry database. The current private machinery persists pending work
 before delivery, preserves its exact identity across restarts, and advances only
 on a matching durable-silver acknowledgement. A failed or malformed response
-leaves the work pending. Server-side receipt storage is still required to make
-retransmission produce once-only logical application.
+leaves the work pending. Rust's canonical silver store now commits mutations,
+source revision and receipt in one transaction. Replaying the same batch returns
+its original receipt; reusing a batch identity for different contents is rejected.
+Public local/network delivery and gold projection are still being wired up.
 
 Wire classes are generated from `app/connectors.rs`; do not edit `_generated`.
 The SDK's `Chat`, `Message`, and `Document` names alias the corresponding typed
@@ -45,7 +47,9 @@ uv run --locked python -m unittest discover -s tests
 
 For cross-language checks, set `MASH_CONNECTOR_CONTRACT_BINARY` to the built
 `connector-schema` example. Its `validate` mode invokes the real Rust decoder;
-the test fails if the specified binary is missing. Offline tests still run
+its development-only `apply --database PATH` mode also exercises the real silver
+transaction and receipt replay. The test fails if the specified binary is missing.
+Offline tests still run
 without that environment variable, but do not claim cross-language validation.
 
 The bundled schema checks structural rules and SDK encoding checks budgets and

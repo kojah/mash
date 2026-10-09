@@ -71,6 +71,45 @@ CREATE TABLE IF NOT EXISTS silver_state (
     interpretation_version INTEGER NOT NULL DEFAULT 0 CHECK (interpretation_version >= 0)
 );
 INSERT OR IGNORE INTO silver_state(singleton) VALUES (1);
+
+-- Source-neutral canonical records submitted by out-of-process connectors.
+-- JSON columns decode into the Rust Chat/Message/Document models; they preserve
+-- opaque metadata and attachments without inventing agent roles or containers.
+CREATE TABLE IF NOT EXISTS connector_sources (
+    id TEXT PRIMARY KEY,
+    revision TEXT NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS connector_chats (
+    source_id TEXT NOT NULL REFERENCES connector_sources(id),
+    id TEXT NOT NULL,
+    record TEXT NOT NULL,
+    PRIMARY KEY (source_id, id)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS connector_messages (
+    source_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
+    reply_to TEXT,
+    record TEXT NOT NULL,
+    PRIMARY KEY (source_id, id),
+    FOREIGN KEY (source_id, chat_id) REFERENCES connector_chats(source_id, id) ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS connector_messages_parent ON connector_messages(source_id, reply_to);
+CREATE TABLE IF NOT EXISTS connector_documents (
+    source_id TEXT NOT NULL REFERENCES connector_sources(id),
+    id TEXT NOT NULL,
+    record TEXT NOT NULL,
+    PRIMARY KEY (source_id, id)
+) WITHOUT ROWID;
+-- Receipts are committed with the mutations they acknowledge. A replayed
+-- batch cannot apply again, nor reuse its identity for different contents.
+CREATE TABLE IF NOT EXISTS connector_receipts (
+    source_id TEXT NOT NULL REFERENCES connector_sources(id),
+    batch_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    receipt TEXT NOT NULL,
+    PRIMARY KEY (source_id, batch_id)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS silver_scans (
     provider TEXT PRIMARY KEY,
     interpretation_version INTEGER NOT NULL CHECK (interpretation_version > 0),

@@ -38,7 +38,7 @@ use schema::SCHEMA_VERSION;
 // sqlc-gen-rust emits an unused row parameter for :exec result models.
 #[allow(dead_code, unused_variables, clippy::all, clippy::pedantic)]
 #[path = "storage/generated/queries.rs"]
-mod generated;
+pub(crate) mod generated;
 use schema::initialize;
 #[cfg(test)]
 use semantic_chunks::validate_quantized_vector;

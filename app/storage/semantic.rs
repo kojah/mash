@@ -83,6 +83,14 @@ impl Storage {
     }
 
     pub(crate) fn semantic_index_is_ready(&self, generation: &str) -> Result<bool, AppError> {
+        if super::generated::ConnectorInputs
+            .query_one(&self.connection)
+            .map_err(AppError::database)?
+            .present
+            != 0
+        {
+            return Ok(false);
+        }
         let ready_generation = self
             .connection
             .query_row(

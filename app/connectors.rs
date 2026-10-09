@@ -7,6 +7,8 @@ use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod silver;
+
 /// Maximum encoded size of an ingestion batch, before JSON decoding.
 pub const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum number of changes accepted in one atomic silver batch.
@@ -330,7 +332,7 @@ impl Batch {
 }
 
 impl Change {
-    fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
         match self {
             Self::UpsertChat(value) => {
                 text_field(value.title.as_deref())?;

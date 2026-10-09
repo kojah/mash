@@ -153,3 +153,70 @@ WHERE c.provider=sqlc.arg(provider) AND c.source_key=sqlc.arg(source_key);
 
 -- name: ConversationEnrichment :one
 SELECT evidence FROM conversation_enrichment WHERE conversation_id=sqlc.arg(conversation_id);
+
+-- name: ConnectorReceipt :one
+SELECT fingerprint,receipt FROM connector_receipts
+WHERE source_id=sqlc.arg(source_id) AND batch_id=sqlc.arg(batch_id);
+
+-- name: ConnectorRevision :one
+SELECT revision FROM connector_sources WHERE id=sqlc.arg(id);
+
+-- name: ConnectorSource :exec
+INSERT INTO connector_sources(id,revision) VALUES(sqlc.arg(id),sqlc.arg(revision))
+ON CONFLICT(id) DO UPDATE SET revision=excluded.revision;
+
+-- name: ConnectorChat :one
+SELECT record FROM connector_chats WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+
+-- name: ConnectorMessage :one
+SELECT record FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+
+-- name: ConnectorDocument :one
+SELECT record FROM connector_documents WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+
+-- name: ConnectorPutChat :execrows
+INSERT INTO connector_chats(source_id,id,record) VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(record))
+ON CONFLICT(source_id,id) DO UPDATE SET record=excluded.record
+WHERE connector_chats.record<>excluded.record;
+
+-- name: ConnectorPutMessage :execrows
+INSERT INTO connector_messages(source_id,id,chat_id,reply_to,record)
+VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(chat_id),sqlc.narg(reply_to),sqlc.arg(record))
+ON CONFLICT(source_id,id) DO UPDATE SET chat_id=excluded.chat_id,reply_to=excluded.reply_to,record=excluded.record
+WHERE connector_messages.record<>excluded.record;
+
+-- name: ConnectorPutDocument :execrows
+INSERT INTO connector_documents(source_id,id,record) VALUES(sqlc.arg(source_id),sqlc.arg(id),sqlc.arg(record))
+ON CONFLICT(source_id,id) DO UPDATE SET record=excluded.record
+WHERE connector_documents.record<>excluded.record;
+
+-- name: ConnectorDeleteChat :execrows
+DELETE FROM connector_chats WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+
+-- name: ConnectorDeleteMessage :execrows
+DELETE FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+
+-- name: ConnectorDeleteDocument :execrows
+DELETE FROM connector_documents WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+
+-- name: ConnectorEdge :one
+SELECT chat_id,reply_to FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND id=sqlc.arg(id);
+
+-- name: ConnectorChildren :many
+SELECT chat_id FROM connector_messages WHERE source_id=sqlc.arg(source_id) AND reply_to=sqlc.arg(id);
+
+-- name: ConnectorSilverRevision :one
+SELECT revision FROM silver_state WHERE singleton=1;
+
+-- name: ConnectorSetSilverRevision :exec
+UPDATE silver_state SET revision=sqlc.arg(revision) WHERE singleton=1;
+
+-- name: ConnectorPutReceipt :exec
+INSERT INTO connector_receipts(source_id,batch_id,fingerprint,receipt)
+VALUES(sqlc.arg(source_id),sqlc.arg(batch_id),sqlc.arg(fingerprint),sqlc.arg(receipt));
+
+-- name: ConnectorInputs :one
+SELECT CAST(EXISTS(SELECT 1 FROM connector_chats) OR EXISTS(SELECT 1 FROM connector_documents) AS INTEGER) AS present;
+
+-- name: ConnectorAllEdges :many
+SELECT source_id,id,chat_id FROM connector_messages ORDER BY source_id,chat_id,id;

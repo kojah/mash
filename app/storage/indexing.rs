@@ -218,6 +218,14 @@ impl Storage {
     }
 
     pub(crate) fn derived_search_is_dirty(&self) -> Result<bool, AppError> {
+        if super::generated::ConnectorInputs
+            .query_one(&self.connection)
+            .map_err(AppError::database)?
+            .present
+            != 0
+        {
+            return Ok(true);
+        }
         self.connection
             .query_row(
                 "SELECT search_dirty FROM derived_state WHERE singleton = 1",

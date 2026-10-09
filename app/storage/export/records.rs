@@ -15,6 +15,10 @@ fn json<T: DeserializeOwned>(row: &Row<'_>, name: &str) -> Result<T, AppError> {
     serde_json::from_str(&get::<String>(row, name)?)
         .map_err(|_| AppError::database_data("invalid canonical export record"))
 }
+fn connector_id(row: &Row<'_>, name: &str) -> Result<crate::connectors::Id, AppError> {
+    crate::connectors::Id::try_from(get::<String>(row, name)?)
+        .map_err(|_| AppError::database_data("invalid connector archive identity"))
+}
 
 #[allow(
     clippy::too_many_lines,
@@ -163,6 +167,43 @@ pub(crate) fn visit(
         })
     );
     table!(
+        "SELECT id,revision FROM connector_sources ORDER BY id",
+        |row| Ok::<_, AppError>(Record::ConnectorSource {
+            source_id: connector_id(row, "id")?,
+            revision: get::<String>(row, "revision")?
+                .parse()
+                .map_err(|_| AppError::database_data("invalid connector source revision"))?,
+        })
+    );
+    table!(
+        "SELECT source_id,record FROM connector_chats ORDER BY source_id,id",
+        |row| Ok::<_, AppError>(Record::ConnectorChat {
+            source_id: connector_id(row, "source_id")?,
+            chat: json(row, "record")?,
+        })
+    );
+    table!(
+        "SELECT source_id,record FROM connector_messages ORDER BY source_id,id",
+        |row| Ok::<_, AppError>(Record::ConnectorMessage {
+            source_id: connector_id(row, "source_id")?,
+            message: json(row, "record")?,
+        })
+    );
+    table!(
+        "SELECT source_id,record FROM connector_documents ORDER BY source_id,id",
+        |row| Ok::<_, AppError>(Record::ConnectorDocument {
+            source_id: connector_id(row, "source_id")?,
+            document: json(row, "record")?,
+        })
+    );
+    table!(
+        "SELECT fingerprint,receipt FROM connector_receipts ORDER BY source_id,batch_id",
+        |row| Ok::<_, AppError>(Record::ConnectorReceipt {
+            fingerprint: get(row, "fingerprint")?,
+            receipt: json(row, "receipt")?,
+        })
+    );
+    table!(
         "SELECT revision,interpretation_version FROM silver_state WHERE singleton=1",
         |row| Ok::<_, AppError>(Record::State {
             revision: u64::try_from(get::<i64>(row, "revision")?)
@@ -199,6 +240,57 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
         };
     }
     match record {
+        Record::ConnectorSource {
+            source_id,
+            revision,
+        } => {
+            execute!(
+                "INSERT INTO connector_sources(id,revision) VALUES(?1,?2)",
+                source_id.as_str(),
+                revision.to_string()
+            );
+        }
+        Record::ConnectorChat { source_id, chat } => {
+            execute!(
+                "INSERT INTO connector_chats(source_id,id,record) VALUES(?1,?2,?3)",
+                source_id.as_str(),
+                chat.id.as_str(),
+                encode(&chat)?
+            );
+        }
+        Record::ConnectorMessage { source_id, message } => {
+            execute!(
+                "INSERT INTO connector_messages(source_id,id,chat_id,reply_to,record) VALUES(?1,?2,?3,?4,?5)",
+                source_id.as_str(),
+                message.id.as_str(),
+                message.chat_id.as_str(),
+                message.reply_to.as_ref().map(crate::connectors::Id::as_str),
+                encode(&message)?
+            );
+        }
+        Record::ConnectorDocument {
+            source_id,
+            document,
+        } => {
+            execute!(
+                "INSERT INTO connector_documents(source_id,id,record) VALUES(?1,?2,?3)",
+                source_id.as_str(),
+                document.id.as_str(),
+                encode(&document)?
+            );
+        }
+        Record::ConnectorReceipt {
+            fingerprint,
+            receipt,
+        } => {
+            execute!(
+                "INSERT INTO connector_receipts(source_id,batch_id,fingerprint,receipt) VALUES(?1,?2,?3,?4)",
+                receipt.source_id.as_str(),
+                receipt.batch_id.as_str(),
+                fingerprint,
+                encode(&receipt)?
+            );
+        }
         Record::Publication { instance, revision } => {
             if instance.len() != 32
                 || !instance.bytes().all(|b| b.is_ascii_hexdigit())

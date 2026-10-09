@@ -92,6 +92,8 @@ pub(crate) fn restore(
             "export carries no publication identity to keep",
         ));
     }
+    crate::connectors::silver::validate_archive(&transaction)
+        .map_err(|_| AppError::usage("invalid connector archive reply graph"))?;
     // The next publication is a full snapshot: the change journal starts empty.
     transaction
         .execute_batch(if keep_identity {
@@ -101,7 +103,9 @@ pub(crate) fn restore(
         } else {
             "UPDATE shared_publication SET instance=lower(hex(randomblob(16))),revision=1,acknowledged=0,target='';
              DELETE FROM shared_changes;
-             UPDATE shared_change_state SET floor=1;"
+             UPDATE shared_change_state SET floor=1;
+             DELETE FROM connector_receipts;
+             UPDATE connector_sources SET revision='0';"
         })
         .map_err(AppError::database)?;
     transaction.commit().map_err(AppError::database)?;
