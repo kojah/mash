@@ -702,9 +702,15 @@ neighbours in the chat, or a document on its own. Connector attachments are
 source references, not captured files. `list-chats` includes connector chats
 unless a `provider` selection names native providers.
 
-Shared search does not cover connector records yet. A node's shared silver can
-receive them directly (`POST /v1/connector-batches`), but until the server
-projects them into Qdrant, group search fails closed while any node holds them.
+Connectors deliver to each destination they list: local silver, a node's shared
+silver (`POST /v1/connector-batches`, authenticated as that node), or both. Node
+publication never carries connector records. After committing a shared batch,
+the server embeds changed records with its `--models-dir` model (or the
+configured remote embeddings) and writes them to Qdrant alongside native
+documents; a server without a model cannot certify that node's dense gold. If
+synchronization fails, the receipt still confirms durable silver and the node
+stays uncertified until its next batch, upload or `--replay-gold`, which also
+rebuilds connector points from shared silver.
 
 ## Search filters
 

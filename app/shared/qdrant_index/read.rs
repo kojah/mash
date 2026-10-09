@@ -1,7 +1,7 @@
 //! Group-scoped retrieval over the documents of nodes with compatible gold.
 use super::{
-    AppError, Document, Identity, Store, VectorIndex, api, collection, document_id, failure,
-    sparse, tokens,
+    AppError, Document, Identity, Store, Stored, VectorIndex, api, collection, connector_hit,
+    document_id, failure, sparse, tokens,
 };
 use crate::shared::protocol;
 use crate::storage::SearchHit;
@@ -177,7 +177,7 @@ impl Store {
             }
         };
         let original_request = request(&original);
-        let strict = self.api.query::<Document>(&name, &original_request);
+        let strict = self.api.query::<Stored<Document>>(&name, &original_request);
         let expand = async {
             if input.match_mode == crate::gold::matching::Mode::Strict
                 || (input.query.trim().starts_with('"') && input.query.trim().ends_with('"'))
@@ -187,7 +187,10 @@ impl Store {
             let vocabulary = self.api.terms(&name, filter).await?;
             let plan =
                 crate::gold::matching::Plan::new(&input.query, input.match_mode, &vocabulary)?;
-            let points = self.api.query::<Document>(&name, &request(&plan)).await?;
+            let points = self
+                .api
+                .query::<Stored<Document>>(&name, &request(&plan))
+                .await?;
             Ok::<_, AppError>((plan, points))
         };
         let (points, (plan, expanded)) = tokio::try_join!(strict, expand)?;
@@ -250,7 +253,7 @@ impl Store {
         let lexical_query = self.lexical(identity, &input, &active, &filter, ef);
         let (lexical, semantic) = tokio::try_join!(
             lexical_query,
-            self.api.query::<Document>(&name, &semantic_query)
+            self.api.query::<Stored<Document>>(&name, &semantic_query)
         )?;
         let semantic = hits(semantic, false, identity, &active, &self.build)?;
         let documents: BTreeMap<_, _> = lexical
@@ -278,7 +281,7 @@ impl Store {
     }
 }
 fn hits(
-    points: Vec<api::Scored<Document>>,
+    points: Vec<api::Scored<Stored<Document>>>,
     lexical: bool,
     identity: &Identity,
     active: &BTreeSet<String>,
@@ -287,7 +290,23 @@ fn hits(
     let mut output = Vec::new();
     let mut seen = BTreeSet::new();
     for point in points {
-        let d = point.payload;
+        let d = match point.payload {
+            Stored::Native(document) => document,
+            Stored::Connector(document) => {
+                // Every connector unit is embedded whenever dense gold is built.
+                let generation = build
+                    .dense_enabled()
+                    .then_some(identity.generation.as_str());
+                let mut hit = connector_hit(&point.id, document, active, generation)?;
+                if !seen.insert((hit.node_id.clone().unwrap_or_default(), hit.id.clone())) {
+                    return Err(failure());
+                }
+                hit.lexical_score = lexical.then_some(-f64::from(point.score));
+                hit.semantic_score = (!lexical).then_some(point.score);
+                output.push(hit);
+                continue;
+            }
+        };
         let m = d.message;
         if point.id != document_id(&d.node_id, &m.id)
             || !active.contains(&d.node_id)

@@ -445,7 +445,8 @@ where
                 query: activate_query,
                 memory: activate_memory,
             },
-            replay_gold.then_some(models.as_path()),
+            &models,
+            replay_gold,
         ))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp { watch, debounce_ms } = cli.command {

@@ -5109,65 +5109,6 @@ impl<'a> ConnectorPutReceiptBuilder<'a, (&'a str, &'a str, &'a str, &'a str)> {
         }
     }
 }
-pub struct ConnectorInputsRow {
-    pub present: i64,
-}
-impl ConnectorInputsRow {
-    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        Ok(Self {
-            present: row.get(0)?,
-        })
-    }
-}
-pub struct ConnectorInputs;
-impl ConnectorInputs {
-    pub const QUERY: &'static str = r"SELECT CAST(EXISTS(SELECT 1 FROM connector_chats) OR EXISTS(SELECT 1 FROM connector_documents) AS INTEGER) AS present";
-    pub fn query_str(&self) -> &str {
-        Self::QUERY
-    }
-}
-impl ConnectorInputs {
-    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ConnectorInputsRow> {
-        self.prepare(client)?
-            .query_row(self.as_params(), ConnectorInputsRow::from_row)
-    }
-    pub fn query_opt(
-        &self,
-        client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<ConnectorInputsRow>> {
-        self.prepare(client)?
-            .query_map(self.as_params(), ConnectorInputsRow::from_row)?
-            .next()
-            .transpose()
-    }
-    pub fn prepare<'conn>(
-        &self,
-        client: &'conn impl RusqliteClient,
-    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
-        client.prepare(self.query_str())
-    }
-    pub fn as_params(&self) -> impl rusqlite::Params {
-        ()
-    }
-}
-impl ConnectorInputs {
-    pub const fn builder() -> ConnectorInputsBuilder<'static, ()> {
-        ConnectorInputsBuilder {
-            fields: (),
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-pub struct ConnectorInputsBuilder<'a, Fields = ()> {
-    fields: Fields,
-    _phantom: std::marker::PhantomData<&'a ()>,
-}
-impl<'a> ConnectorInputsBuilder<'a, ()> {
-    pub fn build(self) -> ConnectorInputs {
-        let () = self.fields;
-        ConnectorInputs {}
-    }
-}
 pub struct ConnectorAllEdgesRow {
     pub source_id: String,
     pub id: String,

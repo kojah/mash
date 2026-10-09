@@ -12,7 +12,7 @@ use super::server::Identity;
 use crate::AppError;
 use serde::{Deserialize, Serialize};
 
-pub(super) use gold::{Documents, GoldChat, NodeGold};
+pub(super) use gold::{ConnectorPoint, Documents, GoldChat, NodeGold};
 pub(super) use read::validate_search;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -90,6 +90,102 @@ struct Document {
     tokens: Vec<String>,
     conversation: super::protocol::ConversationRecord,
     message: super::protocol::MessageRecord,
+}
+
+/// One searchable connector message or document with its display evidence.
+/// Provider, role, project and repository are absent, so filters on them never
+/// match; `source_id` and `kind` are absent from native documents.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ConnectorDocument {
+    node_id: String,
+    source_id: String,
+    kind: crate::source::Kind,
+    /// The chat anchor, or a document's own anchor.
+    conversation_id: String,
+    created_at: Option<i64>,
+    tokens: Vec<String>,
+    unit: ConnectorUnit,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(in crate::shared) struct ConnectorUnit {
+    pub(in crate::shared) anchor: String,
+    /// Indexed and embedded text; the digest of record for synchronization.
+    pub(in crate::shared) text: String,
+    pub(in crate::shared) content: String,
+    pub(in crate::shared) title: Option<String>,
+    pub(in crate::shared) author_kind: Option<crate::connectors::AuthorKind>,
+    pub(in crate::shared) chat_created_at: Option<i64>,
+    pub(in crate::shared) chat_updated_at: Option<i64>,
+    /// Set when the point carries a dense vector of this generation.
+    pub(in crate::shared) generation: Option<String>,
+}
+
+/// A stored point of either shape; each rejects the other's fields.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Stored<N> {
+    Native(N),
+    Connector(Box<ConnectorDocument>),
+}
+
+fn connector_id(node: &str, anchor: &str) -> String {
+    point_id(&["connector", node, anchor])
+}
+
+/// A verified connector point as a search hit.
+fn connector_hit(
+    id: &str,
+    d: Box<ConnectorDocument>,
+    active: &std::collections::BTreeSet<String>,
+    generation: Option<&str>,
+) -> Result<crate::storage::SearchHit, AppError> {
+    let d = *d;
+    let expected_chat = match d.kind {
+        crate::source::Kind::Document => d.unit.anchor.as_str(),
+        crate::source::Kind::Message => d.conversation_id.as_str(),
+    };
+    if id != connector_id(&d.node_id, &d.unit.anchor)
+        || !active.contains(&d.node_id)
+        || d.conversation_id != expected_chat
+        || !d
+            .unit
+            .anchor
+            .starts_with(crate::storage::connector_gold::ANCHOR_PREFIX)
+        || d.tokens != tokens(&d.unit.text)
+        || d.unit.text.is_empty()
+        || generation.is_some_and(|generation| d.unit.generation.as_deref() != Some(generation))
+    {
+        return Err(failure());
+    }
+    Ok(crate::storage::SearchHit {
+        node_id: Some(d.node_id),
+        id: d.unit.anchor,
+        conversation_id: d.conversation_id,
+        source: crate::source::Source::Connector(d.source_id),
+        kind: d.kind,
+        role: None,
+        author_kind: d.unit.author_kind,
+        content: d.unit.content,
+        copies: vec![],
+        created_at: d.created_at,
+        metadata: crate::search_results::ChatMetadata {
+            enrichment: None,
+            title: d.unit.title,
+            project: None,
+            repository: None,
+            created_at: d.unit.chat_created_at,
+            updated_at: d.unit.chat_updated_at,
+        },
+        lexical_score: None,
+        lookup: None,
+        lexical_match: None,
+        semantic_score: None,
+        fusion_score: 0.0,
+        rerank_score: None,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]

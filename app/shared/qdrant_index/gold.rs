@@ -1,8 +1,8 @@
 //! Per-node gold state and in-place document synchronization. No staging versions:
 //! silver in SQLite is authoritative and any lost or partial gold is replayed.
 use super::{
-    AppError, Document, Identity, PointKind, Store, api, collection, document_id, failure,
-    point_id, sparse, tokens,
+    AppError, ConnectorDocument, ConnectorUnit, Document, Identity, PointKind, Store, api,
+    collection, connector_id, document_id, failure, point_id, sparse, tokens,
 };
 use crate::shared::protocol::{ConversationRecord, MessageRecord};
 use crate::shared::silver_revision::State;
@@ -24,6 +24,10 @@ pub(in crate::shared) struct NodeGold {
     #[serde(default)]
     pub(in crate::shared) certified: bool,
     pub(in crate::shared) chats: BTreeMap<String, GoldChat>,
+    /// Connector unit anchor to the hex digest of its indexed text, for every
+    /// connector point written from this node's shared silver.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(in crate::shared) connectors: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -46,6 +50,7 @@ impl NodeGold {
             silver: None,
             certified: false,
             chats: BTreeMap::new(),
+            connectors: BTreeMap::new(),
         }
     }
 
@@ -146,6 +151,29 @@ impl Store {
             .await
     }
 
+    /// Delete one node's connector points with these anchors.
+    pub(in crate::shared) async fn delete_connector_points(
+        &self,
+        identity: &Identity,
+        anchors: Vec<String>,
+    ) -> Result<(), AppError> {
+        if anchors.is_empty() {
+            return Ok(());
+        }
+        self.api
+            .delete_filtered(
+                &collection(&identity.group_id, false),
+                api::Filter {
+                    must: vec![
+                        api::matches("node_id", vec![identity.node_id.clone()]),
+                        api::matches("unit.anchor", anchors),
+                    ],
+                    ..api::Filter::default()
+                },
+            )
+            .await
+    }
+
     /// Delete all documents of one node, for a complete replay.
     pub(in crate::shared) async fn delete_node_documents(
         &self,
@@ -241,7 +269,58 @@ impl Documents {
         Ok(embedded)
     }
 
+    /// Queue one connector unit's point, with its vector when dense gold is built.
+    pub(in crate::shared) async fn push_connector(
+        &mut self,
+        store: &Store,
+        identity: &Identity,
+        point: ConnectorPoint,
+    ) -> Result<(), AppError> {
+        let ConnectorPoint {
+            source_id,
+            kind,
+            chat_anchor,
+            created_at,
+            mut unit,
+            vector,
+        } = point;
+        let words = tokens(&unit.text);
+        unit.generation = vector.as_ref().map(|_| identity.generation.clone());
+        self.batch
+            .push(
+                &store.api,
+                &self.name,
+                api::Point {
+                    id: connector_id(&identity.node_id, &unit.anchor),
+                    vector: api::Vectors {
+                        dense: vector.map(|v| (store.dense_name(identity).into(), v)),
+                        lexical: (!words.is_empty()).then(|| sparse(&unit.text, false)),
+                    },
+                    payload: ConnectorDocument {
+                        node_id: identity.node_id.clone(),
+                        source_id,
+                        kind,
+                        conversation_id: chat_anchor,
+                        created_at,
+                        tokens: words,
+                        unit,
+                    },
+                },
+            )
+            .await
+    }
+
     pub(in crate::shared) async fn finish(mut self, store: &Store) -> Result<(), AppError> {
         self.batch.flush(&store.api, &self.name).await
     }
+}
+
+/// One connector unit ready to write.
+pub(in crate::shared) struct ConnectorPoint {
+    pub(in crate::shared) source_id: String,
+    pub(in crate::shared) kind: crate::source::Kind,
+    pub(in crate::shared) chat_anchor: String,
+    pub(in crate::shared) created_at: Option<i64>,
+    pub(in crate::shared) unit: ConnectorUnit,
+    pub(in crate::shared) vector: Option<Vec<f64>>,
 }

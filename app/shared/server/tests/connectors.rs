@@ -1,5 +1,6 @@
 use super::*;
 use crate::connectors::{Document, Receipt};
+use crate::storage::SearchHit;
 
 fn batch(name: &str, revision: u64, content: &str) -> Value {
     json!({
@@ -79,20 +80,9 @@ async fn connector_http_receipts_replay_after_later_batches_and_conflicts_do_not
         let error = conflict.text().await.unwrap();
         assert!(!error.contains("PRIVATE-CANARY"));
     }
+    // Without Qdrant, gold synchronization fails after the silver commit; the
+    // durable receipt is still returned and silver holds the latest batch.
     assert_eq!(document(&service, FIRST).content, "Edited");
-    assert!(
-        service
-            .store
-            .require_connector_gold(&service.first, false)
-            .await
-            .is_err()
-    );
-    // Excluding this node excludes its unprojected canonical input too.
-    service
-        .store
-        .require_connector_gold(&service.first, true)
-        .await
-        .unwrap();
 }
 
 #[tokio::test]
@@ -169,4 +159,158 @@ async fn connector_http_limits_media_and_mutation_capacity_fail_before_commit() 
         .await
         .unwrap();
     assert_eq!(receipt.source_revision, 1);
+}
+
+fn exact(text: &str) -> crate::shared::protocol::Search {
+    crate::shared::protocol::Search {
+        match_mode: crate::gold::matching::Mode::Strict,
+        intent: crate::gold::exact::Intent::ExactMention,
+        vector_policy: None,
+        unit: crate::search_results::SearchUnit::Messages,
+        query: text.into(),
+        generation: String::new(),
+        vector: vec![],
+        provider: None,
+        days: None,
+        exclude_self: false,
+        filter: None,
+    }
+}
+
+async fn found(service: &Service, input: &crate::shared::protocol::Search) -> Vec<SearchHit> {
+    let response = service
+        .request("search", FIRST)
+        .json(input)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let candidates: crate::shared::protocol::Candidates = serde_json::from_str(&body).unwrap();
+    candidates
+        .lexical
+        .into_iter()
+        .chain(candidates.semantic)
+        .collect()
+}
+
+const MESSAGE: &str = "connector#message#github:installation#review:1";
+const NOTE: &str = "connector#document#github:installation#note";
+
+#[tokio::test]
+#[ignore = "requires MASH_TEST_QDRANT_URL and installed MASH_TEST_MODELS_DIR"]
+async fn qdrant_connector_records_are_searchable_and_follow_shared_silver() {
+    let models = std::path::PathBuf::from(std::env::var("MASH_TEST_MODELS_DIR").unwrap());
+    let service = Service::new(true).await;
+    // A connector-only node: it never uploads native history.
+    upload(&service, FIRST, &batch("first", 0, "Zeppelin runbook"))
+        .await
+        .error_for_status()
+        .unwrap();
+    let hits = found(&service, &exact("zeppelin")).await;
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, NOTE);
+    assert_eq!(hits[0].kind, crate::source::Kind::Document);
+    assert_eq!(
+        hits[0].source,
+        crate::source::Source::Connector("github:installation".into())
+    );
+    assert_eq!(hits[0].node_id.as_deref(), Some("first"));
+    let mut vector = crate::gold::shared::embed_texts(
+        &models,
+        None,
+        &mut None,
+        &["Review\nReview comment"],
+        &mut crate::gold::shared::Build::default(),
+    )
+    .await
+    .unwrap();
+    let related = crate::shared::protocol::Search {
+        intent: crate::gold::exact::Intent::RelatedDiscussion,
+        query: "review".into(),
+        generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
+        vector: vector.pop().unwrap(),
+        ..exact("review")
+    };
+    let semantic = found(&service, &related).await;
+    let message = semantic.iter().find(|hit| hit.id == MESSAGE).unwrap();
+    assert_eq!(
+        message.author_kind,
+        Some(crate::connectors::AuthorKind::Human)
+    );
+    assert!(
+        semantic
+            .iter()
+            .any(|hit| hit.semantic_score.is_some() && hit.id == MESSAGE)
+    );
+    // Edits replace points; a provider filter never matches connector records.
+    upload(&service, FIRST, &batch("second", 1, "Airship runbook"))
+        .await
+        .error_for_status()
+        .unwrap();
+    assert!(found(&service, &exact("zeppelin")).await.is_empty());
+    assert_eq!(found(&service, &exact("airship")).await[0].id, NOTE);
+    let native_only = crate::shared::protocol::Search {
+        filter: Some(crate::search_filter::Filter::Provider(vec![
+            crate::provider::Provider::Codex,
+        ])),
+        ..exact("airship")
+    };
+    assert!(found(&service, &native_only).await.is_empty());
+    verify_view_and_listing(&service).await;
+    // A native upload recertifies the node without losing connector points.
+    let response = service.upload(FIRST, &snapshot(1)).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "{}",
+        response.text().await.unwrap()
+    );
+    assert_eq!(found(&service, &exact("airship")).await[0].id, NOTE);
+    // Replay rebuilds every point, connector points included, from silver.
+    service
+        .store
+        .replay(&service.first, &models, None)
+        .await
+        .unwrap();
+    assert_eq!(found(&service, &exact("airship")).await[0].id, NOTE);
+    let gold = service
+        .store
+        .gold_state(&service.first)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(gold.connectors.len(), 2);
+    assert!(gold.certified);
+    service.cleanup().await;
+}
+
+async fn verify_view_and_listing(service: &Service) {
+    let view: Vec<crate::storage::Message> = service
+        .request("view", FIRST)
+        .json(&serde_json::json!({"node_id": "first", "id": MESSAGE, "context": 1}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(view[0].content, "Review comment");
+    let chats: Value = service
+        .request("chats", FIRST)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        chats["chats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|chat| chat["chat_id"] == "connector#chat#github:installation#pr:42")
+    );
 }

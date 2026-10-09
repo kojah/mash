@@ -215,9 +215,6 @@ UPDATE silver_state SET revision=sqlc.arg(revision) WHERE singleton=1;
 INSERT INTO connector_receipts(source_id,batch_id,fingerprint,receipt)
 VALUES(sqlc.arg(source_id),sqlc.arg(batch_id),sqlc.arg(fingerprint),sqlc.arg(receipt));
 
--- name: ConnectorInputs :one
-SELECT CAST(EXISTS(SELECT 1 FROM connector_chats) OR EXISTS(SELECT 1 FROM connector_documents) AS INTEGER) AS present;
-
 -- name: ConnectorAllEdges :many
 SELECT source_id,id,chat_id FROM connector_messages ORDER BY source_id,chat_id,id;
 

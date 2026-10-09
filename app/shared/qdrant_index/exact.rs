@@ -1,5 +1,7 @@
 //! Bounded literal scanning of immutable lexical documents, without vectors.
-use super::{AppError, Identity, Store, api, collection, document_id, failure, tokens};
+use super::{
+    AppError, Identity, Store, Stored, api, collection, connector_hit, document_id, failure, tokens,
+};
 use crate::{
     gold::exact::{self, Literal},
     shared::protocol,
@@ -24,6 +26,9 @@ const FIELDS: &[&str] = &[
     "message.role",
     "message.projection",
     "message.created_at",
+    "source_id",
+    "kind",
+    "unit",
 ];
 
 #[derive(Deserialize)]
@@ -50,8 +55,19 @@ struct Document {
     message: Message,
 }
 
-fn hit(point: api::Record<Document>, active: &BTreeSet<String>) -> Result<SearchHit, AppError> {
-    let d = point.payload;
+fn hit(
+    point: api::Record<Stored<Document>>,
+    active: &BTreeSet<String>,
+) -> Result<SearchHit, AppError> {
+    let d = match point.payload {
+        Stored::Native(document) => document,
+        Stored::Connector(document) => {
+            // Exact search reads no vectors, so the generation is not checked here.
+            let mut hit = connector_hit(&point.id, document, active, None)?;
+            hit.lexical_score = Some(0.0);
+            return Ok(hit);
+        }
+    };
     let m = d.message;
     if point.id != document_id(&d.node_id, &m.id)
         || !active.contains(&d.node_id)
@@ -133,7 +149,7 @@ impl Store {
             loop {
                 let page = self
                     .api
-                    .scroll_page::<Document>(
+                    .scroll_page::<Stored<Document>>(
                         &collection(&identity.group_id, false),
                         filter.clone(),
                         offset,
@@ -145,7 +161,10 @@ impl Store {
                 let mut page_hits = page
                     .points
                     .into_iter()
-                    .filter(|point| !point.payload.message.projection.is_empty())
+                    .filter(|point| match &point.payload {
+                        Stored::Native(document) => !document.message.projection.is_empty(),
+                        Stored::Connector(_) => true,
+                    })
                     .map(|point| hit(point, &active))
                     .collect::<Result<Vec<_>, _>>()?;
                 for hit in &mut page_hits {

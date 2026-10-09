@@ -297,10 +297,13 @@ pub(crate) struct Activation {
     pub(crate) memory: bool,
 }
 
+/// `models` is used for connector records, which arrive without vectors, and
+/// for `replay` of all gold from silver before serving.
 pub(crate) async fn run(
     path: &Path,
     activation: Activation,
-    replay_models: Option<&Path>,
+    models: &Path,
+    replay: bool,
 ) -> Result<(), AppError> {
     let config = configuration::load(path).await?;
     let identities = configuration::identities(&config)?;
@@ -311,8 +314,12 @@ pub(crate) async fn run(
         activation.query,
         activation.memory,
     )
-    .await?;
-    if let Some(models) = replay_models {
+    .await?
+    .with_embedder(store::connectors::Embedder {
+        models: models.to_path_buf(),
+        remote: config.embeddings.remote()?,
+    });
+    if replay {
         let remote = config.embeddings.remote()?;
         let mut nodes = identities.values().collect::<Vec<_>>();
         nodes.sort_by(|a, b| (&a.group_id, &a.node_id).cmp(&(&b.group_id, &b.node_id)));

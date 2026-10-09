@@ -231,6 +231,18 @@ enum TestBackend {
     Qdrant,
 }
 
+/// Connector records arrive without vectors; the server embeds them when the
+/// test environment supplies installed models.
+fn with_test_embedder(store: Store) -> Store {
+    match std::env::var("MASH_TEST_MODELS_DIR") {
+        Ok(models) => store.with_embedder(super::store::connectors::Embedder {
+            models: models.into(),
+            remote: None,
+        }),
+        Err(_) => store,
+    }
+}
+
 async fn exclude_own_contract(service: Service) {
     let mut own = snapshot(1);
     let template = own[2]["records"][0].clone();
@@ -515,7 +527,7 @@ impl Service {
                 identities.values(),
             )
             .unwrap();
-            Store::new(silver, gold, max_node_bytes as u64)
+            with_test_embedder(Store::new(silver, gold, max_node_bytes as u64))
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());

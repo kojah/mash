@@ -1,11 +1,36 @@
-//! Connector silver commits share the authenticated node's database and writer lock.
+//! Connector silver commits share the authenticated node's database and writer
+//! lock; certification brings the node's connector points in line with it.
 use super::{Identity, Store};
+use crate::shared::qdrant_index::{ConnectorPoint, ConnectorUnit, Documents, NodeGold};
+use crate::storage::connector_gold::{self, Evidence, Unit};
 use crate::{
     AppError,
     connectors::{Batch, Receipt, silver},
 };
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+/// How the server embeds connector units: nodes supply native vectors, but
+/// connector records arrive as text.
+#[derive(Clone)]
+pub(in crate::shared) struct Embedder {
+    pub(in crate::shared) models: PathBuf,
+    pub(in crate::shared) remote: Option<crate::semantic::remote::Configuration>,
+}
+
+/// Units read in one pass: every current digest, and the units that changed.
+struct Units {
+    digests: BTreeMap<String, String>,
+    changed: Vec<(Unit, Evidence)>,
+}
+
+fn digest(unit: &Unit) -> String {
+    blake3::hash(unit.text.as_bytes()).to_hex().to_string()
+}
 
 impl Store {
+    /// Commit silver first. Gold follows on a best-effort basis: a failure
+    /// leaves the node uncertified until the next ingest, upload or replay.
     pub(in crate::shared) async fn ingest_connector(
         &self,
         identity: &Identity,
@@ -14,44 +39,145 @@ impl Store {
         let _node = self.lock(identity).await?;
         let store = self.silver.clone();
         let scope = identity.clone();
-        crate::blocking(move || {
+        let receipt = crate::blocking(move || {
             store.write(&scope, |transaction| {
                 silver::apply(transaction, &batch).map_err(silver::app_error)
             })
         })
-        .await
+        .await?;
+        if let Err(error) = self.recertify(identity).await {
+            tracing::warn!(
+                kind = ?error.error.kind,
+                "connector gold synchronization failed; node gold stays uncertified"
+            );
+        }
+        Ok(receipt)
     }
 
-    pub(super) async fn connector_inputs(&self, identity: &Identity) -> Result<bool, AppError> {
+    /// Re-run certification, which also synchronizes connector points.
+    async fn recertify(&self, identity: &Identity) -> Result<(), AppError> {
+        self.gold.gold_configuration(identity).await?;
+        let gold = if let Some(gold) = self.compatible_gold(identity).await? {
+            gold
+        } else {
+            self.gold.delete_node_documents(identity).await?;
+            NodeGold::empty(&self.gold, identity)
+        };
+        let fingerprints = self
+            .read(identity, crate::shared::silver_store::fingerprints)
+            .await?;
+        self.certify(identity, gold, &fingerprints).await
+    }
+
+    /// Bring this node's connector points in line with its shared silver.
+    /// Only changed units are embedded and written; removed ones are deleted.
+    pub(super) async fn sync_connectors(
+        &self,
+        identity: &Identity,
+        gold: &mut NodeGold,
+    ) -> Result<(), AppError> {
+        let known = gold.connectors.clone();
+        let units = self
+            .read(identity, move |connection| {
+                let mut digests = BTreeMap::new();
+                let mut changed = Vec::new();
+                for unit in connector_gold::silver_units(connection)? {
+                    let value = digest(&unit);
+                    if known.get(&unit.anchor) != Some(&value) {
+                        let evidence = connector_gold::evidence(
+                            connection,
+                            unit.kind,
+                            &unit.source_id,
+                            &unit.record_id,
+                        )?;
+                        changed.push((unit.clone(), evidence));
+                    }
+                    digests.insert(unit.anchor, value);
+                }
+                Ok(Units { digests, changed })
+            })
+            .await?;
+        let removed = gold
+            .connectors
+            .keys()
+            .filter(|anchor| !units.digests.contains_key(*anchor))
+            .cloned()
+            .collect::<Vec<_>>();
+        // Points no longer match the recorded digests until this completes.
+        gold.certified = false;
+        self.gold.put_node_gold(identity, gold).await?;
+        self.gold.delete_connector_points(identity, removed).await?;
+        let mut documents = Documents::new(identity);
+        let mut pool = None;
+        let mut build = crate::gold::shared::Build::default();
+        for batch in units.changed.chunks(crate::gold::shared::BATCH_ROWS) {
+            let vectors = if self.gold.build().dense_enabled() {
+                let embedder = self.embedder.as_ref().ok_or_else(|| {
+                    AppError::model(
+                        "the shared server has no embedding model for connector records",
+                    )
+                })?;
+                let texts = batch
+                    .iter()
+                    .map(|(unit, _)| unit.text.as_str())
+                    .collect::<Vec<_>>();
+                let vectors = crate::gold::shared::embed_texts(
+                    &embedder.models,
+                    embedder.remote.as_ref(),
+                    &mut pool,
+                    &texts,
+                    &mut build,
+                )
+                .await?;
+                if vectors.len() != texts.len() {
+                    return Err(AppError::model("missing connector embedding"));
+                }
+                vectors.into_iter().map(Some).collect()
+            } else {
+                vec![None; batch.len()]
+            };
+            for ((unit, evidence), vector) in batch.iter().zip(vectors) {
+                documents
+                    .push_connector(&self.gold, identity, point(unit, evidence, vector))
+                    .await?;
+            }
+        }
+        documents.finish(&self.gold).await?;
+        gold.connectors = units.digests;
+        Ok(())
+    }
+
+    /// Current connector unit digests, for freshness without writing gold.
+    pub(super) async fn connector_digests(
+        &self,
+        identity: &Identity,
+    ) -> Result<BTreeMap<String, String>, AppError> {
         self.read(identity, |connection| {
-            crate::storage::generated::ConnectorInputs
-                .query_one(connection)
-                .map(|row| row.present != 0)
-                .map_err(AppError::database)
+            Ok(connector_gold::silver_units(connection)?
+                .iter()
+                .map(|unit| (unit.anchor.clone(), digest(unit)))
+                .collect())
         })
         .await
     }
+}
 
-    /// Temporary readiness gate until source-neutral gold projection is complete.
-    pub(in crate::shared) async fn require_connector_gold(
-        &self,
-        identity: &Identity,
-        exclude_self: bool,
-    ) -> Result<(), AppError> {
-        for node in self.silver.nodes(&identity.group_id) {
-            if exclude_self && node == &identity.node_id {
-                continue;
-            }
-            let scope = Identity {
-                node_id: node.clone(),
-                ..identity.clone()
-            };
-            if self.connector_inputs(&scope).await? {
-                return Err(AppError::search_not_ready(
-                    "external connector gold projection has not completed",
-                ));
-            }
-        }
-        Ok(())
+fn point(unit: &Unit, evidence: &Evidence, vector: Option<Vec<f64>>) -> ConnectorPoint {
+    ConnectorPoint {
+        source_id: unit.source_id.clone(),
+        kind: unit.kind,
+        chat_anchor: unit.chat_anchor.clone(),
+        created_at: unit.created_at,
+        unit: ConnectorUnit {
+            anchor: unit.anchor.clone(),
+            text: unit.text.clone(),
+            content: evidence.content.clone(),
+            title: evidence.title.clone(),
+            author_kind: evidence.author,
+            chat_created_at: evidence.chat_created_at,
+            chat_updated_at: evidence.chat_updated_at,
+            generation: None,
+        },
+        vector,
     }
 }

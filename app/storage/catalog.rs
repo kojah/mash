@@ -26,38 +26,9 @@ impl Storage {
         // A provider selection names native history only. The caller's collector
         // applies the remaining filters, ordering and page window.
         if request.provider.is_empty() {
-            chats.extend(self.connector_chat_candidates(node)?);
+            chats.extend(super::connector_gold::chats(&self.connection, node)?);
         }
         Ok(chats)
-    }
-
-    fn connector_chat_candidates(&self, node: &str) -> Result<Vec<Chat>, AppError> {
-        generated::ConnectorChats
-            .query_many(&self.connection)
-            .map_err(AppError::database)?
-            .into_iter()
-            .map(|row| {
-                let chat: crate::connectors::Chat = serde_json::from_str(&row.record)
-                    .map_err(|_| AppError::database_data("stored connector record is invalid"))?;
-                Ok(Chat {
-                    conversation_id: super::connector_gold::anchor(
-                        "chat",
-                        &row.source_id,
-                        chat.id.as_str(),
-                    ),
-                    source: crate::source::Source::Connector(row.source_id),
-                    node_id: node.into(),
-                    metadata: ChatMetadata {
-                        enrichment: None,
-                        title: chat.title,
-                        project: None,
-                        repository: None,
-                        created_at: chat.created_at,
-                        updated_at: chat.updated_at,
-                    },
-                })
-            })
-            .collect()
     }
 
     fn native_chat_candidates(

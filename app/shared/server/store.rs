@@ -10,7 +10,7 @@ use crate::storage::Counts;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-mod connectors;
+pub(super) mod connectors;
 mod replay;
 mod sync;
 
@@ -21,6 +21,8 @@ type NodeLock = Arc<tokio::sync::Mutex<()>>;
 pub(in crate::shared) struct Store {
     silver: SilverStore,
     gold: qdrant_index::Store,
+    /// Embeds connector records; absent when the server has no model setup.
+    embedder: Option<connectors::Embedder>,
     max_upload_bytes: u64,
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
 }
@@ -98,9 +100,15 @@ impl Store {
         Self {
             silver,
             gold,
+            embedder: None,
             max_upload_bytes,
             nodes: Arc::default(),
         }
+    }
+
+    pub(in crate::shared) fn with_embedder(mut self, embedder: connectors::Embedder) -> Self {
+        self.embedder = Some(embedder);
+        self
     }
 
     #[cfg(test)]
@@ -172,6 +180,15 @@ impl Store {
             .filter(|gold| gold.compatible(&self.gold, identity)))
     }
 
+    /// One node's gold state, for tests.
+    #[cfg(test)]
+    pub(in crate::shared) async fn gold_state(
+        &self,
+        identity: &Identity,
+    ) -> Result<Option<NodeGold>, AppError> {
+        self.gold.node_gold(identity).await
+    }
+
     /// One node's publication state, for tests.
     #[cfg(test)]
     pub(in crate::shared) async fn state(
@@ -214,15 +231,18 @@ impl Store {
                 ..identity.clone()
             };
             let mut counts = self.read(&node, silver_store::counts).await?;
-            let connector_inputs = self.connector_inputs(&node).await?;
             let gold = self.gold.node_gold(&node).await?;
+            let connectors_current = match &gold {
+                Some(g) => g.connectors == self.connector_digests(&node).await?,
+                None => false,
+            };
             let silver = head.silver_revision.as_ref();
             let lexical_current = gold.as_ref().is_some_and(|g| {
-                !connector_inputs && silver.is_some() && g.silver.as_ref() == silver
+                connectors_current && silver.is_some() && g.silver.as_ref() == silver
             });
             let gold_current = gold
                 .as_ref()
-                .is_some_and(|g| !connector_inputs && g.current(&self.gold, &node, silver));
+                .is_some_and(|g| connectors_current && g.current(&self.gold, &node, silver));
             counts.embeddings = gold
                 .as_ref()
                 .filter(|g| g.compatible(&self.gold, &node))
@@ -230,7 +250,7 @@ impl Store {
             let build = self.gold.build();
             nodes.push(NodeFreshness {
                 artifacts: Some(crate::gold::readiness::Artifacts {
-                    metadata: crate::gold::readiness::State::publication(true, !connector_inputs),
+                    metadata: crate::gold::readiness::State::publication(true, true),
                     lexical: crate::gold::readiness::State::publication(
                         gold.is_some(),
                         lexical_current,
@@ -285,9 +305,10 @@ impl Store {
         dense: bool,
         exclude_self: bool,
     ) -> Result<BTreeSet<String>, AppError> {
-        let heads = self.heads(&identity.group_id).await?;
+        // Gold exists only after a node uploads or receives connector records,
+        // so configured nodes without it are simply absent from search.
         let mut active = BTreeSet::new();
-        for node_id in heads.into_keys() {
+        for node_id in self.silver.nodes(&identity.group_id).iter().cloned() {
             if exclude_self && node_id == identity.node_id {
                 continue;
             }
@@ -315,8 +336,6 @@ impl Store {
     ) -> Result<protocol::Candidates, AppError> {
         qdrant_index::validate_search(&input, identity)?;
         self.gold.gold_configuration(identity).await?;
-        self.require_connector_gold(identity, input.exclude_self)
-            .await?;
         let exact = input.intent == crate::gold::exact::Intent::ExactMention;
         let active = self
             .searchable_nodes(identity, !exact, input.exclude_self)
@@ -347,6 +366,21 @@ impl Store {
                 })
                 .await?,
             );
+        }
+        for node in self.silver.nodes(&identity.group_id) {
+            if !input.admits_node(node, &identity.node_id) {
+                continue;
+            }
+            let node = node.clone();
+            let scope = silver_store::node_identity(&identity.group_id, &node);
+            let chats = self
+                .read(&scope, move |connection| {
+                    crate::storage::connector_gold::chats(connection, &node)
+                })
+                .await?;
+            for chat in chats {
+                collector.push(chat);
+            }
         }
         for thread in threads {
             let row = thread.conversation;
@@ -391,6 +425,16 @@ impl Store {
             input.content,
             crate::storage::MessageContent::SearchProjection
         );
+        if input
+            .id
+            .starts_with(crate::storage::connector_gold::ANCHOR_PREFIX)
+        {
+            return self
+                .read(&node, move |connection| {
+                    crate::storage::connector_gold::view(connection, &input.id, input.context)
+                })
+                .await;
+        }
         self.read(&node, move |connection| {
             Ok(
                 silver_store::read::view(connection, &input.id, input.context)?
