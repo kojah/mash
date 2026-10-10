@@ -394,8 +394,11 @@ WHERE origin='provider' AND object_role IN ('container','segment') AND conversat
 
 -- name: SetEntryParent :exec
 -- A message's parent is its turn, or its chat when it belongs to none.
+-- Repeat the partial native-ID uniqueness predicate: SQLite does not infer it
+-- from object_role='entry'. Otherwise it scans the chat for every update.
 UPDATE objects SET parent_id=sqlc.arg(parent_id),parent_storage_id=sqlc.arg(parent_storage_id)
-WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id)
+WHERE origin='provider' AND object_role='entry' AND object_role<>'container'
+  AND conversation_id=sqlc.arg(conversation_id)
   AND id=sqlc.arg(id) AND parent_storage_id IS NOT sqlc.arg(parent_storage_id);
 
 -- name: DeleteTurn :exec

@@ -2,6 +2,30 @@ use crate::role::Role;
 use crate::storage::Storage;
 use crate::storage::tests::conversation_with_messages;
 
+#[test]
+fn entry_parent_updates_use_a_native_id_lookup_instead_of_scanning_the_chat() {
+    let directory = tempfile::tempdir().unwrap();
+    let storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
+    let update = crate::storage::generated::SetEntryParent::builder()
+        .parent_id(Some("turn"))
+        .parent_storage_id(Some(1))
+        .conversation_id("chat")
+        .id("entry")
+        .build();
+    let plan: Vec<String> = storage
+        .connection
+        .prepare(&format!(
+            "EXPLAIN QUERY PLAN {}",
+            crate::storage::generated::SetEntryParent::QUERY
+        ))
+        .unwrap()
+        .query_map(update.as_params(), |row| row.get(3))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert!(plan.iter().any(|step| step.contains("(id=?)")), "{plan:?}");
+}
+
 fn chat(roles: &[(&str, Role, &str)]) -> crate::silver::Conversation {
     let pairs: Vec<(&str, &str)> = roles.iter().map(|(id, _, text)| (*id, *text)).collect();
     let mut chat = conversation_with_messages(&pairs);

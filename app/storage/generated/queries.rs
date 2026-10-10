@@ -10352,7 +10352,8 @@ pub struct SetEntryParent<'a> {
 }
 impl<'a> SetEntryParent<'a> {
     pub const QUERY: &'static str = r"UPDATE objects SET parent_id=?1,parent_storage_id=?2
-WHERE origin='provider' AND object_role='entry' AND conversation_id=?3
+WHERE origin='provider' AND object_role='entry' AND object_role<>'container'
+  AND conversation_id=?3
   AND id=?4 AND parent_storage_id IS NOT ?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
