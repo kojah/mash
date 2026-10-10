@@ -178,6 +178,10 @@ Work on and push `main`; it is the repository's sole development branch.
 
 ## Deployment
 
+Redeploy by default after every change pushed to `main`, following
+`.agents/skills/mash-deployment/SKILL.md` (linked under `.claude/skills` and
+`.codex/skills`), unless the user says not to.
+
 Build once per platform and reuse the validated artifact for nodes on that platform.
 Ordinary binary deployment must not run `index` automatically. Inspect local
 `status` and, for shared publication, `status --shared` after installing. Refresh
