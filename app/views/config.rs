@@ -155,7 +155,7 @@ impl Build {
     pub(crate) fn require_intent(&self, intent: super::exact::Intent) -> Result<(), AppError> {
         if intent == super::exact::Intent::RelatedDiscussion && !self.dense_enabled() {
             return Err(AppError::usage(
-                "related-discussion requires dense gold; use exact-mention or explicitly rebuild lexical-and-dense gold",
+                "related-discussion requires dense views; use exact-mention or explicitly rebuild lexical-and-dense views",
             ));
         }
         Ok(())
@@ -167,15 +167,15 @@ impl Build {
         if self.embedding_text == EmbeddingText::TitleAndDialogue {
             let mut base = self.clone();
             base.embedding_text = EmbeddingText::Dialogue;
-            return format!("gold-chat-title-v2:{}", base.generation(model));
+            return format!("views-chat-title-v2:{}", base.generation(model));
         }
         if !self.dense_enabled() {
-            return "gold-lexical-v1".into();
+            return "views-lexical-v1".into();
         }
         if self.retrieval_unit == RetrievalUnit::ParentAndMessage {
             let mut anchor = self.clone();
             anchor.retrieval_unit = RetrievalUnit::Message;
-            return format!("gold-parent-unit-v1:{}", anchor.generation(model));
+            return format!("views-parent-unit-v1:{}", anchor.generation(model));
         }
         if self.users_only() {
             let text = match self.embedding_text {
@@ -187,7 +187,7 @@ impl Build {
                 TextPreparation::CollapseWhitespace => "collapse-whitespace",
             };
             return format!(
-                "gold-users-v1:{text}:{preparation}:{}:{model}",
+                "views-users-v1:{text}:{preparation}:{}:{model}",
                 self.max_embedding_chars.map_or(0, |b| b.0)
             );
         }
@@ -197,7 +197,7 @@ impl Build {
                 EmbeddingText::TitleAndDialogue => "title-and-dialogue",
             };
             return format!(
-                "gold-whitespace-v1:{recipe}:{}:{model}",
+                "views-whitespace-v1:{recipe}:{}:{model}",
                 self.max_embedding_chars.map_or(0, |b| b.0)
             );
         }
@@ -206,11 +206,11 @@ impl Build {
                 EmbeddingText::Dialogue => "dialogue",
                 EmbeddingText::TitleAndDialogue => "title-and-dialogue",
             };
-            format!("gold-text-budget-v1:{recipe}:{}:{model}", budget.0)
+            format!("views-text-budget-v1:{recipe}:{}:{model}", budget.0)
         } else if self == &Self::default() {
             model.to_owned()
         } else {
-            format!("gold-chat-title-v2:{model}")
+            format!("views-chat-title-v2:{model}")
         }
     }
 
@@ -316,7 +316,7 @@ impl Fusion {
             || !(1..=100).contains(&self.semantic_weight)
             || self.recency_weight > 100
         {
-            return Err(AppError::configuration(format!("gold {FUSION_LIMITS}")));
+            return Err(AppError::configuration(format!("views {FUSION_LIMITS}")));
         }
         Ok(())
     }
@@ -403,12 +403,12 @@ impl Configuration {
             && self.query.intent == super::exact::Intent::RelatedDiscussion
         {
             return Err(AppError::configuration(
-                "lexical-only gold requires exact-mention as the default query intent",
+                "lexical-only views require exact-mention as the default query intent",
             ));
         }
         if !(1..=200).contains(&self.query.limit) {
             return Err(AppError::configuration(
-                "gold query limit must be between 1 and 200",
+                "views query limit must be between 1 and 200",
             ));
         }
         self.query.fusion.validate()
@@ -438,7 +438,7 @@ mod tests {
         config.validate().unwrap();
         assert!(!config.build.dense_enabled());
         assert_eq!(config.build.expected_embeddings(100), 0);
-        assert_eq!(config.build.generation("unused-model"), "gold-lexical-v1");
+        assert_eq!(config.build.generation("unused-model"), "views-lexical-v1");
         assert!(
             config
                 .build
@@ -592,7 +592,7 @@ mod tests {
             assert!(
                 recipe
                     .generation("model")
-                    .starts_with("gold-chat-title-v2:")
+                    .starts_with("views-chat-title-v2:")
             );
             assert!(
                 recipe

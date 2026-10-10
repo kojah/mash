@@ -16,13 +16,10 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Receipt for a durably accepted silver batch. Gold readiness is separate.",
+  "description": "Receipt for a durably accepted silver batch. View readiness is separate.",
   "properties": {
     "batch_id": {
       "$ref": "#/$defs/ConnectorId"
-    },
-    "gold_ready": {
-      "type": "boolean"
     },
     "schema_version": {
       "$ref": "#/$defs/ConnectorVersion"
@@ -41,6 +38,9 @@
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
+    },
+    "views_ready": {
+      "type": "boolean"
     }
   },
   "required": [
@@ -49,7 +49,7 @@
     "batch_id",
     "source_revision",
     "silver_revision",
-    "gold_ready"
+    "views_ready"
   ],
   "title": "Receipt",
   "type": "object"

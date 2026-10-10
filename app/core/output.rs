@@ -63,7 +63,7 @@ struct Message<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     lookup: Option<&'a crate::search_results::lookup::Lookup>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    lexical_match: Option<&'a crate::gold::matching::Evidence>,
+    lexical_match: Option<&'a crate::views::matching::Evidence>,
     id: &'a str,
     #[serde(rename = "chat_id")]
     conversation_id: &'a str,
@@ -89,7 +89,7 @@ struct Excerpt<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     lookup: Option<&'a crate::search_results::lookup::Lookup>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    lexical_match: Option<&'a crate::gold::matching::Evidence>,
+    lexical_match: Option<&'a crate::views::matching::Evidence>,
     message_id: &'a str,
     node_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -170,7 +170,7 @@ enum SearchResults<'a> {
 #[derive(Serialize)]
 struct Search<'a> {
     query: &'a str,
-    intent: crate::gold::exact::Intent,
+    intent: crate::views::exact::Intent,
     realized_mode: &'a SearchMode,
     unit: crate::search_results::SearchUnit,
     results: SearchResults<'a>,
@@ -180,7 +180,7 @@ struct Search<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     shared_context_error: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    diagnostics: Option<&'a crate::gold::diagnostics::Diagnostics>,
+    diagnostics: Option<&'a crate::views::diagnostics::Diagnostics>,
 }
 
 impl<'a> From<&'a SearchResponse> for Search<'a> {

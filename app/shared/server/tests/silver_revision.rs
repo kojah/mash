@@ -19,12 +19,12 @@ async fn qdrant_silver_revision_tracks_canonical_changes_and_atomic_publication(
         serde_json::to_value(&first).unwrap()
     );
 
-    let mut gold = snapshot(2);
-    let vector = gold[2]["records"][0]["vector"].as_array_mut().unwrap();
+    let mut views = snapshot(2);
+    let vector = views[2]["records"][0]["vector"].as_array_mut().unwrap();
     vector[0] = json!(0);
     vector[1] = json!(127);
     service
-        .upload(FIRST, &gold)
+        .upload(FIRST, &views)
         .await
         .error_for_status()
         .unwrap();

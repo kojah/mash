@@ -6,10 +6,10 @@ use super::{
 use crate::{
     AppError,
     config::SharedConfig,
-    gold::exact::{self, Literal},
     search_filter::Scope,
     search_results::SearchUnit,
     storage::{SearchHit, Storage},
+    views::exact::{self, Literal},
 };
 use std::path::Path;
 
@@ -89,7 +89,7 @@ pub(crate) async fn search(
             ));
         }
         for hit in &mut hits {
-            crate::gold::matching::annotate(hit, &literal, output_redaction);
+            crate::views::matching::annotate(hit, &literal, output_redaction);
         }
         measured.complete(None, Some(hits.len()));
         Ok(hits)

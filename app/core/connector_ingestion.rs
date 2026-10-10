@@ -1,4 +1,4 @@
-//! Local connector ingress. Silver acknowledgement does not certify gold.
+//! Local connector ingress. Silver acknowledgement does not certify views.
 use crate::AppError;
 use crate::connectors::{Batch, MAX_BATCH_BYTES, Receipt, silver};
 use std::io::Read;

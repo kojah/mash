@@ -14,7 +14,6 @@ mod cursor;
 mod enrichment;
 mod exact;
 mod freshness;
-mod gold;
 mod native;
 mod redaction;
 mod relevance;
@@ -22,6 +21,7 @@ mod restart;
 mod selections;
 mod silver_revision;
 mod source_silver;
+mod views;
 
 const FIRST: &str = "test-api-token-first-32-bytes-long";
 const SECOND: &str = "test-api-token-second-32-bytes-long";
@@ -61,7 +61,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
         .collect();
     [
         Event::Start(Start {
-            gold_build: None,
+            views_build: None,
             source_silver: None,
             instance: "provider-contract".into(),
             revision: Some(revision),
@@ -95,8 +95,8 @@ async fn provider_contract(service: Service) {
     for &provider in Provider::ALL {
         for direct in [true, false] {
             let input = Search {
-                match_mode: crate::gold::matching::Mode::Strict,
-                intent: crate::gold::exact::Intent::RelatedDiscussion,
+                match_mode: crate::views::matching::Mode::Strict,
+                intent: crate::views::exact::Intent::RelatedDiscussion,
                 vector_policy: None,
                 unit: crate::search_results::SearchUnit::Messages,
                 query: "providerneedle".into(),
@@ -470,7 +470,7 @@ impl Service {
             "api-{}",
             directory.path().file_name().unwrap().to_string_lossy()
         );
-        let gold = if available {
+        let views = if available {
             super::super::qdrant_index::Store::connect(
                 &std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
                 None,
@@ -516,7 +516,7 @@ impl Service {
         ]));
         if available {
             for identity in identities.values() {
-                gold.select_gold(identity, false).await.unwrap();
+                views.select_views(identity, false).await.unwrap();
             }
         }
         let store = if matches!(backend, TestBackend::Unavailable) {
@@ -527,7 +527,7 @@ impl Service {
                 identities.values(),
             )
             .unwrap();
-            with_test_embedder(Store::new(silver, gold, max_node_bytes as u64))
+            with_test_embedder(Store::new(silver, views, max_node_bytes as u64))
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
@@ -555,7 +555,7 @@ impl Service {
             identities,
         }
     }
-    /// One node's silver and gold counts, read from the store directly.
+    /// One node's silver and views counts, read from the store directly.
     async fn counts(&self, token: &str) -> crate::storage::Counts {
         let identity = &self.identities[&blake3::hash(token.as_bytes())];
         self.store.status(identity).await.unwrap()
@@ -600,7 +600,7 @@ impl Service {
             for suffix in ["state", "messages"] {
                 reqwest::Client::new()
                     .delete(format!(
-                        "{}/collections/mash_gold_{}_{suffix}",
+                        "{}/collections/mash_views_{}_{suffix}",
                         std::env::var("MASH_TEST_QDRANT_URL").unwrap(),
                         blake3::hash(group.as_bytes()).to_hex()
                     ))

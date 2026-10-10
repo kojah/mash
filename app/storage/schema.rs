@@ -6,16 +6,16 @@ use std::path::{Path, PathBuf};
 use crate::AppError;
 
 /// Silver database version; any other version is rejected, never migrated.
-pub(crate) const SCHEMA_VERSION: i64 = 52;
-const GOLD_VERSION: i64 = 3;
+pub(crate) const SCHEMA_VERSION: i64 = 53;
+const VIEWS_VERSION: i64 = 4;
 
 /// The one silver schema, shared by local nodes and the shared server.
 pub(crate) const SILVER: &str = include_str!("silver.sql");
 /// Silver indexes and triggers; they require every silver column to exist.
 pub(crate) const SILVER_INDEXES: &str = include_str!("silver_indexes.sql");
-const GOLD: &str = include_str!("gold.sql");
+const VIEWS: &str = include_str!("views.sql");
 
-/// Create or validate a silver database without any local gold.
+/// Create or validate a silver database without any local views.
 pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError> {
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -46,10 +46,10 @@ pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError>
     Ok(())
 }
 
-/// Open local silver and attach its paired gold database for writing. There
+/// Open local silver and attach its paired views database for writing. There
 /// are no in-place migrations: another silver version is exported with the
 /// release that wrote it and imported into a fresh database by this one.
-pub(super) fn initialize(connection: &Connection, gold: &Path) -> Result<(), AppError> {
+pub(super) fn initialize(connection: &Connection, views: &Path) -> Result<(), AppError> {
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(AppError::database)?;
@@ -62,7 +62,7 @@ pub(super) fn initialize(connection: &Connection, gold: &Path) -> Result<(), App
     if version == 0 {
         initialize_silver(connection)?;
     }
-    attach_gold(connection, gold, true)
+    attach_views(connection, views, true)
 }
 
 /// The typed error for any silver schema this release does not write.
@@ -72,22 +72,22 @@ pub(super) fn unsupported(version: i64) -> AppError {
     ))
 }
 
-/// Path of the gold database paired with a local silver database.
-pub(crate) fn gold_path(silver: &Path) -> PathBuf {
+/// Path of the views database paired with a local silver database.
+pub(crate) fn views_path(silver: &Path) -> PathBuf {
     let name = silver
         .file_name()
         .map_or_else(|| "mash".into(), |name| name.to_string_lossy().into_owned());
-    let gold = match name.strip_suffix(".sqlite3") {
-        Some(stem) => format!("{stem}.gold.sqlite3"),
-        None => format!("{name}.gold"),
+    let views = match name.strip_suffix(".sqlite3") {
+        Some(stem) => format!("{stem}.views.sqlite3"),
+        None => format!("{name}.views"),
     };
-    silver.with_file_name(gold)
+    silver.with_file_name(views)
 }
 
-/// Remove a gold database and its journals; gold is always rebuildable.
-pub(crate) fn remove_gold(gold: &Path) -> Result<(), AppError> {
+/// Remove a views database and its journals; views are always rebuildable.
+pub(crate) fn remove_views(views: &Path) -> Result<(), AppError> {
     for suffix in ["", "-wal", "-shm", "-journal"] {
-        let mut path = gold.as_os_str().to_owned();
+        let mut path = views.as_os_str().to_owned();
         path.push(suffix);
         match std::fs::remove_file(PathBuf::from(path)) {
             Ok(()) => {}
@@ -98,21 +98,22 @@ pub(crate) fn remove_gold(gold: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Gold DDL directed at one schema: the attached `gold` database, or `temp`
-/// for a reader that has no usable gold.
-fn qualified_gold(schema: &str) -> String {
-    GOLD.replace(
-        "CREATE TABLE IF NOT EXISTS ",
-        &format!("CREATE TABLE IF NOT EXISTS {schema}."),
-    )
-    .replace(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS ",
-        &format!("CREATE VIRTUAL TABLE IF NOT EXISTS {schema}."),
-    )
-    .replace(
-        "INSERT OR IGNORE INTO ",
-        &format!("INSERT OR IGNORE INTO {schema}."),
-    )
+/// View DDL directed at one schema: the attached `views` database, or `temp`
+/// for a reader that has no usable views.
+fn qualified_views(schema: &str) -> String {
+    VIEWS
+        .replace(
+            "CREATE TABLE IF NOT EXISTS ",
+            &format!("CREATE TABLE IF NOT EXISTS {schema}."),
+        )
+        .replace(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS ",
+            &format!("CREATE VIRTUAL TABLE IF NOT EXISTS {schema}."),
+        )
+        .replace(
+            "INSERT OR IGNORE INTO ",
+            &format!("INSERT OR IGNORE INTO {schema}."),
+        )
 }
 
 fn silver_instance(connection: &Connection) -> Result<String, AppError> {
@@ -125,15 +126,15 @@ fn silver_instance(connection: &Connection) -> Result<String, AppError> {
         .map_err(AppError::database)
 }
 
-/// Create empty gold for this silver: nothing is ready and every searchable
+/// Create empty views for this silver: nothing is ready and every searchable
 /// message awaits an embedding.
-fn create_gold(connection: &Connection, schema: &str) -> Result<(), AppError> {
+fn create_views(connection: &Connection, schema: &str) -> Result<(), AppError> {
     let instance = silver_instance(connection)?;
     connection
         .execute_batch(&format!(
             "{}
-             PRAGMA {schema}.user_version = {GOLD_VERSION};",
-            qualified_gold(schema)
+             PRAGMA {schema}.user_version = {VIEWS_VERSION};",
+            qualified_views(schema)
         ))
         .map_err(AppError::database)?;
     connection
@@ -148,36 +149,36 @@ fn create_gold(connection: &Connection, schema: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-fn attach(connection: &Connection, gold: &Path, writable: bool) -> Result<(), AppError> {
-    let path = gold
+fn attach(connection: &Connection, views: &Path, writable: bool) -> Result<(), AppError> {
+    let path = views
         .to_str()
-        .ok_or_else(|| AppError::configuration("gold database path must be valid UTF-8"))?;
+        .ok_or_else(|| AppError::configuration("views database path must be valid UTF-8"))?;
     connection
-        .execute("ATTACH DATABASE ?1 AS gold", [path])
+        .execute("ATTACH DATABASE ?1 AS views", [path])
         .map_err(AppError::database)?;
     if writable {
         connection
-            .query_row("PRAGMA gold.journal_mode = WAL", [], |_| Ok(()))
+            .query_row("PRAGMA views.journal_mode = WAL", [], |_| Ok(()))
             .map_err(AppError::database)?;
     }
     Ok(())
 }
 
-fn gold_usable(connection: &Connection) -> Result<bool, AppError> {
+fn views_usable(connection: &Connection) -> Result<bool, AppError> {
     let version: i64 = connection
-        .query_row("PRAGMA gold.user_version", [], |row| row.get(0))
+        .query_row("PRAGMA views.user_version", [], |row| row.get(0))
         .map_err(AppError::database)?;
-    if version > GOLD_VERSION {
+    if version > VIEWS_VERSION {
         return Err(AppError::schema(format!(
-            "gold schema version {version} is newer than supported version {GOLD_VERSION}"
+            "views schema version {version} is newer than supported version {VIEWS_VERSION}"
         )));
     }
-    if version < GOLD_VERSION {
+    if version < VIEWS_VERSION {
         return Ok(false);
     }
     let paired: Option<String> = connection
         .query_row(
-            "SELECT instance FROM gold.silver_pairing WHERE singleton = 1",
+            "SELECT instance FROM views.silver_pairing WHERE singleton = 1",
             [],
             |row| row.get(0),
         )
@@ -186,38 +187,38 @@ fn gold_usable(connection: &Connection) -> Result<bool, AppError> {
     Ok(paired.is_some_and(|paired| silver_instance(connection).is_ok_and(|s| s == paired)))
 }
 
-/// Attach the gold database paired with this silver. A writer replaces
-/// missing, foreign or unreadable gold with empty gold; a reader sees empty,
-/// never-ready gold in its temporary schema instead.
-pub(super) fn attach_gold(
+/// Attach the views database paired with this silver. A writer replaces
+/// missing, foreign or unreadable views with empty views; a reader sees empty,
+/// never-ready views in its temporary schema instead.
+pub(super) fn attach_views(
     connection: &Connection,
-    gold: &Path,
+    views: &Path,
     writable: bool,
 ) -> Result<(), AppError> {
-    let attached = if writable || gold.is_file() {
-        attach(connection, gold, writable).is_ok()
+    let attached = if writable || views.is_file() {
+        attach(connection, views, writable).is_ok()
     } else {
         false
     };
-    let usable = attached && gold_usable(connection).unwrap_or(false);
+    let usable = attached && views_usable(connection).unwrap_or(false);
     if !usable {
         if attached {
             connection
-                .execute_batch("DETACH DATABASE gold")
+                .execute_batch("DETACH DATABASE views")
                 .map_err(AppError::database)?;
         }
         if writable {
-            remove_gold(gold)?;
-            attach(connection, gold, true)?;
-            match_silver_permissions(connection, gold)?;
+            remove_views(views)?;
+            attach(connection, views, true)?;
+            match_silver_permissions(connection, views)?;
             let transaction = connection
                 .unchecked_transaction()
                 .map_err(AppError::database)?;
-            create_gold(&transaction, "gold")?;
+            create_views(&transaction, "views")?;
             backfill_pending_embeddings(&transaction)?;
             transaction.commit().map_err(AppError::database)?;
         } else {
-            create_gold(connection, "temp")?;
+            create_views(connection, "temp")?;
         }
     }
     if writable {
@@ -226,21 +227,21 @@ pub(super) fn attach_gold(
     Ok(())
 }
 
-/// Empty every gold artifact inside the writer's transaction, leaving every
-/// searchable message pending: the explicit replay of gold from silver.
-pub(super) fn discard_gold(connection: &Connection) -> Result<(), AppError> {
+/// Empty every views artifact inside the writer's transaction, leaving every
+/// searchable message pending: the explicit replay of views from silver.
+pub(super) fn discard_views(connection: &Connection) -> Result<(), AppError> {
     connection
         .execute_batch(
-            "DELETE FROM gold.message_embeddings;
-             DELETE FROM gold.pending_embeddings;
-             DELETE FROM gold.semantic_chunks;
-             DELETE FROM gold.message_fts;
-             DELETE FROM gold.connector_embeddings;
-             DELETE FROM gold.connector_fts;
-             DELETE FROM gold.connector_units;
-             UPDATE gold.gold_manifest SET manifest = NULL;
-             UPDATE gold.lexical_manifest SET manifest = NULL;
-             UPDATE gold.derived_state SET search_dirty = 1, semantic_ready_generation = NULL,
+            "DELETE FROM views.message_embeddings;
+             DELETE FROM views.pending_embeddings;
+             DELETE FROM views.semantic_chunks;
+             DELETE FROM views.message_fts;
+             DELETE FROM views.connector_embeddings;
+             DELETE FROM views.connector_fts;
+             DELETE FROM views.connector_units;
+             UPDATE views.views_manifest SET manifest = NULL;
+             UPDATE views.lexical_manifest SET manifest = NULL;
+             UPDATE views.derived_state SET search_dirty = 1, semantic_ready_generation = NULL,
                 resume_generation = NULL, resume_silver_revision = NULL,
                 resume_interpretation_version = NULL;",
         )
@@ -248,26 +249,26 @@ pub(super) fn discard_gold(connection: &Connection) -> Result<(), AppError> {
     backfill_pending_embeddings(connection)
 }
 
-/// Gold holds derived copies of private history; it never gets wider access
+/// Views hold derived copies of private history; it never gets wider access
 /// than its silver database.
-fn match_silver_permissions(connection: &Connection, gold: &Path) -> Result<(), AppError> {
+fn match_silver_permissions(connection: &Connection, views: &Path) -> Result<(), AppError> {
     if let Some(silver) = connection.path().filter(|path| !path.is_empty()) {
         let permissions = std::fs::metadata(silver)
             .map_err(AppError::io)?
             .permissions();
-        std::fs::set_permissions(gold, permissions).map_err(AppError::io)?;
+        std::fs::set_permissions(views, permissions).map_err(AppError::io)?;
     }
     Ok(())
 }
 
 /// Cross-database consequences of silver writes, installed on each writer:
-/// gold rows follow their messages, and changes enter the publication journal.
+/// views rows follow their messages, and changes enter the publication journal.
 fn install_connection_triggers(connection: &Connection) -> Result<(), AppError> {
     let mut statements = String::from(
-        "CREATE TEMP TRIGGER IF NOT EXISTS gold_message_delete
+        "CREATE TEMP TRIGGER IF NOT EXISTS views_message_delete
          AFTER DELETE ON main.objects WHEN OLD.origin = 'provider' BEGIN
-         DELETE FROM gold.message_embeddings WHERE message_id = OLD.id;
-         DELETE FROM gold.pending_embeddings WHERE message_id = OLD.id;
+         DELETE FROM views.message_embeddings WHERE message_id = OLD.id;
+         DELETE FROM views.pending_embeddings WHERE message_id = OLD.id;
          END;",
     );
     // Node publication carries native history only; connector objects reach
@@ -276,7 +277,7 @@ fn install_connection_triggers(connection: &Connection) -> Result<(), AppError> 
         ("objects", "main", Some("origin = 'provider'")),
         ("native_chats", "main", None),
         ("native_messages", "main", None),
-        ("message_embeddings", "gold", None),
+        ("message_embeddings", "views", None),
         ("tombstones", "main", None),
         ("conversation_enrichment", "main", None),
     ] {

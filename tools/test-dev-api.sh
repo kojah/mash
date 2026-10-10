@@ -56,21 +56,23 @@ jq -n --argjson pid "$old_pid" --arg binary_sha256 "${digest%% *}" \
 bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 if bash "$repository/tools/restart-dev-api.sh" /usr/bin/false fixture.toml "$scratch/environment" \
-    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs"; then
+    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --rollback-config "$scratch/environment"; then
     echo 'Expected failed candidate to roll back.' >&2
     exit 1
 fi
 new_pid=$(jq -r .pid "$TEST_API_POINTER")
 [[ "$new_pid" != "$old_pid" ]]
 [[ "$(jq -r .source_commit "$TEST_API_POINTER")" == fixture ]]
+rg -qx -- "$scratch/environment" "$TEST_API_ARGUMENTS"
 [[ "$(ps -p "$new_pid" -o sid=)" != "$(ps -p $$ -o sid=)" ]]
 bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 export TEST_API_ALWAYS_READY=1
 previous_pid=$new_pid
 bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml "$scratch/environment" \
-    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --activate-query >/dev/null
+    "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --activate-query --replay-views >/dev/null
 rg -qx -- --activate-query "$TEST_API_ARGUMENTS"
+rg -qx -- --replay-views "$TEST_API_ARGUMENTS"
 [[ "$(jq -r .pid "$TEST_API_POINTER")" != "$previous_pid" ]]
 [[ "$(jq -r .previous_pid "$TEST_API_POINTER")" == "$previous_pid" ]]
 [[ "$(jq -r .source_commit "$TEST_API_POINTER")" == "$(git -C "$repository" rev-parse HEAD)" ]]

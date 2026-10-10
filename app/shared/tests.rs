@@ -3,11 +3,11 @@ use super::publication::{target, upload};
 use super::retrieval::{CONTEXT_DEADLINE, context_documents, prepare_search, search_prepared};
 use super::*;
 use crate::config::SharedConfig;
-use crate::gold::readiness::{Artifacts, State};
 use crate::search_results::SearchUnit;
 use crate::semantic::{self, Models};
 use crate::silver::{Conversation, NormalizedMessage};
 use crate::storage::{EmbeddingWrite, Message, SearchHit, Storage};
+use crate::views::readiness::{Artifacts, State};
 use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
@@ -183,8 +183,8 @@ async fn interactive_request_timeout_does_not_inherit_the_upload_budget() {
     });
     let started = std::time::Instant::now();
     let query = protocol::Search {
-        intent: crate::gold::exact::Intent::RelatedDiscussion,
-        match_mode: crate::gold::matching::Mode::Strict,
+        intent: crate::views::exact::Intent::RelatedDiscussion,
+        match_mode: crate::views::matching::Mode::Strict,
         vector_policy: None,
         unit: SearchUnit::Chats,
         query: "cache".into(),
@@ -212,9 +212,9 @@ async fn buffered_publication_sends_a_complete_snapshot_before_acknowledging() {
     async fn freshness() -> Json<serde_json::Value> {
         Json(serde_json::json!({
             "group_id": "test",
-            "group_gold": {
+            "group_views": {
                 "version": "group",
-                "build": crate::gold::config::Build::default(),
+                "build": crate::views::config::Build::default(),
                 "generation": semantic::SHARED_EMBEDDING_GENERATION,
                 "dimensions": 2,
             },
@@ -297,11 +297,11 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     // Readiness is checked before inference/HTTP; hold the lock only for the
     // subsequent candidate retrieval stage whose concurrency is under test.
     let prepared = prepare_search(
-        Some((&path, &crate::gold::config::Build::default())),
+        Some((&path, &crate::views::config::Build::default())),
         &models_dir,
         None,
         "hello",
-        crate::gold::config::Ranking::default(),
+        crate::views::config::Ranking::default(),
     )
     .await
     .unwrap();
@@ -339,7 +339,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         lock.execute_batch("ROLLBACK").unwrap();
         request.expect("shared request must start before SQLite is unlocked")
     };
-    let mut options = crate::gold::config::Options::new(10, SearchUnit::Messages);
+    let mut options = crate::views::config::Options::new(10, SearchUnit::Messages);
     options.fusion.lexical_weight = 4;
     options.fusion.semantic_weight = 4;
     let (result, request) = tokio::join!(
@@ -362,7 +362,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
     config.token_env = "MASH_TEST_UNCONFIGURED_TOKEN_71B9".into();
     let fallback = search(
         &config,
-        Some((&path, &crate::gold::config::Build::default())),
+        Some((&path, &crate::views::config::Build::default())),
         &models_dir,
         None,
         "hello",
@@ -421,8 +421,8 @@ fn seed_ready(path: &Path, generation: &str) {
     storage.mark_semantic_index_ready(generation).unwrap();
     storage.publish_lexical_manifest().unwrap();
     storage
-        .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
-            crate::gold::config::Build::default(),
+        .publish_views_manifest(&crate::views::manifest::Manifest::new(
+            crate::views::config::Build::default(),
             generation.to_owned(),
             storage.silver_certificate().unwrap(),
         ))
@@ -599,7 +599,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
         &[127.0, 0.0],
         (None, None, SearchUnit::Messages),
         None,
-        crate::gold::config::Fusion::default(),
+        crate::views::config::Fusion::default(),
     )
     .unwrap();
     assert_eq!(hits.len(), 1);
@@ -619,7 +619,7 @@ fn local_candidates_use_the_shared_query_vector_and_keep_context_out_of_search()
                 SearchUnit::Messages
             ),
             None,
-            crate::gold::config::Fusion::default(),
+            crate::views::config::Fusion::default(),
         )
         .unwrap()
         .0
@@ -683,7 +683,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
     ]);
     filter.validate().unwrap();
     let scope = crate::search_filter::Scope {
-        match_mode: crate::gold::matching::Mode::Strict,
+        match_mode: crate::views::matching::Mode::Strict,
         filter,
         node: "local-node".into(),
     };
@@ -694,7 +694,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
         &[127.0, 0.0],
         (None, None, SearchUnit::Messages),
         Some(&scope),
-        crate::gold::config::Fusion::default(),
+        crate::views::config::Fusion::default(),
     )
     .unwrap();
     assert_eq!(hits.len(), 1);

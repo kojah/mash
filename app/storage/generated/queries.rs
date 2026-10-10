@@ -3408,34 +3408,34 @@ impl<'a> SilverRejectionsBuilder<'a, (&'a str,)> {
         SilverRejections { provider }
     }
 }
-pub struct GoldManifestRow {
+pub struct ViewManifestRow {
     pub manifest: Option<String>,
 }
-impl GoldManifestRow {
+impl ViewManifestRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {
             manifest: row.get(0)?,
         })
     }
 }
-pub struct GoldManifest;
-impl GoldManifest {
-    pub const QUERY: &'static str = r"SELECT manifest FROM gold_manifest WHERE singleton=1";
+pub struct ViewManifest;
+impl ViewManifest {
+    pub const QUERY: &'static str = r"SELECT manifest FROM views_manifest WHERE singleton=1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl GoldManifest {
-    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<GoldManifestRow> {
+impl ViewManifest {
+    pub fn query_one(&self, client: &impl RusqliteClient) -> rusqlite::Result<ViewManifestRow> {
         self.prepare(client)?
-            .query_row(self.as_params(), GoldManifestRow::from_row)
+            .query_row(self.as_params(), ViewManifestRow::from_row)
     }
     pub fn query_opt(
         &self,
         client: &impl RusqliteClient,
-    ) -> rusqlite::Result<Option<GoldManifestRow>> {
+    ) -> rusqlite::Result<Option<ViewManifestRow>> {
         self.prepare(client)?
-            .query_map(self.as_params(), GoldManifestRow::from_row)?
+            .query_map(self.as_params(), ViewManifestRow::from_row)?
             .next()
             .transpose()
     }
@@ -3449,22 +3449,22 @@ impl GoldManifest {
         ()
     }
 }
-impl GoldManifest {
-    pub const fn builder() -> GoldManifestBuilder<'static, ()> {
-        GoldManifestBuilder {
+impl ViewManifest {
+    pub const fn builder() -> ViewManifestBuilder<'static, ()> {
+        ViewManifestBuilder {
             fields: (),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct GoldManifestBuilder<'a, Fields = ()> {
+pub struct ViewManifestBuilder<'a, Fields = ()> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> GoldManifestBuilder<'a, ()> {
-    pub fn build(self) -> GoldManifest {
+impl<'a> ViewManifestBuilder<'a, ()> {
+    pub fn build(self) -> ViewManifest {
         let () = self.fields;
-        GoldManifest {}
+        ViewManifest {}
     }
 }
 pub struct LexicalManifestRow {

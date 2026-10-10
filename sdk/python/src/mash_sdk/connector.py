@@ -53,7 +53,7 @@ class Connector:
     Use an async context manager. Opening automatically resumes saved batches.
     Cancellation of a caller does not cancel already accepted work; exit waits
     for outstanding delivery. `run` adds backfill, event capture and debounce.
-    Records become searchable once each destination's gold projects them.
+    Records become searchable once each destination's views projects them.
 
     `modes` declares how this connector keeps its source in sync, so readers
     and Mash both know: `Mode.snapshot` permits `sync`, and `Mode.live`

@@ -38,17 +38,17 @@ pub(crate) fn assert_quantized_embedding(storage: &Storage, id: &str, vector: &[
     );
 }
 
-/// Raw access to local silver with its paired gold attached.
+/// Raw access to local silver with its paired views attached.
 pub(crate) fn connect(path: &Path) -> Connection {
     let connection = Connection::open(path).expect("open local silver");
-    attach_gold(&connection, path);
+    attach_views(&connection, path);
     connection
 }
 
-fn attach_gold(connection: &Connection, path: &Path) {
+fn attach_views(connection: &Connection, path: &Path) {
     let attached: bool = connection
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM pragma_database_list WHERE name = 'gold')",
+            "SELECT EXISTS(SELECT 1 FROM pragma_database_list WHERE name = 'views')",
             [],
             |row| row.get(0),
         )
@@ -56,15 +56,15 @@ fn attach_gold(connection: &Connection, path: &Path) {
     if !attached {
         connection
             .execute(
-                "ATTACH DATABASE ?1 AS gold",
-                [super::schema::gold_path(path).to_str().unwrap()],
+                "ATTACH DATABASE ?1 AS views",
+                [super::schema::views_path(path).to_str().unwrap()],
             )
-            .expect("attach gold");
+            .expect("attach views");
     }
 }
 
 /// Apply raw SQL through a mash connection, with its publication journal and
-/// gold-following triggers installed.
+/// views-following triggers installed.
 pub(crate) fn write(path: &Path, sql: &str) {
     Storage::open_existing(path)
         .expect("local index")

@@ -149,7 +149,7 @@ async fn invalid_searches_return_usage_without_connecting_or_starting_a_worker()
                 shared_vector_search: None,
                 query: query.into(),
                 intent: None,
-                fusion: crate::gold::config::FusionOverrides::default(),
+                fusion: crate::views::config::FusionOverrides::default(),
                 ranking: None,
                 diagnostics: false,
                 limit: Some(5),

@@ -4,7 +4,7 @@ use crate::shared::{
     protocol::{Batch, BatchKind, ConversationRecord, Event, MessageRecord, Start},
     reuse::Target,
 };
-use crate::{AppError, gold::shared as gold, storage::Storage};
+use crate::{AppError, storage::Storage, views::shared as views};
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{BufRead, Write},
@@ -54,7 +54,7 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
             write_event(
                 &mut writer,
                 &Event::Start(Start {
-                    gold_build: Some(target.build.clone()),
+                    views_build: Some(target.build.clone()),
                     source_silver: Some(snapshot.source_silver.clone()),
                     instance: snapshot.instance.clone(),
                     revision: Some(snapshot.revision),
@@ -90,7 +90,7 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
                                 .build
                                 .includes_dense(&message.role, &message.projection),
                         );
-                        // Local gold has a different recipe. Only canonical rows enter
+                        // Local views have a different recipe. Only canonical rows enter
                         // this temporary stream; shared embedding follows below.
                         message.vector = None;
                         message.generation = None;
@@ -112,7 +112,7 @@ fn capture(path: &Path, target: &Target, allow_delta: bool) -> Result<Source, Ap
 }
 
 struct Reader {
-    units: crate::gold::units::Stream,
+    units: crate::views::units::Stream,
     input: std::io::BufReader<std::fs::File>,
     pending: VecDeque<MessageRecord>,
     done: bool,
@@ -123,7 +123,7 @@ struct Reader {
 impl Reader {
     fn new(input: std::fs::File, redaction: crate::redaction::Policy) -> Result<Self, AppError> {
         Ok(Self {
-            units: crate::gold::units::Stream::default(),
+            units: crate::views::units::Stream::default(),
             input: std::io::BufReader::with_capacity(64 * 1024, input),
             pending: VecDeque::new(),
             done: false,
@@ -135,7 +135,7 @@ impl Reader {
     fn next(mut self) -> Result<(Self, Vec<MessageRecord>), AppError> {
         let mut batch: Vec<MessageRecord> = Vec::new();
         loop {
-            if batch.len() == gold::BATCH_ROWS
+            if batch.len() == views::BATCH_ROWS
                 || self.pending.front().is_some_and(|message| {
                     batch
                         .first()
@@ -170,7 +170,7 @@ impl Reader {
 async fn prepare_units(
     mut reader: Reader,
     batch: Vec<MessageRecord>,
-    recipe: &crate::gold::config::Build,
+    recipe: &crate::views::config::Build,
     title: Option<String>,
 ) -> Result<(Reader, Vec<MessageRecord>, Vec<String>), AppError> {
     let recipe = recipe.clone();
@@ -179,7 +179,7 @@ async fn prepare_units(
         for message in &batch {
             if let Some(text) = reader.units.prepare(
                 &recipe,
-                crate::gold::units::Input {
+                crate::views::units::Input {
                     chat: &message.conversation_id,
                     ordinal: message.ordinal,
                     context: message.context,
@@ -220,13 +220,13 @@ async fn embed_batch(
     prepared: &[String],
     inference: Option<&Inference<'_>>,
     pool: &mut Option<crate::semantic::LoadedIndexer>,
-    build: &mut gold::Build,
+    build: &mut views::Build,
 ) -> Result<(), AppError> {
     let inference = inference
-        .ok_or_else(|| AppError::shared("shared gold needs preparation; run mash index"))?;
+        .ok_or_else(|| AppError::shared("shared views needs preparation; run mash index"))?;
     validate_model(target, inference)?;
     let texts = prepared.iter().map(String::as_str).collect::<Vec<_>>();
-    let vectors = gold::embed_texts(
+    let vectors = views::embed_texts(
         inference.models_dir,
         inference.embeddings,
         pool,
@@ -266,7 +266,7 @@ pub(super) async fn prepare(
     let source = crate::blocking(move || capture(&path, &metadata, allow_delta)).await?;
     let input = source.file.reopen().map_err(AppError::io)?;
     let mut reader = crate::blocking(move || Reader::new(input, redaction)).await?;
-    let mut build = gold::Build::default();
+    let mut build = views::Build::default();
     let mut pool = None;
     let mut estimate = crate::progress::Estimate::new();
     let total_vectors = target.build.expected_embeddings(source.visible);

@@ -52,7 +52,7 @@ fn committed_records_and_receipt_survive_lost_response_reopen_and_later_batches(
     let first = initial("source");
     let receipt = Store::open(&path).unwrap().apply(&first).unwrap();
     assert_eq!(receipt.source_revision, 1);
-    assert!(!receipt.gold_ready);
+    assert!(!receipt.views_ready);
     let mut reopened = Store::open(&path).unwrap();
     assert_eq!(reopened.apply(&first).unwrap(), receipt);
     let note = reopened

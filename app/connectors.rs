@@ -385,7 +385,7 @@ impl Trigger {
     }
 }
 
-/// Receipt for a durably accepted silver batch. Gold readiness is separate.
+/// Receipt for a durably accepted silver batch. View readiness is separate.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Receipt {
@@ -396,7 +396,7 @@ pub struct Receipt {
     pub source_revision: u64,
     /// Database-wide canonical silver revision, distinct from source ordering.
     pub silver_revision: u64,
-    pub gold_ready: bool,
+    pub views_ready: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]

@@ -131,7 +131,7 @@ failure is.
 `Destination.local` runs `mash --db PATH index --connector-batch FILE`, which
 commits the batch to local silver without loading models. Its records become
 searchable after the next `mash index` (or `mash index --watch`), and until then
-local search reports gold as stale rather than omitting them.
+local search reports views as stale rather than omitting them.
 `Destination.shared` posts the same batch to the shared service, which commits
 it to that node's shared silver and indexes it in Qdrant. It takes the same
 settings as Mash's `[shared]` configuration:

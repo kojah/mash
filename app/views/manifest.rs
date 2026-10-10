@@ -1,4 +1,4 @@
-//! Identity of the single published gold projection; query defaults are excluded.
+//! Identity of the single published views projection; query defaults are excluded.
 use super::config::Build;
 use crate::silver::certificate::Certificate;
 use serde::{Deserialize, Serialize};
@@ -52,10 +52,10 @@ mod tests {
         assert!(!manifest.matches(
             &Build {
                 max_embedding_chars: None,
-                representations: crate::gold::config::Representations::LexicalAndDense,
-                dense_content: crate::gold::config::DenseContent::AllVisible,
-                retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-                text_preparation: crate::gold::config::TextPreparation::Preserve,
+                representations: crate::views::config::Representations::LexicalAndDense,
+                dense_content: crate::views::config::DenseContent::AllVisible,
+                retrieval_unit: crate::views::config::RetrievalUnit::Message,
+                text_preparation: crate::views::config::TextPreparation::Preserve,
                 embedding_text: super::super::config::EmbeddingText::TitleAndDialogue
             },
             "model",

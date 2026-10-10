@@ -29,11 +29,11 @@ fn search_scores(fixture: &Fixture) -> std::collections::BTreeMap<String, f64> {
 
 fn assert_current(fixture: &Fixture, messages: i64) -> Value {
     let state = fixture.remote_node("split");
-    assert_eq!(state["gold_current"], true);
+    assert_eq!(state["views_current"], true);
     assert_eq!(state["lexical_current"], true);
     assert_eq!(state["messages"], messages);
     assert_eq!(
-        state["gold_manifest"]["build"]["embedding_text"],
+        state["views_manifest"]["build"]["embedding_text"],
         "title-and-dialogue"
     );
     state
@@ -152,7 +152,7 @@ fn qdrant_group_recipe_is_preserved_across_edits_noops_and_deletions() {
     write_source(&fixture, "canonical initial topic");
     let initial = fixture.json(&["index", "--all-history"], true);
     assert_eq!(initial["shared"]["state"], "published");
-    assert_eq!(initial["gold"]["build"]["embedding_text"], "dialogue");
+    assert_eq!(initial["views"]["build"]["embedding_text"], "dialogue");
     let before = assert_current(&fixture, 2);
     let scores = search_scores(&fixture);
     let unchanged = fixture.json(&["index", "--all-history"], true);

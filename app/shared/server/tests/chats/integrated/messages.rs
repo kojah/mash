@@ -64,8 +64,8 @@ async fn seed(paths: &Paths) {
         storage.finish_silver_ingestion()?;
         storage.mark_semantic_index_ready(&models.generation())?;
         storage.publish_lexical_manifest()?;
-        storage.publish_gold_manifest(&crate::gold::manifest::Manifest::new(
-            crate::gold::config::Build::default(),
+        storage.publish_views_manifest(&crate::views::manifest::Manifest::new(
+            crate::views::config::Build::default(),
             models.generation(),
             storage.silver_certificate()?,
         ))?;
@@ -79,14 +79,14 @@ async fn assert_scoped(
     paths: &Paths,
     ids: &[String],
     expected: &[&str],
-    ranking: Option<crate::gold::config::Ranking>,
-    vector_policy: Option<crate::gold::vector::Search>,
+    ranking: Option<crate::views::config::Ranking>,
+    vector_policy: Option<crate::views::vector::Search>,
 ) {
     let response = core::execute(core::Request {
         paths: paths.clone(),
         operation: Operation::Search {
             shared_vector_search: vector_policy,
-            fusion: crate::gold::config::FusionOverrides::default(),
+            fusion: crate::views::config::FusionOverrides::default(),
             ranking,
             diagnostics: true,
             query: "authentication".into(),
@@ -114,14 +114,14 @@ async fn assert_scoped(
     let ranking = ranking.unwrap_or(
         crate::config::load(paths.config.as_deref())
             .unwrap()
-            .gold
+            .views
             .query
             .ranking,
     );
     let diagnostics = response.diagnostics.as_ref().unwrap();
     assert_eq!(diagnostics.shared_vector_override, vector_policy);
     assert_eq!(diagnostics.ranking, Some(ranking));
-    if ranking == crate::gold::config::Ranking::Fusion {
+    if ranking == crate::views::config::Ranking::Fusion {
         assert!(diagnostics.stages.iter().all(|stage| !matches!(
             stage.stage,
             crate::observability::retrieval::Stage::Rerank
@@ -158,7 +158,7 @@ async fn contract(service: Service) {
     let configuration = std::fs::read_to_string(config_path).unwrap();
     std::fs::write(
         config_path,
-        format!("{configuration}\n[gold.query]\nunit = 'messages'\nlimit = 10\n"),
+        format!("{configuration}\n[views.query]\nunit = 'messages'\nlimit = 10\n"),
     )
     .unwrap();
     paths.models_dir = Some(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into());
@@ -210,19 +210,19 @@ async fn contract(service: Service) {
     for (ranking, override_ranking) in [
         (
             "contextual-rerank",
-            Some(crate::gold::config::Ranking::Fusion),
+            Some(crate::views::config::Ranking::Fusion),
         ),
         ("contextual-rerank", None),
         (
             "fusion",
-            Some(crate::gold::config::Ranking::ContextualRerank),
+            Some(crate::views::config::Ranking::ContextualRerank),
         ),
         ("fusion", None),
     ] {
         std::fs::write(
             config_path,
             format!(
-                "{configuration}\n[gold.query]\nunit='messages'\nlimit=10\nranking='{ranking}'\n"
+                "{configuration}\n[views.query]\nunit='messages'\nlimit=10\nranking='{ranking}'\n"
             ),
         )
         .unwrap();
@@ -238,8 +238,8 @@ async fn contract(service: Service) {
         assert_eq!(service.get("freshness", &token).await, shared_before);
     }
     for vector_policy in [
-        Some(crate::gold::vector::Search::Hnsw { ef_runtime: 80 }),
-        Some(crate::gold::vector::Search::Exact {}),
+        Some(crate::views::vector::Search::Hnsw { ef_runtime: 80 }),
+        Some(crate::views::vector::Search::Exact {}),
         None,
     ] {
         assert_scoped(&paths, &ids, &["codex", "claude-code"], None, vector_policy).await;

@@ -10,23 +10,23 @@ Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`,
 - Use Rusqlite as the sole SQLite library.
 - Use SQLite FTS5 for local lexical search.
 - Keep one silver schema (`app/storage/silver.sql`) for local indexes and for
-  each node's shared silver database on the server. Local gold is a separate,
-  paired SQLite database; neither gold store may hold history that silver lacks,
-  and both must stay replayable from silver (`index --rebuild-local-gold --full`,
-  `serve --replay-gold`).
+  each node's shared silver database on the server. Local views live in a separate,
+  paired SQLite database; neither views store may hold history that silver lacks,
+  and both must stay replayable from silver (`index --rebuild-local-views --full`,
+  `serve --replay-views`).
 - Native and connector history share one silver object model: the `objects` table
   with core roles (container, segment, entry, document), namespaced kinds and
   parent edges, plus native-only side tables. Native turns are segments derived
   from silver after every write, never archived or published; each native
   provider declares its topology in code (`source::native_schema`).
 - Do not check in schema upgrade code. Each release opens only its own silver
-  and gold schemas and rejects others untouched; gold is rebuilt, shared silver
+  and views schemas and rejects others untouched; views are rebuilt, shared silver
   is republished, and local silver crosses releases only through export and
   `import --keep-identity` (`tools/upgrade-local-index.sh`).
 - Use an authenticated Axum HTTP API for one shared index per configured node
-  group. Shared silver is server-side SQLite (no gold tables); shared gold is
+  group. Shared silver is server-side SQLite (no views tables); shared views live in
   Qdrant.
-  Commit silver before synchronizing gold; do not build transaction, staging or
+  Commit silver before synchronizing views; do not build transaction, staging or
   versioning machinery on top of Qdrant. Native history requires a local SQLite index; support
   local-only or both indexing, where shared publishes exactly the local index. External
   connectors deliver to each destination they choose (local and/or a node's shared silver)
@@ -41,8 +41,8 @@ Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`,
   OpenAI-compatible embeddings API without provider traits or registries.
 - Qdrant uses the existing reqwest client and typed REST models, named dense/sparse
   vectors on Qdrant 1.19+. Default to HNSW vector retrieval with ef_runtime=200;
-  permit explicit exact search. Never report uncertified gold as current, and
-  fail closed on incompatible existing schemas or superseded gold settings.
+  permit explicit exact search. Never report uncertified views as current, and
+  fail closed on incompatible existing schemas or superseded views settings.
 - Do not add provider traits, registries, installed daemons, compatibility
   shims, alternate output modes, a TUI, or analytics. Portable silver export/import
   is supported; exclude deployment credentials, models and provider files.

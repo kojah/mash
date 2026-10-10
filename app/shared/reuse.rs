@@ -1,10 +1,10 @@
 //! Publication plans and the silver dependency fingerprint of each thread.
 use super::protocol::{ConversationRecord, MessageRecord};
-use crate::{AppError, gold::config::Build, message_context::MessageContext, role::Role};
+use crate::{AppError, message_context::MessageContext, role::Role, views::config::Build};
 use serde::Serialize;
 use std::io::Write;
 
-/// What a node publishes against: the group's gold settings and the node's
+/// What a node publishes against: the group's views settings and the node's
 /// accepted head, both read from the group's freshness.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Target {
@@ -23,10 +23,10 @@ impl Target {
         config: &crate::config::SharedConfig,
     ) -> Result<Self, AppError> {
         let group = freshness
-            .group_gold
+            .group_views
             .as_ref()
             .filter(|_| freshness.group_id == config.group_id)
-            .ok_or_else(|| AppError::shared("shared group gold settings are unavailable"))?;
+            .ok_or_else(|| AppError::shared("shared group views settings are unavailable"))?;
         let node = freshness
             .nodes
             .iter()

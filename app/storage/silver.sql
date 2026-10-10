@@ -7,7 +7,7 @@
 -- An object has a core role (container, segment, entry, document), its source's
 -- kind label and a parent. Native-only columns are NULL for connector objects.
 CREATE TABLE IF NOT EXISTS objects (
-    -- Stable integer address for gold vectors; never exported.
+    -- Stable integer address for views vectors; never exported.
     storage_id INTEGER PRIMARY KEY AUTOINCREMENT,
     origin TEXT NOT NULL CHECK (origin IN ('provider', 'connector')),
     -- The provider name, or the connector's source ID.
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS objects (
 );
 -- A connector source's IDs span all of its roles.
 CREATE UNIQUE INDEX IF NOT EXISTS objects_connector_id ON objects(source, id) WHERE origin = 'connector';
--- Native chat and message IDs are each global, as gold, views and
+-- Native chat and message IDs are each global, as retrieval views and
 -- enrichment address them alone, but a message may reuse a chat's ID.
 CREATE UNIQUE INDEX IF NOT EXISTS objects_native_container ON objects(id)
     WHERE origin = 'provider' AND object_role = 'container';

@@ -9,7 +9,7 @@ enum State {
 }
 
 #[test]
-fn gold_rebuild_rejects_missing_and_uncertified_silver_without_creating_or_mutating_it() {
+fn views_rebuild_rejects_missing_and_uncertified_silver_without_creating_or_mutating_it() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("index.sqlite3");
     let models = directory.path().join("models");
@@ -46,7 +46,7 @@ fn gold_rebuild_rejects_missing_and_uncertified_silver_without_creating_or_mutat
                 "--models-dir",
                 models.to_str().unwrap(),
                 "index",
-                "--rebuild-local-gold",
+                "--rebuild-local-views",
                 "--full",
             ])
             .output()
@@ -70,7 +70,7 @@ fn gold_rebuild_rejects_missing_and_uncertified_silver_without_creating_or_mutat
 }
 
 #[test]
-fn gold_rebuild_conflicts_with_source_selectors_and_watch() {
+fn views_rebuild_conflicts_with_source_selectors_and_watch() {
     for selector in [
         vec!["--provider", "claude-code"],
         vec!["--since-days", "7"],
@@ -79,7 +79,7 @@ fn gold_rebuild_conflicts_with_source_selectors_and_watch() {
     ] {
         Command::cargo_bin("mash")
             .unwrap()
-            .args(["index", "--rebuild-local-gold"])
+            .args(["index", "--rebuild-local-views"])
             .args(selector)
             .assert()
             .failure()

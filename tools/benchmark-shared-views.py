@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure explicit shared gold rebuilds on copied certified silver.
+"""Measure explicit shared views rebuilds on copied certified silver.
 
 Requires an otherwise empty disposable loopback Qdrant. Uses installed local
 models, never provider files. Private captures must remain outside Git.
@@ -21,10 +21,10 @@ import urllib.parse
 from pathlib import Path
 
 SPEC = importlib.util.spec_from_file_location(
-    "gold_cost", Path(__file__).with_name("benchmark-gold.py")
+    "views_cost", Path(__file__).with_name("benchmark-views.py")
 )
 if SPEC is None or SPEC.loader is None:
-    raise ImportError("benchmark-gold.py could not be loaded")
+    raise ImportError("benchmark-views.py could not be loaded")
 COST = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(COST)
 
@@ -48,7 +48,7 @@ def request(url, route, token=None):
 
 
 def canonical(url, token):
-    # This endpoint intentionally contains silver only, excluding gold vectors.
+    # This endpoint intentionally contains silver only, excluding views vectors.
     return hashlib.sha256(
         json.dumps(
             request(url, "/v1/silver", token)["history"], sort_keys=True
@@ -74,7 +74,7 @@ class Server:
     def __init__(self, binary, config, output, number, activate):
         self.process = subprocess.Popen(
             [str(binary), "serve", "--server-config", str(config)]
-            + (["--activate-gold"] if activate else []),
+            + (["--activate-views"] if activate else []),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
@@ -115,7 +115,7 @@ def configure(output, representation, group, url):
     node = output / "node.toml"
     node.write_text(
         'version=1\n[providers]\n[index]\ndestination="both"\n'
-        + '[gold.query]\nintent="exact-mention"\n[shared]\n'
+        + '[views.query]\nintent="exact-mention"\n[shared]\n'
         + f'group_id={json.dumps(group)}\nnode_id="sample"\n'
         + f'api_url={json.dumps(url)}\ntoken_env="MASH_COST_TOKEN"\n'
     )
@@ -123,7 +123,7 @@ def configure(output, representation, group, url):
     server.write_text(
         'version=1\nlisten="127.0.0.1:0"\n'
         + 'qdrant_url_env="MASH_COST_QDRANT"\n'
-        + f'[gold.build]\nrepresentations="{representation}"\n'
+        + f'[views.build]\nrepresentations="{representation}"\n'
         + f"[[nodes]]\ngroup_id={json.dumps(group)}\n"
         + 'node_id="sample"\ntoken_env="MASH_COST_TOKEN"\n'
     )
@@ -153,7 +153,7 @@ def run(args):
     os.environ["MASH_COST_QDRANT"] = args.qdrant_url
     os.environ["MASH_COST_TOKEN"] = os.urandom(32).hex()
     token = os.environ["MASH_COST_TOKEN"]
-    group = "gold-cost-" + os.urandom(12).hex()
+    group = "views-cost-" + os.urandom(12).hex()
     stages = []
     for number, representation in enumerate(
         ("lexical-and-dense", "lexical-only", "lexical-and-dense")
@@ -171,7 +171,7 @@ def run(args):
                 "--config",
                 str(node),
             ]
-            operation = ["index"] if number == 0 else ["index", "--rebuild-shared-gold"]
+            operation = ["index"] if number == 0 else ["index", "--rebuild-shared-views"]
             result, timing = COST.measure(
                 command + operation, binary, output / f"build-{number}"
             )
@@ -271,7 +271,7 @@ def run(args):
             "binary_sha256": COST.sha(binary),
             "script_sha256": COST.sha(Path(__file__)),
             "measurement_helper_sha256": COST.sha(
-                Path(__file__).with_name("benchmark-gold.py")
+                Path(__file__).with_name("benchmark-views.py")
             ),
             "model_marker_sha256": COST.sha(models / "installed.json"),
             "platform": platform.platform(),

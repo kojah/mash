@@ -1,5 +1,5 @@
-//! Per-node gold state and in-place document synchronization. No staging versions:
-//! silver in SQLite is authoritative and any lost or partial gold is replayed.
+//! Per-node views state and in-place document synchronization. No staging versions:
+//! silver in SQLite is authoritative and any lost or partial views are replayed.
 use super::{
     AppError, ConnectorDocument, ConnectorUnit, Document, Identity, PointKind, Store, api,
     collection, connector_id, document_id, failure, point_id, sparse, tokens,
@@ -9,21 +9,21 @@ use crate::shared::silver_revision::State;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// What one node's gold currently reflects. `silver` is set only after every
+/// What one node's views currently reflects. `silver` is set only after every
 /// chat of that silver revision has documents built with this recipe.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(in crate::shared) struct NodeGold {
+pub(in crate::shared) struct NodeViews {
     kind: PointKind,
     pub(in crate::shared) node_id: String,
-    pub(in crate::shared) build: crate::gold::config::Build,
+    pub(in crate::shared) build: crate::views::config::Build,
     pub(in crate::shared) generation: String,
     pub(in crate::shared) silver: Option<State>,
     /// The last completed synchronization covered every chat with complete
     /// documents. Searches keep serving it while a later synchronization runs.
     #[serde(default)]
     pub(in crate::shared) certified: bool,
-    pub(in crate::shared) chats: BTreeMap<String, GoldChat>,
+    pub(in crate::shared) chats: BTreeMap<String, ViewChat>,
     /// Connector unit anchor to the hex digest of its indexed text, for every
     /// connector point written from this node's shared silver.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -32,7 +32,7 @@ pub(in crate::shared) struct NodeGold {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(in crate::shared) struct GoldChat {
+pub(in crate::shared) struct ViewChat {
     /// Silver dependency fingerprint of the documents written for this chat.
     pub(in crate::shared) fingerprint: String,
     pub(in crate::shared) embeddings: u64,
@@ -40,10 +40,10 @@ pub(in crate::shared) struct GoldChat {
     pub(in crate::shared) complete: bool,
 }
 
-impl NodeGold {
+impl NodeViews {
     pub(in crate::shared) fn empty(store: &Store, identity: &Identity) -> Self {
         Self {
-            kind: PointKind::Gold,
+            kind: PointKind::Views,
             node_id: identity.node_id.clone(),
             build: store.build.clone(),
             generation: identity.generation.clone(),
@@ -82,46 +82,45 @@ impl NodeGold {
     }
 }
 
-fn gold_id(node: &str) -> String {
-    point_id(&["node-gold", node])
+fn views_id(node: &str) -> String {
+    point_id(&["node-views", node])
 }
 
 impl Store {
-    pub(in crate::shared) async fn node_gold(
+    pub(in crate::shared) async fn node_views(
         &self,
         identity: &Identity,
-    ) -> Result<Option<NodeGold>, AppError> {
-        let id = gold_id(&identity.node_id);
+    ) -> Result<Option<NodeViews>, AppError> {
+        let id = views_id(&identity.node_id);
         let mut points = self
             .api
-            .retrieve::<NodeGold>(
+            .retrieve::<NodeViews>(
                 &collection(&identity.group_id, true),
                 std::slice::from_ref(&id),
             )
             .await?;
-        let gold = points.pop().map(|point| point.payload);
-        if gold
-            .as_ref()
-            .is_some_and(|gold| gold.kind != PointKind::Gold || gold.node_id != identity.node_id)
-        {
+        let views = points.pop().map(|point| point.payload);
+        if views.as_ref().is_some_and(|views| {
+            views.kind != PointKind::Views || views.node_id != identity.node_id
+        }) {
             return Err(failure());
         }
-        Ok(gold)
+        Ok(views)
     }
 
-    pub(in crate::shared) async fn put_node_gold(
+    pub(in crate::shared) async fn put_node_views(
         &self,
         identity: &Identity,
-        gold: &NodeGold,
+        views: &NodeViews,
     ) -> Result<(), AppError> {
         self.api
             .upsert(
                 &collection(&identity.group_id, true),
                 &api::Upsert {
                     points: vec![api::Point {
-                        id: gold_id(&identity.node_id),
+                        id: views_id(&identity.node_id),
                         vector: api::Vectors::default(),
-                        payload: gold,
+                        payload: views,
                     }],
                 },
             )
@@ -210,7 +209,7 @@ impl Store {
     }
 }
 
-/// Buffered gold documents for one node; `finish` sends the remainder.
+/// Buffered views documents for one node; `finish` sends the remainder.
 pub(in crate::shared) struct Documents {
     name: String,
     batch: api::StagingBatch,
@@ -269,7 +268,7 @@ impl Documents {
         Ok(embedded)
     }
 
-    /// Queue one connector unit's point, with its vector when dense gold is built.
+    /// Queue one connector unit's point, with its vector when dense views are built.
     pub(in crate::shared) async fn push_connector(
         &mut self,
         store: &Store,

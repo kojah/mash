@@ -1,7 +1,7 @@
 //! Stable typed requests and responses shared by CLI, MCP and search worker.
 use crate::config::ConfigurationStatus;
-pub(super) use crate::gold::readiness::{Artifacts as LocalArtifacts, State as ArtifactState};
 use crate::provider::Provider;
+pub(super) use crate::views::readiness::{Artifacts as LocalArtifacts, State as ArtifactState};
 use crate::{semantic, shared};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -26,13 +26,13 @@ pub(crate) struct Request {
 pub(crate) enum IndexMode {
     #[default]
     ProviderFiles,
-    LocalGold,
+    LocalViews,
 }
 
 impl IndexMode {
-    pub(crate) const fn from_rebuild_flag(local_gold: bool) -> Self {
-        if local_gold {
-            Self::LocalGold
+    pub(crate) const fn from_rebuild_flag(local_views: bool) -> Self {
+        if local_views {
+            Self::LocalViews
         } else {
             Self::ProviderFiles
         }
@@ -65,16 +65,16 @@ pub(crate) enum Operation {
     },
     Search {
         #[serde(default)]
-        shared_vector_search: Option<crate::gold::vector::Search>,
+        shared_vector_search: Option<crate::views::vector::Search>,
         query: String,
         #[serde(default)]
-        intent: Option<crate::gold::exact::Intent>,
+        intent: Option<crate::views::exact::Intent>,
         limit: Option<usize>,
         unit: Option<crate::search_results::SearchUnit>,
         #[serde(default)]
-        fusion: crate::gold::config::FusionOverrides,
+        fusion: crate::views::config::FusionOverrides,
         #[serde(default)]
-        ranking: Option<crate::gold::config::Ranking>,
+        ranking: Option<crate::views::config::Ranking>,
         #[serde(default)]
         diagnostics: bool,
         filters: Box<crate::search_filter::Selection>,
@@ -134,8 +134,8 @@ pub(crate) enum Response {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct IndexResponse {
-    pub(super) gold: Option<crate::gold::manifest::Manifest>,
-    pub(super) rebuild_local_gold: bool,
+    pub(super) views: Option<crate::views::manifest::Manifest>,
+    pub(super) rebuild_local_views: bool,
     pub(super) silver: crate::silver::certificate::Certificate,
     pub(super) indexed_conversations: u64,
     pub(super) indexed_messages: u64,
@@ -199,10 +199,10 @@ pub(crate) enum SearchMode {
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct SearchResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) diagnostics: Option<crate::gold::diagnostics::Diagnostics>,
+    pub(crate) diagnostics: Option<crate::views::diagnostics::Diagnostics>,
     pub(crate) query: String,
     #[serde(default)]
-    pub(crate) intent: crate::gold::exact::Intent,
+    pub(crate) intent: crate::views::exact::Intent,
     pub(crate) realized_mode: SearchMode,
     pub(crate) unit: crate::search_results::SearchUnit,
     pub(crate) results: crate::search_results::Results,
@@ -226,8 +226,8 @@ pub(crate) struct StatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) shared_error: Option<String>,
     pub(super) local_artifacts: LocalArtifacts,
-    pub(super) lexical: Option<crate::gold::lexical_manifest::Manifest>,
-    pub(super) gold: Option<crate::gold::manifest::Manifest>,
+    pub(super) lexical: Option<crate::views::lexical_manifest::Manifest>,
+    pub(super) views: Option<crate::views::manifest::Manifest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) silver: Option<crate::silver::certificate::Certificate>,
     pub(super) ready: bool,

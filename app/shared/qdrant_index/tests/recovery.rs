@@ -1,13 +1,13 @@
-//! Shared gold is derived: losing it never loses history, and silver rebuilds it.
+//! Shared views are derived: losing it never loses history, and silver rebuilds it.
 use super::*;
 
-/// Delete this group's Qdrant collections, as if the gold backend were lost.
-async fn lose_gold(fixture: &Fixture) {
+/// Delete this group's Qdrant collections, as if the views backend were lost.
+async fn lose_views(fixture: &Fixture) {
     fixture.cleanup().await;
 }
 
 async fn reconnect(fixture: &Fixture) -> Server {
-    let gold = Store::connect(
+    let views = Store::connect(
         &fixture.url,
         None,
         std::slice::from_ref(&fixture.identity.group_id),
@@ -18,13 +18,13 @@ async fn reconnect(fixture: &Fixture) -> Server {
     )
     .await
     .unwrap();
-    gold.select_gold(&fixture.identity, false).await.unwrap();
-    fixture.serve(gold)
+    views.select_views(&fixture.identity, false).await.unwrap();
+    fixture.serve(views)
 }
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_lost_gold_is_reported_and_a_resent_snapshot_rebuilds_it() {
+async fn qdrant_lost_views_is_reported_and_a_resent_snapshot_rebuilds_it() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
         .server
@@ -33,14 +33,14 @@ async fn qdrant_lost_gold_is_reported_and_a_resent_snapshot_rebuilds_it() {
         .unwrap();
     let silver = fixture.retained();
     let state = fixture.server.state(&fixture.identity).await.unwrap();
-    lose_gold(&fixture).await;
+    lose_views(&fixture).await;
     let server = reconnect(&fixture).await;
-    // Silver, revisions and metadata survive; gold is reported missing.
+    // Silver, revisions and metadata survive; views are reported missing.
     assert_eq!(fixture.retained(), silver);
     assert_eq!(server.state(&fixture.identity).await.unwrap().revision, 1);
     let freshness = server.freshness(&fixture.identity).await.unwrap();
     assert!(!freshness.nodes[0].lexical_current);
-    assert!(!freshness.nodes[0].gold_current);
+    assert!(!freshness.nodes[0].views_current);
     assert_eq!(freshness.nodes[0].silver_revision, state.silver_revision);
     let threads = server
         .list_chats(&fixture.identity, crate::chat_catalog::Request::default())
@@ -55,13 +55,13 @@ async fn qdrant_lost_gold_is_reported_and_a_resent_snapshot_rebuilds_it() {
             .documents
             .is_empty()
     );
-    // A node resending the same snapshot (unacknowledged publication) repairs gold.
+    // A node resending the same snapshot (unacknowledged publication) repairs views.
     server
         .index(&fixture.identity, fixture.file(1, "durable"))
         .await
         .unwrap();
     assert_eq!(fixture.retained(), silver);
-    assert!(server.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
+    assert!(server.freshness(&fixture.identity).await.unwrap().nodes[0].views_current);
     assert_eq!(
         server
             .search(&fixture.identity, fixture.query())
@@ -76,15 +76,15 @@ async fn qdrant_lost_gold_is_reported_and_a_resent_snapshot_rebuilds_it() {
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_publication_commits_silver_before_gold_and_stale_gold_is_never_current() {
+async fn qdrant_publication_commits_silver_before_views_and_stale_views_is_never_current() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
         .server
         .index(&fixture.identity, fixture.file(1, "first"))
         .await
         .unwrap();
-    // Gold becomes unreachable after the configuration check: silver still commits.
-    lose_gold(&fixture).await;
+    // View becomes unreachable after the configuration check: silver still commits.
+    lose_views(&fixture).await;
     assert!(
         fixture
             .server
@@ -98,13 +98,13 @@ async fn qdrant_publication_commits_silver_before_gold_and_stale_gold_is_never_c
         state.revision == 1 || state.revision == 2,
         "the rejected upload either committed completely or not at all"
     );
-    assert!(!server.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
+    assert!(!server.freshness(&fixture.identity).await.unwrap().nodes[0].views_current);
     server
         .index(&fixture.identity, fixture.file(3, "third"))
         .await
         .unwrap();
     let freshness = server.freshness(&fixture.identity).await.unwrap();
-    assert!(freshness.nodes[0].gold_current);
+    assert!(freshness.nodes[0].views_current);
     let results = server
         .search(&fixture.identity, fixture.query())
         .await
@@ -180,7 +180,7 @@ mod embeddings {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_replay_reconstructs_all_gold_from_shared_silver() {
+async fn qdrant_replay_reconstructs_all_views_from_shared_silver() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
         .server
@@ -188,7 +188,7 @@ async fn qdrant_replay_reconstructs_all_gold_from_shared_silver() {
         .await
         .unwrap();
     let silver = fixture.retained();
-    lose_gold(&fixture).await;
+    lose_views(&fixture).await;
     let server = reconnect(&fixture).await;
     let remote = crate::semantic::remote::Configuration {
         url: embeddings::serve(),
@@ -210,7 +210,7 @@ async fn qdrant_replay_reconstructs_all_gold_from_shared_silver() {
     assert_eq!(fixture.retained(), silver);
     let freshness = server.freshness(&fixture.identity).await.unwrap();
     assert!(freshness.nodes[0].lexical_current);
-    assert!(freshness.nodes[0].gold_current);
+    assert!(freshness.nodes[0].views_current);
     let results = server
         .search(&fixture.identity, fixture.query())
         .await

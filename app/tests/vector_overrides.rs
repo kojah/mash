@@ -6,7 +6,7 @@ async fn cli_direct_and_worker_forward_shared_vector_overrides_without_persistin
     let config = root.path().join("node.toml");
     let database = root.path().join("index.sqlite3");
     let models = root.path().join("uninstalled-models");
-    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n").unwrap();
     let base = [
         "--config",
         config.to_str().unwrap(),

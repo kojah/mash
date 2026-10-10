@@ -16,17 +16,17 @@ fn remote_fusion_requires_no_local_model_assets_and_cannot_rerank() {
             redaction: crate::redaction::Policy::ON,
         }));
     models
-        .require_search(crate::gold::config::Ranking::Fusion)
+        .require_search(crate::views::config::Ranking::Fusion)
         .unwrap();
     let mut backend = models
-        .load_search(crate::gold::config::Ranking::Fusion)
+        .load_search(crate::views::config::Ranking::Fusion)
         .unwrap()
         .unwrap();
     assert!(backend.embedding.is_none() && backend.reranker.is_none());
     assert!(backend.rerank("query", &["document"]).is_err());
     assert!(
         models
-            .require_search(crate::gold::config::Ranking::ContextualRerank)
+            .require_search(crate::views::config::Ranking::ContextualRerank)
             .is_err()
     );
     assert!(!root.path().join("absent-models").exists());
@@ -38,10 +38,10 @@ fn ranking_selects_only_required_models_and_restores_contextual_backend() {
     let root = std::env::var_os("MASH_TEST_MODELS_DIR").unwrap().into();
     let models = Models::new(root);
     for ranking in [
-        crate::gold::config::Ranking::Fusion,
-        crate::gold::config::Ranking::Fusion,
-        crate::gold::config::Ranking::ContextualRerank,
-        crate::gold::config::Ranking::Fusion,
+        crate::views::config::Ranking::Fusion,
+        crate::views::config::Ranking::Fusion,
+        crate::views::config::Ranking::ContextualRerank,
+        crate::views::config::Ranking::Fusion,
     ] {
         let started = std::time::Instant::now();
         let mut backend = models.load_search(ranking).unwrap().unwrap();
@@ -52,7 +52,7 @@ fn ranking_selects_only_required_models_and_restores_contextual_backend() {
         );
         assert_eq!(
             backend.reranker.is_some(),
-            ranking == crate::gold::config::Ranking::ContextualRerank
+            ranking == crate::views::config::Ranking::ContextualRerank
         );
         assert_ne!(
             shared_query_vector(&mut backend, "model cache")
@@ -60,7 +60,7 @@ fn ranking_selects_only_required_models_and_restores_contextual_backend() {
                 .len(),
             0
         );
-        if ranking == crate::gold::config::Ranking::ContextualRerank {
+        if ranking == crate::views::config::Ranking::ContextualRerank {
             assert_eq!(backend.rerank("cache", &["model cache"]).unwrap().len(), 1);
         } else {
             assert!(backend.rerank("cache", &["model cache"]).is_err());

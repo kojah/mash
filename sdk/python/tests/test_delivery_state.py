@@ -28,7 +28,7 @@ def receipt(
             "batch_id": pending.batch_id,
             "source_revision": pending.expected_revision + 1,
             "silver_revision": silver_revision,
-            "gold_ready": ready,
+            "views_ready": ready,
         }
     )
 
@@ -167,7 +167,7 @@ class DeliveryStateTests(unittest.TestCase):
                 self.assertEqual(checkpoint.cursor, {"position": "page-2"})
                 self.assertIsNotNone(checkpoint.receipt)
                 self.assertFalse(
-                    checkpoint.receipt.gold_ready if checkpoint.receipt else True
+                    checkpoint.receipt.views_ready if checkpoint.receipt else True
                 )
                 self.assertIsNone(
                     reopened.pending(source_id="source", destination_id="local")
@@ -296,7 +296,7 @@ class DeliveryStateTests(unittest.TestCase):
             "batch_id": "batch",
             "source_revision": 1,
             "silver_revision": 1,
-            "gold_ready": False,
+            "views_ready": False,
         }
         for invalid in (True, -1, 1 << 64):
             value = {**base, "source_revision": invalid}

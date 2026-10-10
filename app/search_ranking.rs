@@ -1,9 +1,9 @@
-//! Gold: bounded thread selection followed by evidence ranking across transports.
+//! Built-in views: bounded thread selection followed by evidence ranking across transports.
 use crate::AppError;
-use crate::gold::config::Fusion;
 use crate::search_results::{self, SearchUnit};
 use crate::semantic::Backend;
 use crate::storage::SearchHit;
+use crate::views::config::Fusion;
 use std::collections::HashMap;
 
 #[cfg(test)]

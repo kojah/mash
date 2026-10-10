@@ -25,7 +25,7 @@ fn digest(
 }
 
 #[test]
-fn dependency_digest_ignores_gold_but_covers_all_silver_and_has_stable_order() {
+fn dependency_digest_ignores_views_but_covers_all_silver_and_has_stable_order() {
     let (conversation, mut messages) = thread();
     let before = digest(&conversation, &messages).unwrap();
     messages[0].vector = Some(vec![0.0, -127.0]);

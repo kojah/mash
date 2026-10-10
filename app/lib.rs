@@ -11,14 +11,14 @@ mod source;
 // Experimental source-neutral contract for out-of-process connectors.
 pub mod connectors;
 
-// Gold materialization, retrieval models, policies and query-oriented views.
+// View materialization, retrieval models, policies and query-oriented views.
 mod chat_catalog;
-mod gold;
 mod search_filter;
 mod search_query;
 mod search_ranking;
 mod search_results;
 mod semantic;
+mod views;
 
 // Application composition and infrastructure supporting both layers.
 mod attachments;

@@ -51,13 +51,13 @@ enum Command {
     },
     /// Discover and index supported local histories.
     Index {
-        /// Commit an external connector batch to local silver; receipt reports gold readiness.
-        #[arg(long, value_name = "PATH", conflicts_with_all = ["watch", "full", "rebuild_local_gold", "provider", "since_days", "all_history"])]
+        /// Commit an external connector batch to local silver; receipt reports views readiness.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["watch", "full", "rebuild_local_views", "provider", "since_days", "all_history"])]
         connector_batch: Option<PathBuf>,
         /// Build local retrieval state from certified stored silver, offline.
-        /// With --full, discard all local gold and replay it from silver.
+        /// With --full, discard all local views and replay it from silver.
         #[arg(long, conflicts_with_all = ["watch", "provider", "since_days", "all_history"])]
-        rebuild_local_gold: bool,
+        rebuild_local_views: bool,
         /// Recreate all derived search state.
         #[arg(long, conflicts_with = "watch")]
         full: bool,
@@ -81,18 +81,18 @@ enum Command {
     Search {
         /// Override dense shared retrieval; omitted inherits the active group default.
         #[arg(long, value_enum)]
-        shared_vector_search: Option<crate::gold::vector::Algorithm>,
+        shared_vector_search: Option<crate::views::vector::Algorithm>,
         /// HNSW search effort for this shared override (1–4096, default 200).
         #[arg(long, requires = "shared_vector_search")]
         shared_hnsw_ef: Option<usize>,
         query: String,
-        /// Retrieval intent; defaults to gold.query.intent (related-discussion).
+        /// Retrieval intent; defaults to views.query.intent (related-discussion).
         #[arg(long, value_enum)]
-        intent: Option<crate::gold::exact::Intent>,
-        /// Maximum results; defaults to gold.query.limit (20).
+        intent: Option<crate::views::exact::Intent>,
+        /// Maximum results; defaults to views.query.limit (20).
         #[arg(long)]
         limit: Option<usize>,
-        /// Result granularity; defaults to gold.query.unit (chats).
+        /// Result granularity; defaults to views.query.unit (chats).
         #[arg(long, value_enum)]
         unit: Option<crate::search_results::SearchUnit>,
         /// Override the hybrid fusion rank constant (1–1000).
@@ -107,9 +107,9 @@ enum Command {
         /// Override how much newer messages are favoured (0–100; 0 is off).
         #[arg(long)]
         recency_weight: Option<u16>,
-        /// Override hybrid ranking for this request; defaults to gold.query.ranking.
+        /// Override hybrid ranking for this request; defaults to views.query.ranking.
         #[arg(long, value_enum)]
-        ranking: Option<crate::gold::config::Ranking>,
+        ranking: Option<crate::views::config::Ranking>,
         /// Include resolved retrieval policy, source outcomes and core timing.
         #[arg(long)]
         diagnostics: bool,
@@ -149,7 +149,7 @@ enum Command {
     Forget { id: String },
     /// Export local silver and retained attachments to a new private directory.
     Export { directory: PathBuf },
-    /// Import verified silver into a new database; project gold explicitly afterward.
+    /// Import verified silver into a new database; project views explicitly afterward.
     Import {
         directory: PathBuf,
         #[arg(long, value_name = "NEW_DATABASE")]
@@ -177,18 +177,18 @@ enum Command {
     Serve {
         #[arg(long, value_name = "PATH")]
         server_config: PathBuf,
-        /// Explicitly replace persisted shared group gold settings from this TOML.
+        /// Explicitly replace persisted shared group views settings from this TOML.
         #[arg(long)]
-        activate_gold: bool,
+        activate_views: bool,
         /// Explicitly replace persisted shared group query defaults without indexing.
         #[arg(long)]
         activate_query: bool,
         /// Explicitly apply the configured durable/cached/cold Qdrant placement.
         #[arg(long)]
         activate_memory: bool,
-        /// Rebuild all shared gold from shared silver before serving.
+        /// Rebuild all shared views from shared silver before serving.
         #[arg(long)]
-        replay_gold: bool,
+        replay_views: bool,
     },
 }
 
@@ -202,7 +202,7 @@ enum ModelsCommand {
 struct SearchArguments {
     /// Lexical matching: flexible (prefixes and typos), strict, prefix, or typo.
     #[arg(long, value_enum, default_value = "flexible")]
-    match_mode: crate::gold::matching::Mode,
+    match_mode: crate::views::matching::Mode,
     /// Order qualifying results by relevance (default) or recent (newest first).
     #[arg(long, value_enum, default_value = "relevance")]
     sort: crate::search_filter::Sort,
@@ -329,14 +329,14 @@ impl Cli {
                 ..
             } => Operation::IngestConnector { batch_file },
             Command::Index {
-                rebuild_local_gold,
+                rebuild_local_views,
                 full,
                 provider,
                 since_days,
                 all_history,
                 ..
             } => Operation::Index(IndexRequest {
-                mode: crate::core::IndexMode::from_rebuild_flag(rebuild_local_gold),
+                mode: crate::core::IndexMode::from_rebuild_flag(rebuild_local_views),
                 full,
                 provider,
                 since_days,
@@ -369,7 +369,7 @@ impl Cli {
                 limit,
                 unit,
                 diagnostics,
-                fusion: crate::gold::config::FusionOverrides {
+                fusion: crate::views::config::FusionOverrides {
                     rank_constant: fusion_rank_constant,
                     lexical_weight,
                     semantic_weight,
@@ -454,22 +454,22 @@ where
         .map_err(|_| AppError::internal("failed to start async runtime"))?;
     if let Command::Serve {
         server_config,
-        activate_gold,
+        activate_views,
         activate_query,
         activate_memory,
-        replay_gold,
+        replay_views,
     } = cli.command
     {
         let models = cli.models_dir.unwrap_or_else(default_models_path);
         runtime.block_on(crate::shared::server::run(
             &server_config,
             crate::shared::server::Activation {
-                gold: activate_gold,
+                views: activate_views,
                 query: activate_query,
                 memory: activate_memory,
             },
             &models,
-            replay_gold,
+            replay_views,
         ))?;
         Ok(Response::McpStopped)
     } else if let Command::Mcp { watch, debounce_ms } = cli.command {
@@ -516,7 +516,7 @@ async fn process_search(mut cli: Cli) -> Result<Response, AppError> {
     cli.models_dir = Some(models_dir.clone());
     let request = cli.into_request()?;
     if matches!(&request.operation, Operation::Search { intent, .. }
-        if intent.unwrap_or(configuration.gold.query.intent) == crate::gold::exact::Intent::ExactMention)
+        if intent.unwrap_or(configuration.views.query.intent) == crate::views::exact::Intent::ExactMention)
     {
         return core::execute(request)
             .await
@@ -622,10 +622,10 @@ mod tests {
     fn cli_preserves_typed_request_ranking_without_inventing_defaults() {
         for (flag, expected) in [
             (None, None),
-            (Some("fusion"), Some(crate::gold::config::Ranking::Fusion)),
+            (Some("fusion"), Some(crate::views::config::Ranking::Fusion)),
             (
                 Some("contextual-rerank"),
-                Some(crate::gold::config::Ranking::ContextualRerank),
+                Some(crate::views::config::Ranking::ContextualRerank),
             ),
         ] {
             let mut args = vec!["mash", "search", "database"];
@@ -649,7 +649,7 @@ mod tests {
 
     #[test]
     fn cli_lexical_matching_defaults_to_flexible_and_preserves_explicit_modes() {
-        use crate::gold::matching::Mode;
+        use crate::views::matching::Mode;
         for (name, expected) in [
             ("strict", Mode::Strict),
             ("prefix", Mode::Prefix),

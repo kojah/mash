@@ -66,7 +66,7 @@ impl Parents {
         }
         if input.ordinal <= self.ordinal || !input.context.valid(input.ordinal) {
             return Err(AppError::internal(
-                "gold unit messages are not in valid ordinal order",
+                "views unit messages are not in valid ordinal order",
             ));
         }
         self.ordinal = input.ordinal;

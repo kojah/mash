@@ -1,4 +1,4 @@
-//! Gold metadata view: bounded thread discovery over canonical silver records.
+//! View metadata view: bounded thread discovery over canonical silver records.
 use crate::AppError;
 use crate::provider::Provider;
 use crate::search_results::ChatMetadata;

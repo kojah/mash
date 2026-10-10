@@ -92,8 +92,8 @@ pub(super) fn index(out: &mut String, value: &IndexResponse) -> Result<(), serde
     line(
         out,
         &format!(
-            "Total time: {} ms · full scan: {} · gold rebuild: {}",
-            value.total_milliseconds, value.full, value.rebuild_local_gold
+            "Total time: {} ms · full scan: {} · views rebuild: {}",
+            value.total_milliseconds, value.full, value.rebuild_local_views
         ),
     );
     json(out, "Mode", &value.realized_mode)?;

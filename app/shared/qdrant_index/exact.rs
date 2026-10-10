@@ -3,9 +3,9 @@ use super::{
     AppError, Identity, Store, Stored, api, collection, connector_hit, document_id, failure, tokens,
 };
 use crate::{
-    gold::exact::{self, Literal},
     shared::protocol,
     storage::SearchHit,
+    views::exact::{self, Literal},
 };
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -133,9 +133,9 @@ impl Store {
             .cloned()
             .collect::<BTreeSet<_>>();
         let mut filter = super::read::search_filter(&input, &active)?;
-        let vocabulary = if input.match_mode == crate::gold::matching::Mode::Strict
+        let vocabulary = if input.match_mode == crate::views::matching::Mode::Strict
             || active.is_empty()
-            || literal.mode() == crate::gold::matching::Mode::Strict
+            || literal.mode() == crate::views::matching::Mode::Strict
         {
             Vec::new()
         } else {
@@ -143,7 +143,7 @@ impl Store {
                 .terms(&collection(&identity.group_id, false), &filter)
                 .await?
         };
-        let plan = crate::gold::matching::Plan::new(&input.query, literal.mode(), &vocabulary)?;
+        let plan = crate::views::matching::Plan::new(&input.query, literal.mode(), &vocabulary)?;
         for group in plan.groups {
             filter.must.push(api::matches("tokens", group));
         }
@@ -173,7 +173,7 @@ impl Store {
                     .map(|point| hit(point, &active))
                     .collect::<Result<Vec<_>, _>>()?;
                 for hit in &mut page_hits {
-                    crate::gold::matching::annotate(hit, &literal, self.responses);
+                    crate::views::matching::annotate(hit, &literal, self.responses);
                 }
                 hits.extend(
                     crate::search_results::eligible(page_hits)

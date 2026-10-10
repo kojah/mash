@@ -123,7 +123,7 @@ jobs:
           cargo build --locked --bin mash
           MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
             cargo nextest run --profile ci --run-ignored only --no-tests fail -j 1 \
-              -E 'test(shared_backend_persisted_restart_contract) or test(shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guards) or test(shared_gold_lost_without_backup_is_replayed_from_shared_silver)'
+              -E 'test(shared_backend_persisted_restart_contract) or test(shared_backend_snapshot_restore_preserves_silver_views_and_revision_guards) or test(shared_views_lost_without_backup_is_replayed_from_shared_silver)'
       - name: Verify development MCP refresh and deployment separation
         run: |
           MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \

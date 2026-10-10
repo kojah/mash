@@ -1,6 +1,6 @@
 //! Recipe, model-space and pinning contracts of shared publication.
 use super::*;
-use crate::gold::readiness::{Artifacts, State};
+use crate::views::readiness::{Artifacts, State};
 
 fn events(file: &tempfile::NamedTempFile) -> Vec<Event> {
     serde_json::Deserializer::from_reader(file.reopen().unwrap())
@@ -18,14 +18,14 @@ fn write(events: Vec<Event>) -> tempfile::NamedTempFile {
     file
 }
 
-fn titled() -> crate::gold::config::Build {
-    crate::gold::config::Build {
+fn titled() -> crate::views::config::Build {
+    crate::views::config::Build {
         max_embedding_chars: None,
-        representations: crate::gold::config::Representations::LexicalAndDense,
-        dense_content: crate::gold::config::DenseContent::AllVisible,
-        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-        text_preparation: crate::gold::config::TextPreparation::Preserve,
-        embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+        representations: crate::views::config::Representations::LexicalAndDense,
+        dense_content: crate::views::config::DenseContent::AllVisible,
+        retrieval_unit: crate::views::config::RetrievalUnit::Message,
+        text_preparation: crate::views::config::TextPreparation::Preserve,
+        embedding_text: crate::views::config::EmbeddingText::TitleAndDialogue,
     }
 }
 
@@ -33,7 +33,7 @@ fn certified_source_upload(fixture: &Fixture) -> tempfile::NamedTempFile {
     let mut events = events(&source_upload(
         fixture,
         1,
-        Some(crate::gold::config::Build::default()),
+        Some(crate::views::config::Build::default()),
         true,
         false,
         false,
@@ -53,7 +53,7 @@ fn certified_source_upload(fixture: &Fixture) -> tempfile::NamedTempFile {
 fn source_upload(
     fixture: &Fixture,
     revision: i64,
-    recipe: Option<crate::gold::config::Build>,
+    recipe: Option<crate::views::config::Build>,
     snapshot: bool,
     include_other: bool,
     empty: bool,
@@ -62,7 +62,7 @@ fn source_upload(
     let Event::Start(start) = &mut events[0] else {
         panic!("start")
     };
-    start.gold_build = recipe;
+    start.views_build = recipe;
     start.snapshot = snapshot;
     start.base_revision = (!snapshot).then_some(revision - 1);
     if empty {
@@ -100,11 +100,11 @@ struct Embedding {
 }
 
 /// The node's same-revision snapshot, resent with vectors for `recipe`: the
-/// server keeps silver and rewrites gold that is not current.
+/// server keeps silver and rewrites views that is not current.
 fn republish(
     mut events: Vec<Event>,
     generation: &str,
-    recipe: &crate::gold::config::Build,
+    recipe: &crate::views::config::Build,
     vectors: Vec<Embedding>,
 ) -> tempfile::NamedTempFile {
     let vectors: std::collections::HashMap<_, _> = vectors
@@ -113,7 +113,7 @@ fn republish(
         .collect();
     for event in &mut events {
         match event {
-            Event::Start(start) => start.gold_build = Some(recipe.clone()),
+            Event::Start(start) => start.views_build = Some(recipe.clone()),
             Event::Batch(Batch::Messages { records }) => {
                 for message in records {
                     message.vector = vectors.get(&message.id).cloned();
@@ -144,7 +144,7 @@ fn vectors(fixture: &Fixture, dimensions: usize, users_only: bool) -> Vec<Embedd
 
 fn exact(fixture: &Fixture) -> protocol::Search {
     let mut exact = fixture.query();
-    exact.intent = crate::gold::exact::Intent::ExactMention;
+    exact.intent = crate::views::exact::Intent::ExactMention;
     exact.vector.clear();
     exact.generation.clear();
     exact
@@ -186,7 +186,7 @@ async fn qdrant_freshness_revokes_source_certificate_after_forget() {
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 #[allow(clippy::too_many_lines)]
-async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuilding_gold() {
+async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuilding_views() {
     for memory in [MemoryTier::Cached, MemoryTier::Cold, MemoryTier::Durable] {
         let fixture = Fixture::with_memory(VectorIndex::default(), memory).await;
         fixture
@@ -225,13 +225,13 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
         let mut next = fixture.identity.clone();
         next.dimensions = 8;
         next.generation = crate::semantic::model_space("alternate-test", 8);
-        assert!(wide.select_gold(&next, false).await.is_err());
+        assert!(wide.select_views(&next, false).await.is_err());
         fixture.search().await;
-        wide.select_gold(&next, true).await.unwrap();
+        wide.select_views(&next, true).await.unwrap();
         let switched = fixture.serve(wide);
         let freshness = switched.freshness(&next).await.unwrap();
         assert!(freshness.nodes[0].lexical_current);
-        assert!(!freshness.nodes[0].gold_current);
+        assert!(!freshness.nodes[0].views_current);
         assert_eq!(freshness.nodes[0].source_silver, original.source_silver);
         assert_eq!(
             freshness.nodes[0].artifacts,
@@ -275,7 +275,7 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
                 republish(
                     events(&certified_source_upload(&fixture)),
                     &next.generation,
-                    &crate::gold::config::Build::default(),
+                    &crate::views::config::Build::default(),
                     vectors(&fixture, 8, false),
                 ),
             )
@@ -294,10 +294,10 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
         assert_eq!(after.revision, original.revision);
         assert_eq!(after.silver_revision, original.silver_revision);
         assert_eq!(fixture.retained(), silver);
-        // Switching back needs another explicit gold rebuild at the original width.
+        // Switching back needs another explicit views rebuild at the original width.
         fixture
             .store
-            .select_gold(&fixture.identity, true)
+            .select_views(&fixture.identity, true)
             .await
             .unwrap();
         assert!(
@@ -314,7 +314,7 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
                 republish(
                     events(&certified_source_upload(&fixture)),
                     &fixture.identity.generation,
-                    &crate::gold::config::Build::default(),
+                    &crate::views::config::Build::default(),
                     vectors(&fixture, 4, false),
                 ),
             )
@@ -330,7 +330,7 @@ async fn qdrant_dimension_switch_preserves_silver_lexical_and_requires_rebuildin
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 #[allow(clippy::too_many_lines)]
 async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
-    use crate::gold::config::{Build, Representations};
+    use crate::views::config::{Build, Representations};
     let fixture = Fixture::new(VectorIndex::default()).await;
     let mut initial = events(&certified_source_upload(&fixture));
     for event in &mut initial {
@@ -353,23 +353,23 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
         },
         Build::default(),
         Build {
-            dense_content: crate::gold::config::DenseContent::AllVisible,
-            text_preparation: crate::gold::config::TextPreparation::CollapseWhitespace,
+            dense_content: crate::views::config::DenseContent::AllVisible,
+            text_preparation: crate::views::config::TextPreparation::CollapseWhitespace,
             ..Default::default()
         },
         Build {
-            dense_content: crate::gold::config::DenseContent::UserMessages,
+            dense_content: crate::views::config::DenseContent::UserMessages,
             ..Default::default()
         },
         Build {
-            retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+            retrieval_unit: crate::views::config::RetrievalUnit::ParentAndMessage,
             ..Default::default()
         },
         Build::default(),
     ] {
-        let gold = fixture.store.clone().with_build(recipe.clone());
-        gold.select_gold(&fixture.identity, true).await.unwrap();
-        let server = fixture.serve(gold);
+        let views = fixture.store.clone().with_build(recipe.clone());
+        views.select_views(&fixture.identity, true).await.unwrap();
+        let server = fixture.serve(views);
         if recipe.users_only() {
             let rejected = server
                 .index(
@@ -417,13 +417,13 @@ async fn qdrant_artifact_switch_replaces_vectors_without_changing_silver() {
                 .freshness(&fixture.identity)
                 .await
                 .unwrap()
-                .group_gold
+                .group_views
                 .unwrap()
                 .build,
             recipe
         );
         let freshness = server.freshness(&fixture.identity).await.unwrap();
-        assert!(freshness.nodes[0].gold_current);
+        assert!(freshness.nodes[0].views_current);
         assert_eq!(freshness.nodes[0].source_silver, original.source_silver);
         assert_eq!(
             freshness.nodes[0].artifacts,
@@ -468,11 +468,11 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
         .await
         .unwrap();
     let title = titled();
-    let gold = fixture.store.clone().with_build(title.clone());
-    gold.select_gold(&fixture.identity, true).await.unwrap();
-    let server = fixture.serve(gold);
+    let views = fixture.store.clone().with_build(title.clone());
+    views.select_views(&fixture.identity, true).await.unwrap();
+    let server = fixture.serve(views);
     assert_eq!(
-        server.state(&fixture.identity).await.unwrap().gold_build,
+        server.state(&fixture.identity).await.unwrap().views_build,
         title
     );
     let before = server.state(&fixture.identity).await.unwrap();
@@ -482,7 +482,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
             source_upload(
                 &fixture,
                 2,
-                Some(crate::gold::config::Build::default()),
+                Some(crate::views::config::Build::default()),
                 false,
                 false,
                 false,
@@ -501,7 +501,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
         )
         .await
         .unwrap();
-    assert!(!server.freshness(&fixture.identity).await.unwrap().nodes[0].gold_current);
+    assert!(!server.freshness(&fixture.identity).await.unwrap().nodes[0].views_current);
     for policy in [None, Some(VectorIndex::Hnsw { ef_runtime: 80 })] {
         let mut query = fixture.query();
         query.vector_policy = policy;
@@ -533,7 +533,7 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
         .unwrap();
     let freshness = server.freshness(&fixture.identity).await.unwrap();
     assert_eq!(freshness.nodes[0].silver_revision, canonical);
-    assert!(freshness.nodes[0].gold_current);
+    assert!(freshness.nodes[0].views_current);
     server
         .search(&fixture.identity, fixture.query())
         .await
@@ -546,9 +546,9 @@ async fn qdrant_source_recipe_pinning_rejects_mismatches_and_mixed_retained_vect
 async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current() {
     let fixture = Fixture::new(VectorIndex::default()).await;
     let title = titled();
-    let gold = fixture.store.clone().with_build(title.clone());
-    gold.select_gold(&fixture.identity, true).await.unwrap();
-    let server = fixture.serve(gold);
+    let views = fixture.store.clone().with_build(title.clone());
+    views.select_views(&fixture.identity, true).await.unwrap();
+    let server = fixture.serve(views);
     for _ in 0..2 {
         server
             .index(
@@ -558,7 +558,7 @@ async fn qdrant_empty_title_recipe_bootstrap_and_duplicate_refresh_stay_current(
             .await
             .unwrap();
         let freshness = server.freshness(&fixture.identity).await.unwrap();
-        assert!(freshness.nodes[0].gold_current);
+        assert!(freshness.nodes[0].views_current);
         assert_eq!(
             freshness.nodes[0].artifacts,
             Some(Artifacts {

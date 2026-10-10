@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 usage() {
-    echo 'usage: restart-dev-api.sh ARTIFACT CONFIG ENV POINTER API_URL TOKEN_ENV LOG_ROOT [--activate-query] [--retire-incompatible-silver SILVER_DIR]' >&2
+    echo 'usage: restart-dev-api.sh ARTIFACT CONFIG ENV POINTER API_URL TOKEN_ENV LOG_ROOT [--activate-query] [--replay-views] [--rollback-config PATH] [--retire-incompatible-silver SILVER_DIR]' >&2
     exit 2
 }
 [[ $# -ge 7 ]] || usage
 source "$(dirname "$0")/dev-api-common.sh"
 artifact=$1 config=$2 environment=$3 pointer=$4 base=$5 token_name=$6 root=$7
 shift 7
-activate_query='' silver_dir=''
+activate_query='' replay_views='' rollback_config=$config silver_dir=''
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --activate-query) activate_query=--activate-query; shift ;;
+        --replay-views) replay_views=--replay-views; shift ;;
+        # A breaking TOML change needs the previous release's config on rollback.
+        --rollback-config) [[ $# -ge 2 && -f $2 ]] || usage; rollback_config=$2; shift 2 ;;
         # Across a silver schema change the new release cannot open old shared
         # silver. Retire those node databases so their nodes republish; never
         # implied, because it discards what the nodes last published.
@@ -43,7 +46,8 @@ start_api() {
     # nohup alone does not protect it from process-group cleanup on disconnect.
     local flags=()
     [[ ${3:-} == --activate-query ]] && flags+=(--activate-query)
-    nohup setsid "$1" serve --server-config "$config" "${flags[@]}" </dev/null >"$2" 2>&1 &
+    [[ ${4:-} == --replay-views ]] && flags+=(--replay-views)
+    nohup setsid "$1" serve --server-config "${5:-$config}" "${flags[@]}" </dev/null >"$2" 2>&1 &
     new_pid=$!
 }
 
@@ -76,7 +80,7 @@ rollback() {
             fi
         fi
         restore_silver
-        start_api "$old_binary" "$scratch/rollback.log"
+        start_api "$old_binary" "$scratch/rollback.log" '' '' "$rollback_config"
         write_pointer "$scratch/previous-release.json" "$new_pid" "$pointer"
         echo 'API deployment failed; previous binary restarted. Inspect private logs.' >&2
     fi
@@ -115,7 +119,7 @@ kill -TERM "$old_pid"
 wait_exit "$old_pid" || { echo 'Previous API did not stop; no replacement started.' >&2; exit 1; }
 stopped=true
 retire_silver
-start_api "$binary" "$scratch/api.log" "$activate_query"
+start_api "$binary" "$scratch/api.log" "$activate_query" "$replay_views"
 ready=false
 for ((attempt=0; attempt<60; attempt++)); do
     kill -0 "$new_pid" 2>/dev/null || break

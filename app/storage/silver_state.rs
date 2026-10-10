@@ -1,4 +1,4 @@
-//! Durable silver evidence; independent of embeddings and other gold writes.
+//! Durable silver evidence; independent of embeddings and other views writes.
 use super::{Storage, generated};
 use crate::AppError;
 use crate::provider::Provider;
@@ -45,8 +45,8 @@ impl Storage {
 
     pub(crate) fn begin_silver_scan(&mut self, provider: Provider) -> Result<(), AppError> {
         self.require_writer()?;
-        // Retain only the identity of the previously published gold snapshot.
-        // This cannot authorize a new build; gold may resume it if silver and
+        // Retain only the identity of the previously published views snapshot.
+        // This cannot authorize a new build; views may resume it if silver and
         // model identity are unchanged after a rejected source contributes nothing.
         self.connection.execute(
             "UPDATE derived_state SET resume_generation=semantic_ready_generation,

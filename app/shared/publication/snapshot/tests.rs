@@ -20,7 +20,7 @@ fn incremental_capture_includes_only_changed_complete_threads_and_explicit_remov
         "UPDATE objects SET title='changed' WHERE origin='provider' AND id='a'; DELETE FROM objects WHERE origin='provider' AND id='b';",
     );
     let target = Target {
-        build: crate::gold::config::Build::default(),
+        build: crate::views::config::Build::default(),
         generation: "unused".into(),
         dimensions: 384,
         instance: Some(instance),
@@ -67,7 +67,7 @@ fn snapshots_upload_redacted_records_and_keep_canonical_silver() {
         )
         .unwrap();
     let target = Target {
-        build: crate::gold::config::Build::default(),
+        build: crate::views::config::Build::default(),
         generation: "unused".into(),
         dimensions: 384,
         instance: None,
@@ -131,8 +131,8 @@ async fn parent_units_resolve_from_consistent_sqlite_snapshot_across_batches_and
         .silver_certificate()
         .unwrap();
     let target = Target {
-        build: crate::gold::config::Build {
-            retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+        build: crate::views::config::Build {
+            retrieval_unit: crate::views::config::RetrievalUnit::ParentAndMessage,
             ..Default::default()
         },
         generation: "unused-model".into(),

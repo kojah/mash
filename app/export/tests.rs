@@ -2,6 +2,36 @@ use super::*;
 use rusqlite::{Connection, types::Value};
 
 #[test]
+fn portable_v1_receipts_keep_their_encoding_and_replay_as_live_views_receipts() {
+    let root = tempfile::tempdir().unwrap();
+    let (database, connection) = fixture(root.path());
+    drop(connection);
+    let batch = crate::connectors::Batch::decode(include_bytes!(
+        "../../fixtures/external-connector-batch.json"
+    ))
+    .unwrap();
+    let receipt = crate::connectors::silver::Store::open(&database)
+        .unwrap()
+        .apply(&batch)
+        .unwrap();
+    let archive = root.path().join("export");
+    write(&database, &archive, None).unwrap();
+    let records = fs::read_to_string(archive.join(DATABASE)).unwrap();
+    assert!(records.contains("\"gold_ready\":false"));
+    assert!(!records.contains("\"views_ready\""));
+    let imported = root.path().join("imported.sqlite3");
+    load(&archive, &imported, true).unwrap();
+    let replayed = crate::connectors::silver::Store::open(&imported)
+        .unwrap()
+        .apply(&batch)
+        .unwrap();
+    assert_eq!(replayed, receipt);
+    let live = serde_json::to_value(replayed).unwrap();
+    assert_eq!(live["views_ready"], false);
+    assert!(live.get("gold_ready").is_none());
+}
+
+#[test]
 fn portable_records_reject_corrupt_structure_even_with_a_matching_file_digest() {
     for fault in [
         "unknown_field",
@@ -67,7 +97,7 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          INSERT INTO silver_scans VALUES('codex',2,1);
          INSERT INTO attachment_policy VALUES(1,'policy-fingerprint');
          INSERT INTO message_embeddings VALUES('message','old-model',1,1,X'01');
-         UPDATE gold_manifest SET manifest='{}';
+         UPDATE views_manifest SET manifest='{}';
          UPDATE lexical_manifest SET manifest='{}';
          INSERT INTO message_fts VALUES('visible evidence','message','thread');
          UPDATE derived_state SET search_dirty=0,semantic_ready_generation='old-model';
@@ -192,7 +222,7 @@ fn rows(connection: &Connection, table: &str) -> Vec<Vec<Value>> {
 /// Upgrades export with the old release and import with the new one; the
 /// node keeps publishing as itself, starting from a full snapshot.
 #[test]
-fn upgrade_import_keeps_the_node_identity_and_refuses_stale_gold() {
+fn upgrade_import_keeps_the_node_identity_and_refuses_stale_views() {
     let root = tempfile::tempdir().unwrap();
     let (database, writer) = fixture(root.path());
     let identity = |connection: &Connection| -> (String, i64, i64, String) {
@@ -208,11 +238,11 @@ fn upgrade_import_keeps_the_node_identity_and_refuses_stale_gold() {
     let export = root.path().join("export");
     write(&database, &export, Some("source-node".into())).unwrap();
     let destination = root.path().join("upgraded.sqlite3");
-    let gold = crate::storage::schema::gold_path(&destination);
-    std::fs::write(&gold, b"stale gold").unwrap();
+    let views = crate::storage::schema::views_path(&destination);
+    std::fs::write(&views, b"stale views").unwrap();
     assert!(load(&export, &destination, true).is_err());
     assert!(!destination.exists());
-    std::fs::remove_file(&gold).unwrap();
+    std::fs::remove_file(&views).unwrap();
     load(&export, &destination, true).unwrap();
     let imported = Connection::open(&destination).unwrap();
     assert_eq!(identity(&imported), (instance, revision, 0, String::new()));
@@ -225,7 +255,7 @@ fn upgrade_import_keeps_the_node_identity_and_refuses_stale_gold() {
 }
 
 #[test]
-fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_gold_or_acks() {
+fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_views_or_acks() {
     let root = tempfile::tempdir().unwrap();
     let (database, writer) = fixture(root.path());
     // A live WAL writer has an uncommitted edit. Only committed silver is copied.
@@ -246,7 +276,7 @@ fn round_trip_preserves_wal_silver_attachments_and_deletion_evidence_without_gol
     assert!(!result.search_ready);
     assert!(matches!(
         result.recommended_action,
-        NextStep::RebuildLocalGold
+        NextStep::RebuildLocalViews
     ));
     let imported = Connection::open(&destination).unwrap();
     for table in [

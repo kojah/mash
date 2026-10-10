@@ -1,4 +1,4 @@
-//! Read canonical retained rows and recorded provider scan evidence, without gold.
+//! Read canonical retained rows and recorded provider scan evidence, without views.
 use super::Storage;
 use crate::{
     AppError,

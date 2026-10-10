@@ -2,7 +2,7 @@ use super::*;
 use crate::storage::{EmbeddingWrite, Storage};
 
 #[test]
-fn rejected_refresh_can_resume_only_the_unchanged_previously_published_gold() {
+fn rejected_refresh_can_resume_only_the_unchanged_previously_published_views() {
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("history.sqlite3")).unwrap();
     let mut conversation =
@@ -52,7 +52,7 @@ fn rejected_refresh_can_resume_only_the_unchanged_previously_published_gold() {
 }
 
 #[test]
-fn canonical_revision_excludes_gold_and_survives_restart() {
+fn canonical_revision_excludes_views_and_survives_restart() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("history.sqlite3");
     let mut storage = Storage::open_writer(&path).unwrap();

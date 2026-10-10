@@ -1,4 +1,4 @@
-//! Gold: rebuildable query-oriented views of canonical silver history.
+//! Built-in views: rebuildable retrieval artifacts over canonical silver history.
 pub(crate) mod config;
 pub(crate) mod diagnostics;
 pub(crate) mod exact;

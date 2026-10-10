@@ -35,9 +35,9 @@ pub(crate) struct Member<'a> {
     pub(crate) conversations: i64,
     pub(crate) messages: i64,
     pub(crate) lexical_current: bool,
-    pub(crate) gold_current: bool,
+    pub(crate) views_current: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) artifacts: Option<&'a crate::gold::readiness::Artifacts>,
+    pub(crate) artifacts: Option<&'a crate::views::readiness::Artifacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) source_silver: Option<&'a crate::silver::certificate::Certificate>,
 }
@@ -58,7 +58,7 @@ impl Freshness {
                     conversations: node.conversations,
                     messages: node.messages,
                     lexical_current: node.lexical_current,
-                    gold_current: node.gold_current,
+                    views_current: node.views_current,
                     artifacts: node.artifacts.as_ref(),
                     source_silver: node.source_silver.as_ref(),
                 })

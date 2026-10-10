@@ -170,7 +170,7 @@ impl Storage {
     }
 
     /// Keep delta invalidation atomic with canonical writes, but build views
-    /// only in the gold stage. A persisted dirty marker makes lost temporary
+    /// only in the views stage. A persisted dirty marker makes lost temporary
     /// delta queues recoverable through a full rebuild after failure/restart.
     pub(crate) fn defer_derived_updates(&mut self) -> Result<(), AppError> {
         self.require_writer()?;
@@ -202,10 +202,10 @@ impl Storage {
         self.sync_connector_units()
     }
 
-    /// Replace all local gold with empty, unready gold; silver is untouched.
-    pub(crate) fn discard_gold(&self) -> Result<(), AppError> {
+    /// Replace all local views with empty, unready views; silver is untouched.
+    pub(crate) fn discard_views(&self) -> Result<(), AppError> {
         self.require_writer()?;
-        super::schema::discard_gold(&self.connection)
+        super::schema::discard_views(&self.connection)
     }
 
     pub(crate) fn mark_derived_search_dirty(&self) -> Result<(), AppError> {
@@ -753,7 +753,7 @@ impl Storage {
             .lexical_manifest()?
             .filter(|m| lexical_clean && m.matches(&silver, searchable_messages));
         let mut manifest = self
-            .gold_manifest()?
+            .views_manifest()?
             .filter(|m| m.matches(&m.build, &m.model_generation, &silver));
         if let Some(m) = &manifest
             && m.build.dense_enabled()
@@ -829,10 +829,10 @@ impl Storage {
             manifest.silver.revision = u64::try_from(revision)
                 .map_err(|_| AppError::database_data("invalid silver revision"))?;
             let json = serde_json::to_string(&manifest)
-                .map_err(|_| AppError::internal("serialize gold build manifest"))?;
+                .map_err(|_| AppError::internal("serialize views build manifest"))?;
             transaction
                 .execute(
-                    "UPDATE gold_manifest SET manifest=?1 WHERE singleton=1",
+                    "UPDATE views_manifest SET manifest=?1 WHERE singleton=1",
                     [json],
                 )
                 .map_err(AppError::database)?;
@@ -921,7 +921,7 @@ impl Storage {
 
 fn advance_lexical_after_forget(
     connection: &rusqlite::Connection,
-    manifest: Option<crate::gold::lexical_manifest::Manifest>,
+    manifest: Option<crate::views::lexical_manifest::Manifest>,
 ) -> Result<(), AppError> {
     let Some(mut manifest) = manifest else {
         return Ok(());

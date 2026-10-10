@@ -1025,13 +1025,13 @@ impl Client {
                 &format!("collections/{name}/facet?consistency=all"),
                 Some(&Request {
                     key: "tokens",
-                    limit: crate::gold::matching::VOCABULARY_LIMIT + 1,
+                    limit: crate::views::matching::VOCABULARY_LIMIT + 1,
                     exact: true,
                     filter,
                 }),
             )
             .await?;
-        if reply.hits.len() > crate::gold::matching::VOCABULARY_LIMIT {
+        if reply.hits.len() > crate::views::matching::VOCABULARY_LIMIT {
             return Err(AppError::usage(
                 "lexical matching vocabulary budget exceeded; narrow filters or use match_mode=strict",
             ));

@@ -1,4 +1,4 @@
-//! Gold: result granularity and bounded conversation ranking across transports.
+//! Built-in views: result granularity and bounded conversation ranking across transports.
 use crate::storage::SearchHit;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
@@ -94,7 +94,7 @@ pub(crate) struct ChatMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) lexical_match: Option<crate::gold::matching::Evidence>,
+    pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
     pub(crate) message_id: String,
     pub(crate) node_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -267,7 +267,7 @@ pub(crate) fn collect_exact(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
     limit: usize,
-    literal: &crate::gold::exact::Literal,
+    literal: &crate::views::exact::Literal,
     redaction: crate::redaction::Policy,
 ) -> Results {
     collect_inner(hits, unit, limit, "", Some(literal), redaction)
@@ -322,7 +322,7 @@ fn collect_inner(
     unit: SearchUnit,
     limit: usize,
     query: &str,
-    literal: Option<&crate::gold::exact::Literal>,
+    literal: Option<&crate::views::exact::Literal>,
     redaction: crate::redaction::Policy,
 ) -> Results {
     let exact_reference = literal.is_some() || crate::search_query::has_reference(query);

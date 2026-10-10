@@ -1,6 +1,6 @@
-//! Shared SQLite infrastructure for silver history and gold retrieval tables.
-//! Canonical mutation also invalidates dependent gold in the same transaction;
-//! gold/local owns rebuilding. See silver.sql and gold.sql for the two databases.
+//! Shared SQLite infrastructure for silver history and views retrieval tables.
+//! Canonical mutation also invalidates dependent views in the same transaction;
+//! views/local owns rebuilding. See silver.sql and views.sql for the two databases.
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -10,15 +10,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
-// Gold views and materialized retrieval data.
+// View views and materialized retrieval data.
 mod catalog;
-pub(crate) mod connector_gold;
+pub(crate) mod connector_views;
 mod coverage;
 pub(crate) mod embedding_plan;
 mod exact;
-mod gold_manifest;
 mod semantic;
 mod semantic_chunks;
+mod views_manifest;
 
 // Silver mutation/provenance plus atomic invalidation and publication ownership.
 mod attachments;
@@ -81,8 +81,8 @@ pub(crate) struct Counts {
 }
 
 pub(crate) struct StatusSnapshot {
-    pub(crate) lexical: Option<crate::gold::lexical_manifest::Manifest>,
-    pub(crate) gold: Option<crate::gold::manifest::Manifest>,
+    pub(crate) lexical: Option<crate::views::lexical_manifest::Manifest>,
+    pub(crate) views: Option<crate::views::manifest::Manifest>,
     pub(crate) silver: Option<crate::silver::certificate::Certificate>,
     pub(crate) counts: Counts,
     pub(crate) current_embeddings: u64,
@@ -96,7 +96,7 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lookup: Option<crate::search_results::lookup::Lookup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) lexical_match: Option<crate::gold::matching::Evidence>,
+    pub(crate) lexical_match: Option<crate::views::matching::Evidence>,
     pub(crate) id: String,
     /// For a document, its own anchor: documents belong to no chat.
     #[serde(rename = "chat_id")]
@@ -205,7 +205,7 @@ impl Storage {
             fs::create_dir_all(parent).map_err(AppError::io)?;
         }
         let connection = Connection::open(path).map_err(AppError::database)?;
-        initialize(&connection, &schema::gold_path(path))?;
+        initialize(&connection, &schema::views_path(path))?;
         connection
             .execute_batch(
                 "CREATE TEMP TABLE IF NOT EXISTS pending_fts_messages (

@@ -6,7 +6,7 @@ pub(super) fn decision_history(root: &std::path::Path) -> Paths {
     let config = root.join("config.toml");
     std::fs::write(
         &config,
-        "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n",
+        "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
     let mut writer = crate::storage::Storage::open_writer(&database).unwrap();

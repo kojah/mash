@@ -99,7 +99,7 @@ class ConnectorTests(unittest.IsolatedAsyncioTestCase):
             )
         receipts = [receipt for (receipt,) in receipts]
         self.assertEqual([item.source_revision for item in receipts], [1, 2])
-        self.assertTrue(all(not item.gold_ready for item in receipts))
+        self.assertTrue(all(not item.views_ready for item in receipts))
         with sqlite3.connect(self.database) as connection:
             self.assertEqual(
                 connection.execute(

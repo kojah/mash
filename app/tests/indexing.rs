@@ -13,7 +13,7 @@ fn users_only_cli_index_keeps_assistant_lexical_search_without_model_assets() {
         "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"id\":\"reply\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"needle assistant evidence\"}]}}\n",
     )).unwrap();
     let config = root.path().join("node.toml");
-    std::fs::write(&config, format!("version=1\n[providers]\ncodex={{roots=[{}]}}\n[gold.build]\ndense_content='user-messages'\n[gold.query]\nintent='exact-mention'\n", toml::Value::String(provider.to_str().unwrap().into()))).unwrap();
+    std::fs::write(&config, format!("version=1\n[providers]\ncodex={{roots=[{}]}}\n[views.build]\ndense_content='user-messages'\n[views.query]\nintent='exact-mention'\n", toml::Value::String(provider.to_str().unwrap().into()))).unwrap();
     let database = root.path().join("silver.sqlite3");
     let models = root.path().join("absent-models");
     let base = [
@@ -28,7 +28,7 @@ fn users_only_cli_index_keeps_assistant_lexical_search_without_model_assets() {
     assert_eq!(indexed["model_inferences"], 0);
     assert_eq!(indexed["embeddings"], 0);
     assert_eq!(indexed["searchable_messages"], 1);
-    assert_eq!(indexed["gold"]["build"]["dense_content"], "user-messages");
+    assert_eq!(indexed["views"]["build"]["dense_content"], "user-messages");
     std::fs::remove_dir_all(provider).unwrap();
     let before = std::fs::read(&database).unwrap();
     let result = run_json(
@@ -57,7 +57,7 @@ fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
     let config = root.path().join("node.toml");
     let database = root.path().join("index.sqlite3");
     let models = root.path().join("absent-models");
-    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n").unwrap();
     let base = [
         "--config",
         config.to_str().unwrap(),
@@ -69,7 +69,7 @@ fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
     let indexed = run_json(&[base.as_slice(), &["index"]].concat());
     assert_eq!(indexed["realized_mode"], "lexical");
     assert_eq!(indexed["model_inferences"], 0);
-    assert_eq!(indexed["gold"]["build"]["representations"], "lexical-only");
+    assert_eq!(indexed["views"]["build"]["representations"], "lexical-only");
     let before = std::fs::read(&database).unwrap();
     let status = run_json(&[base.as_slice(), &["status"]].concat());
     assert_eq!(status["ready"], true);

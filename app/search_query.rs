@@ -1,4 +1,4 @@
-//! Gold query policy: application error mapping for the shared pure query contract.
+//! View query policy: application error mapping for the shared pure query contract.
 pub(crate) use mash_query::{has_reference, has_terms, is_stop_word, matches_reference, sqlite};
 
 pub(crate) fn validate(query: &str) -> Result<(), crate::AppError> {

@@ -7,7 +7,7 @@ async fn sdk_outputs_mask_credentials_in_view_discovery_and_search() {
     std::fs::create_dir(&chats).unwrap();
     std::fs::write(chats.join("session.jsonl"), "{\"type\":\"user\",\"sessionId\":\"session\",\"uuid\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"credentialneedle password=\\\"hunter2\\\"\"}}\n").unwrap();
     let config = root.path().join("node.toml");
-    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n", chats.display())).unwrap();
+    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", chats.display())).unwrap();
     let mash = Mash {
         watcher: Arc::default(),
         paths: Arc::new(Paths {

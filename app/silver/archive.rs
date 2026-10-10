@@ -6,6 +6,47 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) const VERSION: u32 = 1;
 
+/// Archive version 1 keeps its original receipt encoding across releases.
+/// Live receipts use `views_ready`; changing the portable wire key would make
+/// pre-rename exports impossible to import during the required schema upgrade.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Receipt {
+    schema_version: crate::connectors::Version,
+    pub(crate) source_id: crate::connectors::Id,
+    pub(crate) batch_id: crate::connectors::Id,
+    source_revision: u64,
+    silver_revision: u64,
+    #[serde(rename = "gold_ready")]
+    views_ready: bool,
+}
+
+impl From<crate::connectors::Receipt> for Receipt {
+    fn from(receipt: crate::connectors::Receipt) -> Self {
+        Self {
+            schema_version: receipt.schema_version,
+            source_id: receipt.source_id,
+            batch_id: receipt.batch_id,
+            source_revision: receipt.source_revision,
+            silver_revision: receipt.silver_revision,
+            views_ready: receipt.views_ready,
+        }
+    }
+}
+
+impl From<Receipt> for crate::connectors::Receipt {
+    fn from(receipt: Receipt) -> Self {
+        Self {
+            schema_version: receipt.schema_version,
+            source_id: receipt.source_id,
+            batch_id: receipt.batch_id,
+            source_revision: receipt.source_revision,
+            silver_revision: receipt.silver_revision,
+            views_ready: receipt.views_ready,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Record {
@@ -23,7 +64,7 @@ pub(crate) enum Record {
     },
     ConnectorReceipt {
         fingerprint: String,
-        receipt: crate::connectors::Receipt,
+        receipt: Receipt,
     },
     /// The node's shared-publication identity, restored only by an upgrade
     /// import that retires the exporting database.

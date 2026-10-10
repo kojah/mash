@@ -1,9 +1,9 @@
-//! Shared service storage: SQLite silver is the system of record; Qdrant gold is
+//! Shared service storage: SQLite silver is the system of record; Qdrant views are
 //! derived from it and can be rebuilt by replaying silver.
 use super::Identity;
 use super::configuration::{Configuration, env_name};
 use crate::AppError;
-use crate::shared::qdrant_index::{self, NodeGold};
+use crate::shared::qdrant_index::{self, NodeViews};
 use crate::shared::silver_store::{self, Head, SilverStore};
 use crate::shared::{Freshness, NodeFreshness, protocol};
 use crate::storage::Counts;
@@ -20,7 +20,7 @@ type NodeLock = Arc<tokio::sync::Mutex<()>>;
 #[derive(Clone)]
 pub(in crate::shared) struct Store {
     silver: SilverStore,
-    gold: qdrant_index::Store,
+    views: qdrant_index::Store,
     /// Embeds connector records; absent when the server has no model setup.
     embedder: Option<connectors::Embedder>,
     max_upload_bytes: u64,
@@ -32,7 +32,7 @@ pub(in crate::shared) struct Store {
 pub(super) async fn initialize(
     config: &Configuration,
     identities: &HashMap<blake3::Hash, Identity>,
-    activate_gold: bool,
+    activate_views: bool,
     activate_query: bool,
     activate_memory: bool,
 ) -> Result<Store, AppError> {
@@ -57,37 +57,37 @@ pub(super) async fn initialize(
     let root = config.silver_dir()?;
     let configured = identities.values().cloned().collect::<Vec<_>>();
     let silver = crate::blocking(move || SilverStore::open(&root, &configured)).await?;
-    let gold = qdrant_index::Store::connect(
+    let views = qdrant_index::Store::connect(
         &url,
         key.as_deref(),
         &groups,
         config.embeddings.dimensions,
         RESPONSE_BYTES,
-        config.gold.query.vector_search,
+        config.views.query.vector_search,
         qdrant_index::MemoryPolicy {
             tier: config.qdrant_memory,
             activate: activate_memory,
         },
     )
     .await?
-    .with_build(config.gold.build.clone());
+    .with_build(config.views.build.clone());
     let mut selected = HashSet::new();
     for identity in identities.values() {
         if selected.insert(&identity.group_id) {
-            let group_store = gold.clone().with_query(
+            let group_store = views.clone().with_query(
                 config
-                    .gold
+                    .views
                     .query
                     .groups
                     .get(&identity.group_id)
                     .copied()
-                    .unwrap_or(config.gold.query.vector_search),
+                    .unwrap_or(config.views.query.vector_search),
             );
-            group_store.select_gold(identity, activate_gold).await?;
+            group_store.select_views(identity, activate_views).await?;
             group_store.select_query(identity, activate_query).await?;
         }
     }
-    Ok(Store::new(silver, gold, config.max_upload_bytes()?))
+    Ok(Store::new(silver, views, config.max_upload_bytes()?))
 }
 
 /// Bound on one Qdrant response; documents are read a page at a time.
@@ -96,12 +96,12 @@ const RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 impl Store {
     pub(in crate::shared) fn new(
         silver: SilverStore,
-        gold: qdrant_index::Store,
+        views: qdrant_index::Store,
         max_upload_bytes: u64,
     ) -> Self {
         Self {
             silver,
-            gold,
+            views,
             embedder: None,
             max_upload_bytes,
             nodes: Arc::default(),
@@ -114,7 +114,7 @@ impl Store {
         responses: crate::redaction::Policy,
     ) -> Self {
         self.responses = responses;
-        self.gold = self.gold.with_response_redaction(responses);
+        self.views = self.views.with_response_redaction(responses);
         self
     }
 
@@ -179,30 +179,30 @@ impl Store {
     pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
         let mut counts = self.read(identity, silver_store::counts).await?;
         counts.embeddings = self
-            .gold
-            .node_gold(identity)
+            .views
+            .node_views(identity)
             .await?
-            .filter(|gold| gold.compatible(&self.gold, identity))
-            .map_or(0, |gold| gold.embeddings());
+            .filter(|views| views.compatible(&self.views, identity))
+            .map_or(0, |views| views.embeddings());
         Ok(counts)
     }
 
-    /// Gold usable for this node: built with the group recipe and model space.
-    async fn compatible_gold(&self, identity: &Identity) -> Result<Option<NodeGold>, AppError> {
+    /// View usable for this node: built with the group recipe and model space.
+    async fn compatible_views(&self, identity: &Identity) -> Result<Option<NodeViews>, AppError> {
         Ok(self
-            .gold
-            .node_gold(identity)
+            .views
+            .node_views(identity)
             .await?
-            .filter(|gold| gold.compatible(&self.gold, identity)))
+            .filter(|views| views.compatible(&self.views, identity)))
     }
 
-    /// One node's gold state, for tests.
+    /// One node's views state, for tests.
     #[cfg(test)]
-    pub(in crate::shared) async fn gold_state(
+    pub(in crate::shared) async fn views_state(
         &self,
         identity: &Identity,
-    ) -> Result<Option<NodeGold>, AppError> {
-        self.gold.node_gold(identity).await
+    ) -> Result<Option<NodeViews>, AppError> {
+        self.views.node_views(identity).await
     }
 
     /// One node's publication state, for tests.
@@ -219,13 +219,13 @@ impl Store {
                 ))
             })
             .await?;
-        // A process with superseded gold settings must not steer node publication.
-        self.gold.gold_configuration(identity).await?;
+        // A process with superseded views settings must not steer node publication.
+        self.views.views_configuration(identity).await?;
         Ok(protocol::NodeState {
             publication_version: head
                 .as_ref()
                 .map_or_else(String::new, |h| h.version.clone()),
-            gold_build: self.gold.build().clone(),
+            views_build: self.views.build().clone(),
             silver_revision: head.as_ref().and_then(|h| h.silver_revision.clone()),
             source_silver: head.as_ref().and_then(|h| h.source_silver.clone()),
             instance: head.as_ref().map(|h| h.instance.clone()),
@@ -238,7 +238,7 @@ impl Store {
         &self,
         identity: &Identity,
     ) -> Result<Freshness, AppError> {
-        let group_gold = self.gold.gold_configuration(identity).await?;
+        let group_views = self.views.views_configuration(identity).await?;
         let heads = self.heads(&identity.group_id).await?;
         let mut nodes = Vec::new();
         for (node_id, head) in heads {
@@ -247,34 +247,34 @@ impl Store {
                 ..identity.clone()
             };
             let mut counts = self.read(&node, silver_store::counts).await?;
-            let gold = self.gold.node_gold(&node).await?;
-            let connectors_current = match &gold {
+            let views = self.views.node_views(&node).await?;
+            let connectors_current = match &views {
                 Some(g) => g.connectors == self.connector_digests(&node).await?,
                 None => false,
             };
             let silver = head.silver_revision.as_ref();
-            let lexical_current = gold.as_ref().is_some_and(|g| {
+            let lexical_current = views.as_ref().is_some_and(|g| {
                 connectors_current && silver.is_some() && g.silver.as_ref() == silver
             });
-            let gold_current = gold
+            let views_current = views
                 .as_ref()
-                .is_some_and(|g| connectors_current && g.current(&self.gold, &node, silver));
-            counts.embeddings = gold
+                .is_some_and(|g| connectors_current && g.current(&self.views, &node, silver));
+            counts.embeddings = views
                 .as_ref()
-                .filter(|g| g.compatible(&self.gold, &node))
-                .map_or(0, NodeGold::embeddings);
-            let build = self.gold.build();
+                .filter(|g| g.compatible(&self.views, &node))
+                .map_or(0, NodeViews::embeddings);
+            let build = self.views.build();
             nodes.push(NodeFreshness {
-                artifacts: Some(crate::gold::readiness::Artifacts {
-                    metadata: crate::gold::readiness::State::publication(true, true),
-                    lexical: crate::gold::readiness::State::publication(
-                        gold.is_some(),
+                artifacts: Some(crate::views::readiness::Artifacts {
+                    metadata: crate::views::readiness::State::publication(true, true),
+                    lexical: crate::views::readiness::State::publication(
+                        views.is_some(),
                         lexical_current,
                     ),
                     dense: if build.dense_enabled() {
-                        crate::gold::readiness::State::publication(gold.is_some(), gold_current)
+                        crate::views::readiness::State::publication(views.is_some(), views_current)
                     } else {
-                        crate::gold::readiness::State::Disabled
+                        crate::views::readiness::State::Disabled
                     },
                 }),
                 lexical_manifest: lexical_current
@@ -282,17 +282,17 @@ impl Store {
                     .flatten()
                     .map(crate::shared::lexical_manifest::Manifest::new),
                 lexical_current,
-                gold_manifest: gold_current
+                views_manifest: views_current
                     .then(|| silver.cloned())
                     .flatten()
                     .map(|silver| {
-                        crate::shared::gold_manifest::Manifest::new(
+                        crate::shared::views_manifest::Manifest::new(
                             build.clone(),
                             node.generation.clone(),
                             silver,
                         )
                     }),
-                gold_current,
+                views_current,
                 silver_revision: head.silver_revision.clone(),
                 source_silver: head.source_silver.clone(),
                 node_id,
@@ -307,21 +307,21 @@ impl Store {
         Ok(Freshness {
             group_id: identity.group_id.clone(),
             unpublished_nodes: None,
-            group_gold: Some(Box::new(group_gold)),
+            group_views: Some(Box::new(group_views)),
             nodes,
         })
     }
 
     /// Searchable nodes. Lexical documents survive recipe and model changes;
     /// related-discussion search fails closed while any searched node's dense
-    /// gold is incompatible, instead of silently omitting that node.
+    /// views are incompatible, instead of silently omitting that node.
     async fn searchable_nodes(
         &self,
         identity: &Identity,
         dense: bool,
         exclude_self: bool,
     ) -> Result<BTreeSet<String>, AppError> {
-        // Gold exists only after a node uploads or receives connector records,
+        // View exists only after a node uploads or receives connector records,
         // so configured nodes without it are simply absent from search.
         let mut active = BTreeSet::new();
         for node_id in self.silver.nodes(&identity.group_id).iter().cloned() {
@@ -332,12 +332,12 @@ impl Store {
                 node_id: node_id.clone(),
                 ..identity.clone()
             };
-            let Some(gold) = self.gold.node_gold(&node).await? else {
+            let Some(views) = self.views.node_views(&node).await? else {
                 continue;
             };
-            if dense && !gold.searchable(&self.gold, &node) {
+            if dense && !views.searchable(&self.views, &node) {
                 return Err(AppError::shared(
-                    "shared gold is stale, incomplete or incompatible; republish from nodes or restart the API with --replay-gold",
+                    "shared views are stale, incomplete or incompatible; republish from nodes or restart the API with --replay-views",
                 ));
             }
             active.insert(node_id);
@@ -351,8 +351,8 @@ impl Store {
         input: protocol::Search,
     ) -> Result<protocol::Candidates, AppError> {
         qdrant_index::validate_search(&input, identity)?;
-        self.gold.gold_configuration(identity).await?;
-        let exact = input.intent == crate::gold::exact::Intent::ExactMention;
+        self.views.views_configuration(identity).await?;
+        let exact = input.intent == crate::views::exact::Intent::ExactMention;
         let active = self
             .searchable_nodes(identity, !exact, input.exclude_self)
             .await?;
@@ -361,13 +361,13 @@ impl Store {
                 "shared lexical index has not been initialized; run mash index",
             ));
         }
-        let mut candidates = self.gold.search(identity, input, &active).await?;
+        let mut candidates = self.views.search(identity, input, &active).await?;
         self.native_ancestry(identity, &mut candidates).await?;
         Ok(candidates)
     }
 
     /// Native points name only their chat; each node's shared silver holds the
-    /// derived turns between, so ancestry is read from it at query time. Gold
+    /// derived turns between, so ancestry is read from it at query time. View
     /// never stores the hierarchy, and turn changes never rewrite points.
     async fn native_ancestry(
         &self,
@@ -451,7 +451,7 @@ impl Store {
             let scope = silver_store::node_identity(&identity.group_id, &node);
             let chats = self
                 .read(&scope, move |connection| {
-                    crate::storage::connector_gold::chats(connection, &node)
+                    crate::storage::connector_views::chats(connection, &node)
                 })
                 .await?;
             for chat in chats {
@@ -505,11 +505,11 @@ impl Store {
         );
         if input
             .id
-            .starts_with(crate::storage::connector_gold::ANCHOR_PREFIX)
+            .starts_with(crate::storage::connector_views::ANCHOR_PREFIX)
         {
             return self
                 .read(&node, move |connection| {
-                    crate::storage::connector_gold::view(connection, &input.id, input.context)
+                    crate::storage::connector_views::view(connection, &input.id, input.context)
                 })
                 .await;
         }

@@ -16,7 +16,7 @@ fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
     )
     .unwrap();
     let config = directory.path().join("config.toml");
-    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
+    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
     let database = directory.path().join("index.sqlite3");
     let models = directory.path().join("missing-models");
     let base = [
@@ -130,7 +130,7 @@ fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index()
     }
     std::fs::write(
         &config,
-        "version=1\nproviders={}\n[gold.query]\nintent='exact-mention'\nunit='messages'\nlimit=3\n",
+        "version=1\nproviders={}\n[views.query]\nintent='exact-mention'\nunit='messages'\nlimit=3\n",
     )
     .unwrap();
     let result = run_json(&[base.as_slice(), &["search", "for", "--local"]].concat());

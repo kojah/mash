@@ -1,4 +1,4 @@
-//! Offline, versioned local silver exports. Gold and deployment state are rebuilt.
+//! Offline, versioned local silver exports. View and deployment state are rebuilt.
 use crate::{
     AppError, attachments,
     silver::certificate::Certificate,
@@ -71,7 +71,7 @@ pub(crate) struct Imported {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum NextStep {
-    RebuildLocalGold,
+    RebuildLocalViews,
     RepairSilver,
 }
 
@@ -141,8 +141,8 @@ pub(crate) fn load(
     }
     let blobs = attachments::directory(database);
     ensure_absent(&blobs)?;
-    // Stale gold could pair with a database that keeps its identity.
-    ensure_absent(&storage::schema::gold_path(database))?;
+    // Stale views could pair with a database that keeps its identity.
+    ensure_absent(&storage::schema::views_path(database))?;
     let parent = parent(database);
     fs::create_dir_all(parent).map_err(AppError::io)?;
     let mut builder = tempfile::Builder::new();
@@ -185,7 +185,7 @@ pub(crate) fn load(
     blob_output.complete = true;
     sync_directory(parent)?;
     let recommended_action = if manifest.silver.is_complete() {
-        NextStep::RebuildLocalGold
+        NextStep::RebuildLocalViews
     } else {
         NextStep::RepairSilver
     };

@@ -1,21 +1,21 @@
 //! Read-only lexical artifact access, independent of dense model readiness.
 use super::{SearchHit, Storage, generated};
-use crate::{AppError, gold::exact::Literal, search_filter::Scope};
+use crate::{AppError, search_filter::Scope, views::exact::Literal};
 use rusqlite::functions::FunctionFlags;
 
 impl Storage {
     pub(crate) fn lexical_plan(
         &self,
         query: &str,
-        mode: crate::gold::matching::Mode,
+        mode: crate::views::matching::Mode,
         scope: Option<&Scope>,
-    ) -> Result<crate::gold::matching::Plan, AppError> {
-        use crate::gold::matching::{Mode, Plan, VOCABULARY_LIMIT};
+    ) -> Result<crate::views::matching::Plan, AppError> {
+        use crate::views::matching::{Mode, Plan, VOCABULARY_LIMIT};
         if mode == Mode::Strict || (query.trim().starts_with('"') && query.trim().ends_with('"')) {
             return Plan::new(query, Mode::Strict, &[]);
         }
-        self.connection.execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary USING fts5vocab(gold,message_fts,row);
-            CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary_instances USING fts5vocab(gold,message_fts,instance);").map_err(AppError::database)?;
+        self.connection.execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary USING fts5vocab(views,message_fts,row);
+            CREATE VIRTUAL TABLE IF NOT EXISTS temp.mash_vocabulary_instances USING fts5vocab(views,message_fts,instance);").map_err(AppError::database)?;
         let unfiltered = scope.is_none_or(
             |s| matches!(&s.filter,crate::search_filter::Filter::All(parts) if parts.is_empty()),
         );
@@ -71,7 +71,7 @@ impl Storage {
     ) -> Result<Vec<SearchHit>, AppError> {
         let matcher = literal.clone();
         let plan = self.lexical_plan(literal.text(), literal.mode(), Some(scope))?;
-        let fts = if literal.mode() == crate::gold::matching::Mode::Strict {
+        let fts = if literal.mode() == crate::views::matching::Mode::Strict {
             literal.fts_query()
         } else {
             plan.sqlite()
@@ -94,10 +94,10 @@ impl Storage {
                     Ok(matcher
                         .evidence(&visible)
                         .map_or(0, |evidence| match evidence.kind {
-                            crate::gold::matching::Kind::Exact => 4,
-                            crate::gold::matching::Kind::Prefix => 3,
-                            crate::gold::matching::Kind::Typo => 2,
-                            crate::gold::matching::Kind::PrefixAndTypo => 1,
+                            crate::views::matching::Kind::Exact => 4,
+                            crate::views::matching::Kind::Prefix => 3,
+                            crate::views::matching::Kind::Typo => 2,
+                            crate::views::matching::Kind::PrefixAndTypo => 1,
                         }))
                 },
             )
@@ -136,7 +136,7 @@ impl Storage {
                 let (row, lexical_score) = row.map_err(AppError::database)?;
                 let mut hit = super::queries::search_hit(&self.connection, row)?;
                 hit.lexical_score = Some(lexical_score);
-                crate::gold::matching::annotate(&mut hit, literal, self.output_redaction);
+                crate::views::matching::annotate(&mut hit, literal, self.output_redaction);
                 Ok(hit)
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -144,7 +144,7 @@ impl Storage {
         let ranked = self.search_connector_lexical(&fts, limit, None, Some(scope))?;
         let ids = ranked.iter().map(|(id, _)| *id).collect::<Vec<_>>();
         for mut hit in self.connector_hits(&ids)? {
-            crate::gold::matching::annotate(&mut hit, literal, self.output_redaction);
+            crate::views::matching::annotate(&mut hit, literal, self.output_redaction);
             if hit.lexical_match.is_some() {
                 hit.lexical_score = Some(0.0);
                 hits.push(hit);
@@ -166,9 +166,9 @@ fn quality(hit: &SearchHit) -> u8 {
     hit.lexical_match
         .as_ref()
         .map_or(0, |evidence| match evidence.kind {
-            crate::gold::matching::Kind::Exact => 4,
-            crate::gold::matching::Kind::Prefix => 3,
-            crate::gold::matching::Kind::Typo => 2,
-            crate::gold::matching::Kind::PrefixAndTypo => 1,
+            crate::views::matching::Kind::Exact => 4,
+            crate::views::matching::Kind::Prefix => 3,
+            crate::views::matching::Kind::Typo => 2,
+            crate::views::matching::Kind::PrefixAndTypo => 1,
         })
 }

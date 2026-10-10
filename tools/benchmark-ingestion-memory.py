@@ -120,9 +120,9 @@ def run(args):
             conversations = connection.execute(
                 "SELECT COUNT(*) FROM objects WHERE origin='provider' AND object_role='container'"
             ).fetchone()[0]
-        # Embeddings live in the paired gold database beside silver.
-        gold = database.with_name(database.name.removesuffix('.sqlite3') + '.gold.sqlite3')
-        with sqlite3.connect(gold.as_uri() + '?mode=ro', uri=True) as connection:
+        # Embeddings live in the paired views database beside silver.
+        views = database.with_name(database.name.removesuffix('.sqlite3') + '.views.sqlite3')
+        with sqlite3.connect(views.as_uri() + '?mode=ro', uri=True) as connection:
             vectors = connection.execute('SELECT COUNT(*) FROM message_embeddings').fetchone()[0]
         if (len(rows), vectors, conversations) != (sources, sources, sources):
             raise ValueError('canonical/vector counts do not match the complete fixture')

@@ -35,7 +35,7 @@ async fn sdk_attachments_survive_restart_and_source_removal_and_fail_closed_afte
         {"type":"image","source":{"type":"base64","media_type":"image/png","data":STANDARD.encode([137,80,78,71,13,10,26,10])}}
     ]}})).unwrap()).unwrap();
     let config = root.path().join("node.toml");
-    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n", chats.display())).unwrap();
+    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", chats.display())).unwrap();
     let db = root.path().join("index.sqlite3");
     let paths = Paths {
         config: Some(config),

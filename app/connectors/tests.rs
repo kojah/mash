@@ -36,7 +36,7 @@ fn complete_replacements_and_explicit_deletions_round_trip() {
         batch_id: batch.batch_id,
         source_revision: 1,
         silver_revision: 1,
-        gold_ready: false,
+        views_ready: false,
     };
     let encoded = serde_json::to_vec(&receipt).unwrap();
     assert_eq!(

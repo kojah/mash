@@ -183,7 +183,7 @@ async fn publish_result(
     // Changed recipes/models require complete replacement, even with a journal.
     let allow_delta =
         target.publication_revision > 0 && published_artifacts_current(&freshness, config, &target);
-    if target.build != crate::gold::config::Build::default() {
+    if target.build != crate::views::config::Build::default() {
         let (file, revision, preparation) =
             snapshot::prepare(path, &target, inference, started, allow_delta).await?;
         upload(config, &file).await?;
@@ -207,7 +207,7 @@ async fn publish_result(
                 write_event(
                     &mut writer,
                     &Event::Start(Start {
-                        gold_build: Some(target.build.clone()),
+                        views_build: Some(target.build.clone()),
                         source_silver: Some(snapshot.source_silver.clone()),
                         instance: snapshot.instance.clone(),
                         revision: Some(snapshot.revision),
@@ -315,7 +315,7 @@ fn published_artifacts_current(
     target: &super::reuse::Target,
 ) -> bool {
     freshness.group_id == config.group_id
-        && freshness.group_gold.as_ref().is_some_and(|group| {
+        && freshness.group_views.as_ref().is_some_and(|group| {
             group.build == target.build
                 && group.generation == target.generation
                 && group.dimensions == target.dimensions
@@ -324,12 +324,12 @@ fn published_artifacts_current(
             node.node_id == config.node_id
                 && node.revision == target.publication_revision
                 && node.lexical_current
-                && node.gold_current
+                && node.views_current
                 && node
                     .lexical_manifest
                     .as_ref()
                     .is_some_and(|manifest| manifest.matches(node.silver_revision.as_ref()))
-                && node.gold_manifest.as_ref().is_some_and(|manifest| {
+                && node.views_manifest.as_ref().is_some_and(|manifest| {
                     manifest.matches(
                         &target.build,
                         &target.generation,

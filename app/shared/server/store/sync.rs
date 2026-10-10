@@ -1,9 +1,9 @@
-//! Commit silver first, then bring gold in line with it. A failed gold update
-//! leaves gold marked stale; the next snapshot or a replay repairs it.
+//! Commit silver first, then bring views in line with it. A failed views update
+//! leaves views marked stale; the next snapshot or a replay repairs it.
 use super::{Identity, Store};
 use crate::AppError;
 use crate::shared::protocol::{Batch, ConversationRecord, Event, Indexed};
-use crate::shared::qdrant_index::{GoldChat, NodeGold};
+use crate::shared::qdrant_index::{NodeViews, ViewChat};
 use crate::shared::silver_store::{self, Applied};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::BufRead;
@@ -27,16 +27,16 @@ impl Store {
         file: tempfile::NamedTempFile,
     ) -> Result<Indexed, AppError> {
         let _node = self.lock(identity).await?;
-        self.gold.gold_configuration(identity).await?;
+        self.views.views_configuration(identity).await?;
         let previous = self.head(identity).await?;
-        let gold = self.compatible_gold(identity).await?;
+        let views = self.compatible_views(identity).await?;
         let silver_revision = previous.as_ref().and_then(|h| h.silver_revision.clone());
-        let current = gold
+        let current = views
             .as_ref()
-            .is_some_and(|g| g.current(&self.gold, identity, silver_revision.as_ref()));
+            .is_some_and(|g| g.current(&self.views, identity, silver_revision.as_ref()));
         let silver = self.silver.clone();
         let scope = identity.clone();
-        let build = self.gold.build().clone();
+        let build = self.views.build().clone();
         let (applied, file) = crate::blocking(move || {
             let applied = silver.write(&scope, |tx| {
                 silver_store::apply::apply(tx, &scope, &file, &build)
@@ -45,7 +45,7 @@ impl Store {
         })
         .await?;
         if !(applied.duplicate && current) {
-            self.sync_upload(identity, &file, &applied, gold).await?;
+            self.sync_upload(identity, &file, &applied, views).await?;
         }
         Ok(Indexed {
             counts: self.status(identity).await?,
@@ -55,27 +55,29 @@ impl Store {
         })
     }
 
-    /// Write gold for the chats an upload supplied, then certify the revision.
+    /// Write views for the chats an upload supplied, then certify the revision.
     async fn sync_upload(
         &self,
         identity: &Identity,
         file: &tempfile::NamedTempFile,
         applied: &Applied,
-        previous: Option<NodeGold>,
+        previous: Option<NodeViews>,
     ) -> Result<(), AppError> {
-        // Without prior gold every document is deleted, so none can be stale.
+        // Without prior views every document is deleted, so none can be stale.
         let fresh = previous.is_none();
-        let mut gold = if let Some(gold) = previous {
-            gold
+        let mut views = if let Some(views) = previous {
+            views
         } else {
-            self.gold.delete_node_documents(identity).await?;
-            NodeGold::empty(&self.gold, identity)
+            self.views.delete_node_documents(identity).await?;
+            NodeViews::empty(&self.views, identity)
         };
-        gold.silver = None;
-        self.gold.put_node_gold(identity, &gold).await?;
+        views.silver = None;
+        self.views.put_node_views(identity, &views).await?;
         for id in &applied.deleted {
-            self.gold.retain_documents(identity, id, Vec::new()).await?;
-            gold.chats.remove(id);
+            self.views
+                .retain_documents(identity, id, Vec::new())
+                .await?;
+            views.chats.remove(id);
         }
         let fingerprints = self
             .read(identity, |connection| {
@@ -93,22 +95,22 @@ impl Store {
             let chat = written.get(id);
             if !fresh {
                 let current = chat.map(|t| t.ids.clone()).unwrap_or_default();
-                self.gold.retain_documents(identity, id, current).await?;
+                self.views.retain_documents(identity, id, current).await?;
             }
             let fingerprint = fingerprints
                 .get(id)
                 .cloned()
                 .ok_or_else(|| AppError::internal("supplied chat has no silver"))?;
-            gold.chats.insert(
+            views.chats.insert(
                 id.clone(),
-                GoldChat {
+                ViewChat {
                     fingerprint,
                     embeddings: chat.map_or(0, |t| t.embeddings),
                     complete: chat.is_none_or(|t| t.embeddings == t.expected),
                 },
             );
         }
-        self.certify(identity, gold, &fingerprints).await
+        self.certify(identity, views, &fingerprints).await
     }
 
     /// Stream the upload's messages for the selected chats into documents.
@@ -121,7 +123,7 @@ impl Store {
         let mut lines = std::io::BufReader::new(file.reopen().map_err(AppError::io)?).lines();
         let mut written = BTreeMap::<String, Written>::new();
         let mut conversations = HashMap::<String, ConversationRecord>::new();
-        let build = self.gold.build().clone();
+        let build = self.views.build().clone();
         let mut documents = crate::shared::qdrant_index::Documents::new(identity);
         loop {
             let (next, batch) = crate::blocking(move || {
@@ -165,35 +167,36 @@ impl Store {
                 entry.expected +=
                     u64::from(build.includes_dense(&message.role, &message.projection));
                 entry.embeddings += documents
-                    .push(&self.gold, identity, &conversations[&id], message)
+                    .push(&self.views, identity, &conversations[&id], message)
                     .await?;
             }
         }
-        documents.finish(&self.gold).await?;
+        documents.finish(&self.views).await?;
         Ok(written)
     }
 
-    /// Record gold as current only when every silver chat has complete documents.
+    /// Record views as current only when every silver chat has complete documents.
     pub(in crate::shared) async fn certify(
         &self,
         identity: &Identity,
-        mut gold: NodeGold,
+        mut views: NodeViews,
         fingerprints: &BTreeMap<String, String>,
     ) -> Result<(), AppError> {
-        self.sync_connectors(identity, &mut gold).await?;
-        gold.chats.retain(|id, _| fingerprints.contains_key(id));
+        self.sync_connectors(identity, &mut views).await?;
+        views.chats.retain(|id, _| fingerprints.contains_key(id));
         let head = self.head(identity).await?;
-        let synced = gold.chats.len() == fingerprints.len()
+        let synced = views.chats.len() == fingerprints.len()
             && fingerprints.iter().all(|(id, fingerprint)| {
-                gold.chats
+                views
+                    .chats
                     .get(id)
                     .is_some_and(|t| &t.fingerprint == fingerprint)
             });
-        gold.certified = synced && gold.chats.values().all(|chat| chat.complete);
-        gold.silver = synced
+        views.certified = synced && views.chats.values().all(|chat| chat.complete);
+        views.silver = synced
             .then(|| head.and_then(|h| h.silver_revision))
             .flatten();
-        self.gold.put_node_gold(identity, &gold).await?;
-        self.gold.settle(identity).await
+        self.views.put_node_views(identity, &views).await?;
+        self.views.settle(identity).await
     }
 }

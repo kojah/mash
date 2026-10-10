@@ -6,11 +6,11 @@ use axum::{
 };
 use serde_json::{Value, json};
 
-/// A group freshness response advertising one gold build and no nodes.
+/// A group freshness response advertising one views build and no nodes.
 pub(crate) fn freshness(build: &Value) -> Value {
     json!({
         "group_id": "transport",
-        "group_gold": {
+        "group_views": {
             "version": "group",
             "build": build,
             "generation": "test",
@@ -70,7 +70,7 @@ impl Service {
     }
     pub(crate) fn configuration(&self) -> String {
         format!(
-            "version=1\nproviders={{}}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n[shared]\ngroup_id='transport'\nnode_id='node'\napi_url='{}'\ntoken_env='PATH'\n[embeddings]\nurl='{}/embeddings'\nmodel='test'\ndimensions=4\n",
+            "version=1\nproviders={{}}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n[shared]\ngroup_id='transport'\nnode_id='node'\napi_url='{}'\ntoken_env='PATH'\n[embeddings]\nurl='{}/embeddings'\nmodel='test'\ndimensions=4\n",
             self.url, self.url
         )
     }

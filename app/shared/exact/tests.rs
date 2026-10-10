@@ -1,6 +1,6 @@
 use super::*;
 use crate::core::{self, Operation, Paths, Request, Response, SearchMode};
-use crate::gold::diagnostics::{Artifact, Scope, Source};
+use crate::views::diagnostics::{Artifact, Scope, Source};
 use axum::{Json, Router, extract::State, routing::post};
 use std::sync::{
     Arc,
@@ -138,7 +138,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
         axum::serve(listener, router).await.unwrap();
     });
     let config = root.path().join("node.toml");
-    std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='self'\napi_url={url:?}\ntoken_env='HOME'\n[gold.query]\nintent='exact-mention'\n")).unwrap();
+    std::fs::write(&config, format!("version=1\nproviders={{}}\n[index]\ndestination='both'\n[shared]\ngroup_id='group'\nnode_id='self'\napi_url={url:?}\ntoken_env='HOME'\n[views.query]\nintent='exact-mention'\n")).unwrap();
     let request = Request {
         paths: Paths {
             config: Some(config),
@@ -147,7 +147,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
         },
         operation: Operation::Search {
             shared_vector_search: None,
-            fusion: crate::gold::config::FusionOverrides::default(),
+            fusion: crate::views::config::FusionOverrides::default(),
             ranking: None,
             diagnostics: true,
             query: "voyage-code-4".into(),

@@ -50,7 +50,7 @@ fn connector_cli_commits_silver_and_replays_receipts_without_model_work() {
     );
     let receipt: mash::connectors::Receipt = serde_json::from_slice(&accepted.stdout).unwrap();
     assert_eq!(receipt.source_revision, 1);
-    assert!(!receipt.gold_ready);
+    assert!(!receipt.views_ready);
     let replayed = ingest(&database, &config, &input, &models);
     assert!(replayed.status.success());
     assert_eq!(replayed.stdout, accepted.stdout);
@@ -111,7 +111,7 @@ fn connector_batches_conflict_with_provider_and_rebuild_options() {
     for options in [
         vec!["--watch"],
         vec!["--full"],
-        vec!["--rebuild-local-gold"],
+        vec!["--rebuild-local-views"],
         vec!["--provider", "codex"],
         vec!["--since-days", "90"],
         vec!["--all-history"],
@@ -155,7 +155,7 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
     std::fs::write(
         &config,
         "version=1\n[providers]\n[index]\ndestination='local'\n\
-         [gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n",
+         [views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
     let database = root.join("silver.sqlite3");

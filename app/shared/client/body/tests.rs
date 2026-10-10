@@ -36,7 +36,7 @@ fn chunked(bytes: Bytes) -> Body {
 fn state(records: usize) -> NodeState {
     NodeState {
         publication_version: "fixture-head-version".into(),
-        gold_build: crate::gold::config::Build::default(),
+        views_build: crate::views::config::Build::default(),
         silver_revision: None,
         source_silver: None,
         instance: Some("unicode-instance-🧪".into()),

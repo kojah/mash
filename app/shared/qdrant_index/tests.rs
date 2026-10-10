@@ -9,7 +9,7 @@ mod physical;
 mod recipe;
 mod recovery;
 
-/// One disposable group: a SQLite silver file and its Qdrant gold collections.
+/// One disposable group: a SQLite silver file and its Qdrant views collections.
 struct Fixture {
     store: Store,
     server: Server,
@@ -45,7 +45,7 @@ impl Fixture {
         )
         .await
         .unwrap();
-        store.select_gold(&identity, false).await.unwrap();
+        store.select_views(&identity, false).await.unwrap();
         let directory = tempfile::tempdir().unwrap();
         let silver = SilverStore::open(&directory.path().join("silver"), [&identity]).unwrap();
         Self {
@@ -58,13 +58,13 @@ impl Fixture {
         }
     }
 
-    /// A service process over the same silver with a separately configured gold handle.
-    fn serve(&self, gold: Store) -> Server {
-        Server::new(self.silver.clone(), gold, 64 * 1024 * 1024)
+    /// A service process over the same silver with a separately configured views handle.
+    fn serve(&self, views: Store) -> Server {
+        Server::new(self.silver.clone(), views, 64 * 1024 * 1024)
     }
 
     async fn reopen(&self, index: VectorIndex, memory: MemoryTier) -> Result<Server, AppError> {
-        let gold = Store::connect(
+        let views = Store::connect(
             &self.url,
             None,
             std::slice::from_ref(&self.identity.group_id),
@@ -74,8 +74,8 @@ impl Fixture {
             memory.into(),
         )
         .await?;
-        gold.select_gold(&self.identity, false).await?;
-        Ok(self.serve(gold))
+        views.select_views(&self.identity, false).await?;
+        Ok(self.serve(views))
     }
 
     /// The node's retained silver, serialized, for before/after comparison.
@@ -143,7 +143,7 @@ impl Fixture {
 
     fn start(revision: i64) -> Start {
         Start {
-            gold_build: None,
+            views_build: None,
             source_silver: None,
             instance: "instance".into(),
             revision: Some(revision),
@@ -179,8 +179,8 @@ impl Fixture {
         let mut vector = vec![0.0; self.identity.dimensions];
         vector[0] = 127.0;
         protocol::Search {
-            intent: crate::gold::exact::Intent::RelatedDiscussion,
-            match_mode: crate::gold::matching::Mode::Strict,
+            intent: crate::views::exact::Intent::RelatedDiscussion,
+            match_mode: crate::views::matching::Mode::Strict,
             vector_policy: None,
             unit: crate::search_results::SearchUnit::Messages,
             query: "needle".into(),

@@ -24,7 +24,7 @@ enum RefreshMode {
     #[default]
     Sync,
     /// Rebuild local search data from certified silver.
-    LocalGold,
+    LocalViews,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -67,7 +67,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Explicitly refresh configured nodes through their Mash MCP index tool. Sync applies supported local schema migrations and ingests provider changes. Gold modes rebuild retrieval data from certified silver. Does not deploy code, migrate server infrastructure or download models. Returns a job ID; deployment_status reports indexing progress and results. Nodes refresh sequentially to avoid shared publication contention.",
+        description = "Explicitly refresh configured nodes through their Mash MCP index tool. Sync applies supported local schema migrations and ingests provider changes. View modes rebuild retrieval data from certified silver. Does not deploy code, migrate server infrastructure or download models. Returns a job ID; deployment_status reports indexing progress and results. Nodes refresh sequentially to avoid shared publication contention.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn refresh_index(&self, Parameters(input): Parameters<Refresh>) -> CallToolResult {

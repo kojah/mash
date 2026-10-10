@@ -55,7 +55,7 @@ async fn invalid_fusion_overrides_bypass_busy_model_work_and_leave_paths_untouch
     );
     std::fs::write(
         root.path().join("node.toml"),
-        "version=1\nproviders={}\n[gold.query]\nintent='exact-mention'\n",
+        "version=1\nproviders={}\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
     let request: Search =
@@ -160,7 +160,7 @@ async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_mo
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("node.toml");
     let mut transport = crate::test_support::vector::Service::new().await;
-    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n").unwrap();
     let server = Mash {
         watcher: Arc::default(),
         paths: Arc::new(Paths {
@@ -222,7 +222,7 @@ async fn mcp_protocol_forwards_vector_overrides_and_restores_omission_without_mo
 
 fn configuration(root: &std::path::Path, constant: u16, lexical: u16) -> String {
     format!(
-        "version=1\n[providers.codex]\nroots=[{:?}]\n[gold.query]\nunit='messages'\n[gold.query.fusion]\nrank_constant={constant}\nlexical_weight={lexical}\nsemantic_weight=2\n",
+        "version=1\n[providers.codex]\nroots=[{:?}]\n[views.query]\nunit='messages'\n[views.query.fusion]\nrank_constant={constant}\nlexical_weight={lexical}\nsemantic_weight=2\n",
         root.join("codex").to_str().unwrap()
     )
 }

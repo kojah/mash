@@ -1,9 +1,9 @@
 //! Concurrent local/shared candidate retrieval, fusion and contextual ranking.
 use super::client::{Endpoint, get, post};
 use super::protocol;
-use crate::gold::config::Options;
 use crate::semantic::{self, Models};
 use crate::storage::{SearchHit, Storage};
+use crate::views::config::Options;
 use crate::{AppError, config::SharedConfig};
 use futures_util::FutureExt;
 use std::{collections::HashMap, path::Path, time::Duration};
@@ -36,16 +36,16 @@ pub(crate) struct SearchOutcome {
 pub(crate) async fn require_dense(config: &SharedConfig) -> Result<(), AppError> {
     let freshness: super::Freshness = get(config, Endpoint::Freshness).await?;
     freshness
-        .group_gold
-        .ok_or_else(|| AppError::shared("shared group gold settings are unavailable"))?
+        .group_views
+        .ok_or_else(|| AppError::shared("shared group views settings are unavailable"))?
         .build
-        .require_intent(crate::gold::exact::Intent::RelatedDiscussion)
+        .require_intent(crate::views::exact::Intent::RelatedDiscussion)
 }
 
 #[tracing::instrument(name = "combined_search", skip_all)]
 pub(crate) async fn search(
     config: &SharedConfig,
-    local_database: Option<(&Path, &crate::gold::config::Build)>,
+    local_database: Option<(&Path, &crate::views::config::Build)>,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
@@ -82,11 +82,11 @@ pub(super) struct PreparedSearch {
 
 #[tracing::instrument(name = "prepare_search", skip_all)]
 pub(super) async fn prepare_search(
-    local_database: Option<(&Path, &crate::gold::config::Build)>,
+    local_database: Option<(&Path, &crate::views::config::Build)>,
     models_dir: &Path,
     embeddings: Option<&semantic::remote::Configuration>,
     query: &str,
-    ranking: crate::gold::config::Ranking,
+    ranking: crate::views::config::Ranking,
 ) -> Result<PreparedSearch, AppError> {
     let root = models_dir.to_path_buf();
     let text = query.to_owned();
@@ -107,7 +107,7 @@ pub(super) async fn prepare_search(
             .unwrap_or_default();
         if let Some((database, build)) = readiness_database {
             Storage::open_search(&database, &build.generation(&models.generation()))?
-                .require_gold_build(&build, &models.generation())?;
+                .require_views_build(&build, &models.generation())?;
         }
         let mut backend = models
             .load_search(ranking)?
@@ -166,7 +166,7 @@ pub(super) async fn search_prepared(
     let request = protocol::Search {
         match_mode: filters.match_mode,
         vector_policy: shared_vector_search,
-        intent: crate::gold::exact::Intent::RelatedDiscussion,
+        intent: crate::views::exact::Intent::RelatedDiscussion,
         query: query.to_owned(),
         unit,
         vector,
@@ -197,7 +197,7 @@ pub(super) async fn search_prepared(
     let ranking_query = query.clone();
     let (mut backend, selection) = crate::blocking(move || {
         let fused = combine_candidates(lexical, semantic, local_hits, options);
-        let selection = if ranking == crate::gold::config::Ranking::Fusion {
+        let selection = if ranking == crate::views::config::Ranking::Fusion {
             crate::search_ranking::Selection {
                 hits: fused,
                 count: 0,
@@ -208,7 +208,7 @@ pub(super) async fn search_prepared(
         Ok((backend, selection))
     })
     .await?;
-    if ranking == crate::gold::config::Ranking::Fusion {
+    if ranking == crate::views::config::Ranking::Fusion {
         return finish_fused(backend, selection.hits, retrieval, options).await;
     }
     let (context, context_error) = measured_context_documents(

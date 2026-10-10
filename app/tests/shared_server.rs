@@ -46,7 +46,7 @@ impl Server {
             nodes = (credentials)
         };
         config.insert(
-            "gold".into(),
+            "views".into(),
             toml::toml! {build = {embedding_text = (recipe)}}.into(),
         );
         if let Some((model, dimensions)) = space {
@@ -64,7 +64,7 @@ impl Server {
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
         if activate {
-            command.arg("--activate-gold");
+            command.arg("--activate-views");
         }
         for (i, node) in nodes.iter().enumerate() {
             command.env(format!("MASH_TEST_TOKEN_{i}"), token(node));
@@ -131,9 +131,9 @@ const STARTUP_NODE: &str = "\n[[nodes]]\ngroup_id = 'test-group'\nnode_id = 'tes
 const STARTUP_TOKEN: &str = "startup-test-credential-with-32-bytes";
 
 #[test]
-fn server_rejects_unknown_gold_recipe_and_fields_before_backend_access() {
+fn server_rejects_unknown_views_recipe_and_fields_before_backend_access() {
     for recipe in ["embedding_text='typo'", "unknown=true"] {
-        let config = format!("version=1\n{STARTUP_NODE}\n[gold.build]\n{recipe}\n");
+        let config = format!("version=1\n{STARTUP_NODE}\n[views.build]\n{recipe}\n");
         assert_startup_rejected(config.as_bytes(), &[], "invalid server configuration");
     }
 }
@@ -167,7 +167,7 @@ async fn qdrant_default_server_configuration_starts_and_creates_group_collection
     let mut statuses = Vec::new();
     for kind in ["state", "messages"] {
         let collection = format!(
-            "mash_gold_{}_{}",
+            "mash_views_{}_{}",
             blake3::hash(group.as_bytes()).to_hex(),
             kind
         );
@@ -187,10 +187,10 @@ async fn qdrant_default_server_configuration_starts_and_creates_group_collection
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
-async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_restart() {
+async fn qdrant_server_views_activation_rejects_conflicting_startup_and_survives_restart() {
     let root = tempfile::tempdir().unwrap();
     let group = format!(
-        "gold-startup-{}",
+        "views-startup-{}",
         root.path().file_name().unwrap().to_string_lossy()
     );
     let path = root.path().join("server.toml");
@@ -217,7 +217,7 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
     let output = serve();
     assert!(!output.status.success());
     assert_eq!(super::error_kind(&output), "configuration");
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--activate-gold"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--activate-views"));
     assert!(!String::from_utf8_lossy(&output.stderr).contains(&token("node")));
     let active = Server::with_recipe(root.path(), &group, &["node"], "title-and-dialogue");
     let client = reqwest::Client::builder()
@@ -242,7 +242,7 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
     };
     let before = freshness(active.url.clone()).await;
     assert_eq!(
-        before["group_gold"]["build"]["embedding_text"],
+        before["group_views"]["build"]["embedding_text"],
         "title-and-dialogue"
     );
     assert_eq!(before["nodes"], serde_json::json!([]));
@@ -260,7 +260,7 @@ async fn qdrant_server_gold_activation_rejects_conflicting_startup_and_survives_
     for kind in ["state", "messages"] {
         client
             .delete(format!(
-                "{}/collections/mash_gold_{}_{kind}",
+                "{}/collections/mash_views_{}_{kind}",
                 std::env::var("MASH_TEST_QDRANT_URL")
                     .unwrap()
                     .trim_end_matches('/'),
@@ -386,11 +386,11 @@ fn qdrant_server_rejects_invalid_settings_before_network_access() {
         ("qdrant_memory = 'disk'", "invalid server configuration"),
         ("qdrant_url_env = '1INVALID'", "invalid credential"),
         (
-            "[gold.query.vector_search]\nalgorithm='hnsw'\nef_runtime=0",
+            "[views.query.vector_search]\nalgorithm='hnsw'\nef_runtime=0",
             "ef_runtime",
         ),
         (
-            "[gold.query.vector_search]\nalgorithm='exact'\nef_runtime=20",
+            "[views.query.vector_search]\nalgorithm='exact'\nef_runtime=20",
             "invalid server configuration",
         ),
     ] {
@@ -408,7 +408,7 @@ pub fn cleanup_group(group: &str) {
         let client = reqwest::Client::new();
         for kind in ["state", "messages"] {
             let collection = format!(
-                "mash_gold_{}_{kind}",
+                "mash_views_{}_{kind}",
                 blake3::hash(group.as_bytes()).to_hex()
             );
             client

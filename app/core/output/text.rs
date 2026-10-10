@@ -299,13 +299,13 @@ fn freshness(
         line(
             out,
             &format!(
-                "  Node {} · revision={} · {} chats, {} messages · lexical_current={} · gold_current={}",
+                "  Node {} · revision={} · {} chats, {} messages · lexical_current={} · views_current={}",
                 safe(node.node_id),
                 node.revision,
                 node.conversations,
                 node.messages,
                 node.lexical_current,
-                node.gold_current
+                node.views_current
             ),
         );
         json(out, "    Last synced", &node.last_synced_at)?;
@@ -337,12 +337,12 @@ pub(crate) fn render(
             line(
                 &mut out,
                 &format!(
-                    "Source: {} · batch: {} · source revision: {} · silver revision: {} · gold ready: {}",
+                    "Source: {} · batch: {} · source revision: {} · silver revision: {} · views ready: {}",
                     safe(value.source_id.as_str()),
                     safe(value.batch_id.as_str()),
                     value.source_revision,
                     value.silver_revision,
-                    value.gold_ready
+                    value.views_ready
                 ),
             );
         }
@@ -472,7 +472,7 @@ mod tests {
             "group_id":"group", "unpublished_nodes":["missing-peer"], "nodes":[{
                 "node_id":"peer", "instance":"instance", "revision":4,
                 "last_synced_at":"2026-10-08T12:00:00Z", "last_updated_at":null,
-                "conversations":2,"messages":20,"lexical_current":true,"gold_current":false
+                "conversations":2,"messages":20,"lexical_current":true,"views_current":false
             }]
         }))
         .unwrap();
@@ -480,7 +480,7 @@ mod tests {
         freshness(&mut out, &value.summary()).unwrap();
         assert!(out.contains("missing-peer"));
         assert!(out.contains("revision=4"));
-        assert!(out.contains("gold_current=false"));
+        assert!(out.contains("views_current=false"));
         assert!(out.contains("Last synced: \"2026-10-08T12:00:00Z\""));
         assert!(out.contains("Last updated: null"));
     }

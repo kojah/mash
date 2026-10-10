@@ -1,4 +1,4 @@
-//! Canonical metadata evidence, retained independently of gold builds.
+//! Canonical metadata evidence, retained independently of views builds.
 use super::{Storage, generated};
 use crate::{AppError, provider::Provider, silver::enrichment::Evidence};
 

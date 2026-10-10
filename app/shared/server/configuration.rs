@@ -24,7 +24,7 @@ pub(super) struct Configuration {
     silver_dir: Option<std::path::PathBuf>,
     version: u32,
     #[serde(default)]
-    pub(super) gold: Gold,
+    pub(super) views: View,
     #[serde(default)]
     pub(super) embeddings: EmbeddingSpace,
     #[serde(default = "default_listen")]
@@ -60,8 +60,8 @@ impl Default for Redaction {
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct Gold {
-    pub(super) build: crate::gold::config::Build,
+pub(super) struct View {
+    pub(super) build: crate::views::config::Build,
     pub(super) query: Query,
 }
 /// Retrieval policy for shared candidates, independent of collection construction.
@@ -73,7 +73,7 @@ pub(super) struct Query {
     pub(super) groups: HashMap<String, qdrant_index::VectorIndex>,
 }
 /// The group's embedding space. Nodes embed for publication; the server embeds
-/// only to replay gold from silver, locally or through the configured endpoint.
+/// only to replay views from silver, locally or through the configured endpoint.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct EmbeddingSpace {
@@ -176,14 +176,14 @@ pub(super) fn env_name(name: &str) -> Result<(), AppError> {
 pub(super) fn identities(
     config: &Configuration,
 ) -> Result<HashMap<blake3::Hash, Identity>, AppError> {
-    config.gold.query.vector_search.validate()?;
+    config.views.query.vector_search.validate()?;
     config.silver_dir()?;
-    for (group, policy) in &config.gold.query.groups {
+    for (group, policy) in &config.views.query.groups {
         crate::config::validate_identifier(group, "group_id")?;
         policy.validate()?;
         if !config.nodes.iter().any(|node| &node.group_id == group) {
             return Err(AppError::configuration(
-                "gold query defaults name an unconfigured group",
+                "views query defaults name an unconfigured group",
             ));
         }
     }
@@ -322,9 +322,9 @@ mod tests {
     }
 
     #[test]
-    fn vector_query_policy_is_independent_of_gold_build_identity() {
-        let default: Gold = toml::from_str("").unwrap();
-        let hnsw: Gold =
+    fn vector_query_policy_is_independent_of_views_build_identity() {
+        let default: View = toml::from_str("").unwrap();
+        let hnsw: View =
             toml::from_str("[query.vector_search]\nalgorithm = 'hnsw'\nef_runtime = 80").unwrap();
         assert_eq!(
             default.query.vector_search,
@@ -335,7 +335,7 @@ mod tests {
             qdrant_index::VectorIndex::Hnsw { ef_runtime: 80 }
         );
         assert_eq!(default.build, hnsw.build);
-        let exact: Gold = toml::from_str("[query.vector_search]\nalgorithm = 'exact'").unwrap();
+        let exact: View = toml::from_str("[query.vector_search]\nalgorithm = 'exact'").unwrap();
         assert_eq!(
             exact.query.vector_search,
             qdrant_index::VectorIndex::Exact {}
@@ -350,7 +350,7 @@ mod tests {
             hnsw.build.generation("model")
         );
         hnsw.query.vector_search.validate().unwrap();
-        let omitted_ef: Gold = toml::from_str("[query.vector_search]\nalgorithm = 'hnsw'").unwrap();
+        let omitted_ef: View = toml::from_str("[query.vector_search]\nalgorithm = 'hnsw'").unwrap();
         assert_eq!(
             omitted_ef.query.vector_search,
             qdrant_index::VectorIndex::Hnsw { ef_runtime: 200 }
@@ -359,17 +359,17 @@ mod tests {
 
     #[test]
     fn group_query_defaults_are_typed_and_reject_unconfigured_groups_before_credentials() {
-        let text = "version=1\nnodes=[{group_id='team',node_id='node',token_env='MASH_QUERY_TEST_TOKEN'}]\n[gold.query.groups.team]\nalgorithm='hnsw'\nef_runtime=80\n";
+        let text = "version=1\nnodes=[{group_id='team',node_id='node',token_env='MASH_QUERY_TEST_TOKEN'}]\n[views.query.groups.team]\nalgorithm='hnsw'\nef_runtime=80\n";
         let config: Configuration = toml::from_str(text).unwrap();
         assert_eq!(
-            config.gold.query.groups["team"],
+            config.views.query.groups["team"],
             qdrant_index::VectorIndex::Hnsw { ef_runtime: 80 }
         );
         assert_eq!(
-            config.gold.query.vector_search,
+            config.views.query.vector_search,
             qdrant_index::VectorIndex::default()
         );
-        assert_eq!(config.gold.build, crate::gold::config::Build::default());
+        assert_eq!(config.views.build, crate::views::config::Build::default());
         let unknown: Configuration =
             toml::from_str(&text.replace("groups.team", "groups.unknown")).unwrap();
         assert!(
@@ -401,14 +401,14 @@ mod tests {
             "[build.vector_search]\nalgorithm = 'hnsw'",
             "[query]\nlimit = 10",
         ] {
-            assert!(toml::from_str::<Gold>(text).is_err(), "accepted {text}");
+            assert!(toml::from_str::<View>(text).is_err(), "accepted {text}");
         }
         for ef in [0, 4097] {
-            let gold: Gold = toml::from_str(&format!(
+            let views: View = toml::from_str(&format!(
                 "[query.vector_search]\nalgorithm = 'hnsw'\nef_runtime = {ef}"
             ))
             .unwrap();
-            assert!(gold.query.vector_search.validate().is_err());
+            assert!(views.query.vector_search.validate().is_err());
         }
     }
 }

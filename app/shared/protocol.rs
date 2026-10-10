@@ -7,7 +7,7 @@ use crate::storage::{Counts, SearchHit};
 #[serde(deny_unknown_fields)]
 pub(crate) struct Start {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gold_build: Option<crate::gold::config::Build>,
+    pub views_build: Option<crate::views::config::Build>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_silver: Option<crate::silver::certificate::Certificate>,
     pub instance: String,
@@ -37,7 +37,7 @@ mod source_certificate_tests {
     use crate::silver::certificate::{Certificate, Completeness, INTERPRETATION_VERSION};
 
     #[test]
-    fn source_certificates_are_typed_scoped_and_not_gold_readiness() {
+    fn source_certificates_are_typed_scoped_and_not_views_readiness() {
         let mut start: Start = serde_json::from_str(
             r#"{"instance":"node","revision":1,"base_revision":null,"snapshot":true,"forgets":[]}"#,
         )
@@ -61,7 +61,7 @@ mod source_certificate_tests {
         start.snapshot = true;
         start.source_silver.as_mut().unwrap().interpretation_version += 1;
         assert!(start.validate_source_silver().is_err());
-        let malformed = r#"{"revision":0,"interpretation_version":1,"completeness":"complete","rejected_sources":0,"gold_model":"invented"}"#;
+        let malformed = r#"{"revision":0,"interpretation_version":1,"completeness":"complete","rejected_sources":0,"views_model":"invented"}"#;
         assert!(serde_json::from_str::<Certificate>(malformed).is_err());
     }
 }
@@ -204,7 +204,7 @@ pub(super) struct NodeState {
     #[serde(default)]
     pub publication_version: String,
     #[serde(default)]
-    pub gold_build: crate::gold::config::Build,
+    pub views_build: crate::views::config::Build,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub silver_revision: Option<super::silver_revision::State>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -226,15 +226,15 @@ pub(super) struct Indexed {
 #[serde(deny_unknown_fields)]
 pub(super) struct Search {
     #[serde(default)]
-    pub match_mode: crate::gold::matching::Mode,
+    pub match_mode: crate::views::matching::Mode,
     #[serde(
         default,
         rename = "vector_search",
         skip_serializing_if = "Option::is_none"
     )]
-    pub vector_policy: Option<crate::gold::vector::Search>,
+    pub vector_policy: Option<crate::views::vector::Search>,
     #[serde(default, skip_serializing_if = "related_discussion")]
-    pub intent: crate::gold::exact::Intent,
+    pub intent: crate::views::exact::Intent,
     #[serde(default)]
     pub unit: crate::search_results::SearchUnit,
     pub query: String,
@@ -251,8 +251,8 @@ pub(super) struct Search {
 
 // Serde's skip predicate requires a borrowed field.
 #[allow(clippy::trivially_copy_pass_by_ref)]
-fn related_discussion(intent: &crate::gold::exact::Intent) -> bool {
-    *intent == crate::gold::exact::Intent::RelatedDiscussion
+fn related_discussion(intent: &crate::views::exact::Intent) -> bool {
+    *intent == crate::views::exact::Intent::RelatedDiscussion
 }
 
 #[derive(Debug, Deserialize, Serialize)]

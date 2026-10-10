@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare local gold units on a private copy of already certified silver.
+"""Compare local views units on a private copy of already certified silver.
 
 No provider reads or remote inference. Output must be outside the repository.
 This measures build/storage/process-cold search costs, not semantic quality.
@@ -11,7 +11,9 @@ import sqlite3
 
 from importlib.util import module_from_spec, spec_from_file_location
 
-SPEC = spec_from_file_location('gold_cost', Path(__file__).with_name('benchmark-gold.py'))
+SPEC = spec_from_file_location('views_cost', Path(__file__).with_name('benchmark-views.py'))
+if SPEC is None or SPEC.loader is None:
+    raise ImportError('benchmark-views.py could not be loaded')
 COST = module_from_spec(SPEC)
 SPEC.loader.exec_module(COST)
 
@@ -33,10 +35,10 @@ def run(args):
     stages = []
     for number, unit in enumerate(('message', 'parent-and-message', 'message')):
         config = output / f'{unit}.toml'
-        config.write_text('version=1\n[providers]\n[gold.build]\n' +
-                          f'retrieval_unit="{unit}"\n[gold.query]\nintent="exact-mention"\n')
+        config.write_text('version=1\n[providers]\n[views.build]\n' +
+                          f'retrieval_unit="{unit}"\n[views.query]\nintent="exact-mention"\n')
         command = base + ['--config', str(config)]
-        result, measurement = COST.measure(command + ['index', '--rebuild-local-gold'],
+        result, measurement = COST.measure(command + ['index', '--rebuild-local-views'],
                                             binary, output / f'build-{number}-{unit}')
         if COST.silver_digest(database) != canonical or result['scanned_files']:
             raise ValueError('unit replacement changed silver or read provider files')

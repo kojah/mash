@@ -1,6 +1,6 @@
-//! Gold build evidence reported for one node's current silver revision.
+//! View build evidence reported for one node's current silver revision.
 use super::silver_revision::State;
-use crate::gold::config::Build;
+use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -50,11 +50,11 @@ mod tests {
         assert!(!manifest.matches(&build, "model", None));
         let title = Build {
             max_embedding_chars: None,
-            representations: crate::gold::config::Representations::LexicalAndDense,
-            dense_content: crate::gold::config::DenseContent::AllVisible,
-            retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-            text_preparation: crate::gold::config::TextPreparation::Preserve,
-            embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+            representations: crate::views::config::Representations::LexicalAndDense,
+            dense_content: crate::views::config::DenseContent::AllVisible,
+            retrieval_unit: crate::views::config::RetrievalUnit::Message,
+            text_preparation: crate::views::config::TextPreparation::Preserve,
+            embedding_text: crate::views::config::EmbeddingText::TitleAndDialogue,
         };
         assert!(!manifest.matches(&title, "model", Some(&silver)));
         let mut unknown = manifest.clone();

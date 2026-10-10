@@ -1,9 +1,9 @@
 use super::*;
 use crate::connectors::Role;
 use crate::connectors::{AuthorKind, Batch};
-use crate::gold::exact::Literal;
 use crate::search_filter::{Filter, Selection};
 use crate::source::Source;
+use crate::views::exact::Literal;
 
 const MESSAGE: &str = "connector#entry#github:org#review-1";
 const REPLY: &str = "connector#entry#github:org#review-2";
@@ -48,7 +48,7 @@ fn initial() -> Batch {
     )
 }
 
-/// Native silver plus certified lexical gold, then connector silver on top.
+/// Native silver plus certified lexical views, then connector silver on top.
 fn database(root: &std::path::Path) -> std::path::PathBuf {
     let path = root.join("connectors.sqlite3");
     let mut writer = Storage::open_writer(&path).unwrap();
@@ -80,7 +80,7 @@ fn apply(path: &std::path::Path, batch: &Batch) {
         .unwrap();
 }
 
-/// The gold stage: project connector silver and recertify lexical gold.
+/// The views stage: project connector silver and recertify lexical views.
 fn project(path: &std::path::Path) {
     let mut writer = Storage::open_writer(path).unwrap();
     writer.refresh_derived_search_state().unwrap();
@@ -97,7 +97,7 @@ fn ids(hits: &[SearchHit]) -> Vec<&str> {
 }
 
 #[test]
-fn connector_commits_keep_search_closed_until_gold_projects_them() {
+fn connector_commits_keep_search_closed_until_views_projects_them() {
     let root = tempfile::tempdir().unwrap();
     let path = database(root.path());
     assert!(Storage::open_lexical(&path).is_err());
@@ -263,7 +263,7 @@ fn view_and_listing_resolve_connector_anchors() {
 }
 
 #[test]
-fn edits_reindex_only_changed_units_and_deletions_leave_gold() {
+fn edits_reindex_only_changed_units_and_deletions_leave_views() {
     let root = tempfile::tempdir().unwrap();
     let path = database(root.path());
     project(&path);
@@ -347,7 +347,7 @@ fn connector_vectors_join_native_dense_candidates_by_cosine() {
         &[1.0, 0.0, 0.0],
         (None, None, crate::search_results::SearchUnit::Messages),
         Some(&all),
-        crate::gold::config::Fusion::default(),
+        crate::views::config::Fusion::default(),
     )
     .unwrap();
     assert_eq!(hits[0].id, MESSAGE);
@@ -368,7 +368,7 @@ fn connector_vectors_join_native_dense_candidates_by_cosine() {
             crate::search_results::SearchUnit::Messages,
         ),
         Some(&all),
-        crate::gold::config::Fusion::default(),
+        crate::views::config::Fusion::default(),
     )
     .unwrap();
     assert!(

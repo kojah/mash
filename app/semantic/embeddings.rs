@@ -212,7 +212,7 @@ pub(crate) fn rebuild_embeddings(
         storage,
         pool,
         generation,
-        &crate::gold::config::Build::default(),
+        &crate::views::config::Build::default(),
         on_progress,
     )
 }
@@ -256,11 +256,11 @@ pub(crate) fn rebuild_with_build(
     storage: &mut Storage,
     pool: &mut EmbeddingPool,
     generation: &str,
-    build: &crate::gold::config::Build,
+    build: &crate::views::config::Build,
     mut on_progress: impl FnMut(EmbeddingProgress),
 ) -> Result<EmbeddingSummary, AppError> {
     let mut plan = crate::progress::during(crate::progress::Phase::SemanticEmbeddings, || {
-        if build == &crate::gold::config::Build::default() {
+        if build == &crate::views::config::Build::default() {
             crate::storage::embedding_plan::EmbeddingPlan::new(storage)
         } else {
             crate::storage::embedding_plan::EmbeddingPlan::with_build(storage, build)

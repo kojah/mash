@@ -3,10 +3,10 @@ use super::embeddings::embedding_generation;
 use super::models::Backend;
 use super::remote;
 use crate::AppError;
-use crate::gold::config::{Fusion, Options};
 use crate::observability::retrieval::{self as measurements, Guard, Stage};
 use crate::search_results::{HitKey, hit_key};
 use crate::storage::{SearchHit, SemanticChunks, Storage};
+use crate::views::config::{Fusion, Options};
 use std::collections::HashMap;
 
 pub(super) struct QuantizedVector {
@@ -59,7 +59,7 @@ pub(crate) fn hybrid_search_filtered(
         return Ok(crate::search_results::diversify(lexical, unit));
     }
     let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
-    if ranking == crate::gold::config::Ranking::Fusion {
+    if ranking == crate::views::config::Ranking::Fusion {
         return Ok(crate::search_ranking::finish_fusion(
             fused, unit, limit, fusion,
         ));

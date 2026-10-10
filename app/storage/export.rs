@@ -105,6 +105,10 @@ pub(crate) fn restore(
             "archive native history does not follow its provider topology",
         ));
     }
+    // Connector regrouping writes derived parent addresses and invalidates the
+    // revision too. Restore both archived revisions after all reconstruction.
+    crate::connectors::silver::validate_archive(&transaction)
+        .map_err(|_| AppError::usage("invalid connector archive reply graph"))?;
     transaction
         .execute(
             "UPDATE silver_state SET revision=?1 WHERE singleton=1",
@@ -117,8 +121,6 @@ pub(crate) fn restore(
             [publication],
         )
         .map_err(AppError::database)?;
-    crate::connectors::silver::validate_archive(&transaction)
-        .map_err(|_| AppError::usage("invalid connector archive reply graph"))?;
     // The next publication is a full snapshot: the change journal starts empty.
     transaction
         .execute_batch(if keep_identity {
@@ -153,15 +155,15 @@ pub(crate) fn validate(storage: &Storage) -> Result<(), AppError> {
         .map_err(AppError::database)?
         .exists([])
         .map_err(AppError::database)?;
-    let gold: i64 = storage.connection.query_row(
+    let views: i64 = storage.connection.query_row(
         "SELECT (SELECT count(*) FROM message_embeddings)+(SELECT count(*) FROM semantic_chunks)
         +(SELECT count(*) FROM message_fts)+(SELECT count(*) FROM pending_embeddings)
-        +(SELECT count(*) FROM gold_manifest WHERE manifest IS NOT NULL)
+        +(SELECT count(*) FROM views_manifest WHERE manifest IS NOT NULL)
         +(SELECT count(*) FROM lexical_manifest WHERE manifest IS NOT NULL)
         +(SELECT count(*) FROM derived_state WHERE search_dirty<>1 OR semantic_ready_generation IS NOT NULL OR resume_generation IS NOT NULL)
         +(SELECT count(*) FROM shared_publication WHERE acknowledged<>0 OR target<>'')",
         [], |row| row.get(0)).map_err(AppError::database)?;
-    if check != "ok" || foreign_keys || gold != 0 {
+    if check != "ok" || foreign_keys || views != 0 {
         return Err(AppError::database_data("invalid silver export database"));
     }
     Ok(())

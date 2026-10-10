@@ -195,7 +195,7 @@ impl Evidence {
     }
 
     /// Source checkpoint freshness includes the audited native origins. Old
-    /// unknown evidence stays readable for source-free gold builds and viewing.
+    /// unknown evidence stays readable for source-free views builds and viewing.
     pub(crate) fn is_current_for(&self, provider: Provider) -> bool {
         self.is_current()
             && match self.timestamps.as_ref() {

@@ -18,8 +18,8 @@ async fn shared_lexical_capabilities_reject_hybrid_before_model_admission() {
         "/v1/freshness",
         axum::routing::get(|| async {
             Json(crate::test_support::vector::freshness(
-                &serde_json::to_value(crate::gold::config::Build {
-                    representations: crate::gold::config::Representations::LexicalOnly,
+                &serde_json::to_value(crate::views::config::Build {
+                    representations: crate::views::config::Representations::LexicalOnly,
                     ..Default::default()
                 })
                 .unwrap(),
@@ -45,7 +45,7 @@ async fn shared_lexical_capabilities_reject_hybrid_before_model_admission() {
             intent: None,
             limit: None,
             unit: None,
-            fusion: crate::gold::config::FusionOverrides::default(),
+            fusion: crate::views::config::FusionOverrides::default(),
             ranking: None,
             diagnostics: false,
             filters: Box::default(),
@@ -97,7 +97,7 @@ async fn fixture() -> Fixture {
             "/v1/freshness",
             axum::routing::get(|| async {
                 Json(crate::test_support::vector::freshness(
-                    &serde_json::to_value(crate::gold::config::Build::default()).unwrap(),
+                    &serde_json::to_value(crate::views::config::Build::default()).unwrap(),
                 ))
             }),
         )
@@ -129,7 +129,7 @@ async fn fixture() -> Fixture {
             intent: None,
             limit: Some(10),
             unit: Some(SearchUnit::Messages),
-            fusion: crate::gold::config::FusionOverrides::default(),
+            fusion: crate::views::config::FusionOverrides::default(),
             ranking: None,
             diagnostics: true,
             filters: Box::default(),
@@ -162,8 +162,11 @@ fn assert_context_outcome(response: &core::SearchResponse, shared_only: bool) {
     );
 }
 
-fn assert_measured_sources(diagnostics: &crate::gold::diagnostics::Diagnostics, shared_only: bool) {
-    use crate::gold::diagnostics::Source;
+fn assert_measured_sources(
+    diagnostics: &crate::views::diagnostics::Diagnostics,
+    shared_only: bool,
+) {
+    use crate::views::diagnostics::Source;
     let expected = if shared_only {
         vec![Source::Shared]
     } else {

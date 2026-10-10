@@ -143,8 +143,8 @@ FROM silver_state s WHERE s.singleton=1;
 SELECT source_key,source_path,modified_ns FROM silver_rejections
 WHERE provider=sqlc.arg(provider) ORDER BY source_key;
 
--- name: GoldManifest :one
-SELECT manifest FROM gold_manifest WHERE singleton=1;
+-- name: ViewManifest :one
+SELECT manifest FROM views_manifest WHERE singleton=1;
 
 -- name: LexicalManifest :one
 SELECT manifest FROM lexical_manifest WHERE singleton=1;

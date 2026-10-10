@@ -50,7 +50,7 @@ async fn contract(service: Service) {
     );
     assert_eq!(service.state().await.source_silver, Some(certificate()));
 
-    // Gold can become unavailable without changing the source interpretation evidence.
+    // View can become unavailable without changing the source interpretation evidence.
     let mut no_vectors = events.clone();
     no_vectors[0]["revision"] = json!(2);
     for record in no_vectors[2]["records"].as_array_mut().unwrap() {

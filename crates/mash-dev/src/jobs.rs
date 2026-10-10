@@ -18,7 +18,7 @@ use tokio::sync::Mutex;
 
 #[derive(Serialize)]
 struct IndexArguments {
-    rebuild_local_gold: bool,
+    rebuild_local_views: bool,
 }
 
 #[derive(Serialize)]
@@ -320,7 +320,7 @@ impl Runner {
             if let Operation::Refresh(mode) = operation {
                 self.phase(id, name, Phase::Refresh).await;
                 let arguments = IndexArguments {
-                    rebuild_local_gold: matches!(mode, RefreshMode::LocalGold),
+                    rebuild_local_views: matches!(mode, RefreshMode::LocalViews),
                 };
                 let mut request = request("index", &arguments)?;
                 let mut meta = RequestMetaObject::new();

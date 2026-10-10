@@ -13,7 +13,7 @@ fn fixture(shared: bool) -> (tempfile::TempDir, Mash) {
     std::fs::write(
         &config,
         format!(
-            "version=1\nproviders={{}}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n{routing}"
+            "version=1\nproviders={{}}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n{routing}"
         ),
     )
     .unwrap();

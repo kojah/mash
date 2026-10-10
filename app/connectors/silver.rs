@@ -183,8 +183,8 @@ pub(crate) fn apply(transaction: &Transaction<'_>, batch: &Batch) -> Result<Rece
         batch_id: batch.batch_id.clone(),
         source_revision: next_revision,
         silver_revision: u64::try_from(silver_revision).map_err(|_| Error::CorruptRecord)?,
-        // This boundary commits silver only. Gold publication has its own gate.
-        gold_ready: false,
+        // This boundary commits silver only. View publication has its own gate.
+        views_ready: false,
     };
     sql::ConnectorPutReceipt::builder()
         .source_id(batch.source_id.as_str())

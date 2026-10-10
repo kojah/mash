@@ -1,6 +1,6 @@
 //! Shared silver: the server's system of record for published node history.
 //! Each node's history is its own SQLite database using the one silver schema
-//! that every local index also uses. Gold (vectors, search documents and their
+//! that every local index also uses. View (vectors, search documents and their
 //! readiness) lives only in Qdrant and can be rebuilt from these databases.
 use super::protocol::{ConversationRecord, MessageRecord, Tombstone};
 use super::server::Identity;
@@ -27,7 +27,7 @@ use generated as sql;
 pub(super) struct Head {
     pub(super) instance: String,
     pub(super) revision: i64,
-    /// Changes with every committed publication, including gold-only rebuilds.
+    /// Changes with every committed publication, including views-only rebuilds.
     pub(super) version: String,
     pub(super) silver_revision: Option<State>,
     pub(super) source_silver: Option<crate::silver::certificate::Certificate>,
@@ -46,7 +46,7 @@ pub(super) struct SilverStore {
 }
 
 /// Exclusive ownership of a silver directory for this process's lifetime:
-/// per-node publication locks and gold synchronization are in-process only.
+/// per-node publication locks and views synchronization are in-process only.
 fn own(root: &Path) -> Result<std::fs::File, AppError> {
     std::fs::create_dir_all(root).map_err(AppError::io)?;
     let lock = std::fs::OpenOptions::new()
@@ -217,7 +217,7 @@ pub(super) fn put_head(connection: &Connection, head: &Head) -> Result<(), AppEr
     Ok(())
 }
 
-/// Silver counts. Embedding coverage belongs to gold and is reported separately.
+/// Silver counts. Embedding coverage belongs to views and is reported separately.
 pub(super) fn counts(connection: &Connection) -> Result<Counts, AppError> {
     let row = sql::Counts.query_one(connection).map_err(database)?;
     let count = |value: i64| u64::try_from(value).map_err(|_| AppError::database_data("count"));

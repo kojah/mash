@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 #[test]
 fn local_unit_plan_matches_streaming_parent_resolution_and_preserves_silver() {
-    use crate::gold::{
+    use crate::views::{
         config::{Build, DenseContent, RetrievalUnit},
         units::{Input, Stream},
     };
@@ -91,7 +91,7 @@ fn budgeted_dense_plan_preserves_full_silver_and_lexical_evidence() {
         .replace_conversation(&conversation_with_messages(&[("one", &content)]))
         .unwrap();
     let before = storage.messages_needing_embeddings().unwrap();
-    let recipe = crate::gold::config::Build {
+    let recipe = crate::views::config::Build {
         max_embedding_chars: Some(256_u32.try_into().unwrap()),
         ..Default::default()
     };
@@ -113,7 +113,7 @@ fn budgeted_dense_plan_preserves_full_silver_and_lexical_evidence() {
 
 #[test]
 fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() {
-    use crate::gold::config::{Build, EmbeddingText};
+    use crate::views::config::{Build, EmbeddingText};
     let directory = tempfile::tempdir().unwrap();
     let mut storage = Storage::open_writer(&directory.path().join("index.sqlite3")).unwrap();
     for (id, title) in [("one", "Qdrant"), ("two", "Postgres")] {
@@ -133,10 +133,10 @@ fn title_recipe_deduplicates_prepared_text_and_keeps_hidden_messages_excluded() 
         &storage,
         &Build {
             max_embedding_chars: None,
-            representations: crate::gold::config::Representations::LexicalAndDense,
-            dense_content: crate::gold::config::DenseContent::AllVisible,
-            retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-            text_preparation: crate::gold::config::TextPreparation::Preserve,
+            representations: crate::views::config::Representations::LexicalAndDense,
+            dense_content: crate::views::config::DenseContent::AllVisible,
+            retrieval_unit: crate::views::config::RetrievalUnit::Message,
+            text_preparation: crate::views::config::TextPreparation::Preserve,
             embedding_text: EmbeddingText::TitleAndDialogue,
         },
     )

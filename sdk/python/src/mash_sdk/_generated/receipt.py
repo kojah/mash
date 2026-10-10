@@ -32,7 +32,6 @@ class Receipt(BaseModel):
             pattern="^[A-Za-z0-9_][A-Za-z0-9._:/@+\\-]{0,255}$",
         ),
     ]
-    gold_ready: StrictBool
     schema_version: Literal[2] = 2
     silver_revision: Annotated[
         StrictInt,
@@ -56,3 +55,4 @@ class Receipt(BaseModel):
             ge=0,
         ),
     ]
+    views_ready: StrictBool

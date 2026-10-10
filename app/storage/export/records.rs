@@ -196,7 +196,7 @@ pub(crate) fn visit(
         "SELECT fingerprint,receipt FROM connector_receipts ORDER BY source_id,batch_id",
         |row| Ok::<_, AppError>(Record::ConnectorReceipt {
             fingerprint: get(row, "fingerprint")?,
-            receipt: json(row, "receipt")?,
+            receipt: json::<crate::connectors::Receipt>(row, "receipt")?.into(),
         })
     );
     table!(
@@ -263,6 +263,7 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             fingerprint,
             receipt,
         } => {
+            let receipt = crate::connectors::Receipt::from(receipt);
             execute!(
                 "INSERT INTO connector_receipts(source_id,batch_id,fingerprint,receipt) VALUES(?1,?2,?3,?4)",
                 receipt.source_id.as_str(),

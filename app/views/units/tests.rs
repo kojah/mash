@@ -1,5 +1,5 @@
 use super::*;
-use crate::gold::config::{DenseContent, EmbeddingText, TextPreparation};
+use crate::views::config::{DenseContent, EmbeddingText, TextPreparation};
 
 fn text(
     stream: &mut Stream,

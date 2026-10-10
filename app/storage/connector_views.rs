@@ -1,4 +1,4 @@
-//! Gold projection of connector objects: searchable entries and documents.
+//! View projection of connector objects: searchable entries and documents.
 //!
 //! Connector objects have no native message rowid, provider or role. Each unit
 //! is keyed by a namespaced anchor, indexed for lexical search, and embedded
@@ -262,7 +262,7 @@ pub(crate) fn silver_units(connection: &Connection) -> Result<Vec<Unit>, AppErro
 
 impl Storage {
     /// Bring connector units, their FTS rows and vector invalidation in line
-    /// with connector silver. Runs inside the gold build's writer.
+    /// with connector silver. Runs inside the views build's writer.
     pub(crate) fn sync_connector_units(&mut self) -> Result<(), AppError> {
         self.require_writer()?;
         let mut known = sql::ConnectorUnitDigests

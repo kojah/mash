@@ -64,7 +64,7 @@ fn fixture(rejected: bool) -> Fixture {
 
 fn canonical(path: &Path) -> Vec<u8> {
     let storage = Storage::open_catalog(path).unwrap();
-    // Read complete canonical history, including context-only records. Gold
+    // Read complete canonical history, including context-only records. View
     // must neither mutate it nor silently drop records excluded from search.
     let connection =
         rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -94,7 +94,7 @@ fn failed_dense_build_preserves_silver_and_publishes_completed_lexical_artifact(
         &mut storage,
         &models,
         &fixture.source.summary,
-        &crate::gold::config::Build::default(),
+        &crate::views::config::Build::default(),
     )
     .err()
     .unwrap();
@@ -111,7 +111,7 @@ fn failed_dense_build_preserves_silver_and_publishes_completed_lexical_artifact(
     );
     assert!(Storage::open_search(&fixture.database, &models.generation()).is_err());
     let lexical = Storage::open_lexical(&fixture.database).unwrap();
-    assert!(lexical.gold_manifest().unwrap().is_none());
+    assert!(lexical.views_manifest().unwrap().is_none());
     assert_eq!(
         lexical
             .lexical_manifest()
@@ -135,8 +135,8 @@ fn lexical_only_build_is_model_free_and_replaces_dense_storage() {
     let fixture = fixture(false);
     let before = canonical(&fixture.database);
     let models = Models::new(fixture.database.with_file_name("absent-models"));
-    let recipe = crate::gold::config::Build {
-        representations: crate::gold::config::Representations::LexicalOnly,
+    let recipe = crate::views::config::Build {
+        representations: crate::views::config::Representations::LexicalOnly,
         ..Default::default()
     };
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
@@ -147,7 +147,7 @@ fn lexical_only_build_is_model_free_and_replaces_dense_storage() {
     assert_eq!(result.embeddings.model_inferences, 0);
     assert_eq!(result.counts.embeddings, 0);
     storage.commit_writer().unwrap();
-    assert_eq!(storage.gold_manifest().unwrap().unwrap().build, recipe);
+    assert_eq!(storage.views_manifest().unwrap().unwrap().build, recipe);
     drop(storage);
     let reader = Storage::open_lexical(&fixture.database).unwrap();
     assert_eq!(reader.silver_certificate().unwrap(), silver);
@@ -159,8 +159,8 @@ fn lexical_only_build_is_model_free_and_replaces_dense_storage() {
 fn enabling_dense_after_deferred_refresh_queues_unchanged_history() {
     let fixture = fixture(false);
     let models = Models::new(fixture.database.with_file_name("absent-models"));
-    let lexical = crate::gold::config::Build {
-        representations: crate::gold::config::Representations::LexicalOnly,
+    let lexical = crate::views::config::Build {
+        representations: crate::views::config::Representations::LexicalOnly,
         ..Default::default()
     };
     let mut storage = Storage::open_writer(&fixture.database).unwrap();
@@ -173,7 +173,7 @@ fn enabling_dense_after_deferred_refresh_queues_unchanged_history() {
         &mut storage,
         &models,
         &fixture.source.summary,
-        &crate::gold::config::Build::default(),
+        &crate::views::config::Build::default(),
     )
     .err()
     .unwrap();
@@ -184,18 +184,18 @@ fn enabling_dense_after_deferred_refresh_queues_unchanged_history() {
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
-fn artifact_switch_replaces_dense_gold_over_unchanged_silver() {
+fn artifact_switch_replaces_dense_views_over_unchanged_silver() {
     let fixture = fixture(false);
     let before = canonical(&fixture.database);
     let models = Models::new(PathBuf::from(
         std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
     ));
     for representations in [
-        crate::gold::config::Representations::LexicalAndDense,
-        crate::gold::config::Representations::LexicalOnly,
-        crate::gold::config::Representations::LexicalAndDense,
+        crate::views::config::Representations::LexicalAndDense,
+        crate::views::config::Representations::LexicalOnly,
+        crate::views::config::Representations::LexicalAndDense,
     ] {
-        let recipe = crate::gold::config::Build {
+        let recipe = crate::views::config::Build {
             representations,
             ..Default::default()
         };
@@ -211,7 +211,7 @@ fn artifact_switch_replaces_dense_gold_over_unchanged_silver() {
             recipe.expected_embeddings(1)
         );
         storage.commit_writer().unwrap();
-        assert_eq!(storage.gold_manifest().unwrap().unwrap().build, recipe);
+        assert_eq!(storage.views_manifest().unwrap().unwrap().build, recipe);
         assert_eq!(storage.silver_certificate().unwrap(), silver);
         assert_eq!(canonical(&fixture.database), before);
         assert!(Storage::open_lexical(&fixture.database).is_ok());
@@ -222,7 +222,7 @@ fn artifact_switch_replaces_dense_gold_over_unchanged_silver() {
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
 fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
-    use crate::gold::config::{Build as Recipe, EmbeddingText};
+    use crate::views::config::{Build as Recipe, EmbeddingText};
     let fixture = fixture(false);
     let models = Models::new(PathBuf::from(
         std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
@@ -235,10 +235,10 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
     let dialogue = Recipe::default();
     let titled = Recipe {
         max_embedding_chars: None,
-        representations: crate::gold::config::Representations::LexicalAndDense,
-        dense_content: crate::gold::config::DenseContent::AllVisible,
-        retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-        text_preparation: crate::gold::config::TextPreparation::Preserve,
+        representations: crate::views::config::Representations::LexicalAndDense,
+        dense_content: crate::views::config::DenseContent::AllVisible,
+        retrieval_unit: crate::views::config::RetrievalUnit::Message,
+        text_preparation: crate::views::config::TextPreparation::Preserve,
         embedding_text: EmbeddingText::TitleAndDialogue,
     };
     let budgeted = Recipe {
@@ -251,7 +251,7 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
         if previous_vector.is_some() {
             assert!(
                 storage
-                    .require_gold_build(recipe, &models.generation())
+                    .require_views_build(recipe, &models.generation())
                     .is_err()
             );
         }
@@ -260,15 +260,15 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
         assert_eq!(result.embeddings.model_inferences, 1);
         storage.commit_writer().unwrap();
         storage
-            .require_gold_build(recipe, &models.generation())
+            .require_views_build(recipe, &models.generation())
             .unwrap();
         assert_eq!(storage.silver_certificate().unwrap(), certificate);
-        assert_eq!(storage.gold_manifest().unwrap().unwrap().build, *recipe);
+        assert_eq!(storage.views_manifest().unwrap().unwrap().build, *recipe);
         let connection = rusqlite::Connection::open(&fixture.database).unwrap();
         connection
             .execute(
-                "ATTACH DATABASE ?1 AS gold",
-                [crate::storage::schema::gold_path(&fixture.database)
+                "ATTACH DATABASE ?1 AS views",
+                [crate::storage::schema::views_path(&fixture.database)
                     .to_str()
                     .unwrap()],
             )
@@ -317,7 +317,7 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
         .unwrap();
     assert!(storage.forget(&thread).unwrap());
     storage
-        .require_gold_build(&dialogue, &models.generation())
+        .require_views_build(&dialogue, &models.generation())
         .unwrap();
     assert_eq!(storage.counts().unwrap().messages, 0);
     assert!(storage.silver_certificate().unwrap().revision > certificate.revision);
@@ -325,7 +325,7 @@ fn recipe_switch_replaces_vectors_without_changing_silver_or_reading_sources() {
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
-fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources() {
+fn incremental_views_preserves_vectors_and_reopened_views_recovers_without_sources() {
     let models = Models::new(PathBuf::from(
         std::env::var("MASH_TEST_MODELS_DIR").unwrap(),
     ));
@@ -337,7 +337,7 @@ fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources
                 &mut storage,
                 &models,
                 &fixture.source.summary,
-                &crate::gold::config::Build::default()
+                &crate::views::config::Build::default()
             )
             .unwrap()
             .ready
@@ -373,7 +373,7 @@ fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources
             &mut storage,
             &models,
             &source.summary,
-            &crate::gold::config::Build::default(),
+            &crate::views::config::Build::default(),
         )
         .unwrap();
         assert!(result.ready);
@@ -402,7 +402,7 @@ fn incremental_gold_preserves_vectors_and_reopened_gold_recovers_without_sources
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
-fn gold_rebuild_from_stored_history_survives_source_removal_and_is_idempotent() {
+fn views_rebuild_from_stored_history_survives_source_removal_and_is_idempotent() {
     let fixture = fixture(false);
     let before = canonical(&fixture.database);
     let models = Models::new(PathBuf::from(
@@ -418,7 +418,7 @@ fn gold_rebuild_from_stored_history_survives_source_removal_and_is_idempotent() 
             &mut storage,
             &models,
             &fixture.source.summary,
-            &crate::gold::config::Build::default(),
+            &crate::views::config::Build::default(),
         )
         .unwrap();
         assert!(result.ready);
@@ -446,7 +446,7 @@ fn gold_rebuild_from_stored_history_survives_source_removal_and_is_idempotent() 
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
-fn rejected_source_keeps_gold_unready_even_with_complete_stored_vectors() {
+fn rejected_source_keeps_views_unready_even_with_complete_stored_vectors() {
     let mut fixture = fixture(true);
     assert_eq!(fixture.source.summary.malformed_records, 1);
     // A stale caller's success summary/certificate cannot override durable evidence.
@@ -460,7 +460,7 @@ fn rejected_source_keeps_gold_unready_even_with_complete_stored_vectors() {
         &mut storage,
         &models,
         &fixture.source.summary,
-        &crate::gold::config::Build::default(),
+        &crate::views::config::Build::default(),
     )
     .unwrap();
     assert_eq!(result.counts.embeddings, result.counts.searchable_messages);

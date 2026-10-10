@@ -30,13 +30,13 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
     let empty: Search = serde_json::from_value(json!({"query":"database"})).unwrap();
     assert_eq!(
         empty.filters.match_mode,
-        crate::gold::matching::Mode::Flexible
+        crate::views::matching::Mode::Flexible
     );
     for (name, expected) in [
-        ("strict", crate::gold::matching::Mode::Strict),
-        ("prefix", crate::gold::matching::Mode::Prefix),
-        ("typo", crate::gold::matching::Mode::Typo),
-        ("flexible", crate::gold::matching::Mode::Flexible),
+        ("strict", crate::views::matching::Mode::Strict),
+        ("prefix", crate::views::matching::Mode::Prefix),
+        ("typo", crate::views::matching::Mode::Typo),
+        ("flexible", crate::views::matching::Mode::Flexible),
     ] {
         let request: Search =
             serde_json::from_value(json!({"query":"database", "match_mode":name})).unwrap();
@@ -50,7 +50,10 @@ fn search_deserializes_the_shared_core_selection_and_rejects_unknown_fields() {
     assert!(empty.unit.is_none());
     assert!(empty.intent.is_none());
     let exact: Search = serde_json::from_value(json!({"query":"voyage-code-4", "intent":"exact-mention", "chat":["thread-a"], "local":true})).unwrap();
-    assert_eq!(exact.intent, Some(crate::gold::exact::Intent::ExactMention));
+    assert_eq!(
+        exact.intent,
+        Some(crate::views::exact::Intent::ExactMention)
+    );
     assert!(
         serde_json::from_value::<Search>(json!({"query":"model", "intent":"decisions"})).is_err()
     );

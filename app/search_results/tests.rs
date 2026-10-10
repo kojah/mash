@@ -11,7 +11,7 @@ fn collect_exact(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
     limit: usize,
-    literal: &crate::gold::exact::Literal,
+    literal: &crate::views::exact::Literal,
 ) -> Results {
     super::collect_exact(hits, unit, limit, literal, crate::redaction::Policy::ON)
 }
@@ -67,7 +67,7 @@ fn message_replicas_fuse_once_even_when_rankers_choose_different_nodes() {
         vec![hit("thread", "a"), lexical_copy, hit("thread", "b")],
         vec![semantic_copy, hit("thread", "b")],
         SearchUnit::Messages,
-        crate::gold::config::Fusion::default(),
+        crate::views::config::Fusion::default(),
     );
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].id, "a");
@@ -438,7 +438,7 @@ fn exact_excerpts_show_verified_literals_instead_of_earlier_partial_decoys() {
         ),
         ("C++", "C++20", "c++"),
     ] {
-        let literal = crate::gold::exact::Literal::new(query).unwrap();
+        let literal = crate::views::exact::Literal::new(query).unwrap();
         let mut evidence = hit("thread", "message");
         evidence.content = format!(
             "{decoy} {} ({matched}) {}",

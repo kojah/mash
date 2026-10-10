@@ -36,7 +36,7 @@ impl Storage {
         if version != SCHEMA_VERSION {
             return Err(super::schema::unsupported(version));
         }
-        super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
+        super::schema::attach_views(&connection, &super::schema::views_path(path), false)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
             output_redaction: crate::redaction::Policy::ON,
@@ -66,7 +66,7 @@ impl Storage {
         if version == 0 {
             return Ok(StatusSnapshot {
                 lexical: None,
-                gold: None,
+                views: None,
                 silver: None,
                 counts: Counts::default(),
                 current_embeddings: 0,
@@ -78,7 +78,7 @@ impl Storage {
         if version != SCHEMA_VERSION {
             return Err(super::schema::unsupported(version));
         }
-        super::schema::attach_gold(&connection, &super::schema::gold_path(path), false)?;
+        super::schema::attach_views(&connection, &super::schema::views_path(path), false)?;
         let storage = Self {
             attachments_config: crate::attachments::Configuration::default(),
             output_redaction: crate::redaction::Policy::ON,
@@ -89,7 +89,7 @@ impl Storage {
         };
         Ok(StatusSnapshot {
             lexical: storage.lexical_manifest()?,
-            gold: storage.gold_manifest()?,
+            views: storage.views_manifest()?,
             silver: Some(storage.silver_certificate()?),
             counts: storage.counts()?,
             current_embeddings: storage.embedding_count(generation)?,
@@ -166,11 +166,11 @@ impl Storage {
                 "search query must contain letters or numbers",
             ));
         }
-        let mode = filters.map_or(crate::gold::matching::Mode::Strict, |f| f.match_mode);
+        let mode = filters.map_or(crate::views::matching::Mode::Strict, |f| f.match_mode);
         let plan = self.lexical_plan(query, mode, filters)?;
         let original_query = crate::search_query::sqlite(query);
         let expanded = plan.sqlite();
-        let query = if mode == crate::gold::matching::Mode::Strict || expanded.is_empty() {
+        let query = if mode == crate::views::matching::Mode::Strict || expanded.is_empty() {
             original_query.clone()
         } else {
             format!("({original_query}) OR ({expanded})")
@@ -265,7 +265,7 @@ impl Storage {
         message_ids
             .iter()
             .map(|message_id| {
-                if message_id.starts_with(super::connector_gold::ANCHOR_PREFIX) {
+                if message_id.starts_with(super::connector_views::ANCHOR_PREFIX) {
                     return self.connector_document(message_id);
                 }
                 statement
@@ -286,7 +286,7 @@ impl Storage {
         context: u32,
         representation: super::MessageContent,
     ) -> Result<Vec<Message>, AppError> {
-        if id.starts_with(super::connector_gold::ANCHOR_PREFIX) {
+        if id.starts_with(super::connector_views::ANCHOR_PREFIX) {
             return self.connector_view(id, context);
         }
         let anchor = sql::Anchor::builder()

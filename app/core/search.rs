@@ -8,13 +8,13 @@ use crate::storage::Storage;
 use std::path::Path;
 
 pub(super) struct Input {
-    pub(super) shared_vector_search: Option<crate::gold::vector::Search>,
+    pub(super) shared_vector_search: Option<crate::views::vector::Search>,
     pub(super) query: String,
-    pub(super) intent: Option<crate::gold::exact::Intent>,
+    pub(super) intent: Option<crate::views::exact::Intent>,
     pub(super) limit: Option<usize>,
     pub(super) unit: Option<crate::search_results::SearchUnit>,
-    pub(super) fusion: crate::gold::config::FusionOverrides,
-    pub(super) ranking: Option<crate::gold::config::Ranking>,
+    pub(super) fusion: crate::views::config::FusionOverrides,
+    pub(super) ranking: Option<crate::views::config::Ranking>,
     pub(super) diagnostics: bool,
     pub(super) filters: crate::search_filter::Selection,
     pub(super) shared: bool,
@@ -39,7 +39,7 @@ pub(super) async fn preflight(
     else {
         return Ok(());
     };
-    let intent = intent.unwrap_or(configuration.gold.query.intent);
+    let intent = intent.unwrap_or(configuration.views.query.intent);
     resolve(
         query,
         intent,
@@ -52,10 +52,10 @@ pub(super) async fn preflight(
             .map_or("local", |c| c.node_id.as_str()),
     )?;
     if !shared {
-        configuration.gold.build.require_intent(intent)?;
+        configuration.views.build.require_intent(intent)?;
     }
-    resolve_fusion(*fusion, intent, configuration.gold.query.fusion)?;
-    resolve_ranking(*ranking, intent, configuration.gold.query.ranking)?;
+    resolve_fusion(*fusion, intent, configuration.views.query.fusion)?;
+    resolve_ranking(*ranking, intent, configuration.views.query.ranking)?;
     validate_vector(
         *shared_vector_search,
         intent,
@@ -63,7 +63,7 @@ pub(super) async fn preflight(
         configuration.shared.is_some(),
     )?;
     if (*shared || shared_vector_search.is_some())
-        && intent == crate::gold::exact::Intent::RelatedDiscussion
+        && intent == crate::views::exact::Intent::RelatedDiscussion
     {
         shared::require_dense(required_shared(configuration)?).await?;
     }
@@ -71,14 +71,14 @@ pub(super) async fn preflight(
 }
 
 pub(super) fn validate_vector(
-    policy: Option<crate::gold::vector::Search>,
-    intent: crate::gold::exact::Intent,
+    policy: Option<crate::views::vector::Search>,
+    intent: crate::views::exact::Intent,
     local: bool,
     configured: bool,
 ) -> Result<(), AppError> {
     if let Some(policy) = policy {
         policy.validate_request()?;
-        if intent == crate::gold::exact::Intent::ExactMention || local || !configured {
+        if intent == crate::views::exact::Intent::ExactMention || local || !configured {
             return Err(AppError::usage(
                 "shared vector overrides require related-discussion search against a configured shared index",
             ));
@@ -88,11 +88,11 @@ pub(super) fn validate_vector(
 }
 
 pub(super) fn resolve_fusion(
-    overrides: crate::gold::config::FusionOverrides,
-    intent: crate::gold::exact::Intent,
-    defaults: crate::gold::config::Fusion,
-) -> Result<crate::gold::config::Fusion, AppError> {
-    if intent == crate::gold::exact::Intent::ExactMention && !overrides.is_empty() {
+    overrides: crate::views::config::FusionOverrides,
+    intent: crate::views::exact::Intent,
+    defaults: crate::views::config::Fusion,
+) -> Result<crate::views::config::Fusion, AppError> {
+    if intent == crate::views::exact::Intent::ExactMention && !overrides.is_empty() {
         return Err(AppError::usage(
             "fusion overrides require related-discussion intent",
         ));
@@ -101,11 +101,11 @@ pub(super) fn resolve_fusion(
 }
 
 pub(super) fn resolve_ranking(
-    ranking: Option<crate::gold::config::Ranking>,
-    intent: crate::gold::exact::Intent,
-    default: crate::gold::config::Ranking,
-) -> Result<crate::gold::config::Ranking, AppError> {
-    if intent == crate::gold::exact::Intent::ExactMention && ranking.is_some() {
+    ranking: Option<crate::views::config::Ranking>,
+    intent: crate::views::exact::Intent,
+    default: crate::views::config::Ranking,
+) -> Result<crate::views::config::Ranking, AppError> {
+    if intent == crate::views::exact::Intent::ExactMention && ranking.is_some() {
         return Err(AppError::usage(
             "ranking overrides require related-discussion intent",
         ));
@@ -115,7 +115,7 @@ pub(super) fn resolve_ranking(
 
 pub(super) fn resolve(
     query: &str,
-    intent: crate::gold::exact::Intent,
+    intent: crate::views::exact::Intent,
     filters: crate::search_filter::Selection,
     shared: bool,
     local: bool,
@@ -127,9 +127,9 @@ pub(super) fn resolve(
         ));
     }
     match intent {
-        crate::gold::exact::Intent::RelatedDiscussion => crate::search_query::validate(query)?,
-        crate::gold::exact::Intent::ExactMention => {
-            crate::gold::exact::Literal::new(query)?;
+        crate::views::exact::Intent::RelatedDiscussion => crate::search_query::validate(query)?,
+        crate::views::exact::Intent::ExactMention => {
+            crate::views::exact::Literal::new(query)?;
         }
     }
     filters.resolve(node)
@@ -145,23 +145,23 @@ pub(super) async fn run(
     let shared_only = input.shared;
     let sort = input.filters.sort;
     let policy = if input.diagnostics {
-        let (limit, _) = configuration.gold.query.resolve(input.limit, input.unit);
+        let (limit, _) = configuration.views.query.resolve(input.limit, input.unit);
         let fusion = resolve_fusion(
             input.fusion,
-            input.intent.unwrap_or(configuration.gold.query.intent),
-            configuration.gold.query.fusion,
+            input.intent.unwrap_or(configuration.views.query.intent),
+            configuration.views.query.fusion,
         )?;
         let scope = if input.shared {
-            crate::gold::diagnostics::Scope::Shared
+            crate::views::diagnostics::Scope::Shared
         } else if input.local || configuration.shared.is_none() {
-            crate::gold::diagnostics::Scope::Local
+            crate::views::diagnostics::Scope::Local
         } else {
-            crate::gold::diagnostics::Scope::Combined
+            crate::views::diagnostics::Scope::Combined
         };
         let ranking = resolve_ranking(
             input.ranking,
-            input.intent.unwrap_or(configuration.gold.query.intent),
-            configuration.gold.query.ranking,
+            input.intent.unwrap_or(configuration.views.query.intent),
+            configuration.views.query.ranking,
         )?;
         Some((limit, fusion, scope, ranking, input.filters.fields()))
     } else {
@@ -182,7 +182,7 @@ pub(super) async fn run(
         shared_only,
     );
     if let Some((limit, fusion, scope, ranking, filter_fields)) = policy {
-        response.diagnostics = Some(crate::gold::diagnostics::Diagnostics::new(
+        response.diagnostics = Some(crate::views::diagnostics::Diagnostics::new(
             &response, scope, limit, fusion, ranking,
         ));
         if let Some(diagnostics) = &mut response.diagnostics {
@@ -213,9 +213,9 @@ async fn run_inner(
         shared: use_shared,
         local: use_local,
     } = input;
-    let (limit, unit) = configuration.gold.query.resolve(limit, unit);
-    let mut options = crate::gold::config::Options::new(limit, unit);
-    let intent = intent.unwrap_or(configuration.gold.query.intent);
+    let (limit, unit) = configuration.views.query.resolve(limit, unit);
+    let mut options = crate::views::config::Options::new(limit, unit);
+    let intent = intent.unwrap_or(configuration.views.query.intent);
     validate_vector(
         shared_vector_search,
         intent,
@@ -224,10 +224,10 @@ async fn run_inner(
     )?;
     options.shared_vector_search = shared_vector_search;
     if !use_shared {
-        configuration.gold.build.require_intent(intent)?;
+        configuration.views.build.require_intent(intent)?;
     }
-    options.fusion = resolve_fusion(fusion, intent, configuration.gold.query.fusion)?;
-    options.ranking = resolve_ranking(ranking, intent, configuration.gold.query.ranking)?;
+    options.fusion = resolve_fusion(fusion, intent, configuration.views.query.fusion)?;
+    options.ranking = resolve_ranking(ranking, intent, configuration.views.query.ranking)?;
     options.output_redaction = configuration.redaction.output();
     let filters = resolve(
         &query,
@@ -241,8 +241,8 @@ async fn run_inner(
             .map_or("local", |c| c.node_id.as_str()),
     )?;
     let output = options.output_redaction;
-    if intent == crate::gold::exact::Intent::ExactMention {
-        let literal = crate::gold::exact::Literal::with_mode(&query, filters.match_mode)?;
+    if intent == crate::views::exact::Intent::ExactMention {
+        let literal = crate::views::exact::Literal::with_mode(&query, filters.match_mode)?;
         if use_shared || (!use_local && configuration.shared.is_some()) {
             let (hits, shared_error) = shared::search_exact(
                 required_shared(configuration)?,
@@ -286,7 +286,7 @@ async fn run_inner(
         let database = database.to_path_buf();
         let models = models.to_path_buf();
         let embeddings = configuration.embeddings.clone();
-        let build = configuration.gold.build.clone();
+        let build = configuration.views.build.clone();
         crate::blocking(move || {
             local_search(
                 &database, &models, embeddings, query, options, &filters, &build,
@@ -301,18 +301,18 @@ async fn shared_hybrid(
     database: Option<&Path>,
     models: &Path,
     query: String,
-    options: crate::gold::config::Options,
+    options: crate::views::config::Options,
     filters: &crate::search_filter::Scope,
     shared_only: bool,
 ) -> Result<SearchResponse, AppError> {
-    let crate::gold::config::Options { limit, unit, .. } = options;
+    let crate::views::config::Options { limit, unit, .. } = options;
     let shared::SearchOutcome {
         hits: results,
         retrieval,
         context_error,
     } = shared::search(
         required_shared(configuration)?,
-        database.map(|database| (database, &configuration.gold.build)),
+        database.map(|database| (database, &configuration.views.build)),
         models,
         configuration.embeddings.as_ref(),
         &query,
@@ -323,7 +323,7 @@ async fn shared_hybrid(
     let shared_error = retrieval.into_error();
     Ok(SearchResponse {
         diagnostics: None,
-        intent: crate::gold::exact::Intent::RelatedDiscussion,
+        intent: crate::views::exact::Intent::RelatedDiscussion,
         realized_mode: search_mode(shared_error.is_some(), shared_only),
         unit,
         results: crate::search_results::collect(
@@ -342,7 +342,7 @@ async fn shared_hybrid(
 
 fn local_exact(
     database: &Path,
-    literal: &crate::gold::exact::Literal,
+    literal: &crate::views::exact::Literal,
     query: String,
     (limit, unit): (usize, crate::search_results::SearchUnit),
     filters: &crate::search_filter::Scope,
@@ -357,10 +357,10 @@ fn local_exact(
                 .search_exact(literal, unit.candidate_limit(), filters)
         },
     )?;
-    let hits = crate::gold::exact::rank(hits, unit);
+    let hits = crate::views::exact::rank(hits, unit);
     Ok(SearchResponse {
         diagnostics: None,
-        intent: crate::gold::exact::Intent::ExactMention,
+        intent: crate::views::exact::Intent::ExactMention,
         realized_mode: SearchMode::Lexical,
         unit,
         results: crate::search_results::collect_exact(hits, unit, limit, literal, output),
@@ -377,16 +377,16 @@ fn local_search(
     models_dir: &Path,
     embeddings_config: Option<semantic::remote::Configuration>,
     query: String,
-    options: crate::gold::config::Options,
+    options: crate::views::config::Options,
     filters: &crate::search_filter::Scope,
-    build: &crate::gold::config::Build,
+    build: &crate::views::config::Build,
 ) -> Result<SearchResponse, AppError> {
     let models = Models::new(models_dir.to_path_buf()).with_remote(embeddings_config);
     models.require_search(options.ranking)?;
     let generation = build.generation(&models.generation());
     let storage = Storage::open_search(database_path, &generation)?
         .with_output_redaction(options.output_redaction);
-    storage.require_gold_build(build, &models.generation())?;
+    storage.require_views_build(build, &models.generation())?;
     let mut backend = models.load_search(options.ranking)?.ok_or_else(|| {
         AppError::model("semantic models are not installed; run `mash models install`")
     })?;
@@ -401,7 +401,7 @@ fn local_search(
     )?;
     Ok(SearchResponse {
         diagnostics: None,
-        intent: crate::gold::exact::Intent::RelatedDiscussion,
+        intent: crate::views::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,
         unit: options.unit,
         results: crate::search_results::collect(

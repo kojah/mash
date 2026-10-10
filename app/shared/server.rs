@@ -298,13 +298,13 @@ async fn index(
 }
 /// Explicit operator changes applied before serving.
 pub(crate) struct Activation {
-    pub(crate) gold: bool,
+    pub(crate) views: bool,
     pub(crate) query: bool,
     pub(crate) memory: bool,
 }
 
 /// `models` is used for connector records, which arrive without vectors, and
-/// for `replay` of all gold from silver before serving.
+/// for `replay` of all views from silver before serving.
 pub(crate) async fn run(
     path: &Path,
     activation: Activation,
@@ -317,7 +317,7 @@ pub(crate) async fn run(
     let store = store::initialize(
         &config,
         &identities,
-        activation.gold,
+        activation.views,
         activation.query,
         activation.memory,
     )

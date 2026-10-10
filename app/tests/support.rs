@@ -143,7 +143,7 @@ impl NodeFixture {
         connection.execute_batch(
             "INSERT INTO silver_scans(provider,interpretation_version,state) VALUES('codex',2,1)
              ON CONFLICT(provider) DO UPDATE SET interpretation_version=2,state=1;
-             UPDATE gold_manifest SET manifest=json_set(manifest,
+             UPDATE views_manifest SET manifest=json_set(manifest,
                  '$.silver.revision',(SELECT revision FROM silver_state WHERE singleton=1),
                  '$.silver.completeness','complete') WHERE singleton=1;
              UPDATE lexical_manifest SET manifest=json_set(manifest,
@@ -186,23 +186,23 @@ impl NodeFixture {
     }
 }
 
-/// The gold database mash pairs with a local silver database.
-pub(super) fn gold_path(silver: &Path) -> std::path::PathBuf {
+/// The views database mash pairs with a local silver database.
+pub(super) fn views_path(silver: &Path) -> std::path::PathBuf {
     let name = silver.file_name().unwrap().to_string_lossy().into_owned();
     silver.with_file_name(name.strip_suffix(".sqlite3").map_or_else(
-        || format!("{name}.gold"),
-        |stem| format!("{stem}.gold.sqlite3"),
+        || format!("{name}.views"),
+        |stem| format!("{stem}.views.sqlite3"),
     ))
 }
 
-/// Local silver with its paired gold attached, as mash writers see it.
+/// Local silver with its paired views attached, as mash writers see it.
 pub(super) fn open_index(path: &Path) -> Connection {
     let connection = Connection::open(path).expect("local silver");
     connection
         .execute(
-            "ATTACH DATABASE ?1 AS gold",
-            [gold_path(path).to_str().unwrap()],
+            "ATTACH DATABASE ?1 AS views",
+            [views_path(path).to_str().unwrap()],
         )
-        .expect("local gold");
+        .expect("local views");
     connection
 }

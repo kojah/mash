@@ -31,7 +31,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
     let config = directory.path().join("config.toml");
     std::fs::write(
         &config,
-        "version=1\nproviders={}\n[gold.query]\nintent='exact-mention'\n",
+        "version=1\nproviders={}\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
     let server = Mash {

@@ -1,19 +1,19 @@
-//! Qdrant shared gold: search documents and their readiness, derived from shared
+//! Qdrant shared views: search documents and their readiness, derived from shared
 //! silver in SQLite. Every point here can be rebuilt by replaying silver.
 mod api;
 mod configuration;
 mod exact;
-mod gold;
 mod read;
 #[cfg(test)]
 mod tests;
+mod views;
 
 use super::server::Identity;
 use crate::AppError;
 use serde::{Deserialize, Serialize};
 
-pub(super) use gold::{ConnectorPoint, Documents, GoldChat, NodeGold};
 pub(super) use read::validate_search;
+pub(super) use views::{ConnectorPoint, Documents, NodeViews, ViewChat};
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -66,12 +66,12 @@ impl From<MemoryTier> for MemoryPolicy {
     }
 }
 
-pub(super) use crate::gold::vector::Search as VectorIndex;
+pub(super) use crate::views::vector::Search as VectorIndex;
 
 #[derive(Clone)]
 pub(super) struct Store {
     dense_names: std::collections::BTreeMap<String, String>,
-    build: crate::gold::config::Build,
+    build: crate::views::config::Build,
     api: api::Client,
     vector_index: VectorIndex,
     /// Match evidence follows the server's response masking.
@@ -166,7 +166,7 @@ fn connector_hit(
         || !d
             .unit
             .anchor
-            .starts_with(crate::storage::connector_gold::ANCHOR_PREFIX)
+            .starts_with(crate::storage::connector_views::ANCHOR_PREFIX)
         || d.tokens != tokens(&d.unit.text)
         || d.unit.text.is_empty()
         || generation.is_some_and(|generation| d.unit.generation.as_deref() != Some(generation))
@@ -206,12 +206,12 @@ fn connector_hit(
 #[serde(rename_all = "lowercase")]
 enum PointKind {
     Configuration,
-    Gold,
+    Views,
 }
 
 fn collection(group: &str, metadata: bool) -> String {
     format!(
-        "mash_gold_{}_{}",
+        "mash_views_{}_{}",
         blake3::hash(group.as_bytes()).to_hex(),
         if metadata { "state" } else { "messages" }
     )
@@ -276,7 +276,7 @@ impl Store {
     pub(in crate::shared) fn unavailable() -> Self {
         Self {
             dense_names: std::collections::BTreeMap::new(),
-            build: crate::gold::config::Build::default(),
+            build: crate::views::config::Build::default(),
             api: api::Client::new("http://127.0.0.1:9", None, 64 * 1024 * 1024).unwrap(),
             vector_index: VectorIndex::default(),
             responses: crate::redaction::Policy::ON,
@@ -289,14 +289,14 @@ impl Store {
         self.responses = responses;
         self
     }
-    pub(in crate::shared) fn with_build(mut self, build: crate::gold::config::Build) -> Self {
+    pub(in crate::shared) fn with_build(mut self, build: crate::views::config::Build) -> Self {
         self.build = build;
         self
     }
-    pub(in crate::shared) fn build(&self) -> &crate::gold::config::Build {
+    pub(in crate::shared) fn build(&self) -> &crate::views::config::Build {
         &self.build
     }
-    /// Explicit setup of each group's document and gold-state collections.
+    /// Explicit setup of each group's document and views-state collections.
     pub(super) async fn connect(
         url: &str,
         key: Option<&str>,
@@ -321,7 +321,7 @@ impl Store {
         }
         Ok(Self {
             dense_names,
-            build: crate::gold::config::Build::default(),
+            build: crate::views::config::Build::default(),
             api,
             vector_index,
             responses: crate::redaction::Policy::ON,

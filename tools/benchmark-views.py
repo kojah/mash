@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private, bounded real-session local silver/gold cost comparison on Linux.
+"""Private, bounded real-session local silver/views cost comparison on Linux.
 
 Uses explicitly installed models and stable copies of provider files. Never
 changes the live index or calls remote inference. Captures contain private data;
@@ -45,7 +45,7 @@ def snapshot(output, count):
     selected = []
     for provider, source in roots.items():
         files = sorted(source.rglob('*.jsonl'), key=lambda p: hashlib.sha256(
-            ('mash-gold-cost-v1:' + str(p.relative_to(source))).encode()).digest())
+            ('mash-views-cost-v1:' + str(p.relative_to(source))).encode()).digest())
         for low, high in BINS:
             kept = 0
             for path in files:
@@ -77,8 +77,8 @@ def config(output, representation):
     path.write_text('version=1\n[index]\nall_history=true\n' + ''.join(
         f'[providers.{provider}]\nroots={json.dumps([str(output / "corpus" / provider)])}\n'
         for provider in ('codex', 'claude-code')) +
-        f'[gold.build]\nrepresentations="{representation}"\n' +
-        '[gold.query]\nintent="exact-mention"\n')
+        f'[views.build]\nrepresentations="{representation}"\n' +
+        '[views.query]\nintent="exact-mention"\n')
     return path
 
 
@@ -187,17 +187,19 @@ def run(args):
     canonical = silver_digest(database)
     stages = [{'name': 'initial-silver-and-lexical', 'index': initial,
                'measurement': timing, 'storage': storage(database)}]
+    build_seconds = [timing['wall_seconds']]
     shutil.rmtree(output / 'corpus')  # Only this run's owned copies; provider sources stay intact.
     for number, representation in enumerate(('lexical-and-dense', 'lexical-only', 'lexical-and-dense')):
         result, timing = measure(base + ['--config', str(configs[representation]),
-                                        'index', '--rebuild-local-gold'],
+                                        'index', '--rebuild-local-views'],
                                  binary, output / f'rebuild-{number}-{representation}')
         if silver_digest(database) != canonical or result['scanned_files']:
-            raise ValueError('gold rebuild changed silver or scanned provider files')
+            raise ValueError('views rebuild changed silver or scanned provider files')
         if representation == 'lexical-only' and result['model_inferences']:
             raise ValueError('lexical-only unexpectedly ran inference')
         stages.append({'name': representation, 'index': result,
                        'measurement': timing, 'storage': storage(database)})
+        build_seconds.append(timing['wall_seconds'])
     searches = []
     for intent, ranking in (('exact-mention', None), ('related-discussion', 'fusion'),
                             ('related-discussion', 'contextual-rerank')):
@@ -225,7 +227,7 @@ def run(args):
             groups.append({'intent': intent, 'ranking': ranking, 'provider': provider,
                            'n': len(times), 'median_ms': statistics.median(times) * 1000,
                            'p95_ms': times[math.ceil(.95 * len(times))-1] * 1000})
-    capture = {'scope': 'private-real-session-local-gold-cost-v1',
+    capture = {'scope': 'private-real-session-local-views-cost-v1',
                'platform': platform.platform(), 'python': platform.python_version(),
                'binary_sha256': binary_hash, 'script_sha256': sha(Path(__file__).resolve()),
                'installed_marker_sha256': sha(models / 'installed.json'),
@@ -240,7 +242,7 @@ def run(args):
                                'no worker, HTTP/shared backend, edits/deletes or quality evaluation']}
     write_json(output / 'capture.json', capture)
     print(json.dumps({'source_files': len(selected), 'counts': stages[0]['storage']['counts'],
-                      'build_seconds': [s['measurement']['wall_seconds'] for s in stages],
+                      'build_seconds': build_seconds,
                       'search_groups': groups}), flush=True)
 
 

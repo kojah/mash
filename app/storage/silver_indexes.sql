@@ -2,7 +2,7 @@
 CREATE INDEX IF NOT EXISTS objects_context_parent
     ON objects(conversation_id, context_parent, ordinal) WHERE context_parent IS NOT NULL;
 -- Keep readiness counts off canonical bodies and projection overflow pages.
--- Native gold covers native entries with text; queries that rely on these
+-- Native views cover native entries with text; queries that rely on these
 -- indexes must repeat this predicate exactly.
 CREATE INDEX IF NOT EXISTS objects_searchable_role ON objects(role)
     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
@@ -11,7 +11,7 @@ CREATE INDEX IF NOT EXISTS objects_searchable_metadata
     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
 CREATE INDEX IF NOT EXISTS objects_searchable_identity ON objects(id, role)
     WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '';
--- Gold writes and scan bookkeeping do not change the canonical revision.
+-- View writes and scan bookkeeping do not change the canonical revision.
 CREATE TRIGGER IF NOT EXISTS silver_objects_INSERT AFTER INSERT ON objects BEGIN
     UPDATE silver_state SET revision = revision + 1 WHERE singleton = 1;
 END;

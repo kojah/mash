@@ -214,14 +214,14 @@ fn compact_shared_status_preserves_freshness_coverage_and_readiness() {
         "group_id":"group", "unpublished_nodes":["missing-peer"], "nodes":[{
             "node_id":"peer","instance":"instance","revision":4,
             "last_synced_at":"2026-10-08T12:00:00Z","last_updated_at":"2026-10-08T11:00:00Z",
-            "conversations":2,"messages":20,"lexical_current":true,"gold_current":false
+            "conversations":2,"messages":20,"lexical_current":true,"views_current":false
         }]
     }))
     .unwrap();
     let compact = serde_json::to_value(freshness.summary()).unwrap();
     assert_eq!(compact["unpublished_nodes"][0], "missing-peer");
     assert_eq!(compact["nodes"][0]["revision"], 4);
-    assert_eq!(compact["nodes"][0]["gold_current"], false);
+    assert_eq!(compact["nodes"][0]["views_current"], false);
     assert_eq!(
         compact["nodes"][0]["last_synced_at"],
         "2026-10-08T12:00:00Z"

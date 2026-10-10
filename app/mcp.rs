@@ -31,19 +31,19 @@ struct Search {
     detail: Detail,
     /// Dense shared retrieval override; omitted inherits the group's active default.
     #[serde(rename = "shared_vector_search")]
-    shared_vector: Option<crate::gold::vector::Search>,
+    shared_vector: Option<crate::views::vector::Search>,
     /// Words, a semantic question, or an exact-mention phrase/identifier; search never ingests.
     query: String,
     /// related-discussion (default) or model-free exact-mention.
-    intent: Option<crate::gold::exact::Intent>,
-    /// Maximum results; omitted uses gold.query.limit (20 by default).
+    intent: Option<crate::views::exact::Intent>,
+    /// Maximum results; omitted uses views.query.limit (20 by default).
     limit: Option<usize>,
-    /// Chats or chat messages; omitted uses gold.query.unit (chats by default).
+    /// Chats or chat messages; omitted uses views.query.unit (chats by default).
     unit: Option<crate::search_results::SearchUnit>,
     /// Advanced related-discussion fusion overrides; omitted fields inherit TOML. Invalid for exact-mention.
-    fusion: Option<crate::gold::config::FusionOverrides>,
+    fusion: Option<crate::views::config::FusionOverrides>,
     /// Advanced related-discussion ranking: fusion or contextual-rerank; omitted inherits TOML. Invalid for exact-mention.
-    ranking: Option<crate::gold::config::Ranking>,
+    ranking: Option<crate::views::config::Ranking>,
     /// Include resolved retrieval policy, source outcomes and core timing.
     #[serde(default)]
     diagnostics: bool,
@@ -140,9 +140,9 @@ struct ImportSilver {
     reason = "SDK arguments mirror CLI flags; core validates and uses enum-selected indexing modes"
 )]
 struct Index {
-    /// Rebuild only local gold from certified stored silver, without provider reads or shared publication.
+    /// Rebuild only local views from certified stored silver, without provider reads or shared publication.
     #[serde(default)]
-    rebuild_local_gold: bool,
+    rebuild_local_views: bool,
     #[serde(default)]
     full: bool,
     #[serde(default)]
@@ -485,14 +485,14 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Explicitly refresh/index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Subsequent searches read the refreshed index without restarting MCP. Set rebuild_local_gold to build only local retrieval state from certified stored silver, offline and without provider reads (with full, all local gold is discarded and replayed from silver). The rebuild is incompatible with provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
+        description = "Explicitly refresh/index configured agent histories into local SQLite and optionally the shared index, applying provider allowlists. Subsequent searches read the refreshed index without restarting MCP. Set rebuild_local_views to build only local retrieval state from certified stored silver, offline and without provider reads (with full, all local views are discarded and replayed from silver). The rebuild is incompatible with provider/time selectors. Streams phases, counts, and phase ETAs through MCP progress notifications when the request includes _meta.progressToken. Never downloads models."
     )]
     async fn index(
         &self,
         Parameters(request): Parameters<Index>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> CallToolResult {
-        let mode = core::IndexMode::from_rebuild_flag(request.rebuild_local_gold);
+        let mode = core::IndexMode::from_rebuild_flag(request.rebuild_local_views);
         self.execute_with_progress(
             Operation::Index(IndexRequest {
                 mode,
@@ -527,7 +527,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Export local silver to a new directory, including retained attachments and deletion/checkpoint evidence, without models or network access. Excludes gold/models/config. Contains canonical private history, not redacted search output."
+        description = "Export local silver to a new directory, including retained attachments and deletion/checkpoint evidence, without models or network access. Excludes views/models/config. Contains canonical private history, not redacted search output."
     )]
     async fn export_silver(&self, Parameters(request): Parameters<ExportSilver>) -> CallToolResult {
         self.execute(Operation::ExportSilver {
@@ -538,7 +538,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Verify and import a local silver export to a new database. Never overwrites or merges existing history and does not change this MCP session's configured database. Search requires explicit gold rebuild using the imported database."
+        description = "Verify and import a local silver export to a new database. Never overwrites or merges existing history and does not change this MCP session's configured database. Search requires explicit views rebuild using the imported database."
     )]
     async fn import_silver(&self, Parameters(request): Parameters<ImportSilver>) -> CallToolResult {
         self.execute(Operation::ImportSilver {

@@ -56,7 +56,7 @@ pub(super) fn load_from_paths(
                 loaded: false,
                 shared: None,
                 embeddings: None,
-                gold: crate::gold::config::Configuration::default(),
+                views: crate::views::config::Configuration::default(),
                 providers,
                 since_days: Some(DEFAULT_SINCE_DAYS),
                 destination: IndexDestination::Local,
@@ -110,7 +110,7 @@ pub(super) fn load_from_paths(
         since_days: parsed.since_days,
         shared: parsed.shared,
         embeddings: parsed.embeddings,
-        gold: parsed.gold,
+        views: parsed.views,
         destination: parsed.destination,
     })
 }

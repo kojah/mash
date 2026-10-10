@@ -15,6 +15,6 @@
      "parent": "thread-1", "content": "Yes, once replay is verified.",
      "author": {"id": "bob", "kind": "human"}, "created_at": 1791540060000},
     {"op": "upsert-object", "id": "note-1", "role": "document", "kind": "obsidian:note",
-     "title": "Runbook", "content": "Replay canonical silver into gold."}
+     "title": "Runbook", "content": "Replay canonical silver into views."}
   ]
 }

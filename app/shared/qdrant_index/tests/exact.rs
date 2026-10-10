@@ -1,10 +1,10 @@
 use super::*;
-use crate::gold::readiness::State;
+use crate::views::readiness::State;
 
 #[tokio::test]
 #[ignore = "requires disposable MASH_TEST_QDRANT_URL"]
 async fn qdrant_flexible_lexical_search_matches_prefixes_and_typos() {
-    use crate::gold::matching::{Kind, Mode};
+    use crate::views::matching::{Kind, Mode};
     let fixture = Fixture::new(VectorIndex::default()).await;
     fixture
         .server
@@ -105,7 +105,7 @@ async fn qdrant_flexible_lexical_search_matches_prefixes_and_typos() {
 
 fn exact_query(fixture: &Fixture, text: &str) -> protocol::Search {
     let mut query = fixture.query();
-    query.intent = crate::gold::exact::Intent::ExactMention;
+    query.intent = crate::views::exact::Intent::ExactMention;
     query.query = text.into();
     query.vector.clear();
     query.generation.clear();
@@ -144,15 +144,15 @@ async fn qdrant_exact_search_follows_silver_and_survives_recipe_changes() {
     let other = fixture
         .store
         .clone()
-        .with_build(crate::gold::config::Build {
+        .with_build(crate::views::config::Build {
             max_embedding_chars: None,
-            representations: crate::gold::config::Representations::LexicalAndDense,
-            dense_content: crate::gold::config::DenseContent::AllVisible,
-            retrieval_unit: crate::gold::config::RetrievalUnit::Message,
-            text_preparation: crate::gold::config::TextPreparation::Preserve,
-            embedding_text: crate::gold::config::EmbeddingText::TitleAndDialogue,
+            representations: crate::views::config::Representations::LexicalAndDense,
+            dense_content: crate::views::config::DenseContent::AllVisible,
+            retrieval_unit: crate::views::config::RetrievalUnit::Message,
+            text_preparation: crate::views::config::TextPreparation::Preserve,
+            embedding_text: crate::views::config::EmbeddingText::TitleAndDialogue,
         });
-    other.select_gold(&fixture.identity, true).await.unwrap();
+    other.select_views(&fixture.identity, true).await.unwrap();
     let switched = fixture.serve(other);
     assert_eq!(lexical(&fixture, &switched, "retained").await, 2);
     let artifacts = switched.freshness(&fixture.identity).await.unwrap().nodes[0]
@@ -166,11 +166,11 @@ async fn qdrant_exact_search_follows_silver_and_survives_recipe_changes() {
             .search(&fixture.identity, fixture.query())
             .await
             .is_err(),
-        "dense search fails closed for incompatible gold"
+        "dense search fails closed for incompatible views"
     );
     fixture
         .store
-        .select_gold(&fixture.identity, true)
+        .select_views(&fixture.identity, true)
         .await
         .unwrap();
     // Edits replace documents in place; old text is no longer searchable.
@@ -183,6 +183,6 @@ async fn qdrant_exact_search_follows_silver_and_survives_recipe_changes() {
     assert_eq!(lexical(&fixture, &fixture.server, "retained").await, 0);
     let freshness = fixture.server.freshness(&fixture.identity).await.unwrap();
     assert!(freshness.nodes[0].lexical_current);
-    assert!(freshness.nodes[0].gold_current);
+    assert!(freshness.nodes[0].views_current);
     fixture.cleanup().await;
 }

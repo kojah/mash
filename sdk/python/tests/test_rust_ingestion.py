@@ -65,7 +65,7 @@ class RustIngestionTests(unittest.TestCase):
                     replayed.stdout, source_id="source", destination_id="local"
                 )
                 self.assertEqual(receipt.source_revision, 1)
-                self.assertFalse(receipt.gold_ready)
+                self.assertFalse(receipt.views_ready)
                 self.assertIsNone(
                     reopened.pending(source_id="source", destination_id="local")
                 )

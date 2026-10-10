@@ -1,6 +1,6 @@
-//! Local gold is a separate, paired database that silver can always replay.
+//! Local views live in a separate, paired database that silver can always replay.
 use super::*;
-use crate::storage::schema::gold_path;
+use crate::storage::schema::views_path;
 
 fn indexed(path: &Path) {
     let mut storage = Storage::open_writer(path).unwrap();
@@ -35,19 +35,19 @@ fn main_tables(path: &Path) -> Vec<String> {
 }
 
 #[test]
-fn silver_holds_no_gold_and_gold_holds_no_history() {
+fn silver_holds_no_views_and_views_holds_no_history() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
     indexed(&path);
     assert_eq!(
-        gold_path(&path),
-        directory.path().join("index.gold.sqlite3")
+        views_path(&path),
+        directory.path().join("index.views.sqlite3")
     );
     let silver = main_tables(&path);
     for table in [
         "message_embeddings",
         "message_fts",
-        "gold_manifest",
+        "views_manifest",
         "derived_state",
     ] {
         assert!(
@@ -55,7 +55,7 @@ fn silver_holds_no_gold_and_gold_holds_no_history() {
             "{table} in silver"
         );
     }
-    let gold = main_tables(&gold_path(&path));
+    let views = main_tables(&views_path(&path));
     for table in [
         "objects",
         "native_chats",
@@ -63,9 +63,9 @@ fn silver_holds_no_gold_and_gold_holds_no_history() {
         "tombstones",
         "source_checkpoints",
     ] {
-        assert!(!gold.iter().any(|name| name == table), "{table} in gold");
+        assert!(!views.iter().any(|name| name == table), "{table} in views");
     }
-    // The same silver schema serves the shared server, with no gold beside it.
+    // The same silver schema serves the shared server, with no views beside it.
     let server = Connection::open(directory.path().join("server.sqlite3")).unwrap();
     crate::storage::schema::initialize_silver(&server).unwrap();
     let mut server_tables = main_tables(&directory.path().join("server.sqlite3"));
@@ -76,19 +76,19 @@ fn silver_holds_no_gold_and_gold_holds_no_history() {
 }
 
 #[test]
-fn missing_gold_reads_as_unready_and_writers_recreate_it_pending() {
+fn missing_views_reads_as_unready_and_writers_recreate_it_pending() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
     indexed(&path);
-    crate::storage::schema::remove_gold(&gold_path(&path)).unwrap();
+    crate::storage::schema::remove_views(&views_path(&path)).unwrap();
     let reader = Storage::open_catalog(&path).unwrap();
     assert_eq!(reader.counts().unwrap().messages, 1);
     assert_eq!(reader.counts().unwrap().embeddings, 0);
     assert!(reader.derived_search_is_dirty().unwrap());
     drop(reader);
-    assert!(!gold_path(&path).exists(), "readers never create gold");
+    assert!(!views_path(&path).exists(), "readers never create views");
     let writer = Storage::open_writer(&path).unwrap();
-    assert!(gold_path(&path).exists());
+    assert!(views_path(&path).exists());
     assert_eq!(writer.embedding_count("fixture").unwrap(), 0);
     assert!(writer.derived_search_is_dirty().unwrap());
     let pending: i64 = writer
@@ -101,14 +101,14 @@ fn missing_gold_reads_as_unready_and_writers_recreate_it_pending() {
 }
 
 #[test]
-fn gold_from_another_silver_is_never_used() {
+fn views_from_another_silver_is_never_used() {
     let directory = tempfile::tempdir().unwrap();
     let first = directory.path().join("first.sqlite3");
     let second = directory.path().join("second.sqlite3");
     indexed(&first);
     drop(Storage::open(&second).unwrap());
-    crate::storage::schema::remove_gold(&gold_path(&second)).unwrap();
-    std::fs::copy(gold_path(&first), gold_path(&second)).unwrap();
+    crate::storage::schema::remove_views(&views_path(&second)).unwrap();
+    std::fs::copy(views_path(&first), views_path(&second)).unwrap();
     let reader = Storage::open_catalog(&second).unwrap();
     assert_eq!(reader.counts().unwrap().embeddings, 0);
     drop(reader);
@@ -118,7 +118,7 @@ fn gold_from_another_silver_is_never_used() {
 }
 
 #[test]
-fn deleting_silver_removes_its_gold_and_journals_the_change() {
+fn deleting_silver_removes_its_views_and_journals_the_change() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
     indexed(&path);
@@ -141,16 +141,16 @@ fn deleting_silver_removes_its_gold_and_journals_the_change() {
 }
 
 #[test]
-fn discarding_gold_replays_from_unchanged_silver() {
+fn discarding_views_replays_from_unchanged_silver() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
     indexed(&path);
     let mut storage = Storage::open_writer(&path).unwrap();
     let silver = storage.silver_certificate().unwrap();
-    storage.discard_gold().unwrap();
+    storage.discard_views().unwrap();
     assert_eq!(storage.counts().unwrap().embeddings, 0);
     assert!(storage.derived_search_is_dirty().unwrap());
-    assert!(storage.gold_manifest().unwrap().is_none());
+    assert!(storage.views_manifest().unwrap().is_none());
     assert!(storage.lexical_manifest().unwrap().is_none());
     assert!(!storage.semantic_generation_is_published("fixture").unwrap());
     assert_eq!(storage.silver_certificate().unwrap(), silver);
@@ -159,15 +159,15 @@ fn discarding_gold_replays_from_unchanged_silver() {
 
 #[cfg(unix)]
 #[test]
-fn recreated_gold_is_no_more_visible_than_silver() {
+fn recreated_views_is_no_more_visible_than_silver() {
     use std::os::unix::fs::PermissionsExt;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("index.sqlite3");
     indexed(&path);
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-    crate::storage::schema::remove_gold(&gold_path(&path)).unwrap();
+    crate::storage::schema::remove_views(&views_path(&path)).unwrap();
     drop(Storage::open_writer(&path).unwrap());
-    let mode = std::fs::metadata(gold_path(&path))
+    let mode = std::fs::metadata(views_path(&path))
         .unwrap()
         .permissions()
         .mode();

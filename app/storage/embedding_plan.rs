@@ -21,12 +21,12 @@ pub(crate) struct EmbeddingPlan {
 impl EmbeddingPlan {
     #[tracing::instrument(name = "plan_embeddings", skip_all, fields(pending_vectors = tracing::field::Empty))]
     pub(crate) fn new(storage: &Storage) -> Result<Self, AppError> {
-        Self::with_build(storage, &crate::gold::config::Build::default())
+        Self::with_build(storage, &crate::views::config::Build::default())
     }
 
     pub(crate) fn with_build(
         storage: &Storage,
-        build: &crate::gold::config::Build,
+        build: &crate::views::config::Build,
     ) -> Result<Self, AppError> {
         let directory = crate::scratch::directory("mash-embedding-plan-")?;
         let mut connection = crate::scratch::sqlite(&directory.path().join("plan.sqlite3"))?;
@@ -64,7 +64,7 @@ impl EmbeddingPlan {
     fn populate(
         connection: &mut Connection,
         storage: &Storage,
-        build: &crate::gold::config::Build,
+        build: &crate::views::config::Build,
     ) -> Result<u64, AppError> {
         let transaction = connection.transaction().map_err(AppError::database)?;
         let mut total = 0_u64;
@@ -96,7 +96,7 @@ impl EmbeddingPlan {
                     continue;
                 }
                 let parent = if build.retrieval_unit
-                    == crate::gold::config::RetrievalUnit::ParentAndMessage
+                    == crate::views::config::RetrievalUnit::ParentAndMessage
                 {
                     let projection: Option<String> =
                         row.get("parent_projection").map_err(AppError::database)?;
@@ -203,22 +203,22 @@ impl EmbeddingPlan {
 #[cfg(test)]
 mod tests;
 
-fn plan_sql(build: &crate::gold::config::Build) -> String {
+fn plan_sql(build: &crate::views::config::Build) -> String {
     let anchor_sql = match build.embedding_text {
-        crate::gold::config::EmbeddingText::Dialogue =>
+        crate::views::config::EmbeddingText::Dialogue =>
             "SELECT messages.id, COALESCE(messages.search_projection, messages.content), NULL, messages.role
              FROM pending_embeddings JOIN objects messages ON messages.origin = 'provider' AND messages.object_role = 'entry' AND messages.id = pending_embeddings.message_id
              ORDER BY pending_embeddings.message_id",
-        crate::gold::config::EmbeddingText::TitleAndDialogue =>
+        crate::views::config::EmbeddingText::TitleAndDialogue =>
             "SELECT messages.id, COALESCE(messages.search_projection, messages.content), conversations.title, messages.role
              FROM pending_embeddings JOIN objects messages ON messages.origin = 'provider' AND messages.object_role = 'entry' AND messages.id = pending_embeddings.message_id
              JOIN objects conversations ON conversations.origin = 'provider' AND conversations.object_role = 'container' AND conversations.id = messages.conversation_id
              ORDER BY pending_embeddings.message_id",
     };
-    if build.retrieval_unit == crate::gold::config::RetrievalUnit::ParentAndMessage {
+    if build.retrieval_unit == crate::views::config::RetrievalUnit::ParentAndMessage {
         let title = match build.embedding_text {
-            crate::gold::config::EmbeddingText::Dialogue => "NULL",
-            crate::gold::config::EmbeddingText::TitleAndDialogue => "conversations.title",
+            crate::views::config::EmbeddingText::Dialogue => "NULL",
+            crate::views::config::EmbeddingText::TitleAndDialogue => "conversations.title",
         };
         format!(
             "SELECT messages.id, COALESCE(messages.search_projection, messages.content), {title}, messages.role,

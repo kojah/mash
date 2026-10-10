@@ -1,4 +1,4 @@
-//! Gold query models: selection and boolean predicates over silver metadata.
+//! View query models: selection and boolean predicates over silver metadata.
 use crate::provider::Provider;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ pub(crate) enum Sort {
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Selection {
     /// flexible (default) enables prefix and typo matching; strict preserves literals.
-    pub(crate) match_mode: crate::gold::matching::Mode,
+    pub(crate) match_mode: crate::views::matching::Mode,
     /// relevance (default) or recent: newest first among results that qualify.
     pub(crate) sort: Sort,
     /// Provider alternatives; omitted or empty selects all providers.
@@ -60,7 +60,7 @@ pub(crate) struct Selection {
 
 #[derive(Clone)]
 pub(crate) struct Scope {
-    pub(crate) match_mode: crate::gold::matching::Mode,
+    pub(crate) match_mode: crate::views::matching::Mode,
     pub(crate) filter: Filter,
     pub(crate) node: String,
 }

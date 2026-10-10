@@ -51,7 +51,7 @@ async fn sdk_export_import_is_model_free_and_keeps_the_sessions_database() {
         assert!(text.starts_with("Mash silver"));
         if name == "import_silver" {
             assert!(text.contains("Search ready: false"));
-            assert!(text.contains("rebuild-local-gold"));
+            assert!(text.contains("rebuild-local-views"));
         }
     }
     let result = client

@@ -270,7 +270,7 @@ async fn core_indexes_searches_and_views_native_opencode_threads() {
         paths: paths.clone(),
         operation: Operation::Search {
             shared_vector_search: None,
-            fusion: crate::gold::config::FusionOverrides::default(),
+            fusion: crate::views::config::FusionOverrides::default(),
             ranking: None,
             diagnostics: false,
             query: "cbioportal importer".into(),

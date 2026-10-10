@@ -33,16 +33,26 @@ const VALID: &str = r#""version" = 1
 "#;
 
 #[test]
-fn gold_fusion_policy_is_query_only_and_strictly_bounded() {
-    let defaults = parse_document(VALID.as_bytes()).unwrap().gold;
+fn built_in_views_configuration_rejects_retired_gold_keys() {
+    for section in ["gold", "gold.build", "gold.query"] {
+        assert!(parse_document(format!("{VALID}\n[{section}]\n").as_bytes()).is_err());
+    }
+    assert!(parse_document(
+        format!("{VALID}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n").as_bytes()
+    ).is_ok());
+}
+
+#[test]
+fn views_fusion_policy_is_query_only_and_strictly_bounded() {
+    let defaults = parse_document(VALID.as_bytes()).unwrap().views;
     let changed = parse_document(
         format!(
-            "{VALID}\n[gold.query.fusion]\nrank_constant=10\nlexical_weight=4\nsemantic_weight=2\n"
+            "{VALID}\n[views.query.fusion]\nrank_constant=10\nlexical_weight=4\nsemantic_weight=2\n"
         )
         .as_bytes(),
     )
     .unwrap()
-    .gold;
+    .views;
     assert_eq!(changed.build, defaults.build);
     assert_eq!(
         changed.build.generation("model"),
@@ -61,7 +71,7 @@ fn gold_fusion_policy_is_query_only_and_strictly_bounded() {
         "unknown=1",
     ] {
         assert!(
-            parse_document(format!("{VALID}\n[gold.query.fusion]\n{invalid}\n").as_bytes())
+            parse_document(format!("{VALID}\n[views.query.fusion]\n{invalid}\n").as_bytes())
                 .is_err(),
             "{invalid}"
         );
@@ -69,52 +79,52 @@ fn gold_fusion_policy_is_query_only_and_strictly_bounded() {
 }
 
 #[test]
-fn gold_query_defaults_are_typed_bounded_and_reported_in_status() {
+fn views_query_defaults_are_typed_bounded_and_reported_in_status() {
     use crate::search_results::SearchUnit;
-    let defaults = parse_document(VALID.as_bytes()).unwrap().gold;
+    let defaults = parse_document(VALID.as_bytes()).unwrap().views;
     assert_eq!(defaults.query.resolve(None, None), (20, SearchUnit::Chats));
     let directory = TempDir::new().unwrap();
     let path = write_config(
         &directory,
-        &format!("{VALID}\n[gold.query]\nunit = 'messages'\nlimit = 7\n"),
+        &format!("{VALID}\n[views.query]\nunit = 'messages'\nlimit = 7\n"),
     );
     let resolved = load(Some(&path)).unwrap();
     assert_eq!(
-        resolved.gold.query.resolve(None, None),
+        resolved.views.query.resolve(None, None),
         (7, SearchUnit::Messages)
     );
     assert_eq!(
         resolved
-            .gold
+            .views
             .query
             .resolve(Some(3), Some(SearchUnit::Chats)),
         (3, SearchUnit::Chats)
     );
     assert_eq!(
-        resolved.gold.query.resolve(None, Some(SearchUnit::Chats)),
+        resolved.views.query.resolve(None, Some(SearchUnit::Chats)),
         (7, SearchUnit::Chats)
     );
     let status = serde_json::to_value(resolved.status()).unwrap();
-    assert_eq!(status["gold"]["query"]["unit"], "messages");
-    assert_eq!(status["gold"]["query"]["limit"], 7);
-    assert_eq!(status["gold"]["query"]["intent"], "related-discussion");
+    assert_eq!(status["views"]["query"]["unit"], "messages");
+    assert_eq!(status["views"]["query"]["limit"], 7);
+    assert_eq!(status["views"]["query"]["intent"], "related-discussion");
     let exact =
-        parse_document(format!("{VALID}\n[gold.query]\nintent='exact-mention'\n").as_bytes())
+        parse_document(format!("{VALID}\n[views.query]\nintent='exact-mention'\n").as_bytes())
             .unwrap();
     assert_eq!(
-        exact.gold.query.intent,
-        crate::gold::exact::Intent::ExactMention
+        exact.views.query.intent,
+        crate::views::exact::Intent::ExactMention
     );
     for invalid in [
-        "[gold.query]\nlimit = 0",
-        "[gold.query]\nlimit = 201",
-        "[gold.query]\nlimit = -1",
-        "[gold.query]\nlimit = '7'",
-        "[gold.query]\nunit = 'chunks'",
-        "[gold.query]\nintent = 'decisions'",
-        "[gold.query]\nunknown = true",
-        "[gold]\nprofiles = []",
-        "[gold.query]\nlimit = 1\n[gold.query]\nlimit = 2",
+        "[views.query]\nlimit = 0",
+        "[views.query]\nlimit = 201",
+        "[views.query]\nlimit = -1",
+        "[views.query]\nlimit = '7'",
+        "[views.query]\nunit = 'chunks'",
+        "[views.query]\nintent = 'decisions'",
+        "[views.query]\nunknown = true",
+        "[views]\nprofiles = []",
+        "[views.query]\nlimit = 1\n[views.query]\nlimit = 2",
     ] {
         assert_configuration_error(
             &parse_document(format!("{VALID}\n{invalid}").as_bytes()).unwrap_err(),

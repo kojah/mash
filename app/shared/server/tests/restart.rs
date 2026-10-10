@@ -91,7 +91,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
     }
     let mut events = vec![
         Event::Start(Start {
-            gold_build: None,
+            views_build: None,
             source_silver: Some(source_certificate(revision)),
             instance: "restart-instance".into(),
             revision: Some(revision),
@@ -140,8 +140,8 @@ async fn publish(api: &Api, token: &str, revision: i64, second: bool) {
 
 fn query(unit: crate::search_results::SearchUnit) -> protocol::Search {
     protocol::Search {
-        intent: crate::gold::exact::Intent::RelatedDiscussion,
-        match_mode: crate::gold::matching::Mode::Strict,
+        intent: crate::views::exact::Intent::RelatedDiscussion,
+        match_mode: crate::views::matching::Mode::Strict,
         vector_policy: None,
         unit,
         query: "restartneedle".into(),
@@ -197,7 +197,7 @@ async fn verify_search(api: &Api) {
     assert!(result.semantic.iter().all(|hit| hit.id != "retired"));
 }
 
-async fn verify_gold(api: &Api) {
+async fn verify_views(api: &Api) {
     let mut input = query(crate::search_results::SearchUnit::Messages);
     input.filter = Some(Filter::All(vec![
         Filter::Node(vec!["first".into()]),
@@ -210,7 +210,7 @@ async fn verify_gold(api: &Api) {
         (0.70..0.72).contains(&score),
         "published vector must survive restart: {score}"
     );
-    input.intent = crate::gold::exact::Intent::ExactMention;
+    input.intent = crate::views::exact::Intent::ExactMention;
     input.generation.clear();
     input.vector.clear();
     let exact: protocol::Candidates = api.post_json("search", FIRST, &input).await;
@@ -218,14 +218,14 @@ async fn verify_gold(api: &Api) {
     assert!(exact.semantic.is_empty() && exact.documents.is_empty());
 }
 
-/// A published node's conversation and message counts; its gold must be current.
+/// A published node's conversation and message counts; its views must be current.
 async fn node_counts(api: &Api, token: &str, node: &str) -> Option<(i64, i64)> {
     let freshness: crate::shared::Freshness = api.get("freshness", token).await;
     let node = freshness
         .nodes
         .into_iter()
         .find(|entry| entry.node_id == node)?;
-    assert!(node.gold_current && node.lexical_current);
+    assert!(node.views_current && node.lexical_current);
     Some((node.conversations, node.messages))
 }
 
@@ -278,7 +278,7 @@ async fn verify(api: &Api, revision: i64) -> String {
     assert_eq!(freshness.nodes[0].revision, revision);
     assert_eq!(freshness.nodes[1].revision, 1);
     for node in &freshness.nodes {
-        assert!(node.gold_current);
+        assert!(node.views_current);
         assert!(node.lexical_current);
         assert!(
             node.lexical_manifest
@@ -286,8 +286,8 @@ async fn verify(api: &Api, revision: i64) -> String {
                 .unwrap()
                 .matches(node.silver_revision.as_ref())
         );
-        let manifest = node.gold_manifest.as_ref().unwrap();
-        assert_eq!(manifest.build, crate::gold::config::Build::default());
+        let manifest = node.views_manifest.as_ref().unwrap();
+        assert_eq!(manifest.build, crate::views::config::Build::default());
         assert_eq!(Some(&manifest.silver), node.silver_revision.as_ref());
     }
     assert_eq!(
@@ -311,7 +311,7 @@ async fn verify(api: &Api, revision: i64) -> String {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires Docker, cached Qdrant image, and MASH_TEST_SERVER_BINARY"]
-async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guards() {
+async fn shared_backend_snapshot_restore_preserves_silver_views_and_revision_guards() {
     let database = Database::start();
     database.ready().await;
     let root = tempfile::tempdir().unwrap();
@@ -335,7 +335,7 @@ async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guar
     restored.restore(&backups).await;
     let api = Api::start(&restored, root.path());
     assert_eq!(verify(&api, 2).await, before);
-    verify_gold(&api).await;
+    verify_views(&api).await;
     assert_eq!(
         api.upload(FIRST, &snapshot(1, false)).await.status(),
         reqwest::StatusCode::CONFLICT
@@ -343,7 +343,7 @@ async fn shared_backend_snapshot_restore_preserves_silver_gold_and_revision_guar
     assert_eq!(verify(&api, 2).await, before);
     publish(&api, FIRST, 3, false).await;
     verify(&api, 3).await;
-    verify_gold(&api).await;
+    verify_views(&api).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -362,7 +362,7 @@ async fn shared_backend_persisted_restart_contract() {
     database.restart().await;
     let api = Api::start(&database, root.path());
     assert_eq!(verify(&api, 2).await, before, "persisted freshness Qdrant");
-    verify_gold(&api).await;
+    verify_views(&api).await;
     let stale = api.upload(FIRST, &snapshot(1, false)).await;
     assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
     assert_eq!(verify(&api, 2).await, before, "stale update changed Qdrant");
@@ -373,7 +373,7 @@ async fn shared_backend_persisted_restart_contract() {
     database.crash_and_restart().await;
     drop(api);
     let api = Api::start(&database, root.path());
-    verify_gold(&api).await;
+    verify_views(&api).await;
     assert_eq!(
         verify(&api, 3).await,
         before_crash,
@@ -398,7 +398,7 @@ async fn shared_backend_persisted_restart_contract() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires Docker, cached Qdrant image, MASH_TEST_SERVER_BINARY and MASH_TEST_MODELS_DIR"]
-async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
+async fn shared_views_lost_without_backup_is_replayed_from_shared_silver() {
     let database = Database::start();
     database.ready().await;
     let root = tempfile::tempdir().unwrap();
@@ -414,7 +414,7 @@ async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
     fresh.ready().await;
     let lost = Api::start(&fresh, root.path());
     let freshness: crate::shared::Freshness = lost.get("freshness", FIRST).await;
-    assert!(freshness.nodes.iter().all(|node| !node.gold_current));
+    assert!(freshness.nodes.iter().all(|node| !node.views_current));
     drop(lost);
     let models = std::path::PathBuf::from(std::env::var_os("MASH_TEST_MODELS_DIR").unwrap());
     let (api, reports) = Api::launch(&fresh, root.path(), Some(&models));
@@ -454,7 +454,7 @@ async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
         freshness
             .nodes
             .iter()
-            .all(|node| node.gold_current && node.lexical_current)
+            .all(|node| node.views_current && node.lexical_current)
     );
     let mut input = query(crate::search_results::SearchUnit::Messages);
     input.filter = Some(Filter::All(vec![
@@ -469,6 +469,6 @@ async fn shared_gold_lost_without_backup_is_replayed_from_shared_silver() {
         api.get::<crate::shared::Freshness>("freshness", FIRST)
             .await
             .nodes[0]
-            .gold_current
+            .views_current
     );
 }

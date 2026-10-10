@@ -30,12 +30,12 @@ fn current_node(target: &reuse::Target) -> NodeFreshness {
         source_silver: None,
         lexical_manifest: Some(lexical_manifest::Manifest::new(silver.clone())),
         lexical_current: true,
-        gold_manifest: Some(gold_manifest::Manifest::new(
+        views_manifest: Some(views_manifest::Manifest::new(
             target.build.clone(),
             target.generation.clone(),
             silver.clone(),
         )),
-        gold_current: true,
+        views_current: true,
         silver_revision: Some(silver),
         node_id: "local-node".into(),
         instance: target.instance.clone().unwrap_or_default(),
@@ -61,7 +61,7 @@ fn current_freshness(target: &reuse::Target, node: NodeFreshness) -> Freshness {
     Freshness {
         group_id: "test".into(),
         unpublished_nodes: None,
-        group_gold: Some(Box::new(GroupGold {
+        group_views: Some(Box::new(GroupView {
             version: "group".into(),
             build: target.build.clone(),
             generation: target.generation.clone(),
@@ -76,7 +76,7 @@ fn current_freshness(target: &reuse::Target, node: NodeFreshness) -> Freshness {
 async fn lost_ack_recovers_only_with_stable_source_and_current_artifacts() {
     for case in [
         "current",
-        "stale-gold",
+        "stale-views",
         "stale-lexical",
         "changed-model",
         "changed-build",
@@ -90,7 +90,7 @@ async fn lost_ack_recovers_only_with_stable_source_and_current_artifacts() {
         seed_ready(&path, semantic::SHARED_EMBEDDING_GENERATION);
         let storage = Storage::open_existing(&path).unwrap();
         let mut target = reuse::Target {
-            build: crate::gold::config::Build::default(),
+            build: crate::views::config::Build::default(),
             generation: semantic::SHARED_EMBEDDING_GENERATION.into(),
             dimensions: 384,
             instance: None,
@@ -108,14 +108,14 @@ async fn lost_ack_recovers_only_with_stable_source_and_current_artifacts() {
         drop(storage);
         let mut node = current_node(&target);
         match case {
-            "stale-gold" => node.gold_manifest = None,
+            "stale-views" => node.views_manifest = None,
             "stale-lexical" => node.lexical_current = false,
             "changed-model" => {
-                node.gold_manifest.as_mut().unwrap().model_generation = "other".into();
+                node.views_manifest.as_mut().unwrap().model_generation = "other".into();
             }
             "changed-build" => {
-                node.gold_manifest.as_mut().unwrap().build.representations =
-                    crate::gold::config::Representations::LexicalOnly;
+                node.views_manifest.as_mut().unwrap().build.representations =
+                    crate::views::config::Representations::LexicalOnly;
             }
             "incomplete-source" => {
                 let mut writer = Storage::open_writer(&path).unwrap();

@@ -109,7 +109,7 @@ fn local_view(
         // Connector attachments are source references, not captured files.
         if !message
             .id
-            .starts_with(crate::storage::connector_gold::ANCHOR_PREFIX)
+            .starts_with(crate::storage::connector_views::ANCHOR_PREFIX)
         {
             message.attachments = storage.list_attachments(&message.id)?.attachments;
         }
@@ -125,9 +125,9 @@ fn local_status(
     let models =
         Models::new(models_dir.to_path_buf()).with_remote(configuration.embeddings.clone());
     let models_installed = models.is_installed();
-    let dense_enabled = configuration.gold.build.dense_enabled();
-    let exact = configuration.gold.query.intent == crate::gold::exact::Intent::ExactMention;
-    let query_models = query_model_availability(&models, &configuration.gold.query)?;
+    let dense_enabled = configuration.views.build.dense_enabled();
+    let exact = configuration.views.query.intent == crate::views::exact::Intent::ExactMention;
+    let query_models = query_model_availability(&models, &configuration.views.query)?;
     let query_models_available = !matches!(query_models, ModelAvailability::Unavailable);
     if !database_path.is_file() {
         return Ok(StatusResponse {
@@ -135,7 +135,7 @@ fn local_status(
             shared_error: None,
             local_artifacts: local_artifacts(None, dense_enabled, false, false),
             lexical: None,
-            gold: None,
+            views: None,
             silver: None,
             ready: false,
             database_path: Some(database_path.to_path_buf()),
@@ -162,14 +162,14 @@ fn local_status(
 
     let model = semantic::configured_generation(configuration.embeddings.as_ref());
     let snapshot =
-        Storage::status_snapshot(database_path, &configuration.gold.build.generation(&model))?;
+        Storage::status_snapshot(database_path, &configuration.views.build.generation(&model))?;
     let counts = &snapshot.counts;
     let current_embeddings = snapshot.current_embeddings;
     let manifest_matches = snapshot
-        .gold
+        .views
         .as_ref()
         .zip(snapshot.silver.as_ref())
-        .is_some_and(|(m, s)| m.matches(&configuration.gold.build, &model, s));
+        .is_some_and(|(m, s)| m.matches(&configuration.views.build, &model, s));
     let dense_current =
         snapshot.derived_clean && snapshot.exact_semantic_coverage && manifest_matches;
     let hybrid_ready = query_models_available && dense_current;
@@ -190,7 +190,7 @@ fn local_status(
             dense_current,
         ),
         lexical: snapshot.lexical,
-        gold: snapshot.gold,
+        views: snapshot.views,
         silver: snapshot.silver,
         ready,
         database_path: Some(database_path.to_path_buf()),
@@ -245,7 +245,7 @@ fn local_artifacts(
             lexical_current,
         ),
         dense: if dense_enabled {
-            ArtifactState::publication(snapshot.is_some_and(|s| s.gold.is_some()), dense_current)
+            ArtifactState::publication(snapshot.is_some_and(|s| s.views.is_some()), dense_current)
         } else {
             ArtifactState::Disabled
         },
@@ -254,9 +254,9 @@ fn local_artifacts(
 
 fn query_model_availability(
     models: &Models,
-    query: &crate::gold::config::Query,
+    query: &crate::views::config::Query,
 ) -> Result<ModelAvailability, AppError> {
-    if query.intent == crate::gold::exact::Intent::ExactMention {
+    if query.intent == crate::views::exact::Intent::ExactMention {
         return Ok(ModelAvailability::NotRequired);
     }
     match models.require_search(query.ranking) {
@@ -277,7 +277,7 @@ mod tests {
         let models = root.path().join("missing-models");
         let database = root.path().join("missing.sqlite3");
         for (ranking, available) in [("fusion", true), ("contextual-rerank", false)] {
-            std::fs::write(&config, format!("version=1\nproviders={{}}\n[embeddings]\nurl='http://127.0.0.1:1/v1/embeddings'\nmodel='test'\ndimensions=384\n[gold.query]\nranking='{ranking}'\n")).unwrap();
+            std::fs::write(&config, format!("version=1\nproviders={{}}\n[embeddings]\nurl='http://127.0.0.1:1/v1/embeddings'\nmodel='test'\ndimensions=384\n[views.query]\nranking='{ranking}'\n")).unwrap();
             let configuration = crate::config::load(Some(&config)).unwrap();
             let status = local_status(&database, &models, &configuration).unwrap();
             assert!(!status.models_installed);

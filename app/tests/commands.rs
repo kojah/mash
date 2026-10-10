@@ -1,6 +1,34 @@
 use super::*;
 
 #[test]
+fn built_in_views_flags_replace_gold_flags_without_aliases() {
+    for (command, current, retired) in [
+        ("index", "--rebuild-local-views", "--rebuild-local-gold"),
+        ("serve", "--replay-views", "--replay-gold"),
+        ("serve", "--activate-views", "--activate-gold"),
+    ] {
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args([command, "--help"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let help: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let help = help["help"].as_str().unwrap();
+        assert!(help.contains(current), "{help}");
+        assert!(!help.contains(retired), "{help}");
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args([command, retired])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "usage");
+    }
+}
+
+#[test]
 fn opt_in_tracing_preserves_cli_json_and_excludes_configured_paths() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");
@@ -116,7 +144,7 @@ fn removed_commands_are_rejected() {
             .assert()
             .failure();
     }
-    for option in ["--stage-gold", "--discard-staged-gold"] {
+    for option in ["--stage-views", "--discard-staged-views"] {
         let output = Command::cargo_bin("mash")
             .expect("mash binary")
             .args([

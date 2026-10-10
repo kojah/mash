@@ -1,8 +1,8 @@
 use super::*;
-use crate::gold::config::Fusion;
 use crate::provider::Provider;
 use crate::role::Role;
 use crate::search_results::ChatMetadata;
+use crate::views::config::Fusion;
 
 fn candidate(thread: &str, id: &str, content: &str) -> SearchHit {
     SearchHit {

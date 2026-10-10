@@ -1,16 +1,16 @@
--- Local gold: retrieval artifacts derived from the paired silver database.
--- Every row can be rebuilt from silver with `mash index --rebuild-local-gold --full`.
--- Statements stay unqualified; storage attaches this file as schema `gold`.
+-- Local views: retrieval artifacts derived from the paired silver database.
+-- Every row can be rebuilt from silver with `mash index --rebuild-local-views --full`.
+-- Statements stay unqualified; storage attaches this file as schema `views`.
 CREATE TABLE IF NOT EXISTS silver_pairing (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     instance TEXT NOT NULL
 );
--- Gold build identity: exactly one active projection, without copied history.
-CREATE TABLE IF NOT EXISTS gold_manifest (
+-- View build identity: exactly one active projection, without copied history.
+CREATE TABLE IF NOT EXISTS views_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton=1),
     manifest TEXT
 );
-INSERT OR IGNORE INTO gold_manifest(singleton) VALUES (1);
+INSERT OR IGNORE INTO views_manifest(singleton) VALUES (1);
 -- Independent local lexical publication; contains no copied canonical text.
 CREATE TABLE IF NOT EXISTS lexical_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton=1),

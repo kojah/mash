@@ -42,7 +42,7 @@ fn schemas_before_the_supported_upgrade_are_rejected_untouched() {
     assert_eq!(error.error.kind, crate::ErrorKind::SchemaIncompatible);
     assert!(error.error.message.contains("mash import"));
     assert_eq!(user_version(&path), 44);
-    assert!(!crate::storage::schema::gold_path(&path).exists());
+    assert!(!crate::storage::schema::views_path(&path).exists());
     let kept: i64 = Connection::open(&path)
         .unwrap()
         .query_row("SELECT count(*) FROM conversations", [], |row| row.get(0))

@@ -450,9 +450,9 @@ mod tests {
         let path = root.path().join("absent-models");
         let models = crate::semantic::Models::new(path.clone()).with_remote(Some(config));
         let vector = crate::blocking(move || {
-            models.require_search(crate::gold::config::Ranking::Fusion)?;
+            models.require_search(crate::views::config::Ranking::Fusion)?;
             let mut backend = models
-                .load_search(crate::gold::config::Ranking::Fusion)?
+                .load_search(crate::views::config::Ranking::Fusion)?
                 .unwrap();
             crate::semantic::shared_query_vector(&mut backend, "first")
         })

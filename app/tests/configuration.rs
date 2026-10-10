@@ -58,7 +58,7 @@ fn legacy_provider_root_environment_variables_are_ignored() {
             "attachments": {"allowed_roots": [], "share_files": false},
             "redaction": {"output": true, "publication": true, "remote_embeddings": true},
             "shared": null,
-            "gold": {"build": {"embedding_text": "dialogue"}, "query": {
+            "views": {"build": {"embedding_text": "dialogue"}, "query": {
                 "intent": "related-discussion", "unit": "chats", "limit": 20,
                 "fusion": {"rank_constant": 60, "lexical_weight": 1, "recency_weight": 50, "semantic_weight": 1},
                 "ranking": "contextual-rerank"

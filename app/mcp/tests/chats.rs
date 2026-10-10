@@ -14,7 +14,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
     std::fs::write(
         &config,
         format!(
-            "version = 1\n[providers.claude-code]\nroots = ['{}']\n[gold.query]\nunit = 'messages'\nlimit = 1\n",
+            "version = 1\n[providers.claude-code]\nroots = ['{}']\n[views.query]\nunit = 'messages'\nlimit = 1\n",
             root.display()
         ),
     )
@@ -59,7 +59,7 @@ async fn real_models_thread_discovery_and_scoped_messages() {
         .unwrap();
     let database = directory.path().join("index.sqlite3");
     let before = std::fs::read(&database).unwrap();
-    // Search must use existing gold even when bronze no longer exists.
+    // Search must use existing views even when bronze no longer exists.
     std::fs::remove_dir_all(&root).unwrap();
     let defaults = client
         .call_tool(

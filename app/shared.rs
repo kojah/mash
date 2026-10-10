@@ -1,6 +1,6 @@
 //! HTTP transport, publication coordination and shared storage. The server keeps
-//! silver in SQLite (`silver_store`) and derived, replayable gold in Qdrant
-//! (`qdrant_index`); gold builders live in `gold/shared.rs`.
+//! silver in SQLite (`silver_store`) and derived, replayable views in Qdrant
+//! (`qdrant_index`); views builders live in `views/shared.rs`.
 use serde::{Deserialize, Serialize};
 
 // Full-history upload, validation and staging share one bounded request budget.
@@ -11,7 +11,6 @@ pub(crate) mod attachments;
 mod client;
 mod coverage;
 mod exact;
-mod gold_manifest;
 mod lexical_manifest;
 mod output;
 pub(crate) mod protocol;
@@ -23,6 +22,7 @@ pub(crate) mod server;
 mod silver_revision;
 mod silver_store;
 mod validation;
+mod views_manifest;
 
 pub(crate) use client::{freshness, list_chats, view};
 pub(crate) use exact::search as search_exact;
@@ -81,15 +81,15 @@ pub(crate) struct Freshness {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     unpublished_nodes: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    group_gold: Option<Box<GroupGold>>,
+    group_views: Option<Box<GroupView>>,
     nodes: Vec<NodeFreshness>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct GroupGold {
+struct GroupView {
     version: String,
-    build: crate::gold::config::Build,
+    build: crate::views::config::Build,
     generation: String,
     dimensions: usize,
     #[serde(default)]
@@ -100,15 +100,15 @@ struct GroupGold {
 struct NodeFreshness {
     /// None means the service did not report artifact publication states.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    artifacts: Option<crate::gold::readiness::Artifacts>,
+    artifacts: Option<crate::views::readiness::Artifacts>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     lexical_manifest: Option<lexical_manifest::Manifest>,
     #[serde(default)]
     lexical_current: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    gold_manifest: Option<gold_manifest::Manifest>,
+    views_manifest: Option<views_manifest::Manifest>,
     #[serde(default)]
-    gold_current: bool,
+    views_current: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     silver_revision: Option<silver_revision::State>,
     /// Retained source-node certificate, not the server-owned canonical revision.

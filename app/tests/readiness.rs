@@ -103,7 +103,7 @@ fn status_reports_the_exact_resolved_local_configuration() {
             "attachments": {"allowed_roots": [], "share_files": false},
             "redaction": {"output": true, "publication": true, "remote_embeddings": true},
             "shared": null,
-            "gold": {"build": {"embedding_text": "dialogue"}, "query": {
+            "views": {"build": {"embedding_text": "dialogue"}, "query": {
                 "intent": "related-discussion", "unit": "chats", "limit": 20,
                 "fusion": {"rank_constant": 60, "lexical_weight": 1, "recency_weight": 50, "semantic_weight": 1},
                 "ranking": "contextual-rerank"
@@ -221,7 +221,7 @@ fn status_with_completed_embeddings_reports_hybrid_readiness() {
 }
 
 #[test]
-fn current_gold_readiness_does_not_require_query_model_assets() {
+fn current_views_readiness_does_not_require_query_model_assets() {
     let fixture = NodeFixture::new();
     fixture.seed(None);
     fixture.insert_embedding();
@@ -249,7 +249,7 @@ fn current_gold_readiness_does_not_require_query_model_assets() {
 fn exact_status_uses_lexical_certification_without_models_or_dense_coverage() {
     let fixture = NodeFixture::new();
     let config = fixture.database.with_extension("toml");
-    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nembedding_text='title-and-dialogue'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nembedding_text='title-and-dialogue'\n[views.query]\nintent='exact-mention'\n").unwrap();
     let missing_models = fixture.database.with_extension("missing-models");
     let status = || {
         run_json(&[

@@ -25,7 +25,7 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
     let config = directory.path().join("config.toml");
     std::fs::write(
         &config,
-        "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n",
+        "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
     )
     .unwrap();
     let text = format!("{}needle {}", "界 ".repeat(500), "終 ".repeat(400));

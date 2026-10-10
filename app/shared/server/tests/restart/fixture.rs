@@ -275,7 +275,7 @@ impl Api {
         Self::launch(database, root, None).0
     }
 
-    /// Start the API, optionally replaying gold from silver first; returns the
+    /// Start the API, optionally replaying views from silver first; returns the
     /// JSON reports printed before the readiness line.
     pub(super) fn launch(
         database: &Database,
@@ -298,7 +298,7 @@ impl Api {
         }
         command.arg("serve").arg("--server-config").arg(path);
         if replay_models.is_some() {
-            command.arg("--replay-gold");
+            command.arg("--replay-views");
         }
         let child = command
             .env("MASH_RESTART_URL", database.endpoint())

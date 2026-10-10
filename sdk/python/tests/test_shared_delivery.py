@@ -58,7 +58,7 @@ class SharedDeliveryTests(unittest.IsolatedAsyncioTestCase):
             (first,) = await connector.send(edit("one"))
             (second,) = await connector.send(edit("two"))
         self.assertEqual((first.source_revision, second.source_revision), (1, 2))
-        self.assertFalse(second.gold_ready)
+        self.assertFalse(second.views_ready)
         path, headers = self.server_state.requests[0]
         self.assertEqual(path, "/v1/connector-batches")
         self.assertEqual(headers["content-type"], "application/json")

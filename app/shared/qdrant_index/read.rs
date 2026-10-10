@@ -1,4 +1,4 @@
-//! Group-scoped retrieval over the documents of nodes with compatible gold.
+//! Group-scoped retrieval over the documents of nodes with compatible views.
 use super::{
     AppError, Document, Identity, Store, Stored, VectorIndex, api, collection, connector_hit,
     document_id, failure, sparse, tokens,
@@ -13,13 +13,13 @@ pub(in crate::shared) fn validate_search(
 ) -> Result<(), AppError> {
     if let Some(policy) = input.vector_policy {
         policy.validate_request()?;
-        if input.intent == crate::gold::exact::Intent::ExactMention {
+        if input.intent == crate::views::exact::Intent::ExactMention {
             return Err(AppError::usage(
                 "vector overrides require related-discussion intent",
             ));
         }
     }
-    if input.intent == crate::gold::exact::Intent::ExactMention {
+    if input.intent == crate::views::exact::Intent::ExactMention {
         return Ok(()); // Literal syntax and filters are validated by search_exact.
     }
     crate::search_query::validate(&input.query)?;
@@ -174,12 +174,12 @@ impl Store {
         ef: usize,
     ) -> Result<Vec<SearchHit>, AppError> {
         let name = collection(&identity.group_id, false);
-        let original = crate::gold::matching::Plan::new(
+        let original = crate::views::matching::Plan::new(
             &input.query,
-            crate::gold::matching::Mode::Strict,
+            crate::views::matching::Mode::Strict,
             &[],
         )?;
-        let request = |plan: &crate::gold::matching::Plan| {
+        let request = |plan: &crate::views::matching::Plan| {
             let mut scoped = filter.clone();
             for group in &plan.groups {
                 scoped.must.push(api::matches("tokens", group.clone()));
@@ -199,14 +199,14 @@ impl Store {
         let original_request = request(&original);
         let strict = self.api.query::<Stored<Document>>(&name, &original_request);
         let expand = async {
-            if input.match_mode == crate::gold::matching::Mode::Strict
+            if input.match_mode == crate::views::matching::Mode::Strict
                 || (input.query.trim().starts_with('"') && input.query.trim().ends_with('"'))
             {
                 return Ok((original, Vec::new()));
             }
             let vocabulary = self.api.terms(&name, filter).await?;
             let plan =
-                crate::gold::matching::Plan::new(&input.query, input.match_mode, &vocabulary)?;
+                crate::views::matching::Plan::new(&input.query, input.match_mode, &vocabulary)?;
             let points = self
                 .api
                 .query::<Stored<Document>>(&name, &request(&plan))
@@ -237,7 +237,7 @@ impl Store {
         active: &BTreeSet<String>,
     ) -> Result<protocol::Candidates, AppError> {
         validate_search(&input, identity)?;
-        if input.intent == crate::gold::exact::Intent::ExactMention {
+        if input.intent == crate::views::exact::Intent::ExactMention {
             return tokio::time::timeout(std::time::Duration::from_millis(1500), self.search_exact(identity, input, active))
                 .await.map_err(|_| AppError::usage("exact query exceeded the shared search budget; narrow the query or metadata filters"))?;
         }
@@ -305,7 +305,7 @@ fn hits(
     lexical: bool,
     identity: &Identity,
     active: &BTreeSet<String>,
-    build: &crate::gold::config::Build,
+    build: &crate::views::config::Build,
 ) -> Result<Vec<SearchHit>, AppError> {
     let mut output = Vec::new();
     let mut seen = BTreeSet::new();
@@ -313,7 +313,7 @@ fn hits(
         let d = match point.payload {
             Stored::Native(document) => document,
             Stored::Connector(document) => {
-                // Every connector unit is embedded whenever dense gold is built.
+                // Every connector unit is embedded whenever dense views are built.
                 let generation = build
                     .dense_enabled()
                     .then_some(identity.generation.as_str());

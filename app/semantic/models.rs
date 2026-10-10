@@ -39,7 +39,7 @@ pub(crate) struct Backend {
 
 #[derive(PartialEq, Eq)]
 struct BackendCacheKey {
-    ranking: crate::gold::config::Ranking,
+    ranking: crate::views::config::Ranking,
     root: PathBuf,
     marker_modified: Option<SystemTime>,
     files: Vec<(String, u64, Option<SystemTime>)>,
@@ -138,9 +138,9 @@ impl Models {
 
     pub(crate) fn require_search(
         &self,
-        ranking: crate::gold::config::Ranking,
+        ranking: crate::views::config::Ranking,
     ) -> Result<(), AppError> {
-        if ranking == crate::gold::config::Ranking::Fusion
+        if ranking == crate::views::config::Ranking::Fusion
             && let Some(config) = &self.remote
         {
             return remote::Client::new(config.clone()).map(|_| ());
@@ -150,15 +150,15 @@ impl Models {
 
     #[cfg(test)]
     pub(crate) fn load(&self) -> Result<Option<LoadedBackend>, AppError> {
-        self.load_search(crate::gold::config::Ranking::default())
+        self.load_search(crate::views::config::Ranking::default())
     }
 
     #[tracing::instrument(name = "load_search_models", skip_all)]
     pub(crate) fn load_search(
         &self,
-        ranking: crate::gold::config::Ranking,
+        ranking: crate::views::config::Ranking,
     ) -> Result<Option<LoadedBackend>, AppError> {
-        if ranking == crate::gold::config::Ranking::Fusion
+        if ranking == crate::views::config::Ranking::Fusion
             && let Some(config) = &self.remote
         {
             return Ok(Some(LoadedBackend {
@@ -183,10 +183,10 @@ impl Models {
                     embedding: None,
                     remote: Some(remote::Client::new(config.clone())?),
                     reranker: match ranking {
-                        crate::gold::config::Ranking::ContextualRerank => {
+                        crate::views::config::Ranking::ContextualRerank => {
                             Some(load_reranker(&asset_root)?)
                         }
-                        crate::gold::config::Ranking::Fusion => None,
+                        crate::views::config::Ranking::Fusion => None,
                     },
                     assets_lease: selected.lease,
                 }),
@@ -307,17 +307,17 @@ impl Backend {
     }
 
     pub(super) fn load_local(root: &Path) -> Result<Self, AppError> {
-        Self::load_local_search(root, crate::gold::config::Ranking::default())
+        Self::load_local_search(root, crate::views::config::Ranking::default())
     }
 
     fn load_local_search(
         root: &Path,
-        ranking: crate::gold::config::Ranking,
+        ranking: crate::views::config::Ranking,
     ) -> Result<Self, AppError> {
         let embedding = load_local_embedding(root, None)?;
         let reranker = match ranking {
-            crate::gold::config::Ranking::ContextualRerank => Some(load_reranker(root)?),
-            crate::gold::config::Ranking::Fusion => None,
+            crate::views::config::Ranking::ContextualRerank => Some(load_reranker(root)?),
+            crate::views::config::Ranking::Fusion => None,
         };
         Ok(Self {
             embedding: Some(embedding),

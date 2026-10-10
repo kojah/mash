@@ -94,12 +94,12 @@ async fn execute_inner(
     search::preflight(&configuration, &request.operation).await?;
     let uses_models = match &request.operation {
         Operation::Search { intent, .. } => {
-            intent.unwrap_or(configuration.gold.query.intent)
-                == crate::gold::exact::Intent::RelatedDiscussion
+            intent.unwrap_or(configuration.views.query.intent)
+                == crate::views::exact::Intent::RelatedDiscussion
         }
         Operation::Index(request) => {
-            configuration.gold.build.dense_enabled()
-                || (request.mode != IndexMode::LocalGold && configuration.shared.is_some())
+            configuration.views.build.dense_enabled()
+                || (request.mode != IndexMode::LocalViews && configuration.shared.is_some())
         }
         Operation::ModelsInstall => true,
         _ => false,
@@ -153,12 +153,12 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
     search::resolve_fusion(
         *fusion,
         intent.unwrap_or_default(),
-        crate::gold::config::Fusion::default(),
+        crate::views::config::Fusion::default(),
     )?;
     search::resolve_ranking(
         *ranking,
         intent.unwrap_or_default(),
-        crate::gold::config::Ranking::default(),
+        crate::views::config::Ranking::default(),
     )?;
     search::resolve(
         query,

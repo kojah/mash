@@ -15,7 +15,7 @@ cross-encoder reranking provide
 hybrid retrieval. Nodes optionally publish to a joint shared index, one per
 node group, so shared history remains searchable while source machines are offline.
 The service keeps shared silver (published canonical history) in SQLite and derived
-shared gold (search documents and vectors) in Qdrant. Local SQLite is required for offline search.
+shared views (search documents and vectors) in Qdrant. Local SQLite is required for offline search.
 
 Mash masks recognizable credentials in CLI/MCP search results, chat metadata,
 and `view` output, shared HTTP read responses and outgoing publications, and text
@@ -58,7 +58,7 @@ reuse the generated projection and decoder; migrations and writes remain explici
 
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
-mash index --rebuild-local-gold [--full]
+mash index --rebuild-local-views [--full]
 mash search <query> [--unit chats|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
 mash list-chats [--local | --shared] [--provider PROVIDER] [--kind KIND] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]
@@ -73,11 +73,11 @@ mash serve --server-config PATH
 
 Chat discovery uses `list-chats` / MCP `list_chats`, `chats` / `messages`
 search units, `--chat` / MCP `chat` filters, and `chat_id` in search and listing
-results. Update clients and explicit `gold.query.unit` settings and reconnect
+results. Update clients and explicit `views.query.unit` settings and reconnect
 existing MCP sessions after upgrading. Title-and-dialogue embeddings now use
-`Chat:` with a new recipe identity; rebuild affected local gold explicitly.
-Shared gold's chat state also uses the new names: replay shared gold from silver
-with `mash serve --server-config PATH --replay-gold` when upgrading an existing
+`Chat:` with a new recipe identity; rebuild affected local views explicitly.
+The shared views' chat state also uses the new names: replay shared views from silver
+with `mash serve --server-config PATH --replay-views` when upgrading an existing
 server. Canonical silver is retained.
 
 Search results, chat matches and listed chats identify their origin with a tagged
@@ -90,8 +90,8 @@ turn (`codex:turn`, a prompt with the answers that follow it, derived from
 silver) and then its chat. Chat-level results group under an
 entry's nearest container, or a document on its own. Native messages keep
 `role`; connector entries carry `author_kind` (`human`, `bot` or `unknown`)
-instead, and documents carry neither. The local gold schema is now version 3 and
-silver version 51: existing local gold is rebuilt from silver by the next
+instead, and documents carry neither. The local views schema is now version 4 and
+silver version 53: existing local views are rebuilt from silver by the next
 `mash index`, and silver from an earlier release crosses over through export and
 `import --keep-identity`.
 
@@ -194,7 +194,7 @@ The manifests/catalogues follow the official
 
 ## Models and indexing
 
-Search is semantic by default. A `lexical-only` gold build supports
+Search is semantic by default. A `lexical-only` views build supports
 `exact-mention`; semantic `related-discussion` requires `lexical-and-dense`.
 Lexical retrieval defaults to `--match-mode flexible` (`match_mode: "flexible"`
 in MCP/HTTP): prefixes of at least three characters and conservative typo
@@ -217,23 +217,47 @@ error recommending `mash index`, before loading inference models or contacting
 the shared search service. An explicitly completed empty index is valid.
 
 Local indexing separates durable canonical ingestion (silver) from rebuilding
-retrieval views (gold), reusing the existing stored history. They are two SQLite
-files: `mash.sqlite3` holds silver and the paired `mash.gold.sqlite3` beside it
+built-in retrieval views, reusing the existing stored history. Lexical indexes,
+dense embeddings and connector search units are built-in views: derived from
+silver, certified against it and replayable from it. They are two SQLite
+files: `mash.sqlite3` holds silver and the paired `mash.views.sqlite3` beside it
 holds embeddings, the full-text index and readiness. Silver uses the same schema
-as each node's history on the shared server. Gold never holds history that
+as each node's history on the shared server. Views never hold history that
 silver lacks: if it is deleted, damaged or belongs to another silver database,
-mash replaces it with empty, unready gold. `mash index --rebuild-local-gold`
+mash replaces it with empty, unready views. `mash index --rebuild-local-views`
 rebuilds it from stored silver offline, reusing valid vectors; add `--full` to
-discard all local gold and replay it from silver.
+discard all local views and replay it from silver.
+
+The built-in views rename is a breaking change. Replace `[gold.build]` and
+`[gold.query]` with `[views.build]` and `[views.query]` in node and server TOML.
+The commands now use `--rebuild-local-views`, `--activate-views` and
+`--replay-views`; MCP uses `rebuild_local_views`, and the development MCP refresh
+mode is `local-views`. Receipts expose `views_ready` and status uses `views`
+fields. Old keys and flags are rejected; reconnect MCP clients after installing.
+The paired database is now `.views.sqlite3` and shared Qdrant collections use
+the `mash_views_` prefix. Rebuild local views from retained silver and replay
+shared views with `serve --replay-views` before checking readiness. Retired
+`.gold.sqlite3` files and `mash_gold_` collections are not read or converted;
+they can be removed after verifying the rebuilt views.
+Silver schema 53 stores the renamed live connector receipts. Use the existing
+export/import upgrade for local schema 52 indexes. Portable archive version 1
+retains its original receipt encoding, including its historical `gold_ready`
+key, so exports from earlier releases remain importable; live receipts use
+`views_ready`.
+Update the history plugin to version 0.1.4 and reconnect Mash MCP after the
+rollout. Older cached plugin instructions still use `list_threads` and
+`unit: "threads"`; the current protocol uses `list_chats` and `unit: "chats"`.
+Replacing the executable leaves already running MCP processes on their previous
+binary, so those connections must be restarted before using the new schema.
 
 There are no in-place schema migrations. A release opens only its own silver
 schema and rejects any other untouched. To upgrade across a schema change,
 export with the release that wrote the index, retire its files, and import with
 the new release using `mash import --keep-identity`, which continues the node's
 shared identity; `tools/upgrade-local-index.sh` does exactly this and is a no-op
-when the schema is unchanged. Then rebuild gold with
-`mash index --rebuild-local-gold`. The shared server never migrates either: an
-empty silver directory is refilled by node publications and `--replay-gold`.
+when the schema is unchanged. Then rebuild views with
+`mash index --rebuild-local-views`. The shared server never migrates either: an
+empty silver directory is refilled by node publications and `--replay-views`.
 `mash --version` reports the silver schema a release opens (`silver_schema`).
 For development fleets, `tools/restart-dev-api.sh --retire-incompatible-silver
 DIR` moves node databases the new server cannot open into its deployment log
@@ -639,10 +663,10 @@ roots must be absolute. `index.since_days` defaults to 90. Set
 `index.all_history = true` instead for all history; these settings cannot be
 combined. CLI indexing flags override these settings.
 
-Optional `[gold.query]` settings select the default `unit` (`"chats"` or
+Optional `[views.query]` settings select the default `unit` (`"chats"` or
 `"messages"`) and `limit` (1–200). Omitting them preserves chats and 20 results.
 CLI/MCP search parameters override either setting without rebuilding the index.
-`[gold.query.fusion]` controls hybrid candidate fusion independently of gold
+`[views.query.fusion]` controls hybrid candidate fusion independently of views
 builds: `rank_constant` defaults to 60 (1–1000), and `lexical_weight` and
 `semantic_weight` each default to 1 (1–100). Higher weights favor that candidate
 stream before contextual reranking. `recency_weight` (default 50, 0–100) favours
@@ -654,7 +678,7 @@ still outranks a weak new one; undated messages get no recency credit and 0
 ranks by relevance alone. These query-only settings apply to local,
 combined and fallback searches, take effect on the next request, and require no
 index rebuild. Exact-mention search is independent of fusion settings.
-Set `[gold.query] ranking = "fusion"` to keep fused hybrid ordering and skip
+Set `[views.query] ranking = "fusion"` to keep fused hybrid ordering and skip
 contextual reranking and its context fetches. The default is
 `"contextual-rerank"`. This query-only policy applies across local, shared and
 combined searches through the same CLI/MCP core, including worker requests.
@@ -679,7 +703,7 @@ For resolved policy and retrieval outcomes, use CLI `search --diagnostics` or
 MCP `search` with `"diagnostics":true`. The optional report includes selected
 artifacts, completed retrieval sources, fallback, result count and core time.
 It does not run indexing or change search results.
-See [silver enrichment and gold configuration](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md)
+See [silver enrichment and views configuration](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-gold-configuration.md)
 for the layer contract and current configuration scope.
 
 ```toml
@@ -739,10 +763,10 @@ on ingestion rejects objects that use an undeclared kind, a different role or a
 disallowed parent, and a new declaration is rejected if anything the source
 already stored would violate it.
 `mash index --connector-batch PATH` commits a batch to local silver and returns a
-durable receipt with `gold_ready: false`; it loads no models. Records become
-searchable after the next `mash index` (or `index --rebuild-local-gold`), which
+durable receipt with `views_ready: false`; it loads no models. Records become
+searchable after the next `mash index` (or `index --rebuild-local-views`), which
 indexes their text, embeds them with the configured model and recertifies local
-gold. Until then, local search reports gold as stale rather than omitting them.
+views. Until then, local search reports views as stale rather than omitting them.
 
 Connector results use namespaced anchors `connector#<role>#<source_id>#<id>`,
 such as `connector#entry#discord:guild#message-1`; pass them to `view`, `chat`
@@ -757,9 +781,9 @@ silver (`POST /v1/connector-batches`, authenticated as that node), or both. Node
 publication never carries connector records. After committing a shared batch,
 the server embeds changed records with its `--models-dir` model (or the
 configured remote embeddings) and writes them to Qdrant alongside native
-documents; a server without a model cannot certify that node's dense gold. If
+documents; a server without a model cannot certify that node's dense views. If
 synchronization fails, the receipt still confirms durable silver and the node
-stays uncertified until its next batch, upload or `--replay-gold`, which also
+stays uncertified until its next batch, upload or `--replay-views`, which also
 rebuilds connector points from shared silver.
 
 ## Search filters
@@ -940,7 +964,7 @@ mash list-chats --provider codex --title-contains cbioportal --limit 10
 mash search 'database migration' --unit messages --provider codex --chat CHAT_ID
 ```
 
-The HTTP service stores shared silver in SQLite and shared gold in
+The HTTP service stores shared silver in SQLite and shared views in
 [Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env`; there is no backend
 selector. See [shared storage](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/shared-storage.md)
 for the publication sequence, recovery and cutover from Qdrant-only servers.
@@ -974,25 +998,25 @@ of mutations, not their total RAM.
 
 Shared silver is the source of truth. A publication is validated and committed
 to the silver SQLite database in one transaction, and only then synchronized into
-Qdrant: documents are replaced in place per message and the node's gold record
+Qdrant: documents are replaced in place per message and the node's views record
 is certified for the new silver revision when every chat is written. Until
-then the node's gold is reported stale and excluded from dense search; there is
-no Qdrant staging or conditional head protocol. A node that sees stale gold
-resends a complete snapshot, which repairs gold without changing silver.
+then the node's views are reported stale and excluded from dense search; there is
+no Qdrant staging or conditional head protocol. A node that sees stale views
+resends a complete snapshot, which repairs views without changing silver.
 Thread lists, `view` and context reads come from shared silver.
 
-If Qdrant data is lost or damaged, start the service with `--replay-gold` to
+If Qdrant data is lost or damaged, start the service with `--replay-views` to
 rebuild every configured node's documents and vectors from shared silver before
 serving. Replay embeds with the server's configured `[embeddings]` model space:
 a remote endpoint when `url` is set, otherwise local model assets from
-`--models-dir`. Replay is the only shared gold rebuild; nodes never re-embed
+`--models-dir`. Replay is the only shared views rebuild; nodes never re-embed
 shared history.
 Benchmark actual search latency, update cost, memory use, and retrieval
 quality for a group. See [the measured comparison](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-09-30-shared-index.md).
 
 In both mode without destination filters, local indexing commits first. Changes
 mark a durable local publication revision;
-the service commits a changed node's upload to shared silver and then synchronizes its gold. Raw tool outputs are uploaded
+the service commits a changed node's upload to shared silver and then synchronizes its views. Raw tool outputs are uploaded
 for context but remain excluded from search. Unchanged revisions are acknowledged
 without replacing shared records. A failed upload returns local success with
 `shared.state: "pending"`; subsequent `index` runs retry even with no new history.
@@ -1019,9 +1043,9 @@ context has a one-second total budget, preserving completed responses and using
 available message evidence for the rest. Transport failures appear in shared
 search status; combined search retains local results. Bulk publication and
 retained-history operations have a separate thirty-minute budget, covering
-upload, validation and gold synchronization. The service uses the same bulk budget. A timed-out
+upload, validation and views synchronization. The service uses the same bulk budget. A timed-out
 or disconnected requester does not cancel an already admitted mutation: it keeps
-its capacity until completion, and gold is not reported current until synchronization completes.
+its capacity until completion, and views are not reported current until synchronization completes.
 
 Search defaults to `unit = "chats"` in CLI and MCP. Each chat result includes
 its conversation ID, provider, representative node, available title/project/repository
@@ -1134,7 +1158,7 @@ simplicity over upload throughput. Large histories incur a full transfer on each
 exact retrieval scores the matching shared vectors. Qdrant also supports opt-in HNSW.
 The API spools each upload to a private temporary file and applies it to shared
 silver in one SQLite transaction; temporary disk must hold concurrent uploads.
-Gold synchronization then reads the committed upload and writes Qdrant documents
+View synchronization then reads the committed upload and writes Qdrant documents
 per chat. Account for concurrent uploads when provisioning the API.
 Shared-service provisioning remains explicit. Measure corpus size, latency and
 recall tradeoffs before choosing approximate retrieval.
@@ -1167,34 +1191,34 @@ group_id = "personal"
 node_id = "xenia"
 token_env = "MASH_XENIA_TOKEN"
 
-[gold.query.vector_search]
+[views.query.vector_search]
 algorithm = "hnsw"
 ef_runtime = 200
 # To request exhaustive vector retrieval instead:
 # algorithm = "exact" # Omit ef_runtime with exact.
 
 # Optional default for a configured group:
-# [gold.query.groups.personal]
+# [views.query.groups.personal]
 # algorithm = "hnsw"
 # ef_runtime = 80
 ```
 
-The server's `gold.query.vector_search` controls retrieval from the existing
+The server's `views.query.vector_search` controls retrieval from the existing
 dense index. Defaults are persisted per group. Use `mash serve --server-config
 server.toml --activate-query` to intentionally change existing defaults; conflicting
 startup settings otherwise fail. Running API processes read the selected policy
-on subsequent hybrid searches. This does not rebuild vectors, change gold build
+on subsequent hybrid searches. This does not rebuild vectors, change views build
 identity, or modify silver. The previous
 top-level `qdrant_vector_index` table is rejected; move it to the table above.
-Groups inherit the server default unless named in `gold.query.groups.GROUP`.
-Status exposes the selected policy in `group_gold.vector_search`. Node-side
-`gold.query` still controls intent, fusion and result shape independently.
+Groups inherit the server default unless named in `views.query.groups.GROUP`.
+Status exposes the selected policy in `group_views.vector_search`. Node-side
+`views.query` still controls intent, fusion and result shape independently.
 
 For a single hybrid search, use `--shared-vector-search exact`, or
 `--shared-vector-search hnsw --shared-hnsw-ef 80` (effort 1..4096, default 200).
 MCP accepts `shared_vector_search: {"algorithm":"hnsw","ef_runtime":80}`.
 Overrides affect only shared dense candidates and do not persist or rebuild
-gold. They require related-discussion intent and configured dense shared gold;
+views. They require related-discussion intent and configured dense shared views;
 local-only and exact-mention requests reject them. Omitting the override uses
 the current persisted group default.
 
@@ -1206,9 +1230,9 @@ export MASH_QDRANT_URL='http://127.0.0.1:6333/'
 mash serve --server-config /absolute/path/to/qdrant-server.toml
 ```
 
-Shared gold settings are persisted per group. Startup with conflicting build/model
+Shared views settings are persisted per group. Startup with conflicting build/model
 settings fails. To deliberately replace the selected settings, update the server
-TOML and start with `--activate-gold --replay-gold`, which re-embeds every node's
+TOML and start with `--activate-views --replay-views`, which re-embeds every node's
 shared silver on the API host. Old API settings fail closed, and dense search
 requires compatible manifests across the group. This preserves canonical history
 but interrupts dense search during replacement. See
@@ -1216,7 +1240,7 @@ but interrupts dense search during replacement. See
 for publication races and remaining lifecycle gates.
 Embedding dimension changes retain the same group and canonical history. Mash
 prepares an additional named dense field in the existing collection, then the
-same `--activate-gold --replay-gold` workflow selects and populates it.
+same `--activate-views --replay-views` workflow selects and populates it.
 The original dense field and lexical data are retained. Preparation alone does
 not activate the new model; dense search requires current manifests after the
 switch, while compatible metadata and lexical queries remain available.
@@ -1259,7 +1283,7 @@ need workload-specific measurement.
 
 Each group has an isolated message collection with named cosine dense vectors
 and IDF-weighted sparse lexical vectors, plus a state collection for the group's
-gold configuration and each node's gold certificate. Canonical history,
+views configuration and each node's views certificate. Canonical history,
 checkpoints, tombstones and chat catalogs live in shared silver. Lexical retrieval uses
 lowercase alphanumeric tokens, hashed sparse term IDs, saturated term frequency,
 and a fixed 256-token length reference; exact token predicates prevent hash
@@ -1272,9 +1296,9 @@ Quantization is disabled. Foreign vector fields, incompatible vector settings,
 or payload index types are rejected without deleting data. Dimension-specific
 fields are prepared without changing the original vector space.
 
-Each node's gold record names the silver revision it was certified against.
+Each node's views record names the silver revision it was certified against.
 Publication clears the certificate, replaces changed documents in place, deletes
-removed chats, and then recertifies; a crash between those steps leaves gold
+removed chats, and then recertifies; a crash between those steps leaves views
 stale rather than wrong-and-current. Activation replaces the group configuration
 point; API processes with superseded settings fail closed. The 64 MiB upload
 limit is configurable. Keep the silver database on persistent, backed-up storage.
@@ -1328,7 +1352,7 @@ The service configuration applies to every group it serves. Publishers and
 searchers must use the matching model and dimensions. Changing them rebuilds
 local embeddings on the next index pass; reindex all shared publishers before
 searching. For a shared model or dimension change, explicitly activate the server
-settings and rebuild each member's shared gold; a new group ID is unnecessary.
+settings and rebuild each member's shared views; a new group ID is unnecessary.
 Model identifiers and dimensions prevent mismatched
 queries from being compared with the stored embedding space.
 
@@ -1470,7 +1494,7 @@ after its readable summary. CLI output stays extended JSON.
 `export_silver({"directory":"/path/to/new-export"})` saves local silver and
 retained attachments offline, with a typed JSON manifest and checksums.
 `import_silver({"directory":"/path/to/new-export","database":"/path/to/new.sqlite3"})`
-imports to a fresh path and leaves gold explicitly unready. It does not redirect
+imports to a fresh path and leaves views explicitly unready. It does not redirect
 the running MCP session or overwrite existing history. See [silver exports](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/silver-exports.md)
 for format, CLI commands, import/rebuild steps and data scope.
 
@@ -1563,16 +1587,16 @@ modules are grouped by responsibility:
   and checkpoints. Provider-owned history files are bronze inputs.
   `app/silver/dialogue.rs` interprets visible dialogue independently of retrieval;
   canonical messages retain full context alongside an optional `dialogue_text`.
-- `app/silver/local.rs` and `app/gold/local.rs`: local stage boundaries for
+- `app/silver/local.rs` and `app/views/local.rs`: local stage boundaries for
   durable canonical ingestion and rebuildable retrieval state. The application
   core wires those stages together.
-- `app/gold/shared.rs`: node-side embedding and publication-payload materialization
+- `app/views/shared.rs`: node-side embedding and publication-payload materialization
   from interpreted silver conversations; source scanning stays in the shared
   publication coordinator.
-- `app/semantic/` and `app/search_*`: gold model execution, embedding batches,
+- `app/semantic/` and `app/search_*`: views model execution, embedding batches,
   Core ML, remote embeddings, hybrid retrieval and query/ranking policies.
 - `app/shared/snapshot/`: backend-independent publication validation; `layers.rs`
-  defines persisted silver history and gold embeddings within one atomic revision.
+  defines persisted silver history and views embeddings within one atomic revision.
 - `app/shared/qdrant_index/`: typed REST, conditional publication, and dense/sparse retrieval.
 - `app/tests/`: CLI contract tests grouped by behavior, with common setup in
   `support.rs`. CLI and MCP share marker fixtures from `app/test_support.rs`.

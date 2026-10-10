@@ -1,5 +1,5 @@
 use super::*;
-use crate::{gold::exact::Literal, search_filter::Selection};
+use crate::{search_filter::Selection, views::exact::Literal};
 
 fn certify(writer: &mut Storage) {
     writer
@@ -14,8 +14,8 @@ fn certify(writer: &mut Storage) {
 }
 
 #[test]
-fn flexible_search_supports_prefixes_and_transpositions_on_read_only_gold() {
-    use crate::gold::matching::{Kind, Mode};
+fn flexible_search_supports_prefixes_and_transpositions_on_read_only_views() {
+    use crate::views::matching::{Kind, Mode};
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("flexible.sqlite3");
     let mut writer = Storage::open_writer(&path).unwrap();
@@ -31,8 +31,8 @@ fn flexible_search_supports_prefixes_and_transpositions_on_read_only_gold() {
     certify(&mut writer);
     writer.commit_writer().unwrap();
     drop(writer);
-    let gold = super::super::schema::gold_path(&path);
-    let before = std::fs::read(&gold).unwrap();
+    let views = super::super::schema::views_path(&path);
+    let before = std::fs::read(&views).unwrap();
     let reader = Storage::open_lexical(&path).unwrap();
     let scope = Selection::default().resolve("local").unwrap();
     assert_eq!(scope.match_mode, Mode::Flexible);
@@ -93,7 +93,7 @@ fn flexible_search_supports_prefixes_and_transpositions_on_read_only_gold() {
             .is_empty()
     );
     drop(reader);
-    assert_eq!(before, std::fs::read(gold).unwrap());
+    assert_eq!(before, std::fs::read(views).unwrap());
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn lexical_publication_survives_forget_without_a_dense_manifest() {
             writer.mark_derived_search_dirty().unwrap();
         }
         writer.commit_writer().unwrap();
-        assert!(writer.gold_manifest().unwrap().is_none());
+        assert!(writer.views_manifest().unwrap().is_none());
         drop(writer);
         let mut writer = Storage::open_existing(&path).unwrap();
         assert!(writer.forget(&conversation("delete this").id).unwrap());

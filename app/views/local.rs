@@ -1,4 +1,4 @@
-//! Gold: rebuildable local retrieval state from stored silver history.
+//! Built-in views: rebuildable local retrieval state from stored silver history.
 use crate::AppError;
 use crate::progress::milliseconds as elapsed_milliseconds;
 use crate::semantic::{self, Models};
@@ -14,23 +14,23 @@ pub(crate) struct Build {
     pub(crate) embedding_milliseconds: u64,
 }
 
-#[tracing::instrument(name = "gold_build", skip_all)]
+#[tracing::instrument(name = "views_build", skip_all)]
 pub(crate) fn build(
     storage: &mut Storage,
     models: &Models,
     summary: &crate::silver::IndexSummary,
-    build: &crate::gold::config::Build,
+    build: &crate::views::config::Build,
 ) -> Result<Build, AppError> {
     let silver = storage.silver_certificate()?;
     let source_complete = silver.is_complete();
     let model = models.generation();
-    let manifest = crate::gold::manifest::Manifest::new(build.clone(), model.clone(), silver);
-    let previous = storage.gold_manifest()?;
+    let manifest = crate::views::manifest::Manifest::new(build.clone(), model.clone(), silver);
+    let previous = storage.views_manifest()?;
     let representations_changed = previous
         .as_ref()
         .is_some_and(|m| m.build.representations != build.representations);
     if representations_changed
-        || (build != &crate::gold::config::Build::default()
+        || (build != &crate::views::config::Build::default()
             && !previous.is_some_and(|m| m.matches(build, &model, &manifest.silver)))
     {
         // Title changes are canonical metadata changes, so rebuild all affected
@@ -55,8 +55,8 @@ pub(crate) fn build(
         storage.publish_lexical_manifest()?;
     }
     if !build.dense_enabled() {
-        storage.clear_dense_gold()?;
-        storage.publish_gold_manifest(&manifest)?;
+        storage.clear_dense_views()?;
+        storage.publish_views_manifest(&manifest)?;
         return Ok(Build {
             counts: storage.counts()?,
             ready: source_complete,
@@ -91,7 +91,7 @@ pub(crate) fn build(
             })?;
         model_load_milliseconds = elapsed_milliseconds(model_started);
         let progress = |event| crate::progress::emit(&crate::progress::Event::embedding(&event));
-        if build == &crate::gold::config::Build::default() {
+        if build == &crate::views::config::Build::default() {
             semantic::rebuild_embeddings(storage, &mut embedding_pool, &generation, progress)?
         } else {
             semantic::rebuild_with_build(
@@ -114,7 +114,7 @@ pub(crate) fn build(
         })?;
     }
     if source_complete {
-        storage.publish_gold_manifest(&manifest)?;
+        storage.publish_views_manifest(&manifest)?;
     }
     Ok(Build {
         counts,

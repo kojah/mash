@@ -19,7 +19,7 @@ steps. The development MCP's source is `crates/mash-dev`.
 Targets are explicit; there is no implicit fleet-wide deploy. Deploy API
 targets before the history nodes that require them:
 
-1. `shared-api`: the shared HTTP service and its Qdrant gold
+1. `shared-api`: the shared HTTP service and its Qdrant views
 2. `xenia`: this machine's history node
 3. `dev-macbook`, `personal-macbook`: remote history nodes over SSH
 
@@ -67,7 +67,15 @@ A release opens only its own silver schema (`mash --version` reports
 - `upgrade-local-index.sh` (xenia) and `upgrade-remote-index.sh` (Macs) export
   with the installed release and import with the new one, keeping identity.
 
-After a schema change, every listed node must republish and rebuild local gold.
+After a schema change, every listed node must republish and rebuild local views.
+
+For the breaking gold-to-views rename, update node and server TOML to `[views]`
+before installing the new release. Keep the previous server TOML privately and
+configure `restart-dev-api.sh --rollback-config PATH --replay-views` for the
+first rollout: rollback must still give the previous binary its own keys, and
+the renamed Qdrant collections need replay from silver. Remove these one-time
+options after verifying the rollout. Reachable nodes rebuild local views;
+offline Macs need the same TOML update and rebuild when they return.
 
 ## Refresh
 
@@ -76,10 +84,10 @@ Deployment and refresh stay separate. Refresh after deploying when:
 - the API reported nodes to `republish`, or
 - a node's local index was upgraded, or status reports it not ready.
 
-Use `refresh_index` with `{"nodes": [...], "mode": "local-gold"}` to rebuild
-local gold, then `{"mode": "sync"}` to ingest and republish. Nodes refresh
+Use `refresh_index` with `{"nodes": [...], "mode": "local-views"}` to rebuild
+local views, then `{"mode": "sync"}` to ingest and republish. Nodes refresh
 one at a time. Without the MCP, run the node's `mash index` (with
-`--rebuild-local-gold` first when gold is missing). Never download models
+`--rebuild-local-views` first when views is missing). Never download models
 here; a missing model needs `mash models install` from the user.
 
 ## Report

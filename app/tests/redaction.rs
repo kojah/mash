@@ -18,7 +18,7 @@ fn cli_output_redaction(masked: bool) {
     let body = r#"{"type":"user","sessionId":"session","uuid":"message","message":{"role":"user","content":"credentialneedle password=\"hunter2\" Authorization: Bearer opaque-session-value"}}"#;
     std::fs::write(&source, format!("{body}\n")).unwrap();
     let config = root.path().join("node.toml");
-    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n{}", chats.display(), if masked { "" } else { "[redaction]\noutput=false\n" })).unwrap();
+    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=['{}']\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n{}", chats.display(), if masked { "" } else { "[redaction]\noutput=false\n" })).unwrap();
     let db = root.path().join("index.sqlite3");
     let prefix = [
         "--config",

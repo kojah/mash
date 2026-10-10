@@ -54,7 +54,7 @@ async fn connector_http_receipts_replay_after_later_batches_and_conflicts_do_not
         .await
         .unwrap();
     assert_eq!(receipt.source_revision, 1);
-    assert!(!receipt.gold_ready);
+    assert!(!receipt.views_ready);
     let next: Receipt = upload(&service, FIRST, &batch("second", 1, "Edited"))
         .await
         .error_for_status()
@@ -81,7 +81,7 @@ async fn connector_http_receipts_replay_after_later_batches_and_conflicts_do_not
         let error = conflict.text().await.unwrap();
         assert!(!error.contains("PRIVATE-CANARY"));
     }
-    // Without Qdrant, gold synchronization fails after the silver commit; the
+    // Without Qdrant, views synchronization fails after the silver commit; the
     // durable receipt is still returned and silver holds the latest batch.
     assert_eq!(document(&service, FIRST), "Edited");
 }
@@ -164,8 +164,8 @@ async fn connector_http_limits_media_and_mutation_capacity_fail_before_commit() 
 
 fn exact(text: &str) -> crate::shared::protocol::Search {
     crate::shared::protocol::Search {
-        match_mode: crate::gold::matching::Mode::Strict,
-        intent: crate::gold::exact::Intent::ExactMention,
+        match_mode: crate::views::matching::Mode::Strict,
+        intent: crate::views::exact::Intent::ExactMention,
         vector_policy: None,
         unit: crate::search_results::SearchUnit::Messages,
         query: text.into(),
@@ -218,17 +218,17 @@ async fn qdrant_connector_records_are_searchable_and_follow_shared_silver() {
         crate::source::Source::Connector("github:installation".into())
     );
     assert_eq!(hits[0].node_id.as_deref(), Some("first"));
-    let mut vector = crate::gold::shared::embed_texts(
+    let mut vector = crate::views::shared::embed_texts(
         &models,
         None,
         &mut None,
         &["Review\nReview comment"],
-        &mut crate::gold::shared::Build::default(),
+        &mut crate::views::shared::Build::default(),
     )
     .await
     .unwrap();
     let related = crate::shared::protocol::Search {
-        intent: crate::gold::exact::Intent::RelatedDiscussion,
+        intent: crate::views::exact::Intent::RelatedDiscussion,
         query: "review".into(),
         generation: crate::semantic::SHARED_EMBEDDING_GENERATION.into(),
         vector: vector.pop().unwrap(),
@@ -277,14 +277,14 @@ async fn qdrant_connector_records_are_searchable_and_follow_shared_silver() {
         .await
         .unwrap();
     assert_eq!(found(&service, &exact("airship")).await[0].id, NOTE);
-    let gold = service
+    let views = service
         .store
-        .gold_state(&service.first)
+        .views_state(&service.first)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(gold.connectors.len(), 2);
-    assert!(gold.certified);
+    assert_eq!(views.connectors.len(), 2);
+    assert!(views.certified);
     service.cleanup().await;
 }
 

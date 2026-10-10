@@ -1,12 +1,12 @@
 use super::*;
 use crate::{
-    gold::exact::Intent,
     provider::Provider,
     search_filter::{Filter, Selection},
     search_results::SearchUnit,
     shared::protocol::{
         Batch, Candidates, ConversationRecord, Event, MessageRecord, Search, Start,
     },
+    views::exact::Intent,
 };
 
 fn row(id: &str, ordinal: i64, content: &str, created_at: Option<i64>) -> MessageRecord {
@@ -97,7 +97,7 @@ fn events(revision: i64) -> Vec<Value> {
     other.provider = Provider::ClaudeCode;
     let mut events = vec![
         Event::Start(Start {
-            gold_build: None,
+            views_build: None,
             instance: "exact-contract".into(),
             revision: Some(revision),
             base_revision: None,
@@ -128,7 +128,7 @@ fn events(revision: i64) -> Vec<Value> {
 
 fn query(text: &str, filter: Filter, exclude_self: bool) -> Search {
     Search {
-        match_mode: crate::gold::matching::Mode::Strict,
+        match_mode: crate::views::matching::Mode::Strict,
         intent: Intent::ExactMention,
         vector_policy: None,
         unit: SearchUnit::Messages,
@@ -183,7 +183,7 @@ async fn qdrant_exact_mentions_page_before_limits_preserve_silver_and_merge_with
             .as_array()
             .unwrap()
             .iter()
-            .all(|n| n["lexical_current"] == true && n["gold_current"] == false)
+            .all(|n| n["lexical_current"] == true && n["views_current"] == false)
     );
     verify_literals(&service, &token).await;
     verify_scopes(&service, &token).await;
@@ -336,8 +336,8 @@ fn seed_core(database: &std::path::Path) {
     writer.rebuild_derived_search_state().unwrap();
     writer.publish_lexical_manifest().unwrap();
     writer
-        .publish_gold_manifest(&crate::gold::manifest::Manifest::new(
-            crate::gold::config::Build::default(),
+        .publish_views_manifest(&crate::views::manifest::Manifest::new(
+            crate::views::config::Build::default(),
             "unavailable".into(),
             writer.silver_certificate().unwrap(),
         ))
@@ -362,7 +362,7 @@ async fn verify_core(service: &Service) {
                 models_dir: Some(directory.path().join("missing-models")),
             },
             operation: core::Operation::Search {
-                fusion: crate::gold::config::FusionOverrides::default(),
+                fusion: crate::views::config::FusionOverrides::default(),
                 ranking: None,
                 diagnostics: false,
                 query: "voyage-code-4".into(),

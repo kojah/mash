@@ -1,7 +1,7 @@
 use super::*;
-use crate::gold::config::{Build as Recipe, DenseContent};
 use crate::provider::Provider;
 use crate::silver::{IndexOptions, local::ingest};
+use crate::views::config::{Build as Recipe, DenseContent};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
@@ -44,8 +44,8 @@ fn rows(database: &Path) -> Vec<u8> {
 
 #[test]
 #[ignore = "requires installed MASH_TEST_MODELS_DIR"]
-fn parent_units_replace_only_gold_and_recover_after_missing_model_build() {
-    use crate::gold::config::RetrievalUnit;
+fn parent_units_replace_only_views_and_recover_after_missing_model_build() {
+    use crate::views::config::RetrievalUnit;
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("provider");
     let database = directory.path().join("silver.sqlite3");
@@ -73,7 +73,7 @@ fn parent_units_replace_only_gold_and_recover_after_missing_model_build() {
             assert!(build(&mut storage, &missing, &source.summary, recipe).is_err());
             assert!(
                 storage
-                    .require_gold_build(recipe, &models.generation())
+                    .require_views_build(recipe, &models.generation())
                     .is_err()
             );
             assert_eq!(storage.silver_certificate().unwrap(), silver);
@@ -82,12 +82,12 @@ fn parent_units_replace_only_gold_and_recover_after_missing_model_build() {
         assert!(result.ready);
         assert_eq!(result.counts.embeddings, 2);
         assert_eq!(storage.silver_certificate().unwrap(), silver);
-        assert_eq!(storage.gold_manifest().unwrap().unwrap().build, *recipe);
+        assert_eq!(storage.views_manifest().unwrap().unwrap().build, *recipe);
         storage.commit_writer().unwrap();
         drop(storage);
         assert_eq!(rows(&database), before);
         let connection = rusqlite::Connection::open(&database).unwrap();
-        attach_gold(&connection, &database);
+        attach_views(&connection, &database);
         vectors.push(connection.query_row(
             "SELECT vector FROM message_embeddings JOIN objects ON objects.origin='provider' AND objects.id=message_embeddings.message_id WHERE ordinal=1",
             [], |row| row.get::<_, Vec<u8>>("vector"),
@@ -95,7 +95,7 @@ fn parent_units_replace_only_gold_and_recover_after_missing_model_build() {
         assert_eq!(
             connection
                 .query_row(
-                    "SELECT COUNT(*) FROM gold_manifest WHERE manifest IS NOT NULL",
+                    "SELECT COUNT(*) FROM views_manifest WHERE manifest IS NOT NULL",
                     [],
                     |row| row.get::<_, i64>(0)
                 )
@@ -125,7 +125,7 @@ fn parent_edits_reembed_unchanged_child_anchors() {
         std::env::var_os("MASH_TEST_MODELS_DIR").unwrap(),
     ));
     let recipe = Recipe {
-        retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+        retrieval_unit: crate::views::config::RetrievalUnit::ParentAndMessage,
         ..Default::default()
     };
     let mut vectors = Vec::new();
@@ -153,7 +153,7 @@ fn parent_edits_reembed_unchanged_child_anchors() {
         drop(storage);
         assert_eq!(rows(&database), before);
         let connection = rusqlite::Connection::open(&database).unwrap();
-        attach_gold(&connection, &database);
+        attach_views(&connection, &database);
         vectors.push(connection.query_row(
             "SELECT vector FROM message_embeddings JOIN objects ON objects.origin='provider' AND objects.id=message_embeddings.message_id WHERE ordinal=1",
             [], |row| row.get::<_, Vec<u8>>("vector"),
@@ -179,7 +179,7 @@ fn users_only_empty_eligibility_builds_offline_without_inference() {
     let models = Models::new(directory.path().join("absent-models"));
     let recipe = Recipe {
         dense_content: DenseContent::UserMessages,
-        retrieval_unit: crate::gold::config::RetrievalUnit::ParentAndMessage,
+        retrieval_unit: crate::views::config::RetrievalUnit::ParentAndMessage,
         ..Default::default()
     };
     let result = build(&mut storage, &models, &source.summary, &recipe).unwrap();
@@ -247,7 +247,7 @@ fn dense_content_switches_edits_and_forget_preserve_canonical_silver_and_lexical
                 .semantic_index_is_ready(&recipe.generation(&models.generation()))
                 .unwrap()
         );
-        assert_eq!(stored.gold_manifest().unwrap().unwrap().build, recipe);
+        assert_eq!(stored.views_manifest().unwrap().unwrap().build, recipe);
         assert!(!root.exists());
     }
     history(&root, ["assistant", "assistant"]);
@@ -286,12 +286,12 @@ fn dense_content_switches_edits_and_forget_preserve_canonical_silver_and_lexical
     assert_eq!(storage.counts().unwrap().embeddings, 0);
 }
 
-/// Embeddings live in the paired gold database beside silver.
-fn attach_gold(connection: &rusqlite::Connection, database: &std::path::Path) {
+/// Embeddings live in the paired views database beside silver.
+fn attach_views(connection: &rusqlite::Connection, database: &std::path::Path) {
     connection
         .execute(
-            "ATTACH DATABASE ?1 AS gold",
-            [crate::storage::schema::gold_path(database)
+            "ATTACH DATABASE ?1 AS views",
+            [crate::storage::schema::views_path(database)
                 .to_str()
                 .unwrap()],
         )

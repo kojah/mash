@@ -134,7 +134,7 @@ def handler(state: Behaviour) -> type[BaseHTTPRequestHandler]:
                         "batch_id": batch["batch_id"],
                         "source_revision": state.revision,
                         "silver_revision": state.silver,
-                        "gold_ready": False,
+                        "views_ready": False,
                     }
                 )
                 state.receipts[batch["batch_id"]] = receipt

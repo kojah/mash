@@ -5,7 +5,7 @@ use crate::shared::protocol::{
 };
 use crate::shared::reuse::Fingerprint;
 use crate::shared::validation::{conflict, valid_id};
-use crate::{AppError, gold::config::Build, provider::Provider};
+use crate::{AppError, provider::Provider, views::config::Build};
 use rusqlite::Transaction;
 use std::collections::BTreeSet;
 use std::io::BufRead;
@@ -21,7 +21,7 @@ pub(in crate::shared) struct Applied {
     pub(in crate::shared) purged: u64,
     /// Chats whose messages and vectors this upload supplies.
     pub(in crate::shared) supplied: BTreeSet<String>,
-    /// Chats removed from silver; their gold documents are obsolete.
+    /// Chats removed from silver; their views documents are obsolete.
     pub(in crate::shared) deleted: BTreeSet<String>,
 }
 
@@ -204,7 +204,7 @@ impl Upload<'_> {
         Ok(())
     }
 
-    /// Reject records gold could not use under this recipe and model space.
+    /// Reject records views could not use under this recipe and model space.
     fn check_message(&self, record: &MessageRecord) -> Result<(), AppError> {
         valid_id(&record.id)?;
         valid_id(&record.conversation_id)?;
@@ -230,7 +230,7 @@ impl Upload<'_> {
         if self.provider(&record.conversation_id)?.is_none() {
             return Ok(());
         }
-        // Vectors are gold; silver keeps the canonical record only.
+        // Vectors are views; silver keeps the canonical record only.
         record.vector = None;
         record.generation = None;
         let inserted = sql::InsertMessage::builder()
@@ -320,15 +320,15 @@ pub(in crate::shared) fn apply(
 ) -> Result<Applied, AppError> {
     let previous = head(tx)?;
     let (input, lines) = first_line(file)?;
-    // A resent revision changes no silver; gold synchronization still runs
-    // when gold is stale, including after a group recipe change.
+    // A resent revision changes no silver; views synchronization still runs
+    // when views are stale, including after a group recipe change.
     let (revision, duplicate) = start(previous.as_ref(), &input)?;
     if input
-        .gold_build
+        .views_build
         .as_ref()
         .is_some_and(|requested| requested != build)
     {
-        return Err(conflict("shared gold recipe changed; retry indexing"));
+        return Err(conflict("shared views recipe changed; retry indexing"));
     }
     let mut upload = Upload {
         tx,
@@ -386,7 +386,7 @@ pub(in crate::shared) fn apply(
             return Err(AppError::usage("duplicate index start"));
         }
         if duplicate {
-            // Silver is unchanged, but gold synchronization reads these vectors.
+            // Silver is unchanged, but views synchronization reads these vectors.
             if let Event::Batch(Batch::Messages { records }) = &event {
                 for record in records {
                     upload.check_message(record)?;

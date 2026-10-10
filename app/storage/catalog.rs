@@ -26,7 +26,7 @@ impl Storage {
         // A provider selection names native history only. The caller's collector
         // applies the remaining filters, ordering and page window.
         if request.provider.is_empty() {
-            chats.extend(super::connector_gold::chats(&self.connection, node)?);
+            chats.extend(super::connector_views::chats(&self.connection, node)?);
         }
         Ok(chats)
     }

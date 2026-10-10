@@ -9,7 +9,7 @@ use super::{EmbeddingWrite, SemanticChunk, SemanticChunks, Storage, cutoff_times
 use crate::AppError;
 
 impl Storage {
-    pub(crate) fn clear_dense_gold(&self) -> Result<(), AppError> {
+    pub(crate) fn clear_dense_views(&self) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection.execute_batch("DELETE FROM connector_embeddings; DELETE FROM message_embeddings; DELETE FROM semantic_chunks; DELETE FROM dirty_semantic_chunks; DELETE FROM pending_embeddings; UPDATE derived_state SET semantic_ready_generation=NULL,resume_generation=NULL,resume_silver_revision=NULL,resume_interpretation_version=NULL WHERE singleton=1;")
             .map_err(AppError::database)
@@ -50,7 +50,7 @@ impl Storage {
     }
 
     fn dense_users_only(&self) -> Result<bool, AppError> {
-        Ok(self.gold_manifest()?.is_some_and(|m| m.build.users_only()))
+        Ok(self.views_manifest()?.is_some_and(|m| m.build.users_only()))
     }
 
     fn semantic_coverage_for_selection(
@@ -132,12 +132,12 @@ impl Storage {
 
     #[cfg(test)]
     pub(crate) fn mark_semantic_index_ready(&mut self, generation: &str) -> Result<(), AppError> {
-        self.mark_semantic_build_ready(generation, &crate::gold::config::Build::default())
+        self.mark_semantic_build_ready(generation, &crate::views::config::Build::default())
     }
 
     pub(crate) fn restrict_dense_queue(
         &self,
-        build: &crate::gold::config::Build,
+        build: &crate::views::config::Build,
     ) -> Result<(), AppError> {
         self.require_writer()?;
         if build.users_only() {
@@ -162,7 +162,7 @@ impl Storage {
     pub(crate) fn mark_semantic_build_ready(
         &mut self,
         generation: &str,
-        build: &crate::gold::config::Build,
+        build: &crate::views::config::Build,
     ) -> Result<(), AppError> {
         self.require_writer()?;
         if !self.semantic_coverage_for_selection(generation, build.users_only())? {

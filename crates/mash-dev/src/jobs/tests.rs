@@ -209,7 +209,7 @@ async fn real_mash_refresh_progress_rebuild_and_deploy_without_ingestion() {
     let binary = std::env::var("MASH_TEST_SERVER_BINARY").unwrap();
     let config = root.join("node.toml");
     let database = root.join("node.sqlite3");
-    std::fs::write(&config, "version=1\nproviders={}\n[gold.build]\nrepresentations='lexical-only'\n[gold.query]\nintent='exact-mention'\n").unwrap();
+    std::fs::write(&config, "version=1\nproviders={}\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n").unwrap();
     let runner = Runner::new(fixture(
         root,
         vec![Command {
@@ -253,14 +253,14 @@ async fn real_mash_refresh_progress_rebuild_and_deploy_without_ingestion() {
         job.nodes["one"].results[0]
             .structured_content
             .as_ref()
-            .unwrap()["rebuild_local_gold"],
+            .unwrap()["rebuild_local_views"],
         false
     );
 
     let id = runner
         .start(
             vec!["one".into()],
-            Operation::Refresh(RefreshMode::LocalGold),
+            Operation::Refresh(RefreshMode::LocalViews),
         )
         .await
         .unwrap()
@@ -271,7 +271,7 @@ async fn real_mash_refresh_progress_rebuild_and_deploy_without_ingestion() {
         job.nodes["one"].results[0]
             .structured_content
             .as_ref()
-            .unwrap()["rebuild_local_gold"],
+            .unwrap()["rebuild_local_views"],
         true
     );
     assert!(!root.join("missing-models").exists());

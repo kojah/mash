@@ -1,9 +1,9 @@
-//! Group gold settings. Changing them is an explicit operator activation.
+//! Group views settings. Changing them is an explicit operator activation.
 use super::{AppError, Identity, PointKind, Store, api, collection, failure, point_id};
-use crate::gold::config::Build;
+use crate::views::config::Build;
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -43,7 +43,7 @@ impl Configuration {
 
 fn version() -> Result<String, AppError> {
     let mut random = [0u8; 32];
-    getrandom::fill(&mut random).map_err(|_| AppError::internal("create gold identity"))?;
+    getrandom::fill(&mut random).map_err(|_| AppError::internal("create views identity"))?;
     Ok(blake3::hash(&random).to_hex().to_string())
 }
 
@@ -57,7 +57,7 @@ impl Store {
         &self,
         identity: &Identity,
     ) -> Result<Option<Configuration>, AppError> {
-        let id = point_id(&["gold-configuration"]);
+        let id = point_id(&["views-configuration"]);
         let mut points = self
             .api
             .retrieve::<Configuration>(
@@ -91,7 +91,7 @@ impl Store {
                 &collection(&identity.group_id, true),
                 &api::Upsert {
                     points: vec![api::Point {
-                        id: point_id(&["gold-configuration"]),
+                        id: point_id(&["views-configuration"]),
                         vector: api::Vectors::default(),
                         payload: configuration,
                     }],
@@ -101,8 +101,8 @@ impl Store {
     }
 
     /// Bootstrap once, or explicitly replace the group's recipe and model space.
-    /// Replacing them makes every node's gold stale until it is republished.
-    pub(in crate::shared) async fn select_gold(
+    /// Replacing them makes every node's views stale until it is republished.
+    pub(in crate::shared) async fn select_views(
         &self,
         identity: &Identity,
         activate: bool,
@@ -114,7 +114,7 @@ impl Store {
             }
             if !activate {
                 return Err(AppError::configuration(
-                    "server gold settings conflict with the persisted group configuration; use --activate-gold for an intentional switch",
+                    "server views settings conflict with the persisted group configuration; use --activate-views for an intentional switch",
                 ));
             }
         }
@@ -160,12 +160,12 @@ impl Store {
         Ok(())
     }
 
-    pub(in crate::shared) async fn gold_configuration(
+    pub(in crate::shared) async fn views_configuration(
         &self,
         identity: &Identity,
-    ) -> Result<crate::shared::GroupGold, AppError> {
+    ) -> Result<crate::shared::GroupView, AppError> {
         let current = self.active_configuration(identity).await?;
-        Ok(crate::shared::GroupGold {
+        Ok(crate::shared::GroupView {
             version: current.version,
             build: current.build,
             generation: current.generation,
@@ -180,12 +180,12 @@ impl Store {
     ) -> Result<Configuration, AppError> {
         let current = self.group_configuration(identity).await?.ok_or_else(|| {
             crate::shared::validation::conflict(
-                "shared group gold configuration is missing; restart the API",
+                "shared group views configuration is missing; restart the API",
             )
         })?;
         if !current.matches(self, identity) {
             return Err(crate::shared::validation::conflict(
-                "shared group gold configuration changed; restart this API with the active settings",
+                "shared group views configuration changed; restart this API with the active settings",
             ));
         }
         Ok(current)

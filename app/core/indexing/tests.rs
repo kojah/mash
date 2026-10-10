@@ -60,7 +60,7 @@ fn test_configuration(
         attachments: crate::attachments::Configuration::default(),
         redaction: crate::redaction::Settings::default(),
         embeddings: None,
-        gold: crate::gold::config::Configuration::default(),
+        views: crate::views::config::Configuration::default(),
         path: root.join("config.toml"),
         loaded: true,
         shared: None,

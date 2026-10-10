@@ -303,7 +303,7 @@ class StateStore:
     def acknowledge(
         self, payload: bytes, *, destination_id: str, source_id: str
     ) -> Receipt:
-        """Advance on a matching silver receipt, even if gold is pending."""
+        """Advance on a matching silver receipt, even if views is pending."""
         receipt = decode_receipt(payload)
         if receipt.source_id != source_id:
             raise StateError("receipt belongs to another source")
