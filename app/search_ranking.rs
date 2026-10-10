@@ -1,5 +1,6 @@
 //! Gold: bounded thread selection followed by evidence ranking across transports.
 use crate::AppError;
+use crate::gold::config::Fusion;
 use crate::search_results::{self, SearchUnit};
 use crate::semantic::Backend;
 use crate::storage::SearchHit;
@@ -13,12 +14,52 @@ pub(crate) struct Selection {
     pub(crate) count: usize,
 }
 
+/// Combine the relevance order with recency, by reciprocal rank like
+/// candidate fusion. Newer messages move up among comparably relevant ones,
+/// while a strong old match still outranks a weak new one. Undated messages
+/// get no recency credit.
+pub(crate) fn favour_recent(hits: &mut [SearchHit], fusion: Fusion) {
+    if fusion.recency_weight == 0 || hits.len() < 2 {
+        return;
+    }
+    let mut by_age: Vec<usize> = (0..hits.len()).collect();
+    // Newest first; undated last, keeping relevance order among equals.
+    by_age.sort_by_key(|&index| std::cmp::Reverse(hits[index].created_at));
+    let mut recency = vec![None; hits.len()];
+    for (rank, &index) in by_age.iter().enumerate() {
+        recency[index] = hits[index].created_at.map(|_| rank);
+    }
+    let weight = f32::from(fusion.recency_weight) / 100.0;
+    let reciprocal = |rank: usize| {
+        let rank = u16::try_from(rank).unwrap_or(u16::MAX);
+        1.0 / (f32::from(fusion.rank_constant) + f32::from(rank) + 1.0)
+    };
+    let mut order: Vec<(f32, usize)> = (0..hits.len())
+        .map(|index| {
+            let recent = recency[index].map_or(0.0, |rank| weight * reciprocal(rank));
+            (reciprocal(index) + recent, index)
+        })
+        .collect();
+    order.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    // Apply the permutation in place: position i takes original order[i].
+    let source: Vec<usize> = order.into_iter().map(|(_, index)| index).collect();
+    for position in 0..source.len() {
+        let mut from = source[position];
+        while from < position {
+            from = source[from];
+        }
+        hits.swap(position, from);
+    }
+}
+
 /// Preserve fused ordering and all thread evidence; cap message results only.
 pub(crate) fn finish_fusion(
     mut hits: Vec<SearchHit>,
     unit: SearchUnit,
     limit: usize,
+    fusion: Fusion,
 ) -> Vec<SearchHit> {
+    favour_recent(&mut hits, fusion);
     if matches!(unit, SearchUnit::Messages) {
         hits.truncate(limit);
     }
@@ -99,6 +140,7 @@ pub(crate) fn score(
     documents: &[String],
     unit: SearchUnit,
     limit: usize,
+    fusion: Fusion,
 ) -> Result<Vec<SearchHit>, AppError> {
     if documents.len() != selection.count {
         return Err(AppError::internal("incomplete reranking documents"));
@@ -117,6 +159,8 @@ pub(crate) fn score(
             .then_with(|| a.node_id.cmp(&b.node_id))
             .then_with(|| a.id.cmp(&b.id))
     });
+    // Before truncation, so a newer message just past the limit can enter.
+    favour_recent(&mut selection.hits[..selection.count], fusion);
     if matches!(unit, SearchUnit::Messages) {
         selection.hits.truncate(limit);
     } else {

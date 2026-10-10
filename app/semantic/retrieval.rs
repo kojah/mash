@@ -54,11 +54,15 @@ pub(crate) fn hybrid_search_filtered(
     dense_stage.complete(Some(scanned), Some(semantic_hits.len()));
     drop(dense_stage);
     if semantic_hits.is_empty() {
+        let mut lexical = lexical;
+        crate::search_ranking::favour_recent(&mut lexical, fusion);
         return Ok(crate::search_results::diversify(lexical, unit));
     }
     let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
     if ranking == crate::gold::config::Ranking::Fusion {
-        return Ok(crate::search_ranking::finish_fusion(fused, unit, limit));
+        return Ok(crate::search_ranking::finish_fusion(
+            fused, unit, limit, fusion,
+        ));
     }
     let selection = crate::search_ranking::select(backend, query, fused, unit, limit)?;
     let documents = selection.hits[..selection.count]
@@ -74,7 +78,7 @@ pub(crate) fn hybrid_search_filtered(
             ))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
-    crate::search_ranking::score(backend, query, selection, &documents, unit, limit)
+    crate::search_ranking::score(backend, query, selection, &documents, unit, limit, fusion)
 }
 
 /// Model-space identity shared by the CPU ONNX and Apple Core ML executions.

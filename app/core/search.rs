@@ -143,6 +143,7 @@ pub(super) async fn run(
 ) -> Result<SearchResponse, AppError> {
     let vector_override = input.shared_vector_search;
     let shared_only = input.shared;
+    let sort = input.filters.sort;
     let policy = if input.diagnostics {
         let (limit, _) = configuration.gold.query.resolve(input.limit, input.unit);
         let fusion = resolve_fusion(
@@ -167,6 +168,10 @@ pub(super) async fn run(
         None
     };
     let mut response = run_inner(configuration, database, models, input).await?;
+    // Only results that already qualified are reordered, after the limit.
+    if sort == crate::search_filter::Sort::Recent {
+        response.results.newest_first();
+    }
     crate::search_results::lookup::attach(
         &mut response.results,
         configuration

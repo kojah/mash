@@ -58,6 +58,19 @@ pub(crate) enum Results {
     Messages(Vec<SearchHit>),
 }
 
+impl Results {
+    /// Reorder newest first; undated results keep their relevance order last.
+    pub(crate) fn newest_first(&mut self) {
+        use std::cmp::Reverse;
+        match self {
+            Self::Messages(hits) => hits.sort_by_key(|hit| Reverse(hit.created_at)),
+            Self::Chats(chats) => chats.sort_by_key(|chat| {
+                Reverse(chat.matches.iter().filter_map(|m| m.created_at).max())
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ChatHit {
     #[serde(rename = "chat_id")]

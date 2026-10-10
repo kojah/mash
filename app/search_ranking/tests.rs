@@ -1,4 +1,5 @@
 use super::*;
+use crate::gold::config::Fusion;
 use crate::provider::Provider;
 use crate::role::Role;
 use crate::search_results::ChatMetadata;
@@ -35,10 +36,10 @@ fn fusion_finish_preserves_order_and_thread_evidence_without_inference() {
             candidate("b", "third", "three"),
         ]
     };
-    let messages = finish_fusion(hits(), SearchUnit::Messages, 1);
+    let messages = finish_fusion(hits(), SearchUnit::Messages, 1, Fusion::default());
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].id, "first");
-    let threads = finish_fusion(hits(), SearchUnit::Chats, 1);
+    let threads = finish_fusion(hits(), SearchUnit::Chats, 1, Fusion::default());
     assert_eq!(
         threads
             .iter()
@@ -95,7 +96,66 @@ fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
         &documents,
         SearchUnit::Chats,
         5,
+        Fusion::default(),
     )
     .unwrap();
     assert_eq!(hits[0].id, "warm-cache");
+}
+
+/// Twenty hits in relevance order; `newest` is dated last, `oldest` first.
+fn dated(oldest: usize, newest: usize) -> Vec<SearchHit> {
+    (0..20)
+        .map(|rank| {
+            let mut hit = candidate("chat", &format!("r{rank}"), "text");
+            hit.created_at = Some(match rank {
+                _ if rank == oldest => 0,
+                _ if rank == newest => 10_000,
+                _ => 5_000 - i64::try_from(rank).unwrap(),
+            });
+            hit
+        })
+        .collect()
+}
+
+fn ids(hits: &[SearchHit]) -> Vec<&str> {
+    hits.iter().map(|hit| hit.id.as_str()).collect()
+}
+
+#[test]
+fn recency_lifts_a_newer_message_among_comparably_relevant_ones() {
+    // The newest message one place below an old top match overtakes it.
+    let mut hits = dated(0, 1);
+    favour_recent(&mut hits, Fusion::default());
+    assert_eq!(hits[0].id, "r1");
+    // Ten places down, being newest is not enough to reach the top.
+    let mut hits = dated(0, 10);
+    favour_recent(&mut hits, Fusion::default());
+    assert_ne!(hits[0].id, "r10");
+    // A zero weight ranks by relevance alone.
+    let mut hits = dated(0, 1);
+    favour_recent(
+        &mut hits,
+        Fusion {
+            recency_weight: 0,
+            ..Fusion::default()
+        },
+    );
+    assert_eq!(ids(&hits)[..2], ["r0", "r1"]);
+}
+
+#[test]
+fn recent_sort_orders_messages_and_chats_newest_first() {
+    let mut old = candidate("a", "old", "text");
+    old.created_at = Some(1);
+    let mut undated = candidate("b", "undated", "text");
+    undated.created_at = None;
+    let mut new = candidate("c", "new", "text");
+    new.created_at = Some(9);
+    let mut results = search_results::Results::Messages(vec![old, undated, new]);
+    results.newest_first();
+    let search_results::Results::Messages(hits) = results else {
+        unreachable!()
+    };
+    // Undated results keep their relevance order, after dated ones.
+    assert_eq!(ids(&hits), ["new", "old", "undated"]);
 }

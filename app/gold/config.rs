@@ -290,6 +290,9 @@ pub(crate) struct Fusion {
     pub(crate) rank_constant: u16,
     pub(crate) lexical_weight: u16,
     pub(crate) semantic_weight: u16,
+    /// How much newer messages move up the final order, as a percentage of
+    /// relevance's weight; 0 ranks by relevance alone.
+    pub(crate) recency_weight: u16,
 }
 
 impl Default for Fusion {
@@ -298,19 +301,22 @@ impl Default for Fusion {
             rank_constant: 60,
             lexical_weight: 1,
             semantic_weight: 1,
+            recency_weight: 50,
         }
     }
 }
+
+const FUSION_LIMITS: &str =
+    "fusion rank_constant must be 1..1000, weights 1..100 and recency_weight 0..100";
 
 impl Fusion {
     pub(crate) fn validate(self) -> Result<(), AppError> {
         if !(1..=1000).contains(&self.rank_constant)
             || !(1..=100).contains(&self.lexical_weight)
             || !(1..=100).contains(&self.semantic_weight)
+            || self.recency_weight > 100
         {
-            return Err(AppError::configuration(
-                "gold fusion rank_constant must be 1..1000 and weights 1..100",
-            ));
+            return Err(AppError::configuration(format!("gold {FUSION_LIMITS}")));
         }
         Ok(())
     }
@@ -331,6 +337,9 @@ pub(crate) struct FusionOverrides {
     /// Semantic candidate weight, from 1 through 100.
     #[schemars(range(min = 1, max = 100))]
     pub(crate) semantic_weight: Option<u16>,
+    /// Recency's weight as a percentage of relevance, from 0 (off) through 100.
+    #[schemars(range(min = 0, max = 100))]
+    pub(crate) recency_weight: Option<u16>,
 }
 
 impl FusionOverrides {
@@ -343,10 +352,11 @@ impl FusionOverrides {
             rank_constant: self.rank_constant.unwrap_or(defaults.rank_constant),
             lexical_weight: self.lexical_weight.unwrap_or(defaults.lexical_weight),
             semantic_weight: self.semantic_weight.unwrap_or(defaults.semantic_weight),
+            recency_weight: self.recency_weight.unwrap_or(defaults.recency_weight),
         };
-        resolved.validate().map_err(|_| {
-            AppError::usage("search fusion rank_constant must be 1..1000 and weights 1..100")
-        })?;
+        resolved
+            .validate()
+            .map_err(|_| AppError::usage(format!("search {FUSION_LIMITS}")))?;
         Ok(resolved)
     }
 }
@@ -637,6 +647,7 @@ mod tests {
             rank_constant: 10,
             lexical_weight: 4,
             semantic_weight: 2,
+            recency_weight: 30,
         };
         let input: FusionOverrides = serde_json::from_str(r#"{"semantic_weight":7}"#).unwrap();
         assert_eq!(

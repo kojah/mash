@@ -104,6 +104,9 @@ enum Command {
         /// Override the semantic candidate weight (1–100).
         #[arg(long)]
         semantic_weight: Option<u16>,
+        /// Override how much newer messages are favoured (0–100; 0 is off).
+        #[arg(long)]
+        recency_weight: Option<u16>,
         /// Override hybrid ranking for this request; defaults to gold.query.ranking.
         #[arg(long, value_enum)]
         ranking: Option<crate::gold::config::Ranking>,
@@ -200,6 +203,9 @@ struct SearchArguments {
     /// Lexical matching: flexible (prefixes and typos), strict, prefix, or typo.
     #[arg(long, value_enum, default_value = "flexible")]
     match_mode: crate::gold::matching::Mode,
+    /// Order qualifying results by relevance (default) or recent (newest first).
+    #[arg(long, value_enum, default_value = "relevance")]
+    sort: crate::search_filter::Sort,
     #[arg(long)]
     provider: Vec<Provider>,
     #[arg(long)]
@@ -247,6 +253,7 @@ impl SearchArguments {
             .transpose()?;
         Ok(crate::search_filter::Selection {
             match_mode: self.match_mode,
+            sort: self.sort,
             provider: self.provider,
             days: self.days,
             node: self.node,
@@ -345,6 +352,7 @@ impl Cli {
                 fusion_rank_constant,
                 lexical_weight,
                 semantic_weight,
+                recency_weight,
                 ranking,
                 diagnostics,
                 filters,
@@ -365,6 +373,7 @@ impl Cli {
                     rank_constant: fusion_rank_constant,
                     lexical_weight,
                     semantic_weight,
+                    recency_weight,
                 },
                 filters: Box::new(filters.into_selection()?),
                 shared,

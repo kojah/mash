@@ -645,7 +645,13 @@ CLI/MCP search parameters override either setting without rebuilding the index.
 `[gold.query.fusion]` controls hybrid candidate fusion independently of gold
 builds: `rank_constant` defaults to 60 (1–1000), and `lexical_weight` and
 `semantic_weight` each default to 1 (1–100). Higher weights favor that candidate
-stream before contextual reranking. These query-only settings apply to local,
+stream before contextual reranking. `recency_weight` (default 50, 0–100) favours
+newer messages in the final order: recency is ranked like another candidate
+stream and combined with the relevance order, at that percentage of
+relevance's weight, after reranking and before the result limit. A newer
+message can overtake comparably relevant older ones, but a strong old match
+still outranks a weak new one; undated messages get no recency credit and 0
+ranks by relevance alone. These query-only settings apply to local,
 combined and fallback searches, take effect on the next request, and require no
 index rebuild. Exact-mention search is independent of fusion settings.
 Set `[gold.query] ranking = "fusion"` to keep fused hybrid ordering and skip
@@ -665,7 +671,7 @@ choice is `contextual-rerank`. Omission inherits current TOML. Explicit ranking
 overrides require related-discussion intent, do not persist, and never rebuild
 the index.
 For one hybrid request, CLI `search` accepts `--fusion-rank-constant`,
-`--lexical-weight` and `--semantic-weight`; MCP `search` accepts a partial
+`--lexical-weight`, `--semantic-weight` and `--recency-weight`; MCP `search` accepts a partial
 `fusion` object with the corresponding underscore-named fields. Omitted fields
 inherit current TOML defaults. Overrides are validated before model work,
 apply to local/shared/fallback ranking, and are rejected for exact-mention.
@@ -779,6 +785,11 @@ detected non-English queries return a usage error asking for an English query,
 before loading models or opening an index. Short names and ambiguous technical
 terms remain searchable; language detection cannot reliably classify every short
 or mixed-language query.
+
+`--sort recent` (MCP `"sort":"recent"`) orders the results that qualify newest
+first, after relevance has chosen them; a chat sorts by its latest matching
+message, and undated results come last. The default, `relevance`, keeps the
+relevance order. Exact-mention search already breaks ties by recency.
 
 CLI search accepts repeatable `--provider`, `--node`, `--role`, `--chat`,
 `--project`, `--repository`, `--source` and `--kind`. Repeated values for one field are alternatives;

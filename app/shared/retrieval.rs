@@ -221,7 +221,7 @@ pub(super) async fn search_prepared(
     .await?;
     documents.extend(context);
     crate::blocking(move || {
-        let fused = rerank_combined(&mut backend, &query, selection, &documents, (limit, unit))?;
+        let fused = rerank_combined(&mut backend, &query, selection, &documents, options)?;
         Ok(SearchOutcome {
             hits: fused,
             retrieval,
@@ -258,7 +258,12 @@ async fn finish_fused(
         // Returning a loaded backend to the cache can destroy the old model.
         drop(backend);
         Ok(SearchOutcome {
-            hits: crate::search_ranking::finish_fusion(hits, options.unit, options.limit),
+            hits: crate::search_ranking::finish_fusion(
+                hits,
+                options.unit,
+                options.limit,
+                options.fusion,
+            ),
             retrieval,
             context_error: None,
         })
@@ -441,9 +446,14 @@ fn rerank_combined(
     query: &str,
     selection: crate::search_ranking::Selection,
     documents: &HashMap<(String, String), String>,
-    options: (usize, crate::search_results::SearchUnit),
+    options: Options,
 ) -> Result<Vec<SearchHit>, AppError> {
-    let (limit, unit) = options;
+    let Options {
+        limit,
+        unit,
+        fusion,
+        ..
+    } = options;
     let selected = selection.hits[..selection.count]
         .iter()
         .map(|hit| {
@@ -453,5 +463,5 @@ fn rerank_combined(
                 .ok_or_else(|| AppError::shared("shared candidate has no search projection"))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    crate::search_ranking::score(backend, query, selection, &selected, unit, limit)
+    crate::search_ranking::score(backend, query, selection, &selected, unit, limit, fusion)
 }

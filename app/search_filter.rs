@@ -5,11 +5,35 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+/// The order of results that qualify as evidence.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    clap::ValueEnum,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Sort {
+    /// Most relevant first, with newer messages favoured among comparable ones.
+    #[default]
+    Relevance,
+    /// Newest first; a chat sorts by its latest matching message.
+    Recent,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Selection {
     /// flexible (default) enables prefix and typo matching; strict preserves literals.
     pub(crate) match_mode: crate::gold::matching::Mode,
+    /// relevance (default) or recent: newest first among results that qualify.
+    pub(crate) sort: Sort,
     /// Provider alternatives; omitted or empty selects all providers.
     pub(crate) provider: Vec<Provider>,
     pub(crate) days: Option<u32>,

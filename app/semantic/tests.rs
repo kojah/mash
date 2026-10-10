@@ -361,6 +361,7 @@ fn rrf_fusion_rewards_overlap_and_breaks_ties_by_id() {
             rank_constant: 10,
             lexical_weight,
             semantic_weight,
+            recency_weight: 0,
         };
         let ranked = fuse(
             vec![hit("lex")],
