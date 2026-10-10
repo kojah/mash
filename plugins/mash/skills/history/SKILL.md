@@ -40,6 +40,7 @@ a path mentioned in prose. The CLI has no attachment retrieval subcommand.
 
 - For a named chat or a provider/time reference, start with `list_chats`.
   Use `title_contains`, provider/node filters and an activity range when known.
+  Omit `title_contains` when no title is known; an empty string is invalid.
   MCP sorting uses `sort: "updated_at"` and `direction: "desc"`. A chat's
   title may not mention its subject, so a title miss can warrant content search.
   `after`/`before` filters use Unix seconds; returned timestamps can be milliseconds.
@@ -58,7 +59,8 @@ a path mentioned in prose. The CLI has no attachment retrieval subcommand.
   also remain strict. Numbers are never corrected or expanded.
   An incidental path mention is not evidence of a substantive discussion.
 - Drill into promising chats with `unit: "messages"` and
-  `conversation: ["RETURNED_CHAT_ID"]`. Retain applicable provider, node,
+  `chat: ["RETURNED_CHAT_ID"]`. The search argument is `chat`, not
+  `conversation`. Retain applicable provider, node,
   project/repository and time filters. Use actual returned IDs.
 - Prefer copying a search hit's `lookup.view` arguments into `view`, adding a
   bounded `context`, such as 2, when interpreting proposals and follow-ups.
