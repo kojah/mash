@@ -94,5 +94,10 @@ shell rollout sequences or bypass gates.
 
 Report the deployed commit, every target's installed/skipped/failed outcome,
 local/shared readiness, required follow-ups and client reconnection needs.
-Existing MCP processes keep their old executable; reload updated skills and
-reconnect history clients after a breaking upgrade.
+Normal history MCP fronts retain the client connection and automatically adopt
+compatible workers after active calls and watched indexing finish. Verify the
+current worker runtime and session update state, rather than the initial
+handshake or the front's build identity. Incompatible tool/storage contracts
+retain the old worker and require reconnecting after any required migration.
+Sessions predating the stable front need one initial reconnect. Loaded skill
+text is separate; reload it when needed and prefer live help for parameters.

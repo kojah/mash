@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-const WORKFLOW: &str = "Discover named chats with list_chats, subjects with search; read evidence with view by copying lookup.view. Omit unused optional filters. Check status for readiness; search does not index. Use help after an argument error or suspected contract drift, rather than guessing aliases. Reconnect MCP after a binary upgrade; reload the history skill after a plugin upgrade.";
+const WORKFLOW: &str = "Use live help for current parameters and examples. Discover named chats with list_chats, subjects with search; read evidence with view by copying lookup.view. Omit unused optional filters. Check status for readiness; search does not index. Compatible workers update within the existing connection after active work finishes. Reconnect only when session reports an incompatible update; use live help instead of guessing aliases from cached instructions.";
 
 #[derive(Deserialize, Serialize, rmcp::schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -40,16 +40,16 @@ impl Topic {
                 "Use status to distinguish local readiness from shared freshness. Search never repairs missing indexes or downloads models. Partial results and unknown coverage cannot prove absence. Do not widen an explicit offline request."
             }
             Self::Sessions => {
-                "The contract belongs to this running process. A newer installed binary does not reload it. If executable_state is replaced, reconnect Mash MCP. If contract_matches is false, reload the current history skill and consult this process's help; reconnect when the installed binary is newer. Unknown executable state is not proof of currency."
+                "Normal mash mcp connections keep a stable front process and replace compatible workers after active calls and watched indexing finish. Help/status report the current worker runtime and session generation/update state. Changed tool schemas or storage formats require reconnecting after any required migration. A rejected update retains the current worker. Use live help when contract_matches is false; loaded skill text and handshake instructions describe an earlier release. Unknown executable state is not proof of currency."
             }
         }
     }
 }
 
 #[derive(Serialize)]
-struct Example {
-    tool: &'static str,
-    arguments: Value,
+pub(super) struct Example {
+    pub(super) tool: &'static str,
+    pub(super) arguments: Value,
 }
 
 #[derive(Deserialize)]
@@ -123,7 +123,7 @@ fn search(query: &str, intent: crate::views::exact::Intent) -> Search {
     }
 }
 
-fn examples() -> Result<Vec<Example>, serde_json::Error> {
+pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
     let mut drill = search("Qdrant", crate::views::exact::Intent::ExactMention);
     drill.unit = Some(crate::search_results::SearchUnit::Messages);
     drill.filters.conversation = vec!["RETURNED_CHAT_ID".into()];
@@ -231,6 +231,8 @@ fn contract() -> Result<Value, serde_json::Error> {
         tools,
         examples()?,
         WORKFLOW,
+        crate::storage::schema::SCHEMA_VERSION,
+        crate::storage::schema::VIEWS_VERSION,
         include_str!("../templates/history_skill.md"),
         [
             Topic::Discovery.guidance(),
@@ -256,7 +258,7 @@ pub(super) fn instructions() -> String {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct FileStamp {
+pub(super) struct FileStamp {
     length: u64,
     modified: std::time::SystemTime,
     #[cfg(unix)]
@@ -265,7 +267,7 @@ struct FileStamp {
     device: u64,
 }
 
-fn stamp(path: &std::path::Path) -> std::io::Result<FileStamp> {
+pub(super) fn stamp(path: &std::path::Path) -> std::io::Result<FileStamp> {
     #[cfg(unix)]
     use std::os::unix::fs::MetadataExt;
     let metadata = std::fs::metadata(path)?;
@@ -311,6 +313,8 @@ fn executable_state(snapshot: Option<&(PathBuf, FileStamp)>) -> ExecutableState 
 #[derive(Serialize)]
 struct Runtime {
     build_revision: &'static str,
+    silver_schema: i64,
+    views_schema: i64,
     contract_fingerprint: String,
     executable_state: ExecutableState,
     contract_matches: Option<bool>,
@@ -336,6 +340,8 @@ fn runtime(expected: Option<&str>) -> Result<Runtime, serde_json::Error> {
     };
     Ok(Runtime {
         build_revision: env!("MASH_BUILD_REVISION"),
+        silver_schema: crate::storage::schema::SCHEMA_VERSION,
+        views_schema: crate::storage::schema::VIEWS_VERSION,
         contract_fingerprint,
         executable_state,
         contract_matches,
@@ -435,51 +441,20 @@ pub(super) async fn help(request: Help) -> CallToolResult {
 /// # Errors
 /// Returns an error if a tool schema, example, or plugin manifest cannot be encoded.
 pub fn generate_history_skill() -> Result<(String, String), String> {
-    use std::fmt::Write;
     let fingerprint = fingerprint().map_err(|error| error.to_string())?;
-    let mut reference = format!(
-        "<!-- Generated from Rust MCP definitions; do not edit. -->\nContract fingerprint: `{fingerprint}`.\n\n{WORKFLOW}\n\n"
+    let bootstrap = example(
+        "help",
+        Help {
+            tool: Some("search".into()),
+            topic: Some(Topic::Discovery),
+            expected_contract: Some(fingerprint.clone()),
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    let reference = format!(
+        "<!-- Generated from Rust MCP definitions; do not edit. -->\n\n```json mcp:help\n{}\n```\n",
+        serde_json::to_string(&bootstrap.arguments).map_err(|error| error.to_string())?
     );
-    let mut tools = Mash::tool_router().list_all();
-    tools.sort_by(|left, right| left.name.cmp(&right.name));
-    for tool in tools {
-        writeln!(
-            reference,
-            "### {}\n\n{}\n",
-            tool.name,
-            tool.description.as_deref().unwrap_or_default()
-        )
-        .map_err(|error| error.to_string())?;
-        if let Some(properties) = tool
-            .input_schema
-            .get("properties")
-            .and_then(Value::as_object)
-        {
-            for (name, property) in properties {
-                writeln!(
-                    reference,
-                    "- `{name}`: {}",
-                    property
-                        .get("description")
-                        .and_then(Value::as_str)
-                        .unwrap_or("See live help for its schema and accepted values.")
-                )
-                .map_err(|error| error.to_string())?;
-            }
-            reference.push('\n');
-        }
-    }
-    reference.push_str("### Validated examples\n\nReplace placeholder IDs with returned IDs.\n\n");
-    for example in examples().map_err(|error| error.to_string())? {
-        writeln!(
-            reference,
-            "```json mcp:{}\n{}\n```\n",
-            example.tool,
-            serde_json::to_string(&example.arguments).map_err(|error| error.to_string())?
-        )
-        .map_err(|error| error.to_string())?;
-    }
-    writeln!(reference, "```json mcp:help\n{{\"topic\":\"sessions\",\"expected_contract\":\"{fingerprint}\"}}\n```\n").map_err(|error| error.to_string())?;
     let skill =
         include_str!("../templates/history_skill.md").replace("{{API_REFERENCE}}", &reference);
     let plugin: PluginManifest =

@@ -166,6 +166,9 @@ enum Command {
     },
     /// Serve search tools over the stdio MCP protocol.
     Mcp {
+        /// Internal worker behind the session front process.
+        #[arg(long, hide = true)]
+        worker: bool,
         /// Synchronize histories for this MCP session's lifetime.
         #[arg(long)]
         watch: bool,
@@ -472,13 +475,22 @@ where
             replay_views,
         ))?;
         Ok(Response::McpStopped)
-    } else if let Command::Mcp { watch, debounce_ms } = cli.command {
+    } else if let Command::Mcp {
+        worker,
+        watch,
+        debounce_ms,
+    } = cli.command
+    {
         let paths = Paths {
             config: cli.config,
             db: cli.db,
             models_dir: cli.models_dir,
         };
-        runtime.block_on(crate::mcp::run(paths, watch, debounce_ms))?;
+        if worker {
+            runtime.block_on(crate::mcp::run(paths, watch, debounce_ms))?;
+        } else {
+            runtime.block_on(crate::mcp::session::run(paths, watch, debounce_ms))?;
+        }
         Ok(Response::McpStopped)
     } else {
         #[cfg(unix)]

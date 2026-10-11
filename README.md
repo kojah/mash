@@ -145,23 +145,35 @@ environment variable using Codex's `env_vars`, or use a local launcher that
 loads your private node environment before executing the same build output.
 Keep credentials and machine-specific launchers outside Git.
 
-Restart the MCP server/client after a successful rebuild. New processes use
-the rebuilt binary; an already-running process continues executing its previous
-build. This setup does not automatically build, index or install models.
+`mash mcp` keeps a stable per-session front process and a replaceable Mash
+worker. Installing a compatible binary automatically replaces the worker after
+active calls and watched indexing finish, keeping the client connection open.
+Tool names, schemas, effect annotations and silver/views versions must match;
+incompatible updates retain the old worker and require reconnecting after any
+required migration. Broken candidates retain the old worker. Accepted mutations
+are never replayed on transport failure or replacement. Reconnect once to adopt
+this front process if your session started with an older release.
+This setup does not automatically build, index or install models. An opted-in
+watcher resumes with its debounce setting after a compatible handoff.
 MCP `help` provides live schemas and typed examples without an index or models;
 select a `tool` or a workflow `topic` to keep its response focused. Startup
 instructions and `help`/`status` report the build revision and contract fingerprint.
 Supply the generated skill's fingerprint as `expected_contract` to `help` to
-detect stale instructions. A replaced executable sets `reconnect_required`;
-an unknown executable state does not certify that a session is current.
+detect stale instructions. `session` reports worker generation, current front
+and worker process IDs, update state and rejected-update guidance. The handshake
+describes the initial worker; live help/status describe the current worker.
+Already-loaded skill text is not replaced by a worker upgrade. An unknown
+executable state does not certify that a session is current.
 
 The history skill's workflow template is `app/templates/history_skill.md`.
-Its API reference and examples are generated from Rust MCP definitions with
+Its small live-help bootstrap and release stamp are generated from Rust with
 `make generate-skills`; do not edit the generated `SKILL.md` or `contract.json`.
 `make check-skills` checks generation, real argument validation and CLI examples.
-CI compares the contract stamp with the previous release and requires an increased
+Generation compares the contract stamp with the previous release and requires an increased
 version in both plugin manifests whenever the contract or workflow changes.
-Update the installed plugin and reload its instructions after changing the skill.
+Typed live-help examples also pass the real core validators. Update the installed
+plugin and reload its instructions after changing the skill; consult live help
+for current parameters instead of duplicating the API reference in the skill.
 
 Development deployment uses `tools/build-dev-linux.sh` to reuse successful gates
 for identical source/toolchain/build inputs while still stamping the release

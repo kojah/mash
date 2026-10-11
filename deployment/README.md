@@ -38,8 +38,10 @@ Raw logs/events never become MCP response text. Canonical exports remain sensiti
 Use `deploy` with explicit targets, `refresh_index` with explicit history targets
 and `sync`/`local-views`, or `deployment_status` for a job ID/fresh checks. Poll to
 a terminal state and inspect every node, including skipped targets. Existing
-history MCP processes retain their old binary; reconnect and reload updated
-skills when their contract changes. Do not restart/reconfigure the development
+history MCP fronts automatically adopt workers with identical tool/storage
+contracts after active work drains. Help/status expose worker generation and
+rejected updates. Reconnect once for sessions predating the stable front, or
+when tool/storage contracts change; reload updated skills when needed. Do not restart/reconfigure the development
 MCP while one of its jobs is active.
 
 Validation includes Rust wrapper/probe tests and real Ansible fixture runs through

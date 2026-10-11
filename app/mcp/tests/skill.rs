@@ -129,13 +129,24 @@ fn history_skill_generation_is_current() {
 }
 
 #[test]
+fn history_skill_live_examples_match_core_validators() {
+    let examples = super::super::guidance::examples().unwrap();
+    assert!(examples.len() > 2);
+    for example in examples {
+        mcp(
+            example.tool,
+            &serde_json::to_string(&example.arguments).unwrap(),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
 fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
-    // Reproduce the real failure: attachment parameter names do not belong to view.
-    let broken = HISTORY.replace(
-        "\"id\":\"RETURNED_MESSAGE_ID\"",
-        "\"message_id\":\"RETURNED_MESSAGE_ID\"",
-    );
-    assert!(validate(&broken).unwrap_err().contains("message_id"));
+    // The thin skill delegates parameters to live help, whose tool name is validated.
+    let broken = HISTORY.replace("\"tool\":\"search\"", "\"tool\":\"invented\"");
+    assert!(validate(&broken).unwrap_err().contains("unknown tool"));
+    assert!(mcp("view", r#"{"message_id":"message"}"#).is_err());
     assert!(mcp("view", r#"{"id":"message","shared":true}"#).is_err());
     assert!(mcp("search", r#"{"query":"test","intent":"invented"}"#).is_err());
     assert!(mcp("list_chats", r#"{"limit":101}"#).is_err());

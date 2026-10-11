@@ -13,6 +13,7 @@ use rmcp::{
 use serde::Deserialize;
 
 pub(crate) mod guidance;
+pub(crate) mod session;
 mod watching;
 
 #[derive(Clone)]
