@@ -1,0 +1,8 @@
+- name: Verify a required API before node work
+  ansible.builtin.command:
+    argv: "{{ item }}"
+    chdir: "{{ mash_repository }}"
+  loop: "{{ hostvars[mash_required_api].mash_verify }}"
+  changed_when: false
+  delegate_to: localhost
+  no_log: true

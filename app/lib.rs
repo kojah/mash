@@ -27,6 +27,8 @@ mod config;
 mod core;
 mod export;
 mod mcp;
+/// Build-time generation of the bundled history skill from the live MCP contract.
+pub use mcp::guidance::{generate_history_skill, validate_history_release};
 mod observability;
 mod progress;
 mod redaction;

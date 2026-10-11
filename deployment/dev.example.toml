@@ -1,0 +1,11 @@
+repository = "/absolute/path/to/mash"
+logs = "/private/runner-artifacts"
+inventory = "/private/mash-inventory.yml"
+nodes = ["shared-api", "xenia", "dev-macbook"]
+timeout_seconds = 7200
+runner = { argv = ["bash", "tools/run-ansible.sh", "/private/runner-artifacts/fleet.lock", "env", "ANSIBLE_CONFIG=/absolute/path/to/mash/deployment/ansible.cfg", "uv", "run", "--project", "/absolute/path/to/mash/deployment", "--locked", "--no-sync", "ansible-runner"] }
+
+[playbooks]
+deploy = "deployment/playbooks/deploy.yml"
+refresh = "deployment/playbooks/refresh.yml"
+check = "deployment/playbooks/check.yml"

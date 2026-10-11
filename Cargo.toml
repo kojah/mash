@@ -10,7 +10,7 @@ autobins = false
 autotests = false
 autoexamples = false
 autobenches = false
-build = false
+build = "build.rs"
 
 [workspace]
 members = ["crates/mash-query", "crates/mash-dev"]
@@ -32,6 +32,10 @@ path = "app/tests/cli_contract.rs"
 [[example]]
 name = "connector-schema"
 path = "app/examples/connector_schema.rs"
+
+[[example]]
+name = "history-skill"
+path = "app/examples/history_skill.rs"
 
 [dependencies]
 mash-query = { path = "crates/mash-query" }

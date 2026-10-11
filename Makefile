@@ -4,7 +4,7 @@ CODEGEN ?= 0
 CARGO_ARGS ?=
 COVERAGE_OUTPUT ?= target/llvm-cov/coverage.json
 
-.PHONY: build check-skills generate-queries check-generated coverage generate-python-models check-python-models
+.PHONY: build check-skills generate-skills generate-queries check-generated coverage generate-python-models check-python-models
 build: check-skills
 ifeq ($(CODEGEN),1)
 	$(MAKE) generate-queries
@@ -12,7 +12,11 @@ endif
 	cargo build-clif $(CARGO_ARGS)
 
 check-skills:
+	bash tools/generate-history-skill.sh --check
 	cargo test-clif --locked --lib -E 'test(history_skill_)' --no-tests fail
+
+generate-skills:
+	bash tools/generate-history-skill.sh
 
 generate-queries:
 	bash queries/generate.sh

@@ -1,0 +1,46 @@
+# Deployment transport and trusted helpers live here; Mash settings remain TOML.
+all:
+  vars:
+    ansible_connection: local
+    mash_probe: /absolute/validated/artifacts/mash-dev-probe
+    mash_builds:
+      linux:
+        - [/absolute/agent-test, env, TMPDIR=/persistent/temp, CARGO_TARGET_DIR=/persistent/target, CARGO_INCREMENTAL=0, bash, tools/build-dev-linux.sh]
+      darwin:
+        - [bash, tools/build-dev-macos.sh, '{{ mash_darwin_build_host }}', '{{ hostvars[mash_darwin_build_host].mash_build_root }}', /absolute/artifacts/mash-darwin-arm64]
+  children:
+    mash_api:
+      hosts:
+        shared-api:
+          mash_platform: linux
+          mash_install:
+            - [bash, tools/restart-dev-api.sh, /absolute/artifacts/mash, /private/server.toml, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
+          mash_verify:
+            - [bash, tools/check-dev-api.sh, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
+    mash_history:
+      hosts:
+        xenia:
+          mash_platform: linux
+          mash_requires: [shared-api]
+          mash_shared: true
+          mash_install:
+            - [bash, tools/upgrade-local-index.sh, /absolute/installed/mash, /absolute/artifacts/mash, /absolute/data/mash.sqlite3, /private/index-backups]
+            - [bash, tools/install-dev-binary.sh, /absolute/artifacts/mash, /absolute/installed/mash]
+          mash_mcp: [/absolute/credential-loading-launcher, mcp]
+        dev-macbook:
+          ansible_connection: ssh
+          ansible_host: dev-macbook
+          ansible_ssh_common_args: '-o ControlPath=none -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2'
+          mash_platform: darwin
+          mash_build_root: /Users/operator/.local/share/mash/build
+          mash_requires: [shared-api]
+          mash_shared: true
+          mash_preflight: [ssh, -o, ControlPath=none, -o, BatchMode=yes, -o, ConnectTimeout=10, -o, ServerAliveInterval=15, -o, ServerAliveCountMax=2, dev-macbook, 'true']
+          mash_node_configs: [/Users/operator/Library/Application Support/dev.jamesqo.mash/config.toml]
+          mash_install:
+            - [bash, tools/upgrade-remote-index.sh, dev-macbook, /absolute/artifacts/mash-darwin-arm64, /Users/operator/.local/bin/mash]
+            - [bash, tools/install-dev-remote.sh, dev-macbook, /absolute/artifacts/mash-darwin-arm64, /Users/operator/.local/bin/mash]
+          mash_mcp: [ssh, -o, ControlPath=none, -o, BatchMode=yes, -o, ConnectTimeout=10, dev-macbook, /Users/operator/.local/bin/mash-node-mcp]
+    mash_darwin:
+      hosts:
+        dev-macbook: {}

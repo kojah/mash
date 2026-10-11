@@ -1,108 +1,91 @@
 ---
 name: mash-deployment
-description: Use after every change to this repository is committed and pushed, and whenever asked to deploy, redeploy, roll out or refresh Mash on the development fleet (shared API, xenia, dev-macbook, personal-macbook).
+description: Deploy, redeploy, roll out or refresh Mash through its Ansible fleet playbooks and thin development MCP.
 ---
 
 # Mash deployment
 
-Redeploy by default after every change that reaches `main`: once validation
-passes and the commit is pushed, deploy it, unless the user says not to or the
-change cannot affect any node (for example documentation or research only).
-Say so in the final report either way.
+After validated changes reach main, deploy by default unless the user says not to
+or the change cannot affect nodes (for example documentation only).
 
-The fleet and its trusted commands live in `~/.config/mash/dev.toml`. Run only
-those commands, in their configured order; do not improvise other deployment
-steps. The development MCP's source is `crates/mash-dev`.
+Ansible owns inventory, availability, build reuse, API-first installation,
+required migrations and readiness checks. The development MCP is a thin adapter
+to registered ansible-runner playbooks; it never implements fleet policy.
 
-## Targets and order
+## Configuration and runtime
 
-Targets are explicit; there is no implicit fleet-wide deploy. Deploy API
-targets before the history nodes that require them:
+Trusted settings live in ~/.config/mash/dev.toml: repository, private logs,
+inventory, allowed target names, runner argv and registered deploy/refresh/check
+playbook paths. Inventory lives in ~/.config/mash/dev-inventory.yml. Examples are
+deployment/dev.example.toml and deployment/inventory.example.yml. Mash node and
+HTTP server settings remain strict TOML; Ansible inventory describes deployment.
 
-1. `shared-api`: the shared HTTP service and its Qdrant views
-2. `xenia`: this machine's history node
-3. `dev-macbook`, `personal-macbook`: remote history nodes over SSH
+Use the locked deployment runtime (ansible-core and ansible-runner):
+uv sync --project deployment --locked. Store the environment under the private
+artifact root via UV_PROJECT_ENVIRONMENT, and use the same environment for jobs.
+Do not replace dev configuration or restart mash-dev-mcp while its job is active.
+Install updated dev binaries only after checking for active jobs.
 
-A failed API deployment blocks its dependent nodes. A Mac that does not answer
-`ssh -o BatchMode=yes -o ConnectTimeout=10 HOST true` is skipped and reported;
-deploy it when it is back.
+## Run and observe
 
-## Preferred path: the development MCP
+1. Call mash_dev deploy with explicit targets, including required API targets.
+   Ansible installs APIs before history regardless of selection order.
+2. Poll deployment_status with the returned job_id to a terminal state.
+   It reports safe task names, per-target states and redacted MCP probe results;
+   raw Runner events and command logs stay private.
+3. Check each target: skipped is not installed or query-ready. A failed API
+   blocks dependent history installs. Unknown/unverified results fail closed.
 
-Use `mash-dev-mcp` (`mash_dev` in `.mcp.json`):
+The fleet is shared-api, xenia, dev-macbook and personal-macbook.
+Fresh SSH probes disable control-master reuse and bound connection/keepalive
+timeouts. Offline Macs are skipped and reported. A reachable Mac can build the
+single macOS artifact reused for all available Macs.
 
-1. `deploy` with `{"nodes": [...]}` in the order above. It returns a job ID.
-2. Poll `deployment_status` with `{"job_id": N}` until every node finishes.
-3. Then refresh (below) when needed.
+## Build and install
 
-It builds once per platform, installs, and checks readiness. It never indexes,
-installs models or restarts itself. Existing Mash MCP clients must reconnect
-after their binary is replaced. Do not restart the development MCP or replace
-its configuration while one of its jobs is running.
+Run only the inventory's trusted helper commands. Linux uses
+tools/build-dev-linux.sh through agent-test with the configured persistent target
+and disk-backed test temp paths. It verifies generated guidance, formatting,
+deployment regressions, Rust tests, Clippy and doctests, then builds Mash and the
+development MCP/probe. Successful gates are reusable only for identical source,
+toolchain and effective build inputs; release identity is always current.
+Changes during validation/build fail closed. Builds run once per selected platform.
 
-The MCP fails to start when `~/.local/bin` is not on the session's `PATH`; the
-binary is `~/.local/bin/mash-dev-mcp`. Rebuild it (`mash-dev` crate) when
-`crates/mash-dev` changed since it was installed.
+API rollout uses authenticated readiness, a cross-process lock, atomic release
+pointer and rollback. An identical healthy binary/config/environment is left
+running; explicit replay/activation still executes. History installs are atomic.
 
-## Fallback: the same configured commands
+The Rust mash-dev-probe uses the official RMCP client for live tool/build/contract
+checks, local/shared readiness and bounded lexical/available semantic smoke
+searches. A successful status RPC with ready=false does not pass readiness.
+It does not implement indexing, schema or Qdrant logic.
 
-When the MCP is unavailable, run `dev.toml`'s commands yourself, unchanged:
+## Required migrations and explicit refresh
 
-1. **Build gate** (`[builds].linux`): `cargo fmt --check`,
-   `tools/test-dev-api.sh`, `cargo test-clif --locked --profile ci`, and the
-   release build. Run heavy steps through `/home/james/.local/bin/agent-test`.
-   Never deploy a build whose gate failed.
-2. **macOS** (`[builds].darwin`): `tools/build-dev-macos.sh` builds on
-   `dev-macbook` and copies back the artifact for both Macs.
-3. **Install** each target's `install` commands, then its `verify` commands.
+Each release opens only its own silver schema. The upgrade helpers export with
+the installed binary, retain private backups, then import with the new binary
+keeping identity. Ansible updates legacy gold section headers in retained TOML
+before upgrade. Never add compatibility aliases or alter upstream provider files.
 
-## Silver schema changes
+An actual silver upgrade triggers a separate local-views rebuild and sync to
+complete that required migration. Ordinary deployment never indexes history or
+downloads models. Query-model failures require explicit models install, not
+repeated indexing. Preserve export/backup privacy: canonical history is sensitive.
 
-A release opens only its own silver schema (`mash --version` reports
-`silver_schema`). The configured steps already handle a change:
+For ordinary user-requested refresh, call refresh_index with explicit history
+targets and mode sync or local-views. Ansible serializes nodes. Local-views does
+not contact the shared API; sync checks prerequisites and republishes.
+For fresh read-only readiness use deployment_status with explicit nodes and no
+job_id. These playbooks do not deploy or repair indexes.
 
-- `restart-dev-api.sh --retire-incompatible-silver` moves node databases the
-  new server cannot open into the deployment log and lists those nodes under
-  `republish`; any failure restores them and restarts the previous binary.
-- `upgrade-local-index.sh` (xenia) and `upgrade-remote-index.sh` (Macs) export
-  with the installed release and import with the new one, keeping identity.
+## Fallback and report
 
-After a schema change, every listed node must republish and rebuild local views.
+When the dev MCP is unavailable, use the registered runner command and playbook
+with the same inventory and explicit selections. Keep Runner's private input,
+events and reports under the configured artifact root. Do not invent per-host
+shell rollout sequences or bypass gates.
 
-For the breaking gold-to-views rename, update node and server TOML to `[views]`
-before installing the new release. Keep the previous server TOML privately and
-configure `restart-dev-api.sh --rollback-config PATH --replay-views` for the
-first rollout: rollback must still give the previous binary its own keys, and
-the renamed Qdrant collections need replay from silver. Remove these one-time
-options after verifying the rollout. Reachable nodes rebuild local views;
-offline Macs need the same TOML update and rebuild when they return.
-
-## Refresh
-
-Deployment and refresh stay separate. Refresh after deploying when:
-
-- the API reported nodes to `republish`, or
-- a node's local index was upgraded, or status reports it not ready.
-
-Use `refresh_index` with `{"nodes": [...], "mode": "local-views"}` to rebuild
-local views, then `{"mode": "sync"}` to ingest and republish. Nodes refresh
-one at a time. Without the MCP, run the node's `mash index` (with
-`--rebuild-local-views` first when views is missing). Never download models
-here; a missing model needs `mash models install` from the user.
-
-## Report
-
-State the deployed commit, each target's outcome (installed, skipped with the
-reason, or failed with the failing step), anything awaiting refresh, and
-`status --shared` readiness. Keep raw command logs under
-`/home/james/scratch/mash-artifacts/dev-jobs`; do not paste them.
-
-## Environment notes
-
-- Deployment is an outward-facing action; Claude Code's auto mode may block it
-  until the user adds a permission rule. If blocked, stop and say exactly what
-  would run.
-- On Xenia, Qdrant collection creation can stall for tens of seconds while the
-  disk is busy (build writeback, the `codebase-memory` daemon). An API
-  readiness timeout right after a build is more often that than a code fault;
-  check IO pressure (`/proc/pressure/io`) before retrying.
+Report the deployed commit, every target's installed/skipped/failed outcome,
+local/shared readiness, required follow-ups and client reconnection needs.
+Existing MCP processes keep their old executable; reload updated skills and
+reconnect history clients after a breaking upgrade.

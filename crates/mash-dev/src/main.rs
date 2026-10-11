@@ -1,5 +1,6 @@
 mod config;
 mod jobs;
+mod report;
 
 use rmcp::{
     ServiceExt, handler::server::wrapper::Parameters, model::CallToolResult, schemars, tool,
@@ -59,7 +60,7 @@ fn result(value: Result<jobs::Job, String>) -> CallToolResult {
 #[tool_router]
 impl Server {
     #[tool(
-        description = "Build/validate once per configured build key, install on explicit targets, then check readiness. Include required API targets before their history nodes; API failure blocks dependent installs. Returns a job ID promptly; poll deployment_status. Runs only trusted commands configured at startup. Does not index, install models or restart this dev MCP. Existing Mash clients must reconnect after binary replacement.",
+        description = "Run the registered Ansible deploy playbook on explicit targets. Ansible owns build reuse, API-first ordering, offline-host skips, installs and live contract/readiness checks. Include required API targets with their history nodes. Returns a Runner job ID promptly; poll deployment_status. Never indexes or downloads models as a deployment side effect. Existing Mash clients must reconnect after binary replacement.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn deploy(&self, Parameters(input): Parameters<Targets>) -> CallToolResult {
@@ -67,7 +68,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Explicitly refresh configured nodes through their Mash MCP index tool. Sync applies supported local schema migrations and ingests provider changes. View modes rebuild retrieval data from certified silver. Does not deploy code, migrate server infrastructure or download models. Returns a job ID; deployment_status reports indexing progress and results. Nodes refresh sequentially to avoid shared publication contention.",
+        description = "Run the registered Ansible refresh playbook on explicit history nodes. Its RMCP probe calls the installed Mash index tool: sync ingests providers; local-views rebuilds retrieval from certified silver. Never deploys binaries or downloads models. Returns a Runner job ID; deployment_status reports task/index progress and redacted results. Ansible serializes node refreshes.",
         annotations(read_only_hint = false, destructive_hint = false)
     )]
     async fn refresh_index(&self, Parameters(input): Parameters<Refresh>) -> CallToolResult {
@@ -79,7 +80,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Poll a job's per-node progress, failures and Mash readiness/index results. With no job_id, supply explicit nodes to start fresh read-only readiness checks. Job history is bounded and session-local. Deployment success is separate from search readiness: inspect returned Mash status fields.",
+        description = "Poll Runner task progress, per-target outcomes and redacted Mash probe results. With no job_id, supply explicit history nodes to run the registered read-only check playbook. Job history is bounded and session-local; raw Ansible logs stay private. Skipped targets have not been deployed or certified ready.",
         annotations(read_only_hint = true, destructive_hint = false)
     )]
     async fn deployment_status(&self, Parameters(input): Parameters<Status>) -> CallToolResult {
@@ -100,7 +101,7 @@ impl rmcp::ServerHandler for Server {
             .enable_tools()
             .build();
         info.server_info = rmcp::model::Implementation::new("mash_dev", env!("CARGO_PKG_VERSION"));
-        info.instructions = Some("Project development operations. Select named targets explicitly. Poll returned jobs until terminal. Deploy does not imply ready indexes; refresh is explicit. Configuration is trusted operator input; never pass arbitrary commands through tool arguments.".into());
+        info.instructions = Some("Thin agent interface to registered Ansible playbooks. Select explicit target names and poll Runner jobs until terminal. Inspect skipped/failed target states before claiming readiness. Refresh is explicit. Inventory and runner configuration are trusted operator input; tool calls never accept commands or playbook paths.".into());
         info
     }
 }
@@ -146,28 +147,23 @@ mod tests {
     #[tokio::test]
     async fn official_sdk_exposes_only_dev_tools_and_rejects_unknown_targets() {
         let directory = tempfile::tempdir().unwrap();
-        let node = config::Node::History {
-            build: "test".into(),
-            install: vec![config::Command {
-                argv: vec!["true".into()],
-            }],
-            mcp: config::Command {
-                argv: vec!["missing-mcp".into()],
-            },
-            shared: false,
-            requires: vec![],
-        };
+        let inventory = directory.path().join("inventory.yml");
+        std::fs::write(&inventory, "all: {}\n").unwrap();
+        std::fs::write(directory.path().join("playbook.yml"), "[]\n").unwrap();
         let config = config::Config {
             repository: directory.path().into(),
             logs: directory.path().join("logs"),
+            inventory,
             timeout_seconds: 30,
-            builds: std::collections::BTreeMap::from([(
-                "test".into(),
-                vec![config::Command {
-                    argv: vec!["true".into()],
-                }],
-            )]),
-            nodes: std::collections::BTreeMap::from([("test".into(), node)]),
+            runner: config::Command {
+                argv: vec!["missing-runner".into()],
+            },
+            nodes: vec!["test".into()],
+            playbooks: config::Playbooks {
+                deploy: "playbook.yml".into(),
+                refresh: "playbook.yml".into(),
+                check: "playbook.yml".into(),
+            },
         };
         let (server_io, client_io) = tokio::io::duplex(65536);
         let serving = tokio::spawn(async move {

@@ -12,6 +12,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
+pub(crate) mod guidance;
 mod watching;
 
 #[derive(Clone)]
@@ -23,7 +24,7 @@ struct Mash {
     watcher: Arc<tokio::sync::Mutex<watching::Watcher>>,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Search {
     /// compact (default) returns bounded excerpts; extended includes full hits and scores.
@@ -56,7 +57,25 @@ struct Search {
     local: bool,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+impl Search {
+    fn operation(self) -> Operation {
+        Operation::Search {
+            shared_vector_search: self.shared_vector,
+            query: self.query,
+            intent: self.intent,
+            limit: self.limit,
+            unit: self.unit,
+            fusion: self.fusion.unwrap_or_default(),
+            ranking: self.ranking,
+            diagnostics: self.diagnostics,
+            filters: Box::new(self.filters),
+            shared: self.shared,
+            local: self.local,
+        }
+    }
+}
+
+#[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Status {
     /// Optional provider/node/message-time scope. Reports retained rows and scan evidence;
@@ -70,7 +89,7 @@ struct Status {
     shared: bool,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ListChats {
     /// compact (default) omits enrichment provenance; extended includes all metadata.
@@ -87,7 +106,7 @@ struct ListChats {
     diagnostics: bool,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct View {
     /// Copy lookup.view from a search hit; id is the message anchor, not the chat ID.
@@ -99,14 +118,14 @@ struct View {
     shared: Option<String>,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ListAttachments {
     message_id: String,
     shared: Option<String>,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct GetAttachment {
     message_id: String,
@@ -416,7 +435,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Quickly list chat metadata without models or inference. Filter by provider, node, literal title substring or chat activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned chat_id and provider in search with unit=messages and chat filters. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
+        description = "Quickly list chat metadata without models or inference. Omit unused filters; title_contains must be nonempty when supplied. Filter by provider, node, literal title substring or chat activity cutoff (Unix seconds). Sort by updated_at (default), created_at or title, asc/desc. Returned timestamps are Unix milliseconds. Default scope combines local and other nodes; local/shared select one index. Use returned chat_id and provider in search with unit=messages and chat filters. Unknown timestamps sort last. Pagination is best effort during updates; offset is capped at 10000."
     )]
     async fn list_chats(&self, Parameters(input): Parameters<ListChats>) -> CallToolResult {
         self.execute_detailed(
@@ -433,26 +452,11 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; use unit=messages to drill into selected conversations. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps."
+        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
-        self.execute_detailed(
-            Operation::Search {
-                shared_vector_search: request.shared_vector,
-                query: request.query,
-                intent: request.intent,
-                limit: request.limit,
-                unit: request.unit,
-                fusion: request.fusion.unwrap_or_default(),
-                ranking: request.ranking,
-                diagnostics: request.diagnostics,
-                filters: Box::new(request.filters),
-                shared: request.shared,
-                local: request.local,
-            },
-            request.detail,
-        )
-        .await
+        let detail = request.detail;
+        self.execute_detailed(request.operation(), detail).await
     }
 
     #[tool(
@@ -473,14 +477,25 @@ impl Mash {
         description = "Report local readiness and optional shared freshness. Supply coverage with provider/node/message-time selectors for retained-row and recorded-scan facts; unknown coverage never proves absence. Set shared=true to include each node's artifact publication states, last_synced_at and last_updated_at from the shared HTTP service backed by Qdrant. Artifact readiness does not certify complete provider history or installed query models."
     )]
     async fn status(&self, Parameters(request): Parameters<Status>) -> CallToolResult {
-        self.execute_detailed(
-            Operation::Status {
-                shared: request.shared,
-                coverage: request.coverage,
-            },
-            request.detail,
-        )
-        .await
+        let mut result = self
+            .execute_detailed(
+                Operation::Status {
+                    shared: request.shared,
+                    coverage: request.coverage,
+                },
+                request.detail,
+            )
+            .await;
+        guidance::attach_runtime(&mut result, None).await;
+        result
+    }
+
+    #[tool(
+        annotations(read_only_hint = true, destructive_hint = false),
+        description = "Read concise usage, typed examples and input schema from this running MCP binary. Optional tool or topic narrows guidance. Supply expected_contract from the history skill to detect stale instructions. Reports build revision, contract fingerprint and whether the executable was replaced and this session needs reconnecting. No index, models, configuration or network needed."
+    )]
+    async fn help(&self, Parameters(request): Parameters<guidance::Help>) -> CallToolResult {
+        guidance::help(request).await
     }
 
     #[tool(
@@ -560,7 +575,8 @@ impl rmcp::ServerHandler for Mash {
             .enable_tools()
             .build();
         info.server_info = rmcp::model::Implementation::new("mash", env!("CARGO_PKG_VERSION"));
-        info.instructions = Some("Search configured agent histories. Search/view/status are read-only. Index and forget write data; models_install explicitly downloads models. Provider allowlists and destinations are configured at startup. Search merges local results with other nodes in the shared group by default. Supply a shared result's node ID to view its message.".to_owned());
+        guidance::capture_executable();
+        info.instructions = Some(guidance::instructions());
         info
     }
 }

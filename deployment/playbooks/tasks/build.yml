@@ -1,0 +1,6 @@
+- name: Build and validate the selected platform artifact
+  ansible.builtin.command:
+    argv: "{{ item }}"
+    chdir: "{{ mash_repository }}"
+  loop: "{{ mash_builds[mash_platform] }}"
+  no_log: true

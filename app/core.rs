@@ -126,7 +126,6 @@ async fn execute_inner(
     Ok(response)
 }
 
-#[cfg(unix)]
 pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError> {
     let Operation::Search {
         shared_vector_search,
@@ -169,6 +168,20 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
         "local",
     )
     .map(|_| ())
+}
+
+pub(crate) fn validate_chat_request(
+    input: &crate::chat_catalog::Request,
+    local: bool,
+    shared: bool,
+) -> Result<(), AppError> {
+    input.validate()?;
+    if local && shared {
+        return Err(AppError::usage(
+            "local and shared thread discovery are mutually exclusive",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(unix)]

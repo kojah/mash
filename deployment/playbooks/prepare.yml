@@ -1,0 +1,63 @@
+- name: Validate the explicit fleet request
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Validate targets and refresh scope
+      ansible.builtin.assert:
+        that:
+          - mash_selected_nodes | length > 0
+          - mash_selected_nodes | unique | length == mash_selected_nodes | length
+          - mash_selected_nodes | difference((groups['mash_api'] | default([])) + (groups['mash_history'] | default([]))) | length == 0
+          - mash_operation not in ['sync', 'local-views'] or mash_selected_nodes | difference(groups['mash_history'] | default([])) | length == 0
+        quiet: true
+    - name: Validate required APIs for deployment
+      ansible.builtin.assert:
+        that: hostvars[item].mash_requires | default([]) | difference(mash_selected_nodes) | length == 0
+        quiet: true
+      loop: "{{ mash_selected_nodes }}"
+      when: mash_operation == 'deploy'
+    - name: Read the requested source revision
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ mash_repository }}"
+      register: mash_revision
+      changed_when: false
+    - name: Select only requested targets
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: mash_selected
+      loop: "{{ mash_selected_nodes }}"
+
+- name: Check target availability without reusing stale SSH masters
+  hosts: mash_selected
+  gather_facts: false
+  tasks:
+    - name: Check a fresh target connection
+      ansible.builtin.command:
+        argv: "{{ mash_preflight | default(['/usr/bin/true']) }}"
+        chdir: "{{ mash_repository }}"
+      delegate_to: localhost
+      register: mash_connection
+      changed_when: false
+      failed_when: false
+    - name: Record target availability
+      ansible.builtin.set_fact:
+        mash_connection_ready: "{{ mash_connection.rc == 0 }}"
+    - name: Report unavailable targets as skipped
+      ansible.builtin.copy:
+        dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+        mode: '0600'
+        content: "{{ {'state': 'skipped', 'error': 'Fresh target connection failed; deploy when available.', 'results': []} | to_json }}"
+      delegate_to: localhost
+      when: not mash_connection_ready
+
+- name: Limit later plays to available targets
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Select available targets
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: mash_available
+      loop: "{{ mash_selected_nodes }}"
+      when: hostvars[item].mash_connection_ready | default(false)

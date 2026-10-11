@@ -73,7 +73,16 @@ jobs:
           python3 .github/scripts/test-deploy-gate.py
           python3 .github/scripts/test-deploy-credentials.py
       - name: Verify development API deployment rollback
-        run: TMPDIR="$RUNNER_TEMP" bash tools/test-dev-api.sh
+        run: |
+          TMPDIR="$RUNNER_TEMP" bash tools/test-dev-api.sh
+          TMPDIR="$RUNNER_TEMP" bash tools/test-dev-build.sh
+      - name: Verify Ansible fleet policy and cross-session exclusion
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/mash-ansible-runtime
+        run: |
+          uv sync --project deployment --locked --no-dev
+          TMPDIR="$RUNNER_TEMP" bash tools/test-run-ansible.sh
+          TMPDIR="$RUNNER_TEMP" bash tools/test-ansible.sh
       - name: Verify offline search evaluation
         run: python3 -m unittest discover -s tools -p 'test_search_evaluation.py'
       - name: Install pinned sqlc release
@@ -92,7 +101,16 @@ jobs:
         run: make check-generated
       - run: cargo clippy --all-targets -- -D warnings
       - name: Verify history skill examples against Rust contracts
-        run: cargo nextest run --profile ci --locked --lib -E 'test(history_skill_)' --no-tests fail
+        env:
+          MASH_CONTRACT_BASE: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          MASH_SKILL_CARGO_RUN: run
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          if [[ "$MASH_CONTRACT_BASE" != "0000000000000000000000000000000000000000" ]]; then
+            git fetch origin "$MASH_CONTRACT_BASE" --depth=1
+          fi
+          bash tools/generate-history-skill.sh --check
+          cargo nextest run --profile ci --locked --lib -E 'test(history_skill_)' --no-tests fail
       - run: cargo nextest run --profile ci
       - name: Configure explicit test model directory
         run: echo "MASH_TEST_MODELS_DIR=$RUNNER_TEMP/mash-test-models" >> "$GITHUB_ENV"
@@ -125,8 +143,12 @@ jobs:
             cargo nextest run --profile ci --run-ignored only --no-tests fail -j 1 \
               -E 'test(shared_backend_persisted_restart_contract) or test(shared_backend_snapshot_restore_preserves_silver_views_and_revision_guards) or test(shared_views_lost_without_backup_is_replayed_from_shared_silver)'
       - name: Verify development MCP refresh and deployment separation
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/mash-ansible-runtime
         run: |
+          cargo build --locked --bin mash-dev-probe
           MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
+            MASH_TEST_DEV_PROBE_BINARY="$PWD/target/debug/mash-dev-probe" \
             cargo nextest run -p mash-dev --profile ci --run-ignored only --no-tests fail \
               -E 'test(real_mash_refresh_progress_rebuild_and_deploy_without_ingestion)'
       - name: Clean owned restart fixtures after test failure or timeout

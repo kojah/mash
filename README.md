@@ -148,6 +148,40 @@ Keep credentials and machine-specific launchers outside Git.
 Restart the MCP server/client after a successful rebuild. New processes use
 the rebuilt binary; an already-running process continues executing its previous
 build. This setup does not automatically build, index or install models.
+MCP `help` provides live schemas and typed examples without an index or models;
+select a `tool` or a workflow `topic` to keep its response focused. Startup
+instructions and `help`/`status` report the build revision and contract fingerprint.
+Supply the generated skill's fingerprint as `expected_contract` to `help` to
+detect stale instructions. A replaced executable sets `reconnect_required`;
+an unknown executable state does not certify that a session is current.
+
+The history skill's workflow template is `app/templates/history_skill.md`.
+Its API reference and examples are generated from Rust MCP definitions with
+`make generate-skills`; do not edit the generated `SKILL.md` or `contract.json`.
+`make check-skills` checks generation, real argument validation and CLI examples.
+CI compares the contract stamp with the previous release and requires an increased
+version in both plugin manifests whenever the contract or workflow changes.
+Update the installed plugin and reload its instructions after changing the skill.
+
+Development deployment uses `tools/build-dev-linux.sh` to reuse successful gates
+for identical source/toolchain/build inputs while still stamping the release
+binary for the current commit. Source changes invalidate the gate receipt, and
+changes during validation or compilation fail the rollout. The API helper locks
+concurrent rollouts and skips restarting an identical healthy release. The
+Ansible owns fleet selection, builds, API-first rollout, offline skips and
+required schema migrations. `mash-dev-mcp` is a thin interface to registered
+Ansible Runner playbooks; `mash-dev-probe` uses RMCP to verify the live contract,
+query readiness and shared publication with bounded smoke searches. Ordinary
+deployment never ingests history or installs models. An actual silver upgrade
+requires a local views rebuild and republishing, which the deploy playbook
+performs as separate probe steps; ordinary refresh remains explicit.
+
+The development TOML now selects a trusted runner, private Ansible inventory,
+allowed targets and fixed deploy/refresh/check playbooks. Its former embedded
+build/node command tables are removed. See [deployment setup](deployment/README.md)
+and the example TOML/inventory for the new format. Node/server Mash settings
+remain TOML. Runner logs/events stay private; the MCP returns safe task progress,
+per-target outcomes and redacted probe results. Skipped targets are not ready.
 See the [official Codex MCP configuration documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 ## Codex and Claude Code history plugin

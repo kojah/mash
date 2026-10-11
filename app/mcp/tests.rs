@@ -8,6 +8,7 @@ mod chats;
 mod coverage;
 mod export;
 mod fusion;
+mod guidance;
 mod incomplete;
 mod output;
 mod rebuild;
@@ -390,6 +391,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
             "export_silver",
             "forget",
             "get_attachment",
+            "help",
             "import_silver",
             "index",
             "list_attachments",

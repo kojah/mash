@@ -22,6 +22,8 @@ while [[ $# -gt 0 ]]; do
         *) usage ;;
     esac
 done
+exec {deploy_lock}>"$pointer.deploy.lock"
+flock -w 60 "$deploy_lock" || { echo 'Another API rollout is active; inspect its job before retrying.' >&2; exit 1; }
 load_api_environment "$environment" "$token_name"
 verify_api_process "$pointer"
 old_pid=$(pointer_pid "$pointer")
@@ -33,6 +35,29 @@ publication_identity "$scratch/freshness.json" > "$scratch/before.json"
 cp "$pointer" "$scratch/previous-release.json"
 digest=$(sha256sum "$artifact")
 digest=${digest%% *}
+config_digest=$(sha256sum "$config")
+config_digest=${config_digest%% *}
+environment_digest=$(sha256sum "$environment")
+environment_digest=${environment_digest%% *}
+# Do not interrupt healthy sessions for an identical artifact/configuration.
+# Explicit replay/activation still runs even when the binary is unchanged.
+if [[ -z "$activate_query$replay_views" ]] && jq -e \
+    --arg binary "$digest" --arg config "$config_digest" --arg environment "$environment_digest" \
+    '.binary_sha256 == $binary and .config_sha256 == $config and .environment_sha256 == $environment' "$pointer" >/dev/null; then
+    compatible=true
+    if [[ -n "$silver_dir" ]]; then
+        schema=$("$artifact" --version | jq -er '.silver_schema | select(type == "number")')
+        shopt -s nullglob
+        for file in "$silver_dir"/*/*.sqlite3; do
+            version=$(silver_version "$file")
+            [[ "$version" == 0 || "$version" == "$schema" ]] || compatible=false
+        done
+    fi
+    if [[ "$compatible" == true ]]; then
+        jq '{source_commit,binary_sha256,pid,authenticated_readiness:true,publications_preserved:true,unchanged:true}' "$pointer"
+        exit 0
+    fi
+fi
 binary="$root/mash-$digest"
 bash "$(dirname "$0")/install-dev-binary.sh" "$artifact" "$binary"
 revision=$(git -C "$(dirname "$0")/.." rev-parse HEAD)
@@ -47,7 +72,8 @@ start_api() {
     local flags=()
     [[ ${3:-} == --activate-query ]] && flags+=(--activate-query)
     [[ ${4:-} == --replay-views ]] && flags+=(--replay-views)
-    nohup setsid "$1" serve --server-config "${5:-$config}" "${flags[@]}" </dev/null >"$2" 2>&1 &
+    # The long-lived server must not inherit the short-lived rollout lock.
+    nohup setsid "$1" serve --server-config "${5:-$config}" "${flags[@]}" {deploy_lock}>&- </dev/null >"$2" 2>&1 &
     new_pid=$!
 }
 
@@ -136,9 +162,10 @@ for side in before after; do
 done
 cmp "$scratch/before.kept.json" "$scratch/after.kept.json"
 jq -n --arg source_commit "$revision" --arg binary_sha256 "$digest" \
+    --arg config_sha256 "$config_digest" --arg environment_sha256 "$environment_digest" \
     --arg log "$scratch/api.log" --argjson pid "$new_pid" --argjson previous_pid "$old_pid" \
     --argjson retired "$retired_json" --arg retired_dir "$scratch/retired-silver" \
-    '{source_commit:$source_commit, binary_sha256:$binary_sha256, log:$log, pid:$pid, previous_pid:$previous_pid, build:"optimized LLVM release", deployed:true}
+    '{source_commit:$source_commit, binary_sha256:$binary_sha256, config_sha256:$config_sha256, environment_sha256:$environment_sha256, log:$log, pid:$pid, previous_pid:$previous_pid, build:"optimized LLVM release", deployed:true}
      + if ($retired | length) > 0 then {republish:$retired, retired_silver:$retired_dir} else {} end' \
     > "$pointer.incoming.$$"
 mv "$pointer.incoming.$$" "$pointer"

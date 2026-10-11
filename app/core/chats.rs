@@ -93,12 +93,7 @@ async fn run_inner(
     local_only: bool,
     shared_only: bool,
 ) -> Result<Response, AppError> {
-    input.validate()?;
-    if local_only && shared_only {
-        return Err(AppError::usage(
-            "local and shared thread discovery are mutually exclusive",
-        ));
-    }
+    super::validate_chat_request(&input, local_only, shared_only)?;
     let use_shared = shared_only || (!local_only && config.shared.is_some());
     let node = config
         .shared

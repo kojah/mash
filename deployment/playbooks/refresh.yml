@@ -1,0 +1,18 @@
+- import_playbook: prepare.yml
+
+- name: Explicitly refresh history through its installed Mash MCP
+  hosts: mash_available:&mash_history
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  tasks:
+    - name: Verify APIs required by synchronization
+      ansible.builtin.include_tasks: tasks/required-api.yml
+      loop: "{{ mash_requires | default([]) }}"
+      loop_control:
+        loop_var: mash_required_api
+      when: mash_operation == 'sync'
+    - name: Run the explicit refresh and readiness probe
+      ansible.builtin.include_tasks: tasks/probe.yml
+      vars:
+        mash_probe_mode: "{{ mash_operation }}"

@@ -42,7 +42,9 @@ pub(crate) struct Request {
     #[arg(long)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) kind: Vec<String>,
-    /// Literal substring, ASCII case insensitive; no wildcard syntax.
+    /// Literal substring, ASCII case insensitive; no wildcard syntax. Omit when unused;
+    /// supplied text must be nonempty, at most 4096 bytes, without control characters.
+    #[schemars(length(min = 1, max = 4096))]
     #[arg(long)]
     pub(crate) title_contains: Option<String>,
     /// Inclusive thread activity cutoff in Unix seconds.

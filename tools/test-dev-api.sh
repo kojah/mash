@@ -43,6 +43,7 @@ export TEST_API_POINTER="$scratch/pointer.json"
 export TEST_API_ARGUMENTS="$scratch/arguments"
 export PATH="$scratch/bin:$PATH"
 cd "$scratch"
+printf '# test-only server configuration\n' > fixture.toml
 bash serve --server-config fixture.toml &
 old_pid=$!
 for ((attempt=0; attempt<50; attempt++)); do
@@ -81,6 +82,16 @@ bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POIN
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 # Across a silver schema change, opt-in retirement moves incompatible shared
 # silver aside so its node republishes, and keeps compatible silver in place.
+# An identical healthy rollout keeps the process; configuration changes restart it.
+previous_pid=$(jq -r .pid "$TEST_API_POINTER")
+report=$(bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml \
+    "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs")
+[[ $(jq -r .unchanged <<<"$report") == true ]]
+[[ $(jq -r .pid "$TEST_API_POINTER") == "$previous_pid" ]]
+printf '# changed configuration\n' >> fixture.toml
+bash "$repository/tools/restart-dev-api.sh" /usr/bin/bash fixture.toml \
+    "$scratch/environment" "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
+[[ $(jq -r .pid "$TEST_API_POINTER") != "$previous_pid" ]]
 silver="$scratch/silver"
 mkdir -p "$silver/group"
 python3 - "$silver/group" <<'PYTHON'

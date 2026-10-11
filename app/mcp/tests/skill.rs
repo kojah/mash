@@ -7,9 +7,9 @@ use serde_json::Value;
 
 const HISTORY: &str = include_str!("../../../plugins/mash/skills/history/SKILL.md");
 
-fn arguments<T: DeserializeOwned + schemars::JsonSchema>(text: &str) -> Result<(), String> {
+fn arguments<T: DeserializeOwned + schemars::JsonSchema>(text: &str) -> Result<T, String> {
     let value: Value = serde_json::from_str(text).map_err(|error| error.to_string())?;
-    let _: T = serde_json::from_value(value.clone()).map_err(|error| error.to_string())?;
+    let input: T = serde_json::from_value(value.clone()).map_err(|error| error.to_string())?;
     // Serde checks actual runtime decoding; the generated schema also describes
     // top-level field names and bounds that are enforced later by the core.
     let schema = serde_json::to_value(schemars::schema_for!(T)).unwrap();
@@ -30,7 +30,7 @@ fn arguments<T: DeserializeOwned + schemars::JsonSchema>(text: &str) -> Result<(
             }
         }
     }
-    Ok(())
+    Ok(input)
 }
 
 fn mcp(tool: &str, text: &str) -> Result<(), String> {
@@ -42,12 +42,29 @@ fn mcp(tool: &str, text: &str) -> Result<(), String> {
         return Err(format!("unregistered tool {tool}"));
     }
     match tool {
-        "search" => arguments::<Search>(text),
-        "list_chats" => arguments::<ListChats>(text),
-        "view" => arguments::<View>(text),
-        "status" => arguments::<Status>(text),
-        "list_attachments" => arguments::<ListAttachments>(text),
-        "get_attachment" => arguments::<GetAttachment>(text),
+        "search" => {
+            let input = arguments::<Search>(text)?;
+            core::validate_search_request(&Request {
+                paths: Paths::default(),
+                operation: input.operation(),
+            })
+            .map_err(|error| error.error.message)
+        }
+        "list_chats" => {
+            let input = arguments::<ListChats>(text)?;
+            core::validate_chat_request(&input.input, input.local, input.shared)
+                .map_err(|error| error.error.message)
+        }
+        "view" => arguments::<View>(text).map(|_| ()),
+        "status" => {
+            let input = arguments::<Status>(text)?;
+            input.coverage.map_or(Ok(()), |coverage| {
+                coverage.validate().map_err(|error| error.error.message)
+            })
+        }
+        "list_attachments" => arguments::<ListAttachments>(text).map(|_| ()),
+        "get_attachment" => arguments::<GetAttachment>(text).map(|_| ()),
+        "help" => super::super::guidance::validate_help(&arguments(text)?),
         _ => Err(format!("add runtime argument validation for {tool}")),
     }
 }
@@ -102,6 +119,16 @@ fn history_skill_examples_match_runtime_contracts() {
 }
 
 #[test]
+fn history_skill_generation_is_current() {
+    let (skill, stamp) = super::super::guidance::generate_history_skill().unwrap();
+    assert_eq!(skill, HISTORY, "regenerate with make generate-skills");
+    assert_eq!(
+        stamp,
+        include_str!("../../../plugins/mash/skills/history/contract.json")
+    );
+}
+
+#[test]
 fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
     // Reproduce the real failure: attachment parameter names do not belong to view.
     let broken = HISTORY.replace(
@@ -120,6 +147,18 @@ fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
     assert!(mcp("search", r#"{"query":"test","unit":"threads"}"#).is_err());
     assert!(mcp("search", r#"{"query":"test","conversation":["id"]}"#).is_err());
     assert!(mcp("search", r#"{"query":"test","unit":"chats","chat":["id"]}"#).is_ok());
+    assert!(mcp("list_chats", r#"{"title_contains":""}"#).is_err());
+    assert!(mcp("list_chats", r#"{"title_contains":"\n"}"#).is_err());
+    assert!(mcp("list_chats", r#"{"local":true,"shared":true}"#).is_err());
+    assert!(mcp("search", r#"{"query":"test","local":true,"shared":true}"#).is_err());
+    assert!(
+        mcp(
+            "search",
+            r#"{"query":"test","intent":"exact-mention","ranking":"fusion"}"#
+        )
+        .is_err()
+    );
+    assert!(mcp("help", r#"{"tool":"list_threads"}"#).is_err());
     assert!(block("bash cli", "mash list-threads").is_err());
     assert!(block("bash cli", "mash search test --unit chat-messages").is_err());
     assert!(block("bash cli", "mash search test --unit messages --chat id").is_ok());

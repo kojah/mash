@@ -13,7 +13,7 @@ git archive --format=tar HEAD > "$archive"
 ssh "${transport[@]}" "$host" "mkdir -p $root/source-$revision $root/build-source $root/build-tmp"
 scp "${transport[@]}" "$archive" "$host:$root/source-$revision.tar"
 ssh "${transport[@]}" "$host" \
-    "tar -xf $root/source-$revision.tar -C $root/source-$revision && rsync -rlpc --delete $root/source-$revision/ $root/build-source/ && cd $root/build-source && PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin TMPDIR=$root/build-tmp CARGO_TARGET_DIR=$root/target CARGO_INCREMENTAL=0 cargo build --release --locked --bin mash"
+    "tar -xf $root/source-$revision.tar -C $root/source-$revision && rsync -rlpc --delete $root/source-$revision/ $root/build-source/ && cd $root/build-source && PATH=/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:/usr/bin:/bin TMPDIR=$root/build-tmp CARGO_TARGET_DIR=$root/target CARGO_INCREMENTAL=0 MASH_BUILD_REVISION=$revision cargo build --release --locked --bin mash"
 # A stable source path and checksum synchronization preserve unchanged source
 # mtimes, so Cargo can reuse its fingerprints across commits. Always run Cargo;
 # this also checks toolchain, flags, dependency and changed-source inputs.

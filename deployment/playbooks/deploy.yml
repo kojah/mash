@@ -1,0 +1,98 @@
+- import_playbook: prepare.yml
+
+- name: Build each requested platform once
+  hosts: localhost
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Choose an available macOS builder
+      ansible.builtin.set_fact:
+        mash_darwin_build_host: "{{ ((groups['mash_available'] | default([])) | intersect(groups['mash_darwin'] | default([])) | sort | first) | default('') }}"
+    - name: Build platform artifacts through validated helpers
+      ansible.builtin.include_tasks: tasks/build.yml
+      loop: "{{ (groups['mash_available'] | default([])) | map('extract', hostvars, 'mash_platform') | unique | list }}"
+      loop_control:
+        loop_var: mash_platform
+    - name: Verify the source revision stayed fixed before installation
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ mash_repository }}"
+      register: mash_install_revision
+      changed_when: false
+    - name: Reject a superseded build
+      ansible.builtin.assert:
+        that: mash_install_revision.stdout == mash_revision.stdout
+        quiet: true
+
+- name: Deploy APIs before their history nodes
+  hosts: mash_available:&mash_api
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  tasks:
+    - name: Install or keep the validated API release
+      ansible.builtin.command:
+        argv: "{{ item }}"
+        chdir: "{{ mash_repository }}"
+      loop: "{{ mash_install }}"
+      delegate_to: localhost
+      no_log: true
+    - ansible.builtin.include_tasks: tasks/api-check.yml
+    - name: Record verified API deployment
+      ansible.builtin.copy:
+        dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+        mode: '0600'
+        content: '{"state":"succeeded","results":[]}'
+      delegate_to: localhost
+
+- name: Deploy history nodes without ordinary ingestion
+  hosts: mash_available:&mash_history
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  tasks:
+    - name: Check required APIs before installing a node
+      ansible.builtin.include_tasks: tasks/required-api.yml
+      loop: "{{ mash_requires | default([]) }}"
+      loop_control:
+        loop_var: mash_required_api
+    - name: Inspect private node TOML configurations
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ mash_node_configs | default([]) }}"
+      register: mash_config_files
+      no_log: true
+    - name: Rename legacy view sections in retained TOML only
+      ansible.builtin.replace:
+        path: "{{ item.item }}"
+        regexp: '^(\s*\[)gold([.\]])'
+        replace: '\1views\2'
+        backup: true
+      loop: "{{ mash_config_files.results | default([]) }}"
+      when: item.stat.exists
+      no_log: true
+    - name: Upgrade incompatible silver and atomically install the artifact
+      ansible.builtin.command:
+        argv: "{{ item }}"
+        chdir: "{{ mash_repository }}"
+      loop: "{{ mash_install }}"
+      delegate_to: localhost
+      register: mash_install_results
+      no_log: true
+    - name: Determine whether an actual silver upgrade requires refresh
+      ansible.builtin.set_fact:
+        mash_upgraded: "{{ mash_install_results.results | map(attribute='stdout') | select('search', 'local index upgraded;') | list | length > 0 }}"
+    - name: Rebuild local views after a required schema upgrade
+      ansible.builtin.include_tasks: tasks/probe.yml
+      vars:
+        mash_probe_mode: local-views
+      when: mash_upgraded
+    - name: Republish after a required schema upgrade
+      ansible.builtin.include_tasks: tasks/probe.yml
+      vars:
+        mash_probe_mode: sync
+      when: mash_upgraded
+    - name: Verify live tools, contract, readiness and smoke searches
+      ansible.builtin.include_tasks: tasks/probe.yml
+      vars:
+        mash_probe_mode: check

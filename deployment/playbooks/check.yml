@@ -1,0 +1,27 @@
+- import_playbook: prepare.yml
+
+- name: Verify requested APIs without changing them
+  hosts: mash_available:&mash_api
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_tasks: tasks/api-check.yml
+    - name: Record verified API readiness
+      ansible.builtin.copy:
+        dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+        mode: '0600'
+        content: '{"state":"succeeded","results":[]}'
+      delegate_to: localhost
+
+- name: Verify installed history without ingestion or model setup
+  hosts: mash_available:&mash_history
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Verify required APIs
+      ansible.builtin.include_tasks: tasks/required-api.yml
+      loop: "{{ mash_requires | default([]) }}"
+      loop_control:
+        loop_var: mash_required_api
+    - ansible.builtin.include_tasks: tasks/probe.yml
+      vars:
+        mash_probe_mode: check

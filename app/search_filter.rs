@@ -39,7 +39,7 @@ pub(crate) struct Selection {
     pub(crate) days: Option<u32>,
     pub(crate) node: Vec<String>,
     pub(crate) role: Vec<crate::role::Role>,
-    /// Canonical thread IDs from thread search; omitted or empty selects all threads.
+    /// Canonical chat IDs from search or `list_chats`; omitted or empty selects all chats.
     #[serde(rename = "chat")]
     pub(crate) conversation: Vec<String>,
     /// Exact recorded working directory; repeat for alternatives.
