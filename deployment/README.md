@@ -45,3 +45,10 @@ MCP while one of its jobs is active.
 Validation includes Rust wrapper/probe tests and real Ansible fixture runs through
 `tools/test-ansible.sh`, plus fleet-lock and build-gate regression scripts. Keep
 controller environments and all job data outside Git.
+
+Local gates are the normal release validation; GitHub Actions is optional and
+generally unavailable. Do not wait for hosted CI or treat its availability as a
+release prerequisite. Default rollout selects `shared-api` and `xenia`.
+Both Macs are normally unavailable and are optional targets, selected only when
+explicitly requested or known reachable. Their availability does not block Linux
+validation, deployment or completion.

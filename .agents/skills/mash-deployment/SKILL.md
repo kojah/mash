@@ -8,6 +8,13 @@ description: Deploy, redeploy, roll out or refresh Mash through its Ansible flee
 After validated changes reach main, deploy by default unless the user says not to
 or the change cannot affect nodes (for example documentation only).
 
+Local validation is authoritative. GitHub Actions is generally unavailable;
+do not wait for hosted CI, require its success, or investigate its availability
+as a routine release step. Run the configured local gates before pushing.
+Default development targets are shared-api and xenia. Both Macs are generally
+unavailable: include them only when explicitly requested or known available,
+and never hold up Linux completion for them.
+
 Ansible owns inventory, availability, build reuse, API-first installation,
 required migrations and readiness checks. The development MCP is a thin adapter
 to registered ansible-runner playbooks; it never implements fleet policy.
@@ -36,7 +43,7 @@ Install updated dev binaries only after checking for active jobs.
 3. Check each target: skipped is not installed or query-ready. A failed API
    blocks dependent history installs. Unknown/unverified results fail closed.
 
-The fleet is shared-api, xenia, dev-macbook and personal-macbook.
+The inventory contains shared-api, xenia, dev-macbook and personal-macbook.
 Fresh SSH probes disable control-master reuse and bound connection/keepalive
 timeouts. Offline Macs are skipped and reported. A reachable Mac can build the
 single macOS artifact reused for all available Macs.
