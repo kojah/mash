@@ -20,7 +20,7 @@ impl<'de> Deserialize<'de> for HeldDecode {
         gate.entered.send(std::thread::current().id()).unwrap();
         // A regressed implementation exits rather than hanging the test runtime.
         gate.release
-            .recv_timeout(Duration::from_secs(2))
+            .recv_timeout(crate::test_support::HANG_GUARD)
             .map_err(|_| serde::de::Error::custom("decoder was not released"))?;
         Ok(Self)
     }
@@ -62,14 +62,14 @@ async fn busy_response_decoder_does_not_block_another_shared_read() {
         )
         .await
     });
-    let decoder_thread = tokio::time::timeout(Duration::from_secs(1), receiver)
+    let decoder_thread = tokio::time::timeout(crate::test_support::HANG_GUARD, receiver)
         .await
         .unwrap()
         .unwrap();
     assert_ne!(decoder_thread, runtime_thread);
     assert!(!busy.is_finished());
     let healthy = tokio::time::timeout(
-        Duration::from_secs(1),
+        crate::test_support::HANG_GUARD,
         response::<crate::storage::Counts>(
             reqwest::Client::new().get(format!("http://{address}/healthy")),
             Endpoint::Freshness,

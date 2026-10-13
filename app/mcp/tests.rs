@@ -47,7 +47,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
         model_work: Arc::new(tokio::sync::Semaphore::new(0)),
     };
     let result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+        crate::test_support::HANG_GUARD,
         server.search(Parameters(Search {
             detail: Detail::Extended,
             query: "for".into(),
@@ -417,7 +417,7 @@ async fn sdk_handshake_discovery_calls_and_errors_share_cli_contract() {
     let write_guard = write_gate.lock().await;
     let model_permit = model_work.acquire().await.expect("model permit");
     let status = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        crate::test_support::HANG_GUARD,
         client.call_tool(
             CallToolRequestParams::new("status")
                 .with_arguments(json!({"detail":"extended"}).as_object().unwrap().clone()),

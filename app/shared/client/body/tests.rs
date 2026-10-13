@@ -204,7 +204,7 @@ async fn state_decode_starts_before_eof_and_cancellation_wakes_blocked_io() {
     let pending = tokio::spawn(async move {
         response_admitted::<Prefix>(request, Endpoint::Index, &CAPACITY).await
     });
-    tokio::time::timeout(std::time::Duration::from_secs(1), started)
+    tokio::time::timeout(crate::test_support::HANG_GUARD, started)
         .await
         .unwrap()
         .unwrap();
@@ -215,13 +215,13 @@ async fn state_decode_starts_before_eof_and_cancellation_wakes_blocked_io() {
     assert_eq!(CAPACITY.bulk.available_permits(), 0);
     pending.abort();
     assert!(pending.await.err().unwrap().is_cancelled());
-    let returned = tokio::time::timeout(std::time::Duration::from_secs(1), CAPACITY.bulk.acquire())
+    let returned = tokio::time::timeout(crate::test_support::HANG_GUARD, CAPACITY.bulk.acquire())
         .await
         .unwrap()
         .unwrap();
     drop(returned);
     // The reader and upstream body must be gone, not just the waiting caller.
-    tokio::time::timeout(std::time::Duration::from_secs(1), tail.closed())
+    tokio::time::timeout(crate::test_support::HANG_GUARD, tail.closed())
         .await
         .unwrap();
 }

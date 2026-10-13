@@ -142,7 +142,7 @@ impl ClientHandler for Progress {
 }
 
 async fn draining(session: &Session) {
-    tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(crate::test_support::HANG_GUARD, async {
         loop {
             if matches!(session.update.lock().await.state, UpdateState::Draining) {
                 break;

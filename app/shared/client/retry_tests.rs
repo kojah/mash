@@ -115,7 +115,7 @@ async fn cancelling_busy_negotiation_releases_bulk_capacity() {
             &CAPACITY,
         ),
     ));
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(crate::test_support::HANG_GUARD, async {
         tokio::select! {
             _ = &mut call => panic!("busy negotiation unexpectedly completed"),
             event = events.recv() => assert_eq!(

@@ -31,7 +31,7 @@ fn fixture(shared: bool) -> (tempfile::TempDir, Mash) {
 }
 
 async fn until(server: &Mash, predicate: impl Fn(&serde_json::Value) -> bool) -> serde_json::Value {
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(crate::test_support::HANG_GUARD, async {
         loop {
             let result = server.watch_status().await;
             assert!(

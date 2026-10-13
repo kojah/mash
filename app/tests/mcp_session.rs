@@ -1,11 +1,12 @@
 //! Upgrade a real executable while one SDK connection remains open.
+use super::HANG_GUARD;
 use rmcp::{ServiceExt, model::CallToolRequestParams, transport::TokioChildProcess};
 use serde_json::Value;
 use std::{path::Path, time::Duration};
 
 async fn help(peer: &rmcp::service::Peer<rmcp::RoleClient>) -> Value {
     let result = tokio::time::timeout(
-        Duration::from_secs(20),
+        HANG_GUARD,
         peer.call_tool(CallToolRequestParams::new("help")),
     )
     .await
@@ -104,7 +105,7 @@ async fn mcp_session_recovers_worker_crash_immediately_after_a_successful_handov
             .unwrap()
             .success()
     );
-    let recovered = tokio::time::timeout(Duration::from_secs(10), async {
+    let recovered = tokio::time::timeout(HANG_GUARD, async {
         loop {
             let result = client
                 .call_tool(CallToolRequestParams::new("help"))
@@ -253,7 +254,7 @@ async fn mcp_session_real_models_preserve_search_and_watch_across_replacement() 
         .await
         .unwrap();
     assert_ne!(stopped.is_error, Some(true));
-    tokio::time::timeout(Duration::from_secs(60), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let state = client
                 .call_tool(CallToolRequestParams::new("watch_status"))

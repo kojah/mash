@@ -50,7 +50,7 @@ impl Watching {
 
     fn next(&self) -> Value {
         self.output
-            .recv_timeout(Duration::from_secs(10))
+            .recv_timeout(HANG_GUARD)
             .expect("watch refresh within deadline")
     }
 
@@ -223,7 +223,7 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
         &mut stdin,
         serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
     );
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + HANG_GUARD;
     loop {
         let indexed = Connection::open_with_flags(
             root.join("index.sqlite3"),
@@ -255,7 +255,7 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
     assert_eq!(response["id"], 2);
     assert_eq!(response["result"]["structuredContent"]["messages"], 1);
     drop(stdin);
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + HANG_GUARD;
     loop {
         if let Some(status) = watcher.child.try_wait().unwrap() {
             assert!(status.success());

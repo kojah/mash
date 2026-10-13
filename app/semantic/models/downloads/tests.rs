@@ -135,7 +135,7 @@ fn truncated_sdk_download_preserves_existing_models_and_removes_partial_stage() 
 
 fn serve_truncated_download(listener: &TcpListener) -> std::io::Result<()> {
     for metadata in [true, false] {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + crate::test_support::HANG_GUARD;
         let mut socket = loop {
             match listener.accept() {
                 Ok((socket, _)) => break socket,

@@ -1,6 +1,6 @@
 use super::{Command, Connection, Path, Value};
 
-pub(super) use crate::test_support::create_valid_model_marker;
+pub(super) use crate::test_support::{HANG_GUARD, create_valid_model_marker};
 
 pub(super) fn run_json(arguments: &[&str]) -> Value {
     let output = Command::cargo_bin("mash")

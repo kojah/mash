@@ -112,7 +112,7 @@ fn assert_startup_rejected(config: &[u8], tokens: &[(&str, &str)], message: &str
         .args(["serve", "--server-config", path.to_str().unwrap()])
         .env_remove("MASH_STARTUP_TOKEN_A")
         .env_remove("MASH_STARTUP_TOKEN_B")
-        .timeout(std::time::Duration::from_secs(5));
+        .timeout(super::HANG_GUARD);
     for (name, value) in tokens {
         command.env(name, value);
     }
@@ -199,7 +199,7 @@ async fn qdrant_server_views_activation_rejects_conflicting_startup_and_survives
             .unwrap()
             .args(["serve", "--server-config", path.to_str().unwrap()])
             .env("MASH_TEST_TOKEN_0", token("node"))
-            .timeout(std::time::Duration::from_secs(10))
+            .timeout(super::HANG_GUARD)
             .output()
             .unwrap()
     };

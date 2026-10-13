@@ -39,7 +39,6 @@ pub(super) async fn run<T: Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[tokio::test]
     async fn cancellation_retains_capacity_through_blocking_work_and_publication() {
@@ -60,7 +59,7 @@ mod tests {
             publish_gate.await.unwrap();
             Ok(())
         }));
-        tokio::time::timeout(Duration::from_secs(5), started)
+        tokio::time::timeout(crate::test_support::HANG_GUARD, started)
             .await
             .unwrap()
             .unwrap();
@@ -70,7 +69,7 @@ mod tests {
         assert_eq!(error.error.kind, crate::ErrorKind::SharedIndex);
         assert!(error.error.retryable);
         release_cpu.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), cpu_finished)
+        tokio::time::timeout(crate::test_support::HANG_GUARD, cpu_finished)
             .await
             .unwrap()
             .unwrap();
@@ -79,10 +78,13 @@ mod tests {
             "publication still owns the reservation"
         );
         release_publish.send(()).unwrap();
-        let permit = tokio::time::timeout(Duration::from_secs(5), capacity.clone().acquire_owned())
-            .await
-            .unwrap()
-            .unwrap();
+        let permit = tokio::time::timeout(
+            crate::test_support::HANG_GUARD,
+            capacity.clone().acquire_owned(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         drop(permit);
         assert_eq!(capacity.available_permits(), 1);
     }

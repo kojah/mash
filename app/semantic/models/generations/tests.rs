@@ -324,7 +324,7 @@ fn start_child(root: &Path, phase: &str) -> (RunningChild, PathBuf) {
             .spawn()
             .unwrap(),
     );
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + crate::test_support::HANG_GUARD;
     while !root.join("child-ready").exists() && std::time::Instant::now() < deadline {
         if child.0.try_wait().unwrap().is_some() {
             break;

@@ -149,7 +149,7 @@ async fn context_deadline_preserves_completed_evidence_without_waiting_for_every
     assert!(error.unwrap().contains("deadline"));
     assert_eq!(documents.len(), 1);
     assert!(documents[&("remote".into(), "fast".into())].contains("keep the worker warm"));
-    tokio::time::timeout(Duration::from_secs(1), async {
+    tokio::time::timeout(crate::test_support::HANG_GUARD, async {
         while !dropped.load(Ordering::SeqCst) {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -333,7 +333,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         .resolve(&config.node_id)
         .unwrap();
     let unlock = async {
-        let request = tokio::time::timeout(Duration::from_secs(3), received.recv()).await;
+        let request = tokio::time::timeout(crate::test_support::HANG_GUARD, received.recv()).await;
         // Always release the lock, including on failure, so a regression cannot
         // leave a blocking worker hung after the assertion.
         lock.execute_batch("ROLLBACK").unwrap();

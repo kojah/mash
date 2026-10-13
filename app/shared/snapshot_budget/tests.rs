@@ -1,5 +1,4 @@
 use super::*;
-use std::time::Duration;
 
 #[test]
 fn existing_and_incoming_bytes_share_rounded_capacity_across_clones() {
@@ -48,7 +47,7 @@ async fn cancelled_request_retains_weight_until_blocking_job_finishes() {
         })
         .await
     });
-    tokio::time::timeout(Duration::from_secs(5), started)
+    tokio::time::timeout(crate::test_support::HANG_GUARD, started)
         .await
         .unwrap()
         .unwrap();
@@ -57,7 +56,7 @@ async fn cancelled_request_retains_weight_until_blocking_job_finishes() {
     assert!(budget.reserve(0, MIB).is_err());
     release.send(()).unwrap();
     let permit = tokio::time::timeout(
-        Duration::from_secs(5),
+        crate::test_support::HANG_GUARD,
         budget.capacity.clone().acquire_owned(),
     )
     .await

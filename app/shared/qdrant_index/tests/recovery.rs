@@ -173,7 +173,7 @@ mod embeddings {
                 });
         });
         receiver
-            .recv_timeout(std::time::Duration::from_secs(5))
+            .recv_timeout(crate::test_support::HANG_GUARD)
             .unwrap()
     }
 }

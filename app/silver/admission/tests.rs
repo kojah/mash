@@ -13,7 +13,7 @@ fn oversized_source_runs_alone_and_queued_result_keeps_its_reservation() {
             sender.send(()).unwrap();
             drop(reservation);
         });
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let deadline = std::time::Instant::now() + crate::test_support::HANG_GUARD;
         while admission.state.lock().unwrap().next_ticket != 2 {
             assert!(std::time::Instant::now() < deadline);
             std::thread::yield_now();
@@ -25,7 +25,9 @@ fn oversized_source_runs_alone_and_queued_result_keeps_its_reservation() {
         assert_eq!(admission.state.lock().unwrap().used, 16);
         assert!(receiver.recv_timeout(Duration::from_millis(30)).is_err());
         drop(queued);
-        receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+        receiver
+            .recv_timeout(crate::test_support::HANG_GUARD)
+            .unwrap();
     });
     assert_eq!(admission.state.lock().unwrap().used, 0);
     let stats = admission.snapshot().unwrap();
@@ -67,7 +69,7 @@ fn waiting_large_source_precedes_new_small_sources() {
         });
         // Wait for the first waiter to take its ticket; bounded by an explicit
         // deadline rather than relying on a scheduling sleep.
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let deadline = std::time::Instant::now() + crate::test_support::HANG_GUARD;
         while admission.state.lock().unwrap().next_ticket != 2 {
             assert!(std::time::Instant::now() < deadline);
             std::thread::yield_now();
@@ -78,11 +80,15 @@ fn waiting_large_source_precedes_new_small_sources() {
         });
         drop(held);
         assert_eq!(
-            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+            receiver
+                .recv_timeout(crate::test_support::HANG_GUARD)
+                .unwrap(),
             "large"
         );
         assert_eq!(
-            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+            receiver
+                .recv_timeout(crate::test_support::HANG_GUARD)
+                .unwrap(),
             "small"
         );
     });

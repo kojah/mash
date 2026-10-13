@@ -56,7 +56,7 @@ async fn shared_lexical_capabilities_reject_hybrid_before_model_admission() {
     };
     let capacity = tokio::sync::Semaphore::new(0);
     let error = tokio::time::timeout(
-        Duration::from_secs(1),
+        crate::test_support::HANG_GUARD,
         core::execute_with_model_limit(request, &capacity),
     )
     .await

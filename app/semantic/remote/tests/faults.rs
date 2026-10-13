@@ -1,5 +1,4 @@
 //! Exercise actual HTTP body failures, including indexing readiness and retry.
-use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -74,7 +73,7 @@ async fn fault_server(fault: Fault) -> (Configuration, tokio::task::JoinHandle<(
         // Indexing may spend time on SQLite/filesystem setup before connecting.
         // Bound the HTTP exchange; nextest bounds the complete indexing test.
         let (mut stream, _) = listener.accept().await.unwrap();
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(crate::test_support::HANG_GUARD, async {
             read_request(&mut stream).await;
             match fault {
                 Fault::Oversized => {

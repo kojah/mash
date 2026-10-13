@@ -1,5 +1,6 @@
 //! Controlled admission and decoder lifecycle checks, independent of global slots.
 use super::*;
+use crate::test_support::HANG_GUARD;
 use serde::{Deserialize, Deserializer};
 use std::sync::{
     Arc, Mutex,
@@ -66,7 +67,7 @@ async fn exhausted_bulk_admission_does_not_delay_interactive_reads() {
     let server = server().await;
     assert!(Endpoint::Index.capacity(&CAPACITY).try_acquire().is_err());
     let result = tokio::time::timeout(
-        Duration::from_secs(1),
+        HANG_GUARD,
         response_admitted::<bool>(
             reqwest::Client::new().get(&server.url),
             Endpoint::Freshness,
@@ -92,8 +93,11 @@ impl<'de> Deserialize<'de> for HeldDecode {
         assert!(bool::deserialize(deserializer)?);
         let gate = GATE.lock().unwrap().take().unwrap();
         gate.entered.send(()).unwrap();
+        // Only the test's explicit release ends the decode. The hang guard must
+        // outlast the request deadline so the deadline case cannot observe this
+        // decoder failing instead of the deadline expiring under load.
         gate.release
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(HANG_GUARD)
             .map_err(|_| serde::de::Error::custom("decoder was not released"))?;
         Ok(Self)
     }
@@ -119,7 +123,7 @@ async fn canceled_or_expired_decoder_keeps_capacity_until_actual_completion() {
         let busy = tokio::spawn(async move {
             response_admitted::<HeldDecode>(request, Endpoint::Freshness, &CAPACITY).await
         });
-        tokio::time::timeout(Duration::from_secs(1), started)
+        tokio::time::timeout(HANG_GUARD, started)
             .await
             .unwrap()
             .unwrap();
@@ -130,6 +134,9 @@ async fn canceled_or_expired_decoder_keeps_capacity_until_actual_completion() {
                 assert!(busy.await.err().unwrap().is_cancelled());
             }
             EndRequest::Deadline => {
+                // The production request deadline expires while the decoder is
+                // still held; it is far shorter than the decoder's hang guard.
+                assert!(Endpoint::Freshness.timeout() < HANG_GUARD / 2);
                 let error = busy.await.unwrap().err().unwrap();
                 assert_eq!(error.error.message, "shared index HTTP request timed out");
             }
@@ -137,7 +144,7 @@ async fn canceled_or_expired_decoder_keeps_capacity_until_actual_completion() {
         // Returning from the request is not proof the blocking task finished.
         assert_eq!(CAPACITY.interactive.available_permits(), 0);
         release.send(()).unwrap();
-        let returned = tokio::time::timeout(Duration::from_secs(1), CAPACITY.interactive.acquire())
+        let returned = tokio::time::timeout(HANG_GUARD, CAPACITY.interactive.acquire())
             .await
             .unwrap()
             .unwrap();

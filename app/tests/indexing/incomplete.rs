@@ -120,10 +120,16 @@ fn incomplete_index_progress_matches_exit_status_and_recovers_after_source_repai
                 "index",
             ])
             .env_remove("MASH_TRACE")
-            .timeout(std::time::Duration::from_secs(5))
+            // Each run ends on its own; the guard only kills a hung index.
+            .timeout(HANG_GUARD)
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(exit_code));
+        assert_eq!(
+            output.status.code(),
+            Some(exit_code),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         let summary: Summary = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(summary.malformed_records, malformed_records);
         assert_eq!(summary.silver.interpretation_version, 2);

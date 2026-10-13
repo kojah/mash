@@ -148,7 +148,7 @@ async fn sdk_lists_metadata_without_model_or_mutation_permits() {
     let client = ().serve(client_io).await.unwrap();
     let server = serving.await.unwrap();
     let result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        crate::test_support::HANG_GUARD,
         client.call_tool(
             CallToolRequestParams::new("list_chats").with_arguments(
                 json!({

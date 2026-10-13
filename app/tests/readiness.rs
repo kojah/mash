@@ -61,7 +61,7 @@ fn concurrent_models_install_returns_a_retryable_error_before_changing_assets() 
             "models",
             "install",
         ])
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(HANG_GUARD)
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(6));
@@ -162,7 +162,7 @@ fn oversized_model_metadata_fails_before_indexing_or_loading_and_status_explains
             .unwrap()
             .args(base)
             .args(args)
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(HANG_GUARD)
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(4));

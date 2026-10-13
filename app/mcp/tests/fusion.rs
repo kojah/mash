@@ -28,7 +28,7 @@ async fn invalid_fusion_overrides_bypass_busy_model_work_and_leave_paths_untouch
         )
         .unwrap();
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
+            crate::test_support::HANG_GUARD,
             server.search(Parameters(request)),
         )
         .await
@@ -42,7 +42,7 @@ async fn invalid_fusion_overrides_bypass_busy_model_work_and_leave_paths_untouch
         )
         .unwrap();
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
+            crate::test_support::HANG_GUARD,
             server.search(Parameters(request)),
         )
         .await
@@ -61,7 +61,7 @@ async fn invalid_fusion_overrides_bypass_busy_model_work_and_leave_paths_untouch
     let request: Search =
         serde_json::from_value(json!({"query":"database", "ranking":"fusion"})).unwrap();
     let result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        crate::test_support::HANG_GUARD,
         server.search(Parameters(request)),
     )
     .await
@@ -104,7 +104,7 @@ async fn vector_overrides_reject_invalid_or_irrelevant_requests_before_model_adm
     ] {
         let request = serde_json::from_value(json!({"query":"database", "intent":intent, "local":local, "shared_vector_search":policy})).unwrap();
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
+            crate::test_support::HANG_GUARD,
             server.search(Parameters(request)),
         )
         .await
@@ -145,7 +145,7 @@ async fn vector_override_checks_shared_capabilities_before_busy_model_admission(
     };
     let request = serde_json::from_value(json!({"query":"database","shared":true,"intent":"related-discussion","shared_vector_search":{"algorithm":"hnsw"}})).unwrap();
     let result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
+        crate::test_support::HANG_GUARD,
         server.search(Parameters(request)),
     )
     .await
