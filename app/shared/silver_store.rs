@@ -356,4 +356,16 @@ mod tests {
         drop(first);
         super::SilverStore::open(directory.path(), [&identity]).unwrap();
     }
+
+    #[test]
+    fn node_writers_commit_without_an_fsync_per_transaction() {
+        let directory = tempfile::tempdir().unwrap();
+        let identity = super::node_identity("group", "node");
+        let store = super::SilverStore::open(directory.path(), [&identity]).unwrap();
+        let connection = store.connect(&identity).unwrap();
+        let sync: i64 = connection
+            .query_row("PRAGMA synchronous", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sync, 1);
+    }
 }

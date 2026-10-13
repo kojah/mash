@@ -14,6 +14,11 @@ pub(crate) const SILVER: &str = include_str!("silver.sql");
 /// Silver indexes and triggers; they require every silver column to exist.
 pub(crate) const SILVER_INDEXES: &str = include_str!("silver_indexes.sql");
 const VIEWS: &str = include_str!("views.sql");
+/// Writers run in WAL mode with NORMAL sync: commits are atomic and survive a
+/// process crash without an fsync each; only an OS crash or power loss can
+/// drop the latest commits, and the database stays consistent. Per connection.
+const WRITER_PRAGMAS: &str =
+    "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;";
 
 /// Create or validate a silver database without any local views.
 pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError> {
@@ -26,7 +31,7 @@ pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError>
         )));
     }
     connection
-        .execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
+        .execute_batch(WRITER_PRAGMAS)
         .map_err(AppError::database)?;
     if version == 0 {
         let transaction = connection
@@ -57,7 +62,7 @@ pub(super) fn initialize(connection: &Connection, views: &Path) -> Result<(), Ap
         return Err(unsupported(version));
     }
     connection
-        .execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
+        .execute_batch(WRITER_PRAGMAS)
         .map_err(AppError::database)?;
     if version == 0 {
         initialize_silver(connection)?;
@@ -159,6 +164,9 @@ fn attach(connection: &Connection, views: &Path, writable: bool) -> Result<(), A
     if writable {
         connection
             .query_row("PRAGMA views.journal_mode = WAL", [], |_| Ok(()))
+            .map_err(AppError::database)?;
+        connection
+            .execute_batch("PRAGMA views.synchronous = NORMAL;")
             .map_err(AppError::database)?;
     }
     Ok(())
