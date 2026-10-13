@@ -76,9 +76,10 @@ impl Endpoint {
             super::BULK_TIMEOUT
         } else if matches!(self, Self::Attachment) {
             Duration::from_secs(15)
-        } else if matches!(self, Self::Search) {
+        } else if matches!(self, Self::Search | Self::Freshness) {
             // Exact vector retrieval over a full node can take nearly two
             // seconds before network transit and typed response decoding.
+            // Freshness recounts a node's silver after each publication.
             Duration::from_secs(5)
         } else {
             Duration::from_secs(2)

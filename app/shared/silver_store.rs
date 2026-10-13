@@ -217,6 +217,12 @@ pub(super) fn put_head(connection: &Connection, head: &Head) -> Result<(), AppEr
     Ok(())
 }
 
+/// The head and the counts it certifies, read from one snapshot.
+pub(super) fn counted_head(connection: &Connection) -> Result<(Option<Head>, Counts), AppError> {
+    let snapshot = connection.unchecked_transaction().map_err(database)?;
+    Ok((head(&snapshot)?, counts(&snapshot)?))
+}
+
 /// Silver counts. Embedding coverage belongs to views and is reported separately.
 pub(super) fn counts(connection: &Connection) -> Result<Counts, AppError> {
     let row = sql::Counts.query_one(connection).map_err(database)?;
