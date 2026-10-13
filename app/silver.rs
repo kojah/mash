@@ -143,6 +143,9 @@ pub(crate) struct NormalizedMessage {
     /// injected context are interpreted here, independently of retrieval policy.
     pub(crate) dialogue_text: Option<String>,
     pub(crate) created_at: Option<i64>,
+    /// Structured tool calls and results; their text stays in `content`.
+    #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
+    pub(crate) tools: crate::tools::Activity,
 }
 
 impl NormalizedMessage {

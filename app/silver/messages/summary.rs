@@ -80,6 +80,7 @@ mod tests {
                 content: "hidden context".into(),
                 dialogue_text: Some(String::new()),
                 created_at: timestamp,
+                tools: crate::tools::Activity::default(),
             });
         }
         let inline = super::super::Messages::Inline(rows.clone())

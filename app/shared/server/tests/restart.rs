@@ -72,6 +72,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
             generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
             // Off the query axis, so restarts must preserve these exact vectors.
             vector: Some(stored_vector()),
+            tools: crate::tools::Activity::default(),
         })
         .collect();
     if !second {
@@ -87,6 +88,7 @@ fn snapshot(revision: i64, second: bool) -> Vec<Event> {
             created_at: Some(1_700_000_000_000),
             generation: None,
             vector: None,
+            tools: crate::tools::Activity::default(),
         });
     }
     let mut events = vec![

@@ -112,6 +112,7 @@ fn seed(directory: &Path) -> std::path::PathBuf {
                         content: format!("canonical {thread} message {ordinal}"),
                         dialogue_text: (thread == "a" && ordinal % 4 == 0).then(String::new),
                         created_at: Some(ordinal),
+                        tools: crate::tools::Activity::default(),
                     })
                     .collect::<Vec<_>>()
                     .into(),

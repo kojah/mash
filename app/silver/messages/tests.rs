@@ -17,6 +17,7 @@ fn fixtures() -> Vec<NormalizedMessage> {
             content: format!("text {index} with control \0 and newline\n and escaped \\\""),
             dialogue_text: projection.map(str::to_owned),
             created_at: Some(i64::MAX - i64::try_from(index).unwrap()),
+            tools: crate::tools::Activity::default(),
         })
         .collect()
 }

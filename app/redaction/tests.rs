@@ -114,6 +114,7 @@ fn upload_serialization_masks_canonical_projection_and_metadata() {
             created_at: None,
             generation: None,
             vector: None,
+            tools: crate::tools::Activity::default(),
         }],
     });
     let mut buffer = Vec::new();

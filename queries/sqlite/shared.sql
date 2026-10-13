@@ -73,19 +73,19 @@ DELETE FROM objects WHERE origin = 'provider';
 
 -- name: Message :one
 SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = sqlc.arg(id);
 
 -- name: MessageAt :one
 SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m
 WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = sqlc.arg(conversation_id)
   AND m.ordinal = sqlc.arg(ordinal);
 
 -- name: FirstChild :one
 SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m
 WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = sqlc.arg(conversation_id)
   AND m.context_parent = sqlc.arg(parent)
@@ -93,7 +93,7 @@ ORDER BY m.ordinal LIMIT 1;
 
 -- name: MessageWindow :many
 SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m
 WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = sqlc.arg(conversation_id)
   AND m.ordinal >= sqlc.arg(first_ordinal) AND m.ordinal <= sqlc.arg(last_ordinal)
@@ -101,24 +101,24 @@ ORDER BY m.ordinal;
 
 -- name: ThreadMessages :many
 SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = sqlc.arg(conversation_id)
 ORDER BY m.ordinal;
 
 -- name: NodeMessages :many
 SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' ORDER BY m.id;
 
 -- name: InsertMessage :exec
 -- A native message takes its provider from its chat, and sits under it.
 INSERT INTO objects(
     origin, source, id, object_role, kind, parent_id, parent_storage_id, conversation_id,
-    attachments, ordinal, role, content, search_projection, created_at, context_parent
+    attachments, ordinal, role, content, search_projection, created_at, context_parent, metadata
 )
 SELECT 'provider', c.source, sqlc.arg(id), 'entry', c.source || ':message', c.id, c.storage_id, c.id,
     sqlc.arg(attachments), sqlc.arg(ordinal), sqlc.arg(role), sqlc.arg(content),
-    sqlc.arg(search_projection), sqlc.narg(created_at), sqlc.narg(context_parent)
+    sqlc.arg(search_projection), sqlc.narg(created_at), sqlc.narg(context_parent), sqlc.narg(metadata)
 FROM objects c
 WHERE c.origin = 'provider' AND c.object_role = 'container' AND c.id = sqlc.arg(conversation_id);
 

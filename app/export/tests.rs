@@ -85,16 +85,17 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          VALUES('provider','codex','thread','container','codex:chat','thread','Useful thread','/project','https://example.test/repo',10,20);
          INSERT INTO native_chats(storage_id,conversation_id,provider,source_path,source_key,source_session,source_fingerprint)
          SELECT storage_id,id,source,'/missing/session','file:/missing/session',NULL,'source-hash' FROM objects WHERE id='thread';
-         INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at)
-         SELECT 'provider','codex','message','entry','codex:message','thread',storage_id,'thread',0,'user','Canonical evidence','visible evidence',-1,11 FROM objects WHERE id='thread';
+         INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at,metadata)
+         SELECT 'provider','codex','message','entry','codex:message','thread',storage_id,'thread',0,'user','Canonical evidence','visible evidence',-1,11,
+           '{\"tool_calls\":[{\"name\":\"exec\",\"call_id\":\"c1\",\"input\":{\"cmd\":[\"ls\"]}}],\"tool_results\":[{\"call_id\":\"c0\",\"is_error\":true}]}' FROM objects WHERE id='thread';
          INSERT INTO native_messages(storage_id,id,fingerprint) SELECT storage_id,id,'message-hash' FROM objects WHERE id='message';
          INSERT INTO conversation_enrichment VALUES('thread','{\"version\":1,\"title\":null,\"project\":null,\"repository\":null}');
          INSERT INTO tombstones VALUES('codex','forgotten-thread',30);
          INSERT INTO claude_sources VALUES('branch','/missing/branch','thread','Branch title','/other-project',NULL);
-         INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at)
-         VALUES('branch','branch-message',NULL,'assistant','branch evidence','visible branch',15);
-         INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns,fingerprint,interpretation_version) VALUES('codex','/missing/session','file:/missing/session',99,123,'checkpoint-hash',2);
-         INSERT INTO silver_scans VALUES('codex',2,1);
+         INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,metadata)
+         VALUES('branch','branch-message',NULL,'assistant','branch evidence','visible branch',15,'{\"tool_results\":[{\"call_id\":\"toolu_1\"}]}');
+         INSERT INTO source_checkpoints(provider,source_path,source_key,size_bytes,modified_ns,fingerprint,interpretation_version) VALUES('codex','/missing/session','file:/missing/session',99,123,'checkpoint-hash',3);
+         INSERT INTO silver_scans VALUES('codex',3,1);
          INSERT INTO attachment_policy VALUES(1,'policy-fingerprint');
          INSERT INTO message_embeddings VALUES('message','old-model',1,1,X'01');
          UPDATE views_manifest SET manifest='{}';
@@ -102,7 +103,7 @@ fn fixture(root: &Path) -> (PathBuf, Connection) {
          INSERT INTO message_fts VALUES('visible evidence','message','thread');
          UPDATE derived_state SET search_dirty=0,semantic_ready_generation='old-model';
          UPDATE shared_publication SET acknowledged=revision,target='old-service';
-         UPDATE silver_state SET revision=77,interpretation_version=2;
+         UPDATE silver_state SET revision=77,interpretation_version=3;
          UPDATE sqlite_sequence SET seq=42 WHERE name='objects';"
     ).unwrap();
     // Indexing derives turns; the raw fixture does the same, then keeps its

@@ -20,6 +20,8 @@ struct Header {
     created_at: Option<i64>,
     content_bytes: u64,
     projection_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
+    tools: crate::tools::Activity,
 }
 
 pub(super) fn write_record(
@@ -35,6 +37,7 @@ pub(super) fn write_record(
         created_at: message.created_at,
         content_bytes: message.content.len() as u64,
         projection_bytes: message.dialogue_text.as_ref().map(|text| text.len() as u64),
+        tools: message.tools.clone(),
     };
     let header = serde_json::to_vec(&header).map_err(scratch_error)?;
     writer
@@ -120,6 +123,7 @@ fn record(reader: &mut impl Read, length: u64) -> Result<NormalizedMessage, AppE
         content,
         dialogue_text,
         created_at: header.created_at,
+        tools: header.tools,
     })
 }
 
@@ -200,6 +204,11 @@ mod tests {
             created_at: None,
             content: "hello".to_owned(),
             dialogue_text: None,
+            tools: crate::tools::Activity::call(
+                Some("shell"),
+                Some("call-1"),
+                Some(&serde_json::json!({"command": ["ls"]})),
+            ),
         };
         let mut encoded = Vec::new();
         write_record(&mut encoded, &message).unwrap();
@@ -232,6 +241,7 @@ mod tests {
                 created_at: None,
                 content_bytes,
                 projection_bytes: Some(1),
+                tools: crate::tools::Activity::default(),
             };
             let header = serde_json::to_vec(&header).unwrap();
             let mut encoded = Vec::new();

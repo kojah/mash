@@ -490,6 +490,7 @@ impl Storage {
             }
             let attachments = serde_json::to_string(&self.retain_attachments(&message)?)
                 .map_err(|_| AppError::internal("serialize attachments"))?;
+            let metadata = message.tools.encode()?;
             let upsert = sql::UpsertNativeMessage::builder()
                 .id(&message.id)
                 .conversation_id(&conversation.id)
@@ -500,6 +501,7 @@ impl Storage {
                 .created_at(message.created_at)
                 .context_parent(message.context.parent())
                 .attachments(&attachments)
+                .metadata(metadata.as_deref())
                 .build();
             upsert_message
                 .execute(upsert.as_params())
@@ -1052,6 +1054,11 @@ fn message_fingerprint(message: &crate::silver::NormalizedMessage) -> String {
         if let Ok(encoded) = serde_json::to_string(attachment) {
             update_hash(&mut hasher, &encoded);
         }
+    }
+    // Absent activity leaves the fingerprints of entries without tools as they were.
+    if let Ok(Some(tools)) = message.tools.encode() {
+        update_hash(&mut hasher, "tools");
+        update_hash(&mut hasher, &tools);
     }
     match &message.dialogue_text {
         None => update_hash(&mut hasher, "canonical"),

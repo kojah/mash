@@ -347,6 +347,7 @@ mod tests {
                 content: "qdrant filtering".into(),
                 dialogue_text: None,
                 created_at: None,
+                tools: crate::tools::Activity::default(),
             }]
             .into(),
         };

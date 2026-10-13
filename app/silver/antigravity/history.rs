@@ -113,5 +113,6 @@ pub(super) fn normalize(
         content,
         dialogue_text: Some(projection),
         created_at: timestamp(origin.and_then(|m| m.created_at.as_ref()))?,
+        tools: crate::tools::Activity::default(),
     }))
 }

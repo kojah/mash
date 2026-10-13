@@ -137,6 +137,7 @@ impl Fixture {
                 created_at: Some(1000 + i * 1000),
                 generation: Some(self.identity.generation.clone()),
                 vector: Some(vec![127.0, 0.0, 0.0, 0.0]),
+                tools: crate::tools::Activity::default(),
             })
             .collect()
     }

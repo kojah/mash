@@ -1223,6 +1223,7 @@ pub struct MessageRow {
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl MessageRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1236,6 +1237,7 @@ impl MessageRow {
             search_projection: row.get(6)?,
             created_at: row.get(7)?,
             context_parent: row.get(8)?,
+            metadata: row.get(9)?,
         })
     }
 }
@@ -1244,7 +1246,7 @@ pub struct Message<'a> {
 }
 impl<'a> Message<'a> {
     pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.id = ?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -1309,6 +1311,7 @@ pub struct MessageAtRow {
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl MessageAtRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1322,6 +1325,7 @@ impl MessageAtRow {
             search_projection: row.get(6)?,
             created_at: row.get(7)?,
             context_parent: row.get(8)?,
+            metadata: row.get(9)?,
         })
     }
 }
@@ -1331,7 +1335,7 @@ pub struct MessageAt<'a> {
 }
 impl<'a> MessageAt<'a> {
     pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m
 WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
   AND m.ordinal = ?2";
@@ -1420,6 +1424,7 @@ pub struct FirstChildRow {
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl FirstChildRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1433,6 +1438,7 @@ impl FirstChildRow {
             search_projection: row.get(6)?,
             created_at: row.get(7)?,
             context_parent: row.get(8)?,
+            metadata: row.get(9)?,
         })
     }
 }
@@ -1442,7 +1448,7 @@ pub struct FirstChild<'a> {
 }
 impl<'a> FirstChild<'a> {
     pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m
 WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
   AND m.context_parent = ?2
@@ -1532,6 +1538,7 @@ pub struct MessageWindowRow {
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl MessageWindowRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1545,6 +1552,7 @@ impl MessageWindowRow {
             search_projection: row.get(6)?,
             created_at: row.get(7)?,
             context_parent: row.get(8)?,
+            metadata: row.get(9)?,
         })
     }
 }
@@ -1555,7 +1563,7 @@ pub struct MessageWindow<'a> {
 }
 impl<'a> MessageWindow<'a> {
     pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m
 WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
   AND m.ordinal >= ?2 AND m.ordinal <= ?3
@@ -1656,6 +1664,7 @@ pub struct ThreadMessagesRow {
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl ThreadMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1669,6 +1678,7 @@ impl ThreadMessagesRow {
             search_projection: row.get(6)?,
             created_at: row.get(7)?,
             context_parent: row.get(8)?,
+            metadata: row.get(9)?,
         })
     }
 }
@@ -1677,7 +1687,7 @@ pub struct ThreadMessages<'a> {
 }
 impl<'a> ThreadMessages<'a> {
     pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' AND m.conversation_id = ?1
 ORDER BY m.ordinal";
     pub fn query_str(&self) -> &str {
@@ -1744,6 +1754,7 @@ pub struct NodeMessagesRow {
     pub search_projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl NodeMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1757,13 +1768,14 @@ impl NodeMessagesRow {
             search_projection: row.get(6)?,
             created_at: row.get(7)?,
             context_parent: row.get(8)?,
+            metadata: row.get(9)?,
         })
     }
 }
 pub struct NodeMessages;
 impl NodeMessages {
     pub const QUERY: &'static str = r"SELECT m.attachments, m.id, m.conversation_id, m.ordinal, m.role, m.content, m.search_projection,
-    m.created_at, m.context_parent
+    m.created_at, m.context_parent, m.metadata
 FROM objects m WHERE m.origin = 'provider' AND m.object_role = 'entry' ORDER BY m.id";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -1821,18 +1833,19 @@ pub struct InsertMessage<'a> {
     search_projection: Option<&'a str>,
     created_at: Option<i64>,
     context_parent: Option<i64>,
+    metadata: Option<&'a str>,
     conversation_id: &'a str,
 }
 impl<'a> InsertMessage<'a> {
     pub const QUERY: &'static str = r"INSERT INTO objects(
     origin, source, id, object_role, kind, parent_id, parent_storage_id, conversation_id,
-    attachments, ordinal, role, content, search_projection, created_at, context_parent
+    attachments, ordinal, role, content, search_projection, created_at, context_parent, metadata
 )
 SELECT 'provider', c.source, ?1, 'entry', c.source || ':message', c.id, c.storage_id, c.id,
     ?2, ?3, ?4, ?5,
-    ?6, ?7, ?8
+    ?6, ?7, ?8, ?9
 FROM objects c
-WHERE c.origin = 'provider' AND c.object_role = 'container' AND c.id = ?9";
+WHERE c.origin = 'provider' AND c.object_role = 'container' AND c.id = ?10";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1857,19 +1870,20 @@ impl<'a> InsertMessage<'a> {
             self.search_projection,
             self.created_at,
             self.context_parent,
+            self.metadata,
             self.conversation_id,
         )
     }
 }
 impl<'a> InsertMessage<'a> {
-    pub const fn builder() -> InsertMessageBuilder<'a, ((), (), (), (), (), (), (), (), ())> {
+    pub const fn builder() -> InsertMessageBuilder<'a, ((), (), (), (), (), (), (), (), (), ())> {
         InsertMessageBuilder {
-            fields: ((), (), (), (), (), (), (), (), ()),
+            fields: ((), (), (), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct InsertMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ())> {
+pub struct InsertMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
@@ -1882,6 +1896,7 @@ impl<
     SearchProjection,
     CreatedAt,
     ContextParent,
+    Metadata,
     ConversationId,
 >
     InsertMessageBuilder<
@@ -1895,6 +1910,7 @@ impl<
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     >
@@ -1913,6 +1929,7 @@ impl<
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -1925,6 +1942,7 @@ impl<
             search_projection,
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -1938,13 +1956,25 @@ impl<
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent, ConversationId>
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Metadata,
+    ConversationId,
+>
     InsertMessageBuilder<
         'a,
         (
@@ -1956,6 +1986,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     >
@@ -1974,6 +2005,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -1986,6 +2018,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             search_projection,
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -1999,13 +2032,25 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Attachments, Role, Content, SearchProjection, CreatedAt, ContextParent, ConversationId>
+impl<
+    'a,
+    Id,
+    Attachments,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Metadata,
+    ConversationId,
+>
     InsertMessageBuilder<
         'a,
         (
@@ -2017,6 +2062,7 @@ impl<'a, Id, Attachments, Role, Content, SearchProjection, CreatedAt, ContextPar
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     >
@@ -2035,6 +2081,7 @@ impl<'a, Id, Attachments, Role, Content, SearchProjection, CreatedAt, ContextPar
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -2047,6 +2094,7 @@ impl<'a, Id, Attachments, Role, Content, SearchProjection, CreatedAt, ContextPar
             search_projection,
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -2060,6 +2108,7 @@ impl<'a, Id, Attachments, Role, Content, SearchProjection, CreatedAt, ContextPar
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
@@ -2075,6 +2124,7 @@ impl<
     SearchProjection,
     CreatedAt,
     ContextParent,
+    Metadata,
     ConversationId,
 >
     InsertMessageBuilder<
@@ -2088,6 +2138,7 @@ impl<
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     >
@@ -2106,6 +2157,7 @@ impl<
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -2118,6 +2170,7 @@ impl<
             search_projection,
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -2131,13 +2184,25 @@ impl<
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Attachments, Ordinal, Role, SearchProjection, CreatedAt, ContextParent, ConversationId>
+impl<
+    'a,
+    Id,
+    Attachments,
+    Ordinal,
+    Role,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Metadata,
+    ConversationId,
+>
     InsertMessageBuilder<
         'a,
         (
@@ -2149,6 +2214,7 @@ impl<'a, Id, Attachments, Ordinal, Role, SearchProjection, CreatedAt, ContextPar
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     >
@@ -2167,6 +2233,7 @@ impl<'a, Id, Attachments, Ordinal, Role, SearchProjection, CreatedAt, ContextPar
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -2179,6 +2246,7 @@ impl<'a, Id, Attachments, Ordinal, Role, SearchProjection, CreatedAt, ContextPar
             search_projection,
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -2192,13 +2260,25 @@ impl<'a, Id, Attachments, Ordinal, Role, SearchProjection, CreatedAt, ContextPar
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Attachments, Ordinal, Role, Content, CreatedAt, ContextParent, ConversationId>
+impl<
+    'a,
+    Id,
+    Attachments,
+    Ordinal,
+    Role,
+    Content,
+    CreatedAt,
+    ContextParent,
+    Metadata,
+    ConversationId,
+>
     InsertMessageBuilder<
         'a,
         (
@@ -2210,6 +2290,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, CreatedAt, ContextParent, Conv
             (),
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     >
@@ -2228,6 +2309,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, CreatedAt, ContextParent, Conv
             Option<&'a str>,
             CreatedAt,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -2240,6 +2322,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, CreatedAt, ContextParent, Conv
             (),
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -2253,13 +2336,25 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, CreatedAt, ContextParent, Conv
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, ContextParent, ConversationId>
+impl<
+    'a,
+    Id,
+    Attachments,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    ContextParent,
+    Metadata,
+    ConversationId,
+>
     InsertMessageBuilder<
         'a,
         (
@@ -2271,6 +2366,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, ContextParen
             SearchProjection,
             (),
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     >
@@ -2289,6 +2385,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, ContextParen
             SearchProjection,
             Option<i64>,
             ContextParent,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -2301,6 +2398,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, ContextParen
             search_projection,
             (),
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -2314,13 +2412,25 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, ContextParen
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, ConversationId>
+impl<
+    'a,
+    Id,
+    Attachments,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    Metadata,
+    ConversationId,
+>
     InsertMessageBuilder<
         'a,
         (
@@ -2332,6 +2442,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             SearchProjection,
             CreatedAt,
             (),
+            Metadata,
             ConversationId,
         ),
     >
@@ -2350,6 +2461,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             SearchProjection,
             CreatedAt,
             Option<i64>,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -2361,6 +2473,83 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             content,
             search_projection,
             created_at,
+            (),
+            metadata,
+            conversation_id,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        InsertMessageBuilder {
+            fields: (
+                id,
+                attachments,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                metadata,
+                conversation_id,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    Attachments,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    ConversationId,
+>
+    InsertMessageBuilder<
+        'a,
+        (
+            Id,
+            Attachments,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            (),
+            ConversationId,
+        ),
+    >
+{
+    pub fn metadata(
+        self,
+        metadata: Option<&'a str>,
+    ) -> InsertMessageBuilder<
+        'a,
+        (
+            Id,
+            Attachments,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Option<&'a str>,
+            ConversationId,
+        ),
+    > {
+        let (
+            id,
+            attachments,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
             (),
             conversation_id,
         ) = self.fields;
@@ -2375,13 +2564,25 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent>
+impl<
+    'a,
+    Id,
+    Attachments,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Metadata,
+>
     InsertMessageBuilder<
         'a,
         (
@@ -2393,6 +2594,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             (),
         ),
     >
@@ -2411,6 +2613,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             SearchProjection,
             CreatedAt,
             ContextParent,
+            Metadata,
             &'a str,
         ),
     > {
@@ -2423,6 +2626,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
             search_projection,
             created_at,
             context_parent,
+            metadata,
             (),
         ) = self.fields;
         let _phantom = self._phantom;
@@ -2436,6 +2640,7 @@ impl<'a, Id, Attachments, Ordinal, Role, Content, SearchProjection, CreatedAt, C
                 search_projection,
                 created_at,
                 context_parent,
+                metadata,
                 conversation_id,
             ),
             _phantom,
@@ -2454,6 +2659,7 @@ impl<'a>
             Option<&'a str>,
             Option<i64>,
             Option<i64>,
+            Option<&'a str>,
             &'a str,
         ),
     >
@@ -2468,6 +2674,7 @@ impl<'a>
             search_projection,
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         ) = self.fields;
         InsertMessage {
@@ -2479,6 +2686,7 @@ impl<'a>
             search_projection,
             created_at,
             context_parent,
+            metadata,
             conversation_id,
         }
     }

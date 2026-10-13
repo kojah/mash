@@ -702,6 +702,7 @@ fn purge_requires_a_complete_provider_scan() {
                 content: "preserve until complete".to_owned(),
                 dialogue_text: None,
                 created_at: None,
+                tools: crate::tools::Activity::default(),
             }]
             .into(),
         })

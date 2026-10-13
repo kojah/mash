@@ -29,6 +29,7 @@ fn seed(database: &std::path::Path) {
                     dialogue_text: None,
                     created_at: Some(i64::from(ordinal) + 1),
                     attachments: Vec::new(),
+                    tools: crate::tools::Activity::default(),
                 })
                 .collect::<Vec<_>>()
                 .into(),

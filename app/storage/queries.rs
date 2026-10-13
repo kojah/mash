@@ -324,6 +324,7 @@ impl Storage {
                         "content",
                     )?,
                     created_at: row.created_at,
+                    tools: crate::tools::Activity::decode(row.metadata.as_deref())?,
                 })
             })
             .collect()
@@ -391,6 +392,7 @@ impl Storage {
                         "content",
                     )?,
                     created_at: row.created_at,
+                    tools: crate::tools::Activity::decode(row.metadata.as_deref())?,
                 })
             })
             .collect()

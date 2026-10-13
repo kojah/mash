@@ -172,6 +172,7 @@ fn normalize(
                 content,
                 dialogue_text: Some(projection),
                 created_at,
+                tools: crate::tools::Activity::default(),
             })?;
             ordinal = ordinal
                 .checked_add(1)

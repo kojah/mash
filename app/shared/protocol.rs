@@ -187,6 +187,8 @@ pub(crate) struct MessageRecord {
     pub created_at: Option<i64>,
     pub generation: Option<String>,
     pub vector: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
+    pub tools: crate::tools::Activity,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

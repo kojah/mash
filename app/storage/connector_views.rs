@@ -602,6 +602,7 @@ pub(crate) fn view(
         }),
         content: text,
         created_at: object.created_at,
+        tools: crate::tools::Activity::default(),
     };
     match evidence.object.role {
         Role::Document => Ok(vec![message(&evidence.object, 0, evidence.text())]),

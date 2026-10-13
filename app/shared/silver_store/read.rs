@@ -124,6 +124,7 @@ pub(in crate::shared) fn message(record: MessageRecord, projection: bool) -> Mes
             record.content
         },
         created_at: record.created_at,
+        tools: record.tools,
     }
 }
 

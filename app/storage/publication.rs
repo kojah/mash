@@ -82,13 +82,13 @@ impl Snapshot<'_> {
             }
             BatchKind::Messages if by_thread => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent, m.attachments
+                COALESCE(m.search_projection, m.content), m.created_at, NULL, NULL, m.context_parent, m.attachments, m.metadata
                 FROM objects m WHERE m.origin='provider' AND m.object_role='entry'
                 ORDER BY m.conversation_id, m.ordinal, m.id"
             }
             BatchKind::Messages => {
                 "SELECT m.id, m.conversation_id, m.ordinal, m.role, m.content,
-                COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector, m.context_parent, m.attachments
+                COALESCE(m.search_projection, m.content), m.created_at, e.generation, e.vector, m.context_parent, m.attachments, m.metadata
                 FROM objects m LEFT JOIN message_embeddings e ON e.message_id = m.id
                 WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.id"
             }
@@ -252,6 +252,11 @@ fn message_record(row: &rusqlite::Row<'_>) -> Result<MessageRecord, AppError> {
         created_at: row.get::<_, Option<i64>>(6).map_err(AppError::database)?,
         generation,
         vector,
+        tools: crate::tools::Activity::decode(
+            row.get::<_, Option<String>>("metadata")
+                .map_err(AppError::database)?
+                .as_deref(),
+        )?,
     })
 }
 

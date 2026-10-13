@@ -21,6 +21,9 @@ pub(crate) fn reconcile(
     }
     let mut payloads = Builder::default();
     let mut nodes = BTreeMap::<String, Node>::new();
+    // Copies retained from an earlier interpretation may lack tool activity
+    // that a newer copy of the same message carries; the activity is kept.
+    let mut tools = BTreeMap::<String, crate::tools::Activity>::new();
     for contribution in contributions {
         let (message, parent) = contribution?;
         if let Some(node) = nodes.get(&message.id) {
@@ -36,6 +39,9 @@ pub(crate) fn reconcile(
                 return Err(AppError::configuration(
                     "Claude native message identity has conflicting content or ancestry",
                 ));
+            }
+            if previous.tools.is_empty() && !message.tools.is_empty() {
+                tools.insert(message.id, message.tools);
             }
         } else {
             let id = message.id.clone();
@@ -76,6 +82,9 @@ pub(crate) fn reconcile(
             .ok_or_else(|| AppError::internal("Claude reconciliation lost a payload"))?
             .into_owned();
         let parent = node.parent;
+        if let Some(activity) = tools.remove(&id) {
+            message.tools = activity;
+        }
         message.ordinal = i64::try_from(messages.len())
             .map_err(|_| AppError::internal("Claude conversation contains too many messages"))?;
         message.context = parent

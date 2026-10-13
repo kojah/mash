@@ -57,6 +57,7 @@ fn provider_snapshot(vector: &[f64], revision: i64) -> Vec<Value> {
             created_at: None,
             generation: Some(crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
             vector: Some(vector.to_vec()),
+            tools: crate::tools::Activity::default(),
         })
         .collect();
     [

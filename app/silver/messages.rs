@@ -90,7 +90,8 @@ impl Builder {
                 crate::role::Role::Other(role) => role.capacity(),
                 _ => 0,
             })
-            .saturating_add(message.dialogue_text.as_ref().map_or(0, String::capacity));
+            .saturating_add(message.dialogue_text.as_ref().map_or(0, String::capacity))
+            .saturating_add(message.tools.retained_size());
         if matches!(&self.state, State::Inline { bytes, .. } if bytes.saturating_add(retained) > self.limit)
         {
             let temporary = tempfile::Builder::new()

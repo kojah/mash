@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS objects (
     project TEXT,
     repository TEXT,
     url TEXT,
+    -- Connector metadata as submitted; a native turn's metadata; a native
+    -- entry's structured tool calls and results (NULL when it has none).
     metadata TEXT,
     attachments TEXT NOT NULL DEFAULT '[]',
     -- A connector object's exact submitted record, kept for receipts and replay.
@@ -172,6 +174,9 @@ CREATE TABLE IF NOT EXISTS claude_sources (
 CREATE INDEX IF NOT EXISTS claude_sources_conversation ON claude_sources(conversation_id, source_key);
 CREATE TABLE IF NOT EXISTS claude_source_messages (
     attachments TEXT NOT NULL DEFAULT '[]',
+    -- The contribution's structured tool activity, as on its canonical entry.
+    metadata TEXT,
+
     source_key TEXT NOT NULL REFERENCES claude_sources(source_key) ON DELETE CASCADE,
     message_id TEXT NOT NULL,
     parent_id TEXT,

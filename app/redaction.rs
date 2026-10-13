@@ -83,6 +83,12 @@ impl Policy {
         }
     }
 
+    pub(crate) fn tools(self, value: &mut crate::tools::Activity) {
+        if self.enabled {
+            value.redact();
+        }
+    }
+
     pub(crate) fn batch(self, value: &mut crate::shared::protocol::Batch) {
         if self.enabled {
             batch(value);
@@ -161,6 +167,7 @@ pub(crate) fn batch(batch: &mut crate::shared::protocol::Batch) {
                 record.content = text(&record.content);
                 record.projection = text(&record.projection);
                 attachments(&mut record.attachments);
+                record.tools.redact();
             }
         }
         Batch::Tombstones { .. } => {}

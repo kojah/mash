@@ -9,7 +9,8 @@ fn fixture() -> rusqlite::Connection {
                 title TEXT, project TEXT, repository TEXT);
              CREATE TABLE claude_source_messages (
                 source_key TEXT, message_id TEXT, parent_id TEXT, role TEXT,
-                content TEXT, projection TEXT, created_at INTEGER, attachments TEXT NOT NULL DEFAULT '[]');
+                content TEXT, projection TEXT, created_at INTEGER, attachments TEXT NOT NULL DEFAULT '[]',
+                metadata TEXT);
              INSERT INTO claude_sources VALUES
                 ('a','/a','thread','title a','project a','repository a'),
                 ('b','/b','thread','title b','project b','repository b');
@@ -126,6 +127,7 @@ fn late_decode_failure_rolls_back_source_replacement_and_allows_retry() {
                 content: format!("{id} text"),
                 dialogue_text: None,
                 created_at: Some(10 + i64::try_from(ordinal).unwrap() * 10),
+                tools: crate::tools::Activity::default(),
             })
             .collect(),
     };

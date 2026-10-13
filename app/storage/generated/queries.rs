@@ -1140,6 +1140,7 @@ pub struct ClaudeContributionMessagesRow {
     pub projection: Option<String>,
     pub created_at: Option<i64>,
     pub attachments: String,
+    pub metadata: Option<String>,
 }
 impl ClaudeContributionMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -1152,6 +1153,7 @@ impl ClaudeContributionMessagesRow {
             projection: row.get(5)?,
             created_at: row.get(6)?,
             attachments: row.get(7)?,
+            metadata: row.get(8)?,
         })
     }
 }
@@ -1159,7 +1161,7 @@ pub struct ClaudeContributionMessages<'a> {
     conversation_id: &'a str,
 }
 impl<'a> ClaudeContributionMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at,m.attachments
+    pub const QUERY: &'static str = r"SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at,m.attachments,m.metadata
 FROM claude_source_messages m JOIN claude_sources s USING(source_key)
 WHERE s.conversation_id=?1 ORDER BY m.message_id,m.source_key";
     pub fn query_str(&self) -> &str {
@@ -1711,14 +1713,17 @@ pub struct UpsertClaudeSourceMessage<'a> {
     projection: Option<&'a str>,
     created_at: Option<i64>,
     attachments: &'a str,
+    metadata: Option<&'a str>,
 }
 impl<'a> UpsertClaudeSourceMessage<'a> {
-    pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments)
-VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+    pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments,metadata)
+VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
 ON CONFLICT(source_key,message_id) DO UPDATE SET parent_id=excluded.parent_id,role=excluded.role,
-content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments
+content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments,
+metadata=excluded.metadata
 WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role OR content IS NOT excluded.content
-OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments";
+OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments
+OR metadata IS NOT excluded.metadata";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1743,23 +1748,24 @@ impl<'a> UpsertClaudeSourceMessage<'a> {
             self.projection,
             self.created_at,
             self.attachments,
+            self.metadata,
         )
     }
 }
 impl<'a> UpsertClaudeSourceMessage<'a> {
-    pub const fn builder() -> UpsertClaudeSourceMessageBuilder<'a, ((), (), (), (), (), (), (), ())>
-    {
+    pub const fn builder()
+    -> UpsertClaudeSourceMessageBuilder<'a, ((), (), (), (), (), (), (), (), ())> {
         UpsertClaudeSourceMessageBuilder {
-            fields: ((), (), (), (), (), (), (), ()),
+            fields: ((), (), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertClaudeSourceMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), ())> {
+pub struct UpsertClaudeSourceMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
+impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1771,6 +1777,7 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     >
 {
@@ -1788,10 +1795,20 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     > {
-        let ((), message_id, parent_id, role, content, projection, created_at, attachments) =
-            self.fields;
+        let (
+            (),
+            message_id,
+            parent_id,
+            role,
+            content,
+            projection,
+            created_at,
+            attachments,
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -1803,12 +1820,13 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
                 projection,
                 created_at,
                 attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
+impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1820,6 +1838,7 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     >
 {
@@ -1837,10 +1856,20 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     > {
-        let (source_key, (), parent_id, role, content, projection, created_at, attachments) =
-            self.fields;
+        let (
+            source_key,
+            (),
+            parent_id,
+            role,
+            content,
+            projection,
+            created_at,
+            attachments,
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -1852,12 +1881,13 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
                 projection,
                 created_at,
                 attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments>
+impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1869,6 +1899,7 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     >
 {
@@ -1886,10 +1917,20 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     > {
-        let (source_key, message_id, (), role, content, projection, created_at, attachments) =
-            self.fields;
+        let (
+            source_key,
+            message_id,
+            (),
+            role,
+            content,
+            projection,
+            created_at,
+            attachments,
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -1901,12 +1942,13 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments
                 projection,
                 created_at,
                 attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachments>
+impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachments, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1918,6 +1960,7 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachm
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     >
 {
@@ -1935,10 +1978,20 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachm
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     > {
-        let (source_key, message_id, parent_id, (), content, projection, created_at, attachments) =
-            self.fields;
+        let (
+            source_key,
+            message_id,
+            parent_id,
+            (),
+            content,
+            projection,
+            created_at,
+            attachments,
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -1950,12 +2003,13 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachm
                 projection,
                 created_at,
                 attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachments>
+impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachments, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -1967,6 +2021,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachment
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     >
 {
@@ -1984,10 +2039,20 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachment
             Projection,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     > {
-        let (source_key, message_id, parent_id, role, (), projection, created_at, attachments) =
-            self.fields;
+        let (
+            source_key,
+            message_id,
+            parent_id,
+            role,
+            (),
+            projection,
+            created_at,
+            attachments,
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -1999,12 +2064,13 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachment
                 projection,
                 created_at,
                 attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -2016,6 +2082,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
             (),
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     >
 {
@@ -2033,10 +2100,20 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
             Option<&'a str>,
             CreatedAt,
             Attachments,
+            Metadata,
         ),
     > {
-        let (source_key, message_id, parent_id, role, content, (), created_at, attachments) =
-            self.fields;
+        let (
+            source_key,
+            message_id,
+            parent_id,
+            role,
+            content,
+            (),
+            created_at,
+            attachments,
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -2048,12 +2125,13 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
                 projection,
                 created_at,
                 attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -2065,6 +2143,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
             Projection,
             (),
             Attachments,
+            Metadata,
         ),
     >
 {
@@ -2082,10 +2161,20 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
             Projection,
             Option<i64>,
             Attachments,
+            Metadata,
         ),
     > {
-        let (source_key, message_id, parent_id, role, content, projection, (), attachments) =
-            self.fields;
+        let (
+            source_key,
+            message_id,
+            parent_id,
+            role,
+            content,
+            projection,
+            (),
+            attachments,
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -2097,12 +2186,13 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
                 projection,
                 created_at,
                 attachments,
+                metadata,
             ),
             _phantom,
         }
     }
 }
-impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt, Metadata>
     UpsertClaudeSourceMessageBuilder<
         'a,
         (
@@ -2114,6 +2204,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
             Projection,
             CreatedAt,
             (),
+            Metadata,
         ),
     >
 {
@@ -2131,10 +2222,20 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
             Projection,
             CreatedAt,
             &'a str,
+            Metadata,
         ),
     > {
-        let (source_key, message_id, parent_id, role, content, projection, created_at, ()) =
-            self.fields;
+        let (
+            source_key,
+            message_id,
+            parent_id,
+            role,
+            content,
+            projection,
+            created_at,
+            (),
+            metadata,
+        ) = self.fields;
         let _phantom = self._phantom;
         UpsertClaudeSourceMessageBuilder {
             fields: (
@@ -2146,6 +2247,68 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
                 projection,
                 created_at,
                 attachments,
+                metadata,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
+    UpsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+            Attachments,
+            (),
+        ),
+    >
+{
+    pub fn metadata(
+        self,
+        metadata: Option<&'a str>,
+    ) -> UpsertClaudeSourceMessageBuilder<
+        'a,
+        (
+            SourceKey,
+            MessageId,
+            ParentId,
+            Role,
+            Content,
+            Projection,
+            CreatedAt,
+            Attachments,
+            Option<&'a str>,
+        ),
+    > {
+        let (
+            source_key,
+            message_id,
+            parent_id,
+            role,
+            content,
+            projection,
+            created_at,
+            attachments,
+            (),
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertClaudeSourceMessageBuilder {
+            fields: (
+                source_key,
+                message_id,
+                parent_id,
+                role,
+                content,
+                projection,
+                created_at,
+                attachments,
+                metadata,
             ),
             _phantom,
         }
@@ -2163,12 +2326,22 @@ impl<'a>
             Option<&'a str>,
             Option<i64>,
             &'a str,
+            Option<&'a str>,
         ),
     >
 {
     pub fn build(self) -> UpsertClaudeSourceMessage<'a> {
-        let (source_key, message_id, parent_id, role, content, projection, created_at, attachments) =
-            self.fields;
+        let (
+            source_key,
+            message_id,
+            parent_id,
+            role,
+            content,
+            projection,
+            created_at,
+            attachments,
+            metadata,
+        ) = self.fields;
         UpsertClaudeSourceMessage {
             source_key,
             message_id,
@@ -2178,6 +2351,7 @@ impl<'a>
             projection,
             created_at,
             attachments,
+            metadata,
         }
     }
 }
@@ -3039,6 +3213,7 @@ pub struct ViewMessagesRow {
     pub content: Option<String>,
     pub projection: Option<String>,
     pub created_at: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl ViewMessagesRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -3049,6 +3224,7 @@ impl ViewMessagesRow {
             content: row.get(3)?,
             projection: row.get(4)?,
             created_at: row.get(5)?,
+            metadata: row.get(6)?,
         })
     }
 }
@@ -3058,7 +3234,7 @@ pub struct ViewMessages<'a> {
     last_ordinal: Option<i64>,
 }
 impl<'a> ViewMessages<'a> {
-    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM objects
+    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,metadata FROM objects
 WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND ordinal>=?2 AND ordinal<=?3 ORDER BY ordinal";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -3152,6 +3328,7 @@ pub struct ContextMessageRow {
     pub projection: Option<String>,
     pub created_at: Option<i64>,
     pub context_parent: Option<i64>,
+    pub metadata: Option<String>,
 }
 impl ContextMessageRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
@@ -3163,6 +3340,7 @@ impl ContextMessageRow {
             projection: row.get(4)?,
             created_at: row.get(5)?,
             context_parent: row.get(6)?,
+            metadata: row.get(7)?,
         })
     }
 }
@@ -3171,7 +3349,7 @@ pub struct ContextMessage<'a> {
     ordinal: Option<i64>,
 }
 impl<'a> ContextMessage<'a> {
-    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent FROM objects
+    pub const QUERY: &'static str = r"SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM objects
 WHERE origin='provider' AND object_role='entry' AND conversation_id=?1 AND ordinal=?2";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -8981,21 +9159,22 @@ pub struct UpsertNativeMessage<'a> {
     created_at: Option<i64>,
     context_parent: Option<i64>,
     attachments: &'a str,
+    metadata: Option<&'a str>,
     conversation_id: &'a str,
 }
 impl<'a> UpsertNativeMessage<'a> {
     pub const QUERY: &'static str = r"INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
-    ordinal,role,content,search_projection,created_at,context_parent,attachments)
+    ordinal,role,content,search_projection,created_at,context_parent,attachments,metadata)
 SELECT 'provider',c.source,?1,'entry',c.source||':message',c.id,c.storage_id,c.id,
     ?2,?3,?4,?5,
-    ?6,?7,?8
-FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?9
+    ?6,?7,?8,?9
+FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?10
 ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
 source=excluded.source,kind=excluded.kind,parent_id=excluded.parent_id,
 parent_storage_id=excluded.parent_storage_id,
 conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
 content=excluded.content,search_projection=excluded.search_projection,created_at=excluded.created_at,
-context_parent=excluded.context_parent,attachments=excluded.attachments";
+context_parent=excluded.context_parent,attachments=excluded.attachments,metadata=excluded.metadata";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -9020,19 +9199,21 @@ impl<'a> UpsertNativeMessage<'a> {
             self.created_at,
             self.context_parent,
             self.attachments,
+            self.metadata,
             self.conversation_id,
         )
     }
 }
 impl<'a> UpsertNativeMessage<'a> {
-    pub const fn builder() -> UpsertNativeMessageBuilder<'a, ((), (), (), (), (), (), (), (), ())> {
+    pub const fn builder()
+    -> UpsertNativeMessageBuilder<'a, ((), (), (), (), (), (), (), (), (), ())> {
         UpsertNativeMessageBuilder {
-            fields: ((), (), (), (), (), (), (), (), ()),
+            fields: ((), (), (), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct UpsertNativeMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), ())> {
+pub struct UpsertNativeMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
@@ -9045,6 +9226,7 @@ impl<
     CreatedAt,
     ContextParent,
     Attachments,
+    Metadata,
     ConversationId,
 >
     UpsertNativeMessageBuilder<
@@ -9058,6 +9240,7 @@ impl<
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     >
@@ -9076,6 +9259,7 @@ impl<
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9088,6 +9272,7 @@ impl<
             created_at,
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9101,13 +9286,25 @@ impl<
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Role, Content, SearchProjection, CreatedAt, ContextParent, Attachments, ConversationId>
+impl<
+    'a,
+    Id,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+    ConversationId,
+>
     UpsertNativeMessageBuilder<
         'a,
         (
@@ -9119,6 +9316,7 @@ impl<'a, Id, Role, Content, SearchProjection, CreatedAt, ContextParent, Attachme
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     >
@@ -9137,6 +9335,7 @@ impl<'a, Id, Role, Content, SearchProjection, CreatedAt, ContextParent, Attachme
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9149,6 +9348,7 @@ impl<'a, Id, Role, Content, SearchProjection, CreatedAt, ContextParent, Attachme
             created_at,
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9162,6 +9362,7 @@ impl<'a, Id, Role, Content, SearchProjection, CreatedAt, ContextParent, Attachme
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
@@ -9177,6 +9378,7 @@ impl<
     CreatedAt,
     ContextParent,
     Attachments,
+    Metadata,
     ConversationId,
 >
     UpsertNativeMessageBuilder<
@@ -9190,6 +9392,7 @@ impl<
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     >
@@ -9208,6 +9411,7 @@ impl<
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9220,6 +9424,7 @@ impl<
             created_at,
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9233,13 +9438,25 @@ impl<
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Ordinal, Role, SearchProjection, CreatedAt, ContextParent, Attachments, ConversationId>
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+    ConversationId,
+>
     UpsertNativeMessageBuilder<
         'a,
         (
@@ -9251,6 +9468,7 @@ impl<'a, Id, Ordinal, Role, SearchProjection, CreatedAt, ContextParent, Attachme
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     >
@@ -9269,6 +9487,7 @@ impl<'a, Id, Ordinal, Role, SearchProjection, CreatedAt, ContextParent, Attachme
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9281,6 +9500,7 @@ impl<'a, Id, Ordinal, Role, SearchProjection, CreatedAt, ContextParent, Attachme
             created_at,
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9294,13 +9514,25 @@ impl<'a, Id, Ordinal, Role, SearchProjection, CreatedAt, ContextParent, Attachme
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Ordinal, Role, Content, CreatedAt, ContextParent, Attachments, ConversationId>
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    Content,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+    ConversationId,
+>
     UpsertNativeMessageBuilder<
         'a,
         (
@@ -9312,6 +9544,7 @@ impl<'a, Id, Ordinal, Role, Content, CreatedAt, ContextParent, Attachments, Conv
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     >
@@ -9330,6 +9563,7 @@ impl<'a, Id, Ordinal, Role, Content, CreatedAt, ContextParent, Attachments, Conv
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9342,6 +9576,7 @@ impl<'a, Id, Ordinal, Role, Content, CreatedAt, ContextParent, Attachments, Conv
             created_at,
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9355,13 +9590,25 @@ impl<'a, Id, Ordinal, Role, Content, CreatedAt, ContextParent, Attachments, Conv
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Ordinal, Role, Content, SearchProjection, ContextParent, Attachments, ConversationId>
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    ContextParent,
+    Attachments,
+    Metadata,
+    ConversationId,
+>
     UpsertNativeMessageBuilder<
         'a,
         (
@@ -9373,6 +9620,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, ContextParent, Attachment
             (),
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     >
@@ -9391,6 +9639,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, ContextParent, Attachment
             Option<i64>,
             ContextParent,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9403,6 +9652,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, ContextParent, Attachment
             (),
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9416,13 +9666,25 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, ContextParent, Attachment
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, Attachments, ConversationId>
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    Attachments,
+    Metadata,
+    ConversationId,
+>
     UpsertNativeMessageBuilder<
         'a,
         (
@@ -9434,6 +9696,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, Attachments, C
             CreatedAt,
             (),
             Attachments,
+            Metadata,
             ConversationId,
         ),
     >
@@ -9452,6 +9715,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, Attachments, C
             CreatedAt,
             Option<i64>,
             Attachments,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9464,6 +9728,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, Attachments, C
             created_at,
             (),
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9477,13 +9742,25 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, Attachments, C
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent, ConversationId>
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Metadata,
+    ConversationId,
+>
     UpsertNativeMessageBuilder<
         'a,
         (
@@ -9495,6 +9772,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             CreatedAt,
             ContextParent,
             (),
+            Metadata,
             ConversationId,
         ),
     >
@@ -9513,6 +9791,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             CreatedAt,
             ContextParent,
             &'a str,
+            Metadata,
             ConversationId,
         ),
     > {
@@ -9524,6 +9803,83 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             search_projection,
             created_at,
             context_parent,
+            (),
+            metadata,
+            conversation_id,
+        ) = self.fields;
+        let _phantom = self._phantom;
+        UpsertNativeMessageBuilder {
+            fields: (
+                id,
+                ordinal,
+                role,
+                content,
+                search_projection,
+                created_at,
+                context_parent,
+                attachments,
+                metadata,
+                conversation_id,
+            ),
+            _phantom,
+        }
+    }
+}
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    ConversationId,
+>
+    UpsertNativeMessageBuilder<
+        'a,
+        (
+            Id,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            (),
+            ConversationId,
+        ),
+    >
+{
+    pub fn metadata(
+        self,
+        metadata: Option<&'a str>,
+    ) -> UpsertNativeMessageBuilder<
+        'a,
+        (
+            Id,
+            Ordinal,
+            Role,
+            Content,
+            SearchProjection,
+            CreatedAt,
+            ContextParent,
+            Attachments,
+            Option<&'a str>,
+            ConversationId,
+        ),
+    > {
+        let (
+            id,
+            ordinal,
+            role,
+            content,
+            search_projection,
+            created_at,
+            context_parent,
+            attachments,
             (),
             conversation_id,
         ) = self.fields;
@@ -9538,13 +9894,25 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
         }
     }
 }
-impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent, Attachments>
+impl<
+    'a,
+    Id,
+    Ordinal,
+    Role,
+    Content,
+    SearchProjection,
+    CreatedAt,
+    ContextParent,
+    Attachments,
+    Metadata,
+>
     UpsertNativeMessageBuilder<
         'a,
         (
@@ -9556,6 +9924,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             (),
         ),
     >
@@ -9574,6 +9943,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             CreatedAt,
             ContextParent,
             Attachments,
+            Metadata,
             &'a str,
         ),
     > {
@@ -9586,6 +9956,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
             created_at,
             context_parent,
             attachments,
+            metadata,
             (),
         ) = self.fields;
         let _phantom = self._phantom;
@@ -9599,6 +9970,7 @@ impl<'a, Id, Ordinal, Role, Content, SearchProjection, CreatedAt, ContextParent,
                 created_at,
                 context_parent,
                 attachments,
+                metadata,
                 conversation_id,
             ),
             _phantom,
@@ -9617,6 +9989,7 @@ impl<'a>
             Option<i64>,
             Option<i64>,
             &'a str,
+            Option<&'a str>,
             &'a str,
         ),
     >
@@ -9631,6 +10004,7 @@ impl<'a>
             created_at,
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         ) = self.fields;
         UpsertNativeMessage {
@@ -9642,6 +10016,7 @@ impl<'a>
             created_at,
             context_parent,
             attachments,
+            metadata,
             conversation_id,
         }
     }

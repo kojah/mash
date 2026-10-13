@@ -97,7 +97,7 @@ async fn mock(
             stamp: guidance::stamp(binary).unwrap(),
             tools: super::super::Mash::tool_router().list_all(),
             schemas: Schemas {
-                silver_schema: 53,
+                silver_schema: 54,
                 views_schema: 4,
             },
         },

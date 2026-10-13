@@ -172,6 +172,9 @@ pub(crate) struct Message {
     pub(crate) author_kind: Option<crate::connectors::AuthorKind>,
     pub(crate) content: String,
     pub(crate) created_at: Option<i64>,
+    /// A native entry's structured tool calls and results.
+    #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
+    pub(crate) tools: crate::tools::Activity,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]

@@ -70,6 +70,7 @@ fn benchmark_claude_contribution_memory() {
                         content: row.content,
                         dialogue_text: row.projection,
                         created_at: row.created_at,
+                        tools: crate::tools::Activity::default(),
                     },
                     row.parent_id,
                 ))

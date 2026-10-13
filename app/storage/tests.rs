@@ -25,6 +25,7 @@ fn conversation(content: &str) -> Conversation {
             content: content.to_owned(),
             dialogue_text: None,
             created_at: Some(i64::MAX / 2),
+            tools: crate::tools::Activity::default(),
         }]
         .into(),
     }
@@ -45,6 +46,7 @@ pub(super) fn conversation_with_messages(messages: &[(&str, &str)]) -> Conversat
                 content: (*content).to_owned(),
                 dialogue_text: None,
                 created_at: Some(i64::MAX / 2),
+                tools: crate::tools::Activity::default(),
             },
         )
         .collect();

@@ -59,7 +59,7 @@ WHERE conversation_id=sqlc.arg(conversation_id) ORDER BY source_key;
 SELECT source_key,source_path,conversation_id FROM claude_sources ORDER BY source_key;
 
 -- name: ClaudeContributionMessages :many
-SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at,m.attachments
+SELECT m.source_key,m.message_id,m.parent_id,m.role,m.content,m.projection,m.created_at,m.attachments,m.metadata
 FROM claude_source_messages m JOIN claude_sources s USING(source_key)
 WHERE s.conversation_id=sqlc.arg(conversation_id) ORDER BY m.message_id,m.source_key;
 
@@ -83,12 +83,14 @@ DELETE FROM claude_source_messages WHERE source_key=sqlc.arg(source_key) AND mes
 
 -- name: UpsertClaudeSourceMessage :exec
 -- An unchanged row is not rewritten, so appending to a transcript writes only its new rows.
-INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments)
-VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),sqlc.arg(content),sqlc.narg(projection),sqlc.narg(created_at),sqlc.arg(attachments))
+INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments,metadata)
+VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),sqlc.arg(content),sqlc.narg(projection),sqlc.narg(created_at),sqlc.arg(attachments),sqlc.narg(metadata))
 ON CONFLICT(source_key,message_id) DO UPDATE SET parent_id=excluded.parent_id,role=excluded.role,
-content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments
+content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments,
+metadata=excluded.metadata
 WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role OR content IS NOT excluded.content
-OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments;
+OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments
+OR metadata IS NOT excluded.metadata;
 
 -- name: DeleteClaudeSource :exec
 DELETE FROM claude_sources WHERE source_key=sqlc.arg(source_key);
@@ -132,11 +134,11 @@ SELECT fingerprint FROM attachment_policy WHERE singleton=1;
 INSERT INTO attachment_policy(singleton,fingerprint) VALUES(1,sqlc.arg(fingerprint)) ON CONFLICT(singleton) DO UPDATE SET fingerprint=excluded.fingerprint;
 
 -- name: ViewMessages :many
-SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at FROM objects
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,metadata FROM objects
 WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND ordinal>=sqlc.arg(first_ordinal) AND ordinal<=sqlc.arg(last_ordinal) ORDER BY ordinal;
 
 -- name: ContextMessage :one
-SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent FROM objects
+SELECT id,ordinal,role,content,COALESCE(search_projection,content) AS projection,created_at,context_parent,metadata FROM objects
 WHERE origin='provider' AND object_role='entry' AND conversation_id=sqlc.arg(conversation_id) AND ordinal=sqlc.arg(ordinal);
 
 -- name: FirstChild :one
@@ -355,17 +357,18 @@ WHERE n.provider=sqlc.arg(provider) AND n.source_key=sqlc.arg(source_key) AND n.
 -- name: UpsertNativeMessage :exec
 -- A native message takes its provider from its chat, and sits under it.
 INSERT INTO objects(origin,source,id,object_role,kind,parent_id,parent_storage_id,conversation_id,
-    ordinal,role,content,search_projection,created_at,context_parent,attachments)
+    ordinal,role,content,search_projection,created_at,context_parent,attachments,metadata)
 SELECT 'provider',c.source,sqlc.arg(id),'entry',c.source||':message',c.id,c.storage_id,c.id,
     sqlc.arg(ordinal),sqlc.arg(role),sqlc.arg(content),sqlc.narg(search_projection),
-    sqlc.narg(created_at),sqlc.narg(context_parent),sqlc.arg(attachments)
+    sqlc.narg(created_at),sqlc.narg(context_parent),sqlc.arg(attachments),sqlc.narg(metadata)
 FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=sqlc.arg(conversation_id)
 ON CONFLICT(id) WHERE origin='provider' AND object_role<>'container' DO UPDATE SET
 source=excluded.source,kind=excluded.kind,parent_id=excluded.parent_id,
 parent_storage_id=excluded.parent_storage_id,
 conversation_id=excluded.conversation_id,ordinal=excluded.ordinal,role=excluded.role,
 content=excluded.content,search_projection=excluded.search_projection,created_at=excluded.created_at,
-context_parent=excluded.context_parent,attachments=excluded.attachments;
+context_parent=excluded.context_parent,attachments=excluded.attachments,metadata=excluded.metadata;
+
 
 -- name: UpsertNativeMessageFingerprint :exec
 INSERT INTO native_messages(storage_id,id,fingerprint)

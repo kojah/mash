@@ -30,6 +30,7 @@ fn local_message_candidates_intersect_thread_provider_and_time_selections() {
                     content: "providerneedle canonical history".into(),
                     dialogue_text: None,
                     created_at: Some(2000),
+                    tools: crate::tools::Activity::default(),
                 }]
                 .into(),
             })

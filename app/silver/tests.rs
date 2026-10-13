@@ -8,6 +8,7 @@ use std::time::UNIX_EPOCH;
 mod claude_copies;
 mod indexing;
 mod parsing;
+mod tools;
 
 fn write_claude_session(path: &Path, session: &str, message: &str) {
     fs::write(
@@ -46,6 +47,7 @@ fn test_conversation(
             content: content.to_owned(),
             dialogue_text: None,
             created_at: None,
+            tools: crate::tools::Activity::default(),
         }]
         .into(),
     }

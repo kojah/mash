@@ -270,6 +270,7 @@ async fn view(
     for message in &mut messages {
         message.content = redaction.text(&message.content);
         redaction.attachments(&mut message.attachments);
+        redaction.tools(&mut message.tools);
     }
     Ok(Json(messages))
 }

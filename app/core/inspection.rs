@@ -57,6 +57,7 @@ pub(super) async fn view(
             shared::view(required_shared(configuration)?, &node, &id, context).await?;
         for message in &mut messages {
             message.content = output.text(&message.content);
+            output.tools(&mut message.tools);
         }
         Ok(ViewResponse { id, messages })
     } else {
@@ -106,6 +107,7 @@ fn local_view(
     let mut messages = storage.view(&id, context)?;
     for message in &mut messages {
         message.content = output.text(&message.content);
+        output.tools(&mut message.tools);
         // Connector attachments are source references, not captured files.
         if !message
             .id

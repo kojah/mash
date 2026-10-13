@@ -39,8 +39,38 @@ pub(super) fn view(out: &mut String, value: &ViewResponse) -> Result<(), serde_j
                 },
             )?;
         }
+        tools(out, &message.tools);
     }
     Ok(())
+}
+
+/// Tool identities and outcomes; their inputs and outputs are in the message text.
+fn tools(out: &mut String, value: &crate::tools::Activity) {
+    let label = |value: Option<&str>| value.map_or_else(|| "unrecorded".to_owned(), safe);
+    for call in &value.tool_calls {
+        line(
+            out,
+            &format!(
+                "Tool call: {} · call_id={}",
+                label(call.name.as_deref()),
+                label(call.call_id.as_deref())
+            ),
+        );
+    }
+    for result in &value.tool_results {
+        let error = match result.is_error {
+            Some(true) => "true",
+            Some(false) => "false",
+            None => "unrecorded",
+        };
+        line(
+            out,
+            &format!(
+                "Tool result: call_id={} · is_error={error}",
+                label(result.call_id.as_deref())
+            ),
+        );
+    }
 }
 
 pub(super) fn publication(

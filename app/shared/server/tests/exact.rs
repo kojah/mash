@@ -22,6 +22,7 @@ fn row(id: &str, ordinal: i64, content: &str, created_at: Option<i64>) -> Messag
         created_at,
         generation: None,
         vector: None,
+        tools: crate::tools::Activity::default(),
     }
 }
 
@@ -312,6 +313,7 @@ fn seed_core(database: &std::path::Path) {
             content: m.content,
             dialogue_text: Some(m.projection),
             created_at: m.created_at,
+            tools: crate::tools::Activity::default(),
         })
         .collect::<Vec<_>>();
     writer

@@ -162,6 +162,7 @@ fn exact_lexical_filters_literal_decoys_before_limit_and_never_reads_hidden_text
         content: "voyage-code-4".into(),
         dialogue_text: Some(String::new()),
         created_at: Some(0),
+        tools: crate::tools::Activity::default(),
     }]
     .into();
     writer.replace_conversation(&hidden).unwrap();

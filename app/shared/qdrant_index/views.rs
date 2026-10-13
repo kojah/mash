@@ -230,11 +230,13 @@ impl Documents {
         store: &Store,
         identity: &Identity,
         conversation: &ConversationRecord,
-        message: MessageRecord,
+        mut message: MessageRecord,
     ) -> Result<u64, AppError> {
         if message.conversation_id != conversation.id {
             return Err(failure());
         }
+        // Retrieval documents need no tool activity; view reads shared silver.
+        message.tools = crate::tools::Activity::default();
         let words = tokens(&message.projection);
         let embedded = u64::from(message.vector.is_some());
         self.batch

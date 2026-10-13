@@ -38,6 +38,7 @@ pub(super) fn decision_history(root: &std::path::Path) -> Paths {
             dialogue_text: None,
             created_at: Some(1000),
             attachments: vec![],
+            tools: crate::tools::Activity::default(),
         },
     )
     .collect::<Vec<_>>();

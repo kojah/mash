@@ -27,6 +27,7 @@ fn selected_message_boundaries_are_traceable_and_legacy_evidence_is_not_invented
                     content: "payload".into(),
                     dialogue_text: None,
                     created_at: Some(timestamp),
+                    tools: crate::tools::Activity::default(),
                 },
             )
             .collect::<Vec<_>>()

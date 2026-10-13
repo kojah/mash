@@ -15,6 +15,9 @@ fn json<T: DeserializeOwned>(row: &Row<'_>, name: &str) -> Result<T, AppError> {
     serde_json::from_str(&get::<String>(row, name)?)
         .map_err(|_| AppError::database_data("invalid canonical export record"))
 }
+fn tools(row: &Row<'_>) -> Result<crate::tools::Activity, AppError> {
+    crate::tools::Activity::decode(get::<Option<String>>(row, "metadata")?.as_deref())
+}
 fn connector_id(row: &Row<'_>, name: &str) -> Result<crate::connectors::Id, AppError> {
     crate::connectors::Id::try_from(get::<String>(row, name)?)
         .map_err(|_| AppError::database_data("invalid connector archive identity"))
@@ -62,7 +65,7 @@ pub(crate) fn visit(
         }
     ));
     table!(
-        "SELECT m.attachments,m.id,m.conversation_id,m.ordinal,m.role,m.content,m.search_projection,m.context_parent,m.created_at,COALESCE(n.fingerprint,'') AS fingerprint
+        "SELECT m.attachments,m.id,m.conversation_id,m.ordinal,m.role,m.content,m.search_projection,m.context_parent,m.created_at,COALESCE(n.fingerprint,'') AS fingerprint,m.metadata
          FROM objects m LEFT JOIN native_messages n ON n.storage_id=m.storage_id
          WHERE m.origin='provider' AND m.object_role='entry' ORDER BY m.conversation_id,m.ordinal",
         |row| Ok::<_, AppError>(Record::Message {
@@ -79,6 +82,7 @@ pub(crate) fn visit(
             )?)?,
             created_at: get(row, "created_at")?,
             fingerprint: get(row, "fingerprint")?,
+            tools: tools(row)?,
         })
     );
     table!(
@@ -118,6 +122,7 @@ pub(crate) fn visit(
             content: get(row, "content")?,
             dialogue_text: get(row, "projection")?,
             created_at: get(row, "created_at")?,
+            tools: tools(row)?,
         })
     );
     table!(
@@ -342,13 +347,14 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             context,
             created_at,
             fingerprint,
+            tools,
         } => {
             // The chat precedes its messages in every archive; a message
             // without one would otherwise vanish rather than fail.
             let inserted = execute!(
                 "INSERT INTO objects(attachments,id,conversation_id,ordinal,role,content,search_projection,context_parent,created_at,
-                    origin,source,object_role,kind,parent_id,parent_storage_id)
-                 SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,'provider',c.source,'entry',c.source||':message',c.id,c.storage_id
+                    metadata,origin,source,object_role,kind,parent_id,parent_storage_id)
+                 SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'provider',c.source,'entry',c.source||':message',c.id,c.storage_id
                    FROM objects c WHERE c.origin='provider' AND c.object_role='container' AND c.id=?3",
                 encode(&attachments)?,
                 id,
@@ -358,7 +364,8 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 content,
                 dialogue_text,
                 context.parent(),
-                created_at
+                created_at,
+                tools.encode()?
             );
             if inserted == 0 {
                 return Err(AppError::database_data(
@@ -421,13 +428,14 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
             content,
             dialogue_text,
             created_at,
+            tools,
         } => {
             let sources = attachments
                 .into_iter()
                 .map(|metadata| crate::attachments::Source::Retained { metadata })
                 .collect::<Vec<_>>();
             execute!(
-                "INSERT INTO claude_source_messages(attachments,source_key,message_id,parent_id,role,content,projection,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+                "INSERT INTO claude_source_messages(attachments,source_key,message_id,parent_id,role,content,projection,created_at,metadata) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                 encode(&sources)?,
                 source_key,
                 message_id,
@@ -435,7 +443,8 @@ pub(crate) fn insert(storage: &Storage, record: Record) -> Result<(), AppError> 
                 role,
                 content,
                 dialogue_text,
-                created_at
+                created_at,
+                tools.encode()?
             );
         }
         Record::Checkpoint {

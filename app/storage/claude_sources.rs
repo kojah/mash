@@ -55,6 +55,7 @@ pub(super) fn claude_thread(
                     content: row.content,
                     dialogue_text: row.projection,
                     created_at: row.created_at,
+                    tools: crate::tools::Activity::decode(row.metadata.as_deref())?,
                 },
                 row.parent_id,
             ))
@@ -175,6 +176,7 @@ impl Storage {
                     .collect::<Vec<_>>(),
             )
             .map_err(|_| AppError::internal("serialize Claude attachments"))?;
+            let metadata = message.tools.encode()?;
             let query = sql::UpsertClaudeSourceMessage::builder()
                 .attachments(&attachments)
                 .source_key(key)
@@ -184,6 +186,7 @@ impl Storage {
                 .content(&message.content)
                 .projection(message.dialogue_text.as_deref())
                 .created_at(message.created_at)
+                .metadata(metadata.as_deref())
                 .build();
             statement
                 .execute(query.as_params())

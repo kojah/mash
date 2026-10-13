@@ -1064,6 +1064,32 @@ mash list-chats --provider codex --title-contains cbioportal --limit 10
 mash search 'database migration' --unit messages --provider codex --chat CHAT_ID
 ```
 
+### Tool calls and results
+
+Claude Code and Codex messages record their tool activity as structured silver
+metadata beside the unchanged flattened text. `view` (CLI and MCP, local and
+shared) returns it as each message's `tools`; messages without activity omit it:
+
+```json
+{"tool_calls":[{"name":"Bash","call_id":"toolu_01A","input":{"command":"ls fixtures","description":"List fixtures"}}]}
+{"tool_results":[{"call_id":"toolu_01A","is_error":false},{"call_id":"toolu_01B","is_error":true}]}
+```
+
+A message can carry several calls or results. `input` is the provider's arguments
+kept verbatim as JSON: Claude `tool_use.input`, or Codex `arguments`/`input`,
+which Codex records as a string. Results link to calls by `call_id` within the
+chat and keep their output in the message text. `is_error` is present only where
+the provider records it (Claude `tool_result.is_error`); Codex results carry
+none. Other providers' tool activity is not yet structured. Tool text and
+metadata stay out of search projections and embeddings, and output and
+publication redaction mask credentials in every string of tool inputs.
+
+This release changes the silver schema and the native interpretation version.
+The upgrade helper exports and imports local silver; the next explicit
+`mash index` replays every provider source to record tool activity, rebuilds
+local views and republishes shared silver. History whose source files are gone
+keeps its text without tool metadata.
+
 The HTTP service stores shared silver in SQLite and shared views in
 [Qdrant](#qdrant-shared-storage). Configure `qdrant_url_env`; there is no backend
 selector. See [shared storage](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/shared-storage.md)

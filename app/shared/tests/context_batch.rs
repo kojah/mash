@@ -33,6 +33,7 @@ pub(super) async fn view(
             author_kind: None,
             content: "cache the model".into(),
             created_at: None,
+            tools: crate::tools::Activity::default(),
         },
         Message {
             attachments: Vec::new(),
@@ -42,6 +43,7 @@ pub(super) async fn view(
             author_kind: None,
             content: "keep the worker warm".into(),
             created_at: None,
+            tools: crate::tools::Activity::default(),
         },
     ];
     let mut bytes =

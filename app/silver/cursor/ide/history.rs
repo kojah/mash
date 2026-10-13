@@ -130,6 +130,7 @@ pub(super) fn read(
             content: text.canonical,
             dialogue_text: Some(text.projection),
             created_at,
+            tools: crate::tools::Activity::default(),
         });
     }
     Ok(messages)

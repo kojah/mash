@@ -234,6 +234,11 @@ pub(super) struct Block {
     pub content: Option<Content>,
     pub thinking: Option<String>,
     pub name: Option<String>,
+    /// A tool call's identity.
+    pub id: Option<String>,
+    /// The call a tool result answers.
+    pub tool_use_id: Option<String>,
+    pub is_error: Option<bool>,
     #[serde(default, deserialize_with = "opaque")]
     pub arguments: Option<Value>,
     #[serde(default, deserialize_with = "opaque")]
@@ -255,6 +260,18 @@ pub(super) enum MediaSource {
 }
 
 impl Content {
+    /// Tool-use and tool-result blocks, in block order.
+    pub fn tools(&self) -> crate::tools::Activity {
+        let mut activity = crate::tools::Activity::default();
+        match self {
+            Self::Text(_) => {}
+            Self::Block(block) => activity.extend(block.tools()),
+            Self::Blocks(blocks) => blocks
+                .iter()
+                .for_each(|block| activity.extend(block.tools())),
+        }
+        activity
+    }
     pub fn attachments(&self) -> Vec<crate::attachments::Source> {
         match self {
             Self::Text(_) => Vec::new(),
@@ -296,6 +313,24 @@ impl Content {
 }
 
 impl Block {
+    fn tools(&self) -> crate::tools::Activity {
+        match self.kind {
+            Kind::ToolUse => crate::tools::Activity::call(
+                self.name.as_deref(),
+                self.id.as_deref(),
+                self.input.as_ref(),
+            ),
+            Kind::ToolCall => crate::tools::Activity::call(
+                self.name.as_deref(),
+                self.id.as_deref(),
+                self.arguments.as_ref(),
+            ),
+            Kind::ToolResult => {
+                crate::tools::Activity::result(self.tool_use_id.as_deref(), self.is_error)
+            }
+            _ => crate::tools::Activity::default(),
+        }
+    }
     fn attachment(&self) -> Option<crate::attachments::Source> {
         if !matches!(self.kind, Kind::Image | Kind::InputImage | Kind::Document) {
             return None;

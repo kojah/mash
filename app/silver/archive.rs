@@ -100,6 +100,9 @@ pub(crate) enum Record {
         context: MessageContext,
         created_at: Option<i64>,
         fingerprint: String,
+        /// Absent from archives written before tool activity was recorded.
+        #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
+        tools: crate::tools::Activity,
     },
     Enrichment {
         conversation_id: String,
@@ -127,6 +130,8 @@ pub(crate) enum Record {
         content: String,
         dialogue_text: Option<String>,
         created_at: Option<i64>,
+        #[serde(default, skip_serializing_if = "crate::tools::Activity::is_empty")]
+        tools: crate::tools::Activity,
     },
     Checkpoint {
         provider: Provider,
@@ -180,14 +185,19 @@ impl Record {
                 attachments,
                 context,
                 ordinal,
+                tools,
                 ..
             } => {
                 if *ordinal < 0 || !context.valid(*ordinal) {
                     return Err(crate::AppError::usage("invalid archive message context"));
                 }
+                tools.validate()?;
                 crate::attachments::validate_metadata(attachments)
             }
-            Self::ClaudeMessage { attachments, .. } => {
+            Self::ClaudeMessage {
+                attachments, tools, ..
+            } => {
+                tools.validate()?;
                 crate::attachments::validate_metadata(attachments)
             }
             Self::Checkpoint { size_bytes, .. } if *size_bytes < 0 => {

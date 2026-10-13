@@ -13,7 +13,7 @@ connection handshake can predate the current worker; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"fee281eb1524d776f5b4833825707e88c3b31ea0bc7f4875418e864f8b7bd9ef","tool":"search","topic":"discovery"}
+{"expected_contract":"5ec1f04c352e7a1ae625657f2724ed730487f7cdd3a5b90a2206fcf846e25435","tool":"search","topic":"discovery"}
 ```
 
 

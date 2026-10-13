@@ -267,6 +267,7 @@ macro_rules! message_record {
             created_at: row.created_at,
             generation: None,
             vector: None,
+            tools: $crate::tools::Activity::decode(row.metadata.as_deref())?,
         })
     }};
 }

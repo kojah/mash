@@ -53,6 +53,7 @@ async fn sdk_compact_and_extended_output_preserve_evidence_and_status() {
                 dialogue_text: None,
                 created_at: Some(1),
                 attachments: Vec::new(),
+                tools: crate::tools::Activity::default(),
             }]
             .into(),
         })

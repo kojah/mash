@@ -650,6 +650,7 @@ fn benchmark_fts_refresh_crossover() {
                 content: format!("representative searchable text number {index}"),
                 dialogue_text: None,
                 created_at: Some(1),
+                tools: crate::tools::Activity::default(),
             })
             .collect();
         let mut corpus = conversation("");
@@ -862,6 +863,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
                 context: crate::message_context::MessageContext::Parent { ordinal: shift },
                 dialogue_text: None,
                 created_at: None,
+                tools: crate::tools::Activity::default(),
             });
         if insert {
             value.messages.inline_mut().insert(
@@ -875,6 +877,7 @@ fn conversation_reconciliation_inserts_and_reorders_stable_ids_with_tree_context
                     context: crate::message_context::MessageContext::Root,
                     dialogue_text: None,
                     created_at: None,
+                    tools: crate::tools::Activity::default(),
                 },
             );
         }

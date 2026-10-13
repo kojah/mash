@@ -412,6 +412,7 @@ pub(super) fn parse(path: &Path) -> Result<ParsedFile, AppError> {
             content: text.canonical,
             dialogue_text: Some(text.projection),
             created_at: Some(time),
+            tools: crate::tools::Activity::default(),
         })?;
         heads.insert(lane, ordinal);
     }

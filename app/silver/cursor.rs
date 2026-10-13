@@ -108,6 +108,7 @@ impl Messages {
             content: text.canonical,
             dialogue_text: Some(text.projection),
             created_at: evidence.and_then(|e| e.timestamp),
+            tools: crate::tools::Activity::default(),
         });
         Ok(())
     }

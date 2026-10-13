@@ -167,6 +167,7 @@ fn completed(raw: &Record) -> Option<ExtractedMessage> {
     };
     Some(ExtractedMessage {
         attachments,
+        tools: crate::tools::Activity::default(),
         source_id: Some(format!("completed:{turn}:{id}")),
         role,
         content,
@@ -178,26 +179,31 @@ fn completed(raw: &Record) -> Option<ExtractedMessage> {
 
 fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
     let payload = raw.payload.as_ref()?;
-    let (role, content, dialogue_text) = match payload.kind {
+    let (role, content, dialogue_text, tools) = match payload.kind {
         Kind::Message => {
-            let (content, projection) = payload.content.as_ref()?.projected()?;
+            let message = payload.content.as_ref()?;
+            let (content, projection) = message.projected()?;
             (
                 payload.role.clone().unwrap_or(crate::role::Role::Assistant),
                 content,
                 projection,
+                message.tools(),
             )
         }
         Kind::FunctionCall | Kind::CustomToolCall => {
+            let input = payload.arguments.as_ref().or(payload.input.as_ref());
             let name = payload.name.as_deref().unwrap_or("unknown");
-            let arguments = payload
-                .arguments
-                .as_ref()
-                .or(payload.input.as_ref())
-                .map_or_else(String::new, json::stringify);
+            let arguments = input.map_or_else(String::new, json::stringify);
+            let tools = crate::tools::Activity::call(
+                payload.name.as_deref(),
+                payload.call_id.as_deref(),
+                input,
+            );
             (
                 crate::role::Role::Assistant,
                 format!("Tool {name}: {arguments}"),
                 Some(String::new()),
+                tools,
             )
         }
         Kind::FunctionCallOutput | Kind::CustomToolCallOutput => {
@@ -206,11 +212,15 @@ fn extract_codex_response_item(raw: &Record) -> Option<ExtractedMessage> {
                 crate::role::Role::Tool,
                 truncate_chars(&output, MAX_TOOL_OUTPUT_CHARS),
                 Some(String::new()),
+                // Codex records no error flag; its call's status is the
+                // request item's lifecycle, not the tool's outcome.
+                crate::tools::Activity::result(payload.call_id.as_deref(), None),
             )
         }
         _ => return None,
     };
     Some(ExtractedMessage {
+        tools,
         attachments: payload
             .content
             .as_ref()

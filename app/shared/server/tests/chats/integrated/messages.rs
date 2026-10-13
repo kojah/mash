@@ -33,6 +33,7 @@ fn conversation(id: &str, provider: Provider) -> Conversation {
             content: "repair authentication credentials".into(),
             dialogue_text: None,
             created_at: Some(2000),
+            tools: crate::tools::Activity::default(),
         }]
         .into(),
     }

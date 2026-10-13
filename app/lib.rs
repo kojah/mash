@@ -7,6 +7,7 @@ mod provider;
 mod role;
 mod silver;
 mod source;
+mod tools;
 
 // Experimental source-neutral contract for out-of-process connectors.
 pub mod connectors;

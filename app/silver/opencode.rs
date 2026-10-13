@@ -265,6 +265,7 @@ fn normalize(
         role,
         content: canonical,
         created_at: Some(created),
+        tools: crate::tools::Activity::default(),
     };
     budget.retain(
         std::mem::size_of::<NormalizedMessage>()

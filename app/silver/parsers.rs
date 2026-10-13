@@ -13,12 +13,29 @@ mod codex;
 
 struct ExtractedMessage {
     attachments: Vec<crate::attachments::Source>,
+    tools: crate::tools::Activity,
     source_id: Option<String>,
     role: crate::role::Role,
     content: String,
     dialogue_text: Option<String>,
     created_at: Option<i64>,
     session_id: Option<String>,
+}
+
+impl ExtractedMessage {
+    fn normalized(self, id: String, ordinal: i64) -> NormalizedMessage {
+        NormalizedMessage {
+            attachments: self.attachments,
+            id,
+            ordinal,
+            context: crate::message_context::MessageContext::Linear,
+            role: self.role,
+            content: self.content,
+            dialogue_text: self.dialogue_text,
+            created_at: self.created_at,
+            tools: self.tools,
+        }
+    }
 }
 
 pub(super) fn parse_claude(path: &Path) -> Result<ParsedFile, AppError> {
@@ -38,6 +55,7 @@ fn parse_claude_file(path: &Path, file: File) -> Result<ParsedFile, AppError> {
         let (content, dialogue_text) = message.content.as_ref()?.projected()?;
         Some(ExtractedMessage {
             attachments: message.content.as_ref()?.attachments(),
+            tools: message.content.as_ref()?.tools(),
             source_id: raw.uuid.clone(),
             role: message
                 .role
@@ -128,20 +146,15 @@ fn parse_jsonl(
         if provider == Provider::ClaudeCode {
             claude_identity.push_key(extracted.source_id.clone())?;
         }
-        let message_key = extracted.source_id.unwrap_or_else(|| ordinal.to_string());
-        messages.push(NormalizedMessage {
-            attachments: extracted.attachments,
-            id: stable_id(
-                "message",
-                &[provider.as_str(), &path.to_string_lossy(), &message_key],
-            ),
-            ordinal,
-            context: crate::message_context::MessageContext::Linear,
-            role: extracted.role,
-            content: extracted.content,
-            dialogue_text: extracted.dialogue_text,
-            created_at: extracted.created_at,
-        })?;
+        let message_key = extracted
+            .source_id
+            .take()
+            .unwrap_or_else(|| ordinal.to_string());
+        let id = stable_id(
+            "message",
+            &[provider.as_str(), &path.to_string_lossy(), &message_key],
+        );
+        messages.push(extracted.normalized(id, ordinal))?;
     }
     if rejected.count != 0 || messages.len() == 0 {
         return Ok(ParsedFile {

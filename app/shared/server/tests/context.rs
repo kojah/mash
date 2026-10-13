@@ -188,6 +188,7 @@ fn snapshot(revision: i64) -> Vec<Value> {
         generation: (!projection.is_empty())
             .then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
         vector: (!projection.is_empty()).then(|| vector.clone()),
+        tools: crate::tools::Activity::default(),
     })
     .collect();
     [

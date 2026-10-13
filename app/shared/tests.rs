@@ -559,6 +559,7 @@ fn seed(path: &Path) -> Storage {
                     content: "hello shared history".to_owned(),
                     dialogue_text: None,
                     created_at: Some(1),
+                    tools: crate::tools::Activity::default(),
                 },
                 NormalizedMessage {
                     attachments: Vec::new(),
@@ -569,6 +570,7 @@ fn seed(path: &Path) -> Storage {
                     content: "hello raw tool output".to_owned(),
                     dialogue_text: Some(String::new()),
                     created_at: Some(2),
+                    tools: crate::tools::Activity::default(),
                 },
             ]
             .into(),
@@ -656,6 +658,7 @@ fn local_rich_filters_apply_before_lexical_and_semantic_candidate_limits() {
             content: "hello filter".into(),
             dialogue_text: None,
             created_at: Some(2000),
+            tools: crate::tools::Activity::default(),
         });
     }
     storage.replace_conversation(&conversation).unwrap();

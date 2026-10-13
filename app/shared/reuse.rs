@@ -109,6 +109,8 @@ pub(in crate::shared) struct MessageRef<'a> {
     content: &'a str,
     projection: &'a str,
     created_at: Option<i64>,
+    #[serde(skip_serializing_if = "crate::tools::Activity::is_empty")]
+    tools: &'a crate::tools::Activity,
 }
 
 impl MessageRecord {
@@ -124,6 +126,7 @@ impl MessageRecord {
             content: &self.content,
             projection: &self.projection,
             created_at: self.created_at,
+            tools: &self.tools,
         }
     }
 }

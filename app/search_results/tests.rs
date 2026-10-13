@@ -301,6 +301,7 @@ fn contextual_evidence_uses_nearest_searchable_messages_with_a_fixed_budget() {
         author_kind: None,
         content,
         created_at: None,
+        tools: crate::tools::Activity::default(),
     };
     let messages = vec![
         message(

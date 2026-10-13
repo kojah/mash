@@ -41,6 +41,7 @@ pub(super) fn publication(conversation: crate::silver::Conversation) -> (Vec<Val
                 created_at: m.created_at,
                 generation: visible.then(|| crate::semantic::SHARED_EMBEDDING_GENERATION.into()),
                 vector: visible.then(|| vector.clone()),
+                tools: crate::tools::Activity::default(),
             }
         })
         .collect();

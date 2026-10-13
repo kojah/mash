@@ -209,6 +209,7 @@ impl Upload<'_> {
         valid_id(&record.id)?;
         valid_id(&record.conversation_id)?;
         crate::attachments::validate_metadata(&record.attachments)?;
+        record.tools.validate()?;
         if record.ordinal < 0
             || (!self.build.includes_dense(&record.role, &record.projection)
                 && (record.vector.is_some() || record.generation.is_some()))
@@ -243,6 +244,7 @@ impl Upload<'_> {
             .search_projection(Some(&record.projection))
             .created_at(record.created_at)
             .context_parent(record.context.parent())
+            .metadata(record.tools.encode()?.as_deref())
             .build()
             .execute(self.tx);
         match inserted {
