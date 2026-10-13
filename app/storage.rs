@@ -17,6 +17,7 @@ mod coverage;
 pub(crate) mod embedding_plan;
 mod exact;
 mod semantic;
+pub(crate) use semantic::SnapshotCoverage;
 mod semantic_chunks;
 mod views_manifest;
 
@@ -52,8 +53,37 @@ pub(crate) struct Storage {
     connection: Connection,
     writer_active: bool,
     search_updates: SearchUpdates,
-    transaction_base_messages: u64,
 }
+
+/// Native entries inserted and deleted since the writer transaction began,
+/// so the pre-transaction message count is known without counting at BEGIN.
+/// Temporary state rolls back with the transaction and its savepoints;
+/// foreign-key cascades fire these triggers like direct deletes.
+const TRANSACTION_ENTRY_DELTA: &str = "
+    CREATE TEMP TABLE IF NOT EXISTS transaction_entry_delta (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        inserted INTEGER NOT NULL DEFAULT 0,
+        deleted INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT OR IGNORE INTO transaction_entry_delta(singleton) VALUES (1);
+    CREATE TEMP TRIGGER IF NOT EXISTS transaction_entry_inserted
+    AFTER INSERT ON main.objects
+    WHEN NEW.origin = 'provider' AND NEW.object_role = 'entry' BEGIN
+        UPDATE transaction_entry_delta SET inserted = inserted + 1;
+    END;
+    CREATE TEMP TRIGGER IF NOT EXISTS transaction_entry_deleted
+    AFTER DELETE ON main.objects
+    WHEN OLD.origin = 'provider' AND OLD.object_role = 'entry' BEGIN
+        UPDATE transaction_entry_delta SET deleted = deleted + 1;
+    END;
+    CREATE TEMP TRIGGER IF NOT EXISTS transaction_entry_reclassified
+    AFTER UPDATE OF origin, object_role ON main.objects
+    WHEN (OLD.origin = 'provider' AND OLD.object_role = 'entry')
+        <> (NEW.origin = 'provider' AND NEW.object_role = 'entry') BEGIN
+        UPDATE transaction_entry_delta
+           SET inserted = inserted + (NEW.origin = 'provider' AND NEW.object_role = 'entry'),
+               deleted = deleted + (OLD.origin = 'provider' AND OLD.object_role = 'entry');
+    END;";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SearchUpdates {
@@ -217,13 +247,15 @@ impl Storage {
                  ) WITHOUT ROWID;",
             )
             .map_err(AppError::database)?;
+        connection
+            .execute_batch(TRANSACTION_ENTRY_DELTA)
+            .map_err(AppError::database)?;
         Ok(Self {
             attachments_config: crate::attachments::Configuration::default(),
             output_redaction: crate::redaction::Policy::ON,
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
-            transaction_base_messages: 0,
         })
     }
 
@@ -238,15 +270,14 @@ impl Storage {
             .execute_batch("BEGIN IMMEDIATE")
             .map_err(AppError::database)?;
         storage.writer_active = true;
-        storage.transaction_base_messages = storage.message_count()?;
+        storage.reset_transaction_entry_delta()?;
         Ok(storage)
     }
 
     #[tracing::instrument(name = "commit_writer", skip_all)]
     pub(crate) fn commit_writer(&mut self) -> Result<(), AppError> {
         if self.writer_active {
-            let threshold = self.measured_fts_bulk_threshold()?;
-            self.finalize_pending_fts_updates(threshold)?;
+            self.refresh_pending_fts()?;
             self.finalize_semantic_chunks()?;
             self.connection
                 .execute_batch("COMMIT")
@@ -273,8 +304,7 @@ impl Storage {
 
     fn commit_and_restart_writer(&mut self, continuation: &str) -> Result<(), AppError> {
         self.require_writer()?;
-        let threshold = self.measured_fts_bulk_threshold()?;
-        self.finalize_pending_fts_updates(threshold)?;
+        self.refresh_pending_fts()?;
         self.finalize_semantic_chunks()?;
         self.connection
             .execute_batch("COMMIT")
@@ -284,8 +314,17 @@ impl Storage {
             .execute_batch(continuation)
             .map_err(AppError::database)?;
         self.writer_active = true;
-        self.transaction_base_messages = self.message_count()?;
-        Ok(())
+        self.reset_transaction_entry_delta()
+    }
+
+    fn reset_transaction_entry_delta(&self) -> Result<(), AppError> {
+        self.connection
+            .execute(
+                "UPDATE transaction_entry_delta SET inserted = 0, deleted = 0",
+                [],
+            )
+            .map(drop)
+            .map_err(AppError::database)
     }
 
     fn require_writer(&self) -> Result<(), AppError> {

@@ -2,7 +2,7 @@
 use crate::AppError;
 use crate::progress::milliseconds as elapsed_milliseconds;
 use crate::semantic::{self, Models};
-use crate::storage::{Counts, Storage};
+use crate::storage::{Counts, SnapshotCoverage, Storage};
 use std::time::Instant;
 
 pub(crate) struct Build {
@@ -29,9 +29,13 @@ pub(crate) fn build(
     let representations_changed = previous
         .as_ref()
         .is_some_and(|m| m.build.representations != build.representations);
+    // The published views were certified for this recipe, model and silver
+    // revision; silver revisions change with every canonical write.
+    let certified_unchanged = previous
+        .as_ref()
+        .is_some_and(|m| m.matches(build, &model, &manifest.silver));
     if representations_changed
-        || (build != &crate::views::config::Build::default()
-            && !previous.is_some_and(|m| m.matches(build, &model, &manifest.silver)))
+        || (build != &crate::views::config::Build::default() && !certified_unchanged)
     {
         // Title changes are canonical metadata changes, so rebuild all affected
         // representations conservatively until a finer dependency map exists.
@@ -70,9 +74,7 @@ pub(crate) fn build(
     let embedding_started = Instant::now();
     let generation = build.generation(&model);
     storage.restrict_dense_queue(build)?;
-    if !source_complete {
-        storage.resume_unchanged_semantic_snapshot(&generation)?;
-    }
+    resume_snapshot(storage, &generation, source_complete, certified_unchanged)?;
     let already_published = storage.semantic_generation_is_published(&generation)?
         && !storage.has_pending_embeddings()?;
     if !already_published {
@@ -124,6 +126,24 @@ pub(crate) fn build(
         search_refresh_milliseconds,
         embedding_milliseconds,
     })
+}
+
+/// Keep the ready snapshot from before this scan when silver did not change.
+fn resume_snapshot(
+    storage: &mut Storage,
+    generation: &str,
+    source_complete: bool,
+    certified_unchanged: bool,
+) -> Result<(), AppError> {
+    if source_complete && certified_unchanged {
+        // A scan that changed nothing keeps its certified snapshot instead of
+        // re-certifying every vector against unchanged silver.
+        storage.resume_unchanged_semantic_snapshot(generation, SnapshotCoverage::Certified)
+    } else if !source_complete {
+        storage.resume_unchanged_semantic_snapshot(generation, SnapshotCoverage::Recheck)
+    } else {
+        Ok(())
+    }
 }
 
 /// Connector units carry their own vectors, independent of native recipes;

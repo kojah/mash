@@ -127,52 +127,78 @@ impl Storage {
                 .build()
                 .execute(&storage.connection)
                 .map_err(AppError::database)?;
-            sql::DeleteClaudeSourceMessages::builder()
-                .source_key(&key)
-                .build()
-                .execute(&storage.connection)
-                .map_err(AppError::database)?;
-            let lineage = source
-                .claude_lineage
-                .as_ref()
-                .ok_or_else(|| AppError::internal("Claude contribution has no ancestry"))?;
-            let mut statement = storage
-                .connection
-                .prepare_cached(sql::InsertClaudeSourceMessage::QUERY)
-                .map_err(AppError::database)?;
-            for message in source.messages.rows()? {
-                let message = message?;
-                let parent = lineage.get(&message.id).ok_or_else(|| {
-                    AppError::internal("Claude contribution has incomplete ancestry")
-                })?;
-                let retained = storage.retain_attachments(&message)?;
-                let attachments = serde_json::to_string(
-                    &retained
-                        .into_iter()
-                        .map(|metadata| crate::attachments::Source::Retained { metadata })
-                        .collect::<Vec<_>>(),
-                )
-                .map_err(|_| AppError::internal("serialize Claude attachments"))?;
-                let query = sql::InsertClaudeSourceMessage::builder()
-                    .attachments(&attachments)
-                    .source_key(&key)
-                    .message_id(&message.id)
-                    .parent_id(parent.as_deref())
-                    .role(message.role.as_str())
-                    .content(&message.content)
-                    .projection(message.dialogue_text.as_deref())
-                    .created_at(message.created_at)
-                    .build();
-                statement
-                    .execute(query.as_params())
-                    .map_err(AppError::database)?;
-            }
-            drop(statement);
+            storage.write_claude_contribution(&key, source)?;
             let mut change = storage.refresh_claude_thread(&source.id)?;
             change.removed_messages += repaired + moved.removed_messages;
             change.changed_message_ids.extend(moved.changed_message_ids);
             Ok(change)
         })
+    }
+
+    /// Replace a source's contribution row by row: an active transcript grows
+    /// by appending, and rewriting every unchanged row would cost each refresh
+    /// the whole transcript in writes.
+    fn write_claude_contribution(&self, key: &str, source: &Conversation) -> Result<(), AppError> {
+        let mut stale = sql::ClaudeSourceMessageIds::builder()
+            .source_key(key)
+            .build()
+            .query_many(&self.connection)
+            .map_err(AppError::database)?
+            .into_iter()
+            .map(|row| row.message_id)
+            .collect::<BTreeSet<_>>();
+        let mut written = BTreeSet::new();
+        let lineage = source
+            .claude_lineage
+            .as_ref()
+            .ok_or_else(|| AppError::internal("Claude contribution has no ancestry"))?;
+        let mut statement = self
+            .connection
+            .prepare_cached(sql::UpsertClaudeSourceMessage::QUERY)
+            .map_err(AppError::database)?;
+        for message in source.messages.rows()? {
+            let message = message?;
+            if !written.insert(message.id.clone()) {
+                return Err(AppError::database_data(
+                    "Claude contribution repeats a message",
+                ));
+            }
+            stale.remove(&message.id);
+            let parent = lineage
+                .get(&message.id)
+                .ok_or_else(|| AppError::internal("Claude contribution has incomplete ancestry"))?;
+            let retained = self.retain_attachments(&message)?;
+            let attachments = serde_json::to_string(
+                &retained
+                    .into_iter()
+                    .map(|metadata| crate::attachments::Source::Retained { metadata })
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|_| AppError::internal("serialize Claude attachments"))?;
+            let query = sql::UpsertClaudeSourceMessage::builder()
+                .attachments(&attachments)
+                .source_key(key)
+                .message_id(&message.id)
+                .parent_id(parent.as_deref())
+                .role(message.role.as_str())
+                .content(&message.content)
+                .projection(message.dialogue_text.as_deref())
+                .created_at(message.created_at)
+                .build();
+            statement
+                .execute(query.as_params())
+                .map_err(AppError::database)?;
+        }
+        drop(statement);
+        for message_id in stale {
+            sql::DeleteClaudeSourceMessage::builder()
+                .source_key(key)
+                .message_id(&message_id)
+                .build()
+                .execute(&self.connection)
+                .map_err(AppError::database)?;
+        }
+        Ok(())
     }
 
     fn with_claude_savepoint<T>(

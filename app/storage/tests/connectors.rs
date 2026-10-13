@@ -425,3 +425,41 @@ fn kind_filters_and_ancestry_cover_native_and_connector_objects() {
     );
     assert_eq!(native.ancestors[1].id, native.conversation_id);
 }
+
+#[test]
+fn index_only_counts_match_native_entries_beside_segments_and_connector_objects() {
+    let root = tempfile::tempdir().unwrap();
+    let path = database(root.path());
+    let storage = Storage::open_catalog(&path).unwrap();
+    let direct = |predicate: &str| -> u64 {
+        storage
+            .connection
+            .query_row(
+                &format!("SELECT count(*) FROM objects NOT INDEXED WHERE {predicate}"),
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| u64::try_from(count).unwrap())
+            .unwrap()
+    };
+    // The fixture holds native turns and every connector role, so a count
+    // that leaked either into native entries would differ here.
+    assert!(direct("origin = 'provider' AND object_role = 'segment'") > 0);
+    assert!(
+        direct("origin = 'connector' AND object_role IN ('segment', 'entry', 'document')") >= 4
+    );
+    let counts = storage.counts().unwrap();
+    let entries = direct("origin = 'provider' AND object_role = 'entry'");
+    assert_eq!(counts.messages, entries);
+    assert_eq!(storage.message_count().unwrap(), entries);
+    assert_eq!(
+        counts.conversations,
+        direct("origin = 'provider' AND object_role = 'container'")
+    );
+    assert_eq!(
+        counts.searchable_messages,
+        direct(
+            "origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> ''"
+        )
+    );
+}

@@ -24,5 +24,11 @@ pub(crate) fn sqlite(path: &Path) -> Result<rusqlite::Connection, AppError> {
         .persist_noclobber(path)
         .map_err(|e| AppError::io(e.error))?;
     drop(handle);
-    rusqlite::Connection::open(path).map_err(AppError::database)
+    let connection = rusqlite::Connection::open(path).map_err(AppError::database)?;
+    // Scratch state is discarded with its directory; syncing it to disk would
+    // only stall indexing behind unrelated I/O.
+    connection
+        .pragma_update(None, "synchronous", "OFF")
+        .map_err(AppError::database)?;
+    Ok(connection)
 }

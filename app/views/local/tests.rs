@@ -468,3 +468,77 @@ fn rejected_source_keeps_views_unready_even_with_complete_stored_vectors() {
     storage.commit_writer().unwrap();
     assert!(Storage::open_search(&fixture.database, &models.generation()).is_err());
 }
+
+/// Span names one views build emits, with its readiness.
+fn traced_build(
+    storage: &mut Storage,
+    models: &Models,
+    summary: &crate::silver::IndexSummary,
+    recipe: &crate::views::config::Build,
+) -> (bool, std::collections::BTreeSet<String>) {
+    let (bytes, dispatcher) = crate::observability::test_support::capture();
+    let result =
+        tracing::dispatcher::with_default(&dispatcher, || build(storage, models, summary, recipe))
+            .unwrap();
+    let output = String::from_utf8(bytes.lock().unwrap().clone()).unwrap();
+    let spans = output
+        .lines()
+        .filter_map(|line| {
+            let event: serde_json::Value = serde_json::from_str(line).unwrap();
+            event["span"]["name"].as_str().map(str::to_owned)
+        })
+        .collect();
+    (result.ready, spans)
+}
+
+/// Embed queued messages outside the views stage, which has no models here.
+fn embed_pending(storage: &mut Storage, generation: &str) {
+    let pending = storage.messages_needing_embeddings().unwrap();
+    let writes = pending
+        .iter()
+        .map(|message| crate::storage::EmbeddingWrite {
+            message_id: &message.id,
+            vector: &[127],
+            norm: 127.0,
+        })
+        .collect::<Vec<_>>();
+    storage.replace_embeddings(generation, &writes).unwrap();
+}
+
+#[test]
+fn unchanged_scan_resumes_certified_views_and_changes_recertify_them() {
+    let fixture = fixture(false);
+    let models = Models::new(fixture.database.with_file_name("absent-models"));
+    let recipe = crate::views::config::Build::default();
+    assert!(recipe.dense_enabled());
+    let generation = recipe.generation(&models.generation());
+    std::fs::create_dir(&fixture.source_root).unwrap();
+    let mut stages = Vec::new();
+    // Restore the history, scan it untouched, then append to it.
+    for history in [Some(false), None, Some(true)] {
+        if let Some(appended) = history {
+            write_history(&fixture.source_root, appended);
+        }
+        let mut storage = Storage::open_writer(&fixture.database).unwrap();
+        let source = silver::ingest(&mut storage, &options(&fixture.source_root)).unwrap();
+        storage.refresh_derived_search_state().unwrap();
+        embed_pending(&mut storage, &generation);
+        let (ready, spans) = traced_build(&mut storage, &models, &source.summary, &recipe);
+        assert!(ready);
+        storage.commit_writer().unwrap();
+        drop(storage);
+        Storage::open_search(&fixture.database, &models.generation()).unwrap();
+        stages.push((source.summary.changed_messages, spans));
+    }
+    let (unchanged, changed) = (&stages[1], &stages[2]);
+    assert_eq!(unchanged.0, 0);
+    assert!(unchanged.1.contains("resume_semantic_views"));
+    assert!(
+        !unchanged.1.contains("certify_semantic_views"),
+        "an unchanged scan must not recertify every vector"
+    );
+    assert_eq!(changed.0, 1);
+    assert!(changed.1.contains("certify_semantic_views"));
+    let search = Storage::open_search(&fixture.database, &models.generation()).unwrap();
+    assert_eq!(search.search("postgres", 5, None, None).unwrap().len(), 1);
+}

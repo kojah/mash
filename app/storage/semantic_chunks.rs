@@ -15,6 +15,8 @@ struct PackedSemanticChunk {
     vectors: Vec<u8>,
 }
 
+/// A chunk reads only its own rowid range: NOT INDEXED keeps SQLite from
+/// filtering every native row through the low-selectivity origin index.
 pub(super) fn rebuild_semantic_chunk(
     connection: &Connection,
     chunk_id: i64,
@@ -26,9 +28,10 @@ pub(super) fn rebuild_semantic_chunk(
         None => connection
             .query_row(
                 "SELECT e.generation
-                   FROM message_embeddings e
-                   JOIN objects m ON m.origin = 'provider' AND m.object_role = 'entry' AND m.id = e.message_id
+                   FROM objects m NOT INDEXED
+                   CROSS JOIN message_embeddings e ON e.message_id = m.id
                   WHERE m.rowid BETWEEN ?1 AND ?2
+                    AND m.origin = 'provider' AND m.object_role = 'entry'
                   ORDER BY m.rowid
                   LIMIT 1",
                 params![first_rowid, last_rowid],
@@ -75,10 +78,11 @@ fn pack_semantic_chunk(
     let mut statement = connection
         .prepare(
             "SELECT m.rowid, e.dimensions, e.norm, e.vector, c.source, m.created_at
-               FROM message_embeddings e
-               JOIN objects m ON m.origin = 'provider' AND m.object_role = 'entry' AND m.id = e.message_id
+               FROM objects m NOT INDEXED
+               CROSS JOIN message_embeddings e ON e.message_id = m.id
                JOIN objects c ON c.origin = 'provider' AND c.object_role = 'container' AND c.id = m.conversation_id
               WHERE m.rowid BETWEEN ?1 AND ?2
+                AND m.origin = 'provider' AND m.object_role = 'entry'
                 AND e.generation = ?3
                 AND COALESCE(m.search_projection, m.content) <> ''
               ORDER BY m.rowid",

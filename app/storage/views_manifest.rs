@@ -19,6 +19,7 @@ impl Storage {
             .transpose()
     }
 
+    #[tracing::instrument(name = "publish_lexical_manifest", skip_all)]
     pub(crate) fn publish_lexical_manifest(&self) -> Result<(), AppError> {
         self.require_writer()?;
         let silver = self.silver_certificate()?;
@@ -27,10 +28,8 @@ impl Storage {
                 "lexical publication requires complete silver and clean derived data",
             ));
         }
-        let manifest = crate::views::lexical_manifest::Manifest::new(
-            silver,
-            self.counts()?.searchable_messages,
-        );
+        let manifest =
+            crate::views::lexical_manifest::Manifest::new(silver, self.searchable_message_count()?);
         let json = serde_json::to_string(&manifest)
             .map_err(|_| AppError::internal("serialize lexical build manifest"))?;
         self.connection
@@ -40,6 +39,20 @@ impl Storage {
             )
             .map_err(AppError::database)?;
         Ok(())
+    }
+
+    /// Native entries with lexical text, counted from their partial index alone.
+    fn searchable_message_count(&self) -> Result<u64, AppError> {
+        let count: i64 = self
+            .connection
+            .query_row(
+                "SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+                  WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> ''",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(AppError::database)?;
+        u64::try_from(count).map_err(|_| AppError::internal("negative searchable message count"))
     }
 
     pub(crate) fn views_manifest(&self) -> Result<Option<Manifest>, AppError> {

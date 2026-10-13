@@ -177,10 +177,27 @@ fn selected_query(sql: &str, kind: BatchKind, after: Option<i64>) -> Result<Stri
     let Some(after) = after else {
         return Ok(sql.to_owned());
     };
-    let id = match kind {
-        BatchKind::Conversations => "c.id",
-        BatchKind::Messages => "m.conversation_id",
-        BatchKind::Tombstones => "conversation_id",
+    // A delta reads only changed threads. Name their indexes: SQLite would
+    // otherwise filter every native row through the low-selectivity origin index.
+    let (id, table, indexed) = match kind {
+        BatchKind::Conversations => (
+            "c.id",
+            "FROM objects c ",
+            "FROM objects c INDEXED BY objects_native_container ",
+        ),
+        BatchKind::Messages => (
+            "m.conversation_id",
+            "FROM objects m ",
+            "FROM objects m INDEXED BY objects_conversation ",
+        ),
+        BatchKind::Tombstones => ("conversation_id", "", ""),
+    };
+    let sql = if table.is_empty() {
+        sql.to_owned()
+    } else if sql.contains(table) {
+        sql.replacen(table, indexed, 1)
+    } else {
+        return Err(AppError::internal("missing publication source table"));
     };
     let (query, order) = sql
         .split_once(" ORDER BY")

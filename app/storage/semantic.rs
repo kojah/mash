@@ -8,18 +8,47 @@ use super::semantic_chunks::{
 use super::{EmbeddingWrite, SemanticChunk, SemanticChunks, Storage, cutoff_timestamp};
 use crate::AppError;
 
+/// What vouches for a resumed snapshot's vectors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SnapshotCoverage {
+    /// Prove every searchable message has exactly one current vector.
+    Recheck,
+    /// The published views manifest certified these vectors at the current
+    /// silver revision. Canonical writes change that revision, and every views
+    /// writer either queues embeddings, stages chunks or clears the snapshot.
+    Certified,
+}
+
 impl Storage {
     pub(crate) fn clear_dense_views(&self) -> Result<(), AppError> {
         self.require_writer()?;
         self.connection.execute_batch("DELETE FROM connector_embeddings; DELETE FROM message_embeddings; DELETE FROM semantic_chunks; DELETE FROM dirty_semantic_chunks; DELETE FROM pending_embeddings; UPDATE derived_state SET semantic_ready_generation=NULL,resume_generation=NULL,resume_silver_revision=NULL,resume_interpretation_version=NULL WHERE singleton=1;")
             .map_err(AppError::database)
     }
+    /// Restore the ready snapshot recorded when this scan began, provided
+    /// silver is unchanged since and no vector work is queued.
+    #[tracing::instrument(name = "resume_semantic_views", skip_all, fields(coverage = ?coverage))]
     pub(crate) fn resume_unchanged_semantic_snapshot(
         &mut self,
         generation: &str,
+        coverage: SnapshotCoverage,
     ) -> Result<(), AppError> {
         self.require_writer()?;
-        if self.has_pending_embeddings()? || !self.semantic_coverage_is_complete(generation)? {
+        if self.has_pending_embeddings()? {
+            return Ok(());
+        }
+        let covered = match coverage {
+            SnapshotCoverage::Recheck => self.semantic_coverage_is_complete(generation)?,
+            SnapshotCoverage::Certified => !self
+                .connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM dirty_semantic_chunks)",
+                    [],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(AppError::database)?,
+        };
+        if !covered {
             return Ok(());
         }
         self.connection.execute(
@@ -65,7 +94,7 @@ impl Storage {
                 // partial identity index keeps both checks off message bodies.
                 "SELECT
                  (SELECT count(*) FROM message_embeddings WHERE generation=?1) =
-                 (SELECT count(*) FROM objects
+                 (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
                   WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user'))
                  AND NOT EXISTS (
                     SELECT 1
@@ -103,7 +132,7 @@ impl Storage {
                 .connection
                 .query_row(
                     "SELECT
-                        (SELECT count(*) FROM objects
+                        (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
                           WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '' AND (?2=0 OR role='user')) =
                         (SELECT COALESCE(sum(vector_count), 0)
                            FROM semantic_chunks WHERE generation = ?1)",
@@ -159,6 +188,7 @@ impl Storage {
         Ok(())
     }
 
+    #[tracing::instrument(name = "certify_semantic_views", skip_all)]
     pub(crate) fn mark_semantic_build_ready(
         &mut self,
         generation: &str,
@@ -174,7 +204,7 @@ impl Storage {
         let expected: i64 = self
             .connection
             .query_row(
-                "SELECT count(*) FROM objects
+                "SELECT count(*) FROM objects INDEXED BY objects_searchable_role
                   WHERE origin = 'provider' AND object_role = 'entry' AND COALESCE(search_projection, content) <> '' AND (?1=0 OR role='user')",
                 [build.users_only()],
                 |row| row.get(0),

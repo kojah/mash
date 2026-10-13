@@ -66,6 +66,7 @@ fn nearest_directory(path: &Path) -> Result<PathBuf, AppError> {
         .ok_or_else(|| AppError::configuration("watch path has no existing parent directory"))
 }
 
+#[tracing::instrument(name = "watch_attach", skip_all, fields(roots = targets.roots.len()))]
 fn attach(mut targets: Targets, sender: mpsc::Sender<()>) -> Result<RecommendedWatcher, AppError> {
     let cwd = std::env::current_dir().map_err(|_| AppError::internal("resolve watch paths"))?;
     for path in targets.roots.iter_mut().chain(&mut targets.files) {

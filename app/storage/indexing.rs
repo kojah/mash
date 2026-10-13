@@ -44,8 +44,19 @@ impl Storage {
             .map_err(AppError::database)
     }
 
+    /// The larger of the current and pre-transaction native message counts.
     pub(super) fn measured_fts_bulk_threshold(&self) -> Result<u64, AppError> {
-        let messages = self.message_count()?.max(self.transaction_base_messages);
+        let current = self.message_count()?;
+        let (inserted, deleted): (i64, i64) = self
+            .connection
+            .query_row(
+                "SELECT inserted, deleted FROM transaction_entry_delta WHERE singleton = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(AppError::database)?;
+        let removed = u64::try_from(deleted.saturating_sub(inserted)).unwrap_or(0);
+        let messages = current.saturating_add(removed);
         Ok(messages
             .saturating_mul(FTS_BULK_REBUILD_PERCENT)
             .saturating_add(99)
@@ -60,6 +71,29 @@ impl Storage {
         u64::try_from(messages).map_err(|_| AppError::internal("negative message count"))
     }
 
+    /// Apply queued FTS changes, measuring the archive only when some are queued.
+    pub(super) fn refresh_pending_fts(&mut self) -> Result<FtsRefreshStrategy, AppError> {
+        self.require_writer()?;
+        if self.search_updates != SearchUpdates::Immediate {
+            return Ok(FtsRefreshStrategy::Deferred);
+        }
+        if self.pending_fts_count()? == 0 {
+            return Ok(FtsRefreshStrategy::None);
+        }
+        let threshold = self.measured_fts_bulk_threshold()?;
+        self.finalize_pending_fts_updates(threshold)
+    }
+
+    fn pending_fts_count(&self) -> Result<u64, AppError> {
+        let changed: i64 = self
+            .connection
+            .query_row("SELECT count(*) FROM pending_fts_messages", [], |row| {
+                row.get(0)
+            })
+            .map_err(AppError::database)?;
+        u64::try_from(changed).map_err(|_| AppError::internal("negative pending FTS message count"))
+    }
+
     pub(super) fn finalize_pending_fts_updates(
         &mut self,
         bulk_rebuild_threshold: u64,
@@ -68,14 +102,7 @@ impl Storage {
         if self.search_updates != SearchUpdates::Immediate {
             return Ok(FtsRefreshStrategy::Deferred);
         }
-        let changed: i64 = self
-            .connection
-            .query_row("SELECT count(*) FROM pending_fts_messages", [], |row| {
-                row.get(0)
-            })
-            .map_err(AppError::database)?;
-        let changed = u64::try_from(changed)
-            .map_err(|_| AppError::internal("negative pending FTS message count"))?;
+        let changed = self.pending_fts_count()?;
         if changed == 0 {
             return Ok(FtsRefreshStrategy::None);
         }
@@ -83,16 +110,18 @@ impl Storage {
             self.rebuild_fts(false)?;
             FtsRefreshStrategy::Bulk
         } else {
+            // The queue drives the insert: planned from the origin index, it
+            // would visit every native row to find a few changed ones.
             self.connection
                 .execute_batch(
                     "DELETE FROM message_fts
                       WHERE message_id IN (SELECT message_id FROM pending_fts_messages);
                      INSERT INTO message_fts(content, message_id, conversation_id)
-                     SELECT COALESCE(search_projection, content), id, conversation_id
-                       FROM objects
-                      WHERE origin = 'provider' AND object_role = 'entry'
-                        AND id IN (SELECT message_id FROM pending_fts_messages)
-                        AND COALESCE(search_projection, content) <> '';
+                     SELECT COALESCE(m.search_projection, m.content), m.id, m.conversation_id
+                       FROM pending_fts_messages p
+                      CROSS JOIN objects m
+                         ON m.origin = 'provider' AND m.object_role = 'entry' AND m.id = p.message_id
+                      WHERE COALESCE(m.search_projection, m.content) <> '';
                      DELETE FROM pending_fts_messages;",
                 )
                 .map_err(AppError::database)?;
@@ -180,12 +209,12 @@ impl Storage {
         Ok(())
     }
 
+    #[tracing::instrument(name = "refresh_search", skip_all)]
     pub(crate) fn refresh_derived_search_state(&mut self) -> Result<(), AppError> {
         self.require_writer()?;
         if self.search_updates == SearchUpdates::Deferred {
             self.search_updates = SearchUpdates::Immediate;
-            let threshold = self.measured_fts_bulk_threshold()?;
-            self.finalize_pending_fts_updates(threshold)?;
+            self.refresh_pending_fts()?;
             self.finalize_semantic_chunks()?;
             self.connection
                 .execute(

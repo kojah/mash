@@ -33,9 +33,14 @@ impl CountsRow {
 }
 pub struct Counts;
 impl Counts {
-    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM objects WHERE origin='provider' AND object_role='container') AS conversations,
-(SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry') AS messages,
-(SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry' AND COALESCE(search_projection,content)<>'') AS searchable_messages,
+    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM objects INDEXED BY objects_native_container
+        WHERE origin='provider' AND object_role='container') AS conversations,
+CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
+        WHERE origin='provider' AND object_role<>'container')
+    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
+        WHERE object_role IN ('segment','document') AND origin='provider') AS INTEGER) AS messages,
+(SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+        WHERE origin='provider' AND object_role='entry' AND COALESCE(search_projection,content)<>'') AS searchable_messages,
 (SELECT count(*) FROM message_embeddings) AS embeddings";
     pub fn query_str(&self) -> &str {
         Self::QUERY
@@ -1288,7 +1293,9 @@ impl<'a> UpsertClaudeSource<'a> {
     pub const QUERY: &'static str = r"INSERT INTO claude_sources(source_key,source_path,conversation_id,title,project,repository)
 VALUES(?1,?2,?3,?4,?5,?6)
 ON CONFLICT(source_key) DO UPDATE SET source_path=excluded.source_path,
-conversation_id=excluded.conversation_id,title=excluded.title,project=excluded.project,repository=excluded.repository";
+conversation_id=excluded.conversation_id,title=excluded.title,project=excluded.project,repository=excluded.repository
+WHERE source_path IS NOT excluded.source_path OR conversation_id IS NOT excluded.conversation_id
+   OR title IS NOT excluded.title OR project IS NOT excluded.project OR repository IS NOT excluded.repository";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
@@ -1544,24 +1551,34 @@ impl<'a>
         }
     }
 }
-pub struct DeleteClaudeSourceMessagesRow {}
-impl DeleteClaudeSourceMessagesRow {
+pub struct ClaudeSourceMessageIdsRow {
+    pub message_id: String,
+}
+impl ClaudeSourceMessageIdsRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        Ok(Self {})
+        Ok(Self {
+            message_id: row.get(0)?,
+        })
     }
 }
-pub struct DeleteClaudeSourceMessages<'a> {
+pub struct ClaudeSourceMessageIds<'a> {
     source_key: &'a str,
 }
-impl<'a> DeleteClaudeSourceMessages<'a> {
-    pub const QUERY: &'static str = r"DELETE FROM claude_source_messages WHERE source_key=?1";
+impl<'a> ClaudeSourceMessageIds<'a> {
+    pub const QUERY: &'static str =
+        r"SELECT message_id FROM claude_source_messages WHERE source_key=?1";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> DeleteClaudeSourceMessages<'a> {
-    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
-        self.prepare(client)?.execute(self.as_params())
+impl<'a> ClaudeSourceMessageIds<'a> {
+    pub fn query_many(
+        &self,
+        client: &impl RusqliteClient,
+    ) -> rusqlite::Result<Vec<ClaudeSourceMessageIdsRow>> {
+        self.prepare(client)?
+            .query_map(self.as_params(), ClaudeSourceMessageIdsRow::from_row)?
+            .collect()
     }
     pub fn prepare<'conn>(
         &self,
@@ -1573,44 +1590,119 @@ impl<'a> DeleteClaudeSourceMessages<'a> {
         (self.source_key,)
     }
 }
-impl<'a> DeleteClaudeSourceMessages<'a> {
-    pub const fn builder() -> DeleteClaudeSourceMessagesBuilder<'a, ((),)> {
-        DeleteClaudeSourceMessagesBuilder {
+impl<'a> ClaudeSourceMessageIds<'a> {
+    pub const fn builder() -> ClaudeSourceMessageIdsBuilder<'a, ((),)> {
+        ClaudeSourceMessageIdsBuilder {
             fields: ((),),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct DeleteClaudeSourceMessagesBuilder<'a, Fields = ((),)> {
+pub struct ClaudeSourceMessageIdsBuilder<'a, Fields = ((),)> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
-impl<'a> DeleteClaudeSourceMessagesBuilder<'a, ((),)> {
-    pub fn source_key(
-        self,
-        source_key: &'a str,
-    ) -> DeleteClaudeSourceMessagesBuilder<'a, (&'a str,)> {
+impl<'a> ClaudeSourceMessageIdsBuilder<'a, ((),)> {
+    pub fn source_key(self, source_key: &'a str) -> ClaudeSourceMessageIdsBuilder<'a, (&'a str,)> {
         let ((),) = self.fields;
         let _phantom = self._phantom;
-        DeleteClaudeSourceMessagesBuilder {
+        ClaudeSourceMessageIdsBuilder {
             fields: (source_key,),
             _phantom,
         }
     }
 }
-impl<'a> DeleteClaudeSourceMessagesBuilder<'a, (&'a str,)> {
-    pub fn build(self) -> DeleteClaudeSourceMessages<'a> {
+impl<'a> ClaudeSourceMessageIdsBuilder<'a, (&'a str,)> {
+    pub fn build(self) -> ClaudeSourceMessageIds<'a> {
         let (source_key,) = self.fields;
-        DeleteClaudeSourceMessages { source_key }
+        ClaudeSourceMessageIds { source_key }
     }
 }
-pub struct InsertClaudeSourceMessageRow {}
-impl InsertClaudeSourceMessageRow {
+pub struct DeleteClaudeSourceMessageRow {}
+impl DeleteClaudeSourceMessageRow {
     pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         Ok(Self {})
     }
 }
-pub struct InsertClaudeSourceMessage<'a> {
+pub struct DeleteClaudeSourceMessage<'a> {
+    source_key: &'a str,
+    message_id: &'a str,
+}
+impl<'a> DeleteClaudeSourceMessage<'a> {
+    pub const QUERY: &'static str =
+        r"DELETE FROM claude_source_messages WHERE source_key=?1 AND message_id=?2";
+    pub fn query_str(&self) -> &str {
+        Self::QUERY
+    }
+}
+impl<'a> DeleteClaudeSourceMessage<'a> {
+    pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
+        self.prepare(client)?.execute(self.as_params())
+    }
+    pub fn prepare<'conn>(
+        &self,
+        client: &'conn impl RusqliteClient,
+    ) -> rusqlite::Result<rusqlite::Statement<'conn>> {
+        client.prepare(self.query_str())
+    }
+    pub fn as_params(&self) -> impl rusqlite::Params {
+        (self.source_key, self.message_id)
+    }
+}
+impl<'a> DeleteClaudeSourceMessage<'a> {
+    pub const fn builder() -> DeleteClaudeSourceMessageBuilder<'a, ((), ())> {
+        DeleteClaudeSourceMessageBuilder {
+            fields: ((), ()),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct DeleteClaudeSourceMessageBuilder<'a, Fields = ((), ())> {
+    fields: Fields,
+    _phantom: std::marker::PhantomData<&'a ()>,
+}
+impl<'a, MessageId> DeleteClaudeSourceMessageBuilder<'a, ((), MessageId)> {
+    pub fn source_key(
+        self,
+        source_key: &'a str,
+    ) -> DeleteClaudeSourceMessageBuilder<'a, (&'a str, MessageId)> {
+        let ((), message_id) = self.fields;
+        let _phantom = self._phantom;
+        DeleteClaudeSourceMessageBuilder {
+            fields: (source_key, message_id),
+            _phantom,
+        }
+    }
+}
+impl<'a, SourceKey> DeleteClaudeSourceMessageBuilder<'a, (SourceKey, ())> {
+    pub fn message_id(
+        self,
+        message_id: &'a str,
+    ) -> DeleteClaudeSourceMessageBuilder<'a, (SourceKey, &'a str)> {
+        let (source_key, ()) = self.fields;
+        let _phantom = self._phantom;
+        DeleteClaudeSourceMessageBuilder {
+            fields: (source_key, message_id),
+            _phantom,
+        }
+    }
+}
+impl<'a> DeleteClaudeSourceMessageBuilder<'a, (&'a str, &'a str)> {
+    pub fn build(self) -> DeleteClaudeSourceMessage<'a> {
+        let (source_key, message_id) = self.fields;
+        DeleteClaudeSourceMessage {
+            source_key,
+            message_id,
+        }
+    }
+}
+pub struct UpsertClaudeSourceMessageRow {}
+impl UpsertClaudeSourceMessageRow {
+    pub fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Self {})
+    }
+}
+pub struct UpsertClaudeSourceMessage<'a> {
     source_key: &'a str,
     message_id: &'a str,
     parent_id: Option<&'a str>,
@@ -1620,14 +1712,18 @@ pub struct InsertClaudeSourceMessage<'a> {
     created_at: Option<i64>,
     attachments: &'a str,
 }
-impl<'a> InsertClaudeSourceMessage<'a> {
+impl<'a> UpsertClaudeSourceMessage<'a> {
     pub const QUERY: &'static str = r"INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments)
-VALUES(?1,?2,?3,?4,?5,?6,?7,?8)";
+VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+ON CONFLICT(source_key,message_id) DO UPDATE SET parent_id=excluded.parent_id,role=excluded.role,
+content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments
+WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role OR content IS NOT excluded.content
+OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }
 }
-impl<'a> InsertClaudeSourceMessage<'a> {
+impl<'a> UpsertClaudeSourceMessage<'a> {
     pub fn execute(&self, client: &impl RusqliteClient) -> rusqlite::Result<usize> {
         self.prepare(client)?.execute(self.as_params())
     }
@@ -1650,21 +1746,21 @@ impl<'a> InsertClaudeSourceMessage<'a> {
         )
     }
 }
-impl<'a> InsertClaudeSourceMessage<'a> {
-    pub const fn builder() -> InsertClaudeSourceMessageBuilder<'a, ((), (), (), (), (), (), (), ())>
+impl<'a> UpsertClaudeSourceMessage<'a> {
+    pub const fn builder() -> UpsertClaudeSourceMessageBuilder<'a, ((), (), (), (), (), (), (), ())>
     {
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: ((), (), (), (), (), (), (), ()),
             _phantom: std::marker::PhantomData,
         }
     }
 }
-pub struct InsertClaudeSourceMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), ())> {
+pub struct UpsertClaudeSourceMessageBuilder<'a, Fields = ((), (), (), (), (), (), (), ())> {
     fields: Fields,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             (),
@@ -1681,7 +1777,7 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
     pub fn source_key(
         self,
         source_key: &'a str,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             &'a str,
@@ -1697,7 +1793,7 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
         let ((), message_id, parent_id, role, content, projection, created_at, attachments) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -1713,7 +1809,7 @@ impl<'a, MessageId, ParentId, Role, Content, Projection, CreatedAt, Attachments>
     }
 }
 impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1730,7 +1826,7 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
     pub fn message_id(
         self,
         message_id: &'a str,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1746,7 +1842,7 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
         let (source_key, (), parent_id, role, content, projection, created_at, attachments) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -1762,7 +1858,7 @@ impl<'a, SourceKey, ParentId, Role, Content, Projection, CreatedAt, Attachments>
     }
 }
 impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1779,7 +1875,7 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments
     pub fn parent_id(
         self,
         parent_id: Option<&'a str>,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1795,7 +1891,7 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments
         let (source_key, message_id, (), role, content, projection, created_at, attachments) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -1811,7 +1907,7 @@ impl<'a, SourceKey, MessageId, Role, Content, Projection, CreatedAt, Attachments
     }
 }
 impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachments>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1828,7 +1924,7 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachm
     pub fn role(
         self,
         role: &'a str,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1844,7 +1940,7 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachm
         let (source_key, message_id, parent_id, (), content, projection, created_at, attachments) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -1860,7 +1956,7 @@ impl<'a, SourceKey, MessageId, ParentId, Content, Projection, CreatedAt, Attachm
     }
 }
 impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachments>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1877,7 +1973,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachment
     pub fn content(
         self,
         content: &'a str,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1893,7 +1989,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachment
         let (source_key, message_id, parent_id, role, (), projection, created_at, attachments) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -1909,7 +2005,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Projection, CreatedAt, Attachment
     }
 }
 impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1926,7 +2022,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
     pub fn projection(
         self,
         projection: Option<&'a str>,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1942,7 +2038,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
         let (source_key, message_id, parent_id, role, content, (), created_at, attachments) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -1958,7 +2054,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, CreatedAt, Attachments>
     }
 }
 impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1975,7 +2071,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
     pub fn created_at(
         self,
         created_at: Option<i64>,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -1991,7 +2087,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
         let (source_key, message_id, parent_id, role, content, projection, (), attachments) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -2007,7 +2103,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, Attachments>
     }
 }
 impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -2024,7 +2120,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
     pub fn attachments(
         self,
         attachments: &'a str,
-    ) -> InsertClaudeSourceMessageBuilder<
+    ) -> UpsertClaudeSourceMessageBuilder<
         'a,
         (
             SourceKey,
@@ -2040,7 +2136,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
         let (source_key, message_id, parent_id, role, content, projection, created_at, ()) =
             self.fields;
         let _phantom = self._phantom;
-        InsertClaudeSourceMessageBuilder {
+        UpsertClaudeSourceMessageBuilder {
             fields: (
                 source_key,
                 message_id,
@@ -2056,7 +2152,7 @@ impl<'a, SourceKey, MessageId, ParentId, Role, Content, Projection, CreatedAt>
     }
 }
 impl<'a>
-    InsertClaudeSourceMessageBuilder<
+    UpsertClaudeSourceMessageBuilder<
         'a,
         (
             &'a str,
@@ -2070,10 +2166,10 @@ impl<'a>
         ),
     >
 {
-    pub fn build(self) -> InsertClaudeSourceMessage<'a> {
+    pub fn build(self) -> UpsertClaudeSourceMessage<'a> {
         let (source_key, message_id, parent_id, role, content, projection, created_at, attachments) =
             self.fields;
-        InsertClaudeSourceMessage {
+        UpsertClaudeSourceMessage {
             source_key,
             message_id,
             parent_id,
@@ -8019,8 +8115,10 @@ impl NativeMessageCountRow {
 }
 pub struct NativeMessageCount;
 impl NativeMessageCount {
-    pub const QUERY: &'static str =
-        r"SELECT count(*) AS messages FROM objects WHERE origin='provider' AND object_role='entry'";
+    pub const QUERY: &'static str = r"SELECT CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
+        WHERE origin='provider' AND object_role<>'container')
+    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
+        WHERE object_role IN ('segment','document') AND origin='provider') AS INTEGER) AS messages";
     pub fn query_str(&self) -> &str {
         Self::QUERY
     }

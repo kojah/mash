@@ -143,3 +143,80 @@ fn claude_failed_provider_scan_rolls_back_all_contributions_and_checkpoints() {
     let left = stable_id("claude-message", &["copied-thread", "left"]);
     assert_eq!(storage.view(&left, 1).unwrap().len(), 2);
 }
+
+#[test]
+fn claude_refresh_writes_only_changed_contribution_rows() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("sources");
+    fs::create_dir(&root).unwrap();
+    let path = root.join("session.jsonl");
+    let database = directory.path().join("index.sqlite3");
+    let refresh = |rows: &[(&str, Option<&str>, &str)]| {
+        transcript(&path, rows);
+        let mut storage = Storage::open_writer(&database).unwrap();
+        index(&mut storage, &options(&root)).unwrap();
+        storage.commit_writer().unwrap();
+    };
+    refresh(&[("a", None, "first"), ("b", Some("a"), "second")]);
+    let log = rusqlite::Connection::open(&database).unwrap();
+    log.execute_batch(
+        "CREATE TABLE contribution_writes(operation TEXT NOT NULL);
+         CREATE TRIGGER contribution_inserted AFTER INSERT ON claude_source_messages
+         BEGIN INSERT INTO contribution_writes VALUES ('insert'); END;
+         CREATE TRIGGER contribution_updated AFTER UPDATE ON claude_source_messages
+         BEGIN INSERT INTO contribution_writes VALUES ('update'); END;
+         CREATE TRIGGER contribution_deleted AFTER DELETE ON claude_source_messages
+         BEGIN INSERT INTO contribution_writes VALUES ('delete'); END;",
+    )
+    .unwrap();
+    let writes = || {
+        let operations = log
+            .prepare("SELECT operation FROM contribution_writes ORDER BY rowid")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        log.execute("DELETE FROM contribution_writes", []).unwrap();
+        operations
+    };
+    // An appended transcript writes only its new row, not the whole source.
+    refresh(&[
+        ("a", None, "first"),
+        ("b", Some("a"), "second"),
+        ("c", Some("b"), "third"),
+    ]);
+    assert_eq!(writes(), ["insert"]);
+    refresh(&[
+        ("a", None, "first"),
+        ("b", Some("a"), "second, edited"),
+        ("c", Some("b"), "third"),
+    ]);
+    assert_eq!(writes(), ["update"]);
+    refresh(&[("a", None, "first"), ("b", Some("a"), "second, edited")]);
+    assert_eq!(writes(), ["delete"]);
+    // Rewriting identical history changes neither rows nor the silver revision,
+    // so certified views over it stay current.
+    let revision = || {
+        Storage::open_catalog(&database)
+            .unwrap()
+            .silver_certificate()
+            .unwrap()
+            .revision
+    };
+    let before = revision();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    refresh(&[("a", None, "first"), ("b", Some("a"), "second, edited")]);
+    assert_eq!(writes(), Vec::<String>::new());
+    assert_eq!(revision(), before);
+    let storage = Storage::open_catalog(&database).unwrap();
+    assert_eq!(storage.counts().unwrap().messages, 2);
+    let edited = stable_id("claude-message", &["copied-thread", "b"]);
+    let context = storage.view(&edited, 1).unwrap();
+    assert_eq!(context.len(), 2);
+    assert!(
+        context
+            .iter()
+            .any(|message| message.content == "second, edited")
+    );
+}

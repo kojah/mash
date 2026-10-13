@@ -1,7 +1,13 @@
 -- name: Counts :one
-SELECT (SELECT count(*) FROM objects WHERE origin='provider' AND object_role='container') AS conversations,
-(SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry') AS messages,
-(SELECT count(*) FROM objects WHERE origin='provider' AND object_role='entry' AND COALESCE(search_projection,content)<>'') AS searchable_messages,
+-- Every count reads only an index, never message bodies: see NativeMessageCount.
+SELECT (SELECT count(*) FROM objects INDEXED BY objects_native_container
+        WHERE origin='provider' AND object_role='container') AS conversations,
+CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
+        WHERE origin='provider' AND object_role<>'container')
+    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
+        WHERE object_role IN ('segment','document') AND origin='provider') AS INTEGER) AS messages,
+(SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+        WHERE origin='provider' AND object_role='entry' AND COALESCE(search_projection,content)<>'') AS searchable_messages,
 (SELECT count(*) FROM message_embeddings) AS embeddings;
 
 -- name: ListChats :many
@@ -65,14 +71,24 @@ LEFT JOIN source_checkpoints c ON c.provider='claude-code' AND c.source_key=s.so
 INSERT INTO claude_sources(source_key,source_path,conversation_id,title,project,repository)
 VALUES(sqlc.arg(source_key),sqlc.arg(source_path),sqlc.arg(conversation_id),sqlc.narg(title),sqlc.narg(project),sqlc.narg(repository))
 ON CONFLICT(source_key) DO UPDATE SET source_path=excluded.source_path,
-conversation_id=excluded.conversation_id,title=excluded.title,project=excluded.project,repository=excluded.repository;
+conversation_id=excluded.conversation_id,title=excluded.title,project=excluded.project,repository=excluded.repository
+WHERE source_path IS NOT excluded.source_path OR conversation_id IS NOT excluded.conversation_id
+   OR title IS NOT excluded.title OR project IS NOT excluded.project OR repository IS NOT excluded.repository;
 
--- name: DeleteClaudeSourceMessages :exec
-DELETE FROM claude_source_messages WHERE source_key=sqlc.arg(source_key);
+-- name: ClaudeSourceMessageIds :many
+SELECT message_id FROM claude_source_messages WHERE source_key=sqlc.arg(source_key);
 
--- name: InsertClaudeSourceMessage :exec
+-- name: DeleteClaudeSourceMessage :exec
+DELETE FROM claude_source_messages WHERE source_key=sqlc.arg(source_key) AND message_id=sqlc.arg(message_id);
+
+-- name: UpsertClaudeSourceMessage :exec
+-- An unchanged row is not rewritten, so appending to a transcript writes only its new rows.
 INSERT INTO claude_source_messages(source_key,message_id,parent_id,role,content,projection,created_at,attachments)
-VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),sqlc.arg(content),sqlc.narg(projection),sqlc.narg(created_at),sqlc.arg(attachments));
+VALUES(sqlc.arg(source_key),sqlc.arg(message_id),sqlc.narg(parent_id),sqlc.arg(role),sqlc.arg(content),sqlc.narg(projection),sqlc.narg(created_at),sqlc.arg(attachments))
+ON CONFLICT(source_key,message_id) DO UPDATE SET parent_id=excluded.parent_id,role=excluded.role,
+content=excluded.content,projection=excluded.projection,created_at=excluded.created_at,attachments=excluded.attachments
+WHERE parent_id IS NOT excluded.parent_id OR role IS NOT excluded.role OR content IS NOT excluded.content
+OR projection IS NOT excluded.projection OR created_at IS NOT excluded.created_at OR attachments IS NOT excluded.attachments;
 
 -- name: DeleteClaudeSource :exec
 DELETE FROM claude_sources WHERE source_key=sqlc.arg(source_key);
@@ -302,7 +318,14 @@ SELECT source AS source_id, id, record FROM objects
 WHERE origin = 'connector' AND object_role = 'container';
 
 -- name: NativeMessageCount :one
-SELECT count(*) AS messages FROM objects WHERE origin='provider' AND object_role='entry';
+-- Entries are the native non-containers that are neither segments nor documents.
+-- Counting a table predicate on object_role would read every row's body pages;
+-- the native identity index and the few segment lookups are proportional to
+-- the index, not the archive.
+SELECT CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
+        WHERE origin='provider' AND object_role<>'container')
+    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
+        WHERE object_role IN ('segment','document') AND origin='provider') AS INTEGER) AS messages;
 
 -- name: NativeSourceFingerprint :one
 SELECT source_fingerprint FROM native_chats WHERE conversation_id=sqlc.arg(id);

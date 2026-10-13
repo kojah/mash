@@ -288,12 +288,17 @@ pub(crate) fn retain(
                 return Ok(metadata);
             }
             let digest = blake3::hash(&bytes).to_hex().to_string();
-            fs::create_dir_all(root).map_err(AppError::io)?;
-            // Atomic replace prevents concurrent indexing from serving partially written files.
-            let mut file = tempfile::NamedTempFile::new_in(root).map_err(AppError::io)?;
-            std::io::Write::write_all(&mut file, &bytes).map_err(AppError::io)?;
-            file.persist(root.join(&digest))
-                .map_err(|e| AppError::io(e.error))?;
+            let path = root.join(&digest);
+            // Files are content-addressed and only ever appear by atomic rename,
+            // so an existing one already holds these bytes. Rewriting it on every
+            // refresh of a growing transcript would cost writes and churn the cache.
+            if !path.is_file() {
+                fs::create_dir_all(root).map_err(AppError::io)?;
+                // Atomic replace prevents concurrent indexing from serving partially written files.
+                let mut file = tempfile::NamedTempFile::new_in(root).map_err(AppError::io)?;
+                std::io::Write::write_all(&mut file, &bytes).map_err(AppError::io)?;
+                file.persist(&path).map_err(|e| AppError::io(e.error))?;
+            }
             metadata.availability = Availability::Retained;
             metadata.bytes = Some(bytes.len() as u64);
             metadata.digest = Some(digest);

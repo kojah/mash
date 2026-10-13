@@ -1,5 +1,5 @@
 use super::*;
-use crate::storage::{EmbeddingWrite, Storage};
+use crate::storage::{EmbeddingWrite, SnapshotCoverage, Storage};
 
 #[test]
 fn rejected_refresh_can_resume_only_the_unchanged_previously_published_views() {
@@ -34,19 +34,66 @@ fn rejected_refresh_can_resume_only_the_unchanged_previously_published_views() {
     storage.finish_silver_scan(Provider::Codex, false).unwrap();
     assert!(!storage.semantic_index_is_ready("fixture").unwrap());
     storage
-        .resume_unchanged_semantic_snapshot("other-model")
+        .resume_unchanged_semantic_snapshot("other-model", SnapshotCoverage::Recheck)
         .unwrap();
     assert!(!storage.semantic_index_is_ready("fixture").unwrap());
     storage
-        .resume_unchanged_semantic_snapshot("fixture")
+        .resume_unchanged_semantic_snapshot("fixture", SnapshotCoverage::Recheck)
         .unwrap();
     assert!(storage.semantic_index_is_ready("fixture").unwrap());
     assert!(!storage.silver_certificate().unwrap().is_complete());
     storage.begin_silver_scan(Provider::Codex).unwrap();
     conversation.title = Some("changed canonical metadata".into());
     storage.replace_conversation(&conversation).unwrap();
+    for coverage in [SnapshotCoverage::Recheck, SnapshotCoverage::Certified] {
+        storage
+            .resume_unchanged_semantic_snapshot("fixture", coverage)
+            .unwrap();
+        assert!(!storage.semantic_index_is_ready("fixture").unwrap());
+    }
+}
+
+#[test]
+fn certified_resume_still_requires_unchanged_silver_and_no_queued_vectors() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut storage = Storage::open_writer(&directory.path().join("history.sqlite3")).unwrap();
+    let conversation =
+        crate::storage::tests::conversation_with_messages(&[("message-1", "qdrant vectors")]);
+    storage.replace_conversation(&conversation).unwrap();
+    storage.begin_silver_scan(Provider::Codex).unwrap();
+    storage.finish_silver_scan(Provider::Codex, true).unwrap();
+    storage.finish_silver_ingestion().unwrap();
+    storage.rebuild_derived_search_state().unwrap();
     storage
-        .resume_unchanged_semantic_snapshot("fixture")
+        .replace_embeddings(
+            "fixture",
+            &[EmbeddingWrite {
+                message_id: "message-1",
+                vector: &[127, 0],
+                norm: 127.0,
+            }],
+        )
+        .unwrap();
+    storage.mark_semantic_index_ready("fixture").unwrap();
+    // An unchanged scan resumes the certified snapshot.
+    storage.begin_silver_scan(Provider::Codex).unwrap();
+    storage.finish_silver_scan(Provider::Codex, true).unwrap();
+    assert!(!storage.semantic_index_is_ready("fixture").unwrap());
+    storage
+        .resume_unchanged_semantic_snapshot("fixture", SnapshotCoverage::Certified)
+        .unwrap();
+    assert!(storage.semantic_index_is_ready("fixture").unwrap());
+    // Queued vector work blocks it, though silver is unchanged.
+    storage.begin_silver_scan(Provider::Codex).unwrap();
+    storage
+        .connection
+        .execute(
+            "INSERT INTO pending_embeddings(message_id) VALUES ('message-1')",
+            [],
+        )
+        .unwrap();
+    storage
+        .resume_unchanged_semantic_snapshot("fixture", SnapshotCoverage::Certified)
         .unwrap();
     assert!(!storage.semantic_index_is_ready("fixture").unwrap());
 }

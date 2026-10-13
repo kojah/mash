@@ -992,3 +992,62 @@ fn ordinary_writer_commits_leave_wal_checkpointing_to_sqlite() {
         "a small commit must not force a blocking WAL truncation"
     );
 }
+
+#[test]
+fn fts_threshold_counts_entries_cascaded_with_their_conversation() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let path = directory.path().join("cascade.sqlite3");
+    let messages = (0..5)
+        .map(|index| (format!("kept-{index}"), format!("kept {index}")))
+        .collect::<Vec<_>>();
+    let refs = messages
+        .iter()
+        .map(|(id, content)| (id.as_str(), content.as_str()))
+        .collect::<Vec<_>>();
+    let kept = conversation_with_messages(&refs);
+    let messages = (0..5)
+        .map(|index| (format!("removed-{index}"), format!("removed {index}")))
+        .collect::<Vec<_>>();
+    let refs = messages
+        .iter()
+        .map(|(id, content)| (id.as_str(), content.as_str()))
+        .collect::<Vec<_>>();
+    let mut removed = conversation_with_messages(&refs);
+    removed.id = "session-2".to_owned();
+    removed.source = crate::silver::SourceIdentity::file(PathBuf::from("/tmp/session-2.jsonl"));
+    let mut writer = Storage::open_writer(&path).expect("writer");
+    writer.replace_conversation(&kept).expect("seed kept");
+    writer.replace_conversation(&removed).expect("seed removed");
+    writer.commit_writer().expect("commit seed");
+    drop(writer);
+
+    let mut writer = Storage::open_writer(&path).expect("removal writer");
+    // Its entries leave through the container's foreign-key cascade.
+    writer
+        .remove_canonical_conversation("session-2")
+        .expect("remove conversation");
+    assert_eq!(writer.message_count().unwrap(), 5);
+    assert_eq!(
+        writer.measured_fts_bulk_threshold().unwrap(),
+        9,
+        "cascaded deletions use the pre-transaction corpus"
+    );
+    // A savepoint rollback restores the corpus and its delta together.
+    writer.begin_provider_scan().unwrap();
+    writer
+        .remove_canonical_conversation("session-1")
+        .expect("remove kept conversation");
+    assert_eq!(writer.message_count().unwrap(), 0);
+    writer.rollback_provider_scan().unwrap();
+    assert_eq!(writer.message_count().unwrap(), 5);
+    assert_eq!(writer.measured_fts_bulk_threshold().unwrap(), 9);
+    writer.commit_writer().expect("commit removal");
+    drop(writer);
+
+    let writer = Storage::open_writer(&path).expect("next writer");
+    assert_eq!(
+        writer.measured_fts_bulk_threshold().unwrap(),
+        5,
+        "each transaction measures from its own start"
+    );
+}

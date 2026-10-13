@@ -43,7 +43,6 @@ impl Storage {
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
-            transaction_base_messages: 0,
         })
     }
 
@@ -85,7 +84,6 @@ impl Storage {
             connection,
             writer_active: false,
             search_updates: SearchUpdates::Immediate,
-            transaction_base_messages: 0,
         };
         Ok(StatusSnapshot {
             lexical: storage.lexical_manifest()?,
@@ -125,6 +123,7 @@ impl Storage {
             .collect()
     }
 
+    #[tracing::instrument(name = "count_index", skip_all)]
     pub(crate) fn counts(&self) -> Result<Counts, AppError> {
         let counts = sql::Counts
             .query_one(&self.connection)
