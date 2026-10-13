@@ -68,6 +68,14 @@ jobs:
           MASH_CONNECTOR_CONTRACT_BINARY="$GITHUB_WORKSPACE/target/debug/examples/connector-schema" \
             MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --directory sdk/python --locked python -m unittest discover -s tests
+      - name: Verify plugin session recall hooks
+        working-directory: plugins/mash/hooks
+        run: |
+          uv tool run --from ruff==0.15.20 ruff check .
+          uv tool run --from ruff==0.15.20 ruff format --check .
+          uv tool run --from ty==0.0.38 ty check .
+          MASH_RECALL_TEST_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
+            python3 -m unittest discover -s tests
       - name: Verify deployment gate
         run: |
           python3 .github/scripts/test-deploy-gate.py

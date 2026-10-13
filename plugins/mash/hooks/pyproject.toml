@@ -1,0 +1,10 @@
+# Lint and type settings for the hook scripts. They run in the agent host's own
+# python3 with only the standard library, so the floor is Python 3.9.
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ty.environment]
+python-version = "3.9"

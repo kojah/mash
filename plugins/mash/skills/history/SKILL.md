@@ -13,7 +13,7 @@ connection handshake can predate the current worker; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"acf6a50944f1c464c72eef1064c9c45acaa4597d5fd7e6b34fe767fa0b5f88f4","tool":"search","topic":"discovery"}
+{"expected_contract":"52a6dcfca6d24ec990d23e4081fa5e73aa73d1d8d48abbcd7fbf5c6e71ff27d9","tool":"search","topic":"discovery"}
 ```
 
 
@@ -39,6 +39,16 @@ If the skill fingerprint differs, follow live help. Reconnect when the session
 reports an incompatible contract; a new binary alone does not change already
 loaded skill text. Never replay a mutation whose outcome is unknown.
 
+The plugin's SessionStart hook may add project recall: records first, then
+recent project chats with `view` lookups. Records are connector entries from
+source `mash-recall` (kinds `recall:decision`, `recall:preference`,
+`recall:fact`, `recall:open-question`) that quote exact cited messages; filter
+with `source` and view the cited message before relying on one. When the hook
+lists undistilled activity, read it, recap what is relevant to this project in
+your first reply, then pass only quote-supported records and every chat you read
+to the helper command it names. The helper drops unverifiable quotes, commits
+survivors to local silver and advances only the covered chats' watermarks.
+
 If MCP is absent or disconnected, use the configured `mash` executable with the
 same configuration, database, models and scope. Tool errors and empty results
 are not connection failures. Consult command help for exact filters.
@@ -46,4 +56,5 @@ are not connection failures. Consult command help for exact filters.
 ```bash cli
 mash search 'Qdrant' --intent exact-mention --unit chats --limit 5
 mash view MESSAGE_ID --context 2
+mash search 'watermarks' --source mash-recall --unit messages
 ```

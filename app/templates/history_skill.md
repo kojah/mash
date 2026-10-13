@@ -34,6 +34,16 @@ If the skill fingerprint differs, follow live help. Reconnect when the session
 reports an incompatible contract; a new binary alone does not change already
 loaded skill text. Never replay a mutation whose outcome is unknown.
 
+The plugin's SessionStart hook may add project recall: records first, then
+recent project chats with `view` lookups. Records are connector entries from
+source `mash-recall` (kinds `recall:decision`, `recall:preference`,
+`recall:fact`, `recall:open-question`) that quote exact cited messages; filter
+with `source` and view the cited message before relying on one. When the hook
+lists undistilled activity, read it, recap what is relevant to this project in
+your first reply, then pass only quote-supported records and every chat you read
+to the helper command it names. The helper drops unverifiable quotes, commits
+survivors to local silver and advances only the covered chats' watermarks.
+
 If MCP is absent or disconnected, use the configured `mash` executable with the
 same configuration, database, models and scope. Tool errors and empty results
 are not connection failures. Consult command help for exact filters.
@@ -41,4 +51,5 @@ are not connection failures. Consult command help for exact filters.
 ```bash cli
 mash search 'Qdrant' --intent exact-mention --unit chats --limit 5
 mash view MESSAGE_ID --context 2
+mash search 'watermarks' --source mash-recall --unit messages
 ```

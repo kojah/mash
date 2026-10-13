@@ -203,8 +203,8 @@ Mash MCP, falls back to the CLI when MCP is unavailable, and guides chat
 discovery, scoped message searches and evidence-backed answers about past
 decisions. It uses the existing Mash connection rather than starting a duplicate
 MCP server. The plugin requires a configured Mash executable/index; install and
-connect Mash using the setup above. No startup hooks or automatic indexing are
-part of this plugin.
+connect Mash using the setup above. Its only hook is the read-only session
+recall below; the plugin never indexes history or downloads models.
 
 From this repository, install the local plugin:
 
@@ -233,6 +233,57 @@ use `claude --plugin-dir ./plugins/mash` instead of installing it. After edits,
 reload the plugin or start a new session; installed copies may require a
 marketplace/plugin refresh. Rebuilding the Mash binary and reloading skill files
 are separate operations.
+
+### Session recall
+
+`plugins/mash/hooks/hooks.json` runs `session_start.py` on SessionStart
+(`startup|resume|clear|compact`). It resolves the session's project (the Git
+toplevel of `cwd` and its `origin` URL, matched against each chat's recorded
+project and repository) and adds at most 2,000 characters of context: this
+project's recall records first, then its most recent chats with copyable `view`
+lookups, excluding the current session. It reads only `list-chats --local` and
+`view`, so it needs no models or current lexical views, and it fails open: any
+error, missing executable or index, or its 3-second deadline yields no output and
+exit status 0. The executable is `$MASH_BIN`, else `mash-dev`, else `mash`.
+
+Distillation is lazy rather than tied to session end. Up to three project chats
+active in the last seven days with messages newer than their watermark are listed
+as undistilled; the agent is asked to read them, open its first reply with a short
+recap and pass durable decisions, preferences, facts and open questions to
+`plugins/mash/hooks/record.py`:
+
+```json
+{"records": [{"kind": "decision", "statement": "...",
+              "evidence": [{"message_id": "...", "quote": "exact text"}]}],
+ "covered": [{"chat_id": "...", "message_id": "newest message read"}]}
+```
+
+The helper checks every quote against `mash view MESSAGE_ID` and drops any record
+with a quote that is not an exact substring. Survivors go to local silver through
+`mash index --connector-batch` as connector source `mash-recall`: one
+`recall:project` container per project and `recall:decision`, `recall:preference`,
+`recall:fact` or `recall:open-question` entries whose text and metadata name the
+project and the cited message IDs and quotes. They become searchable after the
+next `mash index` (`mash search ... --source mash-recall`); like other connector
+records they are not published by node publication. Watermarks advance only for
+the covered chats, after delivery succeeds. The connector revision, any
+unacknowledged batch (resent before new work) and per-project watermarks live in
+`<Mash data directory>/recall/` (`~/.local/share/mash/recall` on Linux;
+override with `MASH_RECALL_STATE_DIR`). The scripts use only the Python 3.9+
+standard library. Codex runs the same `hooks/hooks.json` once you trust the
+plugin's hooks (`/hooks`); it sets `CLAUDE_PLUGIN_ROOT` for compatibility.
+
+Check the hooks with:
+
+```bash
+cd plugins/mash/hooks
+uv tool run --from ruff ruff check . && uv tool run --from ruff ruff format --check .
+uv tool run ty check .
+python3 -m unittest discover -s tests
+```
+
+`MASH_RECALL_TEST_BINARY=/path/to/mash` additionally delivers records through a
+real Mash into a disposable index.
 
 The manifests/catalogues follow the official
 [Codex plugin format](https://developers.openai.com/plugins/build/plugins) and
