@@ -1,5 +1,5 @@
 # Lint and type settings for the hook scripts. They run in the agent host's own
-# python3 with only the standard library, so the floor is Python 3.9.
+# python3 (macOS ships 3.9) with only the standard library.
 [tool.ruff]
 target-version = "py39"
 

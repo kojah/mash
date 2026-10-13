@@ -268,10 +268,10 @@ with a quote that is not an exact substring. Survivors go to local silver throug
 project and the cited message IDs and quotes. They become searchable after the
 next `mash index` (`mash search ... --source mash-recall`); like other connector
 records they are not published by node publication. Watermarks advance only for
-the covered chats, after delivery succeeds. The connector revision, any
-unacknowledged batch (resent before new work) and per-project watermarks live in
-`<Mash data directory>/recall/` (`~/.local/share/mash/recall` on Linux;
-override with `MASH_RECALL_STATE_DIR`). The scripts use only the Python 3.9+
+the covered chats, after delivery succeeds. The connector revision and
+per-project watermarks live in `<Mash data directory>/recall/`
+(`~/.local/share/mash/recall` on Linux; override with `MASH_RECALL_STATE_DIR`),
+replaced atomically without a lock. The scripts use only the Python 3.9+
 standard library. Codex runs the same `hooks/hooks.json` once you trust the
 plugin's hooks (`/hooks`); it sets `CLAUDE_PLUGIN_ROOT` for compatibility.
 

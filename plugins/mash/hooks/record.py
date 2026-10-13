@@ -1,6 +1,6 @@
 """Record distilled project knowledge into Mash and advance distillation watermarks.
 
-Input (stdin or --input), all quotes exact substrings of the cited messages:
+Input on stdin, every quote an exact substring of its cited message:
 
     {"records": [{"kind": "decision", "statement": "...",
                   "evidence": [{"message_id": "...", "quote": "..."}]}],
@@ -9,183 +9,244 @@ Input (stdin or --input), all quotes exact substrings of the cited messages:
 Each quote is checked against `mash view MESSAGE_ID`; a record with any
 unverifiable quote is dropped. Survivors are committed to local Mash silver
 with `mash index --connector-batch` (source `mash-recall`). Watermarks advance
-only for the covered chats, and only after any delivery succeeded.
+only for the covered chats, and only after the write succeeded.
 """
 
 from __future__ import annotations
 
-import argparse  # Standard library only: runs in the host's interpreter.
+import argparse
 import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Any
 
-from mash_recall import client, project, records, state
-from mash_recall.json_value import items, mapping
+import recall_common as common
 
-VIEW_TIMEOUT = 15.0
-DELIVERY_TIMEOUT = 60.0
-BATCH_VERSION = 2
-
-
-class Failure(Exception):
-    pass
+KINDS = ("decision", "preference", "fact", "open_question")
+PROJECT_KIND = "recall:project"
+AUTHOR = {"id": "mash-recall", "kind": "bot", "name": "Mash recall"}
+MIN_QUOTE = 12
+CONFLICT_EXIT = 12
 
 
-def fetcher(mash: client.Mash) -> Callable[[str], client.Message | None]:
-    cache: dict[str, client.Message | None] = {}
-
-    def fetch(message_id: str) -> client.Message | None:
-        if message_id not in cache:
-            try:
-                messages = mash.view(message_id, 0, VIEW_TIMEOUT)
-            except client.MashError:
-                messages = []
-            cache[message_id] = next(
-                (message for message in messages if message.id == message_id), None
-            )
-        return cache[message_id]
-
-    return fetch
+def texts(item: Any, *keys: str) -> bool:
+    return all(isinstance(item.get(k), str) and item[k].strip() for k in keys)
 
 
-def batch(
-    source_state: state.SourceState, changes: list[dict[str, object]]
-) -> dict[str, object]:
-    body = json.dumps(changes, sort_keys=True).encode()
-    digest = hashlib.sha256(body + str(source_state.revision).encode()).hexdigest()[:32]
-    return {
-        "schema_version": BATCH_VERSION,
-        "source_id": records.SOURCE_ID,
-        "batch_id": f"recall-{digest}",
-        "expected_revision": source_state.revision,
-        "trigger": "change",
-        "changes": changes,
-    }
+def parse(raw: bytes) -> tuple[list[Any], list[Any]]:
+    """The submission's records and covered chats, checked once here."""
+    value = json.loads(raw)
+    records, covered = value.get("records", []), value.get("covered", [])
+    for record in records:
+        evidence = record.get("evidence")
+        if record.get("kind") not in KINDS or not texts(record, "statement"):
+            raise ValueError(f"each record needs a kind in {KINDS} and a statement")
+        if not isinstance(evidence, list) or not 1 <= len(evidence) <= 4:
+            raise ValueError("each record cites 1 to 4 evidence quotes")
+        if not all(texts(item, "message_id", "quote") for item in evidence):
+            raise ValueError("evidence items have message_id and quote")
+    if not all(texts(item, "chat_id", "message_id") for item in covered):
+        raise ValueError("covered items have chat_id and message_id")
+    return records, covered
 
 
-def send(mash: client.Mash, root: Path, value: dict[str, object]) -> client.Receipt:
-    path = root / f".batch-{os.getpid()}.json"
-    path.write_bytes(json.dumps(value).encode())
-    os.chmod(path, 0o600)
-    try:
-        return mash.deliver(path, DELIVERY_TIMEOUT)
-    finally:
-        path.unlink(missing_ok=True)
+def record_id(key: str, record: Any) -> str:
+    identity = f"{record['kind']}\0{record['statement'].strip()}"
+    return f"record/{key}/{hashlib.sha256(identity.encode()).hexdigest()[:24]}"
 
 
-def deliver(
-    mash: client.Mash,
-    root: Path,
-    source_state: state.SourceState,
-    value: dict[str, object],
-) -> None:
-    """Persist the batch before sending; resend it unchanged until acknowledged."""
-    source_state.pending = value
-    state.save_source(root, source_state)
-    try:
-        receipt = send(mash, root, value)
-    except client.MashError as error:
-        if error.exit_code != client.CONFLICT_EXIT or value["expected_revision"] == 0:
-            if error.exit_code in (2, 7, 9, 12):
-                # Permanent rejection: discard so later submissions are not blocked.
-                source_state.pending = None
-                state.save_source(root, source_state)
-            raise Failure(f"Mash rejected the records: {error}") from None
-        # Only this helper writes the source and it holds the lock, so a conflict
-        # means a new or replaced database; start its source from revision 0.
-        source_state.revision = 0
-        changes = [mapping(change) or {} for change in items(value.get("changes"))]
-        deliver(mash, root, source_state, batch(source_state, changes))
-        return
-    source_state.revision = receipt.source_revision
-    source_state.pending = None
-    state.save_source(root, source_state)
+def connector_kind(kind: str) -> str:
+    return "recall:" + kind.replace("_", "-")
 
 
-def run(arguments: argparse.Namespace, raw: bytes) -> dict[str, object]:
-    try:
-        submission = records.decode_submission(json.loads(raw))
-    except ValueError as error:
-        raise Failure(f"invalid input: {error}") from None
-    binary = client.resolve_binary()
-    if binary is None:
-        raise Failure("no mash executable found; set MASH_BIN")
-    resolved = project.resolve(os.path.abspath(arguments.cwd), 5.0)
-    if resolved is None:
-        raise Failure("cannot resolve the project directory")
-    mash = client.Mash(binary)
-    fetch = fetcher(mash)
-    kept, dropped = records.verify(submission.records, fetch)
-    unique = list(
-        {records.record_id(resolved, record): record for record in kept}.values()
-    )
-    marks: dict[str, state.Watermark] = {}
-    unreadable: list[str] = []
-    for item in submission.covered:
-        message = fetch(item.message_id)
-        if message is None or message.created_at is None:
-            unreadable.append(item.chat_id)
-        else:
-            marks[item.chat_id] = state.Watermark(message.created_at, message.id)
-    summary: dict[str, object] = {
-        "project": resolved.label,
-        "verified": len(unique),
-        "dropped": [
-            {"statement": record.statement, "reason": reason}
-            for record, reason in dropped
-        ],
-        "uncovered": unreadable,
-    }
-    if arguments.check:
-        return {**summary, "written": [], "advanced": []}
-    root = state.state_dir()
-    with state.locked(root):
-        source_state = state.load_source(root)
-        if source_state.pending is not None:
-            deliver(mash, root, source_state, source_state.pending)
-        project_state = state.load_project(
-            root, resolved.key, resolved.toplevel, resolved.repository
+SCHEMA = {
+    "op": "declare-schema",
+    "kinds": [{"kind": PROJECT_KIND, "role": "container", "root": True}]
+    + [
+        {"kind": connector_kind(kind), "role": "entry", "parents": [PROJECT_KIND]}
+        for kind in KINDS
+    ],
+}
+
+
+def changes(
+    key: str,
+    toplevel: str,
+    repository: str | None,
+    records: list[Any],
+    covered: list[Any],
+) -> list[dict[str, Any]]:
+    """Connector mutations: schema, the project container and one entry per record."""
+    label, container = repository or toplevel, f"project/{key}"
+    now_ms = int(time.time() * 1000)
+    where = {"project": toplevel, "repository": repository}
+    result: list[dict[str, Any]] = [SCHEMA]
+    result.append(
+        dict(
+            op="upsert-object",
+            id=container,
+            role="container",
+            kind=PROJECT_KIND,
+            title=f"Project recall: {label}",
+            updated_at=now_ms,
+            metadata=where,
         )
-        if unique:
-            now_ms = int(time.time() * 1000)
-            changes = records.changes(resolved, unique, submission.covered, now_ms)
-            deliver(mash, root, source_state, batch(source_state, changes))
-            project_state.latest_record = records.anchor(
-                records.record_id(resolved, unique[-1])
-            )
-        advanced = [
-            chat_id
-            for chat_id, mark in marks.items()
-            if project_state.advance(chat_id, mark)
+    )
+    for offset, record in enumerate(records):
+        kind, statement = record["kind"], record["statement"].strip()
+        cited = [
+            {"message_id": item["message_id"], "quote": item["quote"]}
+            for item in record["evidence"]
         ]
-        state.save_project(root, resolved.key, project_state)
-    written = [records.anchor(records.record_id(resolved, record)) for record in unique]
-    return {**summary, "written": written, "advanced": advanced}
+        quotes = [f'- message {e["message_id"]}: "{e["quote"]}"' for e in cited]
+        heading = f"{kind.replace('_', ' ').capitalize()}: {statement}"
+        content = "\n".join([heading, f"Project: {label}", "Evidence:", *quotes])
+        chats = [item["chat_id"] for item in covered]
+        metadata = dict(where, record_kind=kind, statement=statement)
+        metadata.update(evidence=cited, covered_chats=chats)
+        # Distinct, ordered times keep `view` context in submission order.
+        result.append(
+            dict(
+                op="upsert-object",
+                id=record_id(key, record),
+                role="entry",
+                kind=connector_kind(kind),
+                parent=container,
+                author=AUTHOR,
+                content=content,
+                created_at=now_ms + offset,
+                metadata=metadata,
+            )
+        )
+    return result
+
+
+def deliver(binary: str, root: Path, mutations: list[dict[str, Any]]) -> None:
+    """Commit one batch. Mash accepts it only at the source's current revision,
+    which this helper alone advances: the stored revision is the normal case, the
+    next one recovers a receipt lost after commit (or a concurrent helper), and 0
+    a new database. The revision in the batch ID makes a resend idempotent."""
+    source = root / "source.json"
+    stored = common.read_state(source).get("revision", 0)
+    body = json.dumps(mutations, sort_keys=True).encode()
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for revision in dict.fromkeys([stored, stored + 1, 0]):
+        digest = hashlib.sha256(body + str(revision).encode()).hexdigest()[:32]
+        batch = {
+            "schema_version": 2,
+            "source_id": common.SOURCE_ID,
+            "batch_id": f"recall-{digest}",
+            "expected_revision": revision,
+            "trigger": "change",
+            "changes": mutations,
+        }
+        with tempfile.NamedTemporaryFile("w", dir=root, suffix=".json") as file:
+            json.dump(batch, file)
+            file.flush()
+            try:
+                arguments = ["index", "--connector-batch", file.name]
+                receipt = common.run_mash(binary, arguments, 60.0)
+            except common.MashError as error:
+                if error.code == CONFLICT_EXIT:
+                    continue
+                raise
+        common.write_state(source, {"revision": receipt["source_revision"]})
+        return
+    raise RuntimeError("Mash rejected the records: connector revision conflict")
+
+
+def run(cwd: str, raw: bytes) -> dict[str, Any]:
+    records, covered = parse(raw)
+    binary = common.resolve_binary()
+    if binary is None:
+        raise RuntimeError("no mash executable found; set MASH_BIN")
+    toplevel, repository = common.resolve_project(os.path.abspath(cwd), 5.0)
+    key = common.project_key(toplevel, repository)
+    messages: dict[str, Any] = {}
+
+    def fetch(message_id: str) -> Any:
+        if message_id not in messages:
+            try:
+                view = common.run_mash(
+                    binary, ["view", message_id, "--context", "0"], 15.0
+                )
+                found = [m for m in view["messages"] if m.get("id") == message_id]
+            except Exception:
+                found = []
+            messages[message_id] = found[0] if found else None
+        return messages[message_id]
+
+    def problem(evidence: Any) -> str | None:
+        message_id, quote = evidence["message_id"], evidence["quote"]
+        if len(quote.strip()) < MIN_QUOTE:
+            return f"quote shorter than {MIN_QUOTE} characters"
+        if (message := fetch(message_id)) is None:
+            return f"message {message_id} not found"
+        if quote not in (message.get("content") or ""):
+            return f"quote is not an exact substring of message {message_id}"
+        return None
+
+    kept, dropped = [], []
+    for record in records:
+        reason = next(filter(None, map(problem, record["evidence"])), None)
+        if reason:
+            dropped.append({"statement": record["statement"], "reason": reason})
+        else:
+            kept.append(record)
+    unique = list({record_id(key, record): record for record in kept}.values())
+    marks, uncovered = {}, []
+    for item in covered:
+        message = fetch(item["message_id"])
+        if message is None or not isinstance(message.get("created_at"), int):
+            uncovered.append(item["chat_id"])
+        else:
+            marks[item["chat_id"]] = {
+                "updated_at": message["created_at"],
+                "message_id": message["id"],
+            }
+    root = common.state_dir()
+    path = root / "projects" / f"{key}.json"
+    state = common.read_state(path)
+    written = [
+        f"connector#entry#{common.SOURCE_ID}#{record_id(key, r)}" for r in unique
+    ]
+    if unique:
+        deliver(binary, root, changes(key, toplevel, repository, unique, covered))
+        state["latest_record"] = written[-1]
+    watermarks = state.get("watermarks") or {}
+    advanced = []
+    for chat_id, mark in marks.items():
+        if mark["updated_at"] > (watermarks.get(chat_id) or {}).get("updated_at", -1):
+            watermarks[chat_id] = mark
+            advanced.append(chat_id)
+    state.update(
+        project=toplevel,
+        repository=repository,
+        watermarks=dict(sorted(watermarks.items())),
+    )
+    common.write_state(path, state)
+    return {
+        "project": repository or toplevel,
+        "verified": len(unique),
+        "dropped": dropped,
+        "uncovered": uncovered,
+        "written": written,
+        "advanced": advanced,
+    }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument(
-        "--cwd", default=os.getcwd(), help="a directory inside the project"
-    )
-    parser.add_argument(
-        "--input", type=Path, help="JSON submission file (default: stdin)"
-    )
-    parser.add_argument(
-        "--check", action="store_true", help="verify quotes without writing"
-    )
+    parser = argparse.ArgumentParser(description="Record verified project recall.")
+    parser.add_argument("--cwd", default=os.getcwd(), help="a directory in the project")
     arguments = parser.parse_args()
-    raw = arguments.input.read_bytes() if arguments.input else sys.stdin.buffer.read()
     try:
-        result = run(arguments, raw)
-    except Failure as error:
-        print(json.dumps({"error": str(error)}))
+        result = run(arguments.cwd, sys.stdin.buffer.read())
+    except Exception as error:
+        print(json.dumps({"error": str(error) or type(error).__name__}))
         return 1
     print(json.dumps(result, indent=2))
     return 0
