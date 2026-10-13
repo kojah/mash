@@ -269,3 +269,119 @@ fn mcp_watcher_keeps_stdout_for_protocol_and_stops_when_session_closes() {
     }
     watcher.quiet(); // No CLI response may follow the MCP shutdown.
 }
+
+#[cfg(unix)]
+struct Elected {
+    watching: Watching,
+    roles: Receiver<String>,
+}
+
+#[cfg(unix)]
+impl Elected {
+    fn start(root: &Path) -> Self {
+        let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin!("mash"))
+            .args([
+                "--config",
+                root.join("config.toml").to_str().unwrap(),
+                "--db",
+                root.join("index.sqlite3").to_str().unwrap(),
+                "--models-dir",
+                root.join("models").to_str().unwrap(),
+                "index",
+                "--watch",
+                "--debounce-ms",
+                "200",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let lines = |stream: Box<dyn std::io::Read + Send>| {
+            let (sender, receiver) = channel::<Value>();
+            std::thread::spawn(move || {
+                for line in BufReader::new(stream).lines() {
+                    let Ok(value) = serde_json::from_str(&line.unwrap_or_default()) else {
+                        continue;
+                    };
+                    if sender.send(value).is_err() {
+                        break;
+                    }
+                }
+            });
+            receiver
+        };
+        let output = lines(Box::new(child.stdout.take().unwrap()));
+        let events = lines(Box::new(child.stderr.take().unwrap()));
+        let (sender, roles) = channel();
+        std::thread::spawn(move || {
+            for event in events {
+                if event["event"] == "watch-role"
+                    && sender
+                        .send(event["role"].as_str().unwrap().to_owned())
+                        .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        Self {
+            watching: Watching { child, output },
+            roles,
+        }
+    }
+
+    fn role(&self) -> String {
+        self.roles
+            .recv_timeout(HANG_GUARD)
+            .expect("watch role within deadline")
+    }
+
+    fn signal(&self, name: &str) {
+        assert!(
+            std::process::Command::new("kill")
+                .args([name, &self.watching.child.id().to_string()])
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn killed_leader_fails_over_to_a_standby_that_indexes_changes_from_the_gap() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let sources = root.join("history");
+    std::fs::create_dir(&sources).unwrap();
+    let source = sources.join("session.jsonl");
+    history(&source, "before failover");
+    configure(root, &sources);
+    create_valid_model_marker(&root.join("models"));
+    let mut leader = Elected::start(root);
+    assert_eq!(leader.role(), "leader");
+    assert_eq!(leader.watching.next()["indexed_messages"], 1);
+    let standby = Elected::start(root);
+    assert_eq!(standby.role(), "standby");
+    // A standby cannot index before it holds the lock.
+    assert!(standby.watching.output.try_recv().is_err());
+
+    // Freeze the idle leader so it cannot see the change, then kill it while it
+    // still holds the lock: nothing watches between the write and the takeover.
+    leader.signal("-STOP");
+    history(&source, "written while leaderless");
+    leader.signal("-KILL");
+    leader.watching.child.wait().unwrap();
+
+    assert_eq!(standby.role(), "leader");
+    assert_eq!(standby.watching.next()["changed_messages"], 1);
+    let content: String = Connection::open(root.join("index.sqlite3"))
+        .unwrap()
+        .query_row(
+            "SELECT content FROM objects WHERE origin='provider' AND object_role='entry'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(content, "written while leaderless");
+}

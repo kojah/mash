@@ -12,6 +12,65 @@ use crate::AppError;
 
 const RETRY: Duration = Duration::from_secs(30);
 const RECONCILE: Duration = Duration::from_secs(300);
+const STANDBY_POLL: Duration = Duration::from_secs(1);
+
+/// Whether this process indexes for its database or waits for the leader to exit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Role {
+    Leader,
+    Standby,
+}
+
+/// One watcher per database across processes: the leader holds an exclusive
+/// advisory lock beside the database for as long as it watches. The operating
+/// system releases it when the holder exits or crashes.
+fn lock_path(request: &Request) -> Result<PathBuf, AppError> {
+    let database = request
+        .paths
+        .db
+        .clone()
+        .unwrap_or_else(crate::core::default_database_path);
+    let database = if database.is_relative() {
+        std::env::current_dir()
+            .map_err(|_| AppError::internal("resolve watch database path"))?
+            .join(database)
+    } else {
+        database
+    };
+    let name = database
+        .file_name()
+        .ok_or_else(|| AppError::configuration("database path has no file name"))?
+        .to_os_string();
+    let canonical = std::fs::canonicalize(&database).or_else(|_| {
+        let parent = database.parent().unwrap_or(Path::new("/"));
+        std::fs::create_dir_all(parent)
+            .and_then(|()| std::fs::canonicalize(parent))
+            .map(|parent| parent.join(&name))
+    });
+    let mut lock = canonical
+        .map_err(|_| AppError::configuration("cannot resolve the watched database directory"))?
+        .into_os_string();
+    lock.push(".watch-lock");
+    Ok(lock.into())
+}
+
+fn try_lead(path: &Path) -> Result<Option<std::fs::File>, AppError> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path)
+        .map_err(|_| AppError::configuration(format!("cannot open {}", path.display())))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(_)) => Err(AppError::internal(format!(
+            "cannot lock {}",
+            path.display()
+        ))),
+    }
+}
 
 pub(crate) struct Targets {
     pub(crate) roots: Vec<PathBuf>,
@@ -142,21 +201,88 @@ pub(crate) async fn run<F, Fut>(
     request: Request,
     debounce_ms: u64,
     shutdown: watch::Receiver<bool>,
+    role: impl FnMut(Role),
     refresh: F,
 ) -> Result<(), AppError>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<bool, AppError>>,
 {
-    crate::semantic::indexer::scope(run_with_intervals(
+    crate::semantic::indexer::scope(elect(
+        request,
+        debounce_ms,
+        shutdown,
+        role,
+        refresh,
+        Intervals {
+            retry: RETRY,
+            reconcile: RECONCILE,
+            standby: STANDBY_POLL,
+        },
+    ))
+    .await
+}
+
+#[derive(Clone, Copy)]
+struct Intervals {
+    retry: Duration,
+    reconcile: Duration,
+    standby: Duration,
+}
+
+// A standby neither attaches filesystem watches nor indexes. Once it acquires
+// the lock it watches with its own settings, starting with a full pass, so
+// changes made while no process led are indexed. Stopping finishes the active
+// pass before the lock (and leadership) is released.
+async fn elect<F, Fut>(
+    request: Request,
+    debounce_ms: u64,
+    mut shutdown: watch::Receiver<bool>,
+    mut role: impl FnMut(Role),
+    refresh: F,
+    intervals: Intervals,
+) -> Result<(), AppError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<bool, AppError>>,
+{
+    let path = {
+        let request = request.clone();
+        crate::blocking(move || lock_path(&request)).await?
+    };
+    let mut standby = false;
+    let lease = loop {
+        if *shutdown.borrow() {
+            return Ok(());
+        }
+        let attempt = path.clone();
+        if let Some(lease) = crate::blocking(move || try_lead(&attempt)).await? {
+            break lease;
+        }
+        if !standby {
+            standby = true;
+            role(Role::Standby);
+        }
+        tokio::select! {
+            biased;
+            result = shutdown.changed() => {
+                if result.is_err() { return Ok(()); }
+            }
+            () = tokio::time::sleep(intervals.standby) => {}
+        }
+    };
+    role(Role::Leader);
+    let result = run_with_intervals(
         request,
         debounce_ms,
         shutdown,
         refresh,
-        RETRY,
-        RECONCILE,
-    ))
-    .await
+        intervals.retry,
+        intervals.reconcile,
+    )
+    .await;
+    drop(lease);
+    result
 }
 
 async fn run_with_intervals<F, Fut>(
@@ -367,6 +493,119 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(passes, 2);
+    }
+
+    fn election_request(dir: &Path, db: &str) -> Request {
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "version = 1\n[providers]\n").unwrap();
+        Request {
+            paths: crate::core::Paths {
+                config: Some(config),
+                db: Some(dir.join(db)),
+                models_dir: Some(dir.join("models")),
+            },
+            operation: crate::core::Operation::Index(crate::core::IndexRequest::default()),
+        }
+    }
+
+    type Events = tokio::sync::mpsc::UnboundedSender<(usize, Option<Role>)>;
+
+    // Each candidate reports role changes as `Some(role)` and passes as `None`.
+    fn candidate(
+        request: Request,
+        id: usize,
+        events: Events,
+    ) -> (
+        watch::Sender<bool>,
+        tokio::task::JoinHandle<Result<(), AppError>>,
+    ) {
+        let (stop, shutdown) = watch::channel(false);
+        let roles = events.clone();
+        let task = tokio::spawn(elect(
+            request,
+            50,
+            shutdown,
+            move |role| roles.send((id, Some(role))).unwrap(),
+            move || {
+                events.send((id, None)).unwrap();
+                async { Ok(false) }
+            },
+            Intervals {
+                retry: Duration::from_secs(600),
+                reconcile: Duration::from_secs(600),
+                standby: Duration::from_millis(20),
+            },
+        ));
+        (stop, task)
+    }
+
+    async fn next(
+        events: &mut tokio::sync::mpsc::UnboundedReceiver<(usize, Option<Role>)>,
+    ) -> (usize, Option<Role>) {
+        tokio::time::timeout(crate::test_support::HANG_GUARD, events.recv())
+            .await
+            .expect("watch election event")
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn one_watcher_indexes_per_database_and_a_standby_takes_over_with_a_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let (sender, mut events) = tokio::sync::mpsc::unbounded_channel();
+        let mut candidates = Vec::new();
+        for id in 0..3 {
+            candidates.push(candidate(
+                election_request(dir.path(), "index.sqlite3"),
+                id,
+                sender.clone(),
+            ));
+        }
+        let mut roles = [None; 3];
+        let mut passes = [0; 3];
+        while roles.iter().any(Option::is_none) || passes.iter().sum::<usize>() == 0 {
+            match next(&mut events).await {
+                (id, Some(role)) => roles[id] = Some(role),
+                (id, None) => passes[id] += 1,
+            }
+        }
+        let leaders: Vec<usize> = (0..3)
+            .filter(|&id| roles[id] == Some(Role::Leader))
+            .collect();
+        assert_eq!(leaders.len(), 1, "{roles:?}");
+        let leader = leaders[0];
+        assert_eq!(passes[leader], 1);
+        assert_eq!(passes.iter().sum::<usize>(), 1, "standbys never index");
+
+        // Another database elects independently while this leader holds its lock.
+        let other = candidate(
+            election_request(dir.path(), "other.sqlite3"),
+            3,
+            sender.clone(),
+        );
+        assert_eq!(next(&mut events).await, (3, Some(Role::Leader)));
+        assert_eq!(next(&mut events).await, (3, None));
+        other.0.send(true).unwrap();
+        other.1.await.unwrap().unwrap();
+
+        // Stopping the leader releases leadership to exactly one standby,
+        // which starts with its own initial pass.
+        let (stop, task) = candidates.remove(leader);
+        stop.send(true).unwrap();
+        task.await.unwrap().unwrap();
+        let (successor, role) = next(&mut events).await;
+        assert_eq!(role, Some(Role::Leader));
+        assert_ne!(successor, leader);
+        assert_eq!(next(&mut events).await, (successor, None));
+        for (stop, task) in candidates {
+            stop.send(true).unwrap();
+            task.await.unwrap().unwrap();
+        }
+        drop(sender);
+        assert_eq!(
+            events.recv().await,
+            None,
+            "the remaining standby stayed idle"
+        );
     }
 
     #[test]

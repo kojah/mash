@@ -154,7 +154,9 @@ required migration. Broken candidates retain the old worker. Accepted mutations
 are never replayed on transport failure or replacement. Reconnect once to adopt
 this front process if your session started with an older release.
 This setup does not automatically build, index or install models. An opted-in
-watcher resumes with its debounce setting after a compatible handoff.
+watcher resumes with its debounce setting after a compatible handoff; the old
+worker finishes its pass and releases watch leadership before the replacement
+starts watching, so a swap never runs two watchers.
 MCP `help` provides live schemas and typed examples without an index or models;
 select a `tool` or a workflow `topic` to keep its response focused. Startup
 instructions and `help`/`status` report the build revision and contract fingerprint.
@@ -1479,6 +1481,18 @@ history changes before refreshing. Set `--debounce-ms 500` to change that delay
 configured delay if longer. Passes run sequentially; changes during indexing
 queue another pass. Existing provider, age and destination settings still apply. `--full` cannot be combined with `--watch`.
 
+Only one watcher indexes each database at a time, across all processes. Every
+watching process (`index --watch`, `mcp --watch` and `watch_start`) first takes
+an exclusive advisory lock on `<database>.watch-lock` beside the canonical
+database path. A process that cannot take it becomes a standby: it neither
+watches files nor indexes, and retries the lock every second. The operating
+system releases the lock when the leader stops or exits, including a crash; the
+standby that takes it over starts with a full initial pass, so changes made
+while no process was watching are indexed. The leader's settings win: a
+standby's `--debounce-ms` applies only once it leads. CLI watch mode reports each
+role change as a `{"event":"watch-role","role":"leader"|"standby"}` line on
+stderr. Explicit `index` calls do not take the lock.
+
 The watcher uses native `notify` filesystem events, ignores file reads and
 unrelated files, and notices JSONL creation, modification, replacement, and
 deletion. It reloads configuration on each pass and watches for config/model
@@ -1510,8 +1524,10 @@ An existing MCP session can control that same watcher with `watch_start`,
 (50–60000; default 1000), returns promptly, and triggers initial indexing.
 Repeated starts preserve the active watcher; stop it before changing the delay.
 `watch_stop` returns `stopping` while an active pass finishes, then the state
-becomes `stopped`. `watch_status` reports the state, whether a pass is running,
-latest progress/phase ETA, `last_refresh_at` (Unix milliseconds), the last
+becomes `stopped`; stopping the leader releases leadership to a waiting standby
+after the active pass, and stopping a standby withdraws it. `watch_status`
+reports the state, `role` (`leader`, `standby`, or null while stopped), whether
+a pass is running, latest progress/phase ETA, `last_refresh_at` (Unix milliseconds), the last
 index result including shared publication, and the last error. Poll it for
 background progress; explicit `index` calls retain MCP progress notifications.
 Provider routing and credentials remain in TOML. Watch settings are not persisted,

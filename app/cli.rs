@@ -593,6 +593,18 @@ async fn process_search(mut cli: Cli) -> Result<Response, AppError> {
         .map(Response::Operation)
 }
 
+#[derive(serde::Serialize)]
+struct WatchRole {
+    event: WatchRoleEvent,
+    role: crate::watch::Role,
+}
+
+#[derive(serde::Serialize)]
+enum WatchRoleEvent {
+    #[serde(rename = "watch-role")]
+    Role,
+}
+
 async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
     if let Command::Index {
         watch, debounce_ms, ..
@@ -608,7 +620,16 @@ async fn run_parsed(mut cli: Cli) -> Result<Response, AppError> {
             }
         });
         let request = cli.into_request()?;
-        let result = crate::watch::run(request.clone(), debounce, shutdown, move || {
+        let role = |role| {
+            let _ = crate::write_json(
+                &mut std::io::stderr(),
+                &WatchRole {
+                    event: WatchRoleEvent::Role,
+                    role,
+                },
+            );
+        };
+        let result = crate::watch::run(request.clone(), debounce, shutdown, role, move || {
             let request = request.clone();
             async move {
                 let response = core::execute(request).await?;

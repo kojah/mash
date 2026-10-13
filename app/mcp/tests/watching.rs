@@ -173,3 +173,67 @@ async fn watcher_status_retains_pending_shared_publication() {
     assert!(value["last_result"]["silver"].is_object());
     shutdown(&server).await;
 }
+
+#[tokio::test]
+async fn sessions_sharing_a_database_elect_one_leader_and_report_roles() {
+    let (_directory, leader) = fixture(false);
+    let standby = Mash {
+        paths: leader.paths.clone(),
+        gate: Arc::default(),
+        model_work: Arc::new(tokio::sync::Semaphore::new(1)),
+        watcher: Arc::default(),
+    };
+    assert!(
+        leader.watch_status().await.structured_content.unwrap()["role"].is_null(),
+        "a stopped watcher has no role"
+    );
+    leader
+        .watch_start(Parameters(WatchStart {
+            debounce_ms: Some(50),
+        }))
+        .await;
+    until(&leader, |v| {
+        v["role"] == "leader" && v["last_refresh_at"].is_number()
+    })
+    .await;
+    standby
+        .watch_start(Parameters(WatchStart {
+            debounce_ms: Some(100),
+        }))
+        .await;
+    let waiting = until(&standby, |v| v["role"] == "standby").await;
+    assert_eq!(waiting["state"], "running");
+    assert_eq!(waiting["indexing"], false);
+    assert!(waiting["last_refresh_at"].is_null());
+    let text = standby.watch_status().await.content[0]
+        .as_text()
+        .unwrap()
+        .text
+        .clone();
+    assert!(text.contains("Role: standby"));
+
+    // Stopping a standby only withdraws it from the election.
+    standby.watch_stop().await;
+    let stopped = until(&standby, |v| v["state"] == "stopped").await;
+    assert!(stopped["role"].is_null());
+    assert!(stopped["last_refresh_at"].is_null());
+    standby
+        .watch_start(Parameters(WatchStart {
+            debounce_ms: Some(100),
+        }))
+        .await;
+    until(&standby, |v| v["role"] == "standby").await;
+
+    // Stopping the leader releases leadership; the standby takes over with a pass.
+    leader.watch_stop().await;
+    let released = until(&leader, |v| v["state"] == "stopped").await;
+    assert!(released["role"].is_null());
+    let promoted = until(&standby, |v| {
+        v["role"] == "leader" && v["last_refresh_at"].is_number()
+    })
+    .await;
+    assert!(promoted["last_result"]["silver"].is_object());
+    assert_eq!(promoted["debounce_ms"], 100);
+    shutdown(&standby).await;
+    shutdown(&leader).await;
+}

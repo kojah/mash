@@ -1,4 +1,5 @@
 //! One process-local watcher shared by startup flags and MCP lifecycle tools.
+//! Across processes, only the leader for a database indexes (`crate::watch`).
 use super::{Mash, WatchEvent, WatchIndex, core};
 use crate::{AppError, progress};
 use rmcp::model::{CallToolResult, ContentBlock};
@@ -14,9 +15,25 @@ enum State {
     Stopping,
 }
 
+/// The election role reported by the running watch loop; null while stopped.
+struct Roles(watch::Sender<Option<crate::watch::Role>>);
+
+impl Default for Roles {
+    fn default() -> Self {
+        Self(watch::channel(None).0)
+    }
+}
+
+impl Serialize for Roles {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.borrow().serialize(serializer)
+    }
+}
+
 #[derive(Default, Serialize)]
 pub(super) struct Watcher {
     state: State,
+    role: Roles,
     debounce_ms: Option<u64>,
     indexing: bool,
     progress: Option<progress::Event>,
@@ -45,8 +62,14 @@ impl Watcher {
 
     fn text(&self) -> Result<String, serde_json::Error> {
         let mut text = format!(
-            "Mash watcher — {}\nIndexing: {}\nDebounce (ms): {}\nLast refresh (Unix ms): {}\n",
+            "Mash watcher — {}\nRole: {}\nIndexing: {}\nDebounce (ms): {}\nLast refresh (Unix ms): {}\n",
             serde_json::to_string(&self.state)?,
+            match *self.role.0.borrow() {
+                Some(crate::watch::Role::Leader) => "leader",
+                Some(crate::watch::Role::Standby) =>
+                    "standby (another process indexes this database)",
+                None => "none",
+            },
             self.indexing,
             self.debounce_ms
                 .map_or_else(|| "unset".into(), |value| value.to_string()),
@@ -106,6 +129,7 @@ pub(super) async fn start(server: Mash, debounce_ms: Option<u64>) -> CallToolRes
     watcher.progress = None;
     watcher.last_error = None;
     watcher.stop = Some(stop);
+    let roles = watcher.role.0.clone();
     let background = server.clone();
     watcher.task = Some(tokio::spawn(async move {
         let request = core::Request {
@@ -117,10 +141,14 @@ pub(super) async fn start(server: Mash, debounce_ms: Option<u64>) -> CallToolRes
             request,
             debounce_ms,
             shutdown,
+            move |role| {
+                roles.send_replace(Some(role));
+            },
             move || refresh(worker.clone()),
         ))
         .await;
         let mut watcher = background.watcher.lock().await;
+        watcher.role.0.send_replace(None);
         if let Err(error) = result {
             let _ = crate::write_json(&mut std::io::stderr(), &error);
             watcher.last_error = Some(error);

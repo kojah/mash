@@ -391,7 +391,7 @@ fn attachment_result(file: crate::attachments::Retrieved) -> CallToolResult {
 impl Mash {
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Start this MCP session's history watcher and an initial indexing pass. Returns promptly; poll watch_status for progress, errors and shared publication results. Uses TOML providers, destinations and credentials; never downloads models. Repeating a start preserves the active watcher; stop before changing debounce_ms. Settings are process-local."
+        description = "Start this MCP session's history watcher and an initial indexing pass. Returns promptly; poll watch_status for progress, errors and shared publication results. Uses TOML providers, destinations and credentials; never downloads models. Repeating a start preserves the active watcher; stop before changing debounce_ms. Settings are process-local. Only one process indexes each database: if another already watches it, this watcher waits as a standby and takes over with an initial pass when that process stops or exits."
     )]
     async fn watch_start(&self, Parameters(input): Parameters<WatchStart>) -> CallToolResult {
         watching::start(self.clone(), input.debounce_ms).await
@@ -427,7 +427,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = false, destructive_hint = false),
-        description = "Stop future watched refreshes in this MCP session. Returns promptly with stopping while an active indexing pass finishes; poll watch_status until stopped. Safe to repeat."
+        description = "Stop future watched refreshes in this MCP session. Returns promptly with stopping while an active indexing pass finishes; poll watch_status until stopped. A stopped leader lets a waiting standby take over; a stopped standby no longer waits. Safe to repeat."
     )]
     async fn watch_stop(&self) -> CallToolResult {
         watching::stop(self).await
@@ -435,7 +435,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Report this MCP session's watcher state, debounce_ms, indexing progress, last completed refresh/result (including shared publication state), and last error. Does not start indexing."
+        description = "Report this MCP session's watcher state, role (leader indexes; standby waits while another process watches the database), debounce_ms, indexing progress, last completed refresh/result (including shared publication state), and last error. Does not start indexing."
     )]
     async fn watch_status(&self) -> CallToolResult {
         self.watcher.lock().await.response()
