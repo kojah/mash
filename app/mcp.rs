@@ -38,8 +38,14 @@ struct Search {
     query: String,
     /// related-discussion (default) or model-free exact-mention.
     intent: Option<crate::views::exact::Intent>,
-    /// Maximum results; omitted uses views.query.limit (20 by default).
+    /// Results per page, from 1 to 200; omitted uses views.query.limit (20 by default).
+    /// Use `next_offset` to fetch another page.
+    #[schemars(range(min = 1, max = 200))]
     limit: Option<usize>,
+    /// Page offset into one ranked list (default 0): below 200 for chats, 50 for messages.
+    /// Repeat the same search with the returned `next_offset`; null means the last page.
+    #[schemars(range(min = 0, max = 199))]
+    offset: Option<usize>,
     /// Chats or chat messages; omitted uses views.query.unit (chats by default).
     unit: Option<crate::search_results::SearchUnit>,
     /// Advanced related-discussion fusion overrides; omitted fields inherit TOML. Invalid for exact-mention.
@@ -65,6 +71,7 @@ impl Search {
             query: self.query,
             intent: self.intent,
             limit: self.limit,
+            offset: self.offset.unwrap_or_default(),
             unit: self.unit,
             fusion: self.fusion.unwrap_or_default(),
             ranking: self.ranking,
@@ -453,7 +460,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift."
+        description = "Find past conversations or messages. Use related-discussion for semantic questions, exact-mention for phrases or identifiers without inference. Results default to chats with compact evidence; drill down with unit=messages and chat=[returned chat IDs]. Omit unused filters. Copy lookup.view into view to read complete evidence. Lexical matching defaults to flexible (prefixes and conservative typos); use strict for exact spelling. Quoted whole queries and numbers stay strict. For more results repeat the same search with offset=next_offset; null next_offset is the last page. Pages slice one ranked list of at most 200 chats or 50 messages; sort=recent orders each page. Search never indexes. Partial shared failures retain local results and report shared_error; check status for readiness or coverage gaps. Call help for live examples or contract drift."
     )]
     async fn search(&self, Parameters(request): Parameters<Search>) -> CallToolResult {
         let detail = request.detail;
@@ -462,7 +469,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read complete message text and surrounding replies after discovery. Copy lookup.view from a search result and add context when needed; bodies are never truncated. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
+        description = "Read complete message text and surrounding replies after discovery. Copy lookup.view from a search result and add context when needed; bodies are never truncated. To read further, view the first or last returned message id with the same shared value. Omit shared for local evidence, even when it has a node_id. Supply shared with the publishing node ID only for evidence retrieved from the shared index. A node_id alone does not mean the message is published."
     )]
     async fn view(&self, Parameters(request): Parameters<View>) -> CallToolResult {
         self.execute(Operation::View {

@@ -89,9 +89,13 @@ enum Command {
         /// Retrieval intent; defaults to views.query.intent (related-discussion).
         #[arg(long, value_enum)]
         intent: Option<crate::views::exact::Intent>,
-        /// Maximum results; defaults to views.query.limit (20).
+        /// Results per page (1–200); defaults to views.query.limit (20).
         #[arg(long)]
         limit: Option<usize>,
+        /// Page offset into the ranked results (below 200 chats or 50 messages);
+        /// continue with the returned `next_offset`.
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
         /// Result granularity; defaults to views.query.unit (chats).
         #[arg(long, value_enum)]
         unit: Option<crate::search_results::SearchUnit>,
@@ -351,6 +355,7 @@ impl Cli {
                 query,
                 intent,
                 limit,
+                offset,
                 unit,
                 fusion_rank_constant,
                 lexical_weight,
@@ -370,6 +375,7 @@ impl Cli {
                 query,
                 intent,
                 limit,
+                offset,
                 unit,
                 diagnostics,
                 fusion: crate::views::config::FusionOverrides {

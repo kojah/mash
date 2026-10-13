@@ -339,7 +339,7 @@ async fn merged_search_requests_shared_candidates_while_local_sqlite_is_blocked(
         lock.execute_batch("ROLLBACK").unwrap();
         request.expect("shared request must start before SQLite is unlocked")
     };
-    let mut options = crate::views::config::Options::new(10, SearchUnit::Messages);
+    let mut options = crate::views::config::Options::new(SearchUnit::Messages);
     options.fusion.lexical_weight = 4;
     options.fusion.semantic_weight = 4;
     let (result, request) = tokio::join!(

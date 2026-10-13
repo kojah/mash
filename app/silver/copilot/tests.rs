@@ -482,6 +482,7 @@ async fn core_retrieves_native_copilot_prose_with_real_models() {
                 query: query.into(),
                 intent: None,
                 limit: Some(5),
+                offset: 0,
                 unit: Some(crate::search_results::SearchUnit::Chats),
                 filters: Box::new(crate::search_filter::Selection {
                     provider: vec![Provider::Copilot],

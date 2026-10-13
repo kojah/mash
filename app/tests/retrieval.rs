@@ -96,6 +96,143 @@ fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
 }
 
 #[test]
+fn cli_search_pages_partition_one_ranked_list() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("claude");
+    std::fs::create_dir(&root).unwrap();
+    for thread in 0..5 {
+        let lines = (0..3)
+            .map(|message| {
+                serde_json::to_string(&serde_json::json!({
+                    "type":"user", "sessionId":format!("thread-{thread}"),
+                    "uuid":format!("message-{thread}-{message}"),
+                    "timestamp":format!("2026-01-0{}T00:00:0{message}Z", thread + 1),
+                    "message":{"role":"user","content":format!(
+                        "pagination sentinel {} in thread {thread} message {message}",
+                        "word ".repeat(thread * 3 + message)
+                    )}
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        std::fs::write(
+            root.join(format!("thread-{thread}.jsonl")),
+            lines.join("\n") + "\n",
+        )
+        .unwrap();
+    }
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, format!("version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n", toml::Value::String(root.to_str().unwrap().into()))).unwrap();
+    let database = directory.path().join("index.sqlite3");
+    let models = directory.path().join("missing-models");
+    let base = [
+        "--config",
+        config.to_str().unwrap(),
+        "--db",
+        database.to_str().unwrap(),
+        "--models-dir",
+        models.to_str().unwrap(),
+    ];
+    run_json(&[base.as_slice(), &["index"]].concat());
+    let key = |unit: &str, result: &Value| -> Vec<String> {
+        let field = if unit == "chats" { "chat_id" } else { "id" };
+        result["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row[field].as_str().unwrap().to_owned())
+            .collect()
+    };
+    for (unit, total) in [("chats", 5), ("messages", 15)] {
+        let search = |extra: &[&str]| {
+            run_json(
+                &[
+                    base.as_slice(),
+                    &["search", "sentinel", "--local", "--unit", unit],
+                    extra,
+                ]
+                .concat(),
+            )
+        };
+        let whole = search(&["--limit", "50"]);
+        assert_eq!(whole["next_offset"], Value::Null);
+        let expected = key(unit, &whole);
+        assert_eq!(expected.len(), total, "{unit}");
+        let mut paged = Vec::new();
+        let mut recent = Vec::new();
+        let mut offset = 0;
+        loop {
+            let offset_text = offset.to_string();
+            let page = search(&["--limit", "2", "--offset", &offset_text]);
+            let mut members = key(unit, &page);
+            paged.extend(members.clone());
+            // Recency orders only the page; its members are unchanged.
+            let mut reordered = key(
+                unit,
+                &search(&["--limit", "2", "--offset", &offset_text, "--sort", "recent"]),
+            );
+            reordered.sort();
+            members.sort();
+            assert_eq!(reordered, members, "{unit} page {offset}");
+            recent.extend(reordered);
+            let Some(next) = page["next_offset"].as_u64() else {
+                break;
+            };
+            let next = usize::try_from(next).unwrap();
+            assert_eq!(next, offset + 2);
+            offset = next;
+        }
+        assert_eq!(paged, expected, "{unit} pages must partition one ranking");
+        assert_eq!(offset, (total - 1) / 2 * 2, "{unit} last page");
+        recent.sort();
+        let mut sorted = expected.clone();
+        sorted.sort();
+        assert_eq!(recent, sorted);
+        // An offset past the results but inside the window is an empty last page.
+        let empty = search(&["--offset", "40"]);
+        assert_eq!(empty["results"], serde_json::json!([]));
+        assert_eq!(empty["next_offset"], Value::Null);
+    }
+}
+
+#[test]
+fn cli_search_pages_outside_the_ranked_window_are_usage_errors() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config.toml");
+    std::fs::write(&config, "version=1\nproviders={}\n").unwrap();
+    let database = directory.path().join("missing.sqlite3");
+    for page in [
+        ["--limit", "0", "--unit", "chats"],
+        ["--limit", "201", "--unit", "chats"],
+        ["--offset", "200", "--unit", "chats"],
+        ["--offset", "50", "--unit", "messages"],
+    ] {
+        for direct in [false, true] {
+            let mut command = Command::cargo_bin("mash").unwrap();
+            command
+                .args(["--config", config.to_str().unwrap()])
+                .args(["--db", database.to_str().unwrap()])
+                .args(["search", "cbioportal", "--local"])
+                .args(page);
+            if direct {
+                command.arg("--no-worker");
+            }
+            let output = command.output().unwrap();
+            assert_eq!(output.status.code(), Some(2), "{page:?}");
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"]["kind"], "usage");
+            assert!(
+                error["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("search pages require")
+            );
+        }
+    }
+    assert!(!database.exists());
+}
+
+#[test]
 fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");

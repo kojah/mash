@@ -1,5 +1,8 @@
 //! Active build recipe and independent query policy.
-use crate::{AppError, search_results::SearchUnit};
+use crate::{
+    AppError,
+    search_results::{Page, SearchUnit},
+};
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
@@ -364,7 +367,6 @@ impl FusionOverrides {
 #[derive(Clone, Copy)]
 pub(crate) struct Options {
     pub(crate) shared_vector_search: Option<super::vector::Search>,
-    pub(crate) limit: usize,
     pub(crate) unit: SearchUnit,
     pub(crate) fusion: Fusion,
     pub(crate) ranking: Ranking,
@@ -373,10 +375,9 @@ pub(crate) struct Options {
 }
 
 impl Options {
-    pub(crate) fn new(limit: usize, unit: SearchUnit) -> Self {
+    pub(crate) fn new(unit: SearchUnit) -> Self {
         Self {
             shared_vector_search: None,
-            limit,
             unit,
             fusion: Fusion::default(),
             ranking: Ranking::default(),
@@ -406,7 +407,7 @@ impl Configuration {
                 "lexical-only views require exact-mention as the default query intent",
             ));
         }
-        if !(1..=200).contains(&self.query.limit) {
+        if !(1..=Page::MAX_LIMIT).contains(&self.query.limit) {
             return Err(AppError::configuration(
                 "views query limit must be between 1 and 200",
             ));
@@ -416,12 +417,15 @@ impl Configuration {
 }
 
 impl Query {
+    /// The requested page of the unit's ranked results, with configured defaults.
     pub(crate) fn resolve(
         &self,
         limit: Option<usize>,
+        offset: usize,
         unit: Option<SearchUnit>,
-    ) -> (usize, SearchUnit) {
-        (limit.unwrap_or(self.limit), unit.unwrap_or(self.unit))
+    ) -> Result<(Page, SearchUnit), AppError> {
+        let unit = unit.unwrap_or(self.unit);
+        Ok((Page::new(limit.unwrap_or(self.limit), offset, unit)?, unit))
     }
 }
 

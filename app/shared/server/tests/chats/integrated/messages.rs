@@ -92,6 +92,7 @@ async fn assert_scoped(
             query: "authentication".into(),
             intent: None,
             limit: None,
+            offset: 0,
             unit: None,
             filters: Box::new(Selection {
                 provider: vec![Provider::Codex, Provider::ClaudeCode],

@@ -174,6 +174,7 @@ struct Search<'a> {
     realized_mode: &'a SearchMode,
     unit: crate::search_results::SearchUnit,
     results: SearchResults<'a>,
+    next_offset: Option<usize>,
     shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     shared_error: Option<&'a str>,
@@ -223,6 +224,7 @@ impl<'a> From<&'a SearchResponse> for Search<'a> {
             realized_mode: &value.realized_mode,
             unit: value.unit,
             results,
+            next_offset: value.next_offset,
             shared: value.shared,
             shared_error: value.shared_error.as_deref(),
             shared_context_error: value.shared_context_error.as_deref(),

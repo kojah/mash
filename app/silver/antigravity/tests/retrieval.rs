@@ -33,6 +33,7 @@ async fn core_searches_native_antigravity_messages_and_threads_with_local_models
                 query: "cbioportal study filters".into(),
                 intent: None,
                 limit: Some(5),
+                offset: 0,
                 unit: Some(unit),
                 filters: Box::new(crate::search_filter::Selection {
                     provider: vec![Provider::Antigravity],

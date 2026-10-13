@@ -158,6 +158,23 @@ fn history_skill_rejects_parameter_enum_range_and_cli_drift() {
     assert!(mcp("search", r#"{"query":"test","unit":"threads"}"#).is_err());
     assert!(mcp("search", r#"{"query":"test","conversation":["id"]}"#).is_err());
     assert!(mcp("search", r#"{"query":"test","unit":"chats","chat":["id"]}"#).is_ok());
+    assert!(mcp("search", r#"{"query":"test","offset":199,"limit":200}"#).is_ok());
+    assert!(mcp("search", r#"{"query":"test","offset":200}"#).is_err());
+    assert!(
+        mcp(
+            "search",
+            r#"{"query":"test","unit":"messages","offset":49}"#
+        )
+        .is_ok()
+    );
+    assert!(
+        mcp(
+            "search",
+            r#"{"query":"test","unit":"messages","offset":50}"#
+        )
+        .is_err()
+    );
+    assert!(mcp("search", r#"{"query":"test","limit":0}"#).is_err());
     assert!(mcp("list_chats", r#"{"title_contains":""}"#).is_err());
     assert!(mcp("list_chats", r#"{"title_contains":"\n"}"#).is_err());
     assert!(mcp("list_chats", r#"{"local":true,"shared":true}"#).is_err());

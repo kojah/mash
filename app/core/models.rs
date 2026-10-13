@@ -70,6 +70,8 @@ pub(crate) enum Operation {
         #[serde(default)]
         intent: Option<crate::views::exact::Intent>,
         limit: Option<usize>,
+        #[serde(default)]
+        offset: usize,
         unit: Option<crate::search_results::SearchUnit>,
         #[serde(default)]
         fusion: crate::views::config::FusionOverrides,
@@ -206,6 +208,9 @@ pub(crate) struct SearchResponse {
     pub(crate) realized_mode: SearchMode,
     pub(crate) unit: crate::search_results::SearchUnit,
     pub(crate) results: crate::search_results::Results,
+    /// Offset of the next page of the same ranked list; null on the last page.
+    #[serde(default)]
+    pub(crate) next_offset: Option<usize>,
     pub(crate) shared: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) shared_error: Option<String>,

@@ -4,7 +4,14 @@ use crate::provider::Provider;
 // These tests exercise grouping and excerpts with masking on, as configured
 // by default; the policy itself is covered in the redaction tests.
 fn collect(hits: Vec<SearchHit>, unit: SearchUnit, limit: usize, query: &str) -> Results {
-    super::collect(hits, unit, limit, query, crate::redaction::Policy::ON)
+    super::collect(
+        hits,
+        unit,
+        Page::first(limit),
+        query,
+        crate::redaction::Policy::ON,
+    )
+    .results
 }
 
 fn collect_exact(
@@ -13,7 +20,14 @@ fn collect_exact(
     limit: usize,
     literal: &crate::views::exact::Literal,
 ) -> Results {
-    super::collect_exact(hits, unit, limit, literal, crate::redaction::Policy::ON)
+    super::collect_exact(
+        hits,
+        unit,
+        Page::first(limit),
+        literal,
+        crate::redaction::Policy::ON,
+    )
+    .results
 }
 
 fn evidence_excerpt(content: &str, query: &str, length: usize) -> (String, ProjectionSpan) {
@@ -527,4 +541,60 @@ fn thread_metadata_and_view_anchors_survive_worker_serialization() {
             end_char: decoded[0].matches[0].snippet.chars().count()
         }
     );
+}
+
+fn keys(results: &Results) -> Vec<String> {
+    match results {
+        Results::Chats(chats) => chats.iter().map(|c| c.conversation_id.clone()).collect(),
+        Results::Messages(hits) => hits.iter().map(|h| h.id.clone()).collect(),
+    }
+}
+
+#[test]
+fn pages_partition_the_ranked_window_and_skip_abstaining_candidates() {
+    // Interleave unscored semantic neighbours, which never qualify, so a page
+    // must not be cut before filtering.
+    let candidates = || {
+        (0..260)
+            .map(|index| {
+                let mut hit = hit(&format!("thread-{index}"), &format!("message-{index}"));
+                if index % 3 == 1 {
+                    hit.lexical_score = None;
+                    hit.semantic_score = Some(0.9);
+                }
+                hit
+            })
+            .collect::<Vec<_>>()
+    };
+    let collect_page = |unit, page| {
+        super::collect(
+            candidates(),
+            unit,
+            page,
+            "query",
+            crate::redaction::Policy::ON,
+        )
+    };
+    for unit in [SearchUnit::Chats, SearchUnit::Messages] {
+        let window = unit.result_window();
+        let whole = collect_page(unit, Page::new(Page::MAX_LIMIT, 0, unit).unwrap());
+        assert_eq!(whole.next_offset, None);
+        let expected = keys(&whole.results);
+        assert_eq!(expected.len(), window.min(173), "{unit:?}");
+        let mut paged = Vec::new();
+        let mut offset = 0;
+        loop {
+            let page = collect_page(unit, Page::new(7, offset, unit).unwrap());
+            let keys = keys(&page.results);
+            assert!(keys.len() <= 7);
+            paged.extend(keys);
+            let Some(next) = page.next_offset else { break };
+            assert_eq!(next, offset + 7);
+            offset = next;
+        }
+        assert_eq!(paged, expected, "{unit:?}");
+        assert!(Page::new(7, window, unit).is_err());
+        assert!(Page::new(0, 0, unit).is_err());
+        assert!(Page::new(Page::MAX_LIMIT + 1, 0, unit).is_err());
+    }
 }

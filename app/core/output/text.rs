@@ -196,6 +196,12 @@ fn search(out: &mut String, value: &Search<'_>) -> Result<(), serde_json::Error>
             }
         }
     }
+    if let Some(next) = value.next_offset {
+        line(
+            out,
+            &format!("\nNext offset: {next}. Repeat the same search with this offset for more."),
+        );
+    }
     if let Some(diagnostics) = value.diagnostics {
         json(out, "Diagnostics", diagnostics)?;
     }

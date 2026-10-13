@@ -90,7 +90,7 @@ fn benchmark_real_search_thread_budget() {
             &storage,
             &mut backend,
             QUERIES[0],
-            crate::views::config::Options::new(5, SearchUnit::Chats),
+            crate::views::config::Options::new(SearchUnit::Chats),
             (None, None),
             Some(&filters),
         )
@@ -104,18 +104,21 @@ fn benchmark_real_search_thread_budget() {
                     &storage,
                     &mut backend,
                     query,
-                    crate::views::config::Options::new(5, unit),
+                    crate::views::config::Options::new(unit),
                     (None, None),
                     Some(&filters),
                 )
                 .unwrap();
-                let actual = keys(crate::search_results::collect(
-                    hits,
-                    unit,
-                    5,
-                    query,
-                    crate::redaction::Policy::ON,
-                ));
+                let actual = keys(
+                    crate::search_results::collect(
+                        hits,
+                        unit,
+                        crate::search_results::Page::first(5),
+                        query,
+                        crate::redaction::Policy::ON,
+                    )
+                    .results,
+                );
                 let milliseconds = start.elapsed().as_secs_f64() * 1000.0;
                 let same_results = if expected.len() <= index {
                     expected.push(actual);
@@ -173,7 +176,7 @@ fn benchmark_real_search_rerank_batches() {
         .unwrap();
         let hits = crate::search_results::diversify(hits, SearchUnit::Chats);
         let selection =
-            crate::search_ranking::select(&mut backend, query, hits, SearchUnit::Chats, 5).unwrap();
+            crate::search_ranking::select(&mut backend, query, hits, SearchUnit::Chats).unwrap();
         let documents = selection.hits[..selection.count]
             .iter()
             .map(|hit| {

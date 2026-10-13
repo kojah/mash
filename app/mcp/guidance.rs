@@ -1,5 +1,6 @@
 //! One Rust-owned contract for live help and generated agent instructions.
 use super::{GetAttachment, ListAttachments, ListChats, Mash, Search, Status, View};
+use crate::views::exact::Intent;
 use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
@@ -106,13 +107,14 @@ fn example<T: Serialize>(tool: &'static str, input: T) -> Result<Example, serde_
     Ok(Example { tool, arguments })
 }
 
-fn search(query: &str, intent: crate::views::exact::Intent) -> Search {
+fn search(query: &str, intent: Intent) -> Search {
     Search {
         detail: crate::core::output::Detail::Compact,
         shared_vector: None,
         query: query.into(),
         intent: Some(intent),
         limit: Some(5),
+        offset: None,
         unit: Some(crate::search_results::SearchUnit::Chats),
         fusion: None,
         ranking: None,
@@ -124,7 +126,7 @@ fn search(query: &str, intent: crate::views::exact::Intent) -> Search {
 }
 
 pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
-    let mut drill = search("Qdrant", crate::views::exact::Intent::ExactMention);
+    let mut drill = search("Qdrant", Intent::ExactMention);
     drill.unit = Some(crate::search_results::SearchUnit::Messages);
     drill.filters.conversation = vec!["RETURNED_CHAT_ID".into()];
     drill.filters.match_mode = crate::views::matching::Mode::Strict;
@@ -133,21 +135,19 @@ pub(super) fn examples() -> Result<Vec<Example>, serde_json::Error> {
         limit: 5,
         ..Default::default()
     };
-    let mut local = search("Qdrant", crate::views::exact::Intent::ExactMention);
+    let mut local = search("Qdrant", Intent::ExactMention);
     local.local = true;
-    let mut shared = search(
-        "why we chose Qdrant",
-        crate::views::exact::Intent::RelatedDiscussion,
-    );
+    let mut shared = search("why we chose Qdrant", Intent::RelatedDiscussion);
     shared.shared = true;
+    // The same search, continued from a returned next_offset.
+    let mut next_page = search("why we chose Qdrant", Intent::RelatedDiscussion);
+    next_page.offset = Some(5);
     Ok(vec![
         example(
             "search",
-            search(
-                "why we chose Qdrant",
-                crate::views::exact::Intent::RelatedDiscussion,
-            ),
+            search("why we chose Qdrant", Intent::RelatedDiscussion),
         )?,
+        example("search", next_page)?,
         example("search", drill)?,
         example("search", local)?,
         example("search", shared)?,

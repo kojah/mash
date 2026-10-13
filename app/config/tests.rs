@@ -80,9 +80,13 @@ fn views_fusion_policy_is_query_only_and_strictly_bounded() {
 
 #[test]
 fn views_query_defaults_are_typed_bounded_and_reported_in_status() {
-    use crate::search_results::SearchUnit;
+    use crate::search_results::{Page, SearchUnit};
+    let page = |offset, limit| Page { offset, limit };
     let defaults = parse_document(VALID.as_bytes()).unwrap().views;
-    assert_eq!(defaults.query.resolve(None, None), (20, SearchUnit::Chats));
+    assert_eq!(
+        defaults.query.resolve(None, 0, None).unwrap(),
+        (page(0, 20), SearchUnit::Chats)
+    );
     let directory = TempDir::new().unwrap();
     let path = write_config(
         &directory,
@@ -90,20 +94,33 @@ fn views_query_defaults_are_typed_bounded_and_reported_in_status() {
     );
     let resolved = load(Some(&path)).unwrap();
     assert_eq!(
-        resolved.views.query.resolve(None, None),
-        (7, SearchUnit::Messages)
+        resolved.views.query.resolve(None, 0, None).unwrap(),
+        (page(0, 7), SearchUnit::Messages)
     );
     assert_eq!(
         resolved
             .views
             .query
-            .resolve(Some(3), Some(SearchUnit::Chats)),
-        (3, SearchUnit::Chats)
+            .resolve(Some(3), 6, Some(SearchUnit::Chats))
+            .unwrap(),
+        (page(6, 3), SearchUnit::Chats)
     );
     assert_eq!(
-        resolved.views.query.resolve(None, Some(SearchUnit::Chats)),
-        (7, SearchUnit::Chats)
+        resolved
+            .views
+            .query
+            .resolve(None, 0, Some(SearchUnit::Chats))
+            .unwrap(),
+        (page(0, 7), SearchUnit::Chats)
     );
+    // Pages stay inside the unit's ranked window; sizes share the TOML bound.
+    let query = &resolved.views.query;
+    assert!(query.resolve(Some(0), 0, None).is_err());
+    assert!(query.resolve(Some(201), 0, None).is_err());
+    assert!(query.resolve(None, 49, None).is_ok());
+    assert!(query.resolve(None, 50, None).is_err());
+    assert!(query.resolve(None, 199, Some(SearchUnit::Chats)).is_ok());
+    assert!(query.resolve(None, 200, Some(SearchUnit::Chats)).is_err());
     let status = serde_json::to_value(resolved.status()).unwrap();
     assert_eq!(status["views"]["query"]["unit"], "messages");
     assert_eq!(status["views"]["query"]["limit"], 7);

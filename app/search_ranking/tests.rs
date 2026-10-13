@@ -36,10 +36,7 @@ fn fusion_finish_preserves_order_and_thread_evidence_without_inference() {
             candidate("b", "third", "three"),
         ]
     };
-    let messages = finish_fusion(hits(), SearchUnit::Messages, 1, Fusion::default());
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].id, "first");
-    let threads = finish_fusion(hits(), SearchUnit::Chats, 1, Fusion::default());
+    let threads = finish_fusion(hits(), Fusion::default());
     assert_eq!(
         threads
             .iter()
@@ -78,7 +75,7 @@ fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
         )
     }));
     let hits = search_results::diversify(hits, SearchUnit::Chats);
-    let selection = select(&mut backend, query, hits, SearchUnit::Chats, 5).unwrap();
+    let selection = select(&mut backend, query, hits, SearchUnit::Chats).unwrap();
     assert!(selection.count <= 30);
     assert!(
         selection.hits[..selection.count]
@@ -95,7 +92,6 @@ fn thread_selection_keeps_fourth_anchor_then_ranks_its_actual_evidence() {
         selection,
         &documents,
         SearchUnit::Chats,
-        5,
         Fusion::default(),
     )
     .unwrap();

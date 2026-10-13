@@ -154,6 +154,7 @@ async fn exact_core_shared_and_fallback_paths_are_model_free_and_query_only() {
             intent: None,
             unit: Some(SearchUnit::Messages),
             limit: Some(2),
+            offset: 0,
             filters: Box::new(crate::search_filter::Selection {
                 provider: vec![crate::provider::Provider::Codex],
                 role: vec![crate::role::Role::User],

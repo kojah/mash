@@ -131,6 +131,9 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
         shared_vector_search,
         query,
         intent,
+        limit,
+        offset,
+        unit,
         fusion,
         ranking,
         filters,
@@ -143,6 +146,7 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
     };
     // The node affects the resolved scope, but not syntax validation. Actual
     // execution resolves again with the current configuration and time cutoff.
+    crate::views::config::Query::default().resolve(*limit, *offset, *unit)?;
     search::validate_vector(
         *shared_vector_search,
         intent.unwrap_or_default(),
@@ -193,6 +197,10 @@ pub(crate) async fn worker_search(request: Request) -> Result<SearchResponse, Ap
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the mechanical operation-to-core dispatch together."
+)]
 async fn dispatch(
     command: Operation,
     configuration: &ResolvedConfig,
@@ -248,6 +256,7 @@ async fn dispatch(
             shared_vector_search,
             intent,
             limit,
+            offset,
             unit,
             fusion,
             ranking,
@@ -264,6 +273,7 @@ async fn dispatch(
                 query,
                 intent,
                 limit,
+                offset,
                 unit,
                 fusion,
                 ranking,

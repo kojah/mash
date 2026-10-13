@@ -59,7 +59,7 @@ reuse the generated projection and decoder; migrations and writes remain explici
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-views [--full]
-mash search <query> [--unit chats|messages] [--local | --shared] [--no-worker] [--limit N] [--provider PROVIDER] [--days N]
+mash search <query> [--unit chats|messages] [--local | --shared] [--no-worker] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
 mash list-chats [--local | --shared] [--provider PROVIDER] [--kind KIND] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -718,7 +718,7 @@ builds: `rank_constant` defaults to 60 (1–1000), and `lexical_weight` and
 stream before contextual reranking. `recency_weight` (default 50, 0–100) favours
 newer messages in the final order: recency is ranked like another candidate
 stream and combined with the relevance order, at that percentage of
-relevance's weight, after reranking and before the result limit. A newer
+relevance's weight, after reranking and before paging. A newer
 message can overtake comparably relevant older ones, but a strong old match
 still outranks a weak new one; undated messages get no recency credit and 0
 ranks by relevance alone. These query-only settings apply to local,
@@ -858,7 +858,8 @@ or mixed-language query.
 
 `--sort recent` (MCP `"sort":"recent"`) orders the results that qualify newest
 first, after relevance has chosen them; a chat sorts by its latest matching
-message, and undated results come last. The default, `relevance`, keeps the
+message, and undated results come last. With paging, relevance chooses each
+page and recency orders only that page, so pages never repeat or skip results. The default, `relevance`, keeps the
 relevance order. Exact-mention search already breaks ties by recency.
 
 CLI search accepts repeatable `--provider`, `--node`, `--role`, `--chat`,
@@ -1100,7 +1101,10 @@ excerpts in relevance order. Each excerpt has a `message_id`, its own `node_id`,
 role, timestamp, and relevance scores. Open an excerpt with `view MESSAGE_ID
 --context N`, supplying `--shared NODE_ID` for a shared excerpt. Timestamps are
 Unix milliseconds; unknown metadata is null. Search never returns an entire
-conversation automatically.
+conversation automatically. Every returned message `id` in a `view` response is
+itself a view anchor: to keep reading, view the first or last returned message
+with the same `--shared` value. `--context` has no upper bound and bodies are
+never truncated.
 
 Local lexical search treats query text as literal words, including URLs, dotted
 names and hyphenated identifiers; double quotes require contiguous literal words
@@ -1117,7 +1121,7 @@ and remaining relevance limitations.
 Thread retrieval considers up to 200 lexical and 200 semantic candidates per
 index. It keeps up to six distinct candidate messages per conversation. A first
 reranking pass evaluates up to 20 grouped chat documents, then individual
-evidence is reranked for five to ten promising chats (at most 60 messages).
+evidence is reranked for the ten most promising chats (at most 60 messages).
 Each evidence document includes bounded text from its two nearest searchable
 neighbours. Threads are grouped before applying `limit`;
 their score is reciprocal rank of the best qualifying message plus a bounded
@@ -1144,7 +1148,20 @@ ID, role and whitespace-normalized content occupy one message result, with
 alternate view anchors in `copies`. Repeated content with different message IDs
 and divergent copies remain separate. Replicas do not earn additional fusion
 credit. `limit` counts the selected unit, and filters apply equally
-to both modes before retrieval. Thread excerpts are bounded to 800 characters
+to both modes before retrieval.
+
+Search results are paged. `limit` (1–200) sets the page size and `offset`
+(default 0) selects where the page starts in one final ranked list, which holds
+at most 200 chats or 50 messages; an offset at or beyond that window is a usage
+error. Responses include `next_offset`, the offset of the following page, or
+null on the last page. Repeat the same search with that offset to continue.
+Candidate retrieval, fusion and both reranking passes use fixed budgets that do
+not depend on `limit` or `offset`, and qualification filters apply before the
+page is cut, so for an unchanged index the pages of local, shared, combined and
+exact-mention searches partition the same ranking that one large page returns.
+Boundaries are best effort when the index changes between requests, or when a
+combined search's shared source or shared context fetch fails for some pages
+and not others (reported by `shared_error` and `shared_context_error`). Thread excerpts are bounded to 800 characters
 plus ellipses, with a window around a query term when present. Results describe
 the bounded candidate pool, not an exhaustive count of matches in each chat.
 Unknown upstream metadata remains null.
@@ -1613,7 +1630,7 @@ Example MCP client configuration:
 
 For shared operations, provide the configured node token environment variable to
 `mash mcp` through your MCP client's environment mechanism. `search` accepts a
-`shared` boolean and a `unit` of `chats` (default) or `messages`; `view` accepts a `shared` publishing node ID. Search, view, and
+`shared` boolean, a `unit` of `chats` (default) or `messages`, and `limit`/`offset` paging with `next_offset` in the response; `view` accepts a `shared` publishing node ID. Search, view, and
 status, `list_chats`, and `watch_status` are annotated read-only. Watch start/stop
 control background indexing without waiting for the index mutation guard. Index and forget mutate data; `models_install`
 is the only operation that downloads models. Shared node I/O uses async HTTP;

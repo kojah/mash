@@ -162,6 +162,7 @@ pub(crate) async fn evaluate(paths: &Paths, shared: bool) -> Vec<String> {
                     query: query.text.clone(),
                     intent: None,
                     limit: Some(5),
+                    offset: 0,
                     unit: Some(unit),
                     filters: Box::new(query.filters.clone()),
                     shared,

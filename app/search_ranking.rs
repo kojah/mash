@@ -9,6 +9,10 @@ use std::collections::HashMap;
 #[cfg(test)]
 mod tests;
 
+/// Threads whose evidence is reranked in chat mode. Fixed so the final
+/// order, and therefore every page of it, is independent of the page size.
+const RERANK_THREADS: usize = 10;
+
 pub(crate) struct Selection {
     pub(crate) hits: Vec<SearchHit>,
     pub(crate) count: usize,
@@ -52,17 +56,9 @@ pub(crate) fn favour_recent(hits: &mut [SearchHit], fusion: Fusion) {
     }
 }
 
-/// Preserve fused ordering and all thread evidence; cap message results only.
-pub(crate) fn finish_fusion(
-    mut hits: Vec<SearchHit>,
-    unit: SearchUnit,
-    limit: usize,
-    fusion: Fusion,
-) -> Vec<SearchHit> {
+/// Preserve fused ordering and all evidence; result collection pages it.
+pub(crate) fn finish_fusion(mut hits: Vec<SearchHit>, fusion: Fusion) -> Vec<SearchHit> {
     favour_recent(&mut hits, fusion);
-    if matches!(unit, SearchUnit::Messages) {
-        hits.truncate(limit);
-    }
     hits
 }
 
@@ -71,7 +67,6 @@ pub(crate) fn select(
     query: &str,
     hits: Vec<SearchHit>,
     unit: SearchUnit,
-    limit: usize,
 ) -> Result<Selection, AppError> {
     if matches!(unit, SearchUnit::Messages) {
         return Ok(Selection {
@@ -114,7 +109,7 @@ pub(crate) fn select(
             .then_with(|| a.index.cmp(&b.index))
     });
     let mut selected = vec![false; hits.len()];
-    for thread in ranked.into_iter().take(limit.clamp(5, 10)) {
+    for thread in ranked.into_iter().take(RERANK_THREADS) {
         if let Some(group) = groups.get(thread.index) {
             for &index in group.iter().take(6) {
                 selected[index] = true;
@@ -139,7 +134,6 @@ pub(crate) fn score(
     mut selection: Selection,
     documents: &[String],
     unit: SearchUnit,
-    limit: usize,
     fusion: Fusion,
 ) -> Result<Vec<SearchHit>, AppError> {
     if documents.len() != selection.count {
@@ -159,11 +153,8 @@ pub(crate) fn score(
             .then_with(|| a.node_id.cmp(&b.node_id))
             .then_with(|| a.id.cmp(&b.id))
     });
-    // Before truncation, so a newer message just past the limit can enter.
     favour_recent(&mut selection.hits[..selection.count], fusion);
-    if matches!(unit, SearchUnit::Messages) {
-        selection.hits.truncate(limit);
-    } else {
+    if matches!(unit, SearchUnit::Chats) {
         selection.hits[selection.count..].sort_by(|a, b| {
             b.fusion_score
                 .total_cmp(&a.fusion_score)

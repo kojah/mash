@@ -23,7 +23,7 @@ pub(crate) enum Sort {
     /// Most relevant first, with newer messages favoured among comparable ones.
     #[default]
     Relevance,
-    /// Newest first; a chat sorts by its latest matching message.
+    /// Newest first within the returned page; a chat sorts by its latest matching message.
     Recent,
 }
 
@@ -32,7 +32,7 @@ pub(crate) enum Sort {
 pub(crate) struct Selection {
     /// flexible (default) enables prefix and typo matching; strict preserves literals.
     pub(crate) match_mode: crate::views::matching::Mode,
-    /// relevance (default) or recent: newest first among results that qualify.
+    /// relevance (default) or recent: newest first within each page of relevant results.
     pub(crate) sort: Sort,
     /// Provider alternatives; omitted or empty selects all providers.
     pub(crate) provider: Vec<Provider>,

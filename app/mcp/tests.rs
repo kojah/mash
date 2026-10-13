@@ -11,6 +11,7 @@ mod fusion;
 mod guidance;
 mod incomplete;
 mod output;
+mod paging;
 mod rebuild;
 mod redaction;
 mod selections;
@@ -52,6 +53,7 @@ async fn exact_mcp_search_bypasses_model_permits_and_preserves_completed_silver(
             query: "for".into(),
             intent: None,
             limit: Some(1),
+            offset: None,
             fusion: None,
             ranking: None,
             shared_vector: None,
@@ -133,6 +135,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
                 query: "--models-dir=untrusted".into(),
                 intent: None,
                 limit: None,
+                offset: None,
                 fusion: None,
                 ranking: None,
                 shared_vector: None,
@@ -156,6 +159,7 @@ async fn typed_search_requests_validate_before_touching_models_or_storage() {
             query: "wie konfiguriere ich den gemeinsamen Suchindex".into(),
             intent: None,
             limit: None,
+            offset: None,
             fusion: None,
             ranking: None,
             shared_vector: None,
@@ -320,6 +324,11 @@ fn assert_filter_schema(tools: &[rmcp::model::Tool]) {
     for field in ["provider", "chat", "node", "role", "project", "repository"] {
         assert_eq!(search.input_schema["properties"][field]["type"], "array");
     }
+    let properties = &search.input_schema["properties"];
+    assert_eq!(properties["limit"]["minimum"], 1);
+    assert_eq!(properties["limit"]["maximum"], 200);
+    assert_eq!(properties["offset"]["minimum"], 0);
+    assert_eq!(properties["offset"]["maximum"], 199);
     // Defaults come from the current node configuration, not a frozen SDK value.
     let unit = &search.input_schema["properties"]["unit"];
     assert!(unit.get("default").is_none());

@@ -26,7 +26,6 @@ pub(crate) fn hybrid_search_filtered(
 ) -> Result<Vec<SearchHit>, AppError> {
     let (provider, days) = legacy;
     let Options {
-        limit,
         unit,
         fusion,
         ranking,
@@ -60,11 +59,9 @@ pub(crate) fn hybrid_search_filtered(
     }
     let fused = crate::search_results::diversify(fuse(lexical, semantic_hits, unit, fusion), unit);
     if ranking == crate::views::config::Ranking::Fusion {
-        return Ok(crate::search_ranking::finish_fusion(
-            fused, unit, limit, fusion,
-        ));
+        return Ok(crate::search_ranking::finish_fusion(fused, fusion));
     }
-    let selection = crate::search_ranking::select(backend, query, fused, unit, limit)?;
+    let selection = crate::search_ranking::select(backend, query, fused, unit)?;
     let documents = selection.hits[..selection.count]
         .iter()
         .map(|hit| {
@@ -78,7 +75,7 @@ pub(crate) fn hybrid_search_filtered(
             ))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
-    crate::search_ranking::score(backend, query, selection, &documents, unit, limit, fusion)
+    crate::search_ranking::score(backend, query, selection, &documents, unit, fusion)
 }
 
 /// Model-space identity shared by the CPU ONNX and Apple Core ML executions.

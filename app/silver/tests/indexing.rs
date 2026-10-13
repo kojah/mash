@@ -175,6 +175,7 @@ async fn core_retrieves_native_codex_completed_and_mixed_dialogue() {
                     query: "cbioportal conversations".into(),
                     intent: None,
                     limit: Some(5),
+                    offset: 0,
                     unit: Some(unit),
                     filters: Box::new(crate::search_filter::Selection {
                         provider: vec![Provider::Codex],

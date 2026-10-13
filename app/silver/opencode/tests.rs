@@ -276,6 +276,7 @@ async fn core_indexes_searches_and_views_native_opencode_threads() {
             query: "cbioportal importer".into(),
             intent: None,
             limit: Some(5),
+            offset: 0,
             unit: Some(crate::search_results::SearchUnit::Chats),
             filters: Box::new(crate::search_filter::Selection {
                 provider: vec![Provider::Opencode],

@@ -47,6 +47,7 @@ async fn core_retrieves_native_cursor_threads_with_archived_requests_and_project
                         query: query.into(),
                         intent: None,
                         limit: Some(5),
+                        offset: 0,
                         unit: Some(unit),
                         filters: Box::new(crate::search_filter::Selection {
                             provider: vec![Provider::Cursor],

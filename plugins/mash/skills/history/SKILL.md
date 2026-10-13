@@ -13,12 +13,15 @@ connection handshake can predate the current worker; live help is authoritative.
 <!-- Generated from Rust MCP definitions; do not edit. -->
 
 ```json mcp:help
-{"expected_contract":"5f43af27e36b8c77ac67915b52a3081922cb160baeea553611ff1d40a9962dee","tool":"search","topic":"discovery"}
+{"expected_contract":"acf6a50944f1c464c72eef1064c9c45acaa4597d5fd7e6b34fe767fa0b5f88f4","tool":"search","topic":"discovery"}
 ```
 
 
 Find named chats with `list_chats`, subjects with `search`, then copy returned
 `lookup.view` arguments into `view` to inspect complete evidence and follow-ups.
+`search` and `list_chats` return one page: repeat the same request with `offset`
+set to the returned `next_offset` for more; null means the last page. To keep
+reading a conversation, view the first or last returned message `id`.
 Omit unused filters. Preserve provider, project, time and local/shared scope.
 For decisions, distinguish user approval from assistant proposals. Cite message
 evidence; titles, scores and empty results do not establish decisions or absence.

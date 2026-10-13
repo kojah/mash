@@ -1,4 +1,5 @@
 //! Built-in views: result granularity and bounded conversation ranking across transports.
+use crate::AppError;
 use crate::storage::SearchHit;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
@@ -38,6 +39,62 @@ impl SearchUnit {
             Self::Messages => 10,
         }
     }
+    /// The final ranked list is cut to this many results; pages slice it.
+    pub(crate) const fn result_window(self) -> usize {
+        self.candidate_limit()
+    }
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Chats => "chats",
+            Self::Messages => "messages",
+        }
+    }
+}
+
+/// One page, `[offset, offset + limit)`, of a search's final ranked list.
+/// Ranking never depends on the page, so pages partition one ordering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Page {
+    pub(crate) offset: usize,
+    pub(crate) limit: usize,
+}
+
+impl Page {
+    /// Requests share the `views.query.limit` configuration bound.
+    pub(crate) const MAX_LIMIT: usize = 200;
+
+    pub(crate) fn new(limit: usize, offset: usize, unit: SearchUnit) -> Result<Self, AppError> {
+        let window = unit.result_window();
+        if !(1..=Self::MAX_LIMIT).contains(&limit) || offset >= window {
+            return Err(AppError::usage(format!(
+                "search pages require limit 1–{} and offset 0–{} for unit {}",
+                Self::MAX_LIMIT,
+                window - 1,
+                unit.name()
+            )));
+        }
+        Ok(Self { offset, limit })
+    }
+
+    /// The first page of `limit` results, for callers outside request validation.
+    #[cfg(test)]
+    pub(crate) const fn first(limit: usize) -> Self {
+        Self { offset: 0, limit }
+    }
+
+    /// Slice the ranked results; `next_offset` is set only when more remain.
+    fn take<T>(self, ranked: impl Iterator<Item = T>, window: usize) -> (Vec<T>, Option<usize>) {
+        let mut ranked = ranked.take(window).skip(self.offset);
+        let page = ranked.by_ref().take(self.limit).collect();
+        let next = self.offset + self.limit;
+        (page, ranked.next().is_some().then_some(next))
+    }
+}
+
+/// A page of results and the offset of the following page, if any.
+pub(crate) struct Collected {
+    pub(crate) results: Results,
+    pub(crate) next_offset: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -60,6 +117,7 @@ pub(crate) enum Results {
 
 impl Results {
     /// Reorder newest first; undated results keep their relevance order last.
+    /// Search applies this to one page, after paging the relevance order.
     pub(crate) fn newest_first(&mut self) {
         use std::cmp::Reverse;
         match self {
@@ -256,21 +314,21 @@ fn qualifies_as_evidence(hit: &SearchHit) -> bool {
 pub(crate) fn collect(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
-    limit: usize,
+    page: Page,
     query: &str,
     redaction: crate::redaction::Policy,
-) -> Results {
-    collect_inner(hits, unit, limit, query, None, redaction)
+) -> Collected {
+    collect_inner(hits, unit, page, query, None, redaction)
 }
 
 pub(crate) fn collect_exact(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
-    limit: usize,
+    page: Page,
     literal: &crate::views::exact::Literal,
     redaction: crate::redaction::Policy,
-) -> Results {
-    collect_inner(hits, unit, limit, "", Some(literal), redaction)
+) -> Collected {
+    collect_inner(hits, unit, page, "", Some(literal), redaction)
 }
 
 /// What a hit groups under: an entry's nearest container (with the objects
@@ -320,11 +378,11 @@ fn chat_for(hit: &SearchHit, redaction: crate::redaction::Policy) -> ChatHit {
 fn collect_inner(
     hits: Vec<SearchHit>,
     unit: SearchUnit,
-    limit: usize,
+    page: Page,
     query: &str,
     literal: Option<&crate::views::exact::Literal>,
     redaction: crate::redaction::Policy,
-) -> Results {
+) -> Collected {
     let exact_reference = literal.is_some() || crate::search_query::has_reference(query);
     let matches = |hit: &SearchHit| {
         literal.map_or_else(
@@ -333,20 +391,22 @@ fn collect_inner(
         )
     };
     if matches!(unit, SearchUnit::Messages) {
-        return Results::Messages(
+        let (mut hits, next_offset) = page.take(
             eligible(hits)
                 .into_iter()
                 .filter(|hit| exact_reference || qualifies_as_evidence(hit))
-                .filter(&matches)
-                .take(limit.min(1000))
-                .map(|mut hit| {
-                    hit.content = redaction.text(&hit.content);
-                    redaction.metadata(&mut hit.metadata);
-                    redaction.ancestors(&mut hit.ancestors);
-                    hit
-                })
-                .collect(),
+                .filter(&matches),
+            unit.result_window(),
         );
+        for hit in &mut hits {
+            hit.content = redaction.text(&hit.content);
+            redaction.metadata(&mut hit.metadata);
+            redaction.ancestors(&mut hit.ancestors);
+        }
+        return Collected {
+            results: Results::Messages(hits),
+            next_offset,
+        };
     }
     let mut threads = Vec::<ChatHit>::new();
     let mut groups = HashMap::new();
@@ -417,8 +477,11 @@ fn collect_inner(
             .then_with(|| a.source.to_string().cmp(&b.source.to_string()))
             .then_with(|| a.conversation_id.cmp(&b.conversation_id))
     });
-    threads.truncate(limit.min(1000));
-    Results::Chats(threads)
+    let (threads, next_offset) = page.take(threads.into_iter(), unit.result_window());
+    Collected {
+        results: Results::Chats(threads),
+        next_offset,
+    }
 }
 
 /// Keep the query evidence visible to the 512-token reranker on long messages.

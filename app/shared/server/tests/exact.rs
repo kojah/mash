@@ -369,6 +369,7 @@ async fn verify_core(service: &Service) {
                 intent: Some(Intent::ExactMention),
                 shared_vector_search: None,
                 limit: Some(10),
+                offset: 0,
                 unit: Some(unit),
                 filters: Box::new(Selection {
                     provider: vec![Provider::Codex],

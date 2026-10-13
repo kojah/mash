@@ -36,6 +36,8 @@ pub(crate) struct Diagnostics {
     pub(crate) intent: Intent,
     pub(crate) unit: SearchUnit,
     pub(crate) limit: usize,
+    #[serde(default)]
+    pub(crate) offset: usize,
     /// Selection is policy, not a claim about candidate counts or inference calls.
     pub(crate) selected_artifacts: Vec<Artifact>,
     /// Requested predicate names, not values, Boolean structure or removal counts.
@@ -64,7 +66,7 @@ impl Diagnostics {
     pub(crate) fn new(
         response: &SearchResponse,
         scope: Scope,
-        limit: usize,
+        page: crate::search_results::Page,
         fusion: Fusion,
         ranking: Ranking,
     ) -> Self {
@@ -74,7 +76,8 @@ impl Diagnostics {
             policy_version: 1,
             intent: response.intent,
             unit: response.unit,
-            limit,
+            limit: page.limit,
+            offset: page.offset,
             selected_artifacts: if hybrid {
                 vec![Artifact::Metadata, Artifact::Lexical, Artifact::Dense]
             } else {

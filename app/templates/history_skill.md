@@ -14,6 +14,9 @@ connection handshake can predate the current worker; live help is authoritative.
 
 Find named chats with `list_chats`, subjects with `search`, then copy returned
 `lookup.view` arguments into `view` to inspect complete evidence and follow-ups.
+`search` and `list_chats` return one page: repeat the same request with `offset`
+set to the returned `next_offset` for more; null means the last page. To keep
+reading a conversation, view the first or last returned message `id`.
 Omit unused filters. Preserve provider, project, time and local/shared scope.
 For decisions, distinguish user approval from assistant proposals. Cite message
 evidence; titles, scores and empty results do not establish decisions or absence.

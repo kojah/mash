@@ -12,6 +12,7 @@ pub(super) struct Input {
     pub(super) query: String,
     pub(super) intent: Option<crate::views::exact::Intent>,
     pub(super) limit: Option<usize>,
+    pub(super) offset: usize,
     pub(super) unit: Option<crate::search_results::SearchUnit>,
     pub(super) fusion: crate::views::config::FusionOverrides,
     pub(super) ranking: Option<crate::views::config::Ranking>,
@@ -28,6 +29,9 @@ pub(super) async fn preflight(
     let super::Operation::Search {
         query,
         intent,
+        limit,
+        offset,
+        unit,
         fusion,
         ranking,
         shared_vector_search,
@@ -40,16 +44,14 @@ pub(super) async fn preflight(
         return Ok(());
     };
     let intent = intent.unwrap_or(configuration.views.query.intent);
+    configuration.views.query.resolve(*limit, *offset, *unit)?;
     resolve(
         query,
         intent,
         (**filters).clone(),
         *shared,
         *local,
-        configuration
-            .shared
-            .as_ref()
-            .map_or("local", |c| c.node_id.as_str()),
+        node(configuration),
     )?;
     if !shared {
         configuration.views.build.require_intent(intent)?;
@@ -144,8 +146,11 @@ pub(super) async fn run(
     let vector_override = input.shared_vector_search;
     let shared_only = input.shared;
     let sort = input.filters.sort;
+    let (page, _) = configuration
+        .views
+        .query
+        .resolve(input.limit, input.offset, input.unit)?;
     let policy = if input.diagnostics {
-        let (limit, _) = configuration.views.query.resolve(input.limit, input.unit);
         let fusion = resolve_fusion(
             input.fusion,
             input.intent.unwrap_or(configuration.views.query.intent),
@@ -163,27 +168,25 @@ pub(super) async fn run(
             input.intent.unwrap_or(configuration.views.query.intent),
             configuration.views.query.ranking,
         )?;
-        Some((limit, fusion, scope, ranking, input.filters.fields()))
+        Some((fusion, scope, ranking, input.filters.fields()))
     } else {
         None
     };
     let mut response = run_inner(configuration, database, models, input).await?;
-    // Only results that already qualified are reordered, after the limit.
+    // Only the page's results are reordered: pages still partition the
+    // relevance ranking, so paging never skips or repeats a result.
     if sort == crate::search_filter::Sort::Recent {
         response.results.newest_first();
     }
     crate::search_results::lookup::attach(
         &mut response.results,
-        configuration
-            .shared
-            .as_ref()
-            .map_or("local", |c| c.node_id.as_str()),
+        node(configuration),
         response.shared,
         shared_only,
     );
-    if let Some((limit, fusion, scope, ranking, filter_fields)) = policy {
+    if let Some((fusion, scope, ranking, filter_fields)) = policy {
         response.diagnostics = Some(crate::views::diagnostics::Diagnostics::new(
-            &response, scope, limit, fusion, ranking,
+            &response, scope, page, fusion, ranking,
         ));
         if let Some(diagnostics) = &mut response.diagnostics {
             diagnostics.shared_vector_override = vector_override;
@@ -205,6 +208,7 @@ async fn run_inner(
         query,
         intent,
         limit,
+        offset,
         unit,
         fusion,
         ranking,
@@ -213,8 +217,8 @@ async fn run_inner(
         shared: use_shared,
         local: use_local,
     } = input;
-    let (limit, unit) = configuration.views.query.resolve(limit, unit);
-    let mut options = crate::views::config::Options::new(limit, unit);
+    let (page, unit) = configuration.views.query.resolve(limit, offset, unit)?;
+    let mut options = crate::views::config::Options::new(unit);
     let intent = intent.unwrap_or(configuration.views.query.intent);
     validate_vector(
         shared_vector_search,
@@ -235,39 +239,26 @@ async fn run_inner(
         filters,
         use_shared,
         use_local,
-        configuration
-            .shared
-            .as_ref()
-            .map_or("local", |c| c.node_id.as_str()),
+        node(configuration),
     )?;
     let output = options.output_redaction;
     if intent == crate::views::exact::Intent::ExactMention {
         let literal = crate::views::exact::Literal::with_mode(&query, filters.match_mode)?;
         if use_shared || (!use_local && configuration.shared.is_some()) {
-            let (hits, shared_error) = shared::search_exact(
-                required_shared(configuration)?,
+            return shared_exact(
+                configuration,
                 (!use_shared).then_some(database),
-                &query,
-                unit,
+                &literal,
+                query,
+                (page, unit),
                 &filters,
                 output,
             )
-            .await?;
-            return Ok(SearchResponse {
-                diagnostics: None,
-                intent,
-                realized_mode: exact_mode(shared_error.is_some(), use_shared),
-                unit,
-                results: crate::search_results::collect_exact(hits, unit, limit, &literal, output),
-                query,
-                shared: shared_error.is_none(),
-                shared_error,
-                shared_context_error: None,
-            });
+            .await;
         }
         let database = database.to_path_buf();
         return crate::blocking(move || {
-            local_exact(&database, &literal, query, (limit, unit), &filters, output)
+            local_exact(&database, &literal, query, (page, unit), &filters, output)
         })
         .await;
     }
@@ -277,7 +268,7 @@ async fn run_inner(
             (!use_shared).then_some(database),
             models,
             query,
-            options,
+            (options, page),
             &filters,
             use_shared,
         )
@@ -289,7 +280,13 @@ async fn run_inner(
         let build = configuration.views.build.clone();
         crate::blocking(move || {
             local_search(
-                &database, &models, embeddings, query, options, &filters, &build,
+                &database,
+                &models,
+                embeddings,
+                query,
+                (options, page),
+                &filters,
+                &build,
             )
         })
         .await
@@ -301,11 +298,11 @@ async fn shared_hybrid(
     database: Option<&Path>,
     models: &Path,
     query: String,
-    options: crate::views::config::Options,
+    (options, page): (crate::views::config::Options, crate::search_results::Page),
     filters: &crate::search_filter::Scope,
     shared_only: bool,
 ) -> Result<SearchResponse, AppError> {
-    let crate::views::config::Options { limit, unit, .. } = options;
+    let unit = options.unit;
     let shared::SearchOutcome {
         hits: results,
         retrieval,
@@ -321,18 +318,15 @@ async fn shared_hybrid(
     )
     .await?;
     let shared_error = retrieval.into_error();
+    let collected =
+        crate::search_results::collect(results, unit, page, &query, options.output_redaction);
     Ok(SearchResponse {
         diagnostics: None,
         intent: crate::views::exact::Intent::RelatedDiscussion,
         realized_mode: search_mode(shared_error.is_some(), shared_only),
         unit,
-        results: crate::search_results::collect(
-            results,
-            unit,
-            limit,
-            &query,
-            options.output_redaction,
-        ),
+        results: collected.results,
+        next_offset: collected.next_offset,
         query,
         shared: shared_error.is_none(),
         shared_error,
@@ -340,11 +334,51 @@ async fn shared_hybrid(
     })
 }
 
+/// Shared, or combined when `database` is local, model-free literal search.
+async fn shared_exact(
+    configuration: &ResolvedConfig,
+    database: Option<&Path>,
+    literal: &crate::views::exact::Literal,
+    query: String,
+    (page, unit): (
+        crate::search_results::Page,
+        crate::search_results::SearchUnit,
+    ),
+    filters: &crate::search_filter::Scope,
+    output: crate::redaction::Policy,
+) -> Result<SearchResponse, AppError> {
+    let (hits, shared_error) = shared::search_exact(
+        required_shared(configuration)?,
+        database,
+        &query,
+        unit,
+        filters,
+        output,
+    )
+    .await?;
+    let collected = crate::search_results::collect_exact(hits, unit, page, literal, output);
+    Ok(SearchResponse {
+        diagnostics: None,
+        intent: crate::views::exact::Intent::ExactMention,
+        realized_mode: exact_mode(shared_error.is_some(), database.is_none()),
+        unit,
+        results: collected.results,
+        next_offset: collected.next_offset,
+        query,
+        shared: shared_error.is_none(),
+        shared_error,
+        shared_context_error: None,
+    })
+}
+
 fn local_exact(
     database: &Path,
     literal: &crate::views::exact::Literal,
     query: String,
-    (limit, unit): (usize, crate::search_results::SearchUnit),
+    (page, unit): (
+        crate::search_results::Page,
+        crate::search_results::SearchUnit,
+    ),
     filters: &crate::search_filter::Scope,
     output: crate::redaction::Policy,
 ) -> Result<SearchResponse, AppError> {
@@ -358,12 +392,14 @@ fn local_exact(
         },
     )?;
     let hits = crate::views::exact::rank(hits, unit);
+    let collected = crate::search_results::collect_exact(hits, unit, page, literal, output);
     Ok(SearchResponse {
         diagnostics: None,
         intent: crate::views::exact::Intent::ExactMention,
         realized_mode: SearchMode::Lexical,
         unit,
-        results: crate::search_results::collect_exact(hits, unit, limit, literal, output),
+        results: collected.results,
+        next_offset: collected.next_offset,
         query,
         shared: false,
         shared_error: None,
@@ -377,7 +413,7 @@ fn local_search(
     models_dir: &Path,
     embeddings_config: Option<semantic::remote::Configuration>,
     query: String,
-    options: crate::views::config::Options,
+    (options, page): (crate::views::config::Options, crate::search_results::Page),
     filters: &crate::search_filter::Scope,
     build: &crate::views::config::Build,
 ) -> Result<SearchResponse, AppError> {
@@ -399,23 +435,33 @@ fn local_search(
         (None, None),
         Some(filters),
     )?;
+    let collected = crate::search_results::collect(
+        results,
+        options.unit,
+        page,
+        &query,
+        options.output_redaction,
+    );
     Ok(SearchResponse {
         diagnostics: None,
         intent: crate::views::exact::Intent::RelatedDiscussion,
         realized_mode: SearchMode::Hybrid,
         unit: options.unit,
-        results: crate::search_results::collect(
-            results,
-            options.unit,
-            options.limit,
-            &query,
-            options.output_redaction,
-        ),
+        results: collected.results,
+        next_offset: collected.next_offset,
         query,
         shared: false,
         shared_error: None,
         shared_context_error: None,
     })
+}
+
+/// This node's ID, or `local` without a shared configuration.
+fn node(configuration: &ResolvedConfig) -> &str {
+    configuration
+        .shared
+        .as_ref()
+        .map_or("local", |c| c.node_id.as_str())
 }
 
 fn exact_mode(failed: bool, shared_only: bool) -> SearchMode {
