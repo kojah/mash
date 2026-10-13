@@ -11,7 +11,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(super) mod connectors;
-mod counts;
 mod replay;
 mod sync;
 
@@ -26,7 +25,6 @@ pub(in crate::shared) struct Store {
     embedder: Option<connectors::Embedder>,
     max_upload_bytes: u64,
     nodes: Arc<std::sync::Mutex<HashMap<(String, String), NodeLock>>>,
-    counts: Arc<counts::Cache>,
     /// Whether HTTP read responses mask recognizable credentials.
     responses: crate::redaction::Policy,
 }
@@ -107,7 +105,6 @@ impl Store {
             embedder: None,
             max_upload_bytes,
             nodes: Arc::default(),
-            counts: Arc::default(),
             responses: crate::redaction::Policy::ON,
         }
     }
@@ -180,7 +177,7 @@ impl Store {
     }
 
     pub(in crate::shared) async fn status(&self, identity: &Identity) -> Result<Counts, AppError> {
-        let mut counts = self.counts(identity).await?;
+        let mut counts = self.read(identity, silver_store::counts).await?;
         counts.embeddings = self
             .views
             .node_views(identity)
@@ -249,7 +246,7 @@ impl Store {
                 node_id: node_id.clone(),
                 ..identity.clone()
             };
-            let mut counts = self.counts(&node).await?;
+            let mut counts = self.read(&node, silver_store::counts).await?;
             let views = self.views.node_views(&node).await?;
             let connectors_current = match &views {
                 Some(g) => g.connectors == self.connector_digests(&node).await?,

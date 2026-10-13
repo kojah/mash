@@ -8,11 +8,18 @@ INSERT INTO shared_head(singleton, head) VALUES (1, sqlc.arg(head))
 ON CONFLICT(singleton) DO UPDATE SET head = excluded.head;
 
 -- name: Counts :one
-SELECT (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'container') AS conversations,
-    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry') AS messages,
-    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry'
+-- Every count reads only an index, never message bodies, as the local Counts.
+SELECT (SELECT count(*) FROM objects INDEXED BY objects_native_container
+        WHERE origin = 'provider' AND object_role = 'container') AS conversations,
+    CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
+        WHERE origin = 'provider' AND object_role <> 'container')
+    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
+        WHERE object_role IN ('segment', 'document') AND origin = 'provider') AS INTEGER) AS messages,
+    (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+        WHERE origin = 'provider' AND object_role = 'entry'
         AND COALESCE(search_projection, content) <> '') AS searchable,
-    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry'
+    (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+        WHERE origin = 'provider' AND object_role = 'entry'
         AND COALESCE(search_projection, content) <> '' AND role = 'user') AS searchable_users;
 
 -- name: Conversation :one

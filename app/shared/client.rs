@@ -79,7 +79,7 @@ impl Endpoint {
         } else if matches!(self, Self::Search | Self::Freshness) {
             // Exact vector retrieval over a full node can take nearly two
             // seconds before network transit and typed response decoding.
-            // Freshness recounts a node's silver after each publication.
+            // Freshness counts each node's silver through its indexes.
             Duration::from_secs(5)
         } else {
             Duration::from_secs(2)

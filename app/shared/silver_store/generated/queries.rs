@@ -146,11 +146,17 @@ impl CountsRow {
 }
 pub struct Counts;
 impl Counts {
-    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'container') AS conversations,
-    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry') AS messages,
-    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry'
+    pub const QUERY: &'static str = r"SELECT (SELECT count(*) FROM objects INDEXED BY objects_native_container
+        WHERE origin = 'provider' AND object_role = 'container') AS conversations,
+    CAST((SELECT count(*) FROM objects INDEXED BY objects_native_id
+        WHERE origin = 'provider' AND object_role <> 'container')
+    - (SELECT count(*) FROM objects INDEXED BY objects_conversation
+        WHERE object_role IN ('segment', 'document') AND origin = 'provider') AS INTEGER) AS messages,
+    (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+        WHERE origin = 'provider' AND object_role = 'entry'
         AND COALESCE(search_projection, content) <> '') AS searchable,
-    (SELECT count(*) FROM objects WHERE origin = 'provider' AND object_role = 'entry'
+    (SELECT count(*) FROM objects INDEXED BY objects_searchable_role
+        WHERE origin = 'provider' AND object_role = 'entry'
         AND COALESCE(search_projection, content) <> '' AND role = 'user') AS searchable_users";
     pub fn query_str(&self) -> &str {
         Self::QUERY
