@@ -86,6 +86,15 @@ jobs:
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --project connectors/google_docs --locked python -m unittest discover \
               -s connectors/google_docs/tests
+      - name: Verify GitHub ingestion against a fake API and real local search
+        run: |
+          uv sync --project connectors/github --locked
+          uv run --project connectors/github --locked ruff check connectors/github
+          uv run --project connectors/github --locked ruff format --check connectors/github
+          uv run --project connectors/github --locked ty check connectors/github
+          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
+            uv run --project connectors/github --locked python -m unittest discover \
+              -s connectors/github/tests
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |

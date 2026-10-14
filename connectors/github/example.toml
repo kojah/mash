@@ -1,0 +1,24 @@
+# All paths are relative to this configuration file; ~ expands to your home.
+account_id = "personal" # Stable; the Mash source is github:personal.
+# A fine-grained read-only token; falls back to `gh auth token` when unset.
+token_env = "GITHUB_TOKEN"
+state_dir = "~/.local/share/mash/connectors/github/personal"
+repositories = ["example/backend", "example/frontend"] # Explicit allowlist.
+item_kinds = ["issue", "pull-request"]
+# history_days = 90 # By creation time; omit for all history.
+poll_seconds = 60
+
+[[destinations]]
+type = "local"
+database = "~/.local/share/mash/mash.sqlite3"
+executable = "mash"
+# config = "~/.config/mash/config.toml"
+
+# Shared publication is an independent explicit destination; native node
+# publication does not carry connector records. Credentials stay in the env.
+# [[destinations]]
+# type = "shared"
+# api_url = "https://mash.example"
+# group_id = "personal"
+# node_id = "laptop"
+# token_env = "MASH_API_TOKEN"

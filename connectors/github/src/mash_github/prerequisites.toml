@@ -1,0 +1,51 @@
+version = 1
+connector = "github"
+python = [3, 11]
+
+[[requirements]]
+id = "python"
+when = "always"
+description = "Python 3.11 or newer"
+remedy = "Run uv sync --project connectors/github --locked."
+
+[[requirements]]
+id = "token"
+when = "always"
+description = "A GitHub token in the configured environment variable, or from gh auth token"
+remedy = "Export a fine-grained read-only token in token_env (default GITHUB_TOKEN), or run gh auth login."
+
+[[requirements]]
+id = "github_access"
+when = "always"
+description = "GitHub accepts the token and it can read issues and pull requests of every selected repository"
+remedy = "Grant the token read-only Issues, Pull requests and Metadata access to each repository; sync reports HTTP 401/403/404 per repository."
+
+[[requirements]]
+id = "state"
+when = "always"
+description = "Writable persistent connector state"
+remedy = "Set state_dir to a directory this user can create or write."
+
+[[requirements]]
+id = "mash"
+when = "local"
+description = "An installed Mash executable"
+remedy = "Install Mash and set destinations.executable to its path."
+
+[[requirements]]
+id = "database"
+when = "local"
+description = "A writable local silver database compatible with the installed Mash"
+remedy = "Select a writable database; use Mash export/import for schema changes."
+
+[[requirements]]
+id = "credentials"
+when = "shared"
+description = "A Mash node token in the configured environment variable"
+remedy = "Set token_env to an environment variable containing this node's API token."
+
+[[requirements]]
+id = "authority"
+when = "shared"
+description = "Network access and a token authorized for the configured node/group"
+remedy = "Verify the shared service and node credentials; delivery verifies authorization."
