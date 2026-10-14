@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/mash-logo.png" alt="mash logo: a smiling bowl of mashed potatoes" width="200">
+</p>
+
 # mash
 
 Agent work is tracked with [Beads](https://github.com/steveyegge/beads). With `bd`
