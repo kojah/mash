@@ -1,0 +1,105 @@
+"""`auth` once, then `sync`; diagnostics carry counts and IDs, never text or tokens."""
+
+import asyncio
+import sqlite3
+import sys
+from pathlib import Path
+
+import click
+import orjson
+from mash_sdk import DeliveryError
+from pydantic import ValidationError
+
+from .api import HttpError, urlopen
+from .auth import AuthorizationRequired, Credentials, authorize, load_client, load_token
+from .config import Settings, load
+from .connector import Result, run
+from .drive import Drive
+
+
+def fail(kind: str, exit_code: int, **details: object) -> click.exceptions.Exit:
+    sys.stderr.buffer.write(orjson.dumps({"error": {"kind": kind, **details}}) + b"\n")
+    return click.exceptions.Exit(exit_code)
+
+
+@click.group()
+@click.option(
+    "--config", "path", type=click.Path(path_type=Path, exists=True), required=True
+)
+@click.pass_context
+def main(context: click.Context, path: Path) -> None:
+    """Ingest selected Google Docs and their comments into Mash, read-only."""
+    try:
+        context.obj = load(path)
+    except (OSError, ValueError):
+        raise fail("configuration", 2, retryable=False) from None
+
+
+@main.command()
+@click.pass_obj
+def auth(settings: Settings) -> None:
+    """Grant read-only Drive access once; works over SSH by pasting the redirect."""
+
+    def ask(url: str) -> str:
+        click.echo(
+            "Open this URL in any browser and approve read-only access:\n", err=True
+        )
+        click.echo(url + "\n", err=True)
+        click.echo(
+            "The browser then fails to load a 127.0.0.1 page; that is expected.",
+            err=True,
+        )
+        return click.prompt("Paste that page's full address", err=True)
+
+    try:
+        authorize(
+            load_client(settings.client_secret), settings.token, ask, send=urlopen
+        )
+    except ValidationError:
+        # Pydantic messages echo their input, which here may hold a token.
+        raise fail("authorization", 1, message="unexpected token response") from None
+    except (ValueError, HttpError) as error:
+        raise fail("authorization", 1, message=str(error)) from None
+    click.echo(f"Stored the authorization in {settings.token} (mode 0600).", err=True)
+
+
+@main.command()
+@click.option(
+    "--watch", is_flag=True, help="Poll within this process; installs no service."
+)
+@click.pass_obj
+def sync(settings: Settings, watch: bool) -> None:
+    """Deliver selected Docs once, or keep polling with --watch."""
+    incomplete = False
+
+    def report(result: Result) -> None:
+        nonlocal incomplete
+        incomplete = bool(result.issues)
+        sys.stdout.buffer.write(orjson.dumps(result.json()) + b"\n")
+        sys.stdout.flush()
+
+    try:
+        credentials = Credentials(
+            load_client(settings.client_secret),
+            load_token(settings.token),
+            send=urlopen,
+        )
+        asyncio.run(
+            run(settings, Drive(credentials, send=urlopen), watch=watch, report=report)
+        )
+    except KeyboardInterrupt:
+        return
+    except AuthorizationRequired as error:
+        raise fail(
+            "authorization-required",
+            3,
+            message=f"{error}; run `mash-google-docs --config ... auth` again",
+        ) from None
+    except DeliveryError as error:
+        raise fail("delivery", 1, retryable=error.retryable) from None
+    except HttpError as error:
+        raise fail("google", 1, status=error.status) from None
+    except (OSError, ValueError, sqlite3.Error):
+        raise fail("configuration-or-state", 2, retryable=False) from None
+    if incomplete:
+        raise click.exceptions.Exit(9)

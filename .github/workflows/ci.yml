@@ -77,6 +77,15 @@ jobs:
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --project connectors/obsidian --locked python -m unittest discover \
               -s connectors/obsidian/tests
+      - name: Verify Google Docs ingestion against a fake Drive and real local search
+        run: |
+          uv sync --project connectors/google_docs --locked
+          uv run --project connectors/google_docs --locked ruff check connectors/google_docs
+          uv run --project connectors/google_docs --locked ruff format --check connectors/google_docs
+          uv run --project connectors/google_docs --locked ty check connectors/google_docs
+          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
+            uv run --project connectors/google_docs --locked python -m unittest discover \
+              -s connectors/google_docs/tests
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |
