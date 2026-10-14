@@ -14,6 +14,17 @@ pub(crate) struct Snapshot {
     pub(crate) files: BTreeMap<String, u64>,
 }
 
+/// Archive completeness describes the exporting interpretation. Runtime readiness
+/// must still use the current interpretation after import.
+pub(crate) fn certificate_matches(
+    history: &Storage,
+    expected: &crate::silver::certificate::Certificate,
+) -> Result<bool, AppError> {
+    Ok(history.silver_certificate()? == *expected
+        || (expected.interpretation_version != 0
+            && history.silver_certificate_for(expected.interpretation_version)? == *expected))
+}
+
 pub(crate) fn write(source: &Path, destination: &Path) -> Result<Snapshot, AppError> {
     let history = Storage::open_catalog(source)?;
     let _transaction = history

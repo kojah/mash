@@ -2,6 +2,43 @@ use super::*;
 use rusqlite::{Connection, types::Value};
 
 #[test]
+fn import_preserves_past_interpretation_evidence_without_certifying_current_views() {
+    let root = tempfile::tempdir().unwrap();
+    let (database, connection) = fixture(root.path());
+    connection
+        .execute_batch(
+            "UPDATE silver_state SET interpretation_version=2;
+         UPDATE source_checkpoints SET interpretation_version=2;
+         UPDATE silver_scans SET interpretation_version=2;",
+        )
+        .unwrap();
+    drop(connection);
+    let archive = root.path().join("export");
+    write(&database, &archive, None).unwrap();
+    let path = archive.join(MANIFEST);
+    let mut manifest: Manifest = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    // Model the certificate emitted by the release that certified interpretation 2.
+    manifest.silver.completeness = crate::silver::certificate::Completeness::Complete;
+    fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let imported = root.path().join("imported.sqlite3");
+    let result = load(&archive, &imported, true).unwrap();
+    assert_eq!(result.counts, manifest.counts);
+    assert_eq!(result.silver.revision, manifest.silver.revision);
+    assert_eq!(result.silver.interpretation_version, 2);
+    assert_eq!(
+        result.silver.completeness,
+        crate::silver::certificate::Completeness::Unverified
+    );
+    assert!(!result.search_ready);
+    assert!(matches!(result.recommended_action, NextStep::RepairSilver));
+    manifest.silver.revision += 1;
+    fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let rejected = root.path().join("rejected.sqlite3");
+    assert!(load(&archive, &rejected, true).is_err());
+    assert!(!rejected.exists());
+}
+
+#[test]
 fn portable_v1_receipts_keep_their_encoding_and_replay_as_live_views_receipts() {
     let root = tempfile::tempdir().unwrap();
     let (database, connection) = fixture(root.path());

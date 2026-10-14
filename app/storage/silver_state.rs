@@ -18,8 +18,15 @@ enum ScanState {
 
 impl Storage {
     pub(crate) fn silver_certificate(&self) -> Result<Certificate, AppError> {
+        self.silver_certificate_for(INTERPRETATION_VERSION)
+    }
+
+    pub(super) fn silver_certificate_for(
+        &self,
+        interpretation: u32,
+    ) -> Result<Certificate, AppError> {
         let row = generated::SilverCertificate::builder()
-            .current_version(i64::from(INTERPRETATION_VERSION))
+            .current_version(i64::from(interpretation))
             .build()
             .query_one(&self.connection)
             .map_err(AppError::database)?;

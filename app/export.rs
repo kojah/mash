@@ -161,13 +161,14 @@ pub(crate) fn load(
     let history = Storage::open_catalog(&output)?;
     storage::export::validate(&history)?;
     let files = storage::export::attachments(&history)?;
-    if history.silver_certificate()? != manifest.silver
+    if !storage::export::certificate_matches(&history, &manifest.silver)?
         || counts(&history, &files)? != manifest.counts
     {
         return Err(AppError::database_data(
             "export manifest does not match silver history",
         ));
     }
+    let silver = history.silver_certificate()?;
     drop(history);
     let mut blob_output = OutputDirectory::create(&blobs)?;
     copy_attachments(&directory.join("attachments"), &blobs, &files)?;
@@ -184,14 +185,14 @@ pub(crate) fn load(
         .map_err(|e| AppError::io(e.error))?;
     blob_output.complete = true;
     sync_directory(parent)?;
-    let recommended_action = if manifest.silver.is_complete() {
+    let recommended_action = if silver.is_complete() {
         NextStep::RebuildLocalViews
     } else {
         NextStep::RepairSilver
     };
     Ok(Imported {
         database: database.to_path_buf(),
-        silver: manifest.silver,
+        silver,
         counts: manifest.counts,
         search_ready: false,
         recommended_action,
