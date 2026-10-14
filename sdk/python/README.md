@@ -36,6 +36,27 @@ asyncio.run(main())
 runnable connector: it turns a folder of Markdown files into searchable notes
 and keeps them in sync.
 
+[The Obsidian connector](../../connectors/obsidian/README.md) adds vault folder
+selection, frontmatter, stable rename identities and confirmed deletions. It
+uses this SDK as a separate application and never writes to the vault.
+
+## Connector setup contract
+
+A runnable connector should ship package dependencies, an example TOML configuration,
+and a versioned `prerequisites.toml` declaration. Each requirement has an `id`,
+`when` (`always`, `local` or `shared`), a description and a remedy. Source adapters
+declare their required API scopes, filesystem access and platform dependencies;
+Mash destination credentials are separate from source credentials. Secrets remain
+in named environment variables.
+
+Its read-only `--check` reports `passed`, `failed` or `unverified` per requirement,
+without ingestion, installing dependencies, creating state or exposing secrets.
+Presence is distinct from verified authorization. Check results include `ready`
+(no failed requirements) and `fully_verified` (all applicable requirements passed).
+Use [Obsidian's declaration and checks](../../connectors/obsidian/src/mash_obsidian/prerequisites.py)
+as the first example. This is a connector packaging convention; the SDK does not
+discover, install or run connector packages inside Mash.
+
 ## Objects
 
 Every object has an `id` (unique within its source), a `role` and a `kind`:

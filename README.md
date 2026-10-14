@@ -810,6 +810,11 @@ machine's `providers` and `index` settings to the top level and optionally add
 
 ## External connectors
 
+[Obsidian vault ingestion](connectors/obsidian/README.md) is a runnable external
+connector through the Python SDK. It reads selected Markdown notes without
+changing the vault, retains frontmatter and stable identities, and delivers to
+explicit local and/or shared destinations. No Obsidian API key is needed.
+
 Out-of-process connectors (see `sdk/python` and `connectors/`) deliver typed
 batches of objects. Each object has a core `role`: a `container` (a channel,
 thread or pull request) groups results; a `segment` (such as a review) is a

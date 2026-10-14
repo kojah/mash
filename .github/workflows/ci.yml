@@ -68,6 +68,15 @@ jobs:
           MASH_CONNECTOR_CONTRACT_BINARY="$GITHUB_WORKSPACE/target/debug/examples/connector-schema" \
             MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --directory sdk/python --locked python -m unittest discover -s tests
+      - name: Verify Obsidian ingestion and real local search
+        run: |
+          uv sync --project connectors/obsidian --locked
+          uv run --project connectors/obsidian --locked ruff check connectors/obsidian
+          uv run --project connectors/obsidian --locked ruff format --check connectors/obsidian
+          uv run --project connectors/obsidian --locked ty check connectors/obsidian
+          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
+            uv run --project connectors/obsidian --locked python -m unittest discover \
+              -s connectors/obsidian/tests
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |
