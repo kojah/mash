@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 import orjson
 from mash_sdk import DeliveryError
+from mash_sdk.prerequisites import emit
 from pydantic import ValidationError
 
 from .api import HttpError, urlopen
@@ -15,6 +16,7 @@ from .auth import AuthorizationRequired, Credentials, authorize, load_client, lo
 from .config import Settings, load
 from .connector import Result, run
 from .drive import Drive
+from .prerequisites import check
 
 
 def fail(kind: str, exit_code: int, **details: object) -> click.exceptions.Exit:
@@ -22,17 +24,29 @@ def fail(kind: str, exit_code: int, **details: object) -> click.exceptions.Exit:
     return click.exceptions.Exit(exit_code)
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.option(
     "--config", "path", type=click.Path(path_type=Path, exists=True), required=True
 )
+@click.option(
+    "--check",
+    "preflight",
+    is_flag=True,
+    help="Report prerequisites offline without ingesting or writing state.",
+)
 @click.pass_context
-def main(context: click.Context, path: Path) -> None:
+def main(context: click.Context, path: Path, preflight: bool) -> None:
     """Ingest selected Google Docs and their comments into Mash, read-only."""
     try:
         context.obj = load(path)
     except (OSError, ValueError):
         raise fail("configuration", 2, retryable=False) from None
+    if preflight:
+        if context.invoked_subcommand is not None:
+            raise click.UsageError("--check runs alone, without a command")
+        raise click.exceptions.Exit(emit(check(context.obj)))
+    if context.invoked_subcommand is None:
+        raise click.UsageError("choose a command: auth or sync")
 
 
 @main.command()

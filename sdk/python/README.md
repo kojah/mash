@@ -53,8 +53,15 @@ Its read-only `--check` reports `passed`, `failed` or `unverified` per requireme
 without ingestion, installing dependencies, creating state or exposing secrets.
 Presence is distinct from verified authorization. Check results include `ready`
 (no failed requirements) and `fully_verified` (all applicable requirements passed).
-Use [Obsidian's declaration and checks](../../connectors/obsidian/src/mash_obsidian/prerequisites.py)
-as the first example. This is a connector packaging convention; the SDK does not
+
+`mash_sdk.prerequisites` implements this. `Manifest.load(package)` reads the
+declaration; the connector checks only its source requirements and passes their
+statuses to `check`, which adds Python and, per destination, the offline `mash`
+and `database` checks (local) or `credentials` and `authority` (shared, where
+authority is always `unverified`). The manifest declares those IDs in its own
+words. `emit` prints the report as one JSON line and returns exit code 2 unless
+it is ready. See [Obsidian's](../../connectors/obsidian/src/mash_obsidian/prerequisites.py)
+source checks. This is a connector packaging convention; the SDK does not
 discover, install or run connector packages inside Mash.
 
 ## Objects

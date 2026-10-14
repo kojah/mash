@@ -72,6 +72,7 @@ executable = "mash"
 ```sh
 alias gdocs='uv run --project connectors/google_docs --locked mash-google-docs --config ~/.config/mash/google-docs.toml'
 
+gdocs --check       # Offline setup report; no ingestion, state or network.
 gdocs auth          # Prints a consent URL; paste back the redirect address.
 gdocs sync          # One poll and delivery.
 gdocs sync --watch  # Keep polling in this process; Ctrl-C stops it.
@@ -87,6 +88,13 @@ connector refuses a token file other users can read. Access tokens stay in
 memory. Tokens, client secrets and Doc text never appear in output: each poll
 prints JSON counts and content-free issues. Exit codes: 1 delivery or Google
 failure, 2 configuration or state, 3 authorization required, 9 partial poll.
+
+`--check` follows the [prerequisite declaration](src/mash_google_docs/prerequisites.toml):
+the client secret and stored token must exist and be private (no group or other
+access), the token must record `drive.readonly`, and the state directory and
+local Mash destination must be usable. It makes no network requests, so whether
+Google still accepts the authorization is `unverified` until `sync` refreshes
+it. Exit code 2 means a requirement failed.
 
 ## Capture behavior
 

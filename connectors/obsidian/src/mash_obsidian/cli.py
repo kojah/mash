@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 import orjson
 from mash_sdk import DeliveryError
+from mash_sdk.prerequisites import emit
 
 from .config import load
 from .connector import Result, run
@@ -42,13 +43,8 @@ def main(path: Path, watch: bool, preflight: bool) -> None:
         if preflight:
             if watch:
                 raise ValueError("check and watch are mutually exclusive")
-            checked = check(settings)
-            sys.stdout.buffer.write(
-                orjson.dumps(checked.model_dump(mode="json")) + b"\n"
-            )
-            sys.stdout.flush()
-            if not checked.ready:
-                raise click.exceptions.Exit(2)
+            if code := emit(check(settings)):
+                raise click.exceptions.Exit(code)
             return
         asyncio.run(run(settings, watch=watch, report=report))
     except KeyboardInterrupt:

@@ -1,0 +1,57 @@
+version = 1
+connector = "google-docs"
+python = [3, 11]
+
+[[requirements]]
+id = "python"
+when = "always"
+description = "Python 3.11 or newer"
+remedy = "Run uv sync --project connectors/google_docs --locked."
+
+[[requirements]]
+id = "client_secret"
+when = "always"
+description = "A private Desktop app OAuth client JSON at client_secret"
+remedy = "Download the Desktop client JSON from Google Cloud Console to client_secret and chmod 600 it."
+
+[[requirements]]
+id = "token"
+when = "always"
+description = "A private stored authorization for drive.readonly at token"
+remedy = "Run mash-google-docs --config ... auth; it writes the token with mode 0600."
+
+[[requirements]]
+id = "authorization"
+when = "always"
+description = "Google accepts the stored authorization and grants drive.readonly"
+remedy = "Run sync: a refresh verifies it; if it exits with authorization-required, run auth again."
+
+[[requirements]]
+id = "state"
+when = "always"
+description = "Writable persistent connector state"
+remedy = "Set state_dir to a directory this user can create or write."
+
+[[requirements]]
+id = "mash"
+when = "local"
+description = "An installed Mash executable"
+remedy = "Install Mash and set destinations.executable to its path."
+
+[[requirements]]
+id = "database"
+when = "local"
+description = "A writable local silver database compatible with the installed Mash"
+remedy = "Select a writable database; use Mash export/import for schema changes."
+
+[[requirements]]
+id = "credentials"
+when = "shared"
+description = "A Mash node token in the configured environment variable"
+remedy = "Set token_env to an environment variable containing this node's API token."
+
+[[requirements]]
+id = "authority"
+when = "shared"
+description = "Network access and a token authorized for the configured node/group"
+remedy = "Verify the shared service and node credentials; delivery verifies authorization."
