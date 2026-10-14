@@ -1,0 +1,24 @@
+# All paths are relative to this configuration file; ~ expands to your home.
+account_id = "personal" # Stable; the Mash source is discord:personal.
+token_env = "DISCORD_BOT_TOKEN" # A bot token; user tokens are not supported.
+state_dir = "~/.local/share/mash/connectors/discord/personal"
+# Explicit allowlist of channel and thread IDs (Developer Mode: Copy Channel ID).
+# Threads are separate chats: selecting a channel does not select its threads.
+channels = ["123456789012345678", "234567890123456789"]
+# history_days = 90 # By message creation time; omit for all history.
+poll_seconds = 60
+
+[[destinations]]
+type = "local"
+database = "~/.local/share/mash/mash.sqlite3"
+executable = "mash"
+# config = "~/.config/mash/config.toml"
+
+# Shared publication is an independent explicit destination; native node
+# publication does not carry connector records. Credentials stay in the env.
+# [[destinations]]
+# type = "shared"
+# api_url = "https://mash.example"
+# group_id = "personal"
+# node_id = "laptop"
+# token_env = "MASH_API_TOKEN"

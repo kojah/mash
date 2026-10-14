@@ -104,6 +104,15 @@ jobs:
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --project connectors/slack --locked python -m unittest discover \
               -s connectors/slack/tests
+      - name: Verify Discord ingestion against a fake API and real local search
+        run: |
+          uv sync --project connectors/discord --locked
+          uv run --project connectors/discord --locked ruff check connectors/discord
+          uv run --project connectors/discord --locked ruff format --check connectors/discord
+          uv run --project connectors/discord --locked ty check connectors/discord
+          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
+            uv run --project connectors/discord --locked python -m unittest discover \
+              -s connectors/discord/tests
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |
