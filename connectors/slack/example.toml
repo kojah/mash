@@ -1,0 +1,24 @@
+# All paths are relative to this configuration file; ~ expands to your home.
+team_id = "T0123456789" # The workspace; the Mash source is slack:T0123456789.
+# A user (xoxp-) or bot (xoxb-) token of your own Slack app.
+token_env = "SLACK_TOKEN"
+state_dir = "~/.local/share/mash/connectors/slack/T0123456789"
+channels = ["C0123456789", "C9876543210"] # Explicit channel ID allowlist.
+# history_days = 90 # By message creation time; omit for all history.
+thread_days = 7 # Each poll rechecks threads and edits this far back.
+poll_seconds = 300
+
+[[destinations]]
+type = "local"
+database = "~/.local/share/mash/mash.sqlite3"
+executable = "mash"
+# config = "~/.config/mash/config.toml"
+
+# Shared publication is an independent explicit destination; native node
+# publication does not carry connector records. Credentials stay in the env.
+# [[destinations]]
+# type = "shared"
+# api_url = "https://mash.example"
+# group_id = "personal"
+# node_id = "laptop"
+# token_env = "MASH_API_TOKEN"

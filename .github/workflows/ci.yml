@@ -95,6 +95,15 @@ jobs:
           MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
             uv run --project connectors/github --locked python -m unittest discover \
               -s connectors/github/tests
+      - name: Verify Slack ingestion against a fake API and real local search
+        run: |
+          uv sync --project connectors/slack --locked
+          uv run --project connectors/slack --locked ruff check connectors/slack
+          uv run --project connectors/slack --locked ruff format --check connectors/slack
+          uv run --project connectors/slack --locked ty check connectors/slack
+          MASH_CONNECTOR_MASH_BINARY="$GITHUB_WORKSPACE/target/debug/mash" \
+            uv run --project connectors/slack --locked python -m unittest discover \
+              -s connectors/slack/tests
       - name: Verify plugin session recall hooks
         working-directory: plugins/mash/hooks
         run: |
