@@ -8,8 +8,9 @@ from pathlib import Path
 
 import orjson
 from fake_google import ACCESS_TOKEN, REFRESH_TOKEN, FakeGoogle, item
+from mash_sdk.config import Local
 
-from mash_google_docs.config import Local, Settings
+from mash_google_docs.config import Settings
 from mash_google_docs.connector import Result, run
 
 

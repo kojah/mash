@@ -47,7 +47,9 @@ and a versioned `prerequisites.toml` declaration. Each requirement has an `id`,
 `when` (`always`, `local` or `shared`), a description and a remedy. Source adapters
 declare their required API scopes, filesystem access and platform dependencies;
 Mash destination credentials are separate from source credentials. Secrets remain
-in named environment variables.
+in named environment variables. `mash_sdk.config.DestinationConfig` validates the
+`[[destinations]]` tables; `relative_to` resolves paths and `destination()` builds
+the `Destination`.
 
 Its read-only `--check` reports `passed`, `failed` or `unverified` per requirement,
 without ingestion, installing dependencies, creating state or exposing secrets.

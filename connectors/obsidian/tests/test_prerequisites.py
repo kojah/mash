@@ -8,7 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from mash_obsidian.config import Local, Settings, Shared
+from mash_sdk.config import Local, Shared
+
+from mash_obsidian.config import Settings
 from mash_obsidian.prerequisites import Report, check, manifest
 
 

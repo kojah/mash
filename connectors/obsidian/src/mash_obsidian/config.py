@@ -2,27 +2,10 @@
 
 import tomllib
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Literal
 
 from mash_sdk import Destination
+from mash_sdk.config import DestinationConfig, Local, absolute
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
-
-
-class Local(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    type: Literal["local"]
-    database: Path
-    executable: StrictStr = "mash"
-    config: Path | None = None
-
-
-class Shared(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    type: Literal["shared"]
-    api_url: StrictStr
-    group_id: StrictStr
-    node_id: StrictStr
-    token_env: StrictStr
 
 
 class Settings(BaseModel):
@@ -36,7 +19,7 @@ class Settings(BaseModel):
     poll_seconds: float = Field(default=5, gt=0, allow_inf_nan=False)
     deletion_grace_seconds: float = Field(default=2, ge=0, allow_inf_nan=False)
     max_note_bytes: StrictInt = Field(default=1_000_000, gt=0)
-    destinations: tuple[Annotated[Local | Shared, Field(discriminator="type")], ...]
+    destinations: tuple[DestinationConfig, ...]
 
     @property
     def source_id(self) -> str:
@@ -55,19 +38,7 @@ class Settings(BaseModel):
         return False
 
     def targets(self) -> tuple[Destination, ...]:
-        return tuple(
-            Destination.local(
-                database=item.database, executable=item.executable, config=item.config
-            )
-            if isinstance(item, Local)
-            else Destination.shared(
-                api_url=item.api_url,
-                group_id=item.group_id,
-                node_id=item.node_id,
-                token_env=item.token_env,
-            )
-            for item in self.destinations
-        )
+        return tuple(item.destination() for item in self.destinations)
 
 
 def load(path: Path, *, validate_paths: bool = True) -> Settings:
@@ -75,25 +46,11 @@ def load(path: Path, *, validate_paths: bool = True) -> Settings:
         settings = Settings.model_validate(tomllib.load(stream))
     base = path.resolve().parent
 
-    def absolute(value: Path) -> Path:
-        value = value.expanduser()
-        return (value if value.is_absolute() else base / value).resolve()
-
-    targets = tuple(
-        item.model_copy(
-            update={
-                "database": absolute(item.database),
-                "config": absolute(item.config) if item.config is not None else None,
-            }
-        )
-        if isinstance(item, Local)
-        else item
-        for item in settings.destinations
-    )
+    targets = tuple(item.relative_to(base) for item in settings.destinations)
     settings = settings.model_copy(
         update={
-            "vault": absolute(settings.vault),
-            "state_dir": absolute(settings.state_dir),
+            "vault": absolute(settings.vault, base),
+            "state_dir": absolute(settings.state_dir, base),
             "destinations": targets,
         }
     )

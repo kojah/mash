@@ -15,8 +15,9 @@ from fake_github import (
     review_comment,
 )
 from mash_sdk import Connector, Destination, DocumentSnapshot, Mode, Object, Snapshot
+from mash_sdk.config import Local
 
-from mash_github.config import Local, Settings
+from mash_github.config import Settings
 from mash_github.connector import Result, synchronize
 
 NOW = datetime(2026, 10, 14, tzinfo=UTC)

@@ -16,8 +16,9 @@ from mash_sdk import (
     Role,
     Snapshot,
 )
+from mash_sdk.config import Local
 
-from mash_google_docs.config import Local, Settings
+from mash_google_docs.config import Settings
 from mash_google_docs.connector import Result, synchronize
 
 NOW = datetime(2026, 10, 14, tzinfo=UTC)
