@@ -59,7 +59,7 @@ reuse the generated projection and decoder; migrations and writes remain explici
 ```text
 mash index [--full|--watch [--debounce-ms N]] [--provider claude-code|codex|opencode|copilot|cursor|antigravity]... [--since-days N|--all-history]
 mash index --rebuild-local-views [--full]
-mash search <query> [--unit chats|messages] [--local | --shared] [--no-worker] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
+mash search <query> [--unit chats|messages] [--local | --shared] [--limit N] [--offset N] [--provider PROVIDER] [--days N]
 mash list-chats [--local | --shared] [--provider PROVIDER] [--kind KIND] [--title-contains TEXT] [--after UNIX_SECONDS] [--before UNIX_SECONDS] [--sort updated-at|created-at|title] [--direction asc|desc] [--limit N] [--offset N]
 mash view <message-id> [--shared NODE_ID] [--context N]
 mash status [--shared]
@@ -105,18 +105,8 @@ returns a JSON usage error containing help with exit code 2. Global
 options are `--config PATH`, `--db PATH`, and
 `--models-dir PATH`.
 
-On Linux and macOS, CLI searches automatically share an on-demand local worker
-for the same configuration, database, model directory, and credential environment.
-The first search loads models; subsequent commands reuse the models and shared
-HTTP connections, even for different queries. The worker exits after 60 seconds
-without requests and releases its memory. Concurrent searches queue through the
-same worker. It accepts only searches through a private per-user Unix socket;
-no system service is installed.
-
-Use `mash search "query" --no-worker` to run entirely within that CLI process.
-If the worker cannot be reached, search runs directly. Configurations and index
-data are read for every request; results are not cached. MCP sessions continue
-to reuse models within their own process and do not launch CLI workers.
+CLI searches execute directly. MCP sessions reuse loaded models within their
+process. Search never starts a background process.
 
 ## Using Mash in Codex during development
 
@@ -145,27 +135,13 @@ environment variable using Codex's `env_vars`, or use a local launcher that
 loads your private node environment before executing the same build output.
 Keep credentials and machine-specific launchers outside Git.
 
-`mash mcp` keeps a stable per-session front process and a replaceable Mash
-worker. Installing a compatible binary automatically replaces the worker after
-active calls and watched indexing finish, keeping the client connection open.
-Tool names, schemas, effect annotations and silver/views versions must match;
-incompatible updates retain the old worker and require reconnecting after any
-required migration. Broken candidates retain the old worker. Accepted mutations
-are never replayed on transport failure or replacement. Reconnect once to adopt
-this front process if your session started with an older release.
-This setup does not automatically build, index or install models. An opted-in
-watcher resumes with its debounce setting after a compatible handoff; the old
-worker finishes its pass and releases watch leadership before the replacement
-starts watching, so a swap never runs two watchers.
-MCP `help` provides live schemas and typed examples without an index or models;
-select a `tool` or a workflow `topic` to keep its response focused. Startup
-instructions and `help`/`status` report the build revision and contract fingerprint.
-Supply the generated skill's fingerprint as `expected_contract` to `help` to
-detect stale instructions. `session` reports worker generation, current front
-and worker process IDs, update state and rejected-update guidance. The handshake
-describes the initial worker; live help/status describe the current worker.
-Already-loaded skill text is not replaced by a worker upgrade. An unknown
-executable state does not certify that a session is current.
+`mash mcp` runs in one process. Restart it after installing a new binary or
+changing startup settings, and reload updated plugin instructions. Accepted
+mutations are never replayed. Opted-in watching lasts for the process lifetime.
+
+MCP `help` provides live schemas and typed examples without an index or models.
+Help/status report the running build revision and contract fingerprint; supply
+the installed skill fingerprint as `expected_contract` to detect stale guidance.
 
 The history skill's workflow template is `app/templates/history_skill.md`.
 Its small live-help bootstrap and release stamp are generated from Rust with
@@ -181,22 +157,17 @@ Development deployment uses `tools/build-dev-linux.sh` to reuse successful gates
 for identical source/toolchain/build inputs while still stamping the release
 binary for the current commit. Source changes invalidate the gate receipt, and
 changes during validation or compilation fail the rollout. The API helper locks
-concurrent rollouts and skips restarting an identical healthy release. The
+concurrent rollouts and skips restarting an identical healthy release.
 Ansible owns fleet selection, builds, API-first rollout, offline skips and
-required schema migrations. `mash-dev-mcp` is a thin interface to registered
-Ansible Runner playbooks; `mash-dev-probe` uses RMCP to verify the live contract,
-query readiness and shared publication with bounded smoke searches. Ordinary
-deployment never ingests history or installs models. An actual silver upgrade
-requires a local views rebuild and republishing, which the deploy playbook
-performs as separate probe steps; ordinary refresh remains explicit.
+required schema migrations. `mash-dev-probe` verifies the installed build,
+contract, query readiness and shared publication over MCP. Ordinary deployment
+never ingests history or installs models. A silver upgrade runs one explicit sync
+to re-ingest stale interpretation, rebuild local views and publish.
 
-The development TOML now selects a trusted runner, private Ansible inventory,
-allowed targets and fixed deploy/refresh/check playbooks. Its former embedded
-build/node command tables are removed. See [deployment setup](deployment/README.md)
-and the example TOML/inventory for the new format. Node/server Mash settings
-remain TOML. Runner logs/events stay private; the MCP returns safe task progress,
-per-target outcomes and redacted probe results. Skipped targets are not ready.
-See the [official Codex MCP configuration documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+Use `bash tools/fleet.sh deploy shared-api xenia` with a private inventory.
+Refresh remains explicit: `bash tools/fleet.sh sync xenia` or
+`bash tools/fleet.sh local-views xenia`. See [deployment setup](deployment/README.md).
+Runner logs and reports stay private. Skipped targets are not installed or ready.
 
 ## Codex and Claude Code history plugin
 
@@ -556,28 +527,18 @@ forced a wait. Inference events report batch counts and Core ML sequence shape;
 they never include the texts or vectors. Request context follows parser and CPU
 inference threads through the same propagation helper.
 
-For example, `MASH_TRACE=1 mash search cbioportal --local --no-worker 2>trace.jsonl`
+For example, `MASH_TRACE=1 mash search cbioportal --local 2>trace.jsonl`
 exposes model loading, embedding, lexical retrieval, vector loading/scoring and
 reranking. Use `MASH_TRACE=1 mash mcp` for repeated requests or
-`MASH_TRACE=1 mash serve --server-config server.toml` on the shared server. The on-demand
-worker suppresses its own stderr to preserve detached execution. With tracing
-enabled, its reply carries a validated opaque `trace_id`, worker process ID,
-execution milliseconds (excluding connection/queue wait), and outcome. The CLI
-emits these as a `worker reply` event inside its `worker_search` span. The reply
-also carries up to 15 fixed search-stage summaries, emitted as `worker stage`
-events with the same trace ID. Each reports `calls`, `total_us` and `max_us` for
-model loading, embedding, lexical/vector retrieval and scoring, shared HTTP,
-and reranking when those stages run. These are inclusive span lifetimes, not
-CPU time; nested and concurrent timings must not be added together. Summaries
-arrive with the final reply. Use `--no-worker` or MCP for full span events.
-Tracing is selected per worker request and untraced requests omit diagnostics.
-Request IDs are
+`MASH_TRACE=1 mash serve --server-config server.toml` on the shared server.
+Spans describe inclusive lifetimes, not CPU time; nested and concurrent timings
+must not be added together. Request IDs are
 local to a process, paired with process IDs. With tracing enabled, each shared
 HTTP call sends an opaque `x-mash-trace-id`; its `shared_http_request` client
 span and the server's `http_request` span record the same `trace_id`. Enable
 tracing on both processes and match that field to correlate status and timing.
 The server replaces missing, malformed or duplicate IDs with a fresh local ID;
-client tracing disabled sends no correlation header or worker diagnostics request.
+client tracing disabled sends no correlation header.
 Successful shared response bodies are decoded into typed models on blocking
 workers so large JSON responses do not occupy an async runtime worker. The
 `shared_http_decode` child span records byte count, `mode` and success/error, with the
@@ -604,7 +565,6 @@ The [response admission checks](https://github.com/kojah/mash/blob/a49210157b990
 cover queue expiry, cancellation, separate capacity and remaining memory limits.
 The [streaming control](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/benchmarks/2026-10-03-shared-response-streaming.md)
 documents the large-state memory/parsing tradeoff and body cancellation checks.
-Live worker stage streaming and fleet overhead measurements remain planned.
 
 OpenCode is opt-in through `[providers.opencode]`, with `roots` pointing to
 `opencode.db` (normally `~/.local/share/opencode/opencode.db`) or its containing
@@ -780,7 +740,7 @@ index rebuild. Exact-mention search is independent of fusion settings.
 Set `[views.query] ranking = "fusion"` to keep fused hybrid ordering and skip
 contextual reranking and its context fetches. The default is
 `"contextual-rerank"`. This query-only policy applies across local, shared and
-combined searches through the same CLI/MCP core, including worker requests.
+combined searches through the same CLI/MCP core, using the same typed requests.
 It changes no stored vectors or silver. Dense query embeddings still require
 the local embedding model or configured remote service. Fusion skips loading
 the reranker. Local installation inventory validation remains required; remote
@@ -1593,9 +1553,9 @@ their credentials are later removed.
 CLI and MCP are wrappers around the same typed application core in `app/core.rs`.
 The core owns indexing, search, chat listing, view, status, forgetting, silver export/import, and model installation.
 MCP calls it directly without constructing CLI arguments or invoking CLI handlers.
-The cached search worker and watcher also use typed core requests.
+The watcher also uses typed core requests.
 
-`app/core/models.rs` defines those serialized requests and responses.
+`app/core/models.rs` defines the in-memory requests and serialized responses.
 Operation handlers live in `app/core/indexing.rs`, `search.rs`, `chats.rs`, `inspection.rs`
 and `maintenance.rs`; each returns its concrete result type. The façade resolves
 configuration and paths, dispatches the request and wraps the result once.
@@ -1606,7 +1566,7 @@ inference run on blocking workers, while shared HTTP operations remain asynchron
 `app/config.rs` owns the typed node settings and status models. Its private
 `document` module decodes strict TOML and validates provider routing, roots,
 identifiers and endpoints; `loading` handles bounded file reads and platform
-defaults. CLI, MCP, watcher and worker operations use the same resolved settings.
+defaults. CLI, MCP and watcher operations use the same resolved settings.
 
 `app/shared.rs` is the typed shared-index facade. Its private `client` module
 owns pooled HTTP requests, authentication, deadlines and response decoding;
@@ -1873,9 +1833,7 @@ model and all three shared-backend contracts. It writes LLVM JSON coverage to
 `target/llvm-cov/coverage.json`; set `COVERAGE_OUTPUT` to choose another location.
 The coverage task cleans workspace coverage artifacts before execution so older
 binaries cannot contribute obsolete source mappings in a persistent target.
-It waits for idle workers from that target to exit normally before cleaning and
-reporting, allowing their coverage profiles to be written without changing
-production worker behavior. On nightly, use `CARGO_ARGS=--branch` to include
+On nightly, use `CARGO_ARGS=--branch` to include
 LLVM's experimental branch instrumentation. This does not measure MC/DC.
 Generated SQL bindings, separate test files, standalone test helpers and the
 test-only relevance evaluator and manual benchmark modules are excluded from
@@ -1900,7 +1858,7 @@ timings for seven queries in message and chat modes. They compare ordered
 message IDs and chat excerpt IDs against the default inference configuration;
 the batch comparison also checks scores. Ranking changes fail the diagnostic.
 Repeated settings help reveal timing noise. Measurements exclude CLI startup,
-worker transport and shared search, and do not establish relevance by themselves.
+shared search, and do not establish relevance by themselves.
 Use these alongside end-to-end measurements before changing production defaults.
 
 CPU indexing reserves two workers for long embedding batches and allows short

@@ -1,56 +1,39 @@
 # Mash fleet deployment
 
-Ansible owns fleet execution. The development MCP only launches registered
-ansible-runner jobs and reads their safe task/probe reports. History parsing,
-indexing, schemas and Qdrant remain in Mash; the standalone Rust RMCP probe calls
-the installed history MCP for explicit refresh or read-only readiness.
+Ansible owns fleet selection, platform builds, API-first installation, required
+schema migrations and readiness checks. The standalone Rust RMCP probe checks
+the installed history MCP and performs explicitly requested refreshes.
 
-Install the pinned controller runtime with `uv sync --project deployment --locked`.
-Use `UV_PROJECT_ENVIRONMENT` to keep its environment under your private artifact
-root. The locked runtime is plain ansible-core/ansible-runner; no resident fleet
-service is installed. Prepare `dev.toml` from `dev.example.toml` and a private
-inventory from `inventory.example.yml`. The old embedded build/node TOML tables
-are removed. Mash node/server configuration stays strict TOML.
+Install the controller runtime with `uv sync --project deployment --locked`,
+setting `UV_PROJECT_ENVIRONMENT` to a private directory outside Git. Copy
+`inventory.example.yml` into a private inventory; node/server settings remain TOML.
+Set `MASH_DEPLOY_INVENTORY` to that inventory (default
+`~/.config/mash/dev-inventory.yml`) and `MASH_DEPLOY_LOGS` to private reports
+(default `/home/james/scratch/mash-artifacts/dev-jobs`).
 
-The inventory registers trusted argv helpers, node dependencies, platform builds
-and credential-loading MCP launchers. The API is deployed and authenticated before
-dependent history nodes. Fresh SSH checks avoid stale control masters. Offline
-targets are reported as skipped. An available Mac builds one macOS artifact reused
-across the available Macs; Linux gates reuse identical validated inputs.
+```bash
+bash tools/fleet.sh deploy shared-api xenia
+bash tools/fleet.sh check shared-api xenia
+bash tools/fleet.sh sync xenia
+bash tools/fleet.sh local-views xenia
+```
 
-Playbooks reject unknown targets, missing API dependencies and API refresh requests.
-Source revision changes between build and install fail closed. The API helper
-serializes rollouts, rolls back failed releases, and skips identical healthy
-restarts. A fleet lock prevents overlapping jobs from different MCP sessions.
+The launcher invokes the existing locked Runner runtime, serializes jobs and
+prints per-target outcomes. Inspect its private reports for readiness and errors.
+Unknown targets and missing API dependencies fail; offline targets are skipped.
+Default rollout selects shared-api and xenia. Include Macs only when requested
+or known available. Builds run once per selected platform.
 
-Ordinary deployment performs no ingestion. If the silver upgrade helper reports
-an actual upgrade, the playbook separately rebuilds local views and synchronizes
-that node to complete the required migration. Retained TOML gold section headers
-are renamed before upgrade; backups stay private. Missing models require an
-explicit model installation, never automatic downloads or repeated indexing.
+Ordinary deployment performs no ingestion or model downloads. An actual silver
+upgrade preserves a private export and runs one explicit sync to re-ingest stale
+source interpretation, rebuild views and publish. Missing models require explicit installation. The API helper
+locks rollouts, rolls back failed releases and keeps identical healthy releases.
 
-The probe verifies the installed build and generated contract, query readiness,
-the node's shared publication, and bounded lexical/available semantic searches.
-Local-views refresh checks local lexical retrieval without shared API access.
-Its callbacks write atomic progress reports; Runner artifacts provide task names.
-Raw logs/events never become MCP response text. Canonical exports remain sensitive.
+The probe verifies build and contract identity, query readiness, shared freshness
+and bounded lexical/available semantic searches. Restart existing Mash MCP
+connections after upgrading the binary, and reload updated plugin instructions.
+Canonical exports and Runner logs remain private.
 
-Use `deploy` with explicit targets, `refresh_index` with explicit history targets
-and `sync`/`local-views`, or `deployment_status` for a job ID/fresh checks. Poll to
-a terminal state and inspect every node, including skipped targets. Existing
-history MCP fronts automatically adopt workers with identical tool/storage
-contracts after active work drains. Help/status expose worker generation and
-rejected updates. Reconnect once for sessions predating the stable front, or
-when tool/storage contracts change; reload updated skills when needed. Do not restart/reconfigure the development
-MCP while one of its jobs is active.
-
-Validation includes Rust wrapper/probe tests and real Ansible fixture runs through
-`tools/test-ansible.sh`, plus fleet-lock and build-gate regression scripts. Keep
-controller environments and all job data outside Git.
-
-Local gates are the normal release validation; GitHub Actions is optional and
-generally unavailable. Do not wait for hosted CI or treat its availability as a
-release prerequisite. Default rollout selects `shared-api` and `xenia`.
-Both Macs are normally unavailable and are optional targets, selected only when
-explicitly requested or known reachable. Their availability does not block Linux
-validation, deployment or completion.
+Local gates are authoritative; hosted CI is optional. Validation includes probe
+unit tests and real Ansible fixtures through `tools/test-ansible.sh`, plus fleet
+lock, API rollback and build-gate regression scripts.

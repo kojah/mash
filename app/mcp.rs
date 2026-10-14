@@ -13,7 +13,6 @@ use rmcp::{
 use serde::Deserialize;
 
 pub(crate) mod guidance;
-pub(crate) mod session;
 mod watching;
 
 #[derive(Clone)]
@@ -500,7 +499,7 @@ impl Mash {
 
     #[tool(
         annotations(read_only_hint = true, destructive_hint = false),
-        description = "Read concise usage, typed examples and input schema from this running MCP binary. Optional tool or topic narrows guidance. Supply expected_contract from the history skill to detect stale instructions. Reports build revision, contract fingerprint and whether the executable was replaced and this session needs reconnecting. No index, models, configuration or network needed."
+        description = "Read concise usage, typed examples and input schema from this running MCP binary. Optional tool or topic narrows guidance. Supply expected_contract from the history skill to detect stale instructions. Reports build revision, contract fingerprint and whether the supplied history skill contract matches. No index, models, configuration or network needed."
     )]
     async fn help(&self, Parameters(request): Parameters<guidance::Help>) -> CallToolResult {
         guidance::help(request).await
@@ -583,7 +582,6 @@ impl rmcp::ServerHandler for Mash {
             .enable_tools()
             .build();
         info.server_info = rmcp::model::Implementation::new("mash", env!("CARGO_PKG_VERSION"));
-        guidance::capture_executable();
         info.instructions = Some(guidance::instructions());
         info
     }

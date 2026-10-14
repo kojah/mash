@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn retired_worker_entry_points_are_usage_errors() {
+    for args in [
+        vec!["search", "needle", "--no-worker"],
+        vec!["mcp", "--worker"],
+        vec!["--internal-search-worker", "socket"],
+    ] {
+        let output = Command::cargo_bin("mash")
+            .unwrap()
+            .args(args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.stdout, [] as [u8; 0]);
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "usage");
+    }
+}
+
+#[test]
 fn built_in_views_flags_replace_gold_flags_without_aliases() {
     for (command, current, retired) in [
         ("index", "--rebuild-local-views", "--rebuild-local-gold"),

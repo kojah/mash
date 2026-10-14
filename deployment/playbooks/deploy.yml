@@ -82,12 +82,7 @@
     - name: Determine whether an actual silver upgrade requires refresh
       ansible.builtin.set_fact:
         mash_upgraded: "{{ mash_install_results.results | map(attribute='stdout') | select('search', 'local index upgraded;') | list | length > 0 }}"
-    - name: Rebuild local views after a required schema upgrade
-      ansible.builtin.include_tasks: tasks/probe.yml
-      vars:
-        mash_probe_mode: local-views
-      when: mash_upgraded
-    - name: Republish after a required schema upgrade
+    - name: Re-ingest, rebuild views and republish after a required schema upgrade
       ansible.builtin.include_tasks: tasks/probe.yml
       vars:
         mash_probe_mode: sync

@@ -150,15 +150,11 @@ jobs:
           MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
             cargo nextest run --profile ci --run-ignored only --no-tests fail -j 1 \
               -E 'test(shared_backend_persisted_restart_contract) or test(shared_backend_snapshot_restore_preserves_silver_views_and_revision_guards) or test(shared_views_lost_without_backup_is_replayed_from_shared_silver)'
-      - name: Verify development MCP refresh and deployment separation
-        env:
-          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/mash-ansible-runtime
+      - name: Verify direct deployment probe and explicit refresh
         run: |
-          cargo build --locked --bin mash-dev-probe
           MASH_TEST_SERVER_BINARY="$PWD/target/debug/mash" \
-            MASH_TEST_DEV_PROBE_BINARY="$PWD/target/debug/mash-dev-probe" \
             cargo nextest run -p mash-dev --profile ci --run-ignored only --no-tests fail \
-              -E 'test(real_mash_refresh_progress_rebuild_and_deploy_without_ingestion)'
+              -E 'test(probe_checks_without_ingestion_and_refreshes_only_when_requested)'
       - name: Clean owned restart fixtures after test failure or timeout
         if: always()
         env:

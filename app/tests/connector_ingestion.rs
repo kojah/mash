@@ -168,14 +168,7 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
         &database,
         &config,
         &models,
-        &[
-            "search",
-            "participants",
-            "--unit",
-            "messages",
-            "--local",
-            "--no-worker",
-        ],
+        &["search", "participants", "--unit", "messages", "--local"],
     );
     let hit = &found["results"][0];
     let anchor = "connector#entry#github:installation#review:1";
@@ -196,7 +189,6 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
             "--unit",
             "chats",
             "--local",
-            "--no-worker",
             "--source",
             "github:installation",
         ],
@@ -206,14 +198,7 @@ fn connector_records_become_searchable_viewable_and_listable_after_indexing() {
         &database,
         &config,
         &models,
-        &[
-            "search",
-            "participants",
-            "--local",
-            "--no-worker",
-            "--provider",
-            "codex",
-        ],
+        &["search", "participants", "--local", "--provider", "codex"],
     );
     assert_eq!(native_only["results"], serde_json::json!([]));
     let viewed = run(&database, &config, &models, &["view", anchor]);

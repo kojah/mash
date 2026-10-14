@@ -9,12 +9,8 @@ use clap::{Parser, Subcommand};
 use serde::Serialize;
 
 use crate::AppError;
-use crate::config;
+use crate::core::default_models_path;
 use crate::core::{self, IndexRequest, Operation, Paths, Request};
-#[cfg(unix)]
-use crate::core::{default_database_path, default_models_path};
-#[cfg(unix)]
-use crate::semantic::Models;
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "mash", version, about, arg_required_else_help = true)]
@@ -125,9 +121,6 @@ enum Command {
         /// Query only SQLite, without contacting the shared service.
         #[arg(long, conflicts_with = "shared")]
         local: bool,
-        /// Run in this process without the shared idle search worker.
-        #[arg(long)]
-        no_worker: bool,
     },
     /// Return a message and adjacent context.
     View {
@@ -170,9 +163,6 @@ enum Command {
     },
     /// Serve search tools over the stdio MCP protocol.
     Mcp {
-        /// Internal worker behind the session front process.
-        #[arg(long, hide = true)]
-        worker: bool,
         /// Synchronize histories for this MCP session's lifetime.
         #[arg(long)]
         watch: bool,
@@ -481,116 +471,17 @@ where
             replay_views,
         ))?;
         Ok(Response::McpStopped)
-    } else if let Command::Mcp {
-        worker,
-        watch,
-        debounce_ms,
-    } = cli.command
-    {
+    } else if let Command::Mcp { watch, debounce_ms } = cli.command {
         let paths = Paths {
             config: cli.config,
             db: cli.db,
             models_dir: cli.models_dir,
         };
-        if worker {
-            runtime.block_on(crate::mcp::run(paths, watch, debounce_ms))?;
-        } else {
-            runtime.block_on(crate::mcp::session::run(paths, watch, debounce_ms))?;
-        }
+        runtime.block_on(crate::mcp::run(paths, watch, debounce_ms))?;
         Ok(Response::McpStopped)
     } else {
-        #[cfg(unix)]
-        if matches!(
-            cli.command,
-            Command::Search {
-                no_worker: false,
-                ..
-            }
-        ) {
-            return runtime.block_on(process_search(cli));
-        }
         runtime.block_on(run_parsed(cli))
     }
-}
-
-#[cfg(unix)]
-async fn process_search(mut cli: Cli) -> Result<Response, AppError> {
-    let path = cli.config.clone();
-    let configuration = crate::blocking(move || config::load(path.as_deref())).await?;
-    let cwd = std::env::current_dir().map_err(AppError::io)?;
-    let absolute = |path: PathBuf| {
-        if path.is_absolute() {
-            path
-        } else {
-            cwd.join(path)
-        }
-    };
-    cli.config = cli
-        .config
-        .map(absolute)
-        .or_else(|| configuration.loaded.then(|| configuration.path.clone()));
-    cli.db = Some(absolute(cli.db.unwrap_or_else(default_database_path)));
-    let models_dir = absolute(cli.models_dir.unwrap_or_else(default_models_path));
-    cli.models_dir = Some(models_dir.clone());
-    let request = cli.into_request()?;
-    if matches!(&request.operation, Operation::Search { intent, .. }
-        if intent.unwrap_or(configuration.views.query.intent) == crate::views::exact::Intent::ExactMention)
-    {
-        return core::execute(request)
-            .await
-            .map(Box::new)
-            .map(Response::Operation);
-    }
-    core::validate_search_request(&request)?;
-    let models = Models::new(models_dir).with_remote(configuration.embeddings.clone());
-    if !models.is_installed() {
-        // Preserve direct validation/error ordering without starting an idle
-        // process for a missing or incomplete model installation.
-        return core::execute(request)
-            .await
-            .map(Box::new)
-            .map(Response::Operation);
-    }
-    let mut environment = vec![
-        "HOME".to_owned(),
-        "XDG_CONFIG_HOME".to_owned(),
-        "XDG_DATA_HOME".to_owned(),
-        "HTTP_PROXY".to_owned(),
-        "HTTPS_PROXY".to_owned(),
-        "ALL_PROXY".to_owned(),
-        "NO_PROXY".to_owned(),
-        "http_proxy".to_owned(),
-        "https_proxy".to_owned(),
-        "all_proxy".to_owned(),
-        "no_proxy".to_owned(),
-        "SSL_CERT_FILE".to_owned(),
-    ];
-    if let Some(shared) = &configuration.shared {
-        environment.push(shared.token_env.clone());
-    }
-    if let Some(embeddings) = &configuration.embeddings
-        && let Some(name) = &embeddings.token_env
-    {
-        environment.push(name.clone());
-    }
-    let Ok(profile) = serde_json::to_vec(&(
-        &request.paths.config,
-        &request.paths.db,
-        &request.paths.models_dir,
-    )) else {
-        return core::execute(request)
-            .await
-            .map(Box::new)
-            .map(Response::Operation);
-    };
-    if let Some(result) = crate::worker::search(&request, &profile, &environment).await {
-        return result
-            .map(|response| Response::Operation(Box::new(core::Response::Search(response))));
-    }
-    core::execute(request)
-        .await
-        .map(Box::new)
-        .map(Response::Operation)
 }
 
 #[derive(serde::Serialize)]

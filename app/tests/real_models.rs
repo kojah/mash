@@ -78,8 +78,6 @@ fn real_models_index_and_run_hybrid_search() {
     assert_exact_search_without_models(&config, &database);
     assert_scoped_message_search(&config, &database, model_arg);
     assert_thread_search_and_view(&config, &database, model_arg);
-    #[cfg(unix)]
-    assert_worker_stage_diagnostics(&config, &database, model_arg);
     assert_views_query_defaults(&config, &database, model_arg);
     assert_views_ranking_defaults(&config, &database, model_arg);
     assert_source_independent_views_rebuild(&config, &database, &claude, &codex, model_arg);
@@ -243,7 +241,6 @@ fn assert_views_recipe_switches(config: &Path, database: &Path, models: &str) {
                 models,
                 "search",
                 "qdrant",
-                "--no-worker",
             ])
             .output()
             .unwrap();
@@ -352,7 +349,7 @@ fn assert_views_rebuild_recovers_without_sources(config: &Path, database: &Path,
 fn assert_views_query_defaults(config: &Path, database: &Path, models: &str) {
     let canonical_config = std::fs::read_to_string(config).unwrap();
     let before = std::fs::read(database).unwrap();
-    let mut fusion_scores = std::collections::HashMap::new();
+    let mut fusion_score = None;
     for (unit, limit, weight, override_weight) in [
         ("messages", 1, 1, None),
         ("messages", 1, 4, None),
@@ -366,73 +363,69 @@ fn assert_views_query_defaults(config: &Path, database: &Path, models: &str) {
             format!("{canonical_config}\n[views.query]\nunit = '{unit}'\nlimit = {limit}\n[views.query.fusion]\nlexical_weight={weight}\nsemantic_weight={weight}\n"),
         )
         .unwrap();
-        for direct in [true, false] {
-            let mut command = Command::cargo_bin("mash").unwrap();
-            command.args([
-                "--config",
-                config.to_str().unwrap(),
-                "--db",
-                database.to_str().unwrap(),
-                "--models-dir",
-                models,
-                "search",
-                "--local",
-                "authentication",
-            ]);
-            if let Some(weight) = override_weight {
-                let weight = weight.to_string();
-                command.args(["--lexical-weight", &weight, "--semantic-weight", &weight]);
-                command.arg("--diagnostics");
-            }
-            if direct {
-                command.arg("--no-worker");
-            }
-            let output = command.output().unwrap();
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
+        let mut command = Command::cargo_bin("mash").unwrap();
+        command.args([
+            "--config",
+            config.to_str().unwrap(),
+            "--db",
+            database.to_str().unwrap(),
+            "--models-dir",
+            models,
+            "search",
+            "--local",
+            "authentication",
+        ]);
+        if let Some(weight) = override_weight {
+            let weight = weight.to_string();
+            command.args(["--lexical-weight", &weight, "--semantic-weight", &weight]);
+            command.arg("--diagnostics");
+        }
+
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let found: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(found["unit"], unit);
+        let results = found["results"].as_array().unwrap();
+        assert_ne!(results.as_slice(), &[] as &[Value]);
+        assert!(results.len() <= limit);
+        if let Some(weight) = override_weight {
+            let diagnostics = &found["diagnostics"];
+            assert_eq!(diagnostics["policy_version"], 1);
+            assert_eq!(diagnostics["fusion"]["lexical_weight"], weight);
+            assert_eq!(diagnostics["limit"], limit);
+            assert_eq!(diagnostics["unit"], unit);
+            assert_eq!(diagnostics["requested_scope"], "local");
+            assert_eq!(
+                diagnostics["completed_sources"],
+                serde_json::json!(["local"])
             );
-            let found: Value = serde_json::from_slice(&output.stdout).unwrap();
-            assert_eq!(found["unit"], unit);
-            let results = found["results"].as_array().unwrap();
-            assert_ne!(results.as_slice(), &[] as &[Value]);
-            assert!(results.len() <= limit);
-            if let Some(weight) = override_weight {
-                let diagnostics = &found["diagnostics"];
-                assert_eq!(diagnostics["policy_version"], 1);
-                assert_eq!(diagnostics["fusion"]["lexical_weight"], weight);
-                assert_eq!(diagnostics["limit"], limit);
-                assert_eq!(diagnostics["unit"], unit);
-                assert_eq!(diagnostics["requested_scope"], "local");
-                assert_eq!(
-                    diagnostics["completed_sources"],
-                    serde_json::json!(["local"])
-                );
-                assert_eq!(diagnostics["returned_results"], results.len());
-                assert_eq!(
-                    diagnostics["selected_artifacts"],
-                    serde_json::json!(["metadata", "lexical", "dense"])
-                );
-                assert!(diagnostics["elapsed_ms"].is_u64());
-                let stages = diagnostics["stages"].as_array().unwrap();
-                assert!(stages.len() <= 8);
-                for name in ["local-lexical", "local-dense", "embed", "rerank", "fusion"] {
-                    let stage = stages.iter().find(|s| s["stage"] == name).unwrap();
-                    assert_eq!(stage["calls"], stage["completed_calls"]);
-                    assert!(stage["items_out"].is_u64());
-                }
-            } else {
-                assert!(found.get("diagnostics").is_none());
+            assert_eq!(diagnostics["returned_results"], results.len());
+            assert_eq!(
+                diagnostics["selected_artifacts"],
+                serde_json::json!(["metadata", "lexical", "dense"])
+            );
+            assert!(diagnostics["elapsed_ms"].is_u64());
+            let stages = diagnostics["stages"].as_array().unwrap();
+            assert!(stages.len() <= 8);
+            for name in ["local-lexical", "local-dense", "embed", "rerank", "fusion"] {
+                let stage = stages.iter().find(|s| s["stage"] == name).unwrap();
+                assert_eq!(stage["calls"], stage["completed_calls"]);
+                assert!(stage["items_out"].is_u64());
             }
-            if unit == "messages" {
-                let score = results[0]["fusion_score"].as_f64().unwrap();
-                if weight == 1 {
-                    fusion_scores.insert(direct, score);
-                } else {
-                    let expected = f64::from(override_weight.unwrap_or(weight));
-                    assert!((score - fusion_scores[&direct] * expected).abs() < 1e-6);
-                }
+        } else {
+            assert!(found.get("diagnostics").is_none());
+        }
+        if unit == "messages" {
+            let score = results[0]["fusion_score"].as_f64().unwrap();
+            if weight == 1 {
+                fusion_score = Some(score);
+            } else {
+                let expected = f64::from(override_weight.unwrap_or(weight));
+                assert!((score - fusion_score.unwrap() * expected).abs() < 1e-6);
             }
         }
     }
@@ -456,83 +449,8 @@ fn assert_views_ranking_defaults(config: &Path, database: &Path, models: &str) {
         )
         .unwrap();
         for unit in ["chats", "messages"] {
-            for direct in [true, false] {
-                let mut command = Command::cargo_bin("mash").unwrap();
-                command.args([
-                    "--config",
-                    config.to_str().unwrap(),
-                    "--db",
-                    database.to_str().unwrap(),
-                    "--models-dir",
-                    models,
-                    "search",
-                    "--local",
-                    "--unit",
-                    unit,
-                    "--diagnostics",
-                    "authentication",
-                ]);
-                if direct {
-                    command.arg("--no-worker");
-                }
-                if let Some(override_ranking) = override_ranking {
-                    command.args(["--ranking", override_ranking]);
-                }
-                let output = command.output().unwrap();
-                assert!(
-                    output.status.success(),
-                    "{}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
-                let response: Value = serde_json::from_slice(&output.stdout).unwrap();
-                let results = response["results"].as_array().unwrap();
-                assert_ne!(results.as_slice(), &[] as &[Value]);
-                assert_eq!(response["diagnostics"]["ranking"], expected);
-                let stages = response["diagnostics"]["stages"].as_array().unwrap();
-                assert!(stages.iter().any(|s| s["stage"] == "embed"));
-                assert_eq!(
-                    stages.iter().any(|s| s["stage"] == "rerank"),
-                    expected == "contextual-rerank"
-                );
-                assert_eq!(
-                    std::fs::read(database).unwrap(),
-                    before,
-                    "query policy modified index"
-                );
-            }
-        }
-    }
-    std::fs::write(config, original).unwrap();
-}
-
-#[cfg(unix)]
-fn assert_worker_filter_diagnostics(found: &Value) {
-    assert_eq!(
-        found["diagnostics"]["filter_fields"],
-        serde_json::json!(["role"])
-    );
-    for stage in found["diagnostics"]["stages"].as_array().unwrap() {
-        let filtered = matches!(
-            stage["stage"].as_str().unwrap(),
-            "local-lexical" | "local-dense"
-        );
-        assert_eq!(stage["filters_before_limit"], filtered);
-    }
-}
-
-#[cfg(unix)]
-fn assert_worker_stage_diagnostics(config: &Path, database: &Path, models: &str) {
-    let mut previous = None;
-    let mut worker = None;
-    for traced in [true, true, false] {
-        let mut command = Command::cargo_bin("mash").unwrap();
-        if traced {
-            command.env("MASH_TRACE", "1");
-        } else {
-            command.env_remove("MASH_TRACE");
-        }
-        let output = command
-            .args([
+            let mut command = Command::cargo_bin("mash").unwrap();
+            command.args([
                 "--config",
                 config.to_str().unwrap(),
                 "--db",
@@ -541,86 +459,39 @@ fn assert_worker_stage_diagnostics(config: &Path, database: &Path, models: &str)
                 models,
                 "search",
                 "--local",
-                "--diagnostics",
-                "--role",
-                "user",
                 "--unit",
-                "messages",
+                unit,
+                "--diagnostics",
                 "authentication",
-            ])
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let found: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_worker_filter_diagnostics(&found);
-        let mut stable = found;
-        stable.as_object_mut().unwrap().remove("diagnostics");
-        if let Some(previous) = &previous {
-            assert_eq!(&stable, previous);
-        }
-        previous = Some(stable);
-        let stderr = String::from_utf8(output.stderr).unwrap();
-        if !traced {
-            assert_eq!(stderr, "");
-            continue;
-        }
-        for sensitive in [
-            "authentication",
-            "private-output-marker",
-            config.to_str().unwrap(),
-            database.to_str().unwrap(),
-            models,
-        ] {
+            ]);
+
+            if let Some(override_ranking) = override_ranking {
+                command.args(["--ranking", override_ranking]);
+            }
+            let output = command.output().unwrap();
             assert!(
-                !stderr.contains(sensitive),
-                "private data in worker diagnostics"
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
             );
-        }
-        let events: Vec<Value> = stderr
-            .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect();
-        let reply = events
-            .iter()
-            .find(|event| event["fields"]["message"] == "worker reply")
-            .unwrap();
-        let pid = reply["fields"]["worker_process_id"].as_u64().unwrap();
-        if let Some(worker) = worker {
-            assert_eq!(pid, worker, "same cached worker");
-        }
-        worker = Some(pid);
-        let stages: Vec<_> = events
-            .iter()
-            .filter(|event| event["fields"]["message"] == "worker stage")
-            .collect();
-        assert!(stages.len() <= 15);
-        for name in [
-            "search",
-            "local_search",
-            "load_search_models",
-            "embed",
-            "hybrid_search",
-            "lexical_candidates",
-            "load_vectors",
-            "score_vectors",
-            "rerank_inference",
-        ] {
-            let stage = stages
-                .iter()
-                .find(|event| event["fields"]["stage"] == name)
-                .unwrap_or_else(|| panic!("missing worker stage {name}"));
-            assert!(stage["fields"]["calls"].as_u64().unwrap() > 0);
-            assert!(
-                stage["fields"]["total_us"].as_u64().unwrap()
-                    >= stage["fields"]["max_us"].as_u64().unwrap()
+            let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+            let results = response["results"].as_array().unwrap();
+            assert_ne!(results.as_slice(), &[] as &[Value]);
+            assert_eq!(response["diagnostics"]["ranking"], expected);
+            let stages = response["diagnostics"]["stages"].as_array().unwrap();
+            assert!(stages.iter().any(|s| s["stage"] == "embed"));
+            assert_eq!(
+                stages.iter().any(|s| s["stage"] == "rerank"),
+                expected == "contextual-rerank"
             );
-            assert_eq!(stage["fields"]["trace_id"], reply["fields"]["trace_id"]);
+            assert_eq!(
+                std::fs::read(database).unwrap(),
+                before,
+                "query policy modified index"
+            );
         }
     }
+    std::fs::write(config, original).unwrap();
 }
 
 fn assert_scoped_message_search(config: &Path, database: &Path, model_arg: &str) {

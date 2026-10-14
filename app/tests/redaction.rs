@@ -38,12 +38,11 @@ fn cli_output_redaction(masked: bool) {
     for args in [
         vec!["view", message_id.as_str()],
         vec!["list-chats", "--local"],
-        vec!["search", "credentialneedle", "--local", "--no-worker"],
+        vec!["search", "credentialneedle", "--local"],
         vec![
             "search",
             "credentialneedle",
             "--local",
-            "--no-worker",
             "--unit",
             "messages",
         ],

@@ -14,7 +14,11 @@ run() {
 validation_key() {
     {
         git ls-files --cached --others --exclude-standard -z -- app crates queries plugins deployment tools .cargo .config .github Cargo.toml Cargo.lock Makefile rust-toolchain.toml build.rs |
-            sort -zu | xargs -0 -r sha256sum -- || return
+            sort -zu | while IFS= read -r -d '' path; do
+                if [[ -f "$path" ]]; then sha256sum -- "$path" || return
+                else printf 'deleted %s\n' "$path"
+                fi
+            done || return
         rustc -vV || return
         cargo --version || return
         # Hash effective compiler/profile settings without retaining raw env values.
@@ -42,5 +46,5 @@ else
 fi
 # Commit identity can change while source stays identical. Cargo's build script
 # embeds the current revision; gate reuse never means reusing a differently stamped binary.
-run cargo build --release --locked --bin mash --bin mash-dev-mcp --bin mash-dev-probe
+run cargo build --release --locked --bin mash --bin mash-dev-probe
 [[ $(validation_key) == "$key" ]] || { echo 'Source changed during build; do not install this artifact.' >&2; exit 1; }

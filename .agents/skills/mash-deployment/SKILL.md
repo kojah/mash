@@ -1,103 +1,48 @@
 ---
 name: mash-deployment
-description: Deploy, redeploy, roll out or refresh Mash through its Ansible fleet playbooks and thin development MCP.
+description: Deploy, redeploy or refresh Mash through its Ansible fleet playbooks.
 ---
 
 # Mash deployment
 
-After validated changes reach main, deploy by default unless the user says not to
-or the change cannot affect nodes (for example documentation only).
+After validated changes reach main, deploy unless the user says not to or the
+change cannot affect nodes. Local gates are authoritative; hosted CI is optional.
+Default targets are shared-api and xenia. Include Macs only when requested or
+known available, and do not hold up Linux completion for unavailable Macs.
 
-Local validation is authoritative. GitHub Actions is generally unavailable;
-do not wait for hosted CI, require its success, or investigate its availability
-as a routine release step. Run the configured local gates before pushing.
-Default development targets are shared-api and xenia. Both Macs are generally
-unavailable: include them only when explicitly requested or known available,
-and never hold up Linux completion for them.
+Use `bash tools/fleet.sh deploy shared-api xenia`. Ansible owns inventory,
+availability, platform build reuse, API-first installation, migrations and
+readiness. The private inventory defaults to ~/.config/mash/dev-inventory.yml;
+set MASH_DEPLOY_INVENTORY to override it. Private reports default to
+/home/james/scratch/mash-artifacts/dev-jobs; override with MASH_DEPLOY_LOGS.
 
-Ansible owns inventory, availability, build reuse, API-first installation,
-required migrations and readiness checks. The development MCP is a thin adapter
-to registered ansible-runner playbooks; it never implements fleet policy.
+Install the locked controller runtime with `uv sync --project deployment --locked`,
+setting UV_PROJECT_ENVIRONMENT to a private artifact directory. Use that same
+environment for fleet commands. The launcher takes a fleet lock, bounds execution
+and invokes registered playbooks directly through ansible-runner. Never bypass
+Ansible with invented per-host rollout commands. Read private reports after the
+command ends; unknown/unverified outcomes fail closed. Skipped means not installed.
 
-## Configuration and runtime
+Linux builds use tools/build-dev-linux.sh through agent-test, persistent targets
+and disk-backed temp paths. Reuse successful gates only for identical source,
+toolchain and effective build inputs; always stamp the current release. Build
+once per platform. API installation uses authenticated readiness, rollout locking,
+atomic release pointers and rollback; identical healthy releases stay running.
 
-Trusted settings live in ~/.config/mash/dev.toml: repository, private logs,
-inventory, allowed target names, runner argv and registered deploy/refresh/check
-playbook paths. Inventory lives in ~/.config/mash/dev-inventory.yml. Examples are
-deployment/dev.example.toml and deployment/inventory.example.yml. Mash node and
-HTTP server settings remain strict TOML; Ansible inventory describes deployment.
+Ordinary deployment never ingests history or downloads models. Each release
+opens only its silver schema: required upgrades export with the installed binary,
+retain private sensitive backups, import with the new binary keeping identity,
+then explicitly sync to re-ingest stale source interpretation, rebuild views and
+publish. Never add schema aliases or
+alter provider files. Missing query models require explicit models install.
 
-Use the locked deployment runtime (ansible-core and ansible-runner):
-uv sync --project deployment --locked. Store the environment under the private
-artifact root via UV_PROJECT_ENVIRONMENT, and use the same environment for jobs.
-Do not replace dev configuration or restart mash-dev-mcp while its job is active.
-Install updated dev binaries only after checking for active jobs.
+For explicit refresh use `bash tools/fleet.sh sync xenia` or
+`bash tools/fleet.sh local-views xenia`; the latter stays local. Fresh readiness
+uses `bash tools/fleet.sh check shared-api xenia`. The Rust RMCP probe checks the
+installed build/contract, local/shared readiness and bounded lexical/available
+semantic searches; successful status with ready=false does not pass.
 
-## Run and observe
-
-1. Call mash_dev deploy with explicit targets, including required API targets.
-   Ansible installs APIs before history regardless of selection order.
-2. Poll deployment_status with the returned job_id to a terminal state.
-   It reports safe task names, per-target states and redacted MCP probe results;
-   raw Runner events and command logs stay private.
-3. Check each target: skipped is not installed or query-ready. A failed API
-   blocks dependent history installs. Unknown/unverified results fail closed.
-
-The inventory contains shared-api, xenia, dev-macbook and personal-macbook.
-Fresh SSH probes disable control-master reuse and bound connection/keepalive
-timeouts. Offline Macs are skipped and reported. A reachable Mac can build the
-single macOS artifact reused for all available Macs.
-
-## Build and install
-
-Run only the inventory's trusted helper commands. Linux uses
-tools/build-dev-linux.sh through agent-test with the configured persistent target
-and disk-backed test temp paths. It verifies generated guidance, formatting,
-deployment regressions, Rust tests, Clippy and doctests, then builds Mash and the
-development MCP/probe. Successful gates are reusable only for identical source,
-toolchain and effective build inputs; release identity is always current.
-Changes during validation/build fail closed. Builds run once per selected platform.
-
-API rollout uses authenticated readiness, a cross-process lock, atomic release
-pointer and rollback. An identical healthy binary/config/environment is left
-running; explicit replay/activation still executes. History installs are atomic.
-
-The Rust mash-dev-probe uses the official RMCP client for live tool/build/contract
-checks, local/shared readiness and bounded lexical/available semantic smoke
-searches. A successful status RPC with ready=false does not pass readiness.
-It does not implement indexing, schema or Qdrant logic.
-
-## Required migrations and explicit refresh
-
-Each release opens only its own silver schema. The upgrade helpers export with
-the installed binary, retain private backups, then import with the new binary
-keeping identity. Ansible updates legacy gold section headers in retained TOML
-before upgrade. Never add compatibility aliases or alter upstream provider files.
-
-An actual silver upgrade triggers a separate local-views rebuild and sync to
-complete that required migration. Ordinary deployment never indexes history or
-downloads models. Query-model failures require explicit models install, not
-repeated indexing. Preserve export/backup privacy: canonical history is sensitive.
-
-For ordinary user-requested refresh, call refresh_index with explicit history
-targets and mode sync or local-views. Ansible serializes nodes. Local-views does
-not contact the shared API; sync checks prerequisites and republishes.
-For fresh read-only readiness use deployment_status with explicit nodes and no
-job_id. These playbooks do not deploy or repair indexes.
-
-## Fallback and report
-
-When the dev MCP is unavailable, use the registered runner command and playbook
-with the same inventory and explicit selections. Keep Runner's private input,
-events and reports under the configured artifact root. Do not invent per-host
-shell rollout sequences or bypass gates.
-
-Report the deployed commit, every target's installed/skipped/failed outcome,
-local/shared readiness, required follow-ups and client reconnection needs.
-Normal history MCP fronts retain the client connection and automatically adopt
-compatible workers after active calls and watched indexing finish. Verify the
-current worker runtime and session update state, rather than the initial
-handshake or the front's build identity. Incompatible tool/storage contracts
-retain the old worker and require reconnecting after any required migration.
-Sessions predating the stable front need one initial reconnect. Loaded skill
-text is separate; reload it when needed and prefer live help for parameters.
+Report the deployed commit, each target's installed/skipped/failed outcome,
+local/shared readiness and follow-ups. Existing Mash MCP processes require
+reconnection after installing a new binary. Reload updated plugin instructions;
+use live help for parameters. See deployment/README.md for controller setup.

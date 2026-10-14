@@ -215,7 +215,6 @@ def run(args):
                                     "search",
                                     query,
                                     "--shared",
-                                    "--no-worker",
                                     "--intent",
                                     intent,
                                 ]

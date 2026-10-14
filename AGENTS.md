@@ -47,9 +47,7 @@ Keep the CLI command surface limited to `index`, `search`, `list-chats`, `view`,
   shims, alternate output modes, a TUI, or analytics. Portable silver export/import
   is supported; exclude deployment credentials, models and provider files.
   Clearly document that exports preserve sensitive canonical history.
-- CLI searches may share an on-demand, per-user local worker. It must exit after
-  60 seconds of inactivity, accept only searches, and preserve direct execution
-  with `search --no-worker`. Do not install it as a system service.
+- CLI searches execute directly. MCP runs in one process; reconnect after upgrades.
 - Support opt-in debounced synchronization with `index --watch` and MCP startup
   `--watch`. Keep it within the running process; do not install a daemon.
 - Use concrete, enum-selected history adapters with typed input models. The
@@ -191,13 +189,10 @@ availability failure needs explicit model setup, rather than repeated indexing.
 Keep background synchronization or explicit ingestion separate from redeployment.
 See [docs/redeployment.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/redeployment.md) for readiness checks, measured costs and pending delta work.
 
-The separate project development MCP is `mash-dev-mcp` (`mash-dev` crate).
-It runs only trusted, configured deployment commands and calls installed Mash
-MCPs for refresh/status; it must not duplicate indexing or schema logic. Keep
-deploy and refresh separate, target selections explicit, and raw command logs
-private. It stays independent of the history plugin and inference implementation.
-See [docs/mash-dev.md](https://github.com/kojah/mash/blob/a49210157b990b23c5ef9f90d5d1d13fd3ce9f11/docs/mash-dev.md); do not restart it or replace its configuration during
-an active development job.
+Run deployment and refresh directly with `bash tools/fleet.sh`, explicit targets
+and the private Ansible inventory. The `mash-dev` crate contains only the RMCP
+readiness/refresh probe; it must not duplicate indexing or schema logic. Keep
+deploy and refresh separate and raw command logs private. See deployment/README.md.
 
 ## Agent work tracking
 

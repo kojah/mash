@@ -46,7 +46,7 @@ def run(args):
         for intent, ranking in (('exact-mention', None), ('related-discussion', 'fusion')):
             for query in COST.QUERIES:
                 result_search, timing = COST.measure(command + [
-                    'search', query, '--local', '--no-worker', '--intent', intent
+                    'search', query, '--local', '--intent', intent
                 ] + (['--ranking', ranking] if ranking else []), binary,
                     output / f'search-{number}-{len(searches)}')
                 searches.append({'intent': intent, 'query': query, 'measurement': timing,

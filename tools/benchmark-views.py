@@ -207,7 +207,7 @@ def run(args):
             for query in QUERIES:
                 for repetition in range(args.repetitions):
                     command = base + ['--config', str(configs['lexical-and-dense']),
-                                      'search', query, '--local', '--no-worker', '--intent', intent]
+                                      'search', query, '--local', '--intent', intent]
                     if ranking:
                         command += ['--ranking', ranking]
                     if provider:

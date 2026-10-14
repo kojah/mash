@@ -34,14 +34,7 @@ fn users_only_cli_index_keeps_assistant_lexical_search_without_model_assets() {
     let result = run_json(
         &[
             base.as_slice(),
-            &[
-                "search",
-                "needle",
-                "--local",
-                "--no-worker",
-                "--unit",
-                "messages",
-            ],
+            &["search", "needle", "--local", "--unit", "messages"],
         ]
         .concat(),
     );
@@ -77,13 +70,7 @@ fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
         status["local_artifacts"],
         serde_json::json!({"metadata":"ready","lexical":"ready","dense":"disabled"})
     );
-    let result = run_json(
-        &[
-            base.as_slice(),
-            &["search", "needle", "--local", "--no-worker"],
-        ]
-        .concat(),
-    );
+    let result = run_json(&[base.as_slice(), &["search", "needle", "--local"]].concat());
     assert_eq!(result["realized_mode"], "lexical");
     let output = Command::cargo_bin("mash")
         .unwrap()
@@ -92,7 +79,6 @@ fn lexical_only_cli_indexes_without_models_and_rejects_hybrid_overrides() {
             "search",
             "needle",
             "--local",
-            "--no-worker",
             "--intent",
             "related-discussion",
         ])

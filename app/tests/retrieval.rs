@@ -30,36 +30,31 @@ fn exact_cli_thread_excerpts_show_the_literal_and_preserve_canonical_view() {
     run_json(&[base.as_slice(), &["index"]].concat());
     std::fs::remove_dir_all(root).unwrap();
     let before = std::fs::read(&database).unwrap();
-    for direct in [false, true] {
-        let mut args = [base.as_slice(), &["search", "if", "--local"]].concat();
-        if direct {
-            args.push("--no-worker");
-        }
-        let response = run_json(&args);
-        let anchor = &response["results"][0]["matches"][0];
-        let snippet = anchor["snippet"].as_str().unwrap();
-        assert!(snippet.contains("(IF)"));
-        assert!(!snippet.contains("gift"));
-        let start =
-            usize::try_from(anchor["projection_span"]["start_char"].as_u64().unwrap()).unwrap();
-        let end = usize::try_from(anchor["projection_span"]["end_char"].as_u64().unwrap()).unwrap();
-        // This fixture's faithful user projection equals its canonical text.
-        let excerpt: String = content.chars().skip(start).take(end - start).collect();
-        assert_eq!(snippet, format!("…{excerpt}…"));
-        let viewed = run_json(
+    let args = [base.as_slice(), &["search", "if", "--local"]].concat();
+
+    let response = run_json(&args);
+    let anchor = &response["results"][0]["matches"][0];
+    let snippet = anchor["snippet"].as_str().unwrap();
+    assert!(snippet.contains("(IF)"));
+    assert!(!snippet.contains("gift"));
+    let start = usize::try_from(anchor["projection_span"]["start_char"].as_u64().unwrap()).unwrap();
+    let end = usize::try_from(anchor["projection_span"]["end_char"].as_u64().unwrap()).unwrap();
+    // This fixture's faithful user projection equals its canonical text.
+    let excerpt: String = content.chars().skip(start).take(end - start).collect();
+    assert_eq!(snippet, format!("…{excerpt}…"));
+    let viewed = run_json(
+        &[
+            base.as_slice(),
             &[
-                base.as_slice(),
-                &[
-                    "view",
-                    anchor["message_id"].as_str().unwrap(),
-                    "--context",
-                    "0",
-                ],
-            ]
-            .concat(),
-        );
-        assert_eq!(viewed["messages"][0]["content"], content);
-    }
+                "view",
+                anchor["message_id"].as_str().unwrap(),
+                "--context",
+                "0",
+            ],
+        ]
+        .concat(),
+    );
+    assert_eq!(viewed["messages"][0]["content"], content);
     let diagnosed = run_json(
         &[
             base.as_slice(),
@@ -207,27 +202,23 @@ fn cli_search_pages_outside_the_ranked_window_are_usage_errors() {
         ["--offset", "200", "--unit", "chats"],
         ["--offset", "50", "--unit", "messages"],
     ] {
-        for direct in [false, true] {
-            let mut command = Command::cargo_bin("mash").unwrap();
-            command
-                .args(["--config", config.to_str().unwrap()])
-                .args(["--db", database.to_str().unwrap()])
-                .args(["search", "cbioportal", "--local"])
-                .args(page);
-            if direct {
-                command.arg("--no-worker");
-            }
-            let output = command.output().unwrap();
-            assert_eq!(output.status.code(), Some(2), "{page:?}");
-            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-            assert_eq!(error["error"]["kind"], "usage");
-            assert!(
-                error["error"]["message"]
-                    .as_str()
-                    .unwrap()
-                    .contains("search pages require")
-            );
-        }
+        let mut command = Command::cargo_bin("mash").unwrap();
+        command
+            .args(["--config", config.to_str().unwrap()])
+            .args(["--db", database.to_str().unwrap()])
+            .args(["search", "cbioportal", "--local"])
+            .args(page);
+
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(2), "{page:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "usage");
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("search pages require")
+        );
     }
     assert!(!database.exists());
 }
@@ -251,20 +242,16 @@ fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index()
     run_json(&[base.as_slice(), &["index"]].concat());
     std::fs::remove_dir_all(&models).unwrap();
     let before = std::fs::read(&database).unwrap();
-    for direct in [false, true] {
-        let mut args = [
-            base.as_slice(),
-            &["search", "for", "--intent", "exact-mention", "--local"],
-        ]
-        .concat();
-        if direct {
-            args.push("--no-worker");
-        }
-        let result = run_json(&args);
-        assert_eq!(result["intent"], "exact-mention");
-        assert_eq!(result["realized_mode"], "lexical");
-        assert_eq!(result["results"], serde_json::json!([]));
-    }
+    let args = [
+        base.as_slice(),
+        &["search", "for", "--intent", "exact-mention", "--local"],
+    ]
+    .concat();
+
+    let result = run_json(&args);
+    assert_eq!(result["intent"], "exact-mention");
+    assert_eq!(result["realized_mode"], "lexical");
+    assert_eq!(result["results"], serde_json::json!([]));
     std::fs::write(
         &config,
         "version=1\nproviders={}\n[views.query]\nintent='exact-mention'\nunit='messages'\nlimit=3\n",
@@ -278,7 +265,7 @@ fn exact_cli_search_needs_no_models_and_query_defaults_do_not_modify_the_index()
 }
 
 #[test]
-fn cached_and_direct_cli_validation_match_with_installed_models_and_no_index() {
+fn cli_validates_search_before_accessing_models_or_index() {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join("config.toml");
     std::fs::write(&config, "version = 1\nproviders = {}\n").unwrap();
@@ -356,21 +343,14 @@ fn cached_and_direct_cli_validation_match_with_installed_models_and_no_index() {
             "--local",
         ],
     ] {
-        let mut errors = Vec::new();
-        for direct in [false, true] {
-            let mut command = Command::cargo_bin("mash").unwrap();
-            command.args(base).args(&arguments);
-            if direct {
-                command.arg("--no-worker");
-            }
-            let output = command.output().unwrap();
-            assert_eq!(output.status.code(), Some(2));
-            assert_eq!(output.stdout, [] as [u8; 0]);
-            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-            assert_eq!(error["error"]["kind"], "usage");
-            errors.push(error);
-        }
-        assert_eq!(errors[0], errors[1]);
+        let mut command = Command::cargo_bin("mash").unwrap();
+        command.args(base).args(&arguments);
+
+        let output = command.output().unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.stdout, [] as [u8; 0]);
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["kind"], "usage");
         assert!(!database.exists());
     }
 }
@@ -394,7 +374,6 @@ fn unsupported_language_is_explained_before_model_or_index_access() {
             "search",
             "wie konfiguriere ich den gemeinsamen Suchindex",
             "--local",
-            "--no-worker",
         ])
         .output()
         .unwrap();
@@ -500,7 +479,6 @@ token_env = "MASH_TEST_UNSET_INDEX_READINESS_TOKEN"
                 "--models-dir",
                 models.to_str().unwrap(),
                 "search",
-                "--no-worker",
                 "needle",
             ])
             .output()

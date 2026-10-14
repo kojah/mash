@@ -1,4 +1,4 @@
-//! Stable typed requests and responses shared by CLI, MCP and search worker.
+//! Stable typed requests and responses shared by CLI and MCP.
 use crate::config::ConfigurationStatus;
 use crate::provider::Provider;
 pub(super) use crate::views::readiness::{Artifacts as LocalArtifacts, State as ArtifactState};
@@ -6,23 +6,20 @@ use crate::{semantic, shared};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct Paths {
     pub(crate) config: Option<PathBuf>,
     pub(crate) db: Option<PathBuf>,
     pub(crate) models_dir: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone)]
 pub(crate) struct Request {
     pub(crate) paths: Paths,
     pub(crate) operation: Operation,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum IndexMode {
     #[default]
     ProviderFiles,
@@ -39,10 +36,8 @@ impl IndexMode {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct IndexRequest {
-    #[serde(default)]
     pub(crate) mode: IndexMode,
     pub(crate) full: bool,
     pub(crate) provider: Vec<Provider>,
@@ -50,7 +45,7 @@ pub(crate) struct IndexRequest {
     pub(crate) all_history: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) enum Operation {
     Index(IndexRequest),
     IngestConnector {
@@ -60,24 +55,17 @@ pub(crate) enum Operation {
         input: Box<crate::chat_catalog::Request>,
         local: bool,
         shared: bool,
-        #[serde(default)]
         diagnostics: bool,
     },
     Search {
-        #[serde(default)]
         shared_vector_search: Option<crate::views::vector::Search>,
         query: String,
-        #[serde(default)]
         intent: Option<crate::views::exact::Intent>,
         limit: Option<usize>,
-        #[serde(default)]
         offset: usize,
         unit: Option<crate::search_results::SearchUnit>,
-        #[serde(default)]
         fusion: crate::views::config::FusionOverrides,
-        #[serde(default)]
         ranking: Option<crate::views::config::Ranking>,
-        #[serde(default)]
         diagnostics: bool,
         filters: Box<crate::search_filter::Selection>,
         shared: bool,
@@ -90,7 +78,6 @@ pub(crate) enum Operation {
     },
     Status {
         shared: bool,
-        #[serde(default)]
         coverage: Option<super::coverage::Scope>,
     },
     Forget {
@@ -103,7 +90,6 @@ pub(crate) enum Operation {
     ImportSilver {
         directory: PathBuf,
         database: PathBuf,
-        #[serde(default)]
         keep_identity: bool,
     },
     ListAttachments {

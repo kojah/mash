@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One fleet mutation/check at a time across all dev MCP sessions.
+# One fleet mutation/check at a time across controller processes.
 set -euo pipefail
 [[ $# -ge 2 ]] || { echo 'usage: run-ansible.sh LOCK RUNNER ARGUMENTS...' >&2; exit 2; }
 lock=$1

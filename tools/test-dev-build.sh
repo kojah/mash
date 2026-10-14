@@ -14,6 +14,7 @@ for helper in generate-history-skill test-dev-api test-dev-build test-run-ansibl
 done
 printf source > "$scratch/repository/app/source.rs"
 git -C "$scratch/repository" init -q
+git -C "$scratch/repository" add app/source.rs
 cat > "$scratch/bin/cargo" <<'CARGO'
 #!/usr/bin/env bash
 if [[ $1 == --version ]]; then echo cargo-fixture; exit 0; fi
@@ -55,4 +56,7 @@ TEST_BUILD_COMPILER_VERSION=rustc-new run_build >/dev/null
 [[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 7 ]]
 RUSTFLAGS=test-flags run_build >/dev/null
 [[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 8 ]]
+rm "$scratch/repository/app/source.rs"
+run_build >/dev/null
+[[ $(rg -c '^test-clif' "$TEST_BUILD_CALLS") == 9 ]]
 echo 'Development build gate reuse and invalidation checks passed.'

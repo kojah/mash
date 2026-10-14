@@ -154,10 +154,7 @@ fn oversized_model_metadata_fails_before_indexing_or_loading_and_status_explains
     let status = run_json(&[base.as_slice(), &["status"]].concat());
     assert_eq!(status["ready"], false);
     assert_eq!(status["recommended_action"], "models install");
-    for args in [
-        vec!["index"],
-        vec!["search", "cbioportal", "--local", "--no-worker"],
-    ] {
+    for args in [vec!["index"], vec!["search", "cbioportal", "--local"]] {
         let output = Command::cargo_bin("mash")
             .unwrap()
             .args(base)

@@ -27,14 +27,7 @@ fn view_returns_structured_tool_calls_and_results() {
     let found = run_json(
         &[
             args.as_slice(),
-            &[
-                "search",
-                "Checking both",
-                "--local",
-                "--no-worker",
-                "--unit",
-                "messages",
-            ],
+            &["search", "Checking both", "--local", "--unit", "messages"],
         ]
         .concat(),
     );

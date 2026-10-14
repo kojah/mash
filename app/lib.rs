@@ -39,8 +39,6 @@ mod storage;
 #[cfg(test)]
 mod test_support;
 mod watch;
-#[cfg(unix)]
-mod worker;
 
 use std::ffi::OsString;
 use std::io::{self, Write};
@@ -75,14 +73,6 @@ async fn blocking<T: Send + 'static>(
 #[must_use]
 pub fn main_entry() -> i32 {
     observability::initialize();
-    #[cfg(unix)]
-    {
-        let arguments = std::env::args_os().collect::<Vec<_>>();
-        if arguments.len() == 3 && arguments[1] == "--internal-search-worker" {
-            return crate::worker::run(std::path::Path::new(&arguments[2]))
-                .map_or_else(|error| error.code, |()| 0);
-        }
-    }
     execute(std::env::args_os(), &mut io::stdout(), &mut io::stderr())
 }
 

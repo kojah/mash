@@ -47,11 +47,7 @@ fn export_imports_history_offline_and_requires_explicit_views_rebuild() {
     assert_eq!(result["search_ready"], false);
     assert_eq!(result["recommended_action"], "rebuild-local-views");
     let imported_args = [base.as_slice(), &["--db", imported.to_str().unwrap()]].concat();
-    let search_args = [
-        imported_args.as_slice(),
-        &["search", "needle", "--local", "--no-worker"],
-    ]
-    .concat();
+    let search_args = [imported_args.as_slice(), &["search", "needle", "--local"]].concat();
     let before = Command::cargo_bin("mash")
         .unwrap()
         .args(&search_args)

@@ -261,3 +261,76 @@ async fn main() {
         std::process::exit(1);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires MASH_TEST_SERVER_BINARY with the current build and contract"]
+    async fn probe_checks_without_ingestion_and_refreshes_only_when_requested() {
+        let binary = std::env::var_os("MASH_TEST_SERVER_BINARY").expect("built Mash binary");
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let sources = root.join("history");
+        std::fs::create_dir(&sources).unwrap();
+        let config = root.join("node.toml");
+        let database = root.join("silver.sqlite3");
+        std::fs::write(&config, format!(
+            "version=1\n[providers.claude-code]\nroots=[{}]\n[views.build]\nrepresentations='lexical-only'\n[views.query]\nintent='exact-mention'\n",
+            serde_json::to_string(&sources).unwrap()
+        )).unwrap();
+        let mut arguments = Arguments {
+            repository: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+            output: root.join("report.json"),
+            progress: root.join("progress.json"),
+            mode: Mode::Check,
+            shared: false,
+            command: vec![
+                binary,
+                "mcp".into(),
+                "--config".into(),
+                config.into_os_string(),
+                "--db".into(),
+                database.clone().into_os_string(),
+                "--models-dir".into(),
+                root.join("missing-models").into_os_string(),
+            ],
+        };
+        let report = || Arc::new(Mutex::new(Report::default()));
+        assert!(check(&arguments, report()).await.is_err());
+        assert!(!database.exists());
+        for (file, text) in [
+            ("one", "first deployment fixture"),
+            ("two", "later fixture"),
+        ] {
+            std::fs::write(
+                sources.join(format!("{file}.jsonl")),
+                serde_json::to_vec(&serde_json::json!({
+                    "type":"user", "sessionId":file, "uuid":file,
+                    "message":{"role":"user","content":text}
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            if database.exists() {
+                let before = std::fs::read(&database).unwrap();
+                for mode in [Mode::Check, Mode::LocalViews] {
+                    arguments.mode = mode;
+                    check(&arguments, report()).await.unwrap();
+                    assert_eq!(std::fs::read(&database).unwrap(), before);
+                }
+            }
+            arguments.mode = Mode::Sync;
+            let refreshed = report();
+            check(&arguments, refreshed.clone()).await.unwrap();
+            assert!(refreshed.lock().await.results.iter().any(|result| {
+                result
+                    .structured_content
+                    .as_ref()
+                    .is_some_and(|value| value["messages"] == if file == "one" { 1 } else { 2 })
+            }));
+        }
+        assert!(!root.join("missing-models").exists());
+    }
+}

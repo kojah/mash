@@ -197,13 +197,7 @@ fn assert_readiness(
     if !ready {
         let search = Command::cargo_bin("mash")
             .unwrap()
-            .args(
-                [
-                    paths.as_slice(),
-                    &["search", "cbioportal", "--local", "--no-worker"],
-                ]
-                .concat(),
-            )
+            .args([paths.as_slice(), &["search", "cbioportal", "--local"]].concat())
             .output()
             .unwrap();
         assert_eq!(search.status.code(), Some(8));

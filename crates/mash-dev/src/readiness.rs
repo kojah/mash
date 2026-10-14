@@ -40,16 +40,6 @@ struct Runtime {
     build_revision: String,
     contract_fingerprint: String,
     contract_matches: Option<bool>,
-    reconnect_required: bool,
-    executable_state: ExecutableState,
-}
-
-#[derive(Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum ExecutableState {
-    Current,
-    Replaced,
-    Unknown,
 }
 
 #[derive(Deserialize)]
@@ -62,10 +52,11 @@ pub fn help(result: &CallToolResult, expected: &Stamp) -> Result<(), String> {
     if help.runtime.contract_matches != Some(true)
         || help.runtime.contract_fingerprint != expected.contract_fingerprint
         || help.runtime.build_revision != expected.build_revision
-        || help.runtime.reconnect_required
-        || help.runtime.executable_state != ExecutableState::Current
     {
-        return Err("installed MCP contract is stale, replaced or unknown; install the matching release and reconnect".into());
+        return Err(
+            "installed MCP build or contract differs; install the matching release and reconnect"
+                .into(),
+        );
     }
     Ok(())
 }
@@ -86,7 +77,6 @@ pub struct Status {
     configuration: Configuration,
     shared_index: Option<Freshness>,
     shared: Option<Publication>,
-    runtime: Runtime,
 }
 
 #[derive(Deserialize)]
@@ -123,11 +113,6 @@ pub fn status(result: &CallToolResult, shared: bool) -> Result<Status, String> {
     let status: Status = decode(result)?;
     if !status.ready || status.query_models == Models::Unavailable {
         return Err("installed node is not query-ready; inspect status and refresh or install models explicitly".into());
-    }
-    if status.runtime.reconnect_required
-        || status.runtime.executable_state != ExecutableState::Current
-    {
-        return Err("MCP executable was replaced or cannot be verified; reconnect before certifying readiness".into());
     }
     if shared {
         let node = status
@@ -190,7 +175,7 @@ mod tests {
     use serde_json::json;
 
     fn fixture() -> serde_json::Value {
-        json!({"ready":true,"query_models":"available","configuration":{"shared":{"node_id":"one"}},"shared":{"state":"published"},"shared_index":{"nodes":[{"node_id":"one","lexical_current":true,"views_current":true}]},"runtime":{"build_revision":"revision","contract_fingerprint":"current","contract_matches":true,"reconnect_required":false,"executable_state":"current"}})
+        json!({"ready":true,"query_models":"available","configuration":{"shared":{"node_id":"one"}},"shared":{"state":"published"},"shared_index":{"nodes":[{"node_id":"one","lexical_current":true,"views_current":true}]},"runtime":{"build_revision":"revision","contract_fingerprint":"current","contract_matches":true}})
     }
 
     #[test]
@@ -235,7 +220,7 @@ mod tests {
         changed["shared_index"]["nodes"][0]["views_current"] = json!(false);
         assert!(status(&CallToolResult::structured(changed), true).is_err());
         let mut changed = fixture.clone();
-        changed["runtime"]["executable_state"] = json!("unknown");
+        changed["runtime"]["build_revision"] = json!("old");
         assert!(help(&CallToolResult::structured(changed), &expected).is_err());
         assert!(
             search(

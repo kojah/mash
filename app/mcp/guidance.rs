@@ -5,10 +5,8 @@ use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::PathBuf;
-use std::sync::OnceLock;
 
-const WORKFLOW: &str = "Use live help for current parameters and examples. Discover named chats with list_chats, subjects with search; read evidence with view by copying lookup.view. Omit unused optional filters. Check status for readiness; search does not index. Compatible workers update within the existing connection after active work finishes. Reconnect only when session reports an incompatible update; use live help instead of guessing aliases from cached instructions.";
+const WORKFLOW: &str = "Use live help for current parameters and examples. Discover named chats with list_chats, subjects with search; read evidence with view by copying lookup.view. Omit unused optional filters. Check status for readiness; search does not index. Restart Mash MCP after installing a new binary; use live help instead of guessing aliases from cached instructions.";
 
 #[derive(Deserialize, Serialize, rmcp::schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -41,7 +39,7 @@ impl Topic {
                 "Use status to distinguish local readiness from shared freshness. Search never repairs missing indexes or downloads models. Partial results and unknown coverage cannot prove absence. Do not widen an explicit offline request."
             }
             Self::Sessions => {
-                "Normal mash mcp connections keep a stable front process and replace compatible workers after active calls and watched indexing finish. Help/status report the current worker runtime and session generation/update state. Changed tool schemas or storage formats require reconnecting after any required migration. A rejected update retains the current worker. Use live help when contract_matches is false; loaded skill text and handshake instructions describe an earlier release. Unknown executable state is not proof of currency."
+                "Mash MCP runs in one process. Restart it after installing a new binary or changing startup settings. Help/status report the running build and contract. Use live help when contract_matches is false, and reload the installed history skill."
             }
         }
     }
@@ -257,81 +255,20 @@ pub(super) fn instructions() -> String {
     )
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub(super) struct FileStamp {
-    length: u64,
-    modified: std::time::SystemTime,
-    #[cfg(unix)]
-    inode: u64,
-    #[cfg(unix)]
-    device: u64,
-}
-
-pub(super) fn stamp(path: &std::path::Path) -> std::io::Result<FileStamp> {
-    #[cfg(unix)]
-    use std::os::unix::fs::MetadataExt;
-    let metadata = std::fs::metadata(path)?;
-    Ok(FileStamp {
-        length: metadata.len(),
-        modified: metadata.modified()?,
-        #[cfg(unix)]
-        inode: metadata.ino(),
-        #[cfg(unix)]
-        device: metadata.dev(),
-    })
-}
-
-static EXECUTABLE: OnceLock<Option<(PathBuf, FileStamp)>> = OnceLock::new();
-
-pub(super) fn capture_executable() {
-    EXECUTABLE.get_or_init(|| {
-        let path = std::env::current_exe().ok()?;
-        Some((path.clone(), stamp(&path).ok()?))
-    });
-}
-
-#[derive(Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum ExecutableState {
-    Current,
-    Replaced,
-    Unknown,
-}
-
-fn executable_state(snapshot: Option<&(PathBuf, FileStamp)>) -> ExecutableState {
-    let Some((path, original)) = snapshot else {
-        return ExecutableState::Unknown;
-    };
-    match stamp(path) {
-        Ok(installed) if &installed == original => ExecutableState::Current,
-        Ok(_) => ExecutableState::Replaced,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => ExecutableState::Replaced,
-        Err(_) => ExecutableState::Unknown,
-    }
-}
-
 #[derive(Serialize)]
 struct Runtime {
     build_revision: &'static str,
     silver_schema: i64,
     views_schema: i64,
     contract_fingerprint: String,
-    executable_state: ExecutableState,
     contract_matches: Option<bool>,
-    reconnect_required: bool,
     recommended_action: Option<&'static str>,
 }
 
 fn runtime(expected: Option<&str>) -> Result<Runtime, serde_json::Error> {
     let contract_fingerprint = fingerprint()?;
     let contract_matches = expected.map(|expected| expected == contract_fingerprint);
-    let executable_state = executable_state(EXECUTABLE.get().and_then(Option::as_ref));
-    let reconnect_required = executable_state == ExecutableState::Replaced;
-    let recommended_action = if reconnect_required {
-        Some(
-            "Reconnect Mash MCP to load the installed binary, and reload the current history skill.",
-        )
-    } else if contract_matches == Some(false) {
+    let recommended_action = if contract_matches == Some(false) {
         Some(
             "History skill and running MCP contracts differ. Reload the skill and use live help; reconnect MCP if the installed binary is newer.",
         )
@@ -343,9 +280,7 @@ fn runtime(expected: Option<&str>) -> Result<Runtime, serde_json::Error> {
         silver_schema: crate::storage::schema::SCHEMA_VERSION,
         views_schema: crate::storage::schema::VIEWS_VERSION,
         contract_fingerprint,
-        executable_state,
         contract_matches,
-        reconnect_required,
         recommended_action,
     })
 }
@@ -354,8 +289,8 @@ pub(super) async fn attach_runtime(result: &mut CallToolResult, expected: Option
     let runtime = tokio::task::spawn_blocking(move || runtime(expected.as_deref())).await;
     if let Ok(Ok(runtime)) = runtime {
         result.content.push(ContentBlock::text(format!(
-            "Mash runtime — build {} · contract {} · executable {:?}",
-            runtime.build_revision, runtime.contract_fingerprint, runtime.executable_state
+            "Mash runtime — build {} · contract {}",
+            runtime.build_revision, runtime.contract_fingerprint
         )));
         if let Some(action) = runtime.recommended_action {
             result.content.push(ContentBlock::text(action));
@@ -479,22 +414,6 @@ pub fn generate_history_skill() -> Result<(String, String), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn history_skill_detects_replaced_executable() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("mash");
-        std::fs::write(&path, b"old").unwrap();
-        let snapshot = (path.clone(), stamp(&path).unwrap());
-        assert_eq!(executable_state(Some(&snapshot)), ExecutableState::Current);
-        let replacement = directory.path().join("new");
-        std::fs::write(&replacement, b"new version").unwrap();
-        std::fs::rename(replacement, &path).unwrap();
-        assert_eq!(executable_state(Some(&snapshot)), ExecutableState::Replaced);
-        std::fs::remove_file(path).unwrap();
-        assert_eq!(executable_state(Some(&snapshot)), ExecutableState::Replaced);
-        assert_eq!(executable_state(None), ExecutableState::Unknown);
-    }
 
     #[test]
     fn history_skill_fingerprint_detects_stale_instructions() {

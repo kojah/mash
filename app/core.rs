@@ -1,4 +1,4 @@
-//! Typed application facade shared by CLI, MCP and the idle search worker.
+//! Typed application facade shared by CLI and MCP.
 use crate::AppError;
 use crate::config::{self, ResolvedConfig};
 use directories::ProjectDirs;
@@ -126,6 +126,7 @@ async fn execute_inner(
     Ok(response)
 }
 
+#[cfg(test)]
 pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError> {
     let Operation::Search {
         shared_vector_search,
@@ -142,7 +143,7 @@ pub(crate) fn validate_search_request(request: &Request) -> Result<(), AppError>
         ..
     } = &request.operation
     else {
-        return Err(AppError::usage("search worker accepts only searches"));
+        return Err(AppError::usage("expected a search request"));
     };
     // The node affects the resolved scope, but not syntax validation. Actual
     // execution resolves again with the current configuration and time cutoff.
@@ -186,15 +187,6 @@ pub(crate) fn validate_chat_request(
         ));
     }
     Ok(())
-}
-
-#[cfg(unix)]
-pub(crate) async fn worker_search(request: Request) -> Result<SearchResponse, AppError> {
-    validate_search_request(&request)?;
-    match execute(request).await? {
-        Response::Search(response) => Ok(response),
-        _ => Err(AppError::internal("unexpected search worker response")),
-    }
 }
 
 #[expect(
