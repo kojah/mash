@@ -2,6 +2,7 @@
 # Exercise fleet policy with real Ansible and disposable, non-history targets.
 set -euo pipefail
 repository=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$repository/tools/controller-environment.sh"
 scratch=$(mktemp -d "${TMPDIR:?}/ansible-fleet-test.XXXXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 cat > "$scratch/probe" <<'PROBE'
@@ -36,13 +37,16 @@ all:
       hosts:
         api:
           mash_platform: test
-          mash_install: [[sh, -c, 'echo api-install >> $scratch/actions']]
+          mash_preflight: [sh, -c, 'test ! -e $scratch/unavailable-api']
+          mash_deploy_preflight: [[sh, -c, 'echo api-preflight >> $scratch/actions; test ! -e $scratch/fail-api']]
+          mash_install: [[sh, -c, 'echo api-install >> $scratch/actions; if test -e $scratch/fail-after-api-install; then touch $scratch/fail-api; fi']]
           mash_verify: [[sh, -c, 'echo api-verify >> $scratch/actions; test ! -e $scratch/fail-api']]
     mash_history:
       hosts:
         one:
           mash_platform: test
           mash_requires: [api]
+          mash_deploy_preflight: [[sh, -c, 'test ! -e $scratch/deny-install']]
           mash_install: [[sh, -c, 'echo one-install >> $scratch/actions; if test -e $scratch/upgrade; then echo "local index upgraded;"; fi']]
           mash_mcp: [unused]
         offline:
@@ -61,6 +65,29 @@ run_playbook() {
     uv run --project "$repository/deployment" --locked --no-sync ansible-runner run "$job" \
         --project-dir "$repository" --inventory "$scratch/inventory.yml" --playbook "$playbook" --ident job --json > "$job/runner.log" 2>&1
 }
+run_playbook preflight '["one","api"]' deployment/playbooks/preflight.yml ready
+! grep -q '^build$' "$scratch/actions"
+jq -e '.preflight == true and .deployed == false' "$scratch/preflight-ready/one.json" >/dev/null
+touch "$scratch/fail-api"
+if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml stale-api; then
+    echo 'Failed API preflight was accepted.' >&2; exit 1
+fi
+! grep -q '^build$' "$scratch/actions"
+[[ $(jq -r .state "$scratch/deploy-stale-api/api.json") == failed ]]
+rm -f "$scratch/fail-api"
+touch "$scratch/deny-install"
+if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml denied-access; then
+    echo 'Failed install-access check was accepted.' >&2; exit 1
+fi
+! grep -q '^build$' "$scratch/actions"
+rm -f "$scratch/deny-install"
+touch "$scratch/unavailable-api"
+if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml unavailable-api; then
+    echo 'Unavailable required API was accepted.' >&2; exit 1
+fi
+! grep -q '^build$' "$scratch/actions"
+[[ $(jq -r .state "$scratch/deploy-unavailable-api/api.json") == skipped ]]
+rm -f "$scratch/unavailable-api"
 run_playbook deploy '["one","offline","api"]' deployment/playbooks/deploy.yml successful
 [[ $(rg -c '^build$' "$scratch/actions") == 1 ]]
 [[ $(jq -r .state "$scratch/deploy-successful/offline.json") == skipped ]]
@@ -71,10 +98,18 @@ node_line=$(rg -n '^one-install$' "$scratch/actions" | cut -d: -f1)
 [[ $(rg -c '^check$' "$scratch/actions") == 1 ]]
 if rg -q '^(sync|local-views)$' "$scratch/actions"; then echo 'Ordinary deployment ingested history.' >&2; exit 1; fi
 before=$(rg -c '^one-install$' "$scratch/actions")
+builds=$(rg -c '^build$' "$scratch/actions")
 touch "$scratch/fail-api"
 if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml failed; then echo 'API failure was accepted.' >&2; exit 1; fi
 [[ $(rg -c '^one-install$' "$scratch/actions") == "$before" ]]
+[[ $(rg -c '^build$' "$scratch/actions") == "$builds" ]]
 rm "$scratch/fail-api"
+touch "$scratch/fail-after-api-install"
+if run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml failed-after-install; then
+    echo 'Post-install API readiness failure was accepted.' >&2; exit 1
+fi
+[[ $(rg -c '^one-install$' "$scratch/actions") == "$before" ]]
+rm -f "$scratch/fail-after-api-install" "$scratch/fail-api"
 touch "$scratch/upgrade"
 run_playbook deploy '["one","api"]' deployment/playbooks/deploy.yml upgraded
 [[ $(rg -c '^sync$' "$scratch/actions") == 1 ]]

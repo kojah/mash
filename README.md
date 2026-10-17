@@ -1888,20 +1888,23 @@ memory/throughput tradeoff and the manual worker-budget diagnostic. This is an
 inference workspace limit, not a total indexing memory limit.
 
 
-## Automatic deployment
+## Deployment releases
 
 Every push to `main` first runs CI, including generated-query checks, linting,
 and SQLite, real embedding/reranking/hybrid-search, and Qdrant tests.
 CI explicitly installs and smoke-tests local models on cache misses; model assets
 are cached by platform, dependency lockfile and installation implementation.
 The shared-storage gate includes Claude-copy reconciliation.
-Only a successful run can build and
+Ordinary pushes validate changes without deploying them. To release a stable
+batch, manually run the **CI** workflow on `main` with its **deploy** input enabled.
+Only a successful explicitly requested release run can build and
 deploy the Linux x86-64 and Apple Silicon binaries from that same commit.
 Deployments are serialized; a superseded commit is skipped after acquiring
 the deployment lock. New pushes do not interrupt an active deployment.
-To request a manual deployment, run the **CI** workflow on `main`; it runs
-the same validation and current-commit gate. Pull requests and manual runs
-on other branches never deploy.
+Manual CI runs without that input only validate. Pull requests and manual runs
+on other branches never deploy. For local fleet releases, use
+`bash tools/fleet.sh preflight shared-api xenia` before building, then `deploy`
+at the agreed release milestone; see [deployment/README.md](deployment/README.md).
 
 Deployment atomically installs `mash` to `~/.local/bin` on Xenia,
 dev-macbook, and personal-macbook over Tailscale. Atomic installation is per

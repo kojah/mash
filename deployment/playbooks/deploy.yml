@@ -1,4 +1,4 @@
-- import_playbook: prepare.yml
+- import_playbook: preflight.yml
 
 - name: Build each requested platform once
   hosts: localhost

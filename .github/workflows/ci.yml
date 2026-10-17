@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the validated current main commit as a release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -133,7 +138,7 @@ jobs:
         env:
           UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/mash-ansible-runtime
         run: |
-          uv sync --project deployment --locked --no-dev
+          TMPDIR="$RUNNER_TEMP" bash tools/test-controller-environment.sh
           TMPDIR="$RUNNER_TEMP" bash tools/test-run-ansible.sh
           TMPDIR="$RUNNER_TEMP" bash tools/test-ansible.sh
       - name: Verify offline search evaluation
@@ -227,8 +232,10 @@ jobs:
     needs: rust
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch' && inputs.deploy == true
     uses: ./.github/workflows/deploy.yml
+    with:
+      release_requested: ${{ inputs.deploy == true }}
     secrets:
       TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
       TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}

@@ -4,19 +4,43 @@ Ansible owns fleet selection, platform builds, API-first installation, required
 schema migrations and readiness checks. The standalone Rust RMCP probe checks
 the installed history MCP and performs explicitly requested refreshes.
 
-Install the controller runtime with `uv sync --project deployment --locked`,
-setting `UV_PROJECT_ENVIRONMENT` to a private directory outside Git. Copy
+Canonical runners select and synchronize the locked controller runtime in
+`/home/james/scratch/mash-artifacts/ansible-venv`. Set `UV_PROJECT_ENVIRONMENT`
+to override that private location; no manual setup is required. Copy
 `inventory.example.yml` into a private inventory; node/server settings remain TOML.
 Set `MASH_DEPLOY_INVENTORY` to that inventory (default
 `~/.config/mash/dev-inventory.yml`) and `MASH_DEPLOY_LOGS` to private reports
 (default `/home/james/scratch/mash-artifacts/dev-jobs`).
 
 ```bash
+bash tools/fleet.sh preflight shared-api xenia
 bash tools/fleet.sh deploy shared-api xenia
 bash tools/fleet.sh check shared-api xenia
 bash tools/fleet.sh sync xenia
 bash tools/fleet.sh local-views xenia
 ```
+
+Commit and push focused, validated changes without deploying each one. Deploy
+at an explicitly requested release or agreed stable-batch milestone. Use
+`make iterate FOCUS='test(changed_behavior)'` while developing; it runs formatting,
+Clippy and selected regressions without broad acceptance or a release build.
+`make validate-dev` validates a stable batch without building a release artifact.
+Source/toolchain/input receipts survive commit identity and release-stamp changes;
+the release build still stamps the current commit.
+
+For a release, run preflight before broader release preparation, validate the
+stable batch, commit/push, then deploy. Deployment repeats the fresh preflight
+and reuses eligible validation evidence before stamping the release binary.
+
+Both `preflight` and `deploy` check prerequisites before compilation: available
+required APIs, configured lifecycle/release identity checks, authentication and
+install access. All targets declare read-only `mash_deploy_preflight` commands.
+The legacy API installer uses `check-dev-api.sh --deployment` for identity,
+authentication and writable release paths, plus a configured service-manager
+check. The example rejects an active supervised API when using the PID installer.
+Preflight success reports `deployed: false`.
+Failure blocks all builds and installations. Existing service-manager/PID
+mismatches must be repaired through the owning lifecycle tooling.
 
 The launcher invokes the existing locked Runner runtime, serializes jobs and
 prints per-target outcomes. Inspect its private reports for readiness and errors.

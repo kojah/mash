@@ -2,6 +2,10 @@ name: Deploy mash
 
 on:
   workflow_call:
+    inputs:
+      release_requested:
+        type: boolean
+        required: true
     secrets:
       TS_OAUTH_CLIENT_ID:
         required: true
@@ -34,6 +38,7 @@ jobs:
         run: bash .github/scripts/deploy-gate
         env:
           GH_TOKEN: ${{ github.token }}
+          MASH_DEPLOY_REQUESTED: ${{ inputs.release_requested }}
       - name: Validate deployment credentials before platform builds
         if: steps.gate.outputs.deploy == 'true'
         run: bash .github/scripts/deploy-credentials

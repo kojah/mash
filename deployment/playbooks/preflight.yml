@@ -1,0 +1,43 @@
+- import_playbook: prepare.yml
+
+- name: Verify deployment prerequisites before any build or installation
+  hosts: mash_available
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Verify lifecycle, release identity and install access
+      block:
+        - name: Require explicit deployment checks and available dependencies
+          ansible.builtin.assert:
+            that:
+              - mash_install | default([]) | length > 0
+              - mash_deploy_preflight | default([]) | length > 0
+              - mash_platform in mash_builds
+              - mash_requires | default([]) | difference(groups['mash_available'] | default([])) | length == 0
+            fail_msg: Configure mash_deploy_preflight with read-only lifecycle and install-access checks. Required APIs and a platform builder must be available.
+            quiet: true
+        - name: Run trusted deployment preflight commands
+          ansible.builtin.command:
+            argv: "{{ item }}"
+            chdir: "{{ mash_repository }}"
+          loop: "{{ mash_deploy_preflight }}"
+          delegate_to: localhost
+          changed_when: false
+          no_log: true
+      rescue:
+        - name: Record blocked deployment without claiming installation
+          ansible.builtin.copy:
+            dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+            mode: '0600'
+            content: '{"state":"failed","error":"Deployment preflight failed: verify service lifecycle, release identity, authentication, install access and required APIs. No build or installation started.","results":[]}'
+          delegate_to: localhost
+        - name: Stop before building
+          ansible.builtin.fail:
+            msg: Deployment preflight failed; no build or installation started.
+    - name: Report successful preflight without claiming installation
+      ansible.builtin.copy:
+        dest: "{{ mash_job_directory }}/{{ inventory_hostname }}.json"
+        mode: '0600'
+        content: '{"state":"succeeded","preflight":true,"deployed":false,"results":[]}'
+      delegate_to: localhost
+      when: mash_operation == 'preflight'

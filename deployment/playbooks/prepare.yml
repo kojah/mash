@@ -15,7 +15,7 @@
         that: hostvars[item].mash_requires | default([]) | difference(mash_selected_nodes) | length == 0
         quiet: true
       loop: "{{ mash_selected_nodes }}"
-      when: mash_operation == 'deploy'
+      when: mash_operation in ['deploy', 'preflight']
     - name: Read the requested source revision
       ansible.builtin.command:
         argv: [git, rev-parse, HEAD]

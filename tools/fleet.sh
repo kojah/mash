@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Invoke the existing Ansible policy directly; retain private reports for review.
 set -euo pipefail
-[[ $# -ge 2 ]] || { echo 'usage: fleet.sh deploy|check|sync|local-views TARGET...' >&2; exit 2; }
+[[ $# -ge 2 ]] || { echo 'usage: fleet.sh preflight|deploy|check|sync|local-views TARGET...' >&2; exit 2; }
 operation=$1
 shift
 case "$operation" in
-    deploy|check) playbook=$operation ;;
+    preflight|deploy|check) playbook=$operation ;;
     sync|local-views) playbook=refresh ;;
     *) echo 'Unknown fleet operation.' >&2; exit 2 ;;
 esac
@@ -24,7 +24,7 @@ jq -n --arg operation "$operation" --arg repository "$repository" --arg job "$jo
     --args '{mash_operation:$operation,mash_repository:$repository,mash_job_directory:$job,mash_selected_nodes:$ARGS.positional}' \
     "$@" > "$job/env/extravars"
 export ANSIBLE_CONFIG="$repository/deployment/ansible.cfg"
-export UV_PROJECT_ENVIRONMENT=${UV_PROJECT_ENVIRONMENT:-/home/james/scratch/mash-artifacts/ansible-venv}
+source "$repository/tools/controller-environment.sh"
 result=0
 bash "$repository/tools/run-ansible.sh" "$logs/fleet.lock" \
     timeout 7200 uv run --project "$repository/deployment" --locked --no-sync \

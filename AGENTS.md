@@ -110,6 +110,20 @@ candidates separate. Do not rewrite historical studies just to add tracking.
 
 ## Verification
 
+Use `make iterate FOCUS='test(changed_behavior)'` for the normal development loop:
+formatting, Clippy, then explicitly selected nextest regressions. A missing or
+empty selection fails; this mode never certifies full acceptance or builds an
+optimized release. Preserve passing evidence until relevant inputs change.
+Focused checks and relevant tooling fixtures are enough to commit and push.
+
+Run `make validate-dev` once for a stable release batch, after focused checks
+pass. It runs the broader gates without building a release binary. The release
+runner reuses a receipt for identical source, toolchain and effective validation
+inputs across commits; commit identity and `MASH_BUILD_REVISION` affect binary
+stamping, not validation reuse. Never reuse a binary stamped for another release.
+Do not repeat broad gates after every edit or push. Formatting and Clippy precede
+expensive fixtures and broad tests, so cheap failures stop early.
+
 Keep project logs, downloads, research captures and other durable work artifacts
 under `/home/james/scratch/mash-artifacts`, outside Git. Do not use `/tmp/mash*`
 for these artifacts. Earlier temporary artifacts were moved to
@@ -117,6 +131,8 @@ for these artifacts. Earlier temporary artifacts were moved to
 Use the persistent target and test temporary directories below for validation.
 
 Use the persistent Xenia target and temp directories:
+The raw broad commands below belong to release milestones; use the canonical
+focused runner during ordinary implementation.
 
 ```bash
 env TMPDIR=/home/james/scratch/achi-tmp \
@@ -151,8 +167,9 @@ fails or times out. This verifies acknowledged writes after graceful database
 restart and SIGKILL process termination using the same persisted host storage,
 not power-loss durability or failover.
 
-Use `cargo build-clif`, `cargo run-clif`, and `cargo test-clif` for development
-iteration. Retain Clippy, formatting, and doctest validation. On the installed
+Use `cargo build-clif`, `cargo run-clif`, and `cargo test-clif` for directed
+diagnosis; prefer the focused runner for iteration. Keep formatting and Clippy
+in that loop, and doctests at release milestones. On the installed
 August 2026 nightly, Clippy needs `RUSTFLAGS=-Znext-solver=no` to avoid its known
 async-code compiler crash.
 
@@ -166,9 +183,10 @@ with `CARGO_INCREMENTAL=1 RUSTC_WRAPPER= cargo test-clif --lib`, adding a focuse
 `-E` expression when appropriate. Warm incremental builds substantially reduce
 small test-edit rebuild time on Xenia; the initial build is slower and uses more
 disk cache. Bypass the local wrapper for this path because its incremental build
-failed. This is an iteration workflow: retain full CLI/MCP, real-model and shared
-backend verification for changes affecting those paths, and the required final
-checks above. Do not treat a unit-only run as evidence for integration behavior.
+failed. Include public CLI/MCP or retrieval/publication boundary regressions in
+the focused selection when changing those paths. Run broader CLI/MCP, real-model
+and shared-backend acceptance at a release milestone when those paths are affected.
+Do not treat a unit-only run as evidence for integration behavior or full acceptance.
 
 ## Git
 
@@ -176,9 +194,20 @@ Work on and push `main`; it is the repository's sole development branch.
 
 ## Deployment
 
-Redeploy by default after every change pushed to `main`, following
+Deploy at an explicitly requested release or agreed stable-batch milestone, following
 `.agents/skills/mash-deployment/SKILL.md` (linked under `.claude/skills` and
-`.codex/skills`), unless the user says not to.
+`.codex/skills`). A commit or push alone is not a deployment request. Batch small
+validated changes; do not deploy ordinary implementation commits automatically.
+
+Before a release build, run `bash tools/fleet.sh preflight TARGET...` or use
+`deploy`, which includes that same preflight. It checks configured service
+lifecycle, release records, authentication, install access and required APIs
+before compiling or installing anything. All targets must declare read-only
+`mash_deploy_preflight` commands; the legacy API installer uses
+`check-dev-api.sh --deployment` for identity and write access, plus an explicit
+check that its configured service manager agrees with the chosen installer.
+The canonical runners select and synchronize the locked controller environment;
+do not depend on a caller remembering `UV_PROJECT_ENVIRONMENT`.
 
 Build once per platform and reuse the validated artifact for nodes on that platform.
 Ordinary binary deployment must not run `index` automatically. Inspect local

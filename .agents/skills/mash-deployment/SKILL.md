@@ -5,27 +5,39 @@ description: Deploy, redeploy or refresh Mash through its Ansible fleet playbook
 
 # Mash deployment
 
-After validated changes reach main, deploy unless the user says not to or the
-change cannot affect nodes. Local gates are authoritative; hosted CI is optional.
+Deploy when explicitly requested or at an agreed stable release milestone.
+A commit or push alone does not request deployment; batch ordinary small fixes.
+Local gates are authoritative; hosted CI is optional.
 Default targets are shared-api and xenia. Include Macs only when requested or
 known available, and do not hold up Linux completion for unavailable Macs.
 
-Use `bash tools/fleet.sh deploy shared-api xenia`. Ansible owns inventory,
+Use `bash tools/fleet.sh preflight shared-api xenia` for a read-only release
+preflight. `deploy` includes the same checks before any build or installation.
+All targets declare read-only `mash_deploy_preflight` commands for install access
+and lifecycle. Legacy API installation uses `check-dev-api.sh --deployment` to
+verify release identity, authentication and write access; configure a separate
+service-manager check matching the chosen installer (see the example inventory).
+Unavailable required APIs fail preflight. A stale PID record is a blocked release,
+not permission to kill a supervised process through the legacy installer.
+
+Use `bash tools/fleet.sh deploy shared-api xenia` for the actual release. Ansible owns inventory,
 availability, platform build reuse, API-first installation, migrations and
 readiness. The private inventory defaults to ~/.config/mash/dev-inventory.yml;
 set MASH_DEPLOY_INVENTORY to override it. Private reports default to
 /home/james/scratch/mash-artifacts/dev-jobs; override with MASH_DEPLOY_LOGS.
 
-Install the locked controller runtime with `uv sync --project deployment --locked`,
-setting UV_PROJECT_ENVIRONMENT to a private artifact directory. Use that same
-environment for fleet commands. The launcher takes a fleet lock, bounds execution
+The canonical runners select and synchronize the locked controller runtime in
+the private default environment. Set `UV_PROJECT_ENVIRONMENT` only to override
+that location; callers need no manual setup step. The launcher takes a fleet lock, bounds execution
 and invokes registered playbooks directly through ansible-runner. Never bypass
 Ansible with invented per-host rollout commands. Read private reports after the
 command ends; unknown/unverified outcomes fail closed. Skipped means not installed.
 
 Linux builds use tools/build-dev-linux.sh through agent-test, persistent targets
 and disk-backed temp paths. Reuse successful gates only for identical source,
-toolchain and effective build inputs; always stamp the current release. Build
+toolchain and effective validation inputs. `make validate-dev` can establish the
+receipt before committing without building a release. Commit identity and the
+release-stamp override do not invalidate validation; always stamp the current release. Build
 once per platform. API installation uses authenticated readiness, rollout locking,
 atomic release pointers and rollback; identical healthy releases stay running.
 

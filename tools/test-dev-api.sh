@@ -56,6 +56,8 @@ jq -n --argjson pid "$old_pid" --arg binary_sha256 "${digest%% *}" \
     '{pid:$pid,binary_sha256:$binary_sha256,source_commit:"fixture"}' > "$TEST_API_POINTER"
 bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
     http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
+bash "$repository/tools/check-dev-api.sh" --deployment "$scratch/environment" "$TEST_API_POINTER" \
+    http://fixture TEST_API_TOKEN "$scratch/logs" >/dev/null
 if bash "$repository/tools/restart-dev-api.sh" /usr/bin/false fixture.toml "$scratch/environment" \
     "$TEST_API_POINTER" http://fixture TEST_API_TOKEN "$scratch/logs" --rollback-config "$scratch/environment"; then
     echo 'Expected failed candidate to roll back.' >&2
@@ -131,3 +133,14 @@ report=$(bash "$repository/tools/restart-dev-api.sh" "$scratch/release" fixture.
 [[ "$(jq -r .publications_preserved <<<"$report")" == false ]]
 [[ ! -e "$silver/group/old.sqlite3" && -e "$silver/group/current.sqlite3" ]]
 [[ -e "$(jq -r .retired_silver "$TEST_API_POINTER")/group/old.sqlite3" ]]
+recorded_pid=$(jq -r .pid "$TEST_API_POINTER")
+cp -f "$TEST_API_POINTER" "$scratch/valid-pointer.json"
+jq '.pid=999999999' "$scratch/valid-pointer.json" > "$TEST_API_POINTER"
+if bash "$repository/tools/check-dev-api.sh" "$scratch/environment" "$TEST_API_POINTER" \
+    http://fixture TEST_API_TOKEN "$scratch/logs" > /dev/null 2> "$scratch/stale-error"; then
+    cp -f "$scratch/valid-pointer.json" "$TEST_API_POINTER"
+    echo 'Stale API process record was accepted.' >&2; exit 1
+fi
+cp -f "$scratch/valid-pointer.json" "$TEST_API_POINTER"
+grep -Fq 'reconcile the service manager and release record' "$scratch/stale-error"
+kill -0 "$recorded_pid"

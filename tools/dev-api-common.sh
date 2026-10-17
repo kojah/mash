@@ -26,14 +26,21 @@ pointer_pid() {
 }
 
 verify_api_process() {
-    local pointer=$1 pid executable expected actual
-    pid=$(pointer_pid "$pointer")
-    executable=$(readlink "/proc/$pid/exe")
+    local pointer=$1 pid expected actual
+    pid=$(pointer_pid "$pointer") || { echo 'API release record has no valid process ID.' >&2; return 1; }
+    readlink "/proc/$pid/exe" >/dev/null 2>&1 || {
+        echo 'Recorded API process is absent or inaccessible; reconcile the service manager and release record before deployment.' >&2
+        return 1
+    }
     expected=$(jq -er '.binary_sha256 | select(type == "string")' "$pointer")
     [[ "$expected" =~ ^[0-9a-f]{64}$ ]]
-    actual=$(sha256sum "$executable")
-    [[ "${actual%% *}" == "$expected" ]]
-    tr '\0' '\n' < "/proc/$pid/cmdline" | grep -Fxq serve
+    actual=$(sha256sum "/proc/$pid/exe")
+    [[ "${actual%% *}" == "$expected" ]] || { echo 'Running API binary does not match the release record.' >&2; return 1; }
+    kill -0 "$pid" 2>/dev/null || { echo 'Deployment cannot access the recorded API process.' >&2; return 1; }
+    tr '\0' '\n' < "/proc/$pid/cmdline" | grep -Fxq serve || {
+        echo 'Recorded API process is not a serve invocation.' >&2
+        return 1
+    }
 }
 
 check_api_http() {

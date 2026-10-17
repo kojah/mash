@@ -13,6 +13,10 @@ all:
       hosts:
         shared-api:
           mash_platform: linux
+          mash_deploy_preflight:
+            - [bash, tools/check-dev-api.sh, --deployment, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
+            # This installer owns a PID, so a supervised API must use a different rollout.
+            - [sh, -c, 'test "$(systemctl --user show mash-shared.service --property ActiveState --value)" = inactive']
           mash_install:
             - [bash, tools/restart-dev-api.sh, /absolute/artifacts/mash, /private/server.toml, /private/server.env, /private/release.json, http://api:8788, MASH_NODE_TOKEN, /private/api-logs]
           mash_verify:
@@ -23,6 +27,7 @@ all:
           mash_platform: linux
           mash_requires: [shared-api]
           mash_shared: true
+          mash_deploy_preflight: [[test, -w, /absolute/installed]]
           mash_install:
             - [bash, tools/upgrade-local-index.sh, /absolute/installed/mash, /absolute/artifacts/mash, /absolute/data/mash.sqlite3, /private/index-backups]
             - [bash, tools/install-dev-binary.sh, /absolute/artifacts/mash, /absolute/installed/mash]
@@ -36,6 +41,7 @@ all:
           mash_requires: [shared-api]
           mash_shared: true
           mash_preflight: [ssh, -o, ControlPath=none, -o, BatchMode=yes, -o, ConnectTimeout=10, -o, ServerAliveInterval=15, -o, ServerAliveCountMax=2, dev-macbook, 'true']
+          mash_deploy_preflight: [[ssh, -o, ControlPath=none, -o, BatchMode=yes, -o, ConnectTimeout=10, dev-macbook, 'test -w /Users/operator/.local/bin']]
           mash_node_configs: [/Users/operator/Library/Application Support/dev.jamesqo.mash/config.toml]
           mash_install:
             - [bash, tools/upgrade-remote-index.sh, dev-macbook, /absolute/artifacts/mash-darwin-arm64, /Users/operator/.local/bin/mash]

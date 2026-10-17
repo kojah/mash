@@ -4,9 +4,10 @@ set -euo pipefail
 # This script runs inside the deployment lock, after CI has validated GITHUB_SHA.
 # API failures and malformed revisions fail closed; superseded runs skip safely.
 if [[ "${GITHUB_REF:?}" != refs/heads/main ]] ||
-   [[ "${GITHUB_EVENT_NAME:?}" != push && "$GITHUB_EVENT_NAME" != workflow_dispatch ]]; then
+   [[ "${GITHUB_EVENT_NAME:?}" != workflow_dispatch ]] ||
+   [[ "${MASH_DEPLOY_REQUESTED:-false}" != true ]]; then
   echo 'deploy=false' >> "${GITHUB_OUTPUT:?}"
-  echo 'Skipping deployment outside a main push or manual main CI run.'
+  echo 'Skipping deployment without an explicit manual main release request.'
   exit 0
 fi
 

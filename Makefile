@@ -3,6 +3,18 @@
 CODEGEN ?= 0
 CARGO_ARGS ?=
 COVERAGE_OUTPUT ?= target/llvm-cov/coverage.json
+DEV_TMPDIR ?= /home/james/scratch/achi-tmp
+DEV_TARGET_DIR ?= /home/james/scratch/achi-targets/integrated
+DEV_RUN ?= $(if $(wildcard /home/james/.local/bin/agent-test),/home/james/.local/bin/agent-test,)
+export FOCUS
+
+.PHONY: iterate validate-dev
+iterate:
+	@test -n "$${FOCUS}" || (echo 'Set FOCUS to a nextest filter for the changed behavior'; exit 2)
+	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=1 RUSTC_WRAPPER= bash tools/build-dev-linux.sh --focused "$${FOCUS}"
+
+validate-dev:
+	$(DEV_RUN) env TMPDIR="$(DEV_TMPDIR)" CARGO_TARGET_DIR="$(DEV_TARGET_DIR)" CARGO_INCREMENTAL=0 bash tools/build-dev-linux.sh --validate-only
 
 .PHONY: build check-skills generate-skills generate-queries check-generated coverage generate-python-models check-python-models
 build: check-skills
