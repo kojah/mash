@@ -271,7 +271,9 @@ impl Storage {
         storage
             .connection
             .execute_batch("BEGIN IMMEDIATE")
-            .map_err(AppError::database)?;
+            .map_err(AppError::database_at(
+                crate::database_error::Operation::BeginWriter,
+            ))?;
         storage.writer_active = true;
         storage.reset_transaction_entry_delta()?;
         Ok(storage)

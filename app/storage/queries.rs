@@ -6,6 +6,7 @@ use super::generated as sql;
 use super::schema::SCHEMA_VERSION;
 use super::{Counts, Message, SearchHit, SearchUpdates, StatusSnapshot, Storage, cutoff_timestamp};
 use crate::AppError;
+use crate::database_error::Operation;
 
 impl Storage {
     pub(crate) fn open_search(path: &Path, generation: &str) -> Result<Self, AppError> {
@@ -24,10 +25,10 @@ impl Storage {
             return Err(AppError::missing_database(path));
         }
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(AppError::database)?;
+            .map_err(AppError::database_at(Operation::OpenCatalog))?;
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .map_err(AppError::database)?;
+            .map_err(AppError::database_at(Operation::InspectCatalog))?;
         if version == 0 {
             return Err(AppError::search_not_ready(
                 "index requires an explicit rebuild; run `mash index`",
@@ -58,10 +59,10 @@ impl Storage {
         generation: &str,
     ) -> Result<StatusSnapshot, AppError> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(AppError::database)?;
+            .map_err(AppError::database_at(Operation::OpenCatalog))?;
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .map_err(AppError::database)?;
+            .map_err(AppError::database_at(Operation::InspectStatus))?;
         if version == 0 {
             return Ok(StatusSnapshot {
                 lexical: None,

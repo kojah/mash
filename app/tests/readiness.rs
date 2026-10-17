@@ -1,6 +1,45 @@
 use super::*;
 
 #[test]
+fn locked_status_reports_sqlite_details_and_recovers_after_unlock() {
+    let fixture = NodeFixture::new();
+    fixture.seed(Some(""));
+    let connection = Connection::open(&fixture.database).unwrap();
+    // An exclusive rollback-journal lock deliberately blocks readers. A normal
+    // WAL writer does not, so this fixture does not claim indexing blocks reads.
+    connection
+        .execute_batch("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE;")
+        .unwrap();
+    let arguments = [
+        "--db",
+        fixture.database.to_str().unwrap(),
+        "--models-dir",
+        fixture.models.to_str().unwrap(),
+        "status",
+    ];
+    let output = Command::cargo_bin("mash")
+        .unwrap()
+        .args(arguments)
+        .timeout(HANG_GUARD)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(6));
+    let response: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(response["error"]["kind"], "index-busy");
+    assert_eq!(response["error"]["database"]["operation"], "inspect-status");
+    assert_eq!(response["error"]["database"]["sqlite_code"], 5);
+    assert_eq!(response["error"]["database"]["sqlite_extended_code"], 5);
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("locked")
+    );
+    connection.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(run_json(&arguments)["messages"], 1);
+}
+
+#[test]
 fn cli_scoped_coverage_counts_canonical_rows_without_search_readiness() {
     let fixture = NodeFixture::new();
     fixture.seed(Some(""));

@@ -4,6 +4,7 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use crate::AppError;
+use crate::database_error::Operation;
 
 /// Silver database version; any other version is rejected, never migrated.
 pub(crate) const SCHEMA_VERSION: i64 = 54;
@@ -32,7 +33,7 @@ pub(crate) fn initialize_silver(connection: &Connection) -> Result<(), AppError>
     }
     connection
         .execute_batch(WRITER_PRAGMAS)
-        .map_err(AppError::database)?;
+        .map_err(AppError::database_at(Operation::ConfigureWriter))?;
     if version == 0 {
         let transaction = connection
             .unchecked_transaction()
@@ -63,7 +64,7 @@ pub(super) fn initialize(connection: &Connection, views: &Path) -> Result<(), Ap
     }
     connection
         .execute_batch(WRITER_PRAGMAS)
-        .map_err(AppError::database)?;
+        .map_err(AppError::database_at(Operation::ConfigureWriter))?;
     if version == 0 {
         initialize_silver(connection)?;
     }
@@ -160,14 +161,14 @@ fn attach(connection: &Connection, views: &Path, writable: bool) -> Result<(), A
         .ok_or_else(|| AppError::configuration("views database path must be valid UTF-8"))?;
     connection
         .execute("ATTACH DATABASE ?1 AS views", [path])
-        .map_err(AppError::database)?;
+        .map_err(AppError::database_at(Operation::AttachViews))?;
     if writable {
         connection
             .query_row("PRAGMA views.journal_mode = WAL", [], |_| Ok(()))
-            .map_err(AppError::database)?;
+            .map_err(AppError::database_at(Operation::ConfigureWriter))?;
         connection
             .execute_batch("PRAGMA views.synchronous = NORMAL;")
-            .map_err(AppError::database)?;
+            .map_err(AppError::database_at(Operation::ConfigureWriter))?;
     }
     Ok(())
 }

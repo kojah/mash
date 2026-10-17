@@ -290,6 +290,16 @@ index, or migrate its schema. A missing or incomplete local index returns a type
 error recommending `mash index`, before loading inference models or contacting
 the shared search service. An explicitly completed empty index is valid.
 
+Database errors retain SQLite's original reason. Their optional `error.database`
+object identifies the operation and includes numeric `sqlite_code` and
+`sqlite_extended_code` when SQLite supplies them. `index-busy` remains the
+retryable category for both `SQLITE_BUSY` and `SQLITE_LOCKED`; it reports lock
+contention, not proof that an indexing writer caused it. For example, a blocked
+status read can report `operation: "inspect-status"`, `sqlite_code: 5` and
+`sqlite_extended_code: 5` alongside "database is locked". CLI stderr and MCP
+structured errors carry the same evidence. No SQL statements or bound values
+are added to this diagnostic metadata.
+
 Local indexing separates durable canonical ingestion (silver) from rebuilding
 built-in retrieval views, reusing the existing stored history. Lexical indexes,
 dense embeddings and connector search units are built-in views: derived from

@@ -1,5 +1,25 @@
 use super::*;
 
+#[test]
+fn database_lock_error_preserves_evidence_in_mcp_text_and_structure() {
+    for detail in [Detail::Compact, Detail::Extended] {
+        let failure = crate::AppError::database_at(crate::database_error::Operation::InspectStatus)(
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(517),
+                Some("database snapshot is busy".into()),
+            ),
+        );
+        let result = tool_result_detailed(Err(failure), detail);
+        assert_eq!(result.is_error, Some(true));
+        let data = result.structured_content.unwrap();
+        assert_eq!(data["error"]["database"]["operation"], "inspect-status");
+        assert_eq!(data["error"]["database"]["sqlite_extended_code"], 517);
+        let text = &result.content[0].as_text().unwrap().text;
+        assert!(text.contains("database snapshot is busy"));
+        assert!(text.contains("517"));
+    }
+}
+
 fn presentation_bytes(response: &CallToolResult) {
     eprintln!(
         "MCP presentation bytes: text={}, structured={}, whole_result={}",

@@ -416,6 +416,9 @@ pub(crate) fn error(value: &crate::AppError) -> Result<String, serde_json::Error
     let mut out = format!("Mash error — {}\n", safe(&value.error.message));
     json(&mut out, "Kind", &value.error.kind)?;
     line(&mut out, &format!("Retryable: {}", value.error.retryable));
+    if let Some(database) = &value.error.database {
+        json(&mut out, "Database", database)?;
+    }
     if let Some(action) = &value.error.recommended_action {
         json(&mut out, "Next action", action)?;
     }

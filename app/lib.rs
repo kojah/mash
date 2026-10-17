@@ -26,6 +26,7 @@ mod attachments;
 mod cli;
 mod config;
 mod core;
+mod database_error;
 mod export;
 mod mcp;
 /// Build-time generation of the bundled history skill from the live MCP contract.
@@ -122,6 +123,8 @@ struct ErrorBody {
     retryable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     recommended_action: Option<Action>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    database: Option<database_error::DatabaseDetails>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -186,24 +189,11 @@ impl AppError {
     }
 
     fn database(error: rusqlite::Error) -> Self {
-        if matches!(
-            &error,
-            rusqlite::Error::SqliteFailure(details, _)
-                if matches!(
-                    details.code,
-                    rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-                )
-        ) {
-            return Self::new(
-                6,
-                ErrorKind::IndexBusy,
-                "another index writer is active",
-                true,
-            );
-        }
-        let message = error.to_string();
-        drop(error);
-        Self::new(5, ErrorKind::Database, message, true)
+        database_error::error(database_error::Operation::Unspecified, error)
+    }
+
+    fn database_at(operation: database_error::Operation) -> impl FnOnce(rusqlite::Error) -> Self {
+        move |error| database_error::error(operation, error)
     }
 
     fn database_data(message: impl Into<String>) -> Self {
@@ -249,6 +239,7 @@ impl AppError {
                 message: message.into(),
                 retryable,
                 recommended_action: None,
+                database: None,
             },
             code,
         }
